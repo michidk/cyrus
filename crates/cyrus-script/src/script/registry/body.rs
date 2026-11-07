@@ -67,6 +67,7 @@ impl ScriptWorld {
         } else {
             initial
         };
+        let center_offset = shape.center_offset;
         let spheres = shape
             .body
             .iter()
@@ -77,6 +78,7 @@ impl ScriptWorld {
                 )
             })
             .collect::<Vec<_>>();
+        let origin = self.query_position(id)?;
         let angles = query.prepared.working_angles;
         let rows = cyrus_world::transform::Matrix::collision_orientation(angles)
             .0
@@ -91,7 +93,11 @@ impl ScriptWorld {
             &poses,
             cyrus_collision::collision_world::ResidualBodyQuery {
                 probe: BodyProbe {
-                    position: self.spatial(id)?.query_pose()?.position.map(i64::from),
+                    // The residual response refreshes the first working record's origin to the
+                    // selector's position plus the bounds record's center offset, unrotated.
+                    position: std::array::from_fn(|axis| {
+                        i64::from(origin[axis]) + (i64::from(center_offset[axis]) << 8)
+                    }),
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,
@@ -358,7 +364,6 @@ impl ScriptWorld {
             })
             .collect::<Vec<_>>();
         let pose = self.spatial(id)?.local;
-        let center_offset = self.ordinary_collision_shape(id)?.center_offset;
         // The query-position selector: attached, else linked, else local.
         let origin = self.query_position(id)?;
         let rows = cyrus_world::transform::Matrix::collision_orientation(pose.wrapped_angles())
@@ -374,10 +379,7 @@ impl ScriptWorld {
             &poses,
             PrimaryBodyQuery {
                 probe: BodyProbe {
-                    // The primary query's origin is the position plus the center offset.
-                    position: std::array::from_fn(|axis| {
-                        i64::from(origin[axis]) + (i64::from(center_offset[axis]) << 8)
-                    }),
+                    position: origin.map(i64::from),
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,

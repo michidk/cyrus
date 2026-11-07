@@ -157,17 +157,12 @@ impl GroundedWalk {
         history: &mut SupportHistory,
         surface_veto: &mut i32,
     ) -> anyhow::Result<()> {
-        let definition = query
-            .scene
-            .definition
-            .as_ref()
-            .context("grounded response: player definition unavailable")?;
         let contacts = query
             .scene
             .static_collision
             .body_contacts(
                 query.candidates,
-                query.body_origin(definition, self.position),
+                self.position,
                 query.rotation,
                 &query.spheres()?,
                 query.sidedness,
@@ -200,12 +195,13 @@ impl GroundedWalk {
             query.scene.settings.slide_range,
         );
         let distance = super::contact::residual_distance(previous, self.position)?;
+        // The residual requery refreshes its origin by the center offset.
         let normals = query
             .scene
             .static_collision
             .body_contacts(
                 query.candidates,
-                self.position,
+                query.body_origin(definition, self.position),
                 query.rotation,
                 &query.spheres()?,
                 query.sidedness,
@@ -313,7 +309,7 @@ impl StaticGroundQuery<'_> {
             .map_or(definition.center_offset, |bounds| bounds.center_offset)
     }
 
-    /// The primary body query's origin: the position plus the center offset, unrotated.
+    /// The residual body query's origin: the position plus the center offset, unrotated.
     fn body_origin(
         &self,
         definition: &super::definition::PlayerDefinition,
@@ -433,7 +429,7 @@ impl StaticGroundQuery<'_> {
         let spheres = self.spheres()?;
         if self.scene.static_collision.blocks_body(
             self.candidates,
-            self.body_origin(definition, proposed),
+            proposed,
             self.rotation,
             &spheres,
             self.sidedness,

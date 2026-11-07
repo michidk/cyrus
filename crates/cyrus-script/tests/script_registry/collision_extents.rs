@@ -249,7 +249,7 @@ fn body_contacts_with_center(center_z: i32) -> (usize, usize) {
 
 /// [`body_contacts_with_center`] with an optional cached link position on the player.
 fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
-    use cyrus_script::script::OrdinaryBodyQuery;
+    use cyrus_script::script::OrdinaryResidualQuery;
     let (world, restored, mut scene, data, _) = write_extent(Property::SizePosVz, center_z);
     add_wall(&mut scene);
     let count = |mut world: ScriptWorld| {
@@ -271,15 +271,13 @@ fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
             .prepare_ordinary_collision_query(player, &scene, &data, [522, 542], &[player, map])
             .unwrap();
         world
-            .query_ordinary_body(
+            .query_ordinary_residual_body(
                 player,
-                OrdinaryBodyQuery {
+                OrdinaryResidualQuery {
                     scene: &scene,
                     animations: &data,
                     prepared: &prepared,
                     sidedness: false,
-                    excluded_candidate_type: None,
-                    terrain: None,
                 },
             )
             .unwrap()
@@ -289,7 +287,7 @@ fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
 }
 
 #[test]
-fn center_offset_moves_the_primary_body_query_origin() {
+fn center_offset_moves_the_residual_body_query_origin() {
     let (centered, centered_restored) = body_contacts_with_center(0);
     let (forward, forward_restored) = body_contacts_with_center(30);
     let (back, _) = body_contacts_with_center(-30);
@@ -310,7 +308,7 @@ fn center_offset_moves_the_primary_body_query_origin() {
 }
 
 #[test]
-fn a_linked_actors_primary_body_query_reads_its_link_position() {
+fn a_linked_actors_residual_body_query_reads_its_link_position() {
     // The wall touches the body at the written center offset; a link position far away moves the
     // query origin there, as the original's query-position selector does.
     let (plain, _) = body_contacts(30, None);

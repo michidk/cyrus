@@ -7712,16 +7712,16 @@
       "status": "partial",
       "owner": 5,
       "scope": "Receiver collision shape center offset",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; residual body query and selected-player fallback support read it",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
-        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_residual_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::the_residual_requery_runs_from_the_written_center_offset"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the residual body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The primary, destination, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7729,16 +7729,16 @@
       "status": "partial",
       "owner": 5,
       "scope": "Receiver collision shape center offset",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; residual body query and selected-player fallback support read it",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
-        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_residual_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::the_residual_requery_runs_from_the_written_center_offset"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the residual body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The primary, destination, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7746,16 +7746,16 @@
       "status": "partial",
       "owner": 5,
       "scope": "Receiver collision shape center offset",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; residual body query and selected-player fallback support read it",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
-        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_residual_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::the_residual_requery_runs_from_the_written_center_offset"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the residual body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The primary, destination, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {

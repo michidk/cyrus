@@ -976,9 +976,6 @@ impl ScriptWorld {
             .collect::<Vec<_>>();
         let position = proposed.map(i64::from);
         let ground = GroundProbe::new(position, shape.positive_extent[1], query.distance)?;
-        let body_position: [i64; 3] = std::array::from_fn(|axis| {
-            position[axis] + (i64::from(shape.center_offset[axis]) << 8)
-        });
         let fallback = FallbackProbe::new(
             position,
             shape.center_offset,
@@ -1023,7 +1020,7 @@ impl ScriptWorld {
             &self.ordinary_collision_poses(query.prepared)?,
             RuntimeForwardQuery {
                 body: BodyProbe {
-                    position: body_position,
+                    position,
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,

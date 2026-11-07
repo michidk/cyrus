@@ -25,7 +25,7 @@ pub struct OrdinaryGroundQuery<'a> {
 pub struct OrdinaryCollisionShape {
     pub positive_extent: [i32; 3],
     pub negative_extent: [i32; 3],
-    /// The bounds record's center offset (`size.pos`): added unrotated to the primary body query's
+    /// The bounds record's center offset (`size.pos`): added unrotated to the residual body query's
     /// origin and to the selected player's fallback support sphere. Sphere construction ignores it.
     pub center_offset: [i32; 3],
     pub body: Vec<BodySphere>,
