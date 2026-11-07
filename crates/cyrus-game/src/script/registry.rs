@@ -704,6 +704,9 @@ pub struct ScriptWorld {
     /// The model candidate list of the latest ordinary candidate gather. The original keeps one
     /// global list, so a receiver that gathers none reads its predecessor's; transient, never saved.
     retained_candidates: cyrus_collision::candidates::CollisionCandidates,
+    /// Frame transient models the hand and hilt display natives placed; emptied at the start of
+    /// every ordinary update (the original's per-frame pool reset), never saved.
+    display_attachments: Vec<super::attachment::DisplayAttachment>,
     model_admission: Option<model::AdmissionState>,
     map_updates: super::map_updates::MapUpdates,
     /// Shared surface-query veto; absent until an assigning query establishes it.
@@ -1563,6 +1566,7 @@ impl ScriptWorld {
             ordinary_updates: 0,
             actor_prelighting: None,
             retained_candidates: Default::default(),
+            display_attachments: Vec::new(),
             surface_veto: None,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
@@ -6105,6 +6109,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
             request.words = words;
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function
+            && (function == Native::DisplayHandModel || function == Native::DisplayHiltModel)
+        {
+            let [name, x, y, z] = arguments else {
+                anyhow::bail!("{function} requires four arguments")
+            };
+            let Argument::String(name) = name else {
+                anyhow::bail!("{function} requires a model name")
+            };
+            let data = self
+                .inputs
+                .animations
+                .with_context(|| format!("{function} installed animation models unavailable"))?
+                .0;
+            let id = self.registry.id(self.index)?;
+            self.registry.display_model_attachment(
+                id,
+                data,
+                name,
+                [x.integer()?, y.integer()?, z.integer()?],
+                function == Native::DisplayHiltModel,
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function == Native::AddItem {
             let [item, amount] = arguments else {
                 anyhow::bail!("AddItem requires two arguments")
@@ -9344,6 +9372,7 @@ mod fighting_tests {
             ordinary_updates: 0,
             actor_prelighting: None,
             retained_candidates: Default::default(),
+            display_attachments: Vec::new(),
             model_admission: None,
             map_updates: Default::default(),
             surface_veto: None,

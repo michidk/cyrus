@@ -30,6 +30,23 @@ pub struct EquippedWeapon {
     pub endpoints: [[i32; 3]; 2],
 }
 
+/// Capacity of the original's transient-model pool, emptied once per world frame.
+pub const TRANSIENT_MODEL_CAPACITY: usize = 900;
+
+/// A frame transient model a hand or hilt display native placed on an actor's attachment pair.
+/// It lasts for the frame it was made in; the script world empties the list at the start of every
+/// ordinary update.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplayAttachment {
+    pub actor: super::ScriptActorId,
+    /// Installed animation model stem the native named.
+    pub model: String,
+    /// The hilt helper (scabbard pair, first transformed vertex) rather than the hand helper
+    /// (grip pair, midpoint).
+    pub hilt: bool,
+    pub geometry: WeaponAttachment,
+}
+
 /// Prepare a drawn grip pair or stowed scabbard pair after attachment allocation.
 /// Vertices and local offsets are original signed Q8 values. The actor origin is
 /// the retained floating map-unit position, rather than the integer collision pose.

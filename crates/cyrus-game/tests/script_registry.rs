@@ -33438,6 +33438,157 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
     }
 }
 
+/// An animated actor with a grip pair (vertices 0, 1) and a scabbard pair (vertices 1, 0) whose
+/// script calls the hand then the hilt display native with the given names and offsets.
+fn display_model_fixture(
+    hand: &str,
+    hilt: &str,
+    offsets: [i32; 3],
+) -> (ScriptWorld, cyrus_assets::animation::Animations, Scripts) {
+    use cyrus_assets::animation::AnimationModel;
+    let mut scripts = cache();
+    let [hand_id, hilt_id] = [Native::DisplayHandModel, Native::DisplayHiltModel].map(|name| {
+        let id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name,
+            param_count: 4,
+            kind: CallKind::Function,
+        });
+        id
+    });
+    let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+    program.strings = vec![hand.into(), hilt.into()];
+    let call = |id, name, string| Operation::Call {
+        call: Call {
+            function_id: id,
+            function: name,
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments: vec![
+                Value::String { index: string },
+                Value::Integer { value: offsets[0] },
+                Value::Integer { value: offsets[1] },
+                Value::Integer { value: offsets[2] },
+            ],
+        },
+    };
+    program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: call(hand_id, Native::DisplayHandModel, 0),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: call(hilt_id, Native::DisplayHiltModel, 1),
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    for instance in &mut scripts.instances {
+        instance.object_type = PlacementType::MODEL;
+        instance.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, _) = static_model_fixture(scripts.clone());
+    data.metadata["actors"][0] = serde_json::json!({"script_name":"LOGIC","model_load_path":"animation_table",
+        "raex":{"grip0":0,"grip1":1,"scabbard0":1,"scabbard1":0,"v_vertex":0,"v_size":0,"unknown_12":0},
+        "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
+        "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]});
+    data.metadata["mpob_objects"][0]["script_name"] = "LOGIC".into();
+    let model = || AnimationModel {
+        radius: Some(1.0),
+        base_positions: vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        base_normals: vec![],
+        faces: vec![],
+        corner_normals: vec![],
+        encoding: "animated_i16".into(),
+        positions: vec![vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]],
+        normals: vec![vec![]],
+    };
+    for name in ["BODY", "HAND", "HILT"] {
+        data.models.insert(name.into(), model());
+    }
+    let id = world.id(0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    (world, data, scripts)
+}
+
+fn run_display_script(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+) -> anyhow::Result<()> {
+    use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
+    let id = world.id(0)?;
+    world.advance(
+        id,
+        ScriptStage::OrdinaryMain,
+        ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            animations: Some(AnimationData(data)),
+            ..Default::default()
+        },
+        Some(&mut |_, _| Ok(())),
+        None,
+        20,
+    )
+}
+
+#[test]
+fn display_hand_and_hilt_models_place_frame_transients_on_the_attachment_pairs() {
+    // Names resolve by base file name, upper case: "hand.3d" and a directory-qualified name.
+    let (mut world, data, _) =
+        display_model_fixture("hand.3d", "system\\hilt.3d", [512, 1024, 768]);
+    run_display_script(&mut world, &data).unwrap();
+    let shown = world.display_attachments();
+    assert_eq!(shown.len(), 2);
+    let actor = world.id(0).unwrap();
+    assert_eq!(
+        (shown[0].actor, shown[0].model.as_str(), shown[0].hilt),
+        (actor, "HAND", false)
+    );
+    assert_eq!(
+        (shown[1].actor, shown[1].model.as_str(), shown[1].hilt),
+        (actor, "HILT", true)
+    );
+    // Grip pair (0, 256, 0 apart): the hand model sits at the midpoint of the offset pair; the
+    // scabbard pair (reversed) puts the hilt at its first transformed vertex.
+    assert_eq!(shown[0].geometry.position, [12.0, 24.0, 33.0]);
+    assert_eq!(shown[1].geometry.position, [12.0, 25.0, 33.0]);
+    assert_eq!(shown[1].geometry.retained_point, [3072, 6400, 8448]);
+}
+
+#[test]
+fn display_models_reject_an_unknown_name_and_a_full_pool() {
+    let (mut world, data, _) = display_model_fixture("hand", "nothere", [0; 3]);
+    let error = run_display_script(&mut world, &data).unwrap_err();
+    assert!(format!("{error:#}").contains("NOTHERE"), "{error:#}");
+    // The call before the failing one still placed its record.
+    assert_eq!(world.display_attachments().len(), 1);
+    // The pool holds 900 records; the next allocation is the original's runtime error.
+    let (mut world, data, _) = display_model_fixture("hand", "hilt", [0; 3]);
+    for _ in 0..450 {
+        run_display_script(&mut world, &data).unwrap();
+    }
+    assert_eq!(world.display_attachments().len(), 900);
+    let error = run_display_script(&mut world, &data).unwrap_err();
+    assert!(format!("{error:#}").contains("pool is full"), "{error:#}");
+    assert_eq!(world.display_attachments().len(), 900);
+}
+
 #[test]
 fn equipped_weapon_retains_stowed_geometry_and_snapshot_bits() {
     use cyrus_assets::animation::AnimationModel;

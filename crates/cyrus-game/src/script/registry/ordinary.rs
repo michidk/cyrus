@@ -163,6 +163,8 @@ impl ScriptWorld {
             self.world
         );
         self.ordinary_updates += 1;
+        // The original empties the transient-model pool once per world frame before its updates.
+        self.display_attachments.clear();
         let ticks = inputs
             .nominal_ticks
             .ok_or_else(|| anyhow::anyhow!("ordinary update requires nominal_ticks"))?;

@@ -1203,6 +1203,84 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// The frame transient models placed by the hand and hilt display natives since the latest
+    /// ordinary update began.
+    pub fn display_attachments(&self) -> &[super::super::attachment::DisplayAttachment] {
+        &self.display_attachments
+    }
+
+    /// `DisplayHandModel` / `DisplayHiltModel`: place the named installed model on the actor's grip
+    /// pair (hand) or scabbard pair (hilt) for this frame, with the three offsets added to both
+    /// vertices before the actor's matrix. The name is resolved as the original does: base file
+    /// name without directory or extension, at most eight characters, upper case. An unresolved
+    /// name and a full pool (900 records) are explicit errors, as the original's runtime errors.
+    pub(super) fn display_model_attachment(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        name: &str,
+        offsets: [i32; 3],
+        hilt: bool,
+    ) -> Result<()> {
+        use super::super::attachment::{
+            DisplayAttachment, TRANSIENT_MODEL_CAPACITY, prepare_weapon_attachment,
+        };
+        self.require_model_identity(data)?;
+        let stem = name
+            .rsplit(['\\', '/', ':'])
+            .next()
+            .unwrap_or(name)
+            .split('.')
+            .next()
+            .unwrap_or_default();
+        let model: String = stem
+            .chars()
+            .take(8)
+            .collect::<String>()
+            .to_ascii_uppercase();
+        ensure!(
+            data.models.contains_key(&model),
+            "display model {name:?}: installed model {model} unavailable"
+        );
+        ensure!(
+            self.display_attachments.len() < TRANSIENT_MODEL_CAPACITY,
+            "display model {model}: the transient model pool is full"
+        );
+        let actor = &self.actors[self.resolve(id)?];
+        let metadata = data.actor(actor.name())?;
+        let fields = if hilt {
+            ["scabbard0", "scabbard1"]
+        } else {
+            ["grip0", "grip1"]
+        };
+        let mut vertices = [[0; 3]; 2];
+        for (vertex, field) in vertices.iter_mut().zip(fields) {
+            let index = super::raex_word(actor.control.as_ref(), metadata, field)
+                .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
+            *vertex = if self.updates.dummy_model_manager {
+                [0; 3]
+            } else {
+                self.actor_animation_source_vertex(id, data, i32::from(index))?
+            };
+        }
+        let pose = self.spatial(id)?.local;
+        let geometry = prepare_weapon_attachment(
+            vertices,
+            offsets,
+            pose.matrix,
+            pose.position.map(|value| value as f32 / 256.0),
+            pose.wrapped_angles()[2],
+            !hilt,
+        )?;
+        self.display_attachments.push(DisplayAttachment {
+            actor: id,
+            model,
+            hilt,
+            geometry,
+        });
+        Ok(())
+    }
+
     /// Current collision-facing model, retaining its presentation-time pose.
     pub fn model_presentation(&self, id: ScriptActorId) -> Result<Option<&ModelPresentation>> {
         let index = self.resolve(id)?;
