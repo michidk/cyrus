@@ -194,7 +194,7 @@ pub(super) fn sync_proxies(
     mut assets: StandInAssets,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
     sources: Query<SourceData, SourceFilter>,
-    mut proxies: Query<ProxyData>,
+    mut proxies: Query<ProxyData, With<Proxy>>,
     mut stand_ins: Local<StandIns>,
 ) {
     stand_ins.rebuild_edited(&mut assets.meshes, &mut mesh_events);
@@ -215,7 +215,7 @@ fn update_proxies(
     assets: &mut StandInAssets,
     stand_ins: &mut StandIns,
     sources: &Query<SourceData, SourceFilter>,
-    proxies: &mut Query<ProxyData>,
+    proxies: &mut Query<ProxyData, With<Proxy>>,
 ) -> HashSet<Entity> {
     let mut live = HashSet::new();
     for (entity, stand_in, mut transform, mut global, mut mesh, mut tracing, mut material) in

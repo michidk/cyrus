@@ -132,3 +132,26 @@ pub(super) fn unhide(commands: &mut Commands, entity: Entity, hidden: &Hidden) {
     };
     entity.remove::<(Hidden, Traced)>();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Bevy rejects overlapping mutable and shared queries when a system is first set up, which
+    // panicked at launch before this was covered.
+    #[test]
+    fn systems_have_disjoint_queries() {
+        let mut world = World::new();
+        let mut schedule = Schedule::default();
+        schedule.add_systems((
+            configure_camera,
+            restore,
+            sync_proxies,
+            hide_draws,
+            sync_lights,
+        ));
+        schedule
+            .initialize(&mut world)
+            .expect("systems initialize without query conflicts");
+    }
+}
