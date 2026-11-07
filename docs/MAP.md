@@ -157,6 +157,9 @@ module where it is defined and regenerate.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/raytracing.rs` — Hardware ray-traced lighting through Bevy Solari, selected by `Area::RayTracing`.
+- `src/fog/raytracing/lights.rs` — The sun, ambient light and emissive object lights Solari lights the scene with.
+- `src/fog/raytracing/plugin.rs` — The Solari plugin, its camera setup and teardown, and the markers the other ray tracing modules share.
+- `src/fog/raytracing/proxies.rs` — Stand-in entities that give Solari the world meshes in the layout it accepts.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
 - `src/fog/texture/checkpoint.rs` — Replacement of shared texture timelines against an independently prepared image census.
