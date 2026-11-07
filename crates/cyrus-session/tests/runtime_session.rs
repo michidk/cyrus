@@ -25,9 +25,9 @@ use cyrus_game::{
         WorldSnapshotSources,
     },
 };
+use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use cyrus_soup::program::*;
 use cyrus_soup::{AnimationGroup, Native};
-use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use serde_json::json;
 use std::collections::BTreeMap;
 
