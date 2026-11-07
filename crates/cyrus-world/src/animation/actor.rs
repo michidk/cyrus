@@ -29,6 +29,12 @@ pub enum PlaybackField {
     HoldFlag,
     /// Finite loop countdown byte.
     LoopCount,
+    /// Repeat byte of the `ConditionalDelay` and `LoopControl` commands.
+    RepCount,
+    /// One word of the retained translation triple (signed, by axis).
+    Position(usize),
+    /// One word of the retained rotation triple (signed, by axis).
+    Rotation(usize),
     /// Reverse playback: the byte one.
     RewindFlag,
     /// Wrapping frame-progress byte.

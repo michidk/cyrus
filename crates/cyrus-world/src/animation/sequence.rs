@@ -18,6 +18,14 @@ enum Command {
         rate_shift: Option<i64>,
     },
     Event(u32),
+    /// Opcodes 6 and 8: the record's position (`<< 8`) or rotation (`<< 3`) words, all three at once.
+    Triple(Retained, [i32; 3]),
+    /// Opcodes 7 and 9: one word of the position or rotation triple, by axis.
+    Axis(Retained, u32, i32),
+    /// Opcode 13: the repeat byte.
+    SetRepeat(u8),
+    /// Opcode 14: step on at a zero repeat byte, otherwise decrement it and jump.
+    Repeat(usize),
     /// Trigger mask and the third operand (`target_group`), the command index a taken mask-4
     /// transition jumps to.
     Transition(u32, u32),
@@ -58,6 +66,13 @@ pub enum AnimationSound {
     Forget,
 }
 
+/// Which retained word triple a translation or rotation command writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Retained {
+    Position,
+    Rotation,
+}
+
 pub(super) type SoundDispatcher<'a> =
     Option<&'a mut dyn FnMut(AnimationSound) -> anyhow::Result<TransitionDecision>>;
 
@@ -76,6 +91,9 @@ pub struct FrameSequence {
     failure: Option<String>,
     translation_suppressed: bool,
     delay: u8,
+    repeat: u8,
+    position: [i16; 3],
+    rotation: [i16; 3],
     type_one: bool,
     type_two: bool,
     /// Transient: whether the pending request is the actor's default group, set per advance.
@@ -98,6 +116,12 @@ pub(super) struct SequenceSnapshot {
     translation_suppressed: bool,
     delay: u8,
     sound_requested: bool,
+    #[serde(default)]
+    repeat: u8,
+    #[serde(default)]
+    position: [i16; 3],
+    #[serde(default)]
+    rotation: [i16; 3],
 }
 
 impl FrameSequence {
@@ -113,6 +137,9 @@ impl FrameSequence {
             translation_suppressed: self.translation_suppressed,
             delay: self.delay,
             sound_requested: self.sound_requested,
+            repeat: self.repeat,
+            position: self.position,
+            rotation: self.rotation,
         }
     }
 
@@ -155,6 +182,9 @@ impl FrameSequence {
         sequence.translation_suppressed = snapshot.translation_suppressed;
         sequence.delay = snapshot.delay;
         sequence.sound_requested = snapshot.sound_requested;
+        sequence.repeat = snapshot.repeat;
+        sequence.position = snapshot.position;
+        sequence.rotation = snapshot.rotation;
         Ok(sequence)
     }
 
@@ -256,6 +286,40 @@ impl FrameSequence {
                     })?;
                     Command::Delay(value as u8)
                 }
+                6 | 8 => {
+                    let word = |key: &str| {
+                        command[key].as_i64().and_then(|v| i32::try_from(v).ok()).with_context(|| {
+                            format!("{context} command {index}: operand {key} absent")
+                        })
+                    };
+                    Command::Triple(
+                        if opcode == 6 { Retained::Position } else { Retained::Rotation },
+                        [word("x")?, word("y")?, word("z")?],
+                    )
+                }
+                7 | 9 => {
+                    let axis = command["axis"].as_u64().and_then(|v| u32::try_from(v).ok());
+                    let value = command["value"].as_i64().and_then(|v| i32::try_from(v).ok());
+                    let (Some(axis), Some(value)) = (axis, value) else {
+                        anyhow::bail!("{context} command {index}: axis operands absent");
+                    };
+                    Command::Axis(
+                        if opcode == 7 { Retained::Position } else { Retained::Rotation },
+                        axis,
+                        value,
+                    )
+                }
+                13 => Command::SetRepeat(
+                    command["value"]
+                        .as_i64()
+                        .with_context(|| format!("{context} command {index}: repeat operand absent"))?
+                        as u8,
+                ),
+                14 => Command::Repeat(usize::try_from(
+                    command["value"]
+                        .as_u64()
+                        .with_context(|| format!("{context} command {index}: invalid target"))?,
+                )?),
                 2 | 3 => {
                     let target = usize::try_from(command["value"].as_u64().with_context(|| format!("{context} command {index}: invalid target"))?)?;
                     if opcode == 2 { Command::Previous(target) } else { Command::Future(target) }
@@ -265,7 +329,9 @@ impl FrameSequence {
             commands.push(decoded);
         }
         for (index, command) in commands.iter().enumerate() {
-            if let Command::Previous(target) | Command::Future(target) = command {
+            if let Command::Previous(target) | Command::Future(target) | Command::Repeat(target) =
+                command
+            {
                 anyhow::ensure!(
                     *target < commands.len(),
                     "{context} command {index}: target {target} outside group"
@@ -284,12 +350,23 @@ impl FrameSequence {
             failure: None,
             translation_suppressed: false,
             delay: 0,
+            repeat: 0,
+            position: [0; 3],
+            rotation: [0; 3],
             type_one: group_type.to_le_bytes()[0] == 1,
             type_two: group_type.to_le_bytes()[0] == 2,
             pending_default: false,
             motion_active: false,
             sound_requested: false,
         })
+    }
+
+    /// Clears the BreakPoint marker and the retained translation and rotation words, which every
+    /// cursor step that leaves a frame clears together.
+    fn clear_marks(&mut self) {
+        self.translation_suppressed = false;
+        self.position = [0; 3];
+        self.rotation = [0; 3];
     }
 
     pub(super) fn set_loop_count(&mut self, count: u8) {
@@ -385,6 +462,9 @@ impl FrameSequence {
             HaltFlag => i32::from(self.translation_suppressed),
             HoldFlag => i32::from(self.delay),
             LoopCount => i32::from(self.loops),
+            RepCount => i32::from(self.repeat),
+            Position(axis) => i32::from(self.position[axis]),
+            Rotation(axis) => i32::from(self.rotation[axis]),
             Next | NextSpeed | RewindFlag | RealFrame => unreachable!("not a sequence field"),
         }
     }
@@ -399,6 +479,9 @@ impl FrameSequence {
             HaltFlag => self.translation_suppressed = value as u8 != 0,
             HoldFlag => self.delay = value as u8,
             LoopCount => self.loops = value as u8,
+            RepCount => self.repeat = value as u8,
+            Position(axis) => self.position[axis] = value as i16,
+            Rotation(axis) => self.rotation[axis] = value as i16,
             Next | NextSpeed | RewindFlag | RealFrame => unreachable!("not a sequence field"),
         }
     }
@@ -428,7 +511,10 @@ impl FrameSequence {
                     self.ended = true;
                     return Ok(None);
                 }
-                Command::Previous(_) | Command::Future(_) | Command::Unsupported(_) => {
+                Command::Previous(_)
+                | Command::Future(_)
+                | Command::Repeat(_)
+                | Command::Unsupported(_) => {
                     anyhow::bail!(
                         "{} command {}: frame skipping over a jump or unsupported command",
                         self.context,
@@ -511,7 +597,7 @@ impl FrameSequence {
             if self.countdown == 0 {
                 self.command = self.command.wrapping_add(step);
                 *progress = progress.wrapping_add_signed(step as i8);
-                self.translation_suppressed = false;
+                self.clear_marks();
                 self.countdown = self.speed;
                 skip = ticks - 1;
             }
@@ -521,7 +607,7 @@ impl FrameSequence {
         loop {
             if reverse {
                 self.exit_reached = false;
-                self.translation_suppressed = false;
+                self.clear_marks();
                 if self.command < 1 {
                     if self.sound_requested {
                         self.dispatch_sound(sounds, AnimationSound::Stop)?;
@@ -532,7 +618,7 @@ impl FrameSequence {
                 }
             }
             anyhow::ensure!(
-                visited.insert((self.command, self.loops)),
+                visited.insert((self.command, self.loops, self.repeat)),
                 "{} command {}: control cycle has no displayed frame",
                 self.context,
                 self.command
@@ -551,7 +637,7 @@ impl FrameSequence {
                     skip -= 1;
                     *progress = progress.wrapping_add_signed(step as i8);
                     self.command = self.command.wrapping_add(step);
-                    self.translation_suppressed = false;
+                    self.clear_marks();
                     visited.clear();
                 }
                 Command::End => {
@@ -574,7 +660,7 @@ impl FrameSequence {
                         self.command = self.command.wrapping_sub(1);
                     } else {
                         self.command = target as i16;
-                        self.translation_suppressed = false;
+                        self.clear_marks();
                     }
                 }
                 Command::Future(target) => {
@@ -586,7 +672,7 @@ impl FrameSequence {
                     } else if self.loops == 0 && exits {
                         self.exit_reached = true;
                         self.command = target as i16;
-                        self.translation_suppressed = false;
+                        self.clear_marks();
                     } else {
                         self.command = self.command.wrapping_add(1);
                     }
@@ -654,7 +740,7 @@ impl FrameSequence {
                     if self.motion_active {
                         self.exit_reached = true;
                         self.command = target as i16;
-                        self.translation_suppressed = false;
+                        self.clear_marks();
                     } else {
                         self.command = self.command.wrapping_add(1);
                     }
@@ -679,7 +765,43 @@ impl FrameSequence {
                         }
                     }
                 }
-                Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {
+                Command::Triple(..)
+                | Command::Axis(..)
+                | Command::SetRepeat(_)
+                | Command::Repeat(_)
+                    if reverse =>
+                {
+                    self.command = self.command.wrapping_sub(1);
+                }
+                Command::Triple(kind, values) => {
+                    let (words, shift) = match kind {
+                        Retained::Position => (&mut self.position, 8),
+                        Retained::Rotation => (&mut self.rotation, 3),
+                    };
+                    *words = values.map(|value| value.wrapping_shl(shift) as i16);
+                    self.command = self.command.wrapping_add(1);
+                }
+                Command::Axis(kind, axis, value) => {
+                    let words = match kind {
+                        Retained::Position => &mut self.position,
+                        Retained::Rotation => &mut self.rotation,
+                    };
+                    words[axis.min(2) as usize] = value as i16;
+                    self.command = self.command.wrapping_add(1);
+                }
+                Command::SetRepeat(count) => {
+                    self.repeat = count;
+                    self.command = self.command.wrapping_add(1);
+                }
+                Command::Repeat(target) => {
+                    if self.repeat == 0 {
+                        self.command = self.command.wrapping_add(1);
+                    } else {
+                        self.repeat -= 1;
+                        self.command = target as i16;
+                    }
+                }
+                Command::Unsupported(opcode) if reverse && matches!(opcode, 10 | 15) => {
                     self.command = self.command.wrapping_sub(1);
                 }
                 Command::Unsupported(opcode) => anyhow::bail!(

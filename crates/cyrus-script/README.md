@@ -687,7 +687,9 @@ write the playback record fields of the receiver's `ActorAnimation` (own or anot
 changes the next production advance (an expired countdown steps the cursor, a wait byte holds playback, the
 progress byte completes `WaitAnimFrame`) and is saved with the animation. See preservation's
 [animation record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties).
-`anim.rep_count`, `anim.sound_handle`, `anim.max_group`, the `anim.pos`/`anim.angle` words and `anim.address`
+`anim.rep_count` (the repeat byte of the ConditionalDelay/LoopControl commands) and the `anim.pos`/`anim.angle` words
+(the translation/rotation commands' retained words, cleared at the next cursor step) read and write like the others.
+`anim.sound_handle`, `anim.max_group`, `anim.last_angle` and `anim.address`
 stay unsupported; writing `anim.current` too.
 
 

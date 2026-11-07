@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 11] = [
+const REFERENCES: [Property; 18] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -20,6 +20,13 @@ const REFERENCES: [Property; 11] = [
     Property::AnimLoopCount,
     Property::AnimRewindFlag,
     Property::AnimRealFrame,
+    Property::AnimRepCount,
+    Property::AnimPosVx,
+    Property::AnimPosVy,
+    Property::AnimPosVz,
+    Property::AnimAngleVx,
+    Property::AnimAngleVy,
+    Property::AnimAngleVz,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -484,4 +491,24 @@ fn a_cursor_outside_the_group_fails_playback_stickily_and_the_record_stops_readi
     // The failure is sticky: later reads of the record report it instead of stale values.
     let error = run_body(&mut fixture).unwrap_err();
     assert!(format!("{error:#}").contains(&failure), "{error:#}");
+}
+
+#[test]
+fn the_repeat_byte_and_the_retained_translation_and_rotation_words_are_record_fields() {
+    let read = [
+        Property::AnimRepCount,
+        Property::AnimPosVy,
+        Property::AnimAngleVz,
+    ];
+    let mut ops = vec![
+        write(Property::AnimRepCount, 0x105),
+        write(Property::AnimPosVy, -300),
+        write(Property::AnimAngleVz, 0x1_8000),
+    ];
+    ops.extend(reads(&read));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    run_body(&mut fixture).unwrap();
+    // The byte keeps eight bits, the words are signed sixteen-bit values.
+    assert_eq!(fixture.locals()[..3], [5, -300, -0x8000]);
 }
