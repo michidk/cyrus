@@ -697,3 +697,8 @@ object natives gate on attributes 120 and 97 first) and clamp a non-selected rec
 non-selected receiver killed by `ZapObject` takes the recovered death dispatch (the armed branch needs a combat record). See
 preservation's [Zap natives](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#zap-natives-and-the-selected-player-health-services).
 They return no value (the original's results are pointer residuals), so consuming one is an explicit error.
+
+Verified: `dead` (the killed marker `KillMe` sets; a script that writes it is skipped by later ordinary updates) and
+`weapon_drawn` read and write the receiver's killed marker and drawn byte; both read as 0 or 1 here and a nonzero low byte
+sets them. See preservation's
+[killed and weapon-drawn properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#killed-and-weapon-drawn-properties).
