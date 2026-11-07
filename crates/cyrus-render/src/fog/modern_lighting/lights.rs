@@ -1,16 +1,18 @@
-//! The sun, ambient light and emissive object lights Solari lights the scene with.
+//! The sun, ambient light and object lights the stand-ins are lit with.
 use super::super::owns_prepared_environment;
-use super::plugin::Light;
+use super::{
+    Tier,
+    plugin::{ActiveTier, Light},
+};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use bevy::{
     asset::RenderAssetUsages,
     ecs::system::SystemParam,
-    light::{EnvironmentMapLight, light_consts},
+    light::{CascadeShadowConfigBuilder, EnvironmentMapLight, light_consts},
     prelude::*,
     render::render_resource::{
         Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
     },
-    solari::prelude::RaytracingMesh3d,
 };
 use cyrus_assets::environment::{Environment, LocalLight, ModelLighting};
 
@@ -19,11 +21,21 @@ const SUN_ILLUMINANCE: f32 = light_consts::lux::AMBIENT_DAYLIGHT;
 /// Environment light in cd/m² for an ambient strength of 255; a Modern tuning choice.
 const AMBIENT_LUMINANCE: f32 = 3000.0;
 /// Emissive luminance per squared world-unit radius of an object light; a Modern tuning choice.
+#[cfg(feature = "raytracing")]
 const OBJECT_LIGHT_LUMINANCE: f32 = 180.0;
 /// Radius of the invisible emissive sphere that stands for an object light, in world units.
+#[cfg(feature = "raytracing")]
 const OBJECT_LIGHT_SIZE: f32 = 0.15;
+/// Luminous power of a raster object light per squared world-unit radius, in lumens. It equals the
+/// power of the emissive sphere the ray-traced tier uses; a Modern tuning choice.
+const OBJECT_LIGHT_LUMENS: f32 = 160.0;
+/// Distance of the first sun shadow cascade, in world units; a Modern tuning choice.
+const SHADOW_FIRST_CASCADE: f32 = 60.0;
+/// Distance the sun shadow cascades reach, in world units; a Modern tuning choice.
+const SHADOW_DISTANCE: f32 = 2000.0;
 /// Everything the lights were last built from.
 pub(super) struct Built {
+    tier: Tier,
     environment: AssetId<Environment>,
     lights: Vec<LocalLight>,
 }
@@ -65,7 +77,9 @@ impl RetainedLights<'_> {
 #[derive(SystemParam)]
 pub(super) struct LightAssets<'w> {
     environments: Res<'w, Assets<Environment>>,
+    #[cfg(feature = "raytracing")]
     meshes: ResMut<'w, Assets<Mesh>>,
+    #[cfg(feature = "raytracing")]
     materials: ResMut<'w, Assets<StandardMaterial>>,
     images: ResMut<'w, Assets<Image>>,
 }
@@ -81,17 +95,21 @@ pub(super) fn sync_lights(
     existing: Query<Entity, With<Light>>,
     cameras: Query<(Entity, Option<&EnvironmentMapLight>), With<ViewCamera>>,
     retained: RetainedLights,
+    tier: ActiveTier,
     mut built: Local<Option<Built>>,
 ) {
+    let Some(tier) = tier.get() else {
+        return;
+    };
     let Some(environment) = assets.environments.get(&request.0) else {
         return;
     };
     let lights = retained.object_lights(&request, environment);
     if !existing.is_empty()
         && cameras.iter().all(|(_, light)| light.is_some())
-        && built
-            .as_ref()
-            .is_some_and(|built| built.environment == request.0.id() && built.lights == lights)
+        && built.as_ref().is_some_and(|built| {
+            built.tier == tier && built.environment == request.0.id() && built.lights == lights
+        })
     {
         return;
     }
@@ -100,19 +118,20 @@ pub(super) fn sync_lights(
     }
     // Marks that lights were built, even for an environment that has none.
     commands.spawn(Light);
-    spawn_sun(&mut commands, &environment.model_lighting);
+    spawn_sun(&mut commands, &environment.model_lighting, tier);
     let ambient = ambient_light(&mut assets.images, &environment.model_lighting);
     for (camera, _) in &cameras {
         commands.entity(camera).insert(ambient.clone());
     }
-    spawn_object_lights(&mut commands, &mut assets, &lights);
+    spawn_object_lights(&mut commands, &mut assets, &lights, tier);
     *built = Some(Built {
+        tier,
         environment: request.0.id(),
         lights,
     });
 }
 
-fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
+fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting, tier: Tier) {
     let sun = peak(lighting.directional);
     if let Ok(direction) = Dir3::new(Vec3::from(lighting.direction))
         && sun >= 1.0
@@ -126,9 +145,16 @@ fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
                 color: Color::srgb(r, g, b),
                 illuminance: SUN_ILLUMINANCE * sun / 255.0,
                 // Solari replaces shadow mapping.
-                shadow_maps_enabled: false,
+                shadow_maps_enabled: tier == Tier::Raster,
+                contact_shadows_enabled: tier == Tier::Raster,
                 ..default()
             },
+            CascadeShadowConfigBuilder {
+                first_cascade_far_bound: SHADOW_FIRST_CASCADE,
+                maximum_distance: SHADOW_DISTANCE,
+                ..default()
+            }
+            .build(),
             Transform::IDENTITY.looking_to(direction, Vec3::Y),
         ));
     }
@@ -161,8 +187,58 @@ fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> Enviro
     }
 }
 
-/// Solari lights come from directional lights and emissive meshes only.
-fn spawn_object_lights(commands: &mut Commands, assets: &mut LightAssets, lights: &[LocalLight]) {
+/// An object light as the world places it: position, reach in world units and colour.
+struct Placed {
+    position: Vec3,
+    radius: f32,
+    rgb: [f32; 3],
+}
+
+/// The object lights that give off light; the original skips disabled and negative ones.
+fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
+    lights
+        .iter()
+        .filter(|light| light.radius > 0 && light.rgb.iter().all(|value| *value >= 0))
+        .map(|light| Placed {
+            position: Vec3::from(cyrus_game::rope::world_position(
+                light.position.map(f64::from),
+            )),
+            radius: f32::from(light.radius) / cyrus_game::ENGINE_UNIT_SCALE,
+            rgb: light.rgb.map(|value| f32::from(value) / 255.0),
+        })
+}
+
+/// The raster tier lights with point lights; Solari lights with emissive meshes only.
+fn spawn_object_lights(
+    commands: &mut Commands,
+    assets: &mut LightAssets,
+    lights: &[LocalLight],
+    tier: Tier,
+) {
+    match tier {
+        Tier::Raster => {
+            for light in placed(lights) {
+                let [r, g, b] = light.rgb;
+                commands.spawn((
+                    Light,
+                    PointLight {
+                        color: Color::srgb(r, g, b),
+                        intensity: OBJECT_LIGHT_LUMENS * light.radius * light.radius,
+                        range: light.radius,
+                        // Dozens of lights per world; shadows would multiply the shadow passes.
+                        shadow_maps_enabled: false,
+                        ..default()
+                    },
+                    Transform::from_translation(light.position),
+                ));
+            }
+        }
+        Tier::Traced => spawn_emissive_lights(commands, assets, lights),
+    }
+}
+
+#[cfg(feature = "raytracing")]
+fn spawn_emissive_lights(commands: &mut Commands, assets: &mut LightAssets, lights: &[LocalLight]) {
     let Ok(sphere) = Sphere::new(OBJECT_LIGHT_SIZE).mesh().ico(2) else {
         return;
     };
@@ -170,22 +246,22 @@ fn spawn_object_lights(commands: &mut Commands, assets: &mut LightAssets, lights
     let sphere = assets
         .meshes
         .add(sphere.with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, vec![[0.0; 4]; count]));
-    for light in lights
-        .iter()
-        .filter(|light| light.radius > 0 && light.rgb.iter().all(|value| *value >= 0))
-    {
-        let [x, y, z] = cyrus_game::rope::world_position(light.position.map(f64::from));
-        let radius = f32::from(light.radius) / cyrus_game::ENGINE_UNIT_SCALE;
-        let [r, g, b] = light.rgb.map(|value| f32::from(value) / 255.0);
+    for light in placed(lights) {
+        let [r, g, b] = light.rgb;
+        let radius = light.radius;
         commands.spawn((
             Light,
-            RaytracingMesh3d(sphere.clone()),
+            bevy::solari::prelude::RaytracingMesh3d(sphere.clone()),
             MeshMaterial3d(assets.materials.add(StandardMaterial {
                 base_color: Color::BLACK,
                 emissive: LinearRgba::rgb(r, g, b) * (OBJECT_LIGHT_LUMINANCE * radius * radius),
                 ..default()
             })),
-            Transform::from_xyz(x, y, z),
+            Transform::from_translation(light.position),
         ));
     }
 }
+
+/// Without Solari no tier traces, so there are no emissive lights to spawn.
+#[cfg(not(feature = "raytracing"))]
+fn spawn_emissive_lights(_: &mut Commands, _: &mut LightAssets, _: &[LocalLight]) {}

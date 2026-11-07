@@ -131,6 +131,21 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     if args.export_startup || args.export_all_worlds {
         cyrus_assets::music::export(install.as_ref().unwrap(), cyrus_config::cache_dir())?;
     }
+    let mode = |value: &str| {
+        if value == "modern" {
+            cyrus_game::fidelity::Mode::Modern
+        } else {
+            cyrus_game::fidelity::Mode::Faithful
+        }
+    };
+    // `--mode` sets every area but ray tracing; the per-area flags below override it.
+    if let Some(value) = &args.launch.mode {
+        for area in cyrus_game::fidelity::Area::ALL {
+            if area != cyrus_game::fidelity::Area::RayTracing {
+                settings.fidelity.set(area, mode(value));
+            }
+        }
+    }
     for (area, value) in [
         (cyrus_game::fidelity::Area::Water, args.launch.water),
         (cyrus_game::fidelity::Area::Fog, args.launch.fog),
@@ -141,16 +156,14 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             args.launch.controls,
         ),
         (cyrus_game::fidelity::Area::Camera, args.launch.camera),
+        (cyrus_game::fidelity::Area::Lighting, args.launch.lighting),
+        (
+            cyrus_game::fidelity::Area::RayTracing,
+            args.launch.ray_tracing,
+        ),
     ] {
         if let Some(value) = value {
-            settings.fidelity.set(
-                area,
-                if value == "modern" {
-                    cyrus_game::fidelity::Mode::Modern
-                } else {
-                    cyrus_game::fidelity::Mode::Faithful
-                },
-            );
+            settings.fidelity.set(area, mode(&value));
         }
     }
     if args.export_scene {
@@ -222,6 +235,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins((
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
+            cyrus_render::fog::ModernLightingPlugin,
             cyrus_render::fog::RayTracingPlugin,
             cyrus_debug::DebugMenuPlugin,
         ));

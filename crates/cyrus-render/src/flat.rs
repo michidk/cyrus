@@ -123,7 +123,10 @@ fn prepare(
     mut meshes: ResMut<Assets<Mesh>>,
     mut candidates: Query<
         (Entity, &mut Mesh3d),
-        (Without<Inspected>, Without<crate::fog::raytracing::Proxy>),
+        (
+            Without<Inspected>,
+            Without<crate::fog::modern_lighting::Proxy>,
+        ),
     >,
     parents: Query<&ChildOf>,
     extras: Query<&GltfExtras>,

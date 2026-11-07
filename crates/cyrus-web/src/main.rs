@@ -56,38 +56,25 @@ fn main() {
                 ..default()
             }),
     )
-    .insert_resource(Fidelity {
-        water: if options.water.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        fog: if options.fog.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        sky: if options.sky.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        music: if options.music.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        player_controller: if options.controls.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        camera: if options.camera.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        ..default()
+    .insert_resource({
+        // `--mode` sets every area the browser supports; the per-area options override it. Modern
+        // lighting and ray tracing are native only.
+        let modern = |own: &Option<String>| {
+            if own.as_ref().or(options.mode.as_ref()).map(String::as_str) == Some("modern") {
+                Mode::Modern
+            } else {
+                Mode::Faithful
+            }
+        };
+        Fidelity {
+            water: modern(&options.water),
+            fog: modern(&options.fog),
+            sky: modern(&options.sky),
+            music: modern(&options.music),
+            player_controller: modern(&options.controls),
+            camera: modern(&options.camera),
+            ..default()
+        }
     })
     .add_plugins((
         GamePlugin,

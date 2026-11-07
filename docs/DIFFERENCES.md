@@ -38,16 +38,25 @@ Faithful music plays every installed byte. `--music modern` (browser
 sync-marked data sectors and keeps the track's length and timing.
 **Unknown:** whether the original's playback path makes the noise audible.
 
+## Modern lighting
+
+The original lights models and terrain with vertex-driven shading and its own fog, clipping and palette
+arithmetic. The `lighting` fidelity area, Modern only, instead shades opaque world meshes with Bevy's
+physically based forward pipeline: a cascaded shadow-mapped sun, the ambient colour as an environment light
+and the object lights as point lights, all read from the world's installed lighting data. Brightness,
+shadow distances and the point lights' power are tuning choices, not measured matches. Flats, water, sky,
+alpha-masked or chroma-keyed meshes and the HUD keep their original shaders and draw over the lit scene;
+Glide fog and clipping do not apply to the lit meshes.
+
 ## Ray-traced lighting
 
 The original has no ray tracing. The debug menu's **Ray tracing** switch (the `ray_tracing` fidelity
-area, Modern only, native builds only) lights opaque world meshes with Bevy Solari instead of the original's
-vertex-driven shading. It needs a GPU with ray-query support and is greyed out without one. The sun,
-the ambient colour and the object lights come from the world's installed lighting data, but their
-brightness is a tuning choice, not a measured match. Flats, water, sky, alpha-masked or chroma-keyed
-meshes and the HUD keep their original shaders and draw over the lit scene; Glide fog and clipping do not
-apply to traced meshes. **Unknown:** the result on ray-query hardware, since it was written without a
-GPU to run it.
+area, Modern only, native builds only) lights the same meshes with Bevy Solari instead of the raster
+shading above. It needs a GPU with ray-query support and is greyed out without one; where it is
+unavailable, the `lighting` area applies. Solari's output is noisy without a denoiser, so it runs with
+ReSTIR and raised sample counts, which trade frame rate for stability. The vendored `bevy_solari` in
+`dev/vendor` fixes a compaction queue that prepared a replaced mesh twice.
+**Unknown:** how the noise compares with the raster tier on other ray-query hardware.
 
 ## Credits scroll pace
 

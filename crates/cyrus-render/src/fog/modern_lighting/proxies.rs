@@ -1,8 +1,8 @@
 //! Stand-in entities that give Solari the world meshes in the layout it accepts.
 use super::super::{SceneMaterial, TerrainMaterial, clipping::Draw};
 use super::{
-    Proxy,
-    plugin::{Hidden, StandInOf, Traced, unhide},
+    Proxy, Tier,
+    plugin::{ActiveTier, Hidden, StandInOf, Traced, unhide},
 };
 use crate::flat::Flat;
 use bevy::{
@@ -12,13 +12,12 @@ use bevy::{
     material::OpaqueRendererMethod,
     mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
     prelude::*,
-    solari::prelude::RaytracingMesh3d,
 };
 use std::collections::{HashMap, HashSet};
 #[derive(Default)]
 pub(super) struct StandIns {
     meshes: HashMap<AssetId<Mesh>, Handle<Mesh>>,
-    materials: HashMap<UntypedAssetId, Handle<StandardMaterial>>,
+    materials: HashMap<(UntypedAssetId, Tier), Handle<StandardMaterial>>,
 }
 /// The traceable material of a source: asset identity, base material and solid tint.
 /// Meshes whose look depends on shader-side alpha or chroma keying are not traceable.
@@ -78,7 +77,7 @@ fn standin_mesh(source: &Mesh) -> Option<Mesh> {
     )
 }
 
-fn standin_material(base: &StandardMaterial, solid: Vec4) -> StandardMaterial {
+fn standin_material(base: &StandardMaterial, solid: Vec4, tier: Tier) -> StandardMaterial {
     StandardMaterial {
         base_color: if solid.w != 0.0 {
             Color::srgb(solid.x / 256.0, solid.y / 256.0, solid.z / 256.0)
@@ -91,7 +90,10 @@ fn standin_material(base: &StandardMaterial, solid: Vec4) -> StandardMaterial {
         // The original has no specular term.
         perceptual_roughness: 1.0,
         reflectance: 0.0,
-        opaque_render_method: OpaqueRendererMethod::Deferred,
+        opaque_render_method: match tier {
+            Tier::Raster => OpaqueRendererMethod::Forward,
+            Tier::Traced => OpaqueRendererMethod::Deferred,
+        },
         ..default()
     }
 }
@@ -139,13 +141,14 @@ impl StandIns {
         &mut self,
         standard: &mut Assets<StandardMaterial>,
         id: UntypedAssetId,
+        tier: Tier,
         base: &StandardMaterial,
         solid: Vec4,
     ) -> Handle<StandardMaterial> {
         let handle = self
             .materials
-            .entry(id)
-            .or_insert_with(|| standard.add(standin_material(base, solid)))
+            .entry((id, tier))
+            .or_insert_with(|| standard.add(standin_material(base, solid, tier)))
             .clone();
         // Texture animation edits the source material's base texture in place.
         if standard
@@ -185,7 +188,6 @@ type ProxyData = (
     &'static mut Transform,
     &'static mut GlobalTransform,
     &'static mut Mesh3d,
-    &'static mut RaytracingMesh3d,
     &'static mut MeshMaterial3d<StandardMaterial>,
 );
 
@@ -196,16 +198,28 @@ pub(super) fn sync_proxies(
     sources: Query<SourceData, SourceFilter>,
     mut proxies: Query<ProxyData, With<Proxy>>,
     mut stand_ins: Local<StandIns>,
+    tier: ActiveTier,
 ) {
+    let Some(tier) = tier.get() else {
+        return;
+    };
     stand_ins.rebuild_edited(&mut assets.meshes, &mut mesh_events);
     let live = update_proxies(
         &mut commands,
         &mut assets,
         &mut stand_ins,
+        tier,
         &sources,
         &mut proxies,
     );
-    spawn_proxies(&mut commands, &mut assets, &mut stand_ins, &sources, &live);
+    spawn_proxies(
+        &mut commands,
+        &mut assets,
+        &mut stand_ins,
+        tier,
+        &sources,
+        &live,
+    );
 }
 
 /// Follows each stand-in to its source, and drops those whose source stopped being traceable.
@@ -214,13 +228,12 @@ fn update_proxies(
     commands: &mut Commands,
     assets: &mut StandInAssets,
     stand_ins: &mut StandIns,
+    tier: Tier,
     sources: &Query<SourceData, SourceFilter>,
     proxies: &mut Query<ProxyData, With<Proxy>>,
 ) -> HashSet<Entity> {
     let mut live = HashSet::new();
-    for (entity, stand_in, mut transform, mut global, mut mesh, mut tracing, mut material) in
-        proxies
-    {
+    for (entity, stand_in, mut transform, mut global, mut mesh, mut material) in proxies {
         let traceable = sources.get(stand_in.0).ok().and_then(
             |(_, source_mesh, source_global, inherited, scene, terrain, ..)| {
                 let (id, base, solid) = traceable(scene, terrain, &assets.scene, &assets.terrain)?;
@@ -242,9 +255,8 @@ fn update_proxies(
             && mesh.0 != *handle
         {
             mesh.0 = handle.clone();
-            tracing.0 = handle.clone();
         }
-        let handle = stand_ins.material(&mut assets.standard, id, base, solid);
+        let handle = stand_ins.material(&mut assets.standard, id, tier, base, solid);
         if material.0 != handle {
             material.0 = handle;
         }
@@ -257,6 +269,7 @@ fn spawn_proxies(
     commands: &mut Commands,
     assets: &mut StandInAssets,
     stand_ins: &mut StandIns,
+    tier: Tier,
     sources: &Query<SourceData, SourceFilter>,
     live: &HashSet<Entity>,
 ) {
@@ -278,12 +291,11 @@ fn spawn_proxies(
         let Some(mesh) = stand_ins.mesh(&mut assets.meshes, &source_mesh.0) else {
             continue;
         };
-        let material = stand_ins.material(&mut assets.standard, id, base, solid);
+        let material = stand_ins.material(&mut assets.standard, id, tier, base, solid);
         commands.spawn((
             Proxy,
             StandInOf(entity),
-            Mesh3d(mesh.clone()),
-            RaytracingMesh3d(mesh),
+            Mesh3d(mesh),
             MeshMaterial3d(material),
             global.compute_transform(),
             *global,

@@ -239,7 +239,7 @@ fn debug_menu(
             ui,
             &mut fidelity,
             Area::Lighting,
-            "Lighting (Modern uses Faithful)",
+            "Lighting (Modern: shadows, PBR)",
         );
         ray_tracing_control(ui, &mut fidelity, ray_tracing.as_deref());
         fidelity_control(

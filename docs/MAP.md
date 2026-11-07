@@ -123,6 +123,8 @@ module where it is defined and regenerate.
 
 ## `cyrus-debug` — (undocumented)
 
+- `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
+
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
 
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
@@ -154,12 +156,12 @@ module where it is defined and regenerate.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, optionally ray traced through
+- `src/fog/modern_lighting/lights.rs` — The sun, ambient light and object lights the stand-ins are lit with.
+- `src/fog/modern_lighting/plugin.rs` — The modern lighting plugins, the Solari camera setup and teardown, and the markers the other
+- `src/fog/modern_lighting/proxies.rs` — Stand-in entities that give Solari the world meshes in the layout it accepts.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
-- `src/fog/raytracing.rs` — Hardware ray-traced lighting through Bevy Solari, selected by `Area::RayTracing`.
-- `src/fog/raytracing/lights.rs` — The sun, ambient light and emissive object lights Solari lights the scene with.
-- `src/fog/raytracing/plugin.rs` — The Solari plugin, its camera setup and teardown, and the markers the other ray tracing modules share.
-- `src/fog/raytracing/proxies.rs` — Stand-in entities that give Solari the world meshes in the layout it accepts.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
 - `src/fog/texture/checkpoint.rs` — Replacement of shared texture timelines against an independently prepared image census.

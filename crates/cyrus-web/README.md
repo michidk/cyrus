@@ -101,6 +101,7 @@ native exporter is required.
 | `?water=modern` | `--water modern` |
 | `?fog=modern` | `--fog modern` |
 | `?sky=modern` | `--sky modern` |
+| `?mode=modern` | `--mode modern` |
 
 Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
 WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.

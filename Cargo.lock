@@ -1767,8 +1767,6 @@ dependencies = [
 [[package]]
 name = "bevy_solari"
 version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17e09260dd2001f2aeccc671a27ca71fc78f4da211a128596f1014e44424960b"
 dependencies = [
  "bevy_anti_alias",
  "bevy_app",

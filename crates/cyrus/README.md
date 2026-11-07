@@ -77,6 +77,9 @@ Shared browser/CLI options use exactly the same names:
 | `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |
 | `--sky modern` | `?sky=modern` | Sky fidelity mode |
+| `--mode modern` | `?mode=modern` | Every presentation area at once, except ray tracing; per-area flags override it. In the browser, modern lighting does not apply |
+| `--lighting modern` | native only | Shadow-mapped PBR lighting instead of the original's vertex lighting |
+| `--ray-tracing modern` | native only | Solari ray-traced lighting; needs ray-query hardware, otherwise `--lighting` applies. Not part of `--mode` |
 
 Mode values are `faithful` or `modern`. Native flags override saved settings.
 Native-only flags include headless/control and export commands. `--export-scene
