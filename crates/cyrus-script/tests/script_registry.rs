@@ -7604,6 +7604,45 @@ fn pvo_secondary_ids_use_load_time_z_x_order_and_preserve_cell_chains() {
 }
 
 #[test]
+fn model_initialization_with_the_animation_system_off_selects_no_group_or_frame() {
+    // The request routine returns before touching the record, so the two initial panic
+    // requests select nothing: the actor has no frame and the original does not draw it.
+    for (animation_system, frame) in [(true, Some(0)), (false, None)] {
+        let mut scripts = cache();
+        scripts.updates.animation_system = animation_system;
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.instances = 1;
+        actor.instance_variables = vec![vec![4]];
+        scripts.instances.truncate(1);
+        scripts.instances[0].object_type = PlacementType::MODEL;
+        scripts.instances[0].active = 1;
+        scripts.instances[0].map_position = [10, 20, 30];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (_, mut data, _) = static_model_fixture(scripts.clone());
+        data.metadata["actors"] = serde_json::json!([
+            {"script_name":"LOGIC", "model_load_path":"animation_table",
+             "raan_entries":[{"file_path":"MOVING.3D","frame_count":1}],
+             "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                 "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}
+        ]);
+        data.metadata["mpob_objects"] =
+            serde_json::json!([{"script_name":"LOGIC", "object_type":1}]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(
+            world.animation_frame(id).unwrap(),
+            frame,
+            "animation system {animation_system}"
+        );
+        assert!(world.actors()[0].failure().is_none());
+    }
+}
+
+#[test]
 fn automatic_model_admission_reads_retained_support_before_ground_processing() {
     use cyrus_assets::{
         animation::AnimationModel,

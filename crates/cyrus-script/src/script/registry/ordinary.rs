@@ -113,10 +113,6 @@ impl ScriptWorld {
                     if data.actor(self.actors[index].name())?["model_load_path"].as_str()
                         == Some("animation_table")
                     {
-                        anyhow::ensure!(
-                            self.updates.animation_system,
-                            "animation-disabled model initialization unsupported"
-                        );
                         self.initialize_map_animation(self.id(index)?, data, ticks, sounds)?;
                     }
                     Ok(())

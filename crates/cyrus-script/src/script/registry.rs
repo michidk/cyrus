@@ -2600,24 +2600,35 @@ impl ScriptWorld {
             "world {} instance {index}: actor does not use an animation model table",
             self.world
         );
-        let result = cyrus_world::animation::ActorAnimation::initialize(
-            data,
-            actor.name(),
-            ticks,
-            &mut |sound| {
-                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                    return events.dispatch(flags, camera.as_mut(), effects);
-                }
-                sounds(
-                    id,
-                    super::ScriptSound::Animation {
-                        sound,
-                        surface: actor.surface,
-                        position,
-                    },
-                )
-            },
-        );
+        // With the animation system off the request routine returns before touching the record,
+        // so the two initial panic requests leave it with no current or pending group and no frame.
+        let result = if self.updates.animation_system {
+            cyrus_world::animation::ActorAnimation::initialize(
+                data,
+                actor.name(),
+                ticks,
+                &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return events.dispatch(flags, camera.as_mut(), effects);
+                    }
+                    sounds(
+                        id,
+                        super::ScriptSound::Animation {
+                            sound,
+                            surface: actor.surface,
+                            position,
+                        },
+                    )
+                },
+            )
+        } else {
+            cyrus_world::animation::ActorAnimation::from_asset(
+                data,
+                actor.name(),
+                AnimationGroup::PANIC,
+            )
+            .map(|playback| (playback, None))
+        };
         match result {
             Ok((playback, frame)) => {
                 actor
