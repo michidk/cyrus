@@ -37,7 +37,46 @@ pub(super) struct NativeTaskCommandState {
     point_phase: super::PointPhase,
     point_counter: u8,
 }
+/// One of the four 32-bit words a task slot retains, in the order the actor record keeps them
+/// (`task_variable`, `task_variable2`, `task_variable3`, `task_variable4`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TaskWord {
+    /// First native continuation word (`AnimateGXA`'s loaded resource).
+    Continuation,
+    /// Pause countdown in nominal ticks.
+    PauseTicks,
+    /// Second native continuation word (`FxPhase`'s direction, `AnimateGXA`'s progress).
+    ContinuationDirection,
+    /// Command word in the low sixteen bits, phase byte, then counter byte.
+    PointCommand,
+}
 impl NativeTaskCommandState {
+    pub(super) fn word(self, word: TaskWord) -> u32 {
+        match word {
+            TaskWord::Continuation => self.continuation,
+            TaskWord::PauseTicks => self.pause_ticks,
+            TaskWord::ContinuationDirection => self.continuation_direction,
+            TaskWord::PointCommand => {
+                u32::from(self.point_word)
+                    | u32::from(self.point_phase.byte()) << 16
+                    | u32::from(self.point_counter) << 24
+            }
+        }
+    }
+
+    pub(super) fn set_word(&mut self, word: TaskWord, value: u32) {
+        match word {
+            TaskWord::Continuation => self.continuation = value,
+            TaskWord::PauseTicks => self.pause_ticks = value,
+            TaskWord::ContinuationDirection => self.continuation_direction = value,
+            TaskWord::PointCommand => {
+                self.point_word = value as u16;
+                self.point_phase = super::PointPhase::from_byte((value >> 16) as u8);
+                self.point_counter = (value >> 24) as u8;
+            }
+        }
+    }
+
     pub(super) fn load(self, current: &mut NativeCommandState) {
         current.continuation = self.continuation;
         current.continuation_direction = self.continuation_direction;
