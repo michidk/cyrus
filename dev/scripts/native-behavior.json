@@ -1236,7 +1236,7 @@
         "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330",
         "https://github.com/michidk/cyrus/issues/49"
       ],
-      "limits": "Verified by inspection: public statement runs without failure and leaves receiver position unchanged; production returns CompleteWithoutValue. That assertion checks position only, not all state or expression error semantics. Unknown: installed original/native/browser statement continuation and unsupported forms. No-op source is not blanket runtime acceptance.",
+      "limits": "Verified by inspection: public statement runs without failure and leaves receiver position unchanged; production returns CompleteWithoutValue. That assertion checks position only, not all state or expression error semantics. Verified (original, handler disassembled through the native table): the original handler saves and restores its registers and returns, reading and writing no actor, global or argument state, so the no-effect statement is the complete behavior (the existing public test pins that it completes without a value and leaves the receiver alone). The only forms are the argument-free statement and expression use, which the completes-without-value contract covers. Unknown: no native/browser comparison, which would show nothing beyond the empty routine.",
       "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
     },
     {
