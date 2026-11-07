@@ -48,7 +48,7 @@ impl Runtime {
             }
         }
         let snapshot = Snapshot {
-            version: 1,
+            version: 2,
             origin: self.origin,
             programs,
             state: self.state.clone(),
@@ -100,12 +100,14 @@ impl Runtime {
                 );
                 task.token = token;
             }
-            Ok(Self {
+            let mut restored = Self {
                 program: Arc::clone(sources.get(&origin).context("owning program unavailable")?),
                 origin,
                 context: context.clone(),
                 state,
-            })
+            };
+            restored.migrate_legacy_slots();
+            Ok(restored)
         };
         restore().with_context(|| format!("{context} restore"))
     }
@@ -176,7 +178,7 @@ impl Snapshot {
 
     fn validate(&self) -> Result<()> {
         ensure!(
-            self.version == 1,
+            matches!(self.version, 1 | 2),
             "unsupported VM snapshot version {}",
             self.version
         );
@@ -240,8 +242,11 @@ impl Snapshot {
                     call.kind != CallKind::Function,
                     "source instruction is a function"
                 );
+                // The status byte is raw script-writable state; only a version 1 record carries the
+                // blocking flag the call kind has to agree with.
                 ensure!(
-                    task.blocking == (call.kind == CallKind::Task),
+                    task.legacy
+                        .is_none_or(|legacy| legacy.blocking == (call.kind == CallKind::Task)),
                     "blocking state mismatch"
                 );
                 ensure!(
