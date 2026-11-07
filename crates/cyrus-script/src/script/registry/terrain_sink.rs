@@ -105,7 +105,7 @@ impl ScriptWorld {
         if !control.admits_terrain_sink_check() {
             return Ok(false);
         }
-        let position = self.spatial(id)?.query_pose()?.position;
+        let position = self.query_position(id)?;
         let Some(height) = terrain.height(position.map(i64::from)) else {
             return Ok(false);
         };

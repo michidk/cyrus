@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 11] = [
+const REFERENCES: [Property; 19] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -20,6 +20,14 @@ const REFERENCES: [Property; 11] = [
     Property::AnimLoopCount,
     Property::AnimRewindFlag,
     Property::AnimRealFrame,
+    Property::AnimRepCount,
+    Property::AnimPosVx,
+    Property::AnimPosVy,
+    Property::AnimPosVz,
+    Property::AnimAngleVx,
+    Property::AnimAngleVy,
+    Property::AnimAngleVz,
+    Property::AnimCurrent,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -484,4 +492,72 @@ fn a_cursor_outside_the_group_fails_playback_stickily_and_the_record_stops_readi
     // The failure is sticky: later reads of the record report it instead of stale values.
     let error = run_body(&mut fixture).unwrap_err();
     assert!(format!("{error:#}").contains(&failure), "{error:#}");
+}
+
+#[test]
+fn the_repeat_byte_and_the_retained_translation_and_rotation_words_are_record_fields() {
+    let read = [
+        Property::AnimRepCount,
+        Property::AnimPosVy,
+        Property::AnimAngleVz,
+    ];
+    let mut ops = vec![
+        write(Property::AnimRepCount, 0x105),
+        write(Property::AnimPosVy, -300),
+        write(Property::AnimAngleVz, 0x1_8000),
+    ];
+    ops.extend(reads(&read));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    run_body(&mut fixture).unwrap();
+    // The byte keeps eight bits, the words are signed sixteen-bit values.
+    assert_eq!(fixture.locals()[..3], [5, -300, -0x8000]);
+}
+
+#[test]
+fn writing_anim_current_switches_the_commands_a_later_step_reads() {
+    // Group 9 holds one frame and its end; group 7 four frames. With the countdown expired the
+    // step moves the kept cursor to command 1, which is group 9's end but group 7's second frame.
+    let mut ops = vec![
+        write(Property::AnimCurrent, 9),
+        write(Property::AnimSpeedCount, 0),
+        assign(
+            Place::Local { index: 0 },
+            Value::Read {
+                place: me(Property::AnimCurrent),
+            },
+        ),
+        Operation::End { target: 0 },
+    ];
+    let mut fixture = Fixture::new(std::mem::take(&mut ops));
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 9, "the written word reads back");
+    fixture.animate(1);
+    assert_eq!(
+        fixture.frame(),
+        None,
+        "group 9's end, not group 7's frame 11"
+    );
+    // A group without commands stops the script with an explicit error.
+    let mut fixture = Fixture::new(vec![
+        write(Property::AnimCurrent, 40),
+        Operation::End { target: 0 },
+    ]);
+    let caller = fixture.world.id(0).unwrap();
+    let error = fixture
+        .world
+        .advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("absent group"), "{error:#}");
 }

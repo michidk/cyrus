@@ -30,6 +30,7 @@ module where it is defined and regenerate.
 - `src/effects.rs` — Installed environmental effect textures and map-owned drawing attributes.
 - `src/environment.rs` — Validated world environment records.
 - `src/environment_export.rs` — Per-world environment preparation from original bytes on either target.
+- `src/examine.rs` — Inventory models for the examine view, exported once and shaded at view time with the loaded
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
 - `src/hud.rs` — Installed HUD layout, item and font records.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
@@ -123,6 +124,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-debug` — (undocumented)
 
+- `src/day_night.rs` — The day/night panel: the modern lighting's time of day.
 - `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
 
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
@@ -157,6 +159,7 @@ module where it is defined and regenerate.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
+- `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
 - `src/fog/modern_lighting/lights.rs` — The sun, ambient light and object lights the modern lighting shades the world with.
 - `src/fog/modern_lighting/plugin.rs` — The modern lighting plugin, its camera effects and teardown, and the light marker the light
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
@@ -198,6 +201,7 @@ module where it is defined and regenerate.
 - `src/console/markers.rs` — The user marker file of `setmarker` and `getmarker` and the host storage seam for it. The layout
 - `src/inventory_screen.rs` — Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
 - `src/island_map.rs` — The island map screen: the marker position rules and the screen lifecycle.
+- `src/item_viewer.rs` — Item viewer rules: the pose, fade and exit of the modal that `ShowItem` opens, and the
 - `src/logbook.rs` — Explicit logbook text layout and scrolling, independent of screen presentation.
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
@@ -348,6 +352,7 @@ module where it is defined and regenerate.
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/confirmation.rs` — Mini-confirmation input and pixels, following preservation's book-menu rules.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
+- `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.

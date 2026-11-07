@@ -2,6 +2,7 @@
 mod book_motion;
 mod confirmation;
 mod credits;
+mod examine;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
 mod last_game;
@@ -146,7 +147,7 @@ impl Plugin for StartupPlugin {
         movie::register(app);
         credits::register(app);
         loading::register(app);
-        app.add_plugins((LogbookPlugin, OverlayPlugin));
+        app.add_plugins((LogbookPlugin, OverlayPlugin, examine::ExaminePlugin));
     }
 }
 

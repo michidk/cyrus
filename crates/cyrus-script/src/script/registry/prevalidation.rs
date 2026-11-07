@@ -88,7 +88,7 @@ impl ScriptWorld {
             return Ok(OrdinaryGroundPrevalidation::default());
         }
         let spatial = self.spatial(id)?;
-        let current = spatial.query_pose()?.position;
+        let current = self.query_position(id)?;
         let moved = spatial.local.position[0] != spatial.previous_local_position[0]
             || spatial.local.position[2] != spatial.previous_local_position[2];
         let previous = if !moved {

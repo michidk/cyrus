@@ -303,7 +303,7 @@ impl ScriptWorld {
         }
         let spatial = self.spatial(id)?;
         let probe = OrdinaryStableProbe::new(
-            spatial.query_pose()?.position,
+            self.query_position(id)?,
             spatial.local.wrapped_angles()[1],
             self.ordinary_collision_shape(id)?.positive_extent[1],
             scene.settings.post_collide_height,
@@ -370,7 +370,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let positive_y_extent = self.ordinary_collision_shape(id)?.positive_extent[1];
-        let position = self.spatial(id)?.query_pose()?.position;
+        let position = self.query_position(id)?;
         let models = query
             .scene
             .actor_collision

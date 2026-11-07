@@ -293,6 +293,7 @@ mod tests {
             terrain_lighting: None,
             model_lighting: default(),
             prelighting: default(),
+            world_palette: Vec::new(),
             object_lights: Vec::new(),
         }
     }

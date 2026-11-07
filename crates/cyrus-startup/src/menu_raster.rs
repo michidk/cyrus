@@ -67,10 +67,14 @@ pub(super) fn render_into(
                         .sum::<Vec2>()
                         / inverse_z;
                     let mut texel = sample(&textures[texture], uv);
-                    if let Some(light) = face.light {
+                    if let Some(light) = face.light_rgb {
+                        texel = modulate_rgb(texel, channel_level(&light, &weights), true);
+                    } else if let Some(light) = face.light {
                         texel = modulate(texel, (0..3).map(|i| weights[i] * light[i]).sum());
                     }
                     texel
+                } else if let Some(light) = face.light_rgb {
+                    modulate_rgb(Rgba(face.color), channel_level(&light, &weights), false)
                 } else {
                     Rgba(face.color)
                 };
@@ -93,6 +97,23 @@ fn modulate(texel: Rgba<u8>, level: f32) -> Rgba<u8> {
     let [r, g, b, a] = texel.0;
     let lit = |t: u8| (u32::from(t) * level / 256) as u8;
     Rgba([lit(r), lit(g), lit(b), a])
+}
+
+/// The per-channel level at a point: each corner's level weighted by the barycentric weights.
+fn channel_level(light: &[[f32; 3]; 3], weights: &[f32; 3]) -> [f32; 3] {
+    std::array::from_fn(|channel| (0..3).map(|i| weights[i] * light[i][channel]).sum())
+}
+
+/// [`modulate`] with its own level per channel. A textured face scales each channel `T` by
+/// `L + 1` over 256; a solid-colour face scales its palette colour by `L` over 256 (preservation
+/// `engine/model-lighting.md`). Alpha is untouched.
+fn modulate_rgb(colour: Rgba<u8>, level: [f32; 3], textured: bool) -> Rgba<u8> {
+    let [r, g, b, a] = colour.0;
+    let lit = |channel: u8, level: f32| {
+        let level = u32::from(level.clamp(0.0, 255.0) as u8) + u32::from(textured);
+        (u32::from(channel) * level / 256) as u8
+    };
+    Rgba([lit(r, level[0]), lit(g, level[1]), lit(b, level[2]), a])
 }
 
 fn sample(image: &RgbaImage, uv: Vec2) -> Rgba<u8> {
@@ -150,6 +171,7 @@ fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
                     texture: face.texture,
                     color: face.color,
                     light: None,
+                    light_rgb: None,
                 });
             }
         }
@@ -474,6 +496,7 @@ mod tests {
             texture: Some(0),
             color: [0; 4],
             light,
+            light_rgb: None,
         };
         let draw = |light| {
             render(&[face(light)], std::slice::from_ref(&texture))
@@ -505,6 +528,7 @@ mod tests {
                 texture: None,
                 color: [255, 0, 0, 255],
                 light: None,
+                light_rgb: None,
             },
             MenuFace {
                 vertices: [
@@ -515,6 +539,7 @@ mod tests {
                 texture: None,
                 color: [0, 0, 255, 255],
                 light: None,
+                light_rgb: None,
             },
         ];
         let image = render(&faces, &[]).unwrap();

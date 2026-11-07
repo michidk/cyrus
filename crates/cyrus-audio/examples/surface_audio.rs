@@ -219,6 +219,7 @@ fn main() -> Result<()> {
             let candidates = scene.candidates(step.view, step.position_q8, None)?;
             let query = StaticGroundQuery {
                 scene: &scene,
+                bounds: None,
                 candidates: &candidates,
                 rotation: upright_rotation(step.heading),
                 collision_attribute: case.collision_attribute,
@@ -379,6 +380,7 @@ fn grounded_steps(
         )?;
         let query = StaticGroundQuery {
             scene,
+            bounds: None,
             candidates: &candidates,
             rotation: upright_rotation(heading),
             collision_attribute: case.collision_attribute,
@@ -648,7 +650,10 @@ mod tests {
         })).unwrap();
         data.validate().unwrap();
         let collision = CollisionScene {
-            texture_surfaces: Some(std::collections::BTreeMap::from([((302 << 7) | 25, 6)])),
+            texture_surfaces: Some(std::collections::BTreeMap::from([(
+                (302 << 7) | 25,
+                Surface::SAND,
+            )])),
             ..Default::default()
         };
         let mut scene = PlayerScene {
@@ -770,7 +775,7 @@ mod tests {
             &mut app,
             actor,
             AnimationSound::Forget,
-            6,
+            Surface::SAND,
             [i64::MAX; 3],
             None,
             &bank,
@@ -818,7 +823,7 @@ mod tests {
                 effect: 9,
                 rate_offset_hz: 0,
             },
-            6,
+            Surface::SAND,
             [0, 0, i64::from(i32::MAX) + 1],
             None,
             &[],

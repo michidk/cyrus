@@ -652,6 +652,20 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let data: serde_json::Value =
         serde_json::from_slice(&std::fs::read(hud.join("overlay.hud")).unwrap()).unwrap();
     assert_eq!(data["candle_mode"], 2);
+    let examine: cyrus_assets::examine::ExamineArtwork =
+        serde_json::from_slice(&std::fs::read(hud.join("examine.models")).unwrap()).unwrap();
+    examine.validate().unwrap();
+    for (id, item) in data["inventory"].as_object().unwrap() {
+        if let Some(model) = item["inventory_model"]["Model"].as_str() {
+            assert!(
+                examine
+                    .models
+                    .get(model)
+                    .is_some_and(|m| !m.faces.is_empty()),
+                "item {id}: examine model {model}"
+            );
+        }
+    }
     assert_eq!(data["candle"], serde_json::json!([12, 8]));
     assert_eq!(data["pickup"], serde_json::json!([12, 386]));
     assert_eq!(data["selected"], 1);
@@ -695,6 +709,14 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     // Every installed item records its hand model (no export reads as unexported); weapons name one.
     for (id, item) in data["inventory"].as_object().unwrap() {
         assert_ne!(item["hand_model"], "Unexported", "item {id}");
+        assert_ne!(item["inventory_model"], "Unexported", "item {id}");
+        if item["inventory_model"] != "Absent" {
+            let extents = item["inventory_extents"].as_array().unwrap();
+            assert!(
+                extents.iter().all(|axis| axis.as_i64().unwrap() > 0),
+                "item {id}: {extents:?}"
+            );
+        }
         if item["weapon"] == true {
             assert!(
                 item["hand_model"]["Model"]

@@ -346,7 +346,7 @@ fn prepare_install(
     }
     *attempted = true;
     progress.visible = true;
-    progress.label = "Preparing game files…".into();
+    progress.label = "Preparing game files...".into();
     progress.fraction = None;
     let install = install.clone();
     let startup = startup.is_some();

@@ -80,7 +80,7 @@ sound services without depending on either executor or gameplay handlers.
 
 Animated i16 frame
 interpretation, mesh replacement across models, automatic actor activation,
-complete script scheduling, state-dependent default selection, other group types,
+complete script scheduling, state-dependent default selection,
 cancellation requests and the host-clock driver remain
 unsupported. These APIs do not establish matched original-game playback.
 

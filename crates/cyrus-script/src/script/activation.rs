@@ -393,6 +393,22 @@ impl GameplayGlobals {
         self.item_viewer
     }
 
+    /// The host viewer takes the pending request: the pending flag clears, the request words and
+    /// the no-text flag stay until [`Self::finish_item_viewer`].
+    pub fn take_item_viewer_request(&mut self) -> Option<ItemViewerRequest> {
+        std::mem::take(&mut self.item_viewer.pending).then_some(self.item_viewer)
+    }
+
+    /// The viewer ended; its no-text flag clears.
+    pub fn finish_item_viewer(&mut self) {
+        self.item_viewer.no_rtx = false;
+    }
+
+    /// A script potion counter (`GetPotion`); `None` outside the four counters.
+    pub fn potion(&self, index: usize) -> Option<i32> {
+        self.potions.get(index).copied()
+    }
+
     pub(super) fn print_line(&mut self, text: String) {
         if self.printed.len() < PRINTED_LINE_LIMIT {
             self.printed.push(text);
@@ -614,6 +630,10 @@ impl GameplayGlobals {
     /// Saved topic-menu selection text, distinct from the HUD activation prompt.
     pub fn highlighted_choice(&self) -> Option<&str> {
         self.highlighted_choice.as_deref()
+    }
+    /// `DialogBegin` empties the remembered text, so the next menu highlights its first item.
+    pub(super) fn forget_choice(&mut self) {
+        self.highlighted_choice = Some(String::new());
     }
     /// The topic-menu owner supplies the text selected from its installed entries.
     pub fn remember_choice(&mut self, text: String) {

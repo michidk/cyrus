@@ -227,6 +227,7 @@ mod tests {
         let pixels = vec![255, 0, 0, 255, 0, 255, 0, 255];
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: None,
             texture_scale: [1, 1],
@@ -255,6 +256,7 @@ mod tests {
             terrain_lighting: None,
         });
         let indoor = environments.add(Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: None,
             texture_scale: [1, 1],

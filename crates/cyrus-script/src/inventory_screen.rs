@@ -251,12 +251,14 @@ pub(crate) fn register(app: &mut bevy::prelude::App) {
 /// Suspension callers read the shared lock on the logbook screen.
 fn publish_lock(
     screen: bevy::prelude::Res<InventoryScreen>,
+    examine: Option<bevy::prelude::Res<crate::item_viewer::ExamineScreen>>,
     mut logbook: Option<bevy::prelude::ResMut<crate::logbook::LogbookScreen>>,
 ) {
+    let suspended = screen.suspended() || examine.is_some_and(|examine| examine.suspended());
     if let Some(logbook) = logbook.as_mut()
-        && logbook.inventory_open != screen.suspended()
+        && logbook.inventory_open != suspended
     {
-        logbook.inventory_open = screen.suspended();
+        logbook.inventory_open = suspended;
     }
 }
 

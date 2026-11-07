@@ -244,6 +244,11 @@ fn add_wall(scene: &mut cyrus_script::player::data::PlayerScene) {
 /// Primary body contacts of the selected player at (522, 542) against a box whose near face lies
 /// 30 map units in front of it, after the script wrote `size.pos.vz = center_z`.
 fn body_contacts_with_center(center_z: i32) -> (usize, usize) {
+    body_contacts(center_z, None)
+}
+
+/// [`body_contacts_with_center`] with an optional cached link position on the player.
+fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
     use cyrus_script::script::OrdinaryBodyQuery;
     let (world, restored, mut scene, data, _) = write_extent(Property::SizePosVz, center_z);
     add_wall(&mut scene);
@@ -259,6 +264,9 @@ fn body_contacts_with_center(center_z: i32) -> (usize, usize) {
             .place_selected_player([522 * 256, -1536, 542 * 256], 0)
             .unwrap();
         world.refresh_model_presentations(&data, &[player]).unwrap();
+        if let Some(link) = link {
+            world.set_link_position_for_test(player, link);
+        }
         let prepared = world
             .prepare_ordinary_collision_query(player, &scene, &data, [522, 542], &[player, map])
             .unwrap();
@@ -299,4 +307,14 @@ fn center_offset_moves_the_primary_body_query_origin() {
         (centered, forward),
         "restore"
     );
+}
+
+#[test]
+fn a_linked_actors_primary_body_query_reads_its_link_position() {
+    // The wall touches the body at the written center offset; a link position far away moves the
+    // query origin there, as the original's query-position selector does.
+    let (plain, _) = body_contacts(30, None);
+    let (linked, _) = body_contacts(30, Some([-4000 * 256, 0, -4000 * 256]));
+    assert!(plain > 0);
+    assert_eq!(linked, 0, "the linked body is nowhere near the wall");
 }

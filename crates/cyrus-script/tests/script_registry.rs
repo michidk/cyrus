@@ -6141,7 +6141,17 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     struct EmptyCheatStore;
     impl cyrus_game::cheats::CheatStore for EmptyCheatStore {
         fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
-            Ok(cyrus_assets::cheats::empty())
+            {
+                let mut state = cyrus_assets::cheats::empty();
+                // SYSTEM.INI seeds these slots at startup in every host.
+                cyrus_assets::cheats::CheatDefaults {
+                    task: true,
+                    animation: true,
+                    nodemarker: false,
+                }
+                .apply(&mut state)?;
+                Ok(state)
+            }
         }
         fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
             Ok(())
@@ -9852,6 +9862,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     world.set_actor_surface(ids[0], Surface::UNKNOWN).unwrap();
     let y = world.spatial(ids[0]).unwrap().local.position[1];
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
+    world.set_action_words_for_test(ids[0], 0x13, 0x21);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -9865,6 +9876,11 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
         }
     );
     let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (control.actions.pending, control.actions.accepted),
+        (0, 0),
+        "an admitted landing clears both action words"
+    );
     assert_eq!(
         (
             control.living_state,
@@ -9885,6 +9901,7 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
     // Living state 27 refuses a second landing; the pass still ends, and nothing else changes.
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 101 * 256);
+    world.set_action_words_for_test(ids[0], 0x13, 0x21);
     let query = world
         .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
         .unwrap();
@@ -9900,6 +9917,12 @@ fn a_falling_actor_lands_on_a_bouncy_actor_through_the_overlap_pass() {
     assert_eq!(
         world.actors()[0].control_state().unwrap().falling_state,
         JumpMotion::STANDING
+    );
+    let words = world.actors()[0].control_state().unwrap().actions;
+    assert_eq!(
+        (words.pending, words.accepted),
+        (0x13, 0x21),
+        "a refused landing leaves the action words"
     );
     // A shorter fall than the installed bounce height takes the weighted response instead.
     world.set_falling_for_test(ids[0], JumpMotion::STANDING, y - 99 * 256);
@@ -10024,11 +10047,14 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
     use cyrus_assets::collision::{CollisionScene, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_script::script::{OrdinaryObstacleQuery, ScriptInputs, ScriptStage};
-    for (offset, respond, expected_hit, expected_x, wrapper) in [
-        (0, false, true, 264704, false),
-        (0, true, true, 143872, false),
-        (500, true, false, 264704, false),
-        (0, true, true, 143872, true),
+    for (offset, respond, expected_hit, expected_x, wrapper, linked) in [
+        (0, false, true, 264704, false, false),
+        (0, true, true, 143872, false, false),
+        (500, true, false, 264704, false, false),
+        (0, true, true, 143872, true, false),
+        // A linked actor's motion runs from its previous link position to its link position,
+        // which did not move, so it meets no wall (the local motion would).
+        (0, false, false, 264704, false, true),
     ] {
         let (mut world, data) = overlap_response_fixture(128, 0, 1024);
         let id = world.id(0).unwrap();
@@ -10064,6 +10090,10 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
                 20,
             )
             .unwrap();
+        if linked {
+            world.set_link_position_for_test(id, [0, 5120, 0]);
+            world.set_link_position_for_test(id, [0, 5120, 0]);
+        }
         if wrapper {
             world
                 .resolve_ordinary_obstacle_wrapper(
@@ -10659,6 +10689,13 @@ fn ordinary_ground_prevalidation_queries_retained_support_and_restores_local_mot
     assert_eq!(
         world.query_ordinary_queued_clearance(id, query()).unwrap(),
         256
+    );
+    // The clearance segment starts at the query-position selector's position: a link position far
+    // from every model finds none.
+    world.set_link_position_for_test(id, [4000 * 256, 20 * 256, 4000 * 256]);
+    assert_eq!(
+        world.query_ordinary_queued_clearance(id, query()).unwrap(),
+        256000
     );
     let empty = world
         .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id])
@@ -15847,7 +15884,17 @@ fn keyboard_walk_session(verify_drno: bool) {
         struct EmptyDrnoStore;
         impl cyrus_game::cheats::CheatStore for EmptyDrnoStore {
             fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
-                Ok(cyrus_assets::cheats::empty())
+                {
+                    let mut state = cyrus_assets::cheats::empty();
+                    // SYSTEM.INI seeds these slots at startup in every host.
+                    cyrus_assets::cheats::CheatDefaults {
+                        task: true,
+                        animation: true,
+                        nodemarker: false,
+                    }
+                    .apply(&mut state)?;
+                    Ok(state)
+                }
             }
             fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
                 Ok(())
@@ -21392,9 +21439,9 @@ fn current_animation_property_without_an_association_returns_zero() {
 }
 
 #[test]
-fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
+fn animation_and_torch_properties_reject_unprepared_owners_and_unanimated_writes() {
     for (name, write, separate, expected) in [
-        (Property::AnimCurrent, true, false, "write unsupported"),
+        (Property::AnimCurrent, true, false, "has no animation"),
         (
             Property::TorchTimer,
             false,
@@ -22452,6 +22499,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             );
             data.metadata["markers"] = serde_json::json!([]);
             data.metadata["walk_node_maps"] = serde_json::json!([]);
+            data.metadata["walk_node_maps"] = serde_json::json!([]);
             let mut saved = movement_snapshot(&world, &scripts, &data);
             saved["actors"][index]["animation"]["playback"]["frame_progress"] = 0.into();
             saved["actors"][index]["animation"]["playback"]["current"][1]["command"] = 1.into();
@@ -22501,13 +22549,15 @@ fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
     );
     assert_eq!(health(&[(Native::AdjustHealth, &[300, 0])]).unwrap(), 255);
     assert_eq!(health(&[(Native::AdjustHealth, &[-5, 0])]).unwrap(), 0);
+    // A nonpositive result of the death-owning variants first asks whether the receiver holds a
+    // weapon, which this inventory-less world cannot answer.
     for calls in [
         &[(Native::AdjustHealth, &[-5, 1][..])][..],
         &[(Native::SetHealth, &[0][..])][..],
     ] {
         let error = health(calls).unwrap_err();
         assert!(
-            format!("{error:#}").contains("death sequence unavailable"),
+            format!("{error:#}").contains("inventory owner unavailable"),
             "{error:#}"
         );
     }
@@ -22773,6 +22823,7 @@ fn pop_player_acts_only_while_swapped_and_returns_to_cyrus_in_the_same_iteration
     for (calls, swapped) in cases {
         let (_, mut world, mut data) = player_swap_fixture(calls);
         data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
         update_player_swap_world(&mut world, &data);
         let gremlin = world
@@ -23282,6 +23333,18 @@ fn dialog_and_menu_natives_write_their_mode_words() {
         )
     };
     assert_eq!(state(&[(Native::DialogBegin, &[])]), (Some(1), 0));
+    // DialogBegin empties the remembered topic text; the other three leave it untouched.
+    let remembered = |call: Native| {
+        run_native_world(&[(call, &[])])
+            .unwrap()
+            .globals()
+            .highlighted_choice()
+            .map(str::to_owned)
+    };
+    assert_eq!(remembered(Native::DialogBegin), Some(String::new()));
+    for call in [Native::DialogEnd, Native::MenuBegin, Native::MenuEnd] {
+        assert_eq!(remembered(call), None, "{call}");
+    }
     assert_eq!(
         state(&[(Native::DialogBegin, &[]), (Native::DialogEnd, &[])]),
         (Some(0), 0)
@@ -24684,7 +24747,7 @@ fn native_failure_preserves_written_flags_and_restores_runtime() {
 #[test]
 fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
     use cyrus_script::script::{ObstacleEnvironment, OrdinaryGroundQuery};
-    for outcome in ["support", "miss", "error"] {
+    for outcome in ["support", "miss", "error", "linked"] {
         let mut scripts = cache();
         scripts
             .actors
@@ -24706,6 +24769,11 @@ fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
             .unwrap();
         if outcome == "error" {
             scene.actor_collision = None;
+        }
+        if outcome == "linked" {
+            // A linked actor's probe reads its link position, far from any support, whatever the
+            // temporary local destination is.
+            world.set_link_position_for_test(id, [2000 * 256, 21 * 256, 2000 * 256]);
         }
         let destination = if outcome == "miss" {
             [2000 * 256, 21 * 256, 2000 * 256]
@@ -24741,7 +24809,7 @@ fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
                 assert!(result.unwrap());
                 assert_eq!(world.model_support(id).unwrap().actor, Some(other));
             }
-            "miss" => assert!(!result.unwrap()),
+            "miss" | "linked" => assert!(!result.unwrap(), "{outcome}"),
             _ => {
                 assert!(format!("{:#}", result.unwrap_err()).contains("live geometry unavailable"))
             }
@@ -25322,7 +25390,7 @@ fn ordinary_facing_returns_pre_turn_angle_and_uses_independent_weapon_rate_and_g
 }
 
 #[test]
-fn ordinary_facing_handles_absent_animation_wrapping_scale_and_selected_player_rejection() {
+fn ordinary_facing_handles_absent_animation_wrapping_scale_and_the_selected_player() {
     use cyrus_script::script::OrdinarySlopeInputs;
     let (mut world, id, target) = facing_world(1424, [2, -3, 0], None);
     assert_eq!(
@@ -25343,24 +25411,29 @@ fn ordinary_facing_handles_absent_animation_wrapping_scale_and_selected_player_r
         112
     );
     assert_eq!(world.spatial(id).unwrap().local.angles[1], 1440);
-    let before = world.spatial(id).unwrap().local;
-    let error = world
-        .face_ordinary_target(
-            id,
-            target,
-            OrdinarySlopeInputs {
-                selected_player: Some(id),
-                holding_weapon: false,
-                combat_active: false,
-                frame_scale: 256,
-                ticks: 0,
-            },
-            &mut |_, _| Ok(()),
-        )
-        .unwrap_err();
-    assert!(format!("{error:#}").contains("selected-player facing camera unavailable"));
-    assert_eq!(world.spatial(id).unwrap().local.position, before.position);
-    assert_eq!(world.spatial(id).unwrap().local.angles, before.angles);
+    // The selected player takes the same turn: the original's facing wrappers share one helper,
+    // whose only selected-player step rebuilds the matrix and copies the angles to history.
+    let (mut world, selected, target) = facing_world(1424, [2, -3, 0], None);
+    assert_eq!(
+        world
+            .face_ordinary_target(
+                selected,
+                target,
+                OrdinarySlopeInputs {
+                    selected_player: Some(selected),
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: 256,
+                    ticks: 0,
+                },
+                &mut |_, _| Ok(()),
+            )
+            .unwrap(),
+        112
+    );
+    let turned = world.spatial(selected).unwrap().local;
+    assert_eq!(turned.angles[1], 1440);
+    assert_eq!(world.spatial(selected).unwrap().angle_history[1], 1440);
     let (mut world, id, target) = facing_world(400, [0, -3, 0], None);
     assert_eq!(
         world
@@ -36091,6 +36164,7 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         });
         data.metadata["markers"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         let index = world
             .actors()
             .iter()
@@ -39920,7 +39994,7 @@ fn collide_player_weapon_is_false_unless_the_selected_player_swings_a_drawn_weap
 }
 
 #[test]
-fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
+fn add_flat_effect_retains_native_speed_and_scatters_by_the_spread() {
     use cyrus_assets::effects::{EffectImage, Effects};
     let mut effects = Effects {
         ambient_brightness: Some(128),
@@ -39940,7 +40014,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
         )]),
     };
     effects.images.insert(0, effects.images[&0x2380].clone());
-    let spawn = |spread: i32, speed: i32, descriptor: i32| {
+    let spawn = |spread: i32, speed: i32, descriptor: i32, seed: Option<u32>| {
         let mut world = {
             let mut scripts = random_scripts(Native::Rnd, vec![], Object::Me);
             scripts.definition.functions.push(Function {
@@ -39976,6 +40050,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
         };
         world.prepare_environment_effects(&effects).unwrap();
         let id = world.id(0).unwrap();
+        let mut random = seed.map(cyrus_game::random::EngineRandom::from_state);
         world
             .advance(
                 id,
@@ -39986,7 +40061,7 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                     ..Default::default()
                 },
                 None,
-                None,
+                random.as_mut(),
                 100,
             )
             .map(|()| world.actors()[0].failure().map(str::to_owned))
@@ -39994,6 +40069,12 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                 let count = world
                     .environmental_effects()
                     .map_or(0, |effects| effects.active().count());
+                let position = world
+                    .environmental_effects()
+                    .unwrap()
+                    .active()
+                    .next()
+                    .map(|(_, effect)| effect.position);
                 world.advance_environment_effects(1);
                 let frame = world
                     .environmental_effects()
@@ -40001,23 +40082,40 @@ fn add_flat_effect_retains_native_speed_and_rejects_nonzero_spread() {
                     .active()
                     .next()
                     .map(|(_, effect)| effect.frame);
-                (failure, count, frame)
+                (failure, count, frame, position)
             })
     };
     for speed in [1, 2] {
-        let (failure, count, frame) = spawn(0, speed, 0x2380).unwrap();
+        let (failure, count, frame, _) = spawn(0, speed, 0x2380, None).unwrap();
         assert!(failure.is_none(), "{failure:?}");
         assert_eq!(count, 1);
         assert_eq!(frame, Some(speed));
     }
     for descriptor in [0, 0x20000] {
-        let (failure, count, frame) = spawn(0, 3, descriptor).unwrap();
+        let (failure, count, frame, _) = spawn(0, 3, descriptor, None).unwrap();
         assert!(failure.is_none(), "{failure:?}");
         assert_eq!(count, 1);
         assert_eq!(frame, Some(0));
     }
-    let error = spawn(5, 1, 0x2380).unwrap_err();
-    assert!(format!("{error:#}").contains("nonzero spread unsupported"));
+    // A nonzero spread adds `rnd(spread >> 7) - (spread >> 8)` per axis in x, y, z order to the
+    // point's whole map units and no longer lowers the point by half the image height.
+    let (_, _, _, unspread) = spawn(0, 1, 0x2380, None).unwrap();
+    assert_eq!(unspread.unwrap()[0], 10);
+    let mut expected = cyrus_game::random::EngineRandom::from_state(7);
+    let draws = [(); 3].map(|_| expected.rnd(8).unwrap());
+    let (failure, count, _, scattered) = spawn(0x400, 1, 0x2380, Some(7)).unwrap();
+    assert!(failure.is_none(), "{failure:?}");
+    assert_eq!(count, 1);
+    assert_eq!(
+        scattered.unwrap(),
+        [10 + draws[0] - 4, 20 + draws[1] - 4, 30 + draws[2] - 4]
+    );
+    // Without the shared random stream the spread stops the script; a spread below 128 gives a
+    // bound the original's reduction never leaves.
+    let error = spawn(0x400, 1, 0x2380, None).unwrap_err();
+    assert!(format!("{error:#}").contains("random stream unavailable"));
+    let error = spawn(5, 1, 0x2380, Some(7)).unwrap_err();
+    assert!(format!("{error:#}").contains("nonpositive random bound"));
 }
 
 /// A living receiver with a combat record, running `DragonBreath` once with the given combat flags.
@@ -40371,6 +40469,7 @@ fn killed_created_lineup_receiver_never_resumes_its_waiting_main() -> anyhow::Re
             ]);
         });
         data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
         let player = world.selected_player().context("selected player")?;
         let creator = world.id(0)?;
@@ -41144,6 +41243,89 @@ fn combat_hit_restores_a_charged_sender_weapon_after_damage() {
         world.actors()[receiver.index].attributes()[Attribute::Health],
         39
     );
+}
+
+#[test]
+fn a_combat_hit_on_the_suppressed_selected_player_takes_no_damage() {
+    use cyrus_script::script::{
+        CombatControlState, ScriptHud, ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    // One damage point from a sender with an attack slot: the unsuppressed player loses one
+    // health, the suppressed one keeps all of it.
+    for (suppressed, expected) in [(false, 49), (true, 50)] {
+        let (scripts, mut world, mut data, _) = player_health_fixture_with(|scripts| {
+            scripts.combat_attacks = vec![cyrus_assets::script::combat::Attack {
+                is_combo: false,
+                motions: vec![
+                    serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "damage":1,"first_collide_frame":0,"collide_duration":1
+                    }))
+                    .unwrap(),
+                ],
+                min_range: 0,
+                max_range: 100,
+            }];
+        });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        saved["actors"][0]["control"]["combat"] = serde_json::to_value(CombatControlState {
+            attacker_selection_state: 1,
+            action: 0,
+            attack_indices: [Some(0); 9],
+            retained_action_indices: [-1, 0],
+            ..Default::default()
+        })
+        .unwrap();
+        let generation = world.generation() + 1;
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation,
+                globals: std::mem::take(world.globals_mut()),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let receiver = world.selected_player().unwrap();
+        let sender = world.id(0).unwrap();
+        world.ordinary_actors([0, 0]).unwrap();
+        world
+            .send_combat_message(sender, receiver, CombatMessageCode::HIT)
+            .unwrap();
+        let hud = ScriptHud::default();
+        world
+            .process_combat_message_with_services(
+                receiver,
+                None,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    death_suppressed: Some(suppressed),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut cyrus_game::random::EngineRandom::from_state(42)),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world.globals().selected_health().unwrap().displayed(),
+            expected,
+            "suppressed {suppressed}"
+        );
+    }
 }
 
 #[test]
@@ -43521,6 +43703,7 @@ fn bind_scheduler_environment(
         .insert(
             handle.id(),
             Environment {
+                world_palette: Vec::new(),
                 effects: Some(water_model_tests::effects()),
                 texture_scale: [1, 1],
                 sky: None,
@@ -46769,12 +46952,10 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.motion_direction, MotionDirection::BACKWARD);
         assert_eq!(control.move_counter & 0xc0, 0x40);
-        assert!(
-            world.actors()[0]
-                .failure()
-                .unwrap()
-                .contains("ordinary queued motion stage unsupported")
-        );
+        // Without collision attribute bit 0x04 nothing resolves the queued motion: the update
+        // completes and the motion stays (preservation player.md, "Stable ordinary position").
+        assert!(world.actors()[0].failure().is_none());
+        assert_eq!(control.queued_motion, JumpMotion::from_byte(queued));
     }
 }
 
@@ -47907,7 +48088,17 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
     struct Memory;
     impl CheatStore for Memory {
         fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
-            Ok(cyrus_assets::cheats::empty())
+            {
+                let mut state = cyrus_assets::cheats::empty();
+                // SYSTEM.INI seeds these slots at startup in every host.
+                cyrus_assets::cheats::CheatDefaults {
+                    task: true,
+                    animation: true,
+                    nodemarker: false,
+                }
+                .apply(&mut state)?;
+                Ok(state)
+            }
         }
         fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
             Ok(())
@@ -48803,6 +48994,7 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
             ];
         });
         data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
         scene.source_identity = Some("protected-actor-taunt-fixture".into());
         scene.settings.tap_time = Some(6);
@@ -50097,6 +50289,8 @@ mod header_hook_tests;
 
 #[path = "script_registry/collision_extents.rs"]
 mod collision_extents_tests;
+#[path = "script_registry/forward_surface_transition.rs"]
+mod forward_surface_transition_tests;
 #[path = "script_registry/pose_properties.rs"]
 mod pose_properties_tests;
 
@@ -50105,3 +50299,15 @@ mod task_properties_tests;
 
 #[path = "script_registry/anim_properties.rs"]
 mod anim_properties_tests;
+
+#[path = "script_registry/zap_health.rs"]
+mod zap_health_tests;
+
+#[path = "script_registry/movement_tasks.rs"]
+mod movement_tasks_tests;
+
+#[path = "script_registry/player_queries.rs"]
+mod player_queries_tests;
+
+#[path = "script_registry/flat_texture.rs"]
+mod flat_texture_tests;

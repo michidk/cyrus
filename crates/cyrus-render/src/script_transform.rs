@@ -28,6 +28,7 @@ struct AppliedScriptVisibility(Visibility);
 fn visibility(
     mut commands: Commands,
     actors: Option<Res<ScriptActors>>,
+    cheats: Option<Res<cyrus_game::cheats::Cheats>>,
     mut nodes: Query<
         (
             Entity,
@@ -46,6 +47,18 @@ fn visibility(
             }
             world.actors().get(binding.actor.index)?.control_state()
         });
+        // With the animation cheat at zero the selected player's animated body is not drawn.
+        let player_hidden = binding
+            .and_then(|binding| {
+                let world = actors.as_ref()?.current.as_ref()?;
+                (binding.actor.generation == world.generation()
+                    && world.selected_player() == Some(binding.actor))
+                .then_some(())
+            })
+            .is_some()
+            && cheats
+                .as_ref()
+                .is_some_and(|cheats| cheats.animated_player_hidden().unwrap_or(false));
         let Some(control) = control else {
             if let Some(applied) = applied {
                 *visibility = applied.0;
@@ -58,7 +71,7 @@ fn visibility(
                 .entity(entity)
                 .insert(AppliedScriptVisibility(*visibility));
         }
-        let next = if control.hidden {
+        let next = if control.hidden || control.invisible || player_hidden {
             Visibility::Hidden
         } else {
             Visibility::Inherited
@@ -155,7 +168,9 @@ pub(crate) fn apply(
             .copied()
             .unwrap_or_default();
         let global = if let Some(pose) = pose {
-            commands.entity(entity).insert(AppliedScriptTransform);
+            if applied.is_none() {
+                commands.entity(entity).insert(AppliedScriptTransform);
+            }
             parent * GlobalTransform::from(Mat4::from(pose))
         } else {
             commands.entity(entity).remove::<AppliedScriptTransform>();
@@ -163,8 +178,10 @@ pub(crate) fn apply(
         };
         let mut pending = vec![(entity, global)];
         while let Some((entity, global)) = pending.pop() {
+            // An unchanged pose must not mark its subtree changed: visibility, bounds,
+            // extraction and camera clipping redo their work for changed transforms.
             if let Ok(mut target) = globals.get_mut(entity) {
-                *target = global;
+                target.set_if_neq(global);
             }
             let Ok((_, Some(children), _)) = hierarchy.get(entity) else {
                 continue;

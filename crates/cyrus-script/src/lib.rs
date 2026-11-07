@@ -3,6 +3,7 @@ pub mod clock;
 pub mod console;
 pub mod inventory_screen;
 pub mod island_map;
+pub mod item_viewer;
 pub mod logbook;
 pub mod player;
 pub mod script;
@@ -26,6 +27,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         logbook::register(app);
         inventory_screen::register(app);
+        item_viewer::register(app);
         island_map::register(app);
         app.init_resource::<preferences::Preferences>()
             .init_resource::<MovieUnlocks>()

@@ -60,7 +60,7 @@ fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
     for value in [1, 42, u32::MAX] {
         assert_eq!(
             runtime.execute("drevil", Some(value)).unwrap(),
-            CheatEffect::Unsupported
+            CheatEffect::DamageSuppression
         );
         assert!(runtime.death_suppressed().unwrap());
     }
@@ -863,4 +863,21 @@ fn magic_carpet_is_active_only_for_exactly_one_and_the_ground_bypass_for_any_non
     let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
     assert!(invalid.magic_carpet().is_err());
     assert!(invalid.ground_bypass().is_err());
+}
+
+#[test]
+fn moonraker_collision_skip_reads_any_nonzero_value() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.player_collision_skipped().unwrap());
+    for value in [1, 2, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("moonraker", Some(value)).unwrap(),
+            CheatEffect::PlayerCollisionSkip
+        );
+        assert!(runtime.player_collision_skipped().unwrap(), "{value}");
+    }
+    runtime.execute("moonraker", Some(0)).unwrap();
+    assert!(!runtime.player_collision_skipped().unwrap());
+    let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
+    assert!(invalid.player_collision_skipped().is_err());
 }

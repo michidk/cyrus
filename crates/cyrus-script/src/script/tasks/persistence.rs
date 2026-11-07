@@ -295,6 +295,7 @@ impl Task {
             Self::PlayerOffset => (Native::PlayerOffsettask, 3, Some(CallKind::Multitask)),
             Self::DragonBreath => (Native::DragonBreathTask, 0, Some(CallKind::Multitask)),
             Self::Projectile => (Native::ProjectileAI, 0, None),
+            Self::FollowPlayer => (Native::TestTask, 1, None),
             Self::MoveMarker => (Native::MoveMarker, 2, None),
             Self::MoveLocation => (Native::MoveLocation, 2, None),
             Self::GotoLocation => (Native::GotoLocation, 1, Some(CallKind::Task)),

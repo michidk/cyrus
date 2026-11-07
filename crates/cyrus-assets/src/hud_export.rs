@@ -64,6 +64,12 @@ pub(crate) fn prepare(
     .with_context(|| format!("hud: {item_path}"))?;
     let keys = read("KEYS.INI")?;
     let worlds = read("WORLD.INI")?;
+    let inventory_models = read("fxart/INVENTRY.ROB")?;
+    let sphere_scale = settings
+        .system
+        .sphere_object_scale
+        .filter(|scale| *scale > 0)
+        .unwrap_or(256);
     let system_fields = ini_fields(&system, "SYSTEM.INI")?;
     let atlas_name = definitions
         .settings
@@ -102,8 +108,8 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        14u32,
-        (&system, &items, &keys, &worlds),
+        16u32,
+        (&system, &items, &keys, &worlds, &inventory_models),
         (&selected_bytes, &border_bytes, &arrow_bytes),
         (&map_bytes, &cross_bytes),
         (
@@ -124,6 +130,7 @@ pub(crate) fn prepare(
         .as_deref()
         == Some(&fingerprint)
         && output.exists(&directory.join("overlay.hud"))
+        && output.exists(&directory.join("examine.models"))
     {
         return Ok(());
     }
@@ -230,6 +237,10 @@ pub(crate) fn prepare(
         !map.frames.is_empty() && !cross.frames.is_empty(),
         "hud: system/MAPMAP.GXA and system/CROSS.GXA need at least one frame"
     );
+    let models =
+        rgpre::import::rob::parse_rob_file(&inventory_models).context("hud: fxart/INVENTRY.ROB")?;
+    let examine = examine_artwork(&models, &definitions, &read)?;
+    let examine_bytes = serde_json::to_vec(&examine)?;
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
     for (id, item) in &definitions.items {
@@ -288,6 +299,19 @@ pub(crate) fn prepare(
                     .map_or(crate::hud::ItemHandModel::Absent, |path| {
                         crate::hud::ItemHandModel::Model(crate::animation::model_key(path))
                     }),
+                inventory_model: item
+                    .inventory_object_file
+                    .as_deref()
+                    .map_or(crate::hud::ItemHandModel::Absent, |path| {
+                        crate::hud::ItemHandModel::Model(crate::animation::model_key(path))
+                    }),
+                description: item.description.clone(),
+                inventory_extents: item
+                    .inventory_object_file
+                    .as_deref()
+                    .map(|path| model_extents(&models, path, sphere_scale))
+                    .transpose()
+                    .with_context(|| format!("hud: {item_path} inventory_object_file[{id}]"))?,
             },
         );
         if item.hide.unwrap_or(false) {
@@ -403,8 +427,152 @@ pub(crate) fn prepare(
         }
     }
     output.publish(&directory.join("overlay.hud"), &serde_json::to_vec(&hud)?)?;
+    output.publish(&directory.join("examine.models"), &examine_bytes)?;
     output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
+}
+
+/// The examine view's model extents (x, y, z): per axis the largest positive and the largest
+/// negative magnitude of the first frame's vertices, each rounded to nearest-even as it is
+/// compared, with x and z scaled by `scale / 256` (preservation `engine/hud.md` examine view).
+fn model_extents(
+    models: &rgpre::import::rob::RobFile,
+    path: &str,
+    scale: i32,
+) -> anyhow::Result<[i32; 3]> {
+    let key = crate::animation::model_key(path);
+    let segment = models
+        .segments
+        .iter()
+        .find(|segment| crate::animation::model_key(&segment.name()) == key)
+        .with_context(|| format!("model {key} absent from INVENTRY.ROB"))?;
+    let model = segment
+        .parse_embedded_3d_data()
+        .with_context(|| format!("model {key}"))?;
+    let (mut positive, mut negative) = ([0i32; 3], [0i32; 3]);
+    for vertex in &model.vertex_coords {
+        for (axis, value) in [vertex.x, vertex.y, vertex.z].into_iter().enumerate() {
+            if value >= 0.0 {
+                if value > positive[axis] as f32 {
+                    positive[axis] = value.round_ties_even() as i32;
+                }
+            } else if value < negative[axis] as f32 {
+                negative[axis] = value.round_ties_even() as i32;
+            }
+        }
+    }
+    let mut extents = [0; 3];
+    for axis in 0..3 {
+        let (high, low) = (positive[axis], negative[axis].checked_abs());
+        let low = low.with_context(|| format!("model {key}: axis {axis} magnitude overflow"))?;
+        let scaled = |value: i32| -> anyhow::Result<i32> {
+            if axis == 1 {
+                return Ok(value);
+            }
+            Ok(value
+                .checked_mul(scale)
+                .with_context(|| format!("model {key}: axis {axis} scaled extent overflow"))?
+                >> 8)
+        };
+        extents[axis] = scaled(high)? + scaled(low)?;
+    }
+    Ok(extents)
+}
+
+/// Every inventory model the items name, with the texture images its faces use, for the
+/// examine view's draw-time shading.
+fn examine_artwork(
+    models: &rgpre::import::rob::RobFile,
+    definitions: &ItemIni,
+    read: &dyn Fn(&str) -> anyhow::Result<Vec<u8>>,
+) -> anyhow::Result<crate::examine::ExamineArtwork> {
+    use crate::examine::{ExamineArtwork, ExamineFace, ExamineModel, ExamineTexture};
+    use rgpre::import::model3d::TextureData;
+    let mut artwork = ExamineArtwork::default();
+    let mut references = BTreeMap::new();
+    for item in definitions.items.values() {
+        let Some(path) = item.inventory_object_file.as_deref() else {
+            continue;
+        };
+        let key = crate::animation::model_key(path);
+        if artwork.models.contains_key(&key) {
+            continue;
+        }
+        let segment = models
+            .segments
+            .iter()
+            .find(|segment| crate::animation::model_key(&segment.name()) == key)
+            .with_context(|| format!("model {key} absent from INVENTRY.ROB"))?;
+        let model = segment
+            .parse_embedded_3d_data()
+            .with_context(|| format!("model {key}"))?;
+        let (normals, brightness) = crate::logbook::scroll_shading(&model);
+        let mut faces = Vec::new();
+        for (index, face) in model.face_data.iter().enumerate() {
+            anyhow::ensure!(
+                face.face_vertices
+                    .iter()
+                    .all(|v| (v.vertex_index as usize) < model.vertex_coords.len()),
+                "model {key}: face {index} names a vertex outside the model"
+            );
+            let (texture, solid) = match face.texture_data {
+                TextureData::Texture {
+                    texture_id,
+                    image_id,
+                } => {
+                    if !references.keys().any(|(bank, _)| *bank == texture_id) {
+                        let bank = rgpre::import::bsi::parse_bsi_file(&read(&format!(
+                            "fxart/TEXBSI.{texture_id:03}"
+                        ))?)
+                        .with_context(|| format!("TEXBSI.{texture_id:03}"))?;
+                        for (image, decoded) in bank.images.iter().enumerate() {
+                            references.insert((texture_id, image as u16), artwork.textures.len());
+                            artwork.textures.push(ExamineTexture {
+                                width: decoded.width,
+                                height: decoded.height,
+                                indices: decoded.pixel_data.clone(),
+                            });
+                        }
+                    }
+                    let id = *references
+                        .get(&(texture_id, u16::from(image_id)))
+                        .with_context(|| {
+                            format!("model {key}: TEXBSI.{texture_id:03} image {image_id} absent")
+                        })?;
+                    (Some(id), None)
+                }
+                TextureData::SolidColor(index) => (None, Some(index)),
+            };
+            faces.push(ExamineFace {
+                corners: face
+                    .face_vertices
+                    .iter()
+                    .map(|vertex| crate::menu::MenuCorner {
+                        vertex: vertex.vertex_index as usize,
+                        uv: [vertex.u as f32 / 16.0, vertex.v as f32 / 16.0],
+                    })
+                    .collect(),
+                texture,
+                solid,
+                normals: normals[index].clone(),
+                brightness: brightness[index],
+            });
+        }
+        artwork.models.insert(
+            key,
+            ExamineModel {
+                radius: model.header.radius as f32,
+                vertices: model
+                    .vertex_coords
+                    .iter()
+                    .map(|v| [v.x, v.y, v.z])
+                    .collect(),
+                faces,
+            },
+        );
+    }
+    artwork.validate()?;
+    Ok(artwork)
 }
 
 fn text<'a>(fields: &'a Fields, file: &str, section: &str, key: &str) -> anyhow::Result<&'a str> {

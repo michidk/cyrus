@@ -28,6 +28,9 @@ pub(super) struct Source {
     pub prepared: Mesh,
     uv: Vec<[f32; 2]>,
     triangles: Vec<[usize; 3]>,
+    /// Grid columns and rows spanned by the mapped vertices, `[min_x, max_x, min_row, max_row]`,
+    /// found on the first update; the mapping of a source never changes.
+    cells: Option<[i32; 4]>,
 }
 
 impl Source {
@@ -61,6 +64,7 @@ impl Source {
             prepared: mesh.clone(),
             uv,
             triangles,
+            cells: None,
         })
     }
 }
@@ -129,6 +133,30 @@ impl Window {
         Self { radius: 16, ..self }.contains(vertex)
     }
 
+    /// Whether any grid cell in `[min_x, max_x, min_row, max_row]` lies inside the window; a
+    /// triangle needs all three corners inside, so none can be admitted otherwise.
+    fn overlaps(self, [min_x, max_x, min_row, max_row]: [i32; 4]) -> bool {
+        let [x, row] = self.center;
+        max_x >= x - self.radius
+            && min_x < x + self.radius
+            && max_row > row - self.radius
+            && min_row <= row + self.radius
+    }
+
+    /// Grid vertices inside the window, which equal those [`Self::contains`] admits.
+    pub(super) fn vertices(self) -> impl Iterator<Item = usize> {
+        let side = self.side as i32;
+        let [x, row] = self.center;
+        let columns = (x - self.radius).max(0)..(x + self.radius).min(side);
+        let rows = (row - self.radius + 1).max(0)..(row + self.radius + 1).min(side);
+        rows.flat_map(move |row| columns.clone().map(move |x| (row * side + x) as usize))
+    }
+
+    /// Grid vertices inside the original sixteen-cell window.
+    pub(super) fn faithful_vertices(self) -> impl Iterator<Item = usize> {
+        Self { radius: 16, ..self }.vertices()
+    }
+
     pub fn contains(self, vertex: usize) -> bool {
         let x = (vertex % self.side) as i32 - self.center[0];
         let row = (vertex / self.side) as i32 - self.center[1];
@@ -167,6 +195,26 @@ pub(super) fn update(
         .transform_point3(Vec3::ZERO)
         * 20.0;
     let mut texture_admitted = false;
+    let side = grid.window.side;
+    let cells = *source.cells.get_or_insert_with(|| {
+        mapping.iter().fold(
+            [i32::MAX, i32::MIN, i32::MAX, i32::MIN],
+            |[min_x, max_x, min_row, max_row], &vertex| {
+                let (x, row) = ((vertex % side) as i32, (vertex / side) as i32);
+                [
+                    min_x.min(x),
+                    max_x.max(x),
+                    min_row.min(row),
+                    max_row.max(row),
+                ]
+            },
+        )
+    });
+    let triangles: &[[usize; 3]] = if grid.window.overlaps(cells) {
+        &source.triangles
+    } else {
+        &[]
+    };
     let mesh = &mut source.prepared;
     // Reuse the previous frame's allocations when returning attributes to the mesh.
     let take3 = |mesh: &mut Mesh, attribute| match mesh.remove_attribute(attribute) {
@@ -211,7 +259,7 @@ pub(super) fn update(
         }
         _ => Vec::new(),
     });
-    for &triangle in &source.triangles {
+    for &triangle in triangles {
         if !triangle
             .iter()
             .all(|&index| grid.window.contains(mapping[index]))
@@ -383,6 +431,34 @@ mod tests {
         assert!(!original.with_far(3000.0, Vec2::ONE).contains(distant));
         assert!(original.with_far(7600.0, Vec2::ONE).contains(distant));
         assert!(!original.contains(distant));
+    }
+
+    #[test]
+    fn window_vertices_and_overlap_agree_with_containment() {
+        let side = 40;
+        for center in [[0, 0], [20, 20], [-5, 3], [39, 41], [60, -20], [3, 38]] {
+            for radius in [16, 23] {
+                let window = Window {
+                    center,
+                    side,
+                    radius,
+                };
+                let mut listed: Vec<_> = window.vertices().collect();
+                listed.sort_unstable();
+                let contained: Vec<_> = (0..side * side).filter(|&v| window.contains(v)).collect();
+                assert_eq!(listed, contained, "{center:?} radius {radius}");
+                for x in 0..side as i32 {
+                    for row in 0..side as i32 {
+                        let cell = (row as usize) * side + x as usize;
+                        assert_eq!(
+                            window.overlaps([x, x, row, row]),
+                            window.contains(cell),
+                            "{center:?} radius {radius} cell {x},{row}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
 //! Selected ordinary actor spheres remain separate from body-query working shapes.
-use super::{ScriptActorId, ScriptWorld};
+use super::{ActionWords, ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
@@ -410,7 +410,7 @@ impl ScriptWorld {
     /// Land the actor on the other: set its support, clear its sliding, falling and queued-motion
     /// bytes and enter `LANDED_ON_ACTOR`, unless the landing is refused (the ledge living states, 27
     /// and 28, deep water, or no `anim_misc1` on the other actor). Body-response bit `0x80` is set
-    /// either way. The two retained action dwords the original also clears are not modelled.
+    /// either way. An admitted landing also clears both directional action words.
     fn land_on_actor(
         &mut self,
         id: ScriptActorId,
@@ -438,6 +438,8 @@ impl ScriptWorld {
             control.sliding_state = 0;
             control.falling_state = JumpMotion::NONE;
             control.queued_motion = JumpMotion::NONE;
+            // Both directional action words are cleared before the landed state is entered.
+            control.actions = ActionWords::default();
             control.living_state = LivingState::LANDED_ON_ACTOR;
             actor.model.support.actor = Some(other);
         }

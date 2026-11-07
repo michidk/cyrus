@@ -213,7 +213,9 @@ fn gxa_palette(bytes: &[u8]) -> anyhow::Result<[[u8; 3]; 256]> {
 /// the faces in order, selects its vertex normal; otherwise the vertex's own normal applies; an
 /// unusable (non-normal-length) normal falls back to the face normal. The brightness byte is the
 /// stored face byte shifted left two bits, low eight bits kept.
-fn scroll_shading(model: &rgpre::import::model3d::Model3DFile) -> (Vec<Vec<[f32; 3]>>, Vec<u8>) {
+pub(crate) fn scroll_shading(
+    model: &rgpre::import::model3d::Model3DFile,
+) -> (Vec<Vec<[f32; 3]>>, Vec<u8>) {
     let mut counter = 0;
     let mut normals = Vec::new();
     for (face_index, face) in model.face_data.iter().enumerate() {

@@ -157,7 +157,7 @@ impl ScriptWorld {
         query: super::ground::OrdinaryGroundQuery<'_>,
     ) -> Result<i32> {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
-        let current = self.spatial(id)?.query_pose()?.position;
+        let current = self.query_position(id)?;
         let start = current.map(|value| value >> 8);
         let mut end = start;
         end[1] = end[1].wrapping_add(self.ordinary_collision_shape(id)?.positive_extent[1]);

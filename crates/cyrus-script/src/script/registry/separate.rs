@@ -207,6 +207,53 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// The shell list in the original's link order (newest record first): the name of each running
+    /// shell. A shell leaves the list when it finishes.
+    pub fn shell_list(&self) -> impl Iterator<Item = &str> {
+        self.actors
+            .iter()
+            .rev()
+            .filter(|actor| {
+                matches!(actor.source, super::ScriptActorSource::Shell(_))
+                    && actor.runtime.is_some()
+            })
+            .map(super::ScriptActor::name)
+    }
+
+    /// `CountAiShells` and `FindAiShell` over the shell list. The query is the base file name
+    /// without directory or extension, at most eight characters, upper case. Each entry's name
+    /// is copied with nine bytes, so a name of eight characters also compares the low byte of the
+    /// entry's next link with zero: the list tail (null link) matches, while another entry's
+    /// result depends on a heap address and is an explicit error. `first` stops at the first match.
+    pub(super) fn count_shell_matches(&self, query: &str, first: bool) -> Result<i32> {
+        let stem: String = super::model::resource_stem(query);
+        let names: Vec<String> = self
+            .shell_list()
+            .map(|name| {
+                name.chars()
+                    .take(8)
+                    .collect::<String>()
+                    .to_ascii_uppercase()
+            })
+            .collect();
+        let mut matches = 0;
+        for (position, name) in names.iter().enumerate() {
+            if *name != stem {
+                continue;
+            }
+            if stem.chars().count() == 8 && position + 1 != names.len() {
+                anyhow::bail!(
+                    "shell {name}: the nine-byte entry comparison reads the low byte of its next link, which has no recovered value"
+                );
+            }
+            matches += 1;
+            if first {
+                break;
+            }
+        }
+        Ok(matches)
+    }
+
     /// Running shells of one script: the count an item's instance limit is checked against.
     pub fn running_shells(&self, name: &str) -> usize {
         self.actors
