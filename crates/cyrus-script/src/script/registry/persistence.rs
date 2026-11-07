@@ -43,6 +43,9 @@ struct ControlSnapshot {
     jump_window: u8,
     movement_flags: u8,
     motion_vector: [i32; 3],
+    /// The held ledge point; saves written before it lived in the actor kept it in the session globals.
+    #[serde(default)]
+    ledge_point: [i32; 3],
     fall_origin_y: i32,
     fall_timer: u8,
     jump_selector: u8,
@@ -135,6 +138,7 @@ impl ControlSnapshot {
             jump_window: control.jump_window,
             movement_flags: control.move_counter,
             motion_vector: control.motion_vector,
+            ledge_point: control.ledge_point,
             fall_origin_y: control.fall_origin_y,
             fall_timer: control.fall_timer,
             jump_selector: control.jump_selector,
@@ -207,6 +211,7 @@ impl ControlSnapshot {
             action_transition_counter: self.action_transition_counter,
             jump_window: self.jump_window,
             move_counter: self.movement_flags,
+            ledge_point: self.ledge_point,
             motion_vector: match self.rope_speed {
                 0 => self.motion_vector,
                 speed => [self.motion_vector[0], self.motion_vector[1], speed],
@@ -974,6 +979,16 @@ impl WorldSnapshot {
             })
             .collect::<Result<_>>()?;
         let selected_player = super::selected_player_index(&candidate.actors, globals);
+        // Saves written before the held ledge point lived in the actor kept it in the session globals.
+        if let (Some((point, heading)), Some(index)) =
+            (globals.legacy_ledge_anchor, selected_player)
+            && let Some(control) = candidate.actors[index].control.as_mut()
+            && control.living_state.is_ledge()
+            && control.ledge_point == [0; 3]
+        {
+            control.ledge_point = point;
+            control.motion_vector[1] = i32::from(heading);
+        }
         for (index, actor) in candidate.actors.iter().enumerate() {
             actor
                 .tasks

@@ -432,6 +432,9 @@ pub struct ActorControlState {
     /// plus the node's measured speed, negative for a backward jump); falls and obstacle
     /// interruption clear them.
     pub motion_vector: [i32; 3],
+    /// The `ov` vector: the held ledge point in Q8. The ledge entry stores the selected record's point
+    /// here and its heading in the second word of `move`; the ledge states read both back.
+    pub ledge_point: [i32; 3],
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
@@ -5164,6 +5167,9 @@ fn control_record_property(
         Property::MoveVx => ControlField::Dword(&mut control.motion_vector[0]),
         Property::MoveVy => ControlField::Dword(&mut control.motion_vector[1]),
         Property::MoveVz => ControlField::Dword(&mut control.motion_vector[2]),
+        Property::OvVx => ControlField::Dword(&mut control.ledge_point[0]),
+        Property::OvVy => ControlField::Dword(&mut control.ledge_point[1]),
+        Property::OvVz => ControlField::Dword(&mut control.ledge_point[2]),
         Property::LastValidFlag => ControlField::Flag(&mut control.stable_position_valid),
         Property::LastValidPosVx => ControlField::Dword(&mut control.stable_local_position[0]),
         Property::LastValidPosVy => ControlField::Dword(&mut control.stable_local_position[1]),

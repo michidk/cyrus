@@ -7503,6 +7503,54 @@
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
+      "property": "ov.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver held ledge point coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ControlState; ledge entry and the ledge states read it back",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::ov_is_the_held_ledge_point_and_shares_the_heading_word_with_move"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/48"
+      ],
+      "limits": "Verified in the original: the ledge entry stores the selected ledge record's point here and its heading in the second word of move; the ledge states, support-follow carry and saves read and write this actor-held state. Reads and writes are whole signed 32-bit values. No other installed script reference exists, so authored-script parity beyond the ledge states is Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "ov.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver held ledge point coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ControlState; ledge entry and the ledge states read it back",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::ov_is_the_held_ledge_point_and_shares_the_heading_word_with_move"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/48"
+      ],
+      "limits": "Verified in the original: the ledge entry stores the selected ledge record's point here and its heading in the second word of move; the ledge states, support-follow carry and saves read and write this actor-held state. Reads and writes are whole signed 32-bit values. No other installed script reference exists, so authored-script parity beyond the ledge states is Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "ov.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver held ledge point coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ControlState; ledge entry and the ledge states read it back",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::ov_is_the_held_ledge_point_and_shares_the_heading_word_with_move"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/48"
+      ],
+      "limits": "Verified in the original: the ledge entry stores the selected ledge record's point here and its heading in the second word of move; the ledge states, support-follow carry and saves read and write this actor-held state. Reads and writes are whole signed 32-bit values. No other installed script reference exists, so authored-script parity beyond the ledge states is Unknown.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
       "property": "last_angle.vx",
       "status": "partial",
       "owner": 5,
@@ -8148,9 +8196,6 @@
         "local_index",
         "origin",
         "origin_accum",
-        "ov.vx",
-        "ov.vy",
-        "ov.vz",
         "slave_angle.vx",
         "slave_angle.vy",
         "slave_angle.vz",

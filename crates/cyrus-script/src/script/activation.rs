@@ -206,8 +206,9 @@ pub struct GameplayGlobals {
     pub(super) selected_health: Option<super::SelectedHealthState>,
     pub(super) selected_action_inhibition: Option<u8>,
     pub(super) selected_ledge_result: Option<i32>,
-    /// Retained ledge point (Q8) and ledge heading of the selected player's current ledge.
-    pub(super) selected_ledge_anchor: Option<([i32; 3], u16)>,
+    /// Saves written before the ledge point moved into the actor carried it here; restore moves it onto
+    /// the selected player's `ov` and `move.vy`. Never saved.
+    pub(super) legacy_ledge_anchor: Option<([i32; 3], u16)>,
     /// World-loop iterations, reset on entry and incremented before ordinary traversal.
     pub(super) world_loop_frame: u32,
     /// Set by an item-use attempt and cleared each world-loop iteration: one attempt per iteration.
@@ -1367,7 +1368,7 @@ pub(super) struct GameplayGlobalsSnapshot {
     selected_health: Option<super::SelectedHealthState>,
     selected_action_inhibition: Option<u8>,
     selected_ledge_result: Option<i32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     selected_ledge_anchor: Option<([i32; 3], u16)>,
     #[serde(default)]
     world_loop_frame: u32,
@@ -1422,7 +1423,7 @@ impl GameplayGlobals {
             selected_health: self.selected_health.clone(),
             selected_action_inhibition: self.selected_action_inhibition,
             selected_ledge_result: self.selected_ledge_result,
-            selected_ledge_anchor: self.selected_ledge_anchor,
+            selected_ledge_anchor: None,
             world_loop_frame: self.world_loop_frame,
             activation_consumed_use: self.activation_consumed_use,
             dragon_breath_cooldown: self.dragon_breath_cooldown,
@@ -1510,7 +1511,7 @@ impl GameplayGlobals {
             selected_health: saved.selected_health,
             selected_action_inhibition: saved.selected_action_inhibition,
             selected_ledge_result: saved.selected_ledge_result,
-            selected_ledge_anchor: saved.selected_ledge_anchor,
+            legacy_ledge_anchor: saved.selected_ledge_anchor,
             world_loop_frame: saved.world_loop_frame,
             dragon_breath_cooldown: saved.dragon_breath_cooldown,
             primary_body_contacts: saved.primary_body_contacts,

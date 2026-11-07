@@ -231,7 +231,7 @@ impl ScriptWorld {
             return Ok(false);
         };
         self.set_living(index, state);
-        self.globals.selected_ledge_anchor = Some((record.point, record.heading));
+        self.set_ledge_anchor(index, record.point, record.heading);
         self.actors[index].model.ledge_support = self.ledge_support_id(record.support)?;
         ctx.table = Some(scan);
         Ok(true)
@@ -245,7 +245,7 @@ impl ScriptWorld {
         ctx: &Transition<'_>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<Option<u8>> {
-        let (point, heading) = self.ledge_anchor()?;
+        let (point, heading) = self.ledge_anchor(ctx.index)?;
         if let Some(result) = self.ledge_turn_toward(ctx, heading, LedgeClass::Low, sounds)? {
             return Ok(Some(result));
         }
@@ -311,7 +311,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<Option<u8>> {
         let (id, index) = (ctx.id, ctx.index);
-        let (point, heading) = self.ledge_anchor()?;
+        let (point, heading) = self.ledge_anchor(ctx.index)?;
         if let Some(result) = self.ledge_turn_toward(ctx, heading, LedgeClass::High, sounds)? {
             return Ok(Some(result));
         }
@@ -358,7 +358,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<u8> {
         let (index, id) = (ctx.index, ctx.id);
-        let (point, heading) = self.ledge_anchor()?;
+        let (point, heading) = self.ledge_anchor(ctx.index)?;
         let own = self.spatial(id)?.local;
         if super::super::decision::heading_difference(own.angles[1], i32::from(heading)).abs() > 256
         {
@@ -443,7 +443,7 @@ impl ScriptWorld {
             != 0
             && !suppressed
         {
-            self.globals.selected_ledge_anchor = Some((point, record.heading));
+            self.set_ledge_anchor(index, point, record.heading);
             self.spatial
                 .as_mut()
                 .context("ledge spatial state unavailable")?
@@ -466,7 +466,7 @@ impl ScriptWorld {
         let Some(grip) = scan.grip else {
             return Ok(());
         };
-        let (point, heading) = self.ledge_anchor()?;
+        let (point, heading) = self.ledge_anchor(ctx.index)?;
         let standing = ctx.query.scene.settings.standing_height;
         let [dx, dz] =
             super::ledge::heading_offset(HIGH_FORWARD[0] * 256, heading.wrapping_add(1024));
@@ -521,7 +521,7 @@ impl ScriptWorld {
             }
             _ => 0,
         };
-        let (point, heading) = self.ledge_anchor()?;
+        let (point, heading) = self.ledge_anchor(ctx.index)?;
         let [dx, dz] = super::ledge::heading_offset(
             step.wrapping_mul(256).wrapping_sub(lag),
             heading.wrapping_add(1024),
@@ -590,10 +590,21 @@ impl ScriptWorld {
         self.actors[index].sync_falling_motion();
     }
 
-    fn ledge_anchor(&self) -> Result<([i32; 3], u16)> {
-        self.globals
-            .selected_ledge_anchor
-            .context("ledge point unavailable")
+    /// The ledge owner's held point and heading: the actor's `ov` vector and the second word of its
+    /// `move` triple, as the original stores them.
+    pub(super) fn ledge_anchor(&self, index: usize) -> Result<([i32; 3], u16)> {
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .context("ledge point unavailable")?;
+        Ok((control.ledge_point, control.motion_vector[1] as u16))
+    }
+
+    pub(super) fn set_ledge_anchor(&mut self, index: usize, point: [i32; 3], heading: u16) {
+        if let Some(control) = self.actors[index].control.as_mut() {
+            control.ledge_point = point;
+            control.motion_vector[1] = i32::from(heading);
+        }
     }
 
     /// Resolve a record's live-model owner to its actor; a static wall has no owner.

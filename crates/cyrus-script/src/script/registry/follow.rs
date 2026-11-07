@@ -150,11 +150,14 @@ impl ScriptWorld {
                 position = translated;
             }
         }
-        if special && let Some((point, ledge_heading)) = self.globals.selected_ledge_anchor {
-            self.globals.selected_ledge_anchor = Some((
+        if special {
+            // A rider holding a ledge carries the held point and heading with its support.
+            let (point, ledge_heading) = self.ledge_anchor(index)?;
+            self.set_ledge_anchor(
+                index,
                 carry(point)?,
                 wrap(ledge_heading.wrapping_add((turn & 2047) as u16)),
-            ));
+            );
         }
         let spatial = self
             .spatial

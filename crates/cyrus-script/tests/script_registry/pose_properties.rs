@@ -298,3 +298,26 @@ fn move_properties_are_the_retained_motion_triple_the_rope_release_speed_shares(
     // The rope release's jump-off speed is the last component of the same triple.
     assert_eq!(control.motion_vector, [-3, 70_000, i32::MIN]);
 }
+
+#[test]
+fn ov_is_the_held_ledge_point_and_shares_the_heading_word_with_move() {
+    // The ledge entry stores the point in ov and the heading in the second word of move; the
+    // two properties are plain dwords of one actor.
+    let world = pose_world(&[
+        Step3::Write(Property::OvVx, 5120),
+        Step3::Write(Property::OvVy, -768),
+        Step3::Write(Property::OvVz, 9),
+        Step3::Write(Property::MoveVy, 1500),
+        Step3::Read(Property::OvVx),
+        Step3::Read(Property::OvVy),
+        Step3::Read(Property::OvVz),
+        Step3::Read(Property::MoveVy),
+    ]);
+    assert_eq!(locals(&world), [5120, -768, 9, 1500]);
+    let world = pose_world(&[Step3::Read(Property::OvVy)]);
+    assert_eq!(
+        locals(&world),
+        [0],
+        "an actor holds no ledge point at creation"
+    );
+}
