@@ -368,18 +368,9 @@ impl ScriptWorld {
                     });
                     self.run_pre_script_displacement(id, scale, inputs, query)?;
                 }
-                let control = self.actors[id.index]
-                    .control
-                    .as_ref()
-                    .expect("admitted ordinary control");
-                anyhow::ensure!(
-                    (control.queued_motion == JumpMotion::NONE && control.falling_state == JumpMotion::NONE)
-                        || self.actors[id.index].attributes[Attribute::Collide] & 4 != 0
-                        // The selected-player edge service runs while falling and
-                        // deliberately hands the actor back to the controller.
-                        || (selected_player && control.falling_state != JumpMotion::NONE),
-                    "ordinary queued motion stage unsupported"
-                );
+                // An actor whose collision attribute lacks bit 0x04 never reaches the ground
+                // response that resolves queued or falling motion (preservation player.md, "Stable
+                // ordinary position" and "Terrain sink recovery"), so that motion stays as it is.
                 // A selected player without a controller sample still owns the
                 // ordinary script stages, but has no movement or collision query
                 // this update. Require scene data whenever collision work is

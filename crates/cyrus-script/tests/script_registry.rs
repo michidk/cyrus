@@ -46821,12 +46821,10 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.motion_direction, MotionDirection::BACKWARD);
         assert_eq!(control.move_counter & 0xc0, 0x40);
-        assert!(
-            world.actors()[0]
-                .failure()
-                .unwrap()
-                .contains("ordinary queued motion stage unsupported")
-        );
+        // Without collision attribute bit 0x04 nothing resolves the queued motion: the update
+        // completes and the motion stays (preservation player.md, "Stable ordinary position").
+        assert!(world.actors()[0].failure().is_none());
+        assert_eq!(control.queued_motion, JumpMotion::from_byte(queued));
     }
 }
 
