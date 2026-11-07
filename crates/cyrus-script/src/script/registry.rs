@@ -720,6 +720,9 @@ pub struct ScriptWorld {
     map_updates: super::map_updates::MapUpdates,
     /// Shared surface-query veto; absent until an assigning query establishes it.
     surface_veto: Option<bool>,
+    /// Water and lava transitions the selected player's forward probes noticed, in query order;
+    /// the caller that owns the random stream and sound sink runs them right after the probe.
+    pending_surface_transitions: Vec<PendingSurfaceTransition>,
     /// The session flag the Home key toggles for the yeahbaby ground bypass; it is read by the
     /// ground probe only while the cheat is on and is not reset by turning the cheat off.
     ground_bypass_toggle: bool,
@@ -1577,6 +1580,7 @@ impl ScriptWorld {
             retained_candidates: Default::default(),
             display_attachments: Vec::new(),
             surface_veto: None,
+            pending_surface_transitions: Vec::new(),
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera,
@@ -3679,6 +3683,31 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    /// The selected player's step check, then the water and lava transitions its support query
+    /// returned (the original's surface handler runs inside that query).
+    fn player_step_clear_with_transition(
+        &mut self,
+        id: ScriptActorId,
+        ground: ground::OrdinaryGroundQuery<'_>,
+        direction: StepDirection,
+    ) -> Result<bool> {
+        let clear = self.registry.player_step_clear(id, ground, direction);
+        if !self.registry.pending_surface_transitions.is_empty() {
+            let ticks = self.inputs.nominal_ticks.unwrap_or(0);
+            let random = self
+                .random
+                .as_deref_mut()
+                .context("surface transition random owner unavailable")?;
+            let sounds = self
+                .sounds
+                .as_deref_mut()
+                .context("surface transition sound handler unavailable")?;
+            self.registry
+                .flush_surface_transitions(id, ticks, random, sounds)?;
+        }
+        clear
+    }
+
     /// The shared native-command source: the actor whose ordinary interpreter entry ran last. It is
     /// the original's shared source actor reference, read by `MoveAboveMe` and `PointAt`
     /// independently of their receiver. Unknown before any such entry, and a source retained from
@@ -4587,7 +4616,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         |_, _| anyhow::bail!("WalkBackward collision sound handler unavailable");
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                     admission.backward_step_clear = Some(if player_backward {
-                        self.registry.player_step_clear(
+                        self.player_step_clear_with_transition(
                             id,
                             geometry.ground,
                             crate::script::locomotion::StepDirection::Backward,
@@ -4662,8 +4691,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                     // The selected player's step check is its support query, as for its walks.
                     admission.lateral_step_clear = Some(if selected {
-                        self.registry
-                            .player_step_clear(id, geometry.ground, direction)?
+                        self.player_step_clear_with_transition(id, geometry.ground, direction)?
                     } else {
                         self.registry.ordinary_step_clear(
                             id,
@@ -4699,7 +4727,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                             |_, _| anyhow::bail!("WalkForward collision sound handler unavailable");
                         let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                         admission.forward_step_clear = Some(if player_forward {
-                            self.registry.player_step_clear(
+                            self.player_step_clear_with_transition(
                                 id,
                                 geometry.ground,
                                 crate::script::locomotion::StepDirection::Forward,
@@ -5097,6 +5125,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .with_context(|| format!("object target {target:?}"))
     }
 }
+/// A surface change a selected-player support query returned: the saved previous surface, the
+/// returned one, and the splash effect's Q8 height from that query's support.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct PendingSurfaceTransition {
+    pub previous: Surface,
+    pub returned: Surface,
+    pub effect_height: Option<i32>,
+}
+
 /// The actor-record triples a position or angle property names: the local pose, the previous
 /// position, the saved start position (location zero) and the angle history.
 enum PoseProperty {
@@ -9813,6 +9850,7 @@ mod fighting_tests {
             model_admission: None,
             map_updates: Default::default(),
             surface_veto: None,
+            pending_surface_transitions: Vec::new(),
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera: None,

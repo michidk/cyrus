@@ -50097,6 +50097,8 @@ mod header_hook_tests;
 
 #[path = "script_registry/collision_extents.rs"]
 mod collision_extents_tests;
+#[path = "script_registry/forward_surface_transition.rs"]
+mod forward_surface_transition_tests;
 #[path = "script_registry/pose_properties.rs"]
 mod pose_properties_tests;
 

@@ -74,6 +74,29 @@ impl ScriptWorld {
         Ok(surface)
     }
 
+    /// Run the transitions the selected player's probes queued, oldest first. The caller owns the
+    /// random stream and sound sink and calls this right after the probe.
+    pub fn flush_surface_transitions(
+        &mut self,
+        id: ScriptActorId,
+        ticks: u32,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        for pending in std::mem::take(&mut self.pending_surface_transitions) {
+            self.selected_surface_transition(
+                id,
+                pending.previous,
+                pending.returned,
+                ticks,
+                random,
+                pending.effect_height,
+                sounds,
+            )?;
+        }
+        Ok(())
+    }
+
     /// The selected player's water and lava transition effects (preservation player.md): the
     /// swim entry and walk exit group requests, the splash effect object (identifiers 0x2500 water,
     /// 0x2580 lava) and the splash sound. `effect_height` is the effect's Q8 Y from the support
@@ -176,7 +199,7 @@ impl ScriptWorld {
 
     /// Q8 Y of a transition effect for the selected support: the support height plus standing
     /// height, plus six units (a fallback support keeps its actor origin, so its extent is added).
-    fn transition_effect_height(
+    pub(super) fn transition_effect_height(
         &self,
         id: ScriptActorId,
         support: Option<&SelectedSupport>,

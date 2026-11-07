@@ -296,6 +296,7 @@ impl ScriptWorld {
                 }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
+                    world.flush_surface_transitions(id, timing.nominal_ticks, random, sounds)?;
                     Ok(())
                 }
                 SheathedAction::RunForward => {
@@ -1062,12 +1063,19 @@ impl ScriptWorld {
                 .unwrap_or_default();
             self.set_actor_surface(id, surface)?;
             self.surface_veto = Some(matches!(surface, Surface::LAVA | Surface::GLOOP));
-            ensure!(
-                previous == surface
-                    || (!(previous.is_water() || previous == Surface::LAVA)
-                        && !(surface.is_water() || surface == Surface::LAVA)),
-                "player forward query: water/lava transition effects unsupported"
-            );
+            if previous != surface {
+                let effect_height = self.transition_effect_height(
+                    id,
+                    support.as_ref(),
+                    query.scene.settings.standing_height,
+                )?;
+                self.pending_surface_transitions
+                    .push(super::PendingSurfaceTransition {
+                        previous,
+                        returned: surface,
+                        effect_height,
+                    });
+            }
         }
         match support {
             None => Ok(false),

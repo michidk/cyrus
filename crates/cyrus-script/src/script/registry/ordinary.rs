@@ -581,6 +581,12 @@ impl ScriptWorld {
                 )?;
                 if let Some(query) = player_query {
                     self.advance_player_walking(id, query, player_timing, true, sounds)?;
+                    self.flush_surface_transitions(
+                        id,
+                        player_timing.nominal_ticks,
+                        random,
+                        sounds,
+                    )?;
                 }
                 // Forward running and armed circling retain animation-owned movement after
                 // release. The called flags prevent a second step after controller movement.
