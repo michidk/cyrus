@@ -698,10 +698,8 @@ impl Scripts {
             self.definition
                 .functions
                 .first()
-                .is_some_and(
-                    |function| function.name == cyrus_soup::Native::NullFunction
-                        && function.param_count == 0
-                ),
+                .is_some_and(|function| function.name == cyrus_soup::Native::NullFunction
+                    && function.param_count == 0),
             "world {}: null function metadata absent",
             self.world
         );

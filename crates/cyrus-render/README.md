@@ -8,7 +8,7 @@ The game camera keeps the original horizontal field of view when its viewport
 resizes. **Verified:** preservation's [Glide projection](https://github.com/michidk/redguard-preservation/blob/6520206/docs/engine/projection.md)
 defines its scale. The original follow camera is now the default game view; matched-view pixel
 parity remains unverified.
-The follow camera lives in `cyrus-game` (`script::camera`, driven per frame by
+The follow camera lives in `cyrus-script` (`script::camera`, driven per frame by
 `CameraDrive`) and is enabled by default, so the view camera follows the game logic instead of the
 player model origin. **Verified:** for one START
 player pose the original's debug overlay showed the camera at (32481, -330, 33642)
@@ -435,7 +435,7 @@ or activation timers. Missing inputs retain pending text without displaying it;
 stale world inputs are ignored. Control `hud.prompt` reports the last drawn text,
 while script inspection reports pending text and ownership. Lockout retains 16 bits.
 Re-export HUD caches for the installed RTX label catalog, including text-only entries.
-Automatic actor eligibility is owned by `cyrus-game`'s ordinary dispatcher rather
+Automatic actor eligibility is owned by `cyrus-script`'s ordinary dispatcher rather
 than this render crate. Production interaction scheduling and matched presentation
 parity remain outside this crate's coverage.
 

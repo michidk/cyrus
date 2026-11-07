@@ -208,7 +208,7 @@ impl Plugin for SessionBoundaryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionBoundary>()
             .init_resource::<crate::SessionSourceCatalog>()
-            .add_systems(Last, execute.after(cyrus_game::script::WorldLoopExit));
+            .add_systems(Last, execute.after(cyrus_script::script::WorldLoopExit));
     }
 }
 

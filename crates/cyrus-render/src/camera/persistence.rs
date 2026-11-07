@@ -106,7 +106,7 @@ impl CameraSnapshot {
             version: 1,
             active: world.get::<bevy::prelude::Camera>(entity).map(|camera| {
                 world
-                    .get_resource::<cyrus_game::PausedGameplay>()
+                    .get_resource::<cyrus_script::PausedGameplay>()
                     .map_or(camera.is_active, |paused| {
                         paused.active_cameras.contains(&entity)
                     })
@@ -255,8 +255,8 @@ mod tests {
             is_active: false,
             ..Default::default()
         });
-        fresh.insert_resource(cyrus_game::PausedGameplay {
-            clock: cyrus_game::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+        fresh.insert_resource(cyrus_script::PausedGameplay {
+            clock: cyrus_script::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
                 normal_frame_rate: 12,
                 min_frame_rate: 6,
                 max_frame_rate: 300,
@@ -271,7 +271,7 @@ mod tests {
             true
         );
         fresh
-            .resource_mut::<cyrus_game::PausedGameplay>()
+            .resource_mut::<cyrus_script::PausedGameplay>()
             .active_cameras
             .clear();
         assert_eq!(

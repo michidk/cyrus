@@ -17,10 +17,10 @@ mod session_selection;
 mod storage;
 
 use bevy::prelude::*;
-use cyrus_game::GamePlugin;
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
+use cyrus_script::GamePlugin;
 
 fn main() {
     #[cfg(target_arch = "wasm32")]
@@ -136,8 +136,8 @@ fn main() {
     app.add_systems(
         Update,
         bindings::load_scene_bindings
-            .after(cyrus_game::player::data::PlayerSceneLoading)
-            .before(cyrus_game::player::input::InputSample),
+            .after(cyrus_script::player::data::PlayerSceneLoading)
+            .before(cyrus_script::player::input::InputSample),
     );
     #[cfg(target_arch = "wasm32")]
     capture::register(&mut app);

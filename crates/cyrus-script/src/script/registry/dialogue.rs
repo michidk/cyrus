@@ -1,0 +1,431 @@
+//! Dialogue and combat-taunt presentation share authoritative logical actors.
+use super::{ScriptActor, ScriptActorId, ScriptWorld};
+use crate::script::AiType;
+use crate::script::CombatFlags;
+use crate::script::{DialogueEffects, DialoguePlayback};
+use anyhow::{Context, Result};
+use cyrus_assets::script::TauntType;
+use cyrus_soup::{AnimationGroup, Attribute};
+
+struct Effects<'a> {
+    generation: u64,
+    actors: &'a mut [ScriptActor],
+    playback: &'a mut dyn DialoguePlayback,
+}
+
+impl DialoguePlayback for Effects<'_> {
+    fn sample_playing(&mut self, sample: u8) -> Result<bool> {
+        self.playback.sample_playing(sample)
+    }
+    fn stop_sample(&mut self, sample: u8) -> Result<()> {
+        self.playback.stop_sample(sample)
+    }
+    fn refresh_volume(&mut self, speaker: ScriptActorId, sample: u8) -> Result<()> {
+        // A destroyed speaker has no pose to follow: its voice keeps the last volume.
+        if speaker.generation != self.generation {
+            return Ok(());
+        }
+        self.playback.refresh_volume(speaker, sample)
+    }
+    fn present_line(&mut self, index: usize, text: &str) -> Result<()> {
+        self.playback.present_line(index, text)
+    }
+}
+
+impl DialogueEffects for Effects<'_> {
+    fn inhibit_speaker(&mut self, speaker: ScriptActorId) -> Result<()> {
+        // A line outlives the world change that destroyed its speaker (the dialogue records are
+        // session state), and the speaker no longer exists to inhibit: the line only runs out.
+        if speaker.generation != self.generation {
+            return Ok(());
+        }
+        let actor = self
+            .actors
+            .get_mut(speaker.index)
+            .with_context(|| format!("dialogue speaker {} absent", speaker.index))?;
+        actor.attributes[Attribute::LockPos] = 1;
+        Ok(())
+    }
+}
+
+impl ScriptWorld {
+    /// Present an already selected taunt using the authoritative actor and
+    /// shared dialogue records. This does not admit combat or consume RNG.
+    /// The caller establishes the original animation switch/model-kind gate;
+    /// `nominal_ticks` is reused if a request immediately advances animation.
+    pub fn present_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        taunt: &cyrus_assets::script::CombatTaunt,
+        playback: &mut dyn crate::script::CombatTauntPlayback,
+        nominal_ticks: u32,
+        animation_admitted: bool,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let mut events = super::effects::ActorEventDispatch {
+            context: super::effects::ActorEventContext::capture(self, id),
+            camera: self.camera.as_mut(),
+            effects: &mut self.effects,
+        };
+        let mut emit = |actor, sound| {
+            if let crate::script::ScriptSound::Animation {
+                sound: cyrus_world::animation::AnimationSound::Event { flags },
+                ..
+            } = sound
+            {
+                return events.dispatch(flags);
+            }
+            sounds(actor, sound)
+        };
+        present_taunt(
+            &mut self.actors[index],
+            &mut self.globals,
+            self.world,
+            id,
+            position,
+            taunt,
+            playback,
+            nominal_ticks,
+            animation_admitted,
+            &mut emit,
+        )
+    }
+
+    /// Request a non-ordered combat taunt from live receiver/target state.
+    /// Reads the constructor-owned period and retained allocation index, consumes the shared RNG,
+    /// then presents synchronously through the supplied native/browser services.
+    /// Type nine sets its retained flag only after successful presentation.
+    pub fn request_timed_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        trigger: TauntType,
+        frame_value: i32,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !matches!(
+                trigger,
+                TauntType::BEGIN_COMBAT
+                    | TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ),
+            "type {trigger} requires ordered selection"
+        );
+        self.request_combat_taunt(id, trigger, frame_value, inputs, random, sounds)
+    }
+
+    /// Request ordered hurt-category selection without a clock or target-distance gate.
+    /// Empty lists and dead receivers consume no random draws or playback services.
+    pub fn request_hurt_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        self.request_combat_taunt(id, TauntType::HURT_BY_OPPONENT, 0, inputs, random, sounds)
+    }
+
+    pub(super) fn request_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        trigger: TauntType,
+        frame_value: i32,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let world = self.world;
+        let mut request = || -> Result<()> {
+            let index = self.resolve(id)?;
+            let actor = &self.actors[index];
+            let control = actor
+                .control
+                .as_ref()
+                .context("receiver control unavailable")?;
+            let combat = control
+                .combat
+                .as_ref()
+                .context("receiver combat unavailable")?;
+            if trigger == TauntType::WANT_SWITCH_IN
+                && combat.flags.contains(CombatFlags::WANT_SWITCH_IN_PRESENTED)
+            {
+                return Ok(());
+            }
+            let selected = inputs.activation.map(|input| input.player).or_else(|| {
+                self.selected_player_index().map(|index| ScriptActorId {
+                    generation: self.generation,
+                    index,
+                })
+            });
+            if selected == Some(id)
+                && self
+                    .globals
+                    .player_hit_inhibited()
+                    .context("selected-player hit inhibition unavailable")?
+                || control.ai_type == AiType::DEAD
+                || actor.combat_taunts.is_empty()
+            {
+                return Ok(());
+            }
+            if !matches!(trigger, TauntType::HURT_BY_OPPONENT | TauntType::DEATH)
+                && let Some(target) = combat.target
+            {
+                let target = self.resolve(target)?;
+                let from = self.sight_position(index)?;
+                let to = self.sight_position(target)?;
+                if cyrus_collision::distance::rounded_distance(std::array::from_fn(|axis| {
+                    to[axis].wrapping_sub(from[axis])
+                }))? >= 0x40000
+                {
+                    return Ok(());
+                }
+            }
+            if matches!(
+                trigger,
+                TauntType::UNARMED_MALE_OPPONENT | TauntType::UNARMED_FEMALE_OPPONENT
+            ) && let Some(cache_index) = combat.taunt_cache
+            {
+                let mut remembered = false;
+                inputs
+                    .combat_taunts
+                    .context("playback source unavailable")?
+                    .with_playback(&mut |playback| {
+                        remembered = playback.remembered_sample(cache_index)?.is_some();
+                        Ok(())
+                    })?;
+                if remembered {
+                    return Ok(());
+                }
+            }
+            let taunt = if matches!(
+                trigger,
+                TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ) {
+                super::select_combat_taunt(actor, trigger, random).cloned()
+            } else {
+                let chosen = super::super::combat::select_timed_combat_taunt(
+                    &actor.combat_taunts,
+                    trigger,
+                    combat.allocation_index.wrapping_add(frame_value),
+                    combat.taunt_period,
+                    &mut || random.draw(),
+                )?;
+                chosen.map(|chosen| actor.combat_taunts[chosen].clone())
+            };
+            let Some(taunt) = taunt else { return Ok(()) };
+            let animation_admitted = if taunt.animation != 0
+                && self.updates.animation_system
+                && actor.animation.is_some()
+            {
+                anyhow::ensure!(actor.model.prepared, "receiver model state unavailable");
+                actor.model.static_radius.is_none()
+            } else {
+                false
+            };
+            let ticks = inputs.nominal_ticks.context("nominal ticks unavailable")?;
+            inputs
+                .combat_taunts
+                .context("playback source unavailable")?
+                .with_playback(&mut |playback| {
+                    self.present_combat_taunt(
+                        id,
+                        &taunt,
+                        playback,
+                        ticks,
+                        animation_admitted,
+                        sounds,
+                    )
+                    .map(|_| ())
+                })?;
+            if trigger == TauntType::WANT_SWITCH_IN {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted control")
+                    .combat
+                    .as_mut()
+                    .expect("admitted combat")
+                    .flags
+                    .insert(CombatFlags::WANT_SWITCH_IN_PRESENTED);
+            }
+            Ok(())
+        };
+        request().with_context(|| {
+            let selection = if matches!(
+                trigger,
+                TauntType::HURT_BY_OPPONENT
+                    | TauntType::DEATH
+                    | TauntType::UNARMED_MALE_OPPONENT
+                    | TauntType::UNARMED_FEMALE_OPPONENT
+            ) {
+                "ordered"
+            } else {
+                "timed"
+            };
+            format!(
+                "world {world} instance {} {selection} combat taunt type {trigger}",
+                id.index
+            )
+        })
+    }
+
+    /// Snapshot active speakers for the synchronous audio adapter. Positions are
+    /// local signed Q8, matching the dialogue volume rule, after object updates.
+    /// Unavailable poses stay absent and fail only if playback requests a volume
+    /// refresh. Skip cleanup does not require a speaker pose.
+    pub fn dialogue_speaker_positions(&self) -> Result<Vec<(ScriptActorId, [i32; 3])>> {
+        let dialogue = self
+            .globals
+            .dialogue
+            .as_ref()
+            .context("dialogue records unavailable")?;
+        Ok(dialogue
+            .active_speakers()
+            .filter_map(|speaker| {
+                self.spatial(speaker)
+                    .ok()
+                    .map(|pose| (speaker, pose.local.position))
+            })
+            .collect())
+    }
+
+    /// Update dialogue with this world's retained lockout and logical speakers.
+    /// `skip_signal` is the original configured key_a input, independent of Modern
+    /// movement interpretation. Playback and presentation must be synchronous.
+    pub fn advance_dialogue(
+        &mut self,
+        nominal_ticks: u32,
+        speech_enabled: bool,
+        skip_signal: bool,
+        playback: &mut dyn DialoguePlayback,
+    ) -> Result<()> {
+        let lockout = self.globals.lockout();
+        let dialogue = self
+            .globals
+            .dialogue
+            .as_mut()
+            .context("dialogue records unavailable")?;
+        let mut effects = Effects {
+            generation: self.generation,
+            actors: &mut self.actors,
+            playback,
+        };
+        dialogue
+            .advance(
+                nominal_ticks,
+                speech_enabled,
+                skip_signal,
+                lockout,
+                &mut effects,
+            )
+            .with_context(|| format!("world {} dialogue update", self.world))
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // Shared receiver state and synchronous presentation dependencies.
+pub(super) fn present_taunt(
+    actor: &mut ScriptActor,
+    globals: &mut crate::script::GameplayGlobals,
+    world: u32,
+    id: ScriptActorId,
+    position: Option<[i32; 3]>,
+    taunt: &cyrus_assets::script::CombatTaunt,
+    playback: &mut dyn crate::script::CombatTauntPlayback,
+    nominal_ticks: u32,
+    animation_admitted: bool,
+    sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+) -> Result<i32> {
+    let index = id.index;
+    let result = (|| {
+        let combat = actor
+            .control
+            .as_mut()
+            .and_then(|control| control.combat.as_mut())
+            .with_context(|| {
+                format!(
+                    "world {} instance {index}: combat taunt state unavailable",
+                    world
+                )
+            })?;
+        let dialogue = globals
+            .dialogue
+            .as_mut()
+            .context("combat taunt dialogue records unavailable")?;
+        let settings = dialogue.settings().clone();
+        if taunt.label != [0; 4] {
+            let group = if animation_admitted && taunt.animation != 0 {
+                let group = u16::try_from(taunt.animation)
+                    .context("combat taunt animation outside unsigned range")?;
+                anyhow::ensure!(
+                    group <= i16::MAX as u16,
+                    "combat taunt signed animation group unsupported"
+                );
+                actor
+                    .animation
+                    .as_ref()
+                    .context("combat taunt animation not prepared")?;
+                Some(AnimationGroup::from_index(group))
+            } else {
+                None
+            };
+            let text_width = settings.print_text.then_some(settings.max_text_width);
+            playback.prepare(taunt.label, settings.use_speech, text_width)?;
+            playback.release(&mut combat.taunt_cache)?;
+            if settings.print_text && dialogue.line_active(combat.taunt_dialogue) {
+                dialogue.clear_line(combat.taunt_dialogue);
+            }
+            let cache = playback.load(taunt.label)?;
+            combat.taunt_cache = Some(cache);
+            let line = playback.present(cache, settings.use_speech, text_width)?;
+            if settings.print_text {
+                anyhow::ensure!(
+                    line.sample.is_none_or(|sample| sample < 16),
+                    "combat taunt source returned invalid sample slot"
+                );
+                combat.taunt_dialogue =
+                    dialogue.begin_line(id, line.text, line.sample, line.lifetime);
+            }
+            if let Some(group) = group {
+                let surface = actor.surface;
+                let animation = actor.animation.as_mut().expect("prepared taunt animation");
+                let frame = animation.playback.request_with_sounds(
+                    group,
+                    0,
+                    nominal_ticks,
+                    &mut |sound| {
+                        sounds(
+                            id,
+                            crate::script::ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    },
+                )?;
+                animation.frame = frame.or(animation.frame);
+            }
+        }
+        if !settings.print_text {
+            return Ok(0);
+        }
+        combat.taunt_active = i32::from(dialogue.line_active(combat.taunt_dialogue));
+        Ok(combat.taunt_active)
+    })();
+    result.with_context(|| {
+        format!(
+            "world {} instance {} combat taunt presentation",
+            world, id.index
+        )
+    })
+}

@@ -16,11 +16,11 @@ struct SoundFrame<'w, 's> {
         's,
         (
             &'static GlobalTransform,
-            Has<cyrus_game::player::Player>,
+            Has<cyrus_script::player::Player>,
             Has<cyrus_world::sound::PlayerAnimationSource>,
         ),
     >,
-    bindings: Query<'w, 's, (Entity, &'static cyrus_game::script::ScriptBinding)>,
+    bindings: Query<'w, 's, (Entity, &'static cyrus_script::script::ScriptBinding)>,
     alive: Query<'w, 's, (), With<PlayingSound>>,
     sources: Option<Res<'w, Assets<AudioSource>>>,
     panned: Option<ResMut<'w, Assets<Panned>>>,
@@ -416,7 +416,7 @@ struct ScriptGeneration {
 fn play_cues(
     mut frame: SoundFrame,
     mut cues: MessageReader<SoundCue>,
-    script_actors: Option<Res<cyrus_game::script::ScriptActors>>,
+    script_actors: Option<Res<cyrus_script::script::ScriptActors>>,
     mut previous_generation: Local<ScriptGeneration>,
 ) {
     let ownership = script_actors
@@ -455,18 +455,18 @@ pub(super) fn play_audio(world: &mut World) {
     }
 }
 
-pub(super) fn execute_ordinary(world: &mut World, phase: cyrus_game::script::OrdinaryPhase) {
+pub(super) fn execute_ordinary(world: &mut World, phase: cyrus_script::script::OrdinaryPhase) {
     play_audio(world);
     if let Err(error) = world.run_system_cached_with(scoped_ordinary, phase) {
         world
-            .resource_mut::<cyrus_game::script::ScriptActors>()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
             .report_runtime_error(format!("ordinary audio host: {error}"));
     }
-    if phase == cyrus_game::script::OrdinaryPhase::Simulation
+    if phase == cyrus_script::script::OrdinaryPhase::Simulation
         && let Err(error) = world.run_system_cached(finish_ordinary)
     {
         world
-            .resource_mut::<cyrus_game::script::ScriptActors>()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
             .report_runtime_error(format!("ordinary dialogue host: {error}"));
     }
 }
@@ -543,7 +543,7 @@ impl ScriptSounds<'_, '_> {
     /// stops it as soon as the logical torch counter reaches zero.
     pub fn update_torch(
         &mut self,
-        world: &cyrus_game::script::ScriptWorld,
+        world: &cyrus_script::script::ScriptWorld,
         channel: &mut Option<u8>,
     ) -> anyhow::Result<()> {
         let Some((actor, burning, position)) = world.selected_player_torch_sound()? else {
@@ -608,12 +608,12 @@ impl ScriptSounds<'_, '_> {
     /// in `maintenance`; no reset flag may be supplied to scripts after an error.
     pub fn maintain_sound(
         &mut self,
-        maintenance: &mut cyrus_game::script::SoundMaintenance,
+        maintenance: &mut cyrus_script::script::SoundMaintenance,
         nominal_ticks: u32,
-        world: &mut cyrus_game::script::ScriptWorld,
+        world: &mut cyrus_script::script::ScriptWorld,
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
     ) -> anyhow::Result<bool> {
-        use cyrus_game::script::SoundResetStage;
+        use cyrus_script::script::SoundResetStage;
         maintenance.advance(nominal_ticks, &mut |stage| {
             match stage {
                 SoundResetStage::ReleaseRtx => cache.reset(self)?,
@@ -637,11 +637,11 @@ impl ScriptSounds<'_, '_> {
 
     fn restore_service(
         &mut self,
-        stage: cyrus_game::script::SoundResetStage,
-        globals: &mut cyrus_game::script::GameplayGlobals,
+        stage: cyrus_script::script::SoundResetStage,
+        globals: &mut cyrus_script::script::GameplayGlobals,
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
     ) -> anyhow::Result<()> {
-        use cyrus_game::script::SoundResetStage;
+        use cyrus_script::script::SoundResetStage;
         match stage {
             SoundResetStage::ReleaseRtx => cache.reset(self)?,
             SoundResetStage::ClearDialogue => {
@@ -755,7 +755,7 @@ impl ScriptSounds<'_, '_> {
         read: impl FnOnce([u8; 4]) -> anyhow::Result<Poll<super::dialogue::DialogueClip>>,
         hud: &cyrus_assets::hud::HudAsset,
         text_width: u32,
-    ) -> anyhow::Result<Poll<cyrus_game::script::DialogueLine>> {
+    ) -> anyhow::Result<Poll<cyrus_script::script::DialogueLine>> {
         let width = i32::try_from(text_width)
             .map_err(|_| anyhow::anyhow!("RTX text width exceeds signed range"))?;
         anyhow::ensure!(
@@ -792,7 +792,7 @@ impl ScriptSounds<'_, '_> {
         if clip.entry.voice.is_some() {
             cache.remember_sample(index, sample)?;
         }
-        Ok(Poll::Ready(cyrus_game::script::DialogueLine {
+        Ok(Poll::Ready(cyrus_script::script::DialogueLine {
             text,
             sample,
             lifetime,
@@ -807,7 +807,7 @@ impl ScriptSounds<'_, '_> {
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
         clip: &super::dialogue::DialogueClip,
         hud: Option<&cyrus_assets::hud::HudAsset>,
-        update: impl FnOnce(&mut dyn cyrus_game::script::CombatTauntPlayback) -> R,
+        update: impl FnOnce(&mut dyn cyrus_script::script::CombatTauntPlayback) -> R,
     ) -> R {
         update(&mut PreparedCombatTaunt {
             sounds: self,
@@ -824,7 +824,7 @@ impl ScriptSounds<'_, '_> {
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
         clips: &[super::dialogue::DialogueClip],
         hud: Option<&cyrus_assets::hud::HudAsset>,
-        update: impl FnOnce(&dyn cyrus_game::script::CombatTauntSource) -> R,
+        update: impl FnOnce(&dyn cyrus_script::script::CombatTauntSource) -> R,
     ) -> R {
         let source = PreparedCombatTauntSource {
             state: RefCell::new((self, cache)),
@@ -842,7 +842,7 @@ impl ScriptSounds<'_, '_> {
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
         hud: &cyrus_assets::hud::HudAsset,
         read: &mut dyn FnMut([u8; 4]) -> anyhow::Result<Poll<super::dialogue::DialogueClip>>,
-        update: impl FnOnce(&dyn cyrus_game::script::DialogueSource) -> R,
+        update: impl FnOnce(&dyn cyrus_script::script::DialogueSource) -> R,
     ) -> R {
         let source = CachedDialogueSource {
             state: RefCell::new((self, cache, read)),
@@ -859,8 +859,8 @@ impl ScriptSounds<'_, '_> {
     #[allow(clippy::too_many_arguments)]
     pub fn run_ordinary_with_dialogue(
         &mut self,
-        context: cyrus_game::script::OrdinaryContext,
-        phase: cyrus_game::script::OrdinaryPhase,
+        context: cyrus_script::script::OrdinaryContext,
+        phase: cyrus_script::script::OrdinaryPhase,
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
         hud: &cyrus_assets::hud::HudAsset,
         read: &mut dyn FnMut([u8; 4]) -> anyhow::Result<Poll<super::dialogue::DialogueClip>>,
@@ -877,7 +877,7 @@ impl ScriptSounds<'_, '_> {
             source: &source,
             generation,
         };
-        cyrus_game::script::run_ordinary(
+        cyrus_script::script::run_ordinary(
             context,
             phase,
             Some(&ambient),
@@ -902,8 +902,8 @@ impl ScriptSounds<'_, '_> {
     /// presentation observes its selected record after this callback returns.
     pub fn with_dialogue_playback<R>(
         &mut self,
-        position: &mut dyn FnMut(cyrus_game::script::ScriptActorId) -> anyhow::Result<[i32; 3]>,
-        update: impl FnOnce(&mut dyn cyrus_game::script::DialoguePlayback) -> R,
+        position: &mut dyn FnMut(cyrus_script::script::ScriptActorId) -> anyhow::Result<[i32; 3]>,
+        update: impl FnOnce(&mut dyn cyrus_script::script::DialoguePlayback) -> R,
     ) -> R {
         update(&mut SharedDialoguePlayback {
             sounds: self,
@@ -992,10 +992,10 @@ impl ScriptSounds<'_, '_> {
 
 struct SharedDialoguePlayback<'a, 'w, 's> {
     sounds: &'a mut ScriptSounds<'w, 's>,
-    position: &'a mut dyn FnMut(cyrus_game::script::ScriptActorId) -> anyhow::Result<[i32; 3]>,
+    position: &'a mut dyn FnMut(cyrus_script::script::ScriptActorId) -> anyhow::Result<[i32; 3]>,
 }
 
-impl cyrus_game::script::DialoguePlayback for SharedDialoguePlayback<'_, '_, '_> {
+impl cyrus_script::script::DialoguePlayback for SharedDialoguePlayback<'_, '_, '_> {
     fn sample_playing(&mut self, sample: u8) -> anyhow::Result<bool> {
         cyrus_assets::sound::DialogueSamples::playing(self.sounds, sample)
     }
@@ -1004,7 +1004,7 @@ impl cyrus_game::script::DialoguePlayback for SharedDialoguePlayback<'_, '_, '_>
     }
     fn refresh_volume(
         &mut self,
-        speaker: cyrus_game::script::ScriptActorId,
+        speaker: cyrus_script::script::ScriptActorId,
         sample: u8,
     ) -> anyhow::Result<()> {
         let position = (self.position)(speaker)?;
@@ -1024,7 +1024,7 @@ struct PreparedCombatTaunt<'a, 'w, 's> {
     hud: Option<&'a cyrus_assets::hud::HudAsset>,
 }
 
-impl cyrus_game::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_> {
+impl cyrus_script::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_> {
     fn remembered_sample(&self, cache_index: usize) -> anyhow::Result<Option<u8>> {
         Ok(self.cache.sample(cache_index))
     }
@@ -1065,7 +1065,7 @@ impl cyrus_game::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_>
         cache_index: usize,
         speech: bool,
         text_width: Option<u32>,
-    ) -> anyhow::Result<cyrus_game::script::DialogueLine> {
+    ) -> anyhow::Result<cyrus_script::script::DialogueLine> {
         let clip = anyhow::Context::context(
             self.cache.payload(cache_index),
             "combat taunt cache payload absent",
@@ -1081,7 +1081,7 @@ impl cyrus_game::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_>
         if clip.entry.voice.is_some() {
             self.cache.remember_sample(cache_index, start.sample)?;
         }
-        Ok(cyrus_game::script::DialogueLine {
+        Ok(cyrus_script::script::DialogueLine {
             text: text_width
                 .map(|width| {
                     self.hud
@@ -1109,11 +1109,11 @@ impl std::fmt::Debug for PreparedCombatTauntSource<'_, '_, '_> {
         f.write_str("PreparedCombatTauntSource")
     }
 }
-impl cyrus_game::script::CombatTauntSource for PreparedCombatTauntSource<'_, '_, '_> {
+impl cyrus_script::script::CombatTauntSource for PreparedCombatTauntSource<'_, '_, '_> {
     fn with_playback(
         &self,
         update: &mut dyn FnMut(
-            &mut dyn cyrus_game::script::CombatTauntPlayback,
+            &mut dyn cyrus_script::script::CombatTauntPlayback,
         ) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         update(&mut CatalogueCombatTaunt {
@@ -1146,7 +1146,7 @@ impl CatalogueCombatTaunt<'_, '_, '_, '_> {
         })
     }
 }
-impl cyrus_game::script::CombatTauntPlayback for CatalogueCombatTaunt<'_, '_, '_, '_> {
+impl cyrus_script::script::CombatTauntPlayback for CatalogueCombatTaunt<'_, '_, '_, '_> {
     fn remembered_sample(&self, cache_index: usize) -> anyhow::Result<Option<u8>> {
         let state = self
             .source
@@ -1178,7 +1178,7 @@ impl cyrus_game::script::CombatTauntPlayback for CatalogueCombatTaunt<'_, '_, '_
         index: usize,
         speech: bool,
         width: Option<u32>,
-    ) -> anyhow::Result<cyrus_game::script::DialogueLine> {
+    ) -> anyhow::Result<cyrus_script::script::DialogueLine> {
         self.with_prepared(|playback| playback.present(index, speech, width))
     }
 }
@@ -1204,13 +1204,13 @@ impl std::fmt::Debug for CachedDialogueSource<'_, '_, '_> {
     }
 }
 
-impl cyrus_game::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
+impl cyrus_script::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
     fn player_line(
         &self,
         label: [u8; 4],
-        _: cyrus_game::script::ScriptActorId,
+        _: cyrus_script::script::ScriptActorId,
         text_width: u32,
-    ) -> anyhow::Result<Poll<Option<cyrus_game::script::DialogueLine>>> {
+    ) -> anyhow::Result<Poll<Option<cyrus_script::script::DialogueLine>>> {
         let mut state = self.state.borrow_mut();
         let (sounds, cache, read) = &mut *state;
         sounds
@@ -1250,11 +1250,11 @@ impl cyrus_game::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
     }
 }
 
-impl cyrus_game::script::CombatTauntSource for CachedDialogueSource<'_, '_, '_> {
+impl cyrus_script::script::CombatTauntSource for CachedDialogueSource<'_, '_, '_> {
     fn with_playback(
         &self,
         update: &mut dyn FnMut(
-            &mut dyn cyrus_game::script::CombatTauntPlayback,
+            &mut dyn cyrus_script::script::CombatTauntPlayback,
         ) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         update(&mut CachedCombatTaunt {
@@ -1287,7 +1287,7 @@ impl CachedCombatTaunt<'_, '_, '_, '_> {
         })
     }
 }
-impl cyrus_game::script::CombatTauntPlayback for CachedCombatTaunt<'_, '_, '_, '_> {
+impl cyrus_script::script::CombatTauntPlayback for CachedCombatTaunt<'_, '_, '_, '_> {
     fn remembered_sample(&self, cache_index: usize) -> anyhow::Result<Option<u8>> {
         let state = self
             .source
@@ -1319,7 +1319,7 @@ impl cyrus_game::script::CombatTauntPlayback for CachedCombatTaunt<'_, '_, '_, '
         index: usize,
         speech: bool,
         width: Option<u32>,
-    ) -> anyhow::Result<cyrus_game::script::DialogueLine> {
+    ) -> anyhow::Result<cyrus_script::script::DialogueLine> {
         self.with_prepared(|playback| playback.present(index, speech, width))
     }
 }
@@ -1374,14 +1374,14 @@ struct DialogueAssets<'w> {
 }
 
 fn scoped_ordinary(
-    In(phase): In<cyrus_game::script::OrdinaryPhase>,
-    mut context: cyrus_game::script::OrdinaryContext,
+    In(phase): In<cyrus_script::script::OrdinaryPhase>,
+    mut context: cyrus_script::script::OrdinaryContext,
     mut sounds: ScriptSounds,
     mut dialogue: DialogueAssets,
 ) {
     dialogue.runtime.ordinary_completed = false;
     if !context.is_running()
-        || (phase == cyrus_game::script::OrdinaryPhase::Simulation && !context.models_prepared())
+        || (phase == cyrus_script::script::OrdinaryPhase::Simulation && !context.models_prepared())
     {
         return;
     }
@@ -1478,7 +1478,7 @@ fn scoped_ordinary(
         if !ready {
             return;
         }
-        if phase == cyrus_game::script::OrdinaryPhase::ModelPresentation {
+        if phase == cyrus_script::script::OrdinaryPhase::ModelPresentation {
             let reset = context.with_world_services(|world, ticks| {
                 world.with_sound_maintenance(|world, maintenance| {
                     sounds.maintain_sound(maintenance, ticks, world, cache)
@@ -1496,7 +1496,7 @@ fn scoped_ordinary(
             };
             *sound_reset = Some(reset);
         }
-        if phase == cyrus_game::script::OrdinaryPhase::Simulation {
+        if phase == cyrus_script::script::OrdinaryPhase::Simulation {
             let result =
                 context.with_world_services(|world, _| sounds.update_torch(world, torch_channel));
             if let Some(Err(error)) = result {
@@ -1504,7 +1504,7 @@ fn scoped_ordinary(
                 return;
             }
         }
-        *ordinary_completed = phase == cyrus_game::script::OrdinaryPhase::Simulation;
+        *ordinary_completed = phase == cyrus_script::script::OrdinaryPhase::Simulation;
         sounds.run_ordinary_with_dialogue(
             context,
             phase,
@@ -1518,16 +1518,24 @@ fn scoped_ordinary(
         // Reset ownership remains with game maintenance; absent ownership is not
         // replaced by an assumed false flag.
         sounds.with_driver(generation, |driver, emit| {
-            cyrus_game::script::run_ordinary(context, phase, Some(driver), None, None, None, emit);
+            cyrus_script::script::run_ordinary(
+                context,
+                phase,
+                Some(driver),
+                None,
+                None,
+                None,
+                emit,
+            );
         });
     }
 }
 
 fn finish_ordinary(
-    mut context: cyrus_game::script::OrdinaryContext,
+    mut context: cyrus_script::script::OrdinaryContext,
     mut sounds: ScriptSounds,
     mut dialogue: ResMut<RuntimeDialogue>,
-    skip: Option<Res<cyrus_game::player::input::DialogueSkip>>,
+    skip: Option<Res<cyrus_script::player::input::DialogueSkip>>,
 ) {
     if !std::mem::take(&mut dialogue.ordinary_completed) {
         return;
@@ -1589,7 +1597,7 @@ mod dialogue_tests {
     use super::*;
     use cyrus_assets::sound::DialogueSamples;
 
-    fn maintenance_world(navigation: bool) -> cyrus_game::script::ScriptWorld {
+    fn maintenance_world(navigation: bool) -> cyrus_script::script::ScriptWorld {
         use cyrus_assets::{animation::Animations, script::Scripts};
         let mut scripts: Scripts = serde_json::from_value(serde_json::json!({
             "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"world":7,"content_id":"","actor_pool_capacity":32,
@@ -1624,7 +1632,7 @@ mod dialogue_tests {
             })
             .collect();
         scripts.content_id = scripts.content_identity().unwrap();
-        let mut world = cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap();
+        let mut world = cyrus_script::script::ScriptWorld::prepare(&scripts, 1).unwrap();
         if navigation {
             world
                 .prepare_navigation(&Animations {
@@ -1676,7 +1684,7 @@ mod dialogue_tests {
                 })
             })
             .unwrap();
-        let mut timer = cyrus_game::script::SoundMaintenance::default();
+        let mut timer = cyrus_script::script::SoundMaintenance::default();
         let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
         {
             let mut sounds = state.get_mut(&mut audio).unwrap();
@@ -1728,7 +1736,7 @@ mod dialogue_tests {
                 })
             })
             .unwrap();
-        let mut timer = cyrus_game::script::SoundMaintenance::default();
+        let mut timer = cyrus_script::script::SoundMaintenance::default();
         let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
         let mut sounds = state.get_mut(&mut audio).unwrap();
         timer
@@ -1759,7 +1767,7 @@ mod dialogue_tests {
         channels.samples.start(0, None, None).unwrap().unwrap();
         audio.insert_resource(channels);
         let mut cache = cyrus_assets::sound::DialogueCache::default();
-        let mut timer = cyrus_game::script::SoundMaintenance::default();
+        let mut timer = cyrus_script::script::SoundMaintenance::default();
         let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
         let mut sounds = state.get_mut(&mut audio).unwrap();
         let error = sounds
@@ -1814,7 +1822,7 @@ mod dialogue_tests {
         assert_eq!(world.resource::<Channels>().samples.status(Some(0)), 2);
     }
     fn dialogue_playback(mut sounds: ScriptSounds) {
-        let speaker = cyrus_game::script::ScriptActorId {
+        let speaker = cyrus_script::script::ScriptActorId {
             generation: 7,
             index: 2,
         };
@@ -1837,7 +1845,7 @@ mod dialogue_tests {
                 assert!(
                     playback
                         .refresh_volume(
-                            cyrus_game::script::ScriptActorId {
+                            cyrus_script::script::ScriptActorId {
                                 generation: 6,
                                 index: 2,
                             },
@@ -2063,7 +2071,7 @@ mod dialogue_tests {
         let hud = dialogue_test_hud();
         let mut cache = cyrus_assets::sound::DialogueCache::default();
         sounds.with_dialogue_source(&mut cache, &hud, &mut |_| Ok(Poll::Pending), |source| {
-            let player = cyrus_game::script::ScriptActorId {
+            let player = cyrus_script::script::ScriptActorId {
                 generation: 2,
                 index: 8,
             };
@@ -2088,7 +2096,7 @@ mod dialogue_tests {
             Ok(Poll::Ready(clip.0.clone()))
         };
         sounds.with_dialogue_source(&mut cache, &hud, &mut read, |source| {
-            let player = cyrus_game::script::ScriptActorId {
+            let player = cyrus_script::script::ScriptActorId {
                 generation: 2,
                 index: 8,
             };
@@ -2234,7 +2242,7 @@ mod dialogue_tests {
     }
 
     fn shared_taunt_dialogue(mut sounds: ScriptSounds, clip: Res<LoadedDialogue>) {
-        use cyrus_game::script::{CombatTauntSource, DialogueSource, ScriptActorId};
+        use cyrus_script::script::{CombatTauntSource, DialogueSource, ScriptActorId};
         let hud = dialogue_test_hud();
         let mut cache = cyrus_assets::sound::DialogueCache::default();
         let mut read = |_| anyhow::bail!("prepared dialogue must not request another load");
@@ -2392,10 +2400,10 @@ impl RuntimeDialogue {
     /// Follows preservation's engine/sound.md saved-world restoration contract.
     pub fn reset_saved_world(
         &mut self,
-        world: &mut cyrus_game::script::ScriptWorld,
+        world: &mut cyrus_script::script::ScriptWorld,
         samples: &mut super::persistence::SamplePlaybackCandidate,
     ) -> anyhow::Result<()> {
-        use cyrus_game::script::SoundResetStage;
+        use cyrus_script::script::SoundResetStage;
         world.with_sound_maintenance(|world, maintenance| {
             maintenance.restore_world(
                 &mut |stage| {

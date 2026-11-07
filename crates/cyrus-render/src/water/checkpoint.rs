@@ -610,12 +610,12 @@ mod tests {
         let owner = app.world().resource::<WaterPlayback>();
         let source = app.world().resource::<EnvironmentRequest>().0.id();
         let view = owner.camera_terrain(source, environment(app)).unwrap();
-        cyrus_game::script::camera::sample_terrain([512, 512], &view).unwrap()
+        cyrus_script::script::camera::sample_terrain([512, 512], &view).unwrap()
     }
 
     #[test]
     fn camera_reads_engine_height_without_inverse_mesh_scaling() -> Result<()> {
-        use cyrus_game::script::camera::CameraTerrainHeights;
+        use cyrus_script::script::camera::CameraTerrainHeights;
         for mode in [Mode::Faithful, Mode::Modern] {
             let (mut app, _, _) = fixture(mode, false);
             let source = app.world().resource::<EnvironmentRequest>().0.clone();

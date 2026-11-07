@@ -234,13 +234,13 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
     data.validate().unwrap();
     assert!(data.sections.contains_key("RASC"));
-    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "FLAG2").unwrap();
+    let mut script = cyrus_script::script::AnimationScript::from_asset(&data, "FLAG2").unwrap();
     let (mut actor, _) =
         cyrus_world::animation::ActorAnimation::initialize(&data, "FLAG2", 1, &mut |_| Ok(()))
             .unwrap();
     let scripts: cyrus_assets::script::Scripts =
         serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
-    let mut world = cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap();
+    let mut world = cyrus_script::script::ScriptWorld::prepare(&scripts, 1).unwrap();
     let index = world
         .actors()
         .iter()
@@ -250,8 +250,8 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     world
         .initialize_map_animation(id, &data, 1, &mut |_, _| Ok(()))
         .unwrap();
-    let advance = |world: &mut cyrus_game::script::ScriptWorld, ticks| {
-        use cyrus_game::script::{ScriptStage, Thread};
+    let advance = |world: &mut cyrus_script::script::ScriptWorld, ticks| {
+        use cyrus_script::script::{ScriptStage, Thread};
         for stage in [
             ScriptStage::Animation,
             ScriptStage::Entry,
@@ -262,7 +262,7 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
                 .advance(
                     id,
                     stage,
-                    cyrus_game::script::ScriptInputs {
+                    cyrus_script::script::ScriptInputs {
                         nominal_ticks: Some(ticks),
                         frame_scale: Some(256),
                         ..Default::default()
@@ -286,7 +286,7 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
             world.actors()[index]
                 .runtime()
                 .unwrap()
-                .program_counter(cyrus_game::script::Thread::Main),
+                .program_counter(cyrus_script::script::Thread::Main),
             Some(script.program_counter())
         );
         if script.program_counter() != before {

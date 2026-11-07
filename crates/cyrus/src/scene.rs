@@ -124,7 +124,7 @@ fn finish(
     pending: Option<Res<Preparation>>,
     request: Res<SceneRequest>,
     assets: Res<AssetServer>,
-    script_hud: Option<Res<cyrus_game::script::ScriptHud>>,
+    script_hud: Option<Res<cyrus_script::script::ScriptHud>>,
     preferences: Option<Res<cyrus_game::preferences::Preferences>>,
 ) {
     let Some(pending) = pending else {

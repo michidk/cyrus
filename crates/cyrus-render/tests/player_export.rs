@@ -1,7 +1,7 @@
 //! Installed player data, frame sources and the original walking release sequence.
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::surface::Surface;
-use cyrus_game::player::data::PlayerScene;
+use cyrus_script::player::data::PlayerScene;
 use cyrus_soup::AnimationGroup;
 
 #[test]
@@ -30,11 +30,11 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     .unwrap();
     assert_eq!(scene.control_codes, Some(keys.control_codes()));
     assert_eq!(scene.settings.standing_height, -2);
-    let mut pose = cyrus_game::player::placement::PlayerPose {
+    let mut pose = cyrus_script::player::placement::PlayerPose {
         position: [10_448_896, -178_944, 10_502_144],
         heading: 0,
     };
-    cyrus_game::player::placement::settle_static(&scene, &mut pose).unwrap();
+    cyrus_script::player::placement::settle_static(&scene, &mut pose).unwrap();
     assert_eq!(pose.position, [10_448_896, -190_464, 10_502_144]);
     assert_eq!(pose.heading, 0);
     assert_eq!(scene.collision.placements.len(), 1691);
@@ -267,7 +267,7 @@ fn verify_exported_models(
 
 fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::Animations) {
     use cyrus_collision::ground::SupportHistory;
-    use cyrus_game::player::{
+    use cyrus_script::player::{
         grounded::{ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
         motion::upright_rotation,
         walk::WalkingStartup,
@@ -328,7 +328,7 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
         (AnimationGroup::WALK, "CYRSA001", 31, 0, true),
         (AnimationGroup::PANIC, "CYRSA004", 1, 0, false),
     ] {
-        reference = cyrus_game::player::grounded::advance_animation(
+        reference = cyrus_script::player::grounded::advance_animation(
             scene,
             input.motion.nominal_ticks,
             &mut history,

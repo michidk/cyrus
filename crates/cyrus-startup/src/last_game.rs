@@ -5,7 +5,7 @@ use bevy::{
     render::view::window::screenshot::{Screenshot, ScreenshotCaptured},
 };
 use cyrus_assets::menu::MenuAsset;
-use cyrus_game::script::{
+use cyrus_script::script::{
     DeathBookEntry, DeathDispatch, LastGameEntry, LastSaveSelection, ScriptActors,
 };
 use serde::Serialize;
@@ -171,7 +171,7 @@ type Input<'w> = (
     Res<'w, Time<Real>>,
     Res<'w, ButtonInput<KeyCode>>,
     Option<Res<'w, ButtonInput<bevy::input::mouse::MouseButton>>>,
-    Res<'w, cyrus_game::player::input::PlayerBindings>,
+    Res<'w, cyrus_script::player::input::PlayerBindings>,
 );
 type Runtime<'w, 's> = (
     Commands<'w, 's>,
@@ -220,7 +220,7 @@ pub(super) fn drive(
             .0
             .as_ref()
             .map_err(|error| anyhow::anyhow!("{error}"))?;
-        let sample = cyrus_game::clock::bios_tick(input.0.elapsed());
+        let sample = cyrus_script::clock::bios_tick(input.0.elapsed());
         let core = presentation.core.get_or_insert_with(|| {
             LastGameConfirmation::displayed(presentation.retained_context, sample)
         });
@@ -511,10 +511,12 @@ mod tests {
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<AppExit>()
         .add_message::<cyrus_world::sound::SoundCue>()
-        .insert_resource(cyrus_game::clock::SimulationClock::new(book.clock).unwrap())
+        .insert_resource(cyrus_script::clock::SimulationClock::new(book.clock).unwrap())
         .insert_resource(
-            cyrus_game::player::input::PlayerBindings::from_codes([17, 31, 30, 32, 42, 57, 38, 18])
-                .unwrap(),
+            cyrus_script::player::input::PlayerBindings::from_codes([
+                17, 31, 30, 32, 42, 57, 38, 18,
+            ])
+            .unwrap(),
         )
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(60),

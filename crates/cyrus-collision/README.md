@@ -26,14 +26,14 @@ local-to-world convention documented in preservation
 [RGM MPSO](https://michidk.github.io/redguard-preservation/formats/RGM.html#mpso-static-objects).
 `TerrainGround`, `TerrainMaterial`, probes and
 support history retain their existing units, traversal order and contextual errors.
-Player admission, movement and wall response remain in `cyrus-game`; original-file
+Player admission, movement and wall response remain in `cyrus-script`; original-file
 parsing and serialized collision export remain in preservation and `cyrus-assets`.
 
 Native and browser gameplay use this same core. The crate exposes no Bevy plugin
 and chooses no simulation clock. A crate extraction does not change cache schemas.
 
 Run `cargo test -p cyrus-collision` for the standalone geometry, support, material
-and static-world contracts. Gameplay composition is covered by `cyrus-game` tests.
+and static-world contracts. Gameplay composition is covered by `cyrus-script` tests.
 The isolated consumer in `dev/scripts/check-core-boundaries.sh` checks that runtime
 collision does not acquire presentation, native parser or transport dependencies.
 

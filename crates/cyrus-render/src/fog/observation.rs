@@ -94,7 +94,7 @@ impl BoundSceneLightImage {
             .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
             .context("bound light observation: prepared world absent")?;
         let current = world
-            .get_resource::<cyrus_game::script::ScriptActors>()
+            .get_resource::<cyrus_script::script::ScriptActors>()
             .and_then(|actors| actors.current.as_ref())
             .context("bound light observation: logical world absent")?;
         ensure!(

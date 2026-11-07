@@ -483,8 +483,8 @@ impl ChannelOwnershipSnapshot {
             match old {
                 SavedOwner::Entity(old) => Ok(Owner::Entity(bindings.entity(old)?)),
                 SavedOwner::Script { generation, index } => {
-                    let new =
-                        bindings.actor(cyrus_game::script::ScriptActorId { generation, index })?;
+                    let new = bindings
+                        .actor(cyrus_script::script::ScriptActorId { generation, index })?;
                     Ok(Owner::Script {
                         generation: new.generation,
                         index: new.index,

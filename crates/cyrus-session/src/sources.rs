@@ -6,7 +6,7 @@ use bevy::{
     prelude::{AssetServer, Assets, Handle, Resource, World},
 };
 use cyrus_assets::{animation::Animations, environment::Environment, script::Scripts};
-use cyrus_game::{player::data::PlayerScene, script::WorldSnapshotSources};
+use cyrus_script::{player::data::PlayerScene, script::WorldSnapshotSources};
 use cyrus_world::lifecycle::PreparedWorld;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -61,7 +61,7 @@ impl SessionSourceCatalog {
 
     pub fn for_capture(&self, world: &World) -> Result<SessionWorldAssets> {
         let actors = world
-            .get_resource::<cyrus_game::script::ScriptActors>()
+            .get_resource::<cyrus_script::script::ScriptActors>()
             .context("session capture registry absent")?;
         let current = actors
             .current
@@ -103,7 +103,7 @@ impl SessionSourceCatalog {
 
 pub(crate) fn retain_settled_sources(world: &mut World) {
     let Some(current) = world
-        .get_resource::<cyrus_game::script::ScriptActors>()
+        .get_resource::<cyrus_script::script::ScriptActors>()
         .and_then(|actors| actors.current.as_ref())
         .map(|current| current.world)
     else {
@@ -134,7 +134,8 @@ pub(crate) fn retain_settled_sources(world: &mut World) {
     if scripts.world != current || prepared.world.is_some_and(|id| id != current) {
         return;
     }
-    let Some(player) = world.get_resource::<cyrus_game::player::data::PlayerSceneRequest>() else {
+    let Some(player) = world.get_resource::<cyrus_script::player::data::PlayerSceneRequest>()
+    else {
         return;
     };
     let Some(decoded) = world
@@ -235,7 +236,7 @@ impl SessionWorldAssets {
 
     /// Prepare capture sources without requiring an existing saved document.
     pub fn for_capture(
-        actors: &cyrus_game::script::ScriptActors,
+        actors: &cyrus_script::script::ScriptActors,
         prepared: BTreeMap<u32, PreparedWorld>,
         assets: &AssetServer,
     ) -> Result<Self> {
@@ -467,7 +468,7 @@ pub(crate) fn validate_retained(
     Ok(())
 }
 
-fn environmental_effect_worlds(actors: &cyrus_game::script::ScriptActors) -> BTreeSet<u32> {
+fn environmental_effect_worlds(actors: &cyrus_script::script::ScriptActors) -> BTreeSet<u32> {
     actors
         .current
         .iter()

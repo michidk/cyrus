@@ -8,7 +8,8 @@ use cyrus_assets::{
     logbook::LogbookArtwork,
     menu::{ConfirmationArtwork, MenuAsset, MenuFace},
 };
-use cyrus_game::{AppState, logbook::LogbookScreen};
+use cyrus_game::AppState;
+use cyrus_script::logbook::LogbookScreen;
 use cyrus_world::heading::wrap;
 use image::RgbaImage;
 
@@ -373,7 +374,7 @@ fn reader_light(position: [f32; 3], normal: [f32; 3], brightness: u8) -> f32 {
 
 fn paint(
     artwork: &LogbookArtwork,
-    book: &cyrus_game::logbook::Logbook,
+    book: &cyrus_script::logbook::Logbook,
     rotation: i32,
 ) -> anyhow::Result<RgbaImage> {
     let mut image = RgbaImage::new(640, 480);
@@ -815,10 +816,10 @@ mod tests {
         assert_eq!(styles[8].map(|s| (s.0, s.2)), Some((3, 50)));
         assert_eq!(styles[9], Some((1, 255, 255)));
         let mut book =
-            cyrus_game::logbook::Logbook::new(&vec!["7,A readable journal entry.".into(); 20])
+            cyrus_script::logbook::Logbook::new(&vec!["7,A readable journal entry.".into(); 20])
                 .unwrap();
         let bottom = paint(&artwork, &book, 0).unwrap();
-        book.update(cyrus_game::logbook::LogbookInput {
+        book.update(cyrus_script::logbook::LogbookInput {
             home: true,
             ..default()
         });
@@ -835,7 +836,7 @@ mod tests {
         if let Some(directory) = std::env::var_os("CYRUS_LOGBOOK_POSES") {
             // The same single short entry the original comparison used, opened as the reader opens.
             let single =
-                cyrus_game::logbook::Logbook::new(&["7,A short single entry.".into()]).unwrap();
+                cyrus_script::logbook::Logbook::new(&["7,A short single entry.".into()]).unwrap();
             assert_eq!(single.offset(), 0);
             paint(&artwork, &single, 0)
                 .unwrap()

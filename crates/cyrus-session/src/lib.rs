@@ -29,8 +29,14 @@ use cyrus_audio::{
         persistence::{SamplePlaybackCandidate, SamplePlaybackSnapshot},
     },
 };
-use cyrus_game::{
-    AppState,
+use cyrus_game::{AppState, random::EngineRandom};
+use cyrus_render::camera::{CameraCandidate, CameraSnapshot};
+use cyrus_render::hud::{HudPresentationAssets, HudPresentationSnapshot, HudState};
+use cyrus_render::persistence::{
+    EnvironmentEditsCandidate, EnvironmentEditsSnapshot, PresentationClock,
+    PresentationClockSnapshot, SkyCandidate, SkyImages, SkySnapshot,
+};
+use cyrus_script::{
     clock::SimulationClock,
     player::{
         Player,
@@ -42,18 +48,11 @@ use cyrus_game::{
         },
         runtime::{PlayerRuntime, PlayerRuntimeBinding, PlayerRuntimeSnapshot},
     },
-    random::EngineRandom,
     script::{
         LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
         LogicalSessionSnapshot, ScriptActorId, ScriptActors, ScriptBinding, ScriptHud,
         WorldSnapshotSources,
     },
-};
-use cyrus_render::camera::{CameraCandidate, CameraSnapshot};
-use cyrus_render::hud::{HudPresentationAssets, HudPresentationSnapshot, HudState};
-use cyrus_render::persistence::{
-    EnvironmentEditsCandidate, EnvironmentEditsSnapshot, PresentationClock,
-    PresentationClockSnapshot, SkyCandidate, SkyImages, SkySnapshot,
 };
 use cyrus_world::animation::{AnimationRequest, Animations};
 pub use lifecycle::LifecycleCandidate;
@@ -126,7 +125,7 @@ pub struct RuntimeSessionPlan<'a> {
 /// Prepared player assets and fresh entity chosen by the aggregate host.
 pub struct PlayerReplacement {
     pub entity: Entity,
-    pub scene: Handle<cyrus_game::player::data::PlayerScene>,
+    pub scene: Handle<cyrus_script::player::data::PlayerScene>,
     pub animation: Handle<Animations>,
 }
 
@@ -316,7 +315,7 @@ impl RuntimeSessionCandidate {
 fn validate_reader_boundary(world: &World) -> Result<()> {
     ensure!(
         !world
-            .get_resource::<cyrus_game::logbook::LogbookScreen>()
+            .get_resource::<cyrus_script::logbook::LogbookScreen>()
             .is_some_and(|screen| screen.suspended()),
         "session boundary: logbook reader or closing-key release is active; reader continuation is not represented"
     );
@@ -339,14 +338,14 @@ impl RuntimeSessionSnapshot {
     ) -> Result<Self> {
         validate_reader_boundary(world)?;
         let state = resource::<State<AppState>>(world, "application state")?.get();
-        let paused = world.get_resource::<cyrus_game::PausedGameplay>();
+        let paused = world.get_resource::<cyrus_script::PausedGameplay>();
         ensure!(
             state == &AppState::InGame || (state == &AppState::Menu && paused.is_some()),
             "session capture requires active gameplay or an eligible paused book"
         );
         ensure!(
             world
-                .try_query_filtered::<Entity, With<cyrus_game::script::ScriptedPlayback>>()
+                .try_query_filtered::<Entity, With<cyrus_script::script::ScriptedPlayback>>()
                 .is_none_or(|mut query| query.iter(world).next().is_none()),
             "session capture: explicit scripted playback has no replacement owner"
         );
@@ -1053,14 +1052,15 @@ fn animation_identity(data: &Animations) -> Result<String> {
 
 fn validate_player_assets(
     world: &World,
-    scene: &Handle<cyrus_game::player::data::PlayerScene>,
+    scene: &Handle<cyrus_script::player::data::PlayerScene>,
     animation: &Handle<Animations>,
     expected_player: &str,
     expected_animation: &Animations,
 ) -> Result<()> {
-    let scene = resource::<Assets<cyrus_game::player::data::PlayerScene>>(world, "player assets")?
-        .get(scene)
-        .context("session prepared player asset absent")?;
+    let scene =
+        resource::<Assets<cyrus_script::player::data::PlayerScene>>(world, "player assets")?
+            .get(scene)
+            .context("session prepared player asset absent")?;
     ensure!(
         scene.source_identity.as_deref() == Some(expected_player),
         "session prepared player asset differs from validated source"

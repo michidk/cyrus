@@ -11,7 +11,7 @@ use cyrus_control::{Command, InputAction, Response};
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
-use cyrus_game::player::Player;
+use cyrus_script::player::Player;
 use cyrus_world::heading::wrap;
 use cyrus_world::lifecycle::CurrentScene;
 use cyrus_world::lifecycle::SceneRequest;
@@ -99,25 +99,25 @@ struct Inspection<'w, 's> {
     preloaded: Option<Res<'w, Preloaded>>,
     textures: Option<ResMut<'w, cyrus_render::fog::TextureAnimations>>,
     hud: Option<Res<'w, cyrus_render::hud::HudState>>,
-    script_hud: Option<Res<'w, cyrus_game::script::ScriptHud>>,
-    logbook: Option<Res<'w, cyrus_game::logbook::LogbookScreen>>,
-    inventory_screen: Option<Res<'w, cyrus_game::inventory_screen::InventoryScreen>>,
-    island_map: Option<Res<'w, cyrus_game::island_map::IslandMapScreen>>,
-    scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
-    script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
+    script_hud: Option<Res<'w, cyrus_script::script::ScriptHud>>,
+    logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
+    inventory_screen: Option<Res<'w, cyrus_script::inventory_screen::InventoryScreen>>,
+    island_map: Option<Res<'w, cyrus_script::island_map::IslandMapScreen>>,
+    scripts: Option<Res<'w, cyrus_script::script::ScriptStatus>>,
+    script_actors: Option<ResMut<'w, cyrus_script::script::ScriptActors>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
     cheats: ResMut<'w, cyrus_game::cheats::Cheats>,
     console: Res<'w, cyrus_console::Console>,
-    activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
+    activation: Option<Res<'w, cyrus_script::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     ready_scene: Option<Res<'w, cyrus_render::ReadyScene>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
     script_nodes: Query<'w, 's, (Entity, &'static Name)>,
-    binding_nodes: Query<'w, 's, (Entity, &'static cyrus_game::script::ScriptBinding)>,
+    binding_nodes: Query<'w, 's, (Entity, &'static cyrus_script::script::ScriptBinding)>,
     script_sounds: Option<ResMut<'w, Messages<cyrus_world::sound::SoundCue>>>,
-    player_poses: Query<'w, 's, &'static cyrus_game::player::placement::PlayerPose, With<Player>>,
-    marker: Option<ResMut<'w, cyrus_game::player::placement::MarkerEntry>>,
-    clock: Option<Res<'w, cyrus_game::clock::SimulationClock>>,
+    player_poses: Query<'w, 's, &'static cyrus_script::player::placement::PlayerPose, With<Player>>,
+    marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
+    clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -170,7 +170,7 @@ fn handle(
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam): (
-        Res<cyrus_game::player::input::PlayerInput>,
+        Res<cyrus_script::player::input::PlayerInput>,
         Option<ResMut<cyrus_render::camera::FlycamSettings>>,
     ),
     mut camera: Query<&mut Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
@@ -565,18 +565,18 @@ fn handle(
                 } else {
                     None
                 };
-                let actor = cyrus_game::script::ScriptActorId { generation, index };
+                let actor = cyrus_script::script::ScriptActorId { generation, index };
                 world.bind_animation(actor, data, cyrus_soup::AnimationGroup::from_index(default_group))?;
                 if let Some(entity) = entity {
                     script_bindings.insert(entity, actor);
                     commands
                         .entity(entity)
                         .remove::<(
-                            cyrus_game::script::ScriptedPlayback,
+                            cyrus_script::script::ScriptedPlayback,
                             cyrus_world::animation::AnimationPlayback,
                             cyrus_world::animation::AnimationPose,
                         )>()
-                        .insert(cyrus_game::script::ScriptBinding {
+                        .insert(cyrus_script::script::ScriptBinding {
                             actor,
                             source: source.clone(),
                         });
@@ -593,7 +593,7 @@ fn handle(
                 distance_override,
                 fallback_position,
             } => (|| -> anyhow::Result<_> {
-                use cyrus_game::script::{ScriptActorId, ScriptStage, Thread};
+                use cyrus_script::script::{ScriptActorId, ScriptStage, Thread};
                 let world = script_actors
                     .as_mut()
                     .and_then(|actors| actors.current.as_mut())
@@ -622,7 +622,7 @@ fn handle(
                 };
                 let mut captured_sounds = Vec::new();
                 let mut emit = |actor: ScriptActorId, sound| -> anyhow::Result<()> {
-                    use cyrus_game::script::ScriptSound;
+                    use cyrus_script::script::ScriptSound;
                     let (sound, surface, position) = match sound {
                         ScriptSound::Animation { sound, surface, position } => (sound, surface, position),
                         sound => {
@@ -691,9 +691,9 @@ fn handle(
                     for (axis, coordinate) in pose.position.into_iter().enumerate() {
                         position[axis] = i32::try_from(coordinate).map_err(|_| anyhow::anyhow!("player query coordinate axis {axis} outside Q8 i32 range"))?;
                     }
-                    Ok(cyrus_game::script::PlayerQuery { position, heading: pose.heading })
+                    Ok(cyrus_script::script::PlayerQuery { position, heading: pose.heading })
                 }).transpose()?;
-                let inputs = cyrus_game::script::ScriptInputs {
+                let inputs = cyrus_script::script::ScriptInputs {
                     hud: script_hud.as_deref(),
                     activation: activation.as_deref(),
                     death_suppressed: cheats.death_suppressed().ok(),
@@ -702,7 +702,7 @@ fn handle(
                     ground_bypass: cheats.ground_bypass().ok(),
                     magic_carpet: cheats.magic_carpet().ok(),
                     nominal_ticks, frame_scale,
-                    player_query: Some(cyrus_game::script::QueryInputs {
+                    player_query: Some(cyrus_script::script::QueryInputs {
                         player, distance_override: distance_override.or_else(|| cheats.distance_override().ok()), fallback_position, linked_position: None,
                     }),
                     ..Default::default()
@@ -752,10 +752,10 @@ mod tests {
         .init_resource::<Fidelity>()
         .init_resource::<cyrus_game::random::EngineRandom>()
         .init_resource::<cyrus_game::cheats::Cheats>()
-        .add_plugins(cyrus_game::console::GameConsolePlugin)
+        .add_plugins(cyrus_script::console::GameConsolePlugin)
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
-        .init_resource::<cyrus_game::player::input::PlayerInput>()
+        .init_resource::<cyrus_script::player::input::PlayerInput>()
         .init_resource::<cyrus_render::camera::FlycamSettings>()
         .insert_resource(SceneRequest(String::new()))
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
@@ -914,7 +914,7 @@ mod tests {
 
     fn script_app() -> App {
         use cyrus_assets::{animation::Animations, script::Scripts};
-        use cyrus_game::script::{ScriptActors, ScriptWorld};
+        use cyrus_script::script::{ScriptActors, ScriptWorld};
         let mut app = app();
         let dialogue = json!({"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"});
         let mut script_json = json!({
@@ -1057,8 +1057,8 @@ mod tests {
         let mut scripts: cyrus_assets::script::Scripts =
             serde_json::from_value(script_json).unwrap();
         scripts.content_id = scripts.content_identity().unwrap();
-        let mut actors = cyrus_game::script::ScriptActors::default();
-        actors.current = Some(cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap());
+        let mut actors = cyrus_script::script::ScriptActors::default();
+        actors.current = Some(cyrus_script::script::ScriptWorld::prepare(&scripts, 1).unwrap());
         app.insert_resource(actors)
             .insert_resource(Cheats::new(Memory));
         let step = |stage| Command::StepScript {
@@ -1132,7 +1132,7 @@ mod tests {
             }],
         );
         assert_eq!(response[0]["captured_sounds"], json!([]));
-        let actors = app.world().resource::<cyrus_game::script::ScriptActors>();
+        let actors = app.world().resource::<cyrus_script::script::ScriptActors>();
         assert!(
             actors.current.as_ref().unwrap().actors()[0]
                 .failure()
@@ -1154,8 +1154,8 @@ mod tests {
             .world_mut()
             .spawn((
                 Name::new("actor-node"),
-                cyrus_game::script::ScriptBinding {
-                    actor: cyrus_game::script::ScriptActorId {
+                cyrus_script::script::ScriptBinding {
+                    actor: cyrus_script::script::ScriptActorId {
                         generation: 0,
                         index: 0,
                     },
@@ -1186,7 +1186,7 @@ mod tests {
         } if actor == entity));
         assert_eq!(
             app.world()
-                .get::<cyrus_game::script::ScriptBinding>(entity)
+                .get::<cyrus_script::script::ScriptBinding>(entity)
                 .unwrap()
                 .actor
                 .index,

@@ -1,13 +1,13 @@
 #![cfg(any(target_arch = "wasm32", test))]
 //! Host initialization of saved and installed player bindings.
 use bevy::prelude::*;
-use cyrus_game::player::input::PlayerBindings;
+use cyrus_script::player::input::PlayerBindings;
 pub(crate) fn load_scene_bindings(
     preferences: Res<cyrus_game::preferences::Preferences>,
-    request: Option<Res<cyrus_game::player::data::PlayerSceneRequest>>,
-    scenes: Res<Assets<cyrus_game::player::data::PlayerScene>>,
+    request: Option<Res<cyrus_script::player::data::PlayerSceneRequest>>,
+    scenes: Res<Assets<cyrus_script::player::data::PlayerScene>>,
     mut bindings: ResMut<PlayerBindings>,
-    mut applied: Local<Option<AssetId<cyrus_game::player::data::PlayerScene>>>,
+    mut applied: Local<Option<AssetId<cyrus_script::player::data::PlayerScene>>>,
 ) {
     let Some(request) = request else {
         return;
@@ -46,10 +46,8 @@ pub(crate) fn load_scene_bindings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyrus_game::{
-        player::data::{MovementSettings, PlayerScene, PlayerSceneRequest},
-        preferences::{PreferenceKey, PreferenceStore, Preferences},
-    };
+    use cyrus_game::preferences::{PreferenceKey, PreferenceStore, Preferences};
+    use cyrus_script::player::data::{MovementSettings, PlayerScene, PlayerSceneRequest};
     struct Missing;
     impl PreferenceStore for Missing {
         fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {

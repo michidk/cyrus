@@ -234,7 +234,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let layer = file_sink(&dir, "test", file_filter("")).unwrap();
         with_default(Registry::default().with(layer), || {
-            tracing::debug!(target: "cyrus_game::player", "game detail");
+            tracing::debug!(target: "cyrus_script::player", "game detail");
             tracing::debug!(target: "cyrus", "binary detail");
             tracing::debug!(target: "winit", "dependency noise");
             tracing::info!(target: "winit", "dependency notice");

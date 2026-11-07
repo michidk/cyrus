@@ -17,7 +17,7 @@ mod preferences;
 mod rendering;
 use bevy::prelude::*;
 use clap::Parser;
-use cyrus_game::GamePlugin;
+use cyrus_script::GamePlugin;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Redguard in Bevy, from your own GOG install.")]
@@ -268,7 +268,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
                 (bindings::load, cheats::load),
             );
     }
-    app.init_resource::<cyrus_game::script::ScriptHud>()
+    app.init_resource::<cyrus_script::script::ScriptHud>()
         .insert_resource(control)
         .insert_resource(settings.fidelity.clone())
         .insert_resource(cyrus_world::lifecycle::SceneRequest(settings.scene.clone()))

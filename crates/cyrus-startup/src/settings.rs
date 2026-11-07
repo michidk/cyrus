@@ -28,7 +28,7 @@ pub(super) fn persist(
 
 pub(super) fn apply_bindings(
     menu: &MenuState,
-    bindings: &mut cyrus_game::player::input::PlayerBindings,
+    bindings: &mut cyrus_script::player::input::PlayerBindings,
 ) {
     if let Some(preferences) = &menu.preferences
         && let Err(error) = bindings.set_keyboard(preferences.bindings)

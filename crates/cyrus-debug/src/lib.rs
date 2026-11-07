@@ -12,9 +12,9 @@ use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_inspector};
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
-use cyrus_game::player::Player;
 use cyrus_render::camera::FlycamSettings;
 use cyrus_render::fog::{RayTracingSupport, RenderDistance};
+use cyrus_script::player::Player;
 
 pub struct DebugMenuPlugin;
 

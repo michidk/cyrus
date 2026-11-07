@@ -59,7 +59,8 @@ impl Preferences {
             menu,
         }
     }
-    pub(crate) fn store(&self) -> Option<std::sync::Arc<dyn PreferenceStore>> {
+    /// The persistence backend the host supplied, if any, for screens that save beside the menu settings.
+    pub fn store(&self) -> Option<std::sync::Arc<dyn PreferenceStore>> {
         self.store.clone()
     }
     pub fn load_hud(&self) -> anyhow::Result<Option<String>> {

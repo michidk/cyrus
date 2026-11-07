@@ -392,8 +392,8 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     );
     app.world_mut()
         .entity_mut(known)
-        .insert(cyrus_game::script::ScriptBinding {
-            actor: cyrus_game::script::ScriptActorId {
+        .insert(cyrus_script::script::ScriptBinding {
+            actor: cyrus_script::script::ScriptActorId {
                 generation: 17,
                 index: 4,
             },
@@ -567,7 +567,7 @@ fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
         .unwrap();
     assert_eq!(settings.volume, bevy::audio::Volume::Linear(0.0));
     assert_eq!(settings.speed, 512.0 / 22050.0);
-    app.init_resource::<cyrus_game::script::ScriptActors>();
+    app.init_resource::<cyrus_script::script::ScriptActors>();
     send(
         &mut app,
         0,

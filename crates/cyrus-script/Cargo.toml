@@ -1,0 +1,22 @@
+[package]
+name = "cyrus-script"
+description = "Game scripting host, player controller, simulation clock and in-game screens."
+version.workspace = true
+edition.workspace = true
+[dependencies]
+rustc_apfloat = "0.2.3"
+cyrus-console.workspace = true
+log.workspace = true
+bevy = { workspace = true, features = ["bevy_log", "bevy_asset", "bevy_state", "gamepad", "keyboard", "mouse"] }
+cyrus-assets.workspace = true
+cyrus-world.workspace = true
+cyrus-collision.workspace = true
+cyrus-soup.workspace = true
+cyrus-game.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+[dev-dependencies]
+cyrus-assets = { workspace = true, features = ["native"] }
+redguard-preservation.workspace = true

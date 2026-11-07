@@ -28,8 +28,8 @@ impl From<&StaticLightingInstance> for ModelLightingInstance {
     }
 }
 
-impl From<&cyrus_game::script::ActorPrelight> for ModelLightingInstance {
-    fn from(instance: &cyrus_game::script::ActorPrelight) -> Self {
+impl From<&cyrus_script::script::ActorPrelight> for ModelLightingInstance {
+    fn from(instance: &cyrus_script::script::ActorPrelight) -> Self {
         Self {
             position: instance.position(),
             matrix: instance.matrix(),

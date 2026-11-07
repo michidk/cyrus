@@ -453,7 +453,7 @@ mod solari {
         existing: Query<Entity, With<Light>>,
         cameras: Query<(Entity, Option<&EnvironmentMapLight>), With<ViewCamera>>,
         owners: (
-            Option<Res<cyrus_game::script::ScriptActors>>,
+            Option<Res<cyrus_script::script::ScriptActors>>,
             Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
             Option<Res<cyrus_world::animation::AnimationRequest>>,
             Option<Res<Assets<cyrus_assets::animation::Animations>>>,

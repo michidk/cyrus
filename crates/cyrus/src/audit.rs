@@ -8,7 +8,7 @@ use cyrus_assets::{
     script::Scripts,
     source::PreparationDiagnostic,
 };
-use cyrus_game::script::{PlaybackDiagnostics, ScriptActors, ScriptPlugin, ScriptStatus};
+use cyrus_script::script::{PlaybackDiagnostics, ScriptActors, ScriptPlugin, ScriptStatus};
 use serde::Serialize;
 use std::{cell::RefCell, collections::BTreeMap, path::Path};
 

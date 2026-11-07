@@ -15,3 +15,4 @@ bevy = { workspace = true, features = ["default"] }
 bevy_egui = { version = "=0.43.1", default-features = false, features = ["default_fonts", "render", "bevy_ui"] }
 bevy-inspector-egui = { version = "0.38", default-features = false, features = ["3d"] }
 cyrus-game.workspace = true
+cyrus-script.workspace = true

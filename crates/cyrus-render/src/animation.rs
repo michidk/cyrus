@@ -133,7 +133,7 @@ pub(crate) fn apply_poses(
         Option<&RejectedPose>,
     )>,
     nodes: Query<(&Name, &AnimationPose)>,
-    actors: Query<(), bevy::prelude::With<cyrus_game::script::ScriptBinding>>,
+    actors: Query<(), bevy::prelude::With<cyrus_script::script::ScriptBinding>>,
 ) {
     let Some(mut meshes) = meshes else {
         return;

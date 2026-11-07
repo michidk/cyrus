@@ -22,16 +22,16 @@ pub(super) fn retain_selection(world: &mut World, value: &Value) -> Result<u16> 
         "browser save selection: invalid description"
     );
     world
-        .get_resource_mut::<cyrus_game::script::DeathDispatch>()
+        .get_resource_mut::<cyrus_script::script::DeathDispatch>()
         .context("browser save selection: last-save dispatcher unavailable")?
-        .last_save = Some(cyrus_game::script::LastSaveSelection { slot, description });
+        .last_save = Some(cyrus_script::script::LastSaveSelection { slot, description });
     Ok(slot)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyrus_game::script::DeathDispatch;
+    use cyrus_script::script::DeathDispatch;
     use serde_json::json;
 
     #[test]
