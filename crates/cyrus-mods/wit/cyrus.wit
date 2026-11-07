@@ -1,6 +1,6 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input` with `QueryFor::Ref`;
+/// Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input` and `settings` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
@@ -45,6 +45,16 @@ interface components {
     /// Steer toward `x` (right) and `y` (forward) relative to the camera. Zero stands still.
     /// A length below 0.75 walks and from 0.75 runs. `jump` jumps this frame.
     steer: func(x: f32, y: f32, jump: bool);
+  }
+
+  /// The player's values for the `[[setting]]` entries in mod.toml. `id` is the mod's folder
+  /// name and `key` the setting's key; a name that is not declared reads false, 0 or "".
+  /// wasvy:type-path=cyrus_mods::api::Settings
+  resource settings {
+    constructor(component: component);
+    flag: func(id: string, key: string) -> bool;
+    number: func(id: string, key: string) -> f32;
+    choice: func(id: string, key: string) -> string;
   }
 
   /// Keyboard and mouse this frame; `tapped` means pressed this frame. Keys use Bevy `KeyCode` names such as

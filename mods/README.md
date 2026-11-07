@@ -13,8 +13,38 @@ the Mods window that opens with F1. The browser build does not load mods.
 
 ## Writing a mod
 
-A mod folder holds `mod.toml` (`name`, `description`) plus `mod.wasm`, a
-`water_surface.wesl`, or both. Copy one of these crates as a start.
+A mod folder holds `mod.toml` plus `mod.wasm`, a `water_surface.wesl`, or both.
+Copy one of these crates as a start.
+
+**Manifest** (`mod.toml`). `name` is required; `description`, `version` and
+`author` are optional and shown in the Mods window. A mod can offer settings
+with `[[setting]]` entries; the window draws them under the mod while it is
+active and saves the values to `cyrus-config/mod-settings.json`:
+
+```toml
+[[setting]]
+key = "speed"            # what the mod reads
+label = "Fly speed"      # what the player sees (defaults to the key)
+type = "number"          # number: default, min, max
+default = 150
+min = 20
+max = 600
+
+[[setting]]
+key = "run_by_default"
+type = "bool"            # bool: default
+default = false
+
+[[setting]]
+key = "style"
+type = "choice"          # choice: default, options
+default = "smooth"
+options = ["smooth", "choppy"]
+```
+
+A saved value that no longer fits its declaration (out of range, removed
+option, changed type) falls back to the default; a bad declaration stops the
+mod from being listed, with the error in the log.
 
 **Logic** (`mod.wasm`). The API is `crates/cyrus-mods/wit/cyrus.wit`. Declare a
 world that uses the resources you need, exports one function per system and
@@ -36,11 +66,14 @@ fn setup(app: App) {
   left stick relative to the camera (x right, y forward; a length below 0.75
   walks, from 0.75 runs). While a mod steers, a quick sword key among WASD does
   not draw the sword.
+- `settings`: `flag(id, key)`, `number(id, key)` and `choice(id, key)` read the
+  player's values; `id` is the mod's folder name. Read them every frame so a
+  change in the window takes effect at once.
 - `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
   `delta` (seconds).
 
-Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input` with
-`QueryFor::Ref`: wasvy 0.0.11 panics the game when a method is called through
+Query `water`, `camera` and `movement` with `QueryFor::Mut`, `input` and `settings`
+with `QueryFor::Ref`: wasvy 0.0.11 panics the game when a method is called through
 the other mutability.
 
 Answers apply one frame after they are written. A hook a mod stops answering

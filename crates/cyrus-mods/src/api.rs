@@ -5,13 +5,15 @@
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
 //! and panics on a mismatch, so `Water`, `Camera` and `Movement` (queried `Mut`) take
-//! `&mut self` throughout and `Input` (queried `Ref`) takes `&self`. Method names
+//! `&mut self` throughout and `Input` and `Settings` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
+use crate::settings::{ModSettings, Value};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_game::player::input::{MovementWish, Wish};
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
+use std::collections::HashMap;
 use wasvy::prelude::*;
 
 #[derive(Component, Reflect, Default, WasvyComponent)]
@@ -73,6 +75,37 @@ impl Movement {
     }
 }
 
+/// Setting values of every mod, keyed `mod id/setting key`.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Settings {
+    flags: HashMap<String, bool>,
+    numbers: HashMap<String, f32>,
+    choices: HashMap<String, String>,
+}
+
+#[wasvy::methods]
+impl Settings {
+    pub fn flag(&self, id: String, key: String) -> bool {
+        self.flags
+            .get(&format!("{id}/{key}"))
+            .copied()
+            .unwrap_or_default()
+    }
+    pub fn number(&self, id: String, key: String) -> f32 {
+        self.numbers
+            .get(&format!("{id}/{key}"))
+            .copied()
+            .unwrap_or_default()
+    }
+    pub fn choice(&self, id: String, key: String) -> String {
+        self.choices
+            .get(&format!("{id}/{key}"))
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
 pub struct Input {
@@ -104,6 +137,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Water::default(),
         Camera::default(),
         Movement::default(),
+        Settings::default(),
         Input::default(),
     ));
 }
@@ -111,7 +145,14 @@ pub(crate) fn spawn_host(mut commands: Commands) {
 /// Hands last frame's mod answers to the engine and publishes this frame's state.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn exchange(
-    mut host: Query<(&mut Water, &mut Camera, &mut Movement, &mut Input)>,
+    mut host: Query<(
+        &mut Water,
+        &mut Camera,
+        &mut Movement,
+        &mut Settings,
+        &mut Input,
+    )>,
+    values: Res<ModSettings>,
     mut waves: ResMut<WaterWaves>,
     mut movement: ResMut<MovementWish>,
     mut takeover: ResMut<CameraTakeover>,
@@ -120,9 +161,29 @@ pub(crate) fn exchange(
     mouse: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
 ) {
-    let Ok((mut water, mut camera, mut steering, mut input)) = host.single_mut() else {
+    let Ok((mut water, mut camera, mut steering, mut settings, mut input)) = host.single_mut()
+    else {
         return;
     };
+    if values.is_changed() {
+        *settings = Settings::default();
+        for (id, entries) in &values.values {
+            for (key, value) in entries {
+                let name = format!("{id}/{key}");
+                match value {
+                    Value::Bool(value) => {
+                        settings.flags.insert(name, *value);
+                    }
+                    Value::Number(value) => {
+                        settings.numbers.insert(name, *value);
+                    }
+                    Value::Choice(value) => {
+                        settings.choices.insert(name, value.clone());
+                    }
+                }
+            }
+        }
+    }
     waves.heights = water.heights.take();
     if water.generation != waves.generation {
         water.generation = waves.generation;

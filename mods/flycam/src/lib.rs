@@ -10,12 +10,10 @@ mod bindings {
     });
 }
 
-use bindings::cyrus::mods::components::{Camera, Input};
+use bindings::cyrus::mods::components::{Camera, Input, Settings};
 use bindings::wasvy::ecs::app::{App, Query, QueryFor, Schedule, System};
 use std::cell::RefCell;
 
-/// Scene units per second, the debug menu flycam's default.
-const SPEED: f32 = 150.0;
 /// Radians per pixel of mouse motion.
 const SENSITIVITY: f32 = 0.0025;
 
@@ -37,6 +35,7 @@ impl bindings::Guest for Flycam {
         fly.add_query(&[
             QueryFor::Ref(Input::type_path()),
             QueryFor::Mut(Camera::type_path()),
+            QueryFor::Ref(Settings::type_path()),
         ]);
         app.add_systems(&Schedule::Update, &[&fly]);
     }
@@ -45,6 +44,8 @@ impl bindings::Guest for Flycam {
         while let Some(row) = query.iter() {
             let input = Input::new(row.component(0));
             let camera = Camera::new(row.component(1));
+            // Scene units per second; the manifest's `speed` setting.
+            let speed = Settings::new(row.component(2)).number("flycam", "speed");
             FLY.with_borrow_mut(|fly| {
                 if input.tapped("F3") {
                     *fly = match fly.take() {
@@ -80,7 +81,7 @@ impl bindings::Guest for Flycam {
                 }
                 let length = direction.iter().map(|v| v * v).sum::<f32>().sqrt();
                 if length > 0.0 {
-                    let step = SPEED * input.delta() / length;
+                    let step = speed * input.delta() / length;
                     for i in 0..3 {
                         fly.position[i] += direction[i] * step;
                     }

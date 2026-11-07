@@ -1,2 +1,10 @@
 name = "Modern movement (WASD)"
 description = "WASD moves the player relative to the camera, Space jumps, Left Shift runs; the original arrow-key controls stay."
+version = "0.1.0"
+author = "cyrus"
+
+[[setting]]
+key = "run_by_default"
+label = "Run by default (Shift walks)"
+type = "bool"
+default = false

@@ -7,10 +7,14 @@
 //!   (water waves, camera, movement and input hooks).
 //! - `water_surface.wesl`: a replacement for cyrus-render's water shading library.
 //!
+//! `mod.toml` may also give a `version`, an `author` and `[[setting]]` entries (see
+//! [`settings`]); the Mods window draws the settings of each active mod.
+//!
 //! Without an active mod every hook keeps the original behaviour. Activation is
 //! saved to `cyrus-config/mods.json`; the F1 debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
+mod settings;
 
 use anyhow::Context;
 use bevy::asset::io::AssetSourceBuilder;
@@ -23,6 +27,7 @@ use bevy::prelude::{App, Plugin, PreUpdate, Real, Result, Startup, Time, Update,
 use bevy::shader::Shader;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use serde::{Deserialize, Serialize};
+use settings::{ModSettings, Setting};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use wasvy::prelude::*;
@@ -53,9 +58,20 @@ impl Plugin for ModsPlugin {
             error!("mods: {error:#}");
             Catalog::default()
         });
+        let settings = ModSettings::load(
+            catalog
+                .entries
+                .iter()
+                .map(|entry| (entry.id.as_str(), entry.manifest.settings.as_slice())),
+        )
+        .unwrap_or_else(|error| {
+            error!("mods: {error:#}");
+            ModSettings::default()
+        });
         app.add_plugins(ModLoaderPlugin::default().add_functionality(add_components_to_linker))
             .register_type::<Vec<f32>>()
             .insert_resource(catalog)
+            .insert_resource(settings)
             .init_resource::<cyrus_render::WaterWaves>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
             .init_resource::<cyrus_game::player::input::MovementWish>()
@@ -74,6 +90,10 @@ struct Manifest {
     name: String,
     #[serde(default)]
     description: String,
+    version: Option<String>,
+    author: Option<String>,
+    #[serde(default, rename = "setting")]
+    settings: Vec<Setting>,
 }
 
 struct Entry {
@@ -133,6 +153,9 @@ impl Catalog {
                     .with_context(|| manifest.display().to_string())?,
             )
             .with_context(|| manifest.display().to_string())?;
+            for setting in &manifest.settings {
+                setting.validate().with_context(|| format!("mod {id}"))?;
+            }
             entries.push(Entry {
                 active: saved.active.contains(&id),
                 has_wasm: dir.join("mod.wasm").is_file(),
@@ -279,7 +302,11 @@ fn watch(
     }
 }
 
-fn window(mut contexts: EguiContexts, mut catalog: ResMut<Catalog>) -> Result {
+fn window(
+    mut contexts: EguiContexts,
+    mut catalog: ResMut<Catalog>,
+    mut settings: ResMut<ModSettings>,
+) -> Result {
     egui::Window::new("Mods").show(contexts.ctx_mut()?, |ui| {
         if catalog.entries.is_empty() {
             ui.label(format!(
@@ -287,15 +314,41 @@ fn window(mut contexts: EguiContexts, mut catalog: ResMut<Catalog>) -> Result {
             ));
         }
         let mut toggled = false;
+        let mut save_error = None;
         for entry in &mut catalog.bypass_change_detection().entries {
+            let manifest = &entry.manifest;
             toggled |= ui
-                .checkbox(&mut entry.active, &entry.manifest.name)
-                .on_hover_text(&entry.manifest.description)
+                .checkbox(&mut entry.active, &manifest.name)
+                .on_hover_text(&manifest.description)
                 .changed();
+            let credit = [
+                manifest
+                    .version
+                    .as_deref()
+                    .map(|version| format!("v{version}")),
+                manifest
+                    .author
+                    .as_ref()
+                    .map(|author| format!("by {author}")),
+            ];
+            let credit: Vec<_> = credit.into_iter().flatten().collect();
+            if !credit.is_empty() {
+                ui.small(credit.join(" "));
+            }
+            if entry.active && !manifest.settings.is_empty() {
+                ui.indent(&entry.id, |ui| {
+                    save_error = settings
+                        .edit(ui, &entry.id, &manifest.settings)
+                        .or(save_error.take());
+                });
+            }
         }
         if toggled {
             catalog.set_changed();
             catalog.status = catalog.save().err().map(|error| format!("{error:#}"));
+        }
+        if let Some(error) = save_error {
+            catalog.bypass_change_detection().status = Some(format!("{error:#}"));
         }
         if let Some(status) = &catalog.status {
             ui.colored_label(egui::Color32::LIGHT_RED, status);

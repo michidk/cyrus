@@ -1,2 +1,12 @@
 name = "Fly camera (F3)"
 description = "F3 toggles a free first-person camera: WASD to fly, Space/Left Shift up and down, mouse to look."
+version = "0.1.0"
+author = "cyrus"
+
+[[setting]]
+key = "speed"
+label = "Fly speed"
+type = "number"
+default = 150
+min = 20
+max = 600
