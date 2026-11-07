@@ -5226,6 +5226,64 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
         })
 }
 
+/// The task slot and retained word a `task_variable*` property names.
+fn task_word(name: Property) -> Option<(usize, super::tasks::TaskWord)> {
+    use super::tasks::TaskWord;
+    use Property::*;
+    let families = [
+        (
+            TaskWord::Continuation,
+            [
+                TaskVariable0,
+                TaskVariable1,
+                TaskVariable2,
+                TaskVariable3,
+                TaskVariable4,
+                TaskVariable5,
+            ],
+        ),
+        (
+            TaskWord::PauseTicks,
+            [
+                TaskVariable2_0,
+                TaskVariable2_1,
+                TaskVariable2_2,
+                TaskVariable2_3,
+                TaskVariable2_4,
+                TaskVariable2_5,
+            ],
+        ),
+        (
+            TaskWord::ContinuationDirection,
+            [
+                TaskVariable3_0,
+                TaskVariable3_1,
+                TaskVariable3_2,
+                TaskVariable3_3,
+                TaskVariable3_4,
+                TaskVariable3_5,
+            ],
+        ),
+        (
+            TaskWord::PointCommand,
+            [
+                TaskVariable4_0,
+                TaskVariable4_1,
+                TaskVariable4_2,
+                TaskVariable4_3,
+                TaskVariable4_4,
+                TaskVariable4_5,
+            ],
+        ),
+    ];
+    families.into_iter().find_map(|(word, names)| {
+        names
+            .iter()
+            .position(|&candidate| candidate == name)
+            .map(|slot| (slot, word))
+    })
+}
+
 impl Host for GameHost<'_, '_, '_, '_> {
     fn take_actor_result(&mut self) -> Option<ScriptActorId> {
         self.registry.globals.actor_result.take()
@@ -5457,6 +5515,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 actor.broadcast_index
             }));
         }
+        if let Some((slot, word)) = task_word(name) {
+            let index = self.property_receiver(target)?;
+            return Ok(self.registry.actors[index].native_commands[slot].word(word) as i32);
+        }
         if control_record_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5627,6 +5689,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             } else {
                 actor.broadcast_index = value as u8;
             }
+            return Ok(());
+        }
+        if let Some((slot, word)) = task_word(name) {
+            let index = self.property_receiver(target)?;
+            self.registry.actors[index].native_commands[slot].set_word(word, value as u32);
             return Ok(());
         }
         if control_record_property(&mut ActorControlState::default(), name).is_some() {

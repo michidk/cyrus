@@ -49822,3 +49822,6 @@ mod header_hook_tests;
 mod collision_extents_tests;
 #[path = "script_registry/pose_properties.rs"]
 mod pose_properties_tests;
+
+#[path = "script_registry/task_properties.rs"]
+mod task_properties_tests;

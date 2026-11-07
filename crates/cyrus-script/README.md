@@ -668,3 +668,9 @@ Verified: `slave_pos.*`, `slave_angle.*` and their `last_slave_*` counterparts r
 family update composes for an attached actor and the one before it; the queries read it for an attached
 actor, so a write is seen until the next refresh replaces it. See preservation's
 [slave pose properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#slave-pose-properties).
+
+Verified: `task_variable*[n]` read and write the four whole 32-bit words task slot `n` retains for its native
+handler (continuation, pause countdown, second continuation, packed command word/phase/counter); a write is
+what the slot's next resumption loads. See preservation's
+[task slot word properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#task-slot-word-properties).
+`task[n]`, `task_status`, `task_pause` and `task_timer` stay unsupported.

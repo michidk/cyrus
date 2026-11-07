@@ -7859,6 +7859,414 @@
       "reviewed_revision": "7a0876cd0874d7fb258728becd9cc732b034f4c1"
     },
     {
+      "property": "task_variable[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable2[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable2[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable2[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable2[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable2[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable2[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable3[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable3[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable3[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable3[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable3[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable3[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable4[0]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable4[1]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable4[2]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable4[3]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable4[4]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
+      "property": "task_variable4[5]",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver native task slot retained word",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ScriptActor native_commands",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::task_words_round_trip_per_slot_with_their_widths_and_the_packed_point_command",
+        "crates/cyrus-script/tests/script_registry/task_properties.rs::a_script_write_to_a_task_slot_word_changes_the_native_task_that_resumes_from_it"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6706986556"
+      ],
+      "limits": "Verified in the original: the slot load and save routines copy these four dwords between the actor record and the shared native command scratch; the second is the point-walk pause countdown and the third also the AI length copy, the fourth packs the command word, phase byte and counter byte. Inferred: the first and third words are the two native continuation words (AnimateGXA resource and progress, FxPhase accumulator and direction). Reads and writes are whole 32-bit values; a write is what the slot's next resumption loads, and nothing runs or clears. task[n], task_status, task_pause and task_timer remain missing. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "eb89b7c21d4ecb73edc974669c8794251312f8ce"
+    },
+    {
       "property": "slave_pos.vx",
       "status": "partial",
       "owner": 5,
@@ -8476,31 +8884,7 @@
         "local_index",
         "origin",
         "origin_accum",
-        "string_index",
-        "task_variable2[0]",
-        "task_variable2[1]",
-        "task_variable2[2]",
-        "task_variable2[3]",
-        "task_variable2[4]",
-        "task_variable2[5]",
-        "task_variable3[0]",
-        "task_variable3[1]",
-        "task_variable3[2]",
-        "task_variable3[3]",
-        "task_variable3[4]",
-        "task_variable3[5]",
-        "task_variable4[0]",
-        "task_variable4[1]",
-        "task_variable4[2]",
-        "task_variable4[3]",
-        "task_variable4[4]",
-        "task_variable4[5]",
-        "task_variable[0]",
-        "task_variable[1]",
-        "task_variable[2]",
-        "task_variable[3]",
-        "task_variable[4]",
-        "task_variable[5]"
+        "string_index"
       ],
       "status": "missing",
       "owner": 5,
