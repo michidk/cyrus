@@ -3,6 +3,7 @@ pub mod clock;
 pub mod console;
 pub mod inventory_screen;
 pub mod island_map;
+pub mod item_viewer;
 pub mod logbook;
 pub mod player;
 pub mod script;
