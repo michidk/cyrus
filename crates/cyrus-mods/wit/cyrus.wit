@@ -1,6 +1,7 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `water`, `camera` and `movement` with `QueryFor::Mut` and `input`, `settings` and `player` with `QueryFor::Ref`;
+/// Query `water`, `camera`, `movement` and `collision` with `QueryFor::Mut` and `input`, `settings`
+/// and `player` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
@@ -60,6 +61,21 @@ interface components {
     /// takes a change, so a jump in flight keeps its values. Call it each frame with `claim`; 1
     /// and 1 are the original.
     tune: func(jump-height: f32, jump-speed: f32);
+  }
+
+  /// Collision questions for a mod that owns the player's movement. A probe is a segment in map
+  /// units and the original axes (like `player.position`). While a mod claims locomotion the
+  /// engine answers the probes queued the frame before against the static model faces it has
+  /// gathered near the player and against the terrain surface, and reports where each segment
+  /// first meets one. Geometry beyond that neighbourhood is not seen. Queue the same probes
+  /// every frame; an answer arrives two frames after its `cast`, in the order cast.
+  /// wasvy:type-path=cyrus_mods::api::Collision
+  resource collision {
+    constructor(component: component);
+    cast: func(sx: f32, sy: f32, sz: f32, ex: f32, ey: f32, ez: f32);
+    /// Probe number `index` of the last answered batch: the contact point x, y, z then its
+    /// unit normal x, y, z; empty when the segment hit nothing or nothing was answered.
+    hit: func(index: u32) -> list<f32>;
   }
 
   /// The selected player's state (empty before a world has one).

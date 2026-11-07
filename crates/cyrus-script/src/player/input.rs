@@ -147,6 +147,51 @@ impl Default for PlayerTuning {
     }
 }
 
+/// A segment a mod asks the collision about, in map units and the original axes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Probe {
+    pub start: [f32; 3],
+    pub end: [f32; 3],
+}
+
+/// Where a probe first met the world: static model faces the engine has gathered near the
+/// player, or the terrain surface. Points are map units; the normal has unit length.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProbeHit {
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
+}
+
+/// Probes a mod asked for and the answers the controller gave. The controller answers every
+/// request on each update that a mod claims locomotion, in request order; a miss is `None`.
+#[derive(Resource, Default, Debug)]
+pub struct CollisionProbes {
+    pub requests: Vec<Probe>,
+    // Interior mutability: the controller only holds the resource by shared reference.
+    answers: std::sync::Mutex<Option<Vec<Option<ProbeHit>>>>,
+}
+
+impl CollisionProbes {
+    /// The answers the controller has stored since the last call.
+    pub fn take_answers(&mut self) -> Option<Vec<Option<ProbeHit>>> {
+        self.answers.get_mut().expect("probe answers lock").take()
+    }
+
+    /// Answer the current requests with `probe`, the first error ending the batch.
+    pub fn answer<E>(
+        &self,
+        mut probe: impl FnMut(Probe) -> Result<Option<ProbeHit>, E>,
+    ) -> Result<(), E> {
+        let answers = self
+            .requests
+            .iter()
+            .map(|request| probe(*request))
+            .collect::<Result<Vec<_>, E>>()?;
+        *self.answers.lock().expect("probe answers lock") = Some(answers);
+        Ok(())
+    }
+}
+
 /// The claim a mod made for the next update; the game consumes it and hands control back as
 /// soon as a mod stops claiming.
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]

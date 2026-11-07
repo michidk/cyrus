@@ -75,9 +75,20 @@ fn setup(app: App) {
   combat; it keeps control while the player is airborne, sliding or hanging, or a
   script moves it, and menus, the console and loading take control back.
   Stopping the claim returns the original controls.
+- `movement.tune(jump_height, jump_speed)`: scale the claimed player's jump height
+  (and the descent of a fall) and the forward speed of a walking or running jump
+  while it stands on the ground; a jump in flight keeps its values. A claimed
+  player steers a jump in the air through the heading it claims.
+- `collision`: `cast(sx, sy, sz, ex, ey, ez)` queues a segment (map units, original
+  axes) and `hit(i)` returns where the i-th segment of the last answered batch
+  first met the static geometry the engine gathered near the player or the
+  terrain: the point and the unit normal, or nothing. The engine answers while a
+  mod claims locomotion; an answer arrives two frames after its cast.
 - `player`: `position()` (map units), `heading()`, `view()` (the camera's
-  heading, same units), `airborne()` and `speed(run)` (the player's own walk or
-  run speed per nominal update, the base for a speed scale).
+  heading, same units), `airborne()`, `armed()` (a weapon is drawn or the combat stance is on: a
+  claimed player then walks and runs in the fight animations and `speed` returns
+  the fight speeds) and `speed(run)` (the player's own walk or run speed per
+  nominal update, the base for a speed scale).
 - `settings`: `flag(id, key)`, `number(id, key)` and `choice(id, key)` read the
   player's values; `id` is the mod's folder name. Read them every frame so a
   change in the window takes effect at once.

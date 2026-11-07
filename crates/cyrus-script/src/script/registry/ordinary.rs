@@ -884,6 +884,7 @@ pub struct OrdinaryContext<'w, 's> {
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
     look: Option<ResMut<'w, crate::player::input::ModernLook>>,
     claimed: Option<Res<'w, crate::player::input::LocomotionClaimed>>,
+    probes: Option<Res<'w, crate::player::input::CollisionProbes>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
@@ -1317,6 +1318,7 @@ pub fn run_ordinary(
         input,
         mut look,
         claimed,
+        probes,
         quick,
         script_keys,
         toggles,
@@ -1549,6 +1551,7 @@ pub fn run_ordinary(
                     auto_defend: toggles.auto_defend,
                     steer: *steer,
                     claim,
+                    probes: probes.as_deref(),
                 },
                 None => super::player::PlayerControllerInput {
                     held,
@@ -1556,6 +1559,7 @@ pub fn run_ordinary(
                     auto_defend: toggles.auto_defend,
                     steer: None,
                     claim,
+                    probes: probes.as_deref(),
                 },
             })
     } else {

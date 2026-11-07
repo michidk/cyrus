@@ -13,7 +13,8 @@ use bevy::prelude::*;
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
 use cyrus_script::player::input::{
-    Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput, PlayerTuning, Wish,
+    CollisionProbes, Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput,
+    PlayerTuning, Probe, Wish,
 };
 use cyrus_script::script::{CameraFrameState, ScriptActors};
 use std::collections::HashMap;
@@ -83,6 +84,26 @@ impl Movement {
     }
     pub fn tune(&mut self, jump_height: f32, jump_speed: f32) {
         self.tuning = Some((jump_height, jump_speed));
+    }
+}
+
+/// Collision probes: queued by the mod, answered by the engine while it claims locomotion.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Collision {
+    /// Six values per queued probe: start then end.
+    queued: Vec<f32>,
+    /// One entry per probe of the last answered batch: six values, or none for a miss.
+    hits: Vec<Vec<f32>>,
+}
+
+#[wasvy::methods]
+impl Collision {
+    pub fn cast(&mut self, sx: f32, sy: f32, sz: f32, ex: f32, ey: f32, ez: f32) {
+        self.queued.extend([sx, sy, sz, ex, ey, ez]);
+    }
+    pub fn hit(&mut self, index: u32) -> Vec<f32> {
+        self.hits.get(index as usize).cloned().unwrap_or_default()
     }
 }
 
@@ -189,6 +210,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Movement::default(),
         Settings::default(),
         Player::default(),
+        Collision::default(),
         Input::default(),
     ));
 }
@@ -202,8 +224,10 @@ pub(crate) fn exchange(
         &mut Movement,
         &mut Settings,
         &mut Player,
+        &mut Collision,
         &mut Input,
     )>,
+    mut probes: ResMut<CollisionProbes>,
     actors: Option<Res<ScriptActors>>,
     camera_frame: Option<Res<CameraFrameState>>,
     mut claimed: ResMut<LocomotionClaimed>,
@@ -217,8 +241,15 @@ pub(crate) fn exchange(
     mouse: Res<AccumulatedMouseMotion>,
     time: Res<Time>,
 ) {
-    let Ok((mut water, mut camera, mut steering, mut settings, mut player, mut input)) =
-        host.single_mut()
+    let Ok((
+        mut water,
+        mut camera,
+        mut steering,
+        mut settings,
+        mut player,
+        mut collision,
+        mut input,
+    )) = host.single_mut()
     else {
         return;
     };
@@ -271,6 +302,21 @@ pub(crate) fn exchange(
             wasd,
         }
     });
+    probes.requests = std::mem::take(&mut collision.queued)
+        .as_chunks::<6>()
+        .0
+        .iter()
+        .map(|&[sx, sy, sz, ex, ey, ez]| Probe {
+            start: [sx, sy, sz],
+            end: [ex, ey, ez],
+        })
+        .collect();
+    if let Some(answers) = probes.take_answers() {
+        collision.hits = answers
+            .into_iter()
+            .map(|hit| hit.map_or_else(Vec::new, |hit| [hit.point, hit.normal].concat()))
+            .collect();
+    }
     let tuning = steering
         .tuning
         .take()

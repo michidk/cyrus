@@ -48,6 +48,8 @@ pub struct PlayerControllerInput<'a> {
     pub steer: Option<u16>,
     /// A mod's ownership of ground locomotion this update; `None` leaves it to the original.
     pub claim: Option<crate::player::input::LocomotionClaim>,
+    /// Collision probes a mod asked for; answered while a claim is active.
+    pub probes: Option<&'a crate::player::input::CollisionProbes>,
 }
 
 /// The selected player's state, for mods that own its locomotion.
@@ -317,6 +319,9 @@ impl ScriptWorld {
                 Some(AnimationGroup::SHEATH_SWORD | AnimationGroup::DRAW_SWORD)
             ) {
                 return Ok(());
+            }
+            if let (Some(_), Some(probes)) = (input.claim, input.probes) {
+                probes.answer(|probe| world.probe_player_segment(id, query, probe))?;
             }
             if let Some(claim) = input.claim {
                 // A mod owns ground locomotion: nothing of the original turn, walk, run or
@@ -821,6 +826,106 @@ impl ScriptWorld {
             spatial.refresh_transform()?;
         }
         Ok(())
+    }
+
+    /// The first contact of a segment with the static faces the engine gathered near the player
+    /// or with the terrain surface, nearest the start. Points and the segment are in map units.
+    /// Geometry outside the gathered neighbourhood is not seen.
+    pub fn probe_player_segment(
+        &self,
+        id: super::ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        probe: crate::player::input::Probe,
+    ) -> Result<Option<crate::player::input::ProbeHit>> {
+        use crate::player::input::ProbeHit;
+        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
+        ensure!(
+            probe.start.iter().chain(&probe.end).all(|v| v.is_finite()),
+            "collision probe: non-finite segment"
+        );
+        let round = |p: [f32; 3]| p.map(|v| v.round().clamp(-1.0e9, 1.0e9) as i32);
+        let (start, end) = (round(probe.start), round(probe.end));
+        let distance = |p: [f32; 3]| {
+            (0..3)
+                .map(|axis| f64::from(p[axis] - start[axis] as f32).powi(2))
+                .sum::<f64>()
+        };
+        let poses = self.ordinary_collision_poses(query.prepared)?;
+        let models = query
+            .scene
+            .actor_collision
+            .as_ref()
+            .context("collision probe live geometry unavailable")?;
+        let mut best: Option<(f64, ProbeHit)> = None;
+        for (_, contact) in query.scene.static_collision.runtime_segment_contacts(
+            &query.prepared.candidates,
+            models,
+            &poses,
+            start,
+            end,
+            query.sidedness,
+            None,
+        )? {
+            let contact = contact.integer()?;
+            let point = contact.point.map(|v| v as f32);
+            let length = contact
+                .normal
+                .iter()
+                .map(|&v| f64::from(v).powi(2))
+                .sum::<f64>()
+                .sqrt()
+                .max(1.0);
+            let hit = ProbeHit {
+                point,
+                normal: contact.normal.map(|v| (f64::from(v) / length) as f32),
+            };
+            if best.is_none_or(|(nearest, _)| distance(point) < nearest) {
+                best = Some((distance(point), hit));
+            }
+        }
+        if let Some(terrain) = &query.scene.terrain {
+            // The surface is crossed where the segment's height passes the terrain's: find the
+            // sign change between the ends, then bisect to a tenth of a map unit.
+            let at = |t: f32| -> Option<(f32, [f32; 3])> {
+                let p: [f32; 3] = std::array::from_fn(|axis| {
+                    probe.start[axis] + (probe.end[axis] - probe.start[axis]) * t
+                });
+                let runtime = p.map(|v| (f64::from(v) * 256.0) as i64);
+                Some((p[1] - terrain.sample(runtime)?.height as f32, p))
+            };
+            if let (Some((first, _)), Some((last, _))) = (at(0.0), at(1.0))
+                && (first <= 0.0) != (last <= 0.0)
+            {
+                let (mut near, mut far) = (0.0f32, 1.0f32);
+                for _ in 0..24 {
+                    let middle = (near + far) / 2.0;
+                    match at(middle) {
+                        Some((above, _)) if (above <= 0.0) == (first <= 0.0) => near = middle,
+                        _ => far = middle,
+                    }
+                }
+                if let Some((_, point)) = at(far) {
+                    let runtime = point.map(|v| (f64::from(v) * 256.0) as i64);
+                    if let Some(support) = terrain.sample(runtime) {
+                        let length = support
+                            .normal
+                            .iter()
+                            .map(|&v| f64::from(v).powi(2))
+                            .sum::<f64>()
+                            .sqrt()
+                            .max(1.0);
+                        let hit = ProbeHit {
+                            point,
+                            normal: support.normal.map(|v| (f64::from(v) / length) as f32),
+                        };
+                        if best.is_none_or(|(nearest, _)| distance(point) < nearest) {
+                            best = Some((distance(point), hit));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(best.map(|(_, hit)| hit))
     }
 
     /// Face the heading a mod claimed.

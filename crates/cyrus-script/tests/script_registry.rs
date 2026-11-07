@@ -16068,6 +16068,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
                     auto_defend: false,
                     steer: None,
                     claim: None,
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16182,6 +16183,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
                     auto_defend: false,
                     steer: None,
                     claim: None,
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16299,6 +16301,7 @@ fn a_mod_claim_replaces_the_original_locomotion_with_its_own_heading_and_speed()
                         jump: false,
                         tuning: Default::default(),
                     }),
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16336,6 +16339,134 @@ fn a_mod_claim_replaces_the_original_locomotion_with_its_own_heading_and_speed()
             .motion_direction,
         MotionDirection::FORWARD
     );
+}
+
+#[test]
+fn collision_probes_answer_in_request_order_while_a_mod_claims_locomotion() {
+    use cyrus_script::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    let hud_asset = cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: Default::default(),
+        start_items: vec![],
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
+        torch_time: None,
+        inventory_screen: Default::default(),
+        island_map: Default::default(),
+    };
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
+    world.begin_player_movement_update(player, 0).unwrap();
+    let origin = world
+        .spatial(player)
+        .unwrap()
+        .local
+        .position
+        .map(|q8| (q8 >> 8) as f32);
+    let mut probes = cyrus_script::player::input::CollisionProbes::default();
+    probes.requests = vec![
+        // A long vertical segment through the player, and one far from any geometry.
+        cyrus_script::player::input::Probe {
+            start: [origin[0], origin[1] - 4000.0, origin[2]],
+            end: [origin[0], origin[1] + 4000.0, origin[2]],
+        },
+        cyrus_script::player::input::Probe {
+            start: [origin[0] + 1.0e6, 0.0, origin[2]],
+            end: [origin[0] + 1.0e6, 1.0, origin[2]],
+        },
+    ];
+    let held = cyrus_script::player::input::PlayerInput {
+        forward: true,
+        ..Default::default()
+    };
+    let mut cues = Vec::new();
+    world
+        .advance_player_controller(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            cyrus_script::clock::ClockStep {
+                frame_scale: 256,
+                nominal_ticks: 0,
+                fine_ticks: 0,
+            },
+            ScriptInputs {
+                player_controller: Some(PlayerControllerInput {
+                    held: &held,
+                    walk_mode: false,
+                    auto_defend: false,
+                    steer: None,
+                    claim: Some(cyrus_script::player::input::LocomotionClaim {
+                        heading: 512,
+                        speed: 4.0,
+                        gait: cyrus_script::player::input::Gait::Run,
+                        jump: false,
+                        tuning: Default::default(),
+                    }),
+                    probes: Some(&probes),
+                }),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                forward_step_clear: Some(true),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |id, cue| {
+                cues.push((id, cue));
+                Ok(())
+            },
+        )
+        .unwrap();
+    let answers = probes.take_answers().expect("the claim answers its probes");
+    assert_eq!(answers.len(), 2, "one answer per request, in order");
+    // The vertical segment meets the fixture's ground under the player, facing up (Y grows
+    // downward in the original axes, so the normal's Y is negative).
+    let hit = answers[0].expect("the vertical probe meets the ground");
+    assert_eq!((hit.point[0], hit.point[2]), (origin[0], origin[2]));
+    assert!(hit.normal[1] < -0.99, "{hit:?}");
+    assert!(answers[1].is_none(), "nothing exists a million units away");
 }
 
 #[test]
@@ -16443,6 +16574,7 @@ fn a_mod_claim_steers_a_jump_in_the_air_and_scales_the_jump_only_on_the_ground()
                         jump: false,
                         tuning: Default::default(),
                     }),
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16544,6 +16676,7 @@ fn the_walk_key_swims_forward_in_deep_water_instead_of_walking() {
                     auto_defend: false,
                     steer: None,
                     claim: None,
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16660,6 +16793,7 @@ fn the_jump_key_from_the_backward_run_group_takes_the_backward_jump_row() {
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     hud: Some(&hud),
                     fine_ticks: Some(0),
@@ -16807,6 +16941,7 @@ fn a_sliding_player_keeps_its_controller_running_but_takes_no_step() {
                     auto_defend: false,
                     steer: None,
                     claim: None,
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -16907,6 +17042,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
                     auto_defend: false,
                     steer: None,
                     claim: None,
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -17019,6 +17155,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
                     auto_defend: false,
                     steer: None,
                     claim: None,
+                    probes: None,
                 }),
                 hud: Some(&hud),
                 shell_execution: Some(false),
@@ -17322,6 +17459,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     ..Default::default()
                 },
@@ -17450,6 +17588,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     ..Default::default()
                 },
@@ -17495,6 +17634,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                             auto_defend: false,
                             steer: None,
                             claim: None,
+                            probes: None,
                         }),
                         ..Default::default()
                     },
@@ -22594,6 +22734,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                             auto_defend: false,
                             steer: None,
                             claim: None,
+                            probes: None,
                         }),
                         hud: (ticks == 0).then_some(&hud),
                         ..Default::default()
@@ -43395,6 +43536,7 @@ fn climbing_forward_queues_motion_without_leaving_the_climb() {
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     shell_execution: Some(false),
                     fine_ticks: Some(0),
@@ -43479,6 +43621,7 @@ fn hanging_backward_releases_without_the_walk_key() {
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     shell_execution: Some(false),
                     fine_ticks: Some(0),
@@ -44386,6 +44529,7 @@ fn sample_rope_jump_controller(
                 auto_defend: false,
                 steer: None,
                 claim: None,
+                probes: None,
             }),
             hud: Some(&hud),
             fine_ticks: Some(0),
@@ -44556,6 +44700,7 @@ fn tick_rope_classification_with_timing(
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     ..Default::default()
                 },
@@ -46027,6 +46172,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                             auto_defend: false,
                             steer: None,
                             claim: None,
+                            probes: None,
                         }),
                         ..Default::default()
                     },
@@ -47078,6 +47224,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                             auto_defend: false,
                             steer: None,
                             claim: None,
+                            probes: None,
                         }),
                         shell_execution: Some(false),
                         fine_ticks: Some(0),
@@ -47175,6 +47322,7 @@ fn selected_walk_off_recovery_starts_jump_through_ordinary_update() {
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     nominal_ticks: Some(1),
                     frame_scale: Some(256),
@@ -47571,6 +47719,7 @@ fn selected_player_update(
                         auto_defend: false,
                         steer: None,
                         claim: None,
+                        probes: None,
                     }),
                     ground_bypass: cheats.0,
                     magic_carpet: cheats.1,
@@ -48100,6 +48249,7 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
                             auto_defend: false,
                             steer: None,
                             claim: None,
+                            probes: None,
                         }),
                         ground_bypass: Some(cheats.ground_bypass().unwrap()),
                         script_keys: known_keys.then_some(ScriptKeys {
@@ -48975,6 +49125,7 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
                             auto_defend: false,
                             steer: None,
                             claim: None,
+                            probes: None,
                         }),
                         nominal_ticks: Some(1),
                         frame_scale: Some(256),
