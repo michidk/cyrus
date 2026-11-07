@@ -291,6 +291,42 @@ fn prepare_flat_compositing(
     }
 }
 
+/// Everything that can make a live scene material's light texture differ from the current one:
+/// the texture handle itself, a material assigned or replaced, a node re-parented or released
+/// from staging, and a material asset added or changed.
+#[derive(bevy::ecs::system::SystemParam)]
+struct LightBindingInputs<'w, 's> {
+    previous: Local<'s, Option<Handle<Image>>>,
+    assigned: Query<'w, 's, (), Changed<MeshMaterial3d<SceneMaterial>>>,
+    reparented: Query<'w, 's, (), Changed<ChildOf>>,
+    released: RemovedComponents<'w, 's, crate::persistence::StagedRenderRoot>,
+    /// Absent only where no material plugin registered the stream; every pass then runs.
+    material_events: Option<MessageReader<'w, 's, AssetEvent<SceneMaterial>>>,
+}
+
+impl LightBindingInputs<'_, '_> {
+    /// Whether the light-texture pass can change anything this frame. Consumes the change streams.
+    fn changed(mut self, light_texture: &Handle<Image>) -> bool {
+        let released = self.released.read().count() > 0;
+        // Read the whole stream, so stale events do not trigger a later pass.
+        let materials = self.material_events.as_mut().is_none_or(|events| {
+            events
+                .read()
+                .filter(|event| {
+                    matches!(
+                        event,
+                        AssetEvent::Added { .. } | AssetEvent::Modified { .. }
+                    )
+                })
+                .count()
+                > 0
+        });
+        let texture = self.previous.as_ref() != Some(light_texture);
+        *self.previous = Some(light_texture.clone());
+        texture || released || materials || !self.assigned.is_empty() || !self.reparented.is_empty()
+    }
+}
+
 // This system joins the active environment, camera and GLTF material assets.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn apply_scene_fog(
@@ -317,6 +353,7 @@ fn apply_scene_fog(
         Query<&ChildOf>,
         Query<(), With<crate::persistence::StagedRenderRoot>>,
         Query<&cyrus_script::script::ScriptBinding>,
+        LightBindingInputs,
     ),
     mut fog_materials: ResMut<Assets<SceneMaterial>>,
     mut converted: Local<MaterialCache>,
@@ -339,7 +376,7 @@ fn apply_scene_fog(
         crate::lighting::runtime::LightView,
     ),
 ) {
-    let (parents, staged, actor_bindings) = hierarchy;
+    let (parents, staged, actor_bindings, mut light_inputs) = hierarchy;
     let (
         mut previous,
         mut lights,
@@ -354,6 +391,8 @@ fn apply_scene_fog(
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
     else {
+        // Change streams can expire unread meanwhile; the next pass checks every material.
+        *light_inputs.previous = None;
         return;
     };
     let position = cameras
@@ -412,14 +451,16 @@ fn apply_scene_fog(
             .chain(parents.iter_ancestors(entity))
             .any(|node| staged.contains(node))
     };
-    for (entity, handle) in &scene_handles {
-        if !is_live(entity) {
-            continue;
-        }
-        if let Some(mut material) = fog_materials.get_mut(&handle.0)
-            && material.extension.lights != light_texture
-        {
-            material.extension.lights = light_texture.clone();
+    if light_inputs.changed(&light_texture) {
+        for (entity, handle) in &scene_handles {
+            if !is_live(entity) {
+                continue;
+            }
+            if let Some(mut material) = fog_materials.get_mut(&handle.0)
+                && material.extension.lights != light_texture
+            {
+                material.extension.lights = light_texture.clone();
+            }
         }
     }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
