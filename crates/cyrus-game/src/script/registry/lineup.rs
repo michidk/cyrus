@@ -217,7 +217,9 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
                 sidedness: false,
             },
             environment: super::transition::ObstacleEnvironment {
-                selected_player: Some(self.player),
+                // The walked actor is the receiver, which is not the selected player for an
+                // object lineup on an ordinary actor.
+                selected_player: self.host.selected_player(),
                 auto_grab: false,
                 item_system_ready: inputs
                     .hud

@@ -18917,6 +18917,328 @@ fn wait_line_up_stays_active_while_the_argument_actors_alignment_flag_is_set() {
     }
 }
 
+/// The map actor `LOGIC` (instance 0) is the receiver of `ObjectLineUp`; the `CALLER` actor
+/// (instance 1) starts the task on it, waits for its alignment flag with `WaitLineUp` and then
+/// sets flag 5. With `cancel`, the receiver's own script clears its tasks when it runs.
+fn object_line_up_scripts(cancel: bool) -> Scripts {
+    let mut scripts = actor_reference_scripts(Object::Named { string: 0 });
+    let [line_up, wait_line_up, kill_tasks] = [
+        (Native::ObjectLineUp, CallKind::Task, 3),
+        (Native::WaitLineUp, CallKind::Task, 1),
+        (Native::KillMyTasks, CallKind::Function, 0),
+    ]
+    .map(|(name, kind, param_count)| {
+        let id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name,
+            kind,
+            param_count,
+        });
+        id
+    });
+    let steps = |operations: Vec<Operation>| {
+        operations
+            .into_iter()
+            .enumerate()
+            .map(|(i, operation)| {
+                (
+                    i as u32,
+                    Step {
+                        next: i as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let mut caller = scripts.actors["LOGIC"].clone();
+    caller.program.steps = steps(vec![
+        Operation::ObjectCall {
+            call: Call {
+                function_id: line_up,
+                function: Native::ObjectLineUp,
+                kind: CallKind::Task,
+                target: Object::Named { string: 0 },
+                arguments: [0, 0, 1024].map(|value| Value::Integer { value }).to_vec(),
+            },
+        },
+        Operation::Call {
+            call: Call {
+                function_id: wait_line_up,
+                function: Native::WaitLineUp,
+                kind: CallKind::Task,
+                target: Object::Me,
+                arguments: vec![Value::Read {
+                    place: Place::Property {
+                        object: Object::Named { string: 0 },
+                        reference: 294,
+                    },
+                }],
+            },
+        },
+        set_flag(5),
+        Operation::End { target: 0 },
+    ]);
+    caller.code_origin = 400;
+    scripts.actors.insert("CALLER".into(), caller);
+    // The alignment arrival threshold reads the speed attribute of the current group, which a
+    // receiver outside the table's walking groups answers with zero.
+    for attribute in [
+        Attribute::ForwardSpeed,
+        Attribute::BackwardSpeed,
+        Attribute::SideSpeed,
+        Attribute::ForwardWalk,
+        Attribute::BackwardWalk,
+    ] {
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[attribute] = 3;
+    }
+    scripts.instances[1].actor = "CALLER".into();
+    if cancel {
+        // The interrupt thread (steps 0 and 1) runs the cancellation; the main thread idles.
+        let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+        program.entry = 2;
+        program.steps = steps(vec![
+            wait(kill_tasks, Native::KillMyTasks, CallKind::Function, vec![]),
+            Operation::Endint,
+            Operation::Yield,
+            Operation::End { target: 2 },
+        ]);
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+/// An ordinary (not selected) receiver with an animation table, collision shape and the caller.
+struct OrdinaryLineUp {
+    world: ScriptWorld,
+    scripts: Scripts,
+    data: cyrus_assets::animation::Animations,
+    scene: cyrus_game::player::data::PlayerScene,
+}
+
+fn ordinary_line_up(cancel: bool) -> OrdinaryLineUp {
+    let mut scripts = object_line_up_scripts(cancel);
+    // The fixture places every instance as a static model at one point; keep the identity it
+    // derives for the script set it builds the world from.
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, models) =
+        static_model_fixture_at(scripts.clone(), Some(20.0), [10, 20, 30]);
+    let (caller, receiver) = (world.id(1).unwrap(), world.id(0).unwrap());
+    data.metadata["mpob_objects"] = serde_json::json!([
+        {"script_name":"LOGIC","object_type":1,"model_id":-1},
+        {"script_name":"CALLER","object_type":1,"model_id":-1}
+    ]);
+    let logic = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "LOGIC")
+        .unwrap();
+    logic["model_load_path"] = "animation_table".into();
+    logic["raan_entries"] = serde_json::json!([{"file_path":"LOGIC.3D","frame_count":200}]);
+    logic["animation_groups"] = serde_json::json!(
+        [0, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 142, 143].map(|group| {
+            serde_json::json!({
+                "group_index":group,"anim_id":group+1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":group},{"opcode":2,"value":0}]
+            })
+        })
+    );
+    data.models.insert(
+        "LOGIC".into(),
+        cyrus_assets::animation::AnimationModel {
+            radius: Some(31.0),
+            base_positions: vec![],
+            base_normals: vec![],
+            faces: vec![],
+            corner_normals: vec![],
+            encoding: "animated_i16".into(),
+            positions: vec![vec![]; 200],
+            normals: vec![vec![]; 200],
+        },
+    );
+    world
+        .initialize_map_animation(receiver, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world.refresh_model_presentations(&data, &[caller]).unwrap();
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.settings.post_collide_height = 50;
+    world
+        .prepare_ordinary_collision_shape(receiver, &data, &scene)
+        .unwrap();
+    OrdinaryLineUp {
+        world,
+        scripts,
+        data,
+        scene,
+    }
+}
+
+impl OrdinaryLineUp {
+    /// One scheduler round: the caller's ordinary update, then the receiver's task update, or its
+    /// interrupt script when `receiver_script` is set.
+    fn round(&mut self, receiver_script: bool) -> anyhow::Result<()> {
+        use cyrus_game::script::{PlayerCollisionSource, ScriptInputs, ScriptStage};
+        let (caller, receiver) = (self.world.id(1)?, self.world.id(0)?);
+        let actors = [receiver, caller];
+        let hud = cyrus_game::script::ScriptHud::default();
+        let inputs = ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            player_collision: Some(PlayerCollisionSource {
+                scene: &self.scene,
+                animations: &self.data,
+                view: [10, 30],
+                actors: &actors,
+            }),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let mut run = |world: &mut ScriptWorld, id, stage| {
+            world.advance(
+                id,
+                stage,
+                inputs,
+                Some(&mut |_, _| Ok(())),
+                Some(&mut random),
+                20,
+            )
+        };
+        run(&mut self.world, caller, ScriptStage::OrdinaryMain)?;
+        let stage = if receiver_script {
+            ScriptStage::Body(Thread::Interrupt)
+        } else {
+            ScriptStage::Tasks
+        };
+        run(&mut self.world, receiver, stage)
+    }
+
+    /// Replace the world through its snapshot, keeping the session globals and optionally
+    /// putting the receiver's animation in `group`.
+    fn replace(&mut self, group: Option<u16>) {
+        use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &self.scripts,
+            animations: &self.data,
+            collision: &collision,
+        };
+        let mut saved = serde_json::to_value(self.world.snapshot(&sources).unwrap()).unwrap();
+        if let Some(group) = group {
+            saved["actors"][0]["animation"]["playback"]["current"][0] = group.into();
+        }
+        let generation = self.world.generation() + 1;
+        let globals = std::mem::take(self.world.globals_mut());
+        self.world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation,
+                globals,
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+    }
+
+    fn flag(&self) -> u8 {
+        self.world.actors()[0]
+            .control_state()
+            .unwrap()
+            .script_control
+            & 2
+    }
+
+    fn position(&self) -> [i32; 3] {
+        self.world
+            .spatial(self.world.id(0).unwrap())
+            .unwrap()
+            .local
+            .position
+    }
+}
+
+#[test]
+fn object_line_up_on_an_ordinary_actor_holds_the_flag_wait_line_up_reads_until_arrival() {
+    // The receiver is not the selected player. Its task publishes the alignment flag in its own
+    // script-control byte, the caller's WaitLineUp stays active while it is set and arrival clears it and releases the caller.
+    let mut fixture = ordinary_line_up(false);
+    let start = fixture.position();
+    fixture.round(false).unwrap();
+    assert_eq!(fixture.flag(), 2, "the call publishes the flag");
+    assert_eq!(
+        fixture.world.actors()[0].runtime().unwrap().active_tasks(),
+        1
+    );
+    assert!(fixture.world.flags().is_empty() || fixture.world.flags()[0] != 5);
+    let mut cleared = false;
+    for round in 0..600 {
+        if round == 3 {
+            // The walking group selects the speed attribute the arrival test reads.
+            fixture.replace(Some(18));
+            assert_eq!(fixture.flag(), 2, "the flag survives the replacement");
+        }
+        fixture
+            .round(false)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        if fixture.flag() == 0 {
+            cleared = true;
+            break;
+        }
+        assert_ne!(
+            fixture.world.flags().first(),
+            Some(&5),
+            "round {round}: the flag holds the caller"
+        );
+    }
+    assert!(cleared, "arrival clears the flag");
+    // The caller sees the cleared flag on its next update.
+    fixture.round(false).unwrap();
+    fixture.round(false).unwrap();
+    let released = fixture.world.flags().first() == Some(&5);
+    assert!(released, "the caller is released after arrival");
+    assert_eq!(fixture.flag(), 0, "arrival clears the flag");
+    assert_eq!(
+        fixture.world.actors()[0].runtime().unwrap().active_tasks(),
+        0
+    );
+    assert_ne!(fixture.position(), start, "the receiver walked");
+}
+
+#[test]
+fn cancelling_an_object_line_up_leaves_the_flag_that_wait_line_up_keeps_reading() {
+    // KillMyTasks clears the receiver's slots without running a handler, so nothing clears the
+    // alignment flag: the caller keeps waiting.
+    let mut fixture = ordinary_line_up(true);
+    fixture.round(false).unwrap();
+    assert_eq!(
+        (
+            fixture.flag(),
+            fixture.world.actors()[0].runtime().unwrap().active_tasks()
+        ),
+        (2, 1)
+    );
+    fixture.round(true).unwrap();
+    assert_eq!(
+        fixture.world.actors()[0].runtime().unwrap().active_tasks(),
+        0
+    );
+    for _ in 0..10 {
+        fixture.round(false).unwrap();
+    }
+    assert_eq!(fixture.flag(), 2);
+    assert_ne!(fixture.world.flags().first(), Some(&5));
+}
+
 fn message_sender_scripts() -> Scripts {
     message_query_scripts(Native::GetMessageSender)
 }
