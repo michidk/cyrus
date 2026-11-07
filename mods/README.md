@@ -13,7 +13,7 @@ the Mods window that opens with F1. The browser build does not load mods.
 
 ## Writing a mod
 
-A mod folder holds `mod.toml` plus `mod.wasm`, shader files, or both.
+A mod folder holds `mod.toml` plus any of `mod.wasm`, shader files and a `files/` folder.
 Copy one of these crates as a start.
 
 **Manifest** (`mod.toml`). `name` is required; `description`, `version` and
@@ -123,6 +123,14 @@ coordinate offset and the final colour of water fragments). It replaces the
 built-in source, so a compile error shows up in the log and can hide what the
 shader draws until it is fixed. Each shader is one slot: the first active mod in
 id order wins and a warning is logged. Turning the mod off restores the original.
+
+**Game data** (`files/`). A `files/` folder inside the mod mirrors the game install:
+`files/fxart/<name>` is read instead of the install's `fxart/<name>`, and a path the
+install lacks is added. Names match ignoring case. The install is never written;
+the replacement is read from the mod folder, so ship only data you made yourself.
+If several active mods supply a path, the first by id wins. The files are read when
+the game starts, so toggling such a mod needs a restart (the Mods window says so).
+Turning the mod off restores the original, and cached assets rebuild by content.
 
 Rust mods use `wit-bindgen` through `wasvy_macros::guest_bindings!`, at the same version as
 `crates/cyrus-mods/Cargo.toml`. Other wasvy guest languages

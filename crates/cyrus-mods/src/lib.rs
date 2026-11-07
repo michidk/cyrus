@@ -10,6 +10,9 @@
 //!   `embedded://cyrus_render/water_surface.wesl`) and `file` is the replacement in the
 //!   mod folder. Each shader is one slot: the first active mod in id order supplies it.
 //!
+//! - a `files/` folder that mirrors the game install (`fxart/…`, `sound/…`): its files are read
+//!   instead of the install's, or added to it. See [`file_overlays`]; applies after a restart.
+//!
 //! `mod.toml` may also give a `version`, an `author` and `[[setting]]` entries (see
 //! [`settings`]); the Mods window draws the settings of each active mod.
 //!
@@ -44,6 +47,8 @@ wasvy::auto_host_components! {
 
 const MODS_DIR: &str = "cyrus-config/mods";
 const ACTIVE_FILE: &str = "cyrus-config/mods.json";
+/// A mod's folder of replacement game files.
+const FILES_DIR: &str = "files";
 
 /// Registers the `mods://` asset source; call before the asset plugin is added.
 pub fn register_source(app: &mut App) {
@@ -51,6 +56,28 @@ pub fn register_source(app: &mut App) {
         "mods",
         AssetSourceBuilder::platform_default(&absolute(MODS_DIR), None),
     );
+}
+
+/// The `files/` folders of the active mods in id order, for the game-data reader to overlay on
+/// the install. Read straight from disk, so it can run before any plugin is built.
+pub fn file_overlays() -> Vec<PathBuf> {
+    let active = match std::fs::read(ACTIVE_FILE) {
+        Ok(bytes) => serde_json::from_slice::<Saved>(&bytes).map_err(anyhow::Error::from),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Saved::default()),
+        Err(error) => Err(error.into()),
+    };
+    let mut active = active
+        .unwrap_or_else(|error| {
+            error!("mods: {ACTIVE_FILE}: {error:#}");
+            Saved::default()
+        })
+        .active;
+    active.sort();
+    active
+        .iter()
+        .map(|id| mod_file(id, FILES_DIR))
+        .filter(|folder| folder.is_dir())
+        .collect()
 }
 
 pub struct ModsPlugin;
@@ -117,6 +144,7 @@ struct Entry {
     manifest: Manifest,
     active: bool,
     has_wasm: bool,
+    has_files: bool,
     /// The running wasvy instance while active.
     instance: Option<Entity>,
     modified: Option<SystemTime>,
@@ -181,6 +209,7 @@ impl Catalog {
             entries.push(Entry {
                 active: saved.active.contains(&id),
                 has_wasm: dir.join("mod.wasm").is_file(),
+                has_files: dir.join(FILES_DIR).is_dir(),
                 id,
                 manifest,
                 instance: None,
@@ -390,6 +419,9 @@ fn window(
             let credit: Vec<_> = credit.into_iter().flatten().collect();
             if !credit.is_empty() {
                 ui.small(credit.join(" "));
+            }
+            if entry.has_files {
+                ui.small("Replaces game files; restart to apply a change.");
             }
             if entry.active && !manifest.settings.is_empty() {
                 ui.indent(&entry.id, |ui| {

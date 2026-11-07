@@ -15,6 +15,11 @@ A mod is a folder `cyrus-config/mods/<id>/` with `mod.toml` (`name`,
   replaced. Each shader is one slot; if several active mods replace it, the first by
   id wins and a warning is logged.
 
+- a `files/` folder mirroring the game install: its files replace or add to the
+  install's for the game-data reader (`cyrus_assets::native::set_overlays`, fed from
+  `file_overlays()` by the `cyrus` binary before anything scans the install).
+  Case-insensitive match, first active mod by id wins, applied at startup only.
+
 `ModsPlugin` discovers the folders at startup, lists them in a Mods window
 while the F1 menu is open, saves activation to `cyrus-config/mods.json`, and
 reloads an active mod's files when they change (polled every half second).
