@@ -4400,16 +4400,19 @@
     },
     {
       "native": "AddLightEffect",
-      "status": "missing",
+      "status": "partial",
       "owner": 39,
-      "scope": "Direct named effects/static SOUP dispatch",
-      "caller": "GameHost::call/delegated native services -> unsupported fallback",
-      "tests": [],
-      "evidence": [
-        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md",
-        "https://github.com/michidk/redguard-preservation/pull/261"
+      "scope": "Eight-argument function allocating a type-two light effect record in the shared effect pool, modulated by the world loop and submitted as a local light",
+      "caller": "ScriptWorld::advance -> GameHost::call -> ScriptWorld::add_light_effect; update_ordinary -> advance_light_effects; ScriptWorld::object_lights -> render fog lighting",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/effects.rs::add_light_effect_runs_a_type_two_record_through_lifetime_modulation_and_submission",
+        "crates/cyrus-script/tests/script_registry/effects.rs::add_light_effect_shares_the_pool_capacity_and_keeps_snapshots"
       ],
-      "limits": "Verified independent installed8-argument declaration/exact native/full186-byte handler/158-byte allocator. Receiver/args1..3 unused. Enabled system requests type2; signed free_count>0 scans first zero-tag record; decrement count/preserve next link/set type2. Null/exhausted return0; success record pointer. Only4-byte zero-fill request before link restoration, not whole-record reset. Args4/6 duplicated,8/7/5 stored, two control words1/two companions0; other bytes retained.3024 original contexts/21 effective semantic controls; full mapped memory/write order/domain/calls/return/register/20-byte cleanup/canary checked. Only fill service controlled exact destination/value0/count4; independent original library byte-count inspection, no library/debug-wrapper execution. Four receiver tokens/3 enable values/6 signed counts/7 finite lists/3 argument octuples/2 patterns. Malformed/cycles/count producers/lifetime/release/record consumers/render meanings/exhaustive domains/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run.",
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#addlighteffect",
+        "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
+      ],
+      "limits": "Verified independent installed8-argument declaration/exact native/full186-byte handler/158-byte allocator. Receiver/args1..3 unused. Enabled system requests type2; signed free_count>0 scans first zero-tag record; decrement count/preserve next link/set type2. Null/exhausted return0; success record pointer. Only4-byte zero-fill request before link restoration, not whole-record reset. Args4/6 duplicated,8/7/5 stored, two control words1/two companions0; other bytes retained.3024 original contexts/21 effective semantic controls; full mapped memory/write order/domain/calls/return/register/20-byte cleanup/canary checked. Only fill service controlled exact destination/value0/count4; independent original library byte-count inspection, no library/debug-wrapper execution. Four receiver tokens/3 enable values/6 signed counts/7 finite lists/3 argument octuples/2 patterns. Malformed/cycles/count producers/lifetime/release/record consumers/render meanings/exhaustive domains/VM/natural original/native/browser Unknown. Production remains missing; no Rust tests/game runtime run. Implementation (current): Verified per the published contract: the first three arguments and the receiver do not place the record (a fresh record sits at the pool origin; a reused slot keeps its previous position), the call returns the one-based record or zero for a disabled or full pool (type-one and type-two records share the capacity), lifetime from h ends a record before its channels advance, the f/g channel advances before d/e, each triggered channel draws start + Rnd(amplitude) - amplitude/2 from the shared generator, a record submits only while its d-channel is positive, with the colour left by the last object light. Routed tests run the native, the lifetime and modulation stages with the shared generator, submission through object_lights (the renderer's fog lighting consumer) and snapshot restore. Unknown: a negative amplitude (the original's Rnd behaviour is not recovered) is an explicit error; the record's position is not set by any installed path so it renders at the pool origin until a recovered writer exists; no installed script calls it; no original/native/browser comparison.",
       "reviewed_revision": "a2fe7d4ef330199857aaa3a2ce80eef048da78ce"
     },
     {
@@ -5997,7 +6000,7 @@
         "https://github.com/michidk/redguard-preservation/blob/04a8ba8/docs/engine/SOUP.md#hand-and-hilt-model-helpers",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
       ],
-      "limits": "Verified independent installed function parms4/exact native binding/full119-byte native/full663-byte hand-model helper/full117-byte item lookup.3456 original CPU cases PASS:264 zero returns/3060 exact diagnostic-copy entry stops/132 exact allocator entry stops.13 effective original-byte controls require normal exit/full output; final original reexecution PASS. Three receivers including null/eight unsigned IDs/three differing four-argument tuples/two lookup enable states/six finite lists/two hand-model pointers/two patterns. Ordered unsigned lookup; missing item reaches diagnostic before helper. Match forwards receiver/model/all three offsets; helper clears temporary pointer then null receiver/model returns0, otherwise allocator boundary. Full actor/item/shared memory, entry register+stack args/canary/stack/preserved regs checked; no fabricated service return or downstream effects. Complete DisplayHandModel named wrapper independently differs from shared helper; no family equivalence inferred. Installed declaration and native consume4; historical encoded1 VM admission remains Unknown. Unknown allocator/geometry/drawing/diagnostic effects/continuation/malformed pointers/list producer/lifecycle/full joint domain/VM/native/browser/pixel/gameplay parity. Production remains missing; no inventory/render implementation edits. Implementation (current): Verified (preservation Display sections plus the helper disassembly): the ordered item list is searched by unsigned id; an absent id or a disabled lookup is the original's no match and is an explicit error here; the item's hand-model (ITEM.INI hand_object_file, now carried by the HUD asset's item records) is what both item natives place, DisplayHiltItem with the hilt helper; an item without one returns zero with no record. Routed tests reach the shared frame attachment list, the hand words and the frame expiry; the renderer consumes that list (render test under DisplayHandModel). Unknown: older HUD exports lack hand_model and read as items without a hand model until re-exported; no original/native/browser comparison.",
+      "limits": "Verified independent installed function parms4/exact native binding/full119-byte native/full663-byte hand-model helper/full117-byte item lookup.3456 original CPU cases PASS:264 zero returns/3060 exact diagnostic-copy entry stops/132 exact allocator entry stops.13 effective original-byte controls require normal exit/full output; final original reexecution PASS. Three receivers including null/eight unsigned IDs/three differing four-argument tuples/two lookup enable states/six finite lists/two hand-model pointers/two patterns. Ordered unsigned lookup; missing item reaches diagnostic before helper. Match forwards receiver/model/all three offsets; helper clears temporary pointer then null receiver/model returns0, otherwise allocator boundary. Full actor/item/shared memory, entry register+stack args/canary/stack/preserved regs checked; no fabricated service return or downstream effects. Complete DisplayHandModel named wrapper independently differs from shared helper; no family equivalence inferred. Installed declaration and native consume4; historical encoded1 VM admission remains Unknown. Unknown allocator/geometry/drawing/diagnostic effects/continuation/malformed pointers/list producer/lifecycle/full joint domain/VM/native/browser/pixel/gameplay parity. Production remains missing; no inventory/render implementation edits. Implementation (current): Verified (preservation Display sections plus the helper disassembly): the ordered item list is searched by unsigned id; an absent id or a disabled lookup is the original's no match and is an explicit error here; the item's hand-model (ITEM.INI hand_object_file, now carried by the HUD asset's item records) is what both item natives place, DisplayHiltItem with the hilt helper; an item without one returns zero with no record. Routed tests reach the shared frame attachment list, the hand words and the frame expiry; the renderer consumes that list (render test under DisplayHandModel). Acceptance: the real installed export records a hand model for every weapon item (install test), an export written before it reads as Unexported and the native refuses with a re-export message instead of returning zero (routed test), and the production render plugin draws the item list's model (render test). Unknown: no original/native/browser comparison of the drawn placement.",
       "reviewed_revision": "4b24e3af1f76a7880c65c62ef4232fa935c0b7fc"
     },
     {
@@ -6033,7 +6036,7 @@
         "https://github.com/michidk/redguard-preservation/blob/04a8ba8/docs/engine/SOUP.md#hand-and-hilt-model-helpers",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUPDEF.md"
       ],
-      "limits": "Verified independent installed function parms4/exact binding/full129-byte native/full633-byte distinct hilt-model helper/full117-byte original ordered lookup.3456 original CPU cases PASS:264 zero returns/3060 exact diagnostic-copy entry stops/132 exact allocator entry stops.13 effective original-byte controls require normal exit/full output; final original reexecution PASS. Three receivers including null/eight unsigned IDs/three XYZ tuples/two lookup-enable values/six finite lists/two model pointers/two patterns. Native clears shared temporary pointer before lookup, including missing-item diagnostic; match independently reads same item hand-model field as DisplayHandItem then forwards receiver/model/XYZ to distinct helper. Helper clears temporary pointer; null receiver/model returns0, otherwise allocator boundary. Full actor/item/shared memory, entry register+stack arguments/canary/stack/preserved regs checked. Independently mapped79-byte named DisplayHiltModel wrapper differs from633 helper. No fabricated downstream IO/return/continuation. Unknown allocator/geometry/drawing/diagnostic effects/continuation, malformed pointers/list producers/lifecycle/full joint domain/VM admission/native/browser/pixel/gameplay parity. Installed declaration/native ABI4; no encoded-call admission claim. Production remains missing; no inventory/render implementation edits. Implementation (current): Verified (preservation Display sections plus the helper disassembly): the ordered item list is searched by unsigned id; an absent id or a disabled lookup is the original's no match and is an explicit error here; the item's hand-model (ITEM.INI hand_object_file, now carried by the HUD asset's item records) is what both item natives place, DisplayHiltItem with the hilt helper; an item without one returns zero with no record. Routed tests reach the shared frame attachment list, the hand words and the frame expiry; the renderer consumes that list (render test under DisplayHandModel). Unknown: older HUD exports lack hand_model and read as items without a hand model until re-exported; no original/native/browser comparison.",
+      "limits": "Verified independent installed function parms4/exact binding/full129-byte native/full633-byte distinct hilt-model helper/full117-byte original ordered lookup.3456 original CPU cases PASS:264 zero returns/3060 exact diagnostic-copy entry stops/132 exact allocator entry stops.13 effective original-byte controls require normal exit/full output; final original reexecution PASS. Three receivers including null/eight unsigned IDs/three XYZ tuples/two lookup-enable values/six finite lists/two model pointers/two patterns. Native clears shared temporary pointer before lookup, including missing-item diagnostic; match independently reads same item hand-model field as DisplayHandItem then forwards receiver/model/XYZ to distinct helper. Helper clears temporary pointer; null receiver/model returns0, otherwise allocator boundary. Full actor/item/shared memory, entry register+stack arguments/canary/stack/preserved regs checked. Independently mapped79-byte named DisplayHiltModel wrapper differs from633 helper. No fabricated downstream IO/return/continuation. Unknown allocator/geometry/drawing/diagnostic effects/continuation, malformed pointers/list producers/lifecycle/full joint domain/VM admission/native/browser/pixel/gameplay parity. Installed declaration/native ABI4; no encoded-call admission claim. Production remains missing; no inventory/render implementation edits. Implementation (current): Verified (preservation Display sections plus the helper disassembly): the ordered item list is searched by unsigned id; an absent id or a disabled lookup is the original's no match and is an explicit error here; the item's hand-model (ITEM.INI hand_object_file, now carried by the HUD asset's item records) is what both item natives place, DisplayHiltItem with the hilt helper; an item without one returns zero with no record. Routed tests reach the shared frame attachment list, the hand words and the frame expiry; the renderer consumes that list (render test under DisplayHandModel). Acceptance: the real installed export records a hand model for every weapon item (install test), an export written before it reads as Unexported and the native refuses with a re-export message instead of returning zero (routed test), and the production render plugin draws the item list's model (render test). Unknown: no original/native/browser comparison of the drawn placement.",
       "reviewed_revision": "8a8a81dcf7fb7f4eb3de74237cefa3c17eaf55d9"
     },
     {
@@ -7659,6 +7662,57 @@
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
+      "property": "size.pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape center offset",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape center offset",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape center offset",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
       "property": "last_angle.vx",
       "status": "partial",
       "owner": 5,
@@ -8189,6 +8243,204 @@
       ],
       "limits": "Verified in the original: allocation stores 1, each pass invocation derives its elapsed input from it and then increments it with 16-bit wrap; completion and TaskStop leave it. Word read sign-extended, write keeps the low sixteen bits. Slot bytes live in the cyrus-soup state arrays (empty slots keep their last bytes; snapshot version 2, version 1 saves migrate), the running actor's own slots are served by its interpreter and another actor's through the host. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "063909019f562b801948dc10464f7ec09f2ea053"
+    },
+    {
+      "property": "anim.next",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: pending group (-1 none); a write names any pending group, group availability is checked when playback selects it. Descriptor tag w width 2; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.next_speed",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: request modifier plus the pending group countdown byte; without a pending request the byte is not modelled and access is an explicit error. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.frame",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: signed command cursor of the current group; a cursor outside the group fails playback with a sticky contextual error when it is next used. Descriptor tag w width 2; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.speed",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: countdown reload byte of the current group. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.speed_count",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: frame countdown byte of the current group. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.stop_flag",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: exit marker; cyrus keeps it as a boolean (nonzero low byte sets it). Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.halt_flag",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: BreakPoint translation suppression; boolean storage (nonzero low byte sets it). Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.hold_flag",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: wait byte: 0 runs, 255 holds, other values count down by the tick input. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.loop_count",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: finite loop countdown byte. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.rewind_flag",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: reverse playback when the byte is one; boolean storage. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
+    },
+    {
+      "property": "anim.real_frame",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver animation record field",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
+      ],
+      "limits": "Verified in the original: wrapping frame-progress byte, what WaitAnimFrame compares. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
     },
     {
       "property": "task_variable[0]",
@@ -8930,18 +9182,9 @@
     },
     {
       "properties": [
-        "anim.halt_flag",
-        "anim.hold_flag",
-        "anim.loop_count",
         "anim.max_group",
-        "anim.next_speed",
-        "anim.real_frame",
         "anim.rep_count",
-        "anim.rewind_flag",
-        "anim.sound_handle",
-        "anim.speed",
-        "anim.speed_count",
-        "anim.stop_flag"
+        "anim.sound_handle"
       ],
       "status": "missing",
       "owner": 5,
@@ -8964,11 +9207,9 @@
         "anim.angle.vx",
         "anim.angle.vy",
         "anim.angle.vz",
-        "anim.frame",
         "anim.last_angle.vx",
         "anim.last_angle.vy",
         "anim.last_angle.vz",
-        "anim.next",
         "anim.pos.vx",
         "anim.pos.vy",
         "anim.pos.vz"
@@ -9118,9 +9359,6 @@
       "properties": [
         "size",
         "size.address",
-        "size.pos.vx",
-        "size.pos.vy",
-        "size.pos.vz",
         "size.size.vx",
         "size.size.vy",
         "size.size.vz"

@@ -95,17 +95,18 @@ fn orientation_uses_negative_yaw_then_pitch_then_roll() {
 }
 
 #[test]
-fn out_of_range_integer_results_are_the_x87_integer_indefinite() {
+fn invalid_integer_results_report_the_axis_and_input() {
     for value in [f32::NAN, f32::INFINITY, f32::MAX] {
-        let result = Matrix([[value, 0.0, 0.0], [0.0; 3], [0.0; 3]])
+        let error = Matrix([[value, 0.0, 0.0], [0.0; 3], [0.0; 3]])
             .transform([256, 0, 0])
-            .unwrap();
-        assert_eq!(result[0], i32::MIN, "{value}");
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("axis 0") && error.contains("[256, 0, 0]"),
+            "{error}"
+        );
     }
-    assert_eq!(
-        Matrix::IDENTITY.transform([i32::MAX, 0, 0]).unwrap()[0],
-        i32::MIN
-    );
+    assert!(Matrix::IDENTITY.transform([i32::MAX, 0, 0]).is_err());
 }
 
 #[test]

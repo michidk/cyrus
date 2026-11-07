@@ -6,6 +6,35 @@ use cyrus_soup::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A field of the actor's animation record that script properties name. The remaining record
+/// fields (`current`, `rep_count`, `sound_handle`, `max_group`, the delta words) have other owners
+/// or no recovered contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlaybackField {
+    /// Pending group, signed word, -1 for none.
+    Next,
+    /// Pending request's frame countdown byte: its modifier plus the pending group's own byte.
+    NextSpeed,
+    /// Signed command cursor of the current group.
+    Frame,
+    /// Selected group's frame countdown reload byte.
+    Speed,
+    /// Frame countdown byte; the cursor advances when it expires.
+    SpeedCount,
+    /// Exit marker of the current group.
+    StopFlag,
+    /// BreakPoint translation suppression of the current group.
+    HaltFlag,
+    /// Wait byte: zero runs, 255 holds, other values count ticks.
+    HoldFlag,
+    /// Finite loop countdown byte.
+    LoopCount,
+    /// Reverse playback: the byte one.
+    RewindFlag,
+    /// Wrapping frame-progress byte.
+    RealFrame,
+}
+
 /// One actor's current, pending and explicitly supplied default group.
 /// Type-zero, type-one and type-two groups retain forward/reverse playback state. The caller owns eligibility,
 /// default selection and each advancement's original nominal-tick input.
@@ -451,6 +480,83 @@ impl ActorAnimation {
         self.current
             .as_ref()
             .is_some_and(|(_, sequence)| sequence.exit_reached())
+    }
+
+    /// The playback record field `field` as a script property reads it: the low byte or signed word,
+    /// extended to the script integer. A group-less receiver has no sequence, pending request or
+    /// retained bytes of its own, so the fields kept on them are explicit errors.
+    pub fn record_field(&self, field: PlaybackField) -> anyhow::Result<i32> {
+        self.check_failure()?;
+        Ok(match field {
+            PlaybackField::Next => self
+                .pending_group()
+                .map_or(-1, |group| i32::from(group.index() as i16)),
+            PlaybackField::NextSpeed => {
+                let (group, modifier) = self.pending.with_context(|| {
+                    format!("{}: no pending request holds a speed", self.context)
+                })?;
+                i32::from(self.group_speed(group)?.wrapping_add(modifier))
+            }
+            PlaybackField::RewindFlag => i32::from(self.reverse),
+            PlaybackField::RealFrame => i32::from(self.frame_progress),
+            _ => self.sequence(field)?.record(field),
+        })
+    }
+
+    /// Assigns the playback record field raw, as a script property write does: the low byte or word
+    /// is kept, nothing runs and no group, cursor or sound is validated until playback uses it.
+    /// `Next` selects any pending group, `NextSpeed` stores the modifier that leaves the written
+    /// speed after the pending group's own byte is added.
+    pub fn set_record_field(&mut self, field: PlaybackField, value: i32) -> anyhow::Result<()> {
+        self.check_failure()?;
+        match field {
+            PlaybackField::Next => {
+                self.pending = (value as i16 != -1).then(|| {
+                    (
+                        AnimationGroup::from_index(value as u16),
+                        self.pending.map_or(0, |(_, modifier)| modifier),
+                    )
+                });
+            }
+            PlaybackField::NextSpeed => {
+                let (group, _) = self.pending.with_context(|| {
+                    format!("{}: no pending request holds a speed", self.context)
+                })?;
+                let speed = self.group_speed(group)?;
+                self.pending = Some((group, (value as u8).wrapping_sub(speed)));
+            }
+            PlaybackField::RewindFlag => self.reverse = value as u8 == 1,
+            PlaybackField::RealFrame => self.frame_progress = value as u8,
+            _ => self.sequence_mut(field)?.set_record(field, value),
+        }
+        Ok(())
+    }
+
+    /// A group's frame countdown byte, the one a selected request adds its modifier to.
+    fn group_speed(&self, group: AnimationGroup) -> anyhow::Result<u8> {
+        let metadata = self
+            .groups
+            .get(&group)
+            .with_context(|| format!("{} group {group}: absent", self.context))?;
+        Ok(metadata["anim_id"]
+            .as_u64()
+            .with_context(|| format!("{} group {group}: frame countdown absent", self.context))?
+            .to_le_bytes()[0])
+    }
+
+    fn sequence(&self, field: PlaybackField) -> anyhow::Result<&FrameSequence> {
+        self.current
+            .as_ref()
+            .map(|(_, sequence)| sequence)
+            .with_context(|| format!("{}: no current group holds {field:?}", self.context))
+    }
+
+    fn sequence_mut(&mut self, field: PlaybackField) -> anyhow::Result<&mut FrameSequence> {
+        let context = &self.context;
+        self.current
+            .as_mut()
+            .map(|(_, sequence)| sequence)
+            .with_context(|| format!("{context}: no current group holds {field:?}"))
     }
 
     /// Sticky advancement or sound-dispatch failure.

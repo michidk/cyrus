@@ -374,6 +374,35 @@ impl FrameSequence {
         i32::from(self.command)
     }
 
+    /// The playback record's bytes and cursor, which `anim.*` property accesses read and assign raw.
+    pub(super) fn record(&self, field: super::PlaybackField) -> i32 {
+        use super::PlaybackField::*;
+        match field {
+            Frame => i32::from(self.command),
+            Speed => i32::from(self.speed),
+            SpeedCount => i32::from(self.countdown),
+            StopFlag => i32::from(self.exit_reached),
+            HaltFlag => i32::from(self.translation_suppressed),
+            HoldFlag => i32::from(self.delay),
+            LoopCount => i32::from(self.loops),
+            Next | NextSpeed | RewindFlag | RealFrame => unreachable!("not a sequence field"),
+        }
+    }
+
+    pub(super) fn set_record(&mut self, field: super::PlaybackField, value: i32) {
+        use super::PlaybackField::*;
+        match field {
+            Frame => self.command = value as i16,
+            Speed => self.speed = value as u8,
+            SpeedCount => self.countdown = value as u8,
+            StopFlag => self.exit_reached = value as u8 != 0,
+            HaltFlag => self.translation_suppressed = value as u8 != 0,
+            HoldFlag => self.delay = value as u8,
+            LoopCount => self.loops = value as u8,
+            Next | NextSpeed | RewindFlag | RealFrame => unreachable!("not a sequence field"),
+        }
+    }
+
     /// Skip the first `frames` ShowFrames of a freshly selected group without running any other
     /// command, counting each in `progress`; returns the frame displayed next.
     pub(super) fn skip_frames(

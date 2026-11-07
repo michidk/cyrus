@@ -1,7 +1,9 @@
 //! Complete animation saves resume through public playback APIs without replaying cues.
 use cyrus_assets::animation::Animations;
 use cyrus_soup::AnimationGroup;
-use cyrus_world::animation::{ActorAnimation, ActorAnimationSnapshot, AnimationSound};
+use cyrus_world::animation::{
+    ActorAnimation, ActorAnimationSnapshot, AnimationSound, PlaybackField,
+};
 use serde_json::{Value, json};
 
 fn asset(groups: Value) -> Animations {
@@ -439,4 +441,45 @@ fn combat_command_cursor_tracks_commands_through_delay_loop_and_restore() {
     );
     assert_eq!(actor.current_command_cursor().unwrap(), Some(1));
     assert_eq!(actor.frame_wait_state().unwrap(), (7, -1, 0));
+}
+
+#[test]
+fn the_playback_record_fields_are_saved_and_restored_raw() {
+    use PlaybackField::*;
+    let data = sound_asset();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    actor.request(AnimationGroup::from_index(8), 0, 1).unwrap();
+    // A pending request stores a modifier; the written speed leaves the group's own byte added.
+    actor.set_record_field(Next, 7).unwrap();
+    actor.set_record_field(NextSpeed, 12).unwrap();
+    let fields = [
+        (Frame, 1),
+        (Speed, 9),
+        (SpeedCount, 4),
+        (StopFlag, 1),
+        (HaltFlag, 1),
+        (HoldFlag, 255),
+        (LoopCount, 7),
+        (RewindFlag, 1),
+        (RealFrame, 33),
+    ];
+    for (field, value) in fields {
+        actor.set_record_field(field, value).unwrap();
+    }
+    let restored = resume(&data, &actor);
+    for (field, value) in fields {
+        assert_eq!(restored.record_field(field).unwrap(), value, "{field:?}");
+    }
+    assert_eq!(restored.record_field(Next).unwrap(), 7);
+    assert_eq!(restored.record_field(NextSpeed).unwrap(), 12);
+    // Bytes keep their low eight bits and the cursor is a signed word.
+    let mut actor = restored;
+    actor.set_record_field(Speed, 0x1ff).unwrap();
+    actor.set_record_field(Frame, 0xffff).unwrap();
+    assert_eq!(actor.record_field(Speed).unwrap(), 0xff);
+    assert_eq!(actor.record_field(Frame).unwrap(), -1);
+    actor.set_record_field(Next, -1).unwrap();
+    assert_eq!(actor.record_field(Next).unwrap(), -1);
+    assert_eq!(actor.pending_group(), None);
 }

@@ -358,6 +358,7 @@ impl ScriptWorld {
             })
             .collect::<Vec<_>>();
         let pose = self.spatial(id)?.local;
+        let center_offset = self.ordinary_collision_shape(id)?.center_offset;
         let rows = cyrus_world::transform::Matrix::collision_orientation(pose.wrapped_angles())
             .0
             .map(Vec3::from_array);
@@ -371,7 +372,10 @@ impl ScriptWorld {
             &poses,
             PrimaryBodyQuery {
                 probe: BodyProbe {
-                    position: pose.position.map(i64::from),
+                    // The primary query's origin is the position plus the center offset.
+                    position: std::array::from_fn(|axis| {
+                        i64::from(pose.position[axis]) + (i64::from(center_offset[axis]) << 8)
+                    }),
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,

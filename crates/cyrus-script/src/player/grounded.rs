@@ -157,12 +157,17 @@ impl GroundedWalk {
         history: &mut SupportHistory,
         surface_veto: &mut i32,
     ) -> anyhow::Result<()> {
+        let definition = query
+            .scene
+            .definition
+            .as_ref()
+            .context("grounded response: player definition unavailable")?;
         let contacts = query
             .scene
             .static_collision
             .body_contacts(
                 query.candidates,
-                self.position,
+                query.body_origin(definition, self.position),
                 query.rotation,
                 &query.spheres()?,
                 query.sidedness,
@@ -286,13 +291,36 @@ pub struct StaticGroundQuery<'a> {
     pub alternate_collision: bool,
     pub sidedness: bool,
     pub surface_update: SurfaceUpdate,
-    /// The actor's live positive extent, which scripts may write; `None` uses the installed one.
-    pub extent: Option<[i32; 3]>,
+    /// The actor's live bounds, which scripts may write; `None` uses the installed ones.
+    pub bounds: Option<LiveBounds>,
+}
+
+/// The bounds-record fields the walking queries read from the actor.
+#[derive(Clone, Copy, Debug)]
+pub struct LiveBounds {
+    pub positive_extent: [i32; 3],
+    pub center_offset: [i32; 3],
 }
 
 impl StaticGroundQuery<'_> {
     fn positive_extent(&self, definition: &super::definition::PlayerDefinition) -> [i32; 3] {
-        self.extent.unwrap_or(definition.positive_extent)
+        self.bounds
+            .map_or(definition.positive_extent, |bounds| bounds.positive_extent)
+    }
+
+    fn center_offset(&self, definition: &super::definition::PlayerDefinition) -> [i32; 3] {
+        self.bounds
+            .map_or(definition.center_offset, |bounds| bounds.center_offset)
+    }
+
+    /// The primary body query's origin: the position plus the center offset, unrotated.
+    fn body_origin(
+        &self,
+        definition: &super::definition::PlayerDefinition,
+        position: [i64; 3],
+    ) -> [i64; 3] {
+        let center = self.center_offset(definition);
+        std::array::from_fn(|axis| position[axis] + (i64::from(center[axis]) << 8))
     }
 
     fn spheres(&self) -> anyhow::Result<Vec<(Vec3, f32)>> {
@@ -349,7 +377,7 @@ impl StaticGroundQuery<'_> {
         )?;
         let fallback = FallbackProbe::new(
             position,
-            [0; 3],
+            self.center_offset(definition),
             self.positive_extent(definition)[1],
             history.ticks() != 0,
         )?;
@@ -405,7 +433,7 @@ impl StaticGroundQuery<'_> {
         let spheres = self.spheres()?;
         if self.scene.static_collision.blocks_body(
             self.candidates,
-            proposed,
+            self.body_origin(definition, proposed),
             self.rotation,
             &spheres,
             self.sidedness,
