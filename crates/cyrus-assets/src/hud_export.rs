@@ -282,6 +282,10 @@ pub(crate) fn prepare(
                 use_script: item.use_script.clone(),
                 script_instances: item.script_instances.unwrap_or(0),
                 drop_use_items: list(&item.drop_use_item_list, "drop_use_item_list")?,
+                hand_model: item
+                    .hand_object_file
+                    .as_deref()
+                    .map(crate::animation::model_key),
             },
         );
         if item.hide.unwrap_or(false) {

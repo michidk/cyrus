@@ -6371,6 +6371,41 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )?;
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function
+            && (function == Native::DisplayHandItem || function == Native::DisplayHiltItem)
+        {
+            let [item, x, y, z] = arguments else {
+                anyhow::bail!("{function} requires four arguments")
+            };
+            // The ordered item list is searched by unsigned identifier; without a match the
+            // original requests a diagnostic before any model work.
+            let item = item.integer()? as u32;
+            let hud = self
+                .inputs
+                .hud
+                .with_context(|| format!("{function} item list unavailable"))?;
+            let model = hud
+                .item_hand_model(item)?
+                .with_context(|| format!("{function}: item {item} is not in the item list"))?;
+            // An item without a hand model returns zero without allocating a record.
+            let Some(model) = model else {
+                return Ok(CallResult::Complete(0));
+            };
+            let data = self
+                .inputs
+                .animations
+                .with_context(|| format!("{function} installed animation models unavailable"))?
+                .0;
+            let id = self.registry.id(self.index)?;
+            self.registry.display_model_attachment(
+                id,
+                data,
+                &model,
+                [x.integer()?, y.integer()?, z.integer()?],
+                function == Native::DisplayHiltItem,
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function == Native::AddItem {
             let [item, amount] = arguments else {
                 anyhow::bail!("AddItem requires two arguments")
