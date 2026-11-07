@@ -33,7 +33,17 @@ impl CheatStore for Store {
             .unwrap()
             .as_deref()
             .map(cheats::decode)
-            .unwrap_or_else(|| Ok(cheats::empty()))
+            .unwrap_or_else(|| {
+                // SYSTEM.INI seeds the task and animation switches at startup in every host.
+                let mut state = cheats::empty();
+                cheats::CheatDefaults {
+                    task: true,
+                    animation: true,
+                    nodemarker: false,
+                }
+                .apply(&mut state)?;
+                Ok(state)
+            })
     }
     fn save(&self, state: &CheatFile) -> anyhow::Result<()> {
         *self.0.lock().unwrap() = Some(cheats::encode(state));

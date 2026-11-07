@@ -6141,7 +6141,17 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     struct EmptyCheatStore;
     impl cyrus_game::cheats::CheatStore for EmptyCheatStore {
         fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
-            Ok(cyrus_assets::cheats::empty())
+            {
+                let mut state = cyrus_assets::cheats::empty();
+                // SYSTEM.INI seeds these slots at startup in every host.
+                cyrus_assets::cheats::CheatDefaults {
+                    task: true,
+                    animation: true,
+                    nodemarker: false,
+                }
+                .apply(&mut state)?;
+                Ok(state)
+            }
         }
         fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
             Ok(())
@@ -15860,7 +15870,17 @@ fn keyboard_walk_session(verify_drno: bool) {
         struct EmptyDrnoStore;
         impl cyrus_game::cheats::CheatStore for EmptyDrnoStore {
             fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
-                Ok(cyrus_assets::cheats::empty())
+                {
+                    let mut state = cyrus_assets::cheats::empty();
+                    // SYSTEM.INI seeds these slots at startup in every host.
+                    cyrus_assets::cheats::CheatDefaults {
+                        task: true,
+                        animation: true,
+                        nodemarker: false,
+                    }
+                    .apply(&mut state)?;
+                    Ok(state)
+                }
             }
             fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
                 Ok(())
@@ -47939,7 +47959,17 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
     struct Memory;
     impl CheatStore for Memory {
         fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
-            Ok(cyrus_assets::cheats::empty())
+            {
+                let mut state = cyrus_assets::cheats::empty();
+                // SYSTEM.INI seeds these slots at startup in every host.
+                cyrus_assets::cheats::CheatDefaults {
+                    task: true,
+                    animation: true,
+                    nodemarker: false,
+                }
+                .apply(&mut state)?;
+                Ok(state)
+            }
         }
         fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
             Ok(())
