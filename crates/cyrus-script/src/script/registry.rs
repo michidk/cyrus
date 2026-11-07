@@ -435,6 +435,12 @@ pub struct ActorControlState {
     /// The `ov` vector: the held ledge point in Q8. The ledge entry stores the selected record's point
     /// here and its heading in the second word of `move`; the ledge states read both back.
     pub ledge_point: [i32; 3],
+    /// The `hand_pos` triple: the retained attachment point in Q8 that the hand and hilt model
+    /// helpers (the Display natives and the equipped-weapon placements) store.
+    pub hand_point: [i32; 3],
+    /// The `hand_angle` triple: the placed model's pitch, heading and roll, stored by the same
+    /// helpers. Plain dwords: a script write is not masked.
+    pub hand_angles: [i32; 3],
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
@@ -5174,6 +5180,12 @@ fn control_record_property(
         Property::OvVx => ControlField::Dword(&mut control.ledge_point[0]),
         Property::OvVy => ControlField::Dword(&mut control.ledge_point[1]),
         Property::OvVz => ControlField::Dword(&mut control.ledge_point[2]),
+        Property::HandPosVx => ControlField::Dword(&mut control.hand_point[0]),
+        Property::HandPosVy => ControlField::Dword(&mut control.hand_point[1]),
+        Property::HandPosVz => ControlField::Dword(&mut control.hand_point[2]),
+        Property::HandAngleVx => ControlField::Dword(&mut control.hand_angles[0]),
+        Property::HandAngleVy => ControlField::Dword(&mut control.hand_angles[1]),
+        Property::HandAngleVz => ControlField::Dword(&mut control.hand_angles[2]),
         Property::LastValidFlag => ControlField::Flag(&mut control.stable_position_valid),
         Property::LastValidPosVx => ControlField::Dword(&mut control.stable_local_position[0]),
         Property::LastValidPosVy => ControlField::Dword(&mut control.stable_local_position[1]),

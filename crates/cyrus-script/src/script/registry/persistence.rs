@@ -46,6 +46,10 @@ struct ControlSnapshot {
     /// The held ledge point; saves written before it lived in the actor kept it in the session globals.
     #[serde(default)]
     ledge_point: [i32; 3],
+    #[serde(default)]
+    hand_point: [i32; 3],
+    #[serde(default)]
+    hand_angles: [i32; 3],
     fall_origin_y: i32,
     fall_timer: u8,
     jump_selector: u8,
@@ -139,6 +143,8 @@ impl ControlSnapshot {
             movement_flags: control.move_counter,
             motion_vector: control.motion_vector,
             ledge_point: control.ledge_point,
+            hand_point: control.hand_point,
+            hand_angles: control.hand_angles,
             fall_origin_y: control.fall_origin_y,
             fall_timer: control.fall_timer,
             jump_selector: control.jump_selector,
@@ -212,6 +218,8 @@ impl ControlSnapshot {
             jump_window: self.jump_window,
             move_counter: self.movement_flags,
             ledge_point: self.ledge_point,
+            hand_point: self.hand_point,
+            hand_angles: self.hand_angles,
             motion_vector: match self.rope_speed {
                 0 => self.motion_vector,
                 speed => [self.motion_vector[0], self.motion_vector[1], speed],
