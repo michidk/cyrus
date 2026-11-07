@@ -142,6 +142,7 @@ fn leave_raster(
 }
 
 /// Undoes everything this module changed once modern lighting is off.
+#[allow(clippy::type_complexity)] // Bevy query filters.
 fn restore(
     mut commands: Commands,
     cameras: Query<Entity, (With<ViewCamera>, With<EnvironmentMapLight>)>,

@@ -88,6 +88,8 @@ fn peak(rgb: [f32; 3]) -> f32 {
     rgb.into_iter().fold(0.0, f32::max).min(255.0)
 }
 
+// The lights join the environment, the retained script world, the camera and the lighting tier.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn sync_lights(
     mut commands: Commands,
     request: Res<EnvironmentRequest>,
