@@ -59,12 +59,7 @@ impl ScriptWorld {
             return Ok(self.actors[id.index].surface.unwrap_or_default());
         }
         let surface = support
-            .map(|support| {
-                scene.support_surface(
-                    support,
-                    self.spatial(id)?.query_pose()?.position.map(i64::from),
-                )
-            })
+            .map(|support| scene.support_surface(support, self.query_position(id)?.map(i64::from)))
             .transpose()?
             .unwrap_or_default();
         if !keep_stored {
@@ -249,7 +244,7 @@ impl ScriptWorld {
 
     /// Check nonplayer support at a proposed local Q8 position, restoring XYZ
     /// while retaining collision writes, including rollback and surface state.
-    /// Linked actors and selected-player feedback remain unavailable.
+    /// Attached actors and selected-player feedback remain unavailable.
     pub fn admit_ordinary_destination(
         &mut self,
         id: ScriptActorId,
@@ -266,10 +261,12 @@ impl ScriptWorld {
         );
         let spatial = self.spatial(id)?;
         ensure!(
-            spatial.parent.is_none() && spatial.linked_position.is_none(),
-            "world {} instance {index}: linked destination collision unavailable",
+            spatial.parent.is_none(),
+            "world {} instance {index}: attached destination collision unavailable",
             self.world,
         );
+        // A linked actor's probe reads its link position, so the temporary local destination
+        // changes nothing it queries, as in the original.
         let saved = spatial.local.position;
         self.spatial
             .as_mut()
@@ -1009,10 +1006,9 @@ impl ScriptWorld {
                 );
                 if let Some(support) = support.as_ref() {
                     if falling {
-                        let surface = query.scene.support_surface(
-                            support,
-                            self.spatial(id)?.query_pose()?.position.map(i64::from),
-                        )?;
+                        let surface = query
+                            .scene
+                            .support_surface(support, self.query_position(id)?.map(i64::from))?;
                         self.set_actor_surface(id, surface)?;
                         let selected = (environment.selected_player == Some(id)).then(|| {
                             super::falling::SelectedLanding {

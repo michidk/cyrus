@@ -24731,7 +24731,7 @@ fn native_failure_preserves_written_flags_and_restores_runtime() {
 #[test]
 fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
     use cyrus_script::script::{ObstacleEnvironment, OrdinaryGroundQuery};
-    for outcome in ["support", "miss", "error"] {
+    for outcome in ["support", "miss", "error", "linked"] {
         let mut scripts = cache();
         scripts
             .actors
@@ -24753,6 +24753,11 @@ fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
             .unwrap();
         if outcome == "error" {
             scene.actor_collision = None;
+        }
+        if outcome == "linked" {
+            // A linked actor's probe reads its link position, far from any support, whatever the
+            // temporary local destination is.
+            world.set_link_position_for_test(id, [2000 * 256, 21 * 256, 2000 * 256]);
         }
         let destination = if outcome == "miss" {
             [2000 * 256, 21 * 256, 2000 * 256]
@@ -24788,7 +24793,7 @@ fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
                 assert!(result.unwrap());
                 assert_eq!(world.model_support(id).unwrap().actor, Some(other));
             }
-            "miss" => assert!(!result.unwrap()),
+            "miss" | "linked" => assert!(!result.unwrap(), "{outcome}"),
             _ => {
                 assert!(format!("{:#}", result.unwrap_err()).contains("live geometry unavailable"))
             }

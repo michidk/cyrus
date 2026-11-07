@@ -836,6 +836,17 @@ impl ScriptWorld {
             .actions = ActionWords { pending, accepted };
     }
 
+    /// Test hook: give a logical actor a cached link position, as an `Offset` link does.
+    #[doc(hidden)]
+    pub fn set_link_position_for_test(&mut self, id: ScriptActorId, position: [i32; 3]) {
+        self.spatial
+            .as_mut()
+            .expect("test spatial state")
+            .actor_mut(id.index)
+            .expect("test actor spatial state")
+            .set_link_cache(position);
+    }
+
     /// Test hook: set a logical actor's living state.
     #[doc(hidden)]
     pub fn set_living_state_for_test(&mut self, id: ScriptActorId, state: LivingState) {
@@ -2236,7 +2247,10 @@ impl ScriptWorld {
         Ok(())
     }
 
-    fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
+    /// The position the ground and support probes read, as the original's query-position selector
+    /// picks it: the composed attached position with `attr_slave`, else the linked record's cached
+    /// position, else the local position.
+    pub(super) fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
         let index = self.resolve(id)?;
         let actor = self.spatial(id)?;
         if self.actors[index].attributes[Attribute::Slave] != 0 {
