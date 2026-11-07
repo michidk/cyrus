@@ -27,9 +27,9 @@ use cyrus_game::{
 };
 use cyrus_soup::program::*;
 // bevy's prelude also exports a `Function` trait once wasvy enables bevy_reflect functions.
+use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use cyrus_soup::program::Function;
 use cyrus_soup::{AnimationGroup, Native};
-use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use serde_json::json;
 use std::collections::BTreeMap;
 
