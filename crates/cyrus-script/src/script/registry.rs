@@ -94,7 +94,7 @@ use cyrus_assets::{
 };
 use cyrus_soup::{Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, Thread};
 use cyrus_world::lifecycle::PreparedWorld;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 pub use weapon::{CombatEntryInputs, WeaponInputs};
 
@@ -668,6 +668,18 @@ impl ScriptActor {
 }
 
 /// Logical world state shared by inspection and camera-centered ordinary updates.
+/// The most calls the watch log keeps before it drops new ones.
+pub const NATIVE_LOG_LIMIT: usize = 4096;
+
+/// One call to a watched native: the function, the script name of the actor that made it and its
+/// integer arguments in order (actor and string arguments are left out).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeCall {
+    pub function: Native,
+    pub actor: String,
+    pub integers: Vec<i32>,
+}
+
 pub struct ScriptWorld {
     pub world: u32,
     pub content_id: String,
@@ -688,6 +700,9 @@ pub struct ScriptWorld {
     routed_caller: Option<usize>,
     /// A mod's jump scales for the selected player; not saved.
     player_tuning: crate::player::input::PlayerTuning,
+    /// Natives a mod watches and the calls made to them since the log was last taken; not saved.
+    native_watch: BTreeSet<Native>,
+    native_calls: Vec<NativeCall>,
     weapons: BTreeMap<u16, cyrus_assets::script::weapon::Weapon>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
@@ -843,6 +858,20 @@ impl ScriptWorld {
             .expect("test actor has control state");
         control.falling_state = state;
         control.fall_origin_y = origin_y;
+    }
+
+    /// Watch calls to these natives: each call is logged for [`Self::take_native_calls`] until the
+    /// log holds [`NATIVE_LOG_LIMIT`] entries. An empty set stops watching.
+    pub fn watch_natives(&mut self, natives: BTreeSet<Native>) {
+        self.native_watch = natives;
+        if self.native_watch.is_empty() {
+            self.native_calls.clear();
+        }
+    }
+
+    /// The watched native calls made since the last call, oldest first.
+    pub fn take_native_calls(&mut self) -> Vec<NativeCall> {
+        std::mem::take(&mut self.native_calls)
     }
 
     /// A mod's jump scales for the selected player. A change waits until the player is on the
@@ -1592,6 +1621,8 @@ impl ScriptWorld {
             task_calls,
             routed_caller: None,
             player_tuning: Default::default(),
+            native_watch: BTreeSet::new(),
+            native_calls: Vec::new(),
             weapons: scripts.weapons.clone(),
             combat_attacks: scripts.combat_attacks.clone(),
             combat_defenses: scripts.combat_defenses.clone(),
@@ -5926,6 +5957,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             target == &Target::Me,
             "inspection target {target:?} unsupported"
         );
+        if self.registry.native_watch.contains(&function)
+            && self.registry.native_calls.len() < NATIVE_LOG_LIMIT
+        {
+            let call = NativeCall {
+                function,
+                actor: self.registry.actors[self.index].name().to_owned(),
+                integers: arguments
+                    .iter()
+                    .filter_map(|argument| match argument {
+                        Argument::Integer(value) => Some(*value),
+                        _ => None,
+                    })
+                    .collect(),
+            };
+            self.registry.native_calls.push(call);
+        }
         // The installed changed-actor list capacity travels with the scene the host supplies.
         if let Some(source) = self.inputs.player_collision {
             self.registry.map_updates.learn_capacity(
@@ -9628,6 +9675,8 @@ mod fighting_tests {
             task_calls: BTreeMap::new(),
             routed_caller: None,
             player_tuning: Default::default(),
+            native_watch: BTreeSet::new(),
+            native_calls: Vec::new(),
             weapons: BTreeMap::new(),
             combat_attacks: Vec::new(),
             combat_defenses: Vec::new(),

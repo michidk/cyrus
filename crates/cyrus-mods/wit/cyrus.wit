@@ -1,6 +1,6 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `water`, `camera`, `movement` and `collision` with `QueryFor::Mut` and `input`, `settings`
+/// Query `water`, `camera`, `movement`, `collision` and `natives` with `QueryFor::Mut` and `input`, `settings`
 /// and `player` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
@@ -61,6 +61,23 @@ interface components {
     /// takes a change, so a jump in flight keeps its values. Call it each frame with `claim`; 1
     /// and 1 are the original.
     tune: func(jump-height: f32, jump-speed: f32);
+  }
+
+  /// Script natives (SOUP commands) mod authors can watch. `watch` a native by its installed
+  /// `SOUP386.DEF` name (case-insensitive) every frame you want its calls; a frame later `count`,
+  /// `function`, `actor` and `arguments` report each call made while it was watched, oldest first:
+  /// the function name, the script name of the actor that called it and its integer arguments
+  /// (actor and string arguments are left out). Only the call that starts a task is reported,
+  /// not its later continuation. A call is observed, never changed. At most 4096 calls are kept
+  /// per frame.
+  /// wasvy:type-path=cyrus_mods::api::Natives
+  resource natives {
+    constructor(component: component);
+    watch: func(function: string);
+    count: func() -> u32;
+    function: func(index: u32) -> string;
+    actor: func(index: u32) -> string;
+    arguments: func(index: u32) -> list<s32>;
   }
 
   /// Collision questions for a mod that owns the player's movement. A probe is a segment in map

@@ -84,6 +84,12 @@ fn setup(app: App) {
   first met the static geometry the engine gathered near the player or the
   terrain: the point and the unit normal, or nothing. The engine answers while a
   mod claims locomotion; an answer arrives two frames after its cast.
+- `natives`: `watch(name)` every frame names a script native (SOUP command, by its
+  installed name) to observe; a frame later `count()`, `function(i)`, `actor(i)`
+  and `arguments(i)` report the calls made to it, oldest first (the caller's script
+  name and its integer arguments; the call that starts a task, not its
+  continuation). Observation only: a call is never changed, and it keeps at most
+  4096 calls per frame.
 - `player`: `position()` (map units), `heading()`, `view()` (the camera's
   heading, same units), `airborne()`, `armed()` (a weapon is drawn or the combat stance is on: a
   claimed player then walks and runs in the fight animations and `speed` returns
@@ -95,7 +101,7 @@ fn setup(app: App) {
 - `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
   `delta` (seconds).
 
-Query `water`, `camera` and `movement` with `QueryFor::Mut`, `input` and `settings`
+Query `water`, `camera`, `movement`, `collision` and `natives` with `QueryFor::Mut`, `input`, `settings` and `player`
 with `QueryFor::Ref`: wasvy 0.0.11 panics the game when a method is called through
 the other mutability.
 

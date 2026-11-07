@@ -42576,6 +42576,41 @@ fn script_jump_fixture(
 }
 
 #[test]
+fn a_watched_native_is_logged_with_its_caller_and_unwatched_ones_are_not() {
+    use cyrus_script::script::{NativeCall, ScriptInputs};
+    let run = |watch: &[Native]| {
+        let (mut world, _, _) = script_jump_fixture(0, |_| {});
+        world.watch_natives(watch.iter().copied().collect());
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        world.take_native_calls()
+    };
+    assert_eq!(
+        run(&[Native::Jump]),
+        [NativeCall {
+            function: Native::Jump,
+            actor: "LOGIC".to_owned(),
+            integers: vec![],
+        }]
+    );
+    assert!(run(&[Native::SetAttribute]).is_empty());
+    assert!(run(&[]).is_empty());
+}
+
+#[test]
 fn script_jump_completes_immediately_and_uses_its_distinct_group_rows() {
     use cyrus_script::script::{ScriptInputs, WorldSnapshotSources};
     for (group, torch, holding, selector, queued, request, heading_write) in [

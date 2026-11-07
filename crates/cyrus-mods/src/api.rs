@@ -17,7 +17,8 @@ use cyrus_script::player::input::{
     PlayerTuning, Probe, Wish,
 };
 use cyrus_script::script::{CameraFrameState, ScriptActors};
-use std::collections::HashMap;
+use cyrus_soup::Native;
+use std::collections::{BTreeSet, HashMap};
 use wasvy::prelude::*;
 
 #[derive(Component, Reflect, Default, WasvyComponent)]
@@ -84,6 +85,47 @@ impl Movement {
     }
     pub fn tune(&mut self, jump_height: f32, jump_speed: f32) {
         self.tuning = Some((jump_height, jump_speed));
+    }
+}
+
+/// Script natives a mod watches and the calls made to them.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Natives {
+    watched: Vec<String>,
+    /// Calls to the natives watched last frame, one `function|actor|a,b,c` string per call.
+    calls: Vec<String>,
+}
+
+#[wasvy::methods]
+impl Natives {
+    pub fn watch(&mut self, function: String) {
+        self.watched.push(function);
+    }
+    pub fn count(&mut self) -> u32 {
+        self.calls.len() as u32
+    }
+    pub fn function(&mut self, index: u32) -> String {
+        self.field(index, 0)
+    }
+    pub fn actor(&mut self, index: u32) -> String {
+        self.field(index, 1)
+    }
+    pub fn arguments(&mut self, index: u32) -> Vec<i32> {
+        self.field(index, 2)
+            .split(',')
+            .filter_map(|value| value.parse().ok())
+            .collect()
+    }
+}
+
+impl Natives {
+    fn field(&self, index: u32, part: usize) -> String {
+        self.calls
+            .get(index as usize)
+            .and_then(|call| call.splitn(3, '|').nth(part))
+            .unwrap_or_default()
+            .to_owned()
     }
 }
 
@@ -211,24 +253,29 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Settings::default(),
         Player::default(),
         Collision::default(),
+        Natives::default(),
         Input::default(),
     ));
 }
 
+/// Every component of the host entity.
+type Host = (
+    &'static mut Water,
+    &'static mut Camera,
+    &'static mut Movement,
+    &'static mut Settings,
+    &'static mut Player,
+    &'static mut Collision,
+    &'static mut Natives,
+    &'static mut Input,
+);
+
 /// Hands last frame's mod answers to the engine and publishes this frame's state.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn exchange(
-    mut host: Query<(
-        &mut Water,
-        &mut Camera,
-        &mut Movement,
-        &mut Settings,
-        &mut Player,
-        &mut Collision,
-        &mut Input,
-    )>,
+    mut host: Query<Host>,
     mut probes: ResMut<CollisionProbes>,
-    actors: Option<Res<ScriptActors>>,
+    mut actors: Option<ResMut<ScriptActors>>,
     camera_frame: Option<Res<CameraFrameState>>,
     mut claimed: ResMut<LocomotionClaimed>,
     values: Res<ModSettings>,
@@ -248,6 +295,7 @@ pub(crate) fn exchange(
         mut settings,
         mut player,
         mut collision,
+        mut natives,
         mut input,
     )) = host.single_mut()
     else {
@@ -317,6 +365,33 @@ pub(crate) fn exchange(
             .map(|hit| hit.map_or_else(Vec::new, |hit| [hit.point, hit.normal].concat()))
             .collect();
     }
+    // Watch the natives mods named this frame and hand over the calls made to last frame's.
+    let watched = std::mem::take(&mut natives.watched);
+    let known: BTreeSet<Native> = watched
+        .iter()
+        .filter_map(|name| {
+            let native = Native::from_name(name);
+            if native.is_none() {
+                warn_once!("mods: watch: no script native named {name}");
+            }
+            native
+        })
+        .collect();
+    natives.calls = actors
+        .as_deref_mut()
+        .and_then(|actors| actors.current.as_mut())
+        .map(|world| {
+            let calls = world.take_native_calls();
+            world.watch_natives(known);
+            calls
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .map(|call| {
+            let integers: Vec<String> = call.integers.iter().map(i32::to_string).collect();
+            format!("{}|{}|{}", call.function, call.actor, integers.join(","))
+        })
+        .collect();
     let tuning = steering
         .tuning
         .take()
@@ -409,6 +484,23 @@ fn held_actions(input: &PlayerInput) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_calls_read_back_by_field_and_out_of_range_is_empty() {
+        let mut natives = Natives {
+            calls: vec![
+                "Jump|LOGIC|".to_owned(),
+                "SetAttribute|CYRUS|3,-7".to_owned(),
+            ],
+            ..default()
+        };
+        assert_eq!(natives.count(), 2);
+        assert_eq!(natives.function(1), "SetAttribute");
+        assert_eq!(natives.actor(1), "CYRUS");
+        assert_eq!(natives.arguments(1), [3, -7]);
+        assert!(natives.arguments(0).is_empty());
+        assert_eq!(natives.function(9), "");
+    }
 
     #[test]
     fn held_actions_name_the_bound_actions_that_are_down() {
