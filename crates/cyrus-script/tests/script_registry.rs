@@ -33456,7 +33456,14 @@ fn display_model_fixture(
 ) -> (ScriptWorld, cyrus_assets::animation::Animations, Scripts) {
     use cyrus_assets::animation::AnimationModel;
     let mut scripts = cache();
-    let [hand_id, hilt_id] = [Native::DisplayHandModel, Native::DisplayHiltModel].map(|name| {
+    // The two item natives follow the two model natives in the function table.
+    let [hand_id, hilt_id, _, _] = [
+        Native::DisplayHandModel,
+        Native::DisplayHiltModel,
+        Native::DisplayHandItem,
+        Native::DisplayHiltItem,
+    ]
+    .map(|name| {
         let id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
             name,
@@ -33748,6 +33755,146 @@ fn hand_pos_and_hand_angle_are_the_retained_attachment_words_scripts_read_and_wr
     .unwrap();
     let id = restored.id(0).unwrap();
     assert_eq!(restored.retained_attachment(id).unwrap().unwrap(), words);
+}
+
+fn display_item_call(item: i32, native: Native) -> Operation {
+    // The item natives follow the two model natives, which follow the cache script's functions.
+    let base = cache().definition.functions.len() as u16;
+    let function_id = base
+        + match native {
+            Native::DisplayHandItem => 2,
+            Native::DisplayHiltItem => 3,
+            other => panic!("{other} is not an item display native"),
+        };
+    Operation::Call {
+        call: Call {
+            function_id,
+            function: native,
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments: [item, 512, 1024, 768]
+                .map(|value| Value::Integer { value })
+                .to_vec(),
+        },
+    }
+}
+
+fn run_display_items(
+    world: &mut ScriptWorld,
+    data: &cyrus_assets::animation::Animations,
+    hud: &cyrus_script::script::ScriptHud,
+) -> anyhow::Result<()> {
+    use cyrus_script::script::{AnimationData, ScriptInputs, ScriptStage};
+    let id = world.id(0)?;
+    world.advance(
+        id,
+        ScriptStage::OrdinaryMain,
+        ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            animations: Some(AnimationData(data)),
+            hud: Some(hud),
+            ..Default::default()
+        },
+        Some(&mut |_, _| Ok(())),
+        None,
+        20,
+    )
+}
+
+/// The item list: item 4 has the hand model `HAND`, item 5 has no hand model.
+fn display_item_hud() -> cyrus_script::script::ScriptHud {
+    let mut asset = inventory_asset(&[(4, 1), (5, 1)]);
+    asset.inventory.get_mut(&4).unwrap().hand_model = Some("HAND".into());
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    hud
+}
+
+#[test]
+fn display_items_place_the_item_list_hand_model_for_the_frame() {
+    use cyrus_script::script::OrdinaryInputs;
+    let after = vec![
+        display_item_call(4, Native::DisplayHandItem),
+        display_item_call(4, Native::DisplayHiltItem),
+        display_item_call(5, Native::DisplayHandItem),
+    ];
+    let (mut world, data, _) = display_model_fixture("hand", "hilt", [0; 3], false, after);
+    let hud = display_item_hud();
+    run_display_items(&mut world, &data, &hud).unwrap();
+    let shown = world.display_attachments();
+    // Two model natives, then the two item natives that matched; item 5 has no hand model, so
+    // its call returns without allocating a record.
+    assert_eq!(shown.len(), 4);
+    let actor = world.id(0).unwrap();
+    assert_eq!(
+        shown[2..]
+            .iter()
+            .map(|display| (display.actor, display.model.as_str(), display.hilt))
+            .collect::<Vec<_>>(),
+        [(actor, "HAND", false), (actor, "HAND", true)],
+        "the hilt item native places the item's hand model with the hilt helper"
+    );
+    assert_eq!(shown[2].geometry.position, [12.0, 24.0, 33.0]);
+    assert_eq!(shown[3].geometry.position, [12.0, 25.0, 33.0]);
+    // The attachment words hold the last helper's result, and the frame ends with the next update.
+    assert_eq!(
+        world.retained_attachment(actor).unwrap().unwrap().0,
+        shown[3].geometry.retained_point
+    );
+    let mut random = cyrus_game::random::EngineRandom::default();
+    world
+        .update_ordinary(
+            &data,
+            [10, 30],
+            OrdinaryInputs {
+                scripts: cyrus_script::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                scene: None,
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            20,
+        )
+        .unwrap();
+    assert!(world.display_attachments().is_empty());
+}
+
+#[test]
+fn display_items_without_a_list_entry_or_item_system_are_the_originals_no_match() {
+    let hud = display_item_hud();
+    // An id the list does not hold, including a negative one read as unsigned.
+    for item in [6, -1] {
+        let (mut world, data, _) = display_model_fixture(
+            "hand",
+            "hilt",
+            [0; 3],
+            false,
+            vec![display_item_call(item, Native::DisplayHandItem)],
+        );
+        let error = run_display_items(&mut world, &data, &hud).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("not in the item list"),
+            "{error:#}"
+        );
+    }
+    // Without an item system the lookup is disabled: the same no match.
+    let (mut world, data, _) = display_model_fixture(
+        "hand",
+        "hilt",
+        [0; 3],
+        false,
+        vec![display_item_call(4, Native::DisplayHiltItem)],
+    );
+    let off = cyrus_script::script::ScriptHud::default();
+    let error = run_display_items(&mut world, &data, &off).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("not in the item list"),
+        "{error:#}"
+    );
 }
 
 #[test]
