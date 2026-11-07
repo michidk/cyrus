@@ -2253,6 +2253,23 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// The previous-position counterpart of [`Self::query_position`]: the previous attached
+    /// position with `attr_slave`, else the link record's previous cached position, else the
+    /// previous local position.
+    pub(super) fn query_previous_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
+        let index = self.resolve(id)?;
+        let actor = self.spatial(id)?;
+        if self.actors[index].attributes[Attribute::Slave] != 0 {
+            actor
+                .previous_effective_position
+                .context("attached query previous effective position unavailable")
+        } else if actor.linked_position.is_some() {
+            Ok(actor.link_previous)
+        } else {
+            Ok(actor.previous_local_position)
+        }
+    }
+
     /// The position the ground and support probes read, as the original's query-position selector
     /// picks it: the composed attached position with `attr_slave`, else the linked record's cached
     /// position, else the local position.

@@ -10047,11 +10047,14 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
     use cyrus_assets::collision::{CollisionScene, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_script::script::{OrdinaryObstacleQuery, ScriptInputs, ScriptStage};
-    for (offset, respond, expected_hit, expected_x, wrapper) in [
-        (0, false, true, 264704, false),
-        (0, true, true, 143872, false),
-        (500, true, false, 264704, false),
-        (0, true, true, 143872, true),
+    for (offset, respond, expected_hit, expected_x, wrapper, linked) in [
+        (0, false, true, 264704, false, false),
+        (0, true, true, 143872, false, false),
+        (500, true, false, 264704, false, false),
+        (0, true, true, 143872, true, false),
+        // A linked actor's motion runs from its previous link position to its link position,
+        // which did not move, so it meets no wall (the local motion would).
+        (0, false, false, 264704, false, true),
     ] {
         let (mut world, data) = overlap_response_fixture(128, 0, 1024);
         let id = world.id(0).unwrap();
@@ -10087,6 +10090,10 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
                 20,
             )
             .unwrap();
+        if linked {
+            world.set_link_position_for_test(id, [0, 5120, 0]);
+            world.set_link_position_for_test(id, [0, 5120, 0]);
+        }
         if wrapper {
             world
                 .resolve_ordinary_obstacle_wrapper(

@@ -74,15 +74,8 @@ impl ScriptWorld {
             return Ok(false);
         }
         let excluded = (control.queued_motion == JumpMotion::ROPE).then_some(128);
-        let spatial = self.spatial(id)?;
-        let current = spatial.query_pose()?.position;
-        let previous = if spatial.parent.is_none() {
-            spatial.previous_local_position
-        } else {
-            spatial
-                .previous_effective_position
-                .context("attached forward query previous effective position unavailable")?
-        };
+        let current = self.query_position(id)?;
+        let previous = self.query_previous_position(id)?;
         let movement = crate::player::motion::displacement_heading(
             i64::from(current[0].wrapping_sub(previous[0])),
             i64::from(current[2].wrapping_sub(previous[2])),
