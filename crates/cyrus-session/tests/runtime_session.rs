@@ -1130,9 +1130,7 @@ fn exercise_runtime_session(
     );
 
     assert_eq!(
-        app.world()
-            .resource::<cyrus_game::fidelity::Fidelity>()
-            .fog,
+        app.world().resource::<cyrus_game::fidelity::Fidelity>().fog,
         cyrus_game::fidelity::Mode::Modern
     );
     assert!(app.world().get_entity(player).is_err());
