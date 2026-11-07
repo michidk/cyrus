@@ -147,6 +147,13 @@ pub enum Command {
         #[serde(default)]
         running: bool,
     },
+    /// Switch one of the modern lighting's optional effects: `grading`, `auto_exposure`, `god_rays`,
+    /// `lens_flare`, `sky`, `water_reflections`, `foliage`, `depth_of_field` or `motion_blur`.
+    /// Needs `lighting` Modern to show.
+    SetModernEffect {
+        effect: String,
+        enabled: bool,
+    },
     /// Match a captured original sky direction and texture offsets for comparison.
     SetSkyScroll {
         direction: u16,

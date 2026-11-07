@@ -127,10 +127,11 @@ fn handle(
     inbox: Res<Inbox>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut taps: ResMut<TapRelease>,
-    (mut fidelity, mut sky_scroll, mut day_night): (
+    (mut fidelity, mut sky_scroll, mut day_night, mut modern_effects): (
         ResMut<Fidelity>,
         Option<ResMut<cyrus_render::environment::SkyScrollSync>>,
         Option<ResMut<cyrus_render::fog::DayNight>>,
+        Option<ResMut<cyrus_render::fog::ModernEffects>>,
     ),
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
@@ -421,6 +422,22 @@ fn handle(
                     Ok(json!({"enabled": cycle.enabled, "hour": cycle.hour, "running": cycle.running}))
                 }
             },
+            Command::SetModernEffect { effect, enabled } => {
+                match (
+                    modern_effects.as_deref_mut(),
+                    serde_json::from_value::<cyrus_render::fog::Effect>(json!(effect)),
+                ) {
+                    (None, _) => Err("modern lighting is unavailable".into()),
+                    (Some(_), Err(_)) => Err(
+                        "effect must be grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
+                            .into(),
+                    ),
+                    (Some(effects), Ok(effect)) => {
+                        *effects.switch(effect) = enabled;
+                        Ok(json!(*effects))
+                    }
+                }
+            }
             Command::SetSkyScroll { direction, offset } => match sky_scroll.as_deref_mut() {
                 Some(reference) => reference
                     .set(direction, offset)

@@ -64,6 +64,26 @@ the sky darken and warm with the hour, with a dim moonlight at night. Worlds wit
 such as interiors, are not affected. The cycle is off by default, and every colour, the speed and the
 direction of the arc are Modern tuning choices.
 
+## Modern effects
+
+**Verified:** the original has none of these; they exist only under Modern lighting, are switched
+one by one in the debug menu's effects panel (and the control port's `set_modern_effect`), and
+every value is a Modern tuning choice:
+
+- tonemapping (Khronos PBR Neutral by default) with exposure, saturation and contrast grading;
+- automatic exposure, limited to one stop darker and one and a half stops brighter;
+- god rays: the sun scattering in a thin volumetric haze around the camera;
+- a lens flare and sun glare while the sun is on screen and not covered;
+- a sky glow around the sun, a warm horizon while it is low, and stars when the day/night cycle
+  darkens the sky;
+- glossy water with screen-space reflections, which reflect only what is on screen and the
+  horizon colour elsewhere;
+- swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
+  about their base, while collision keeps the installed placement;
+- depth of field focused on the player, and motion blur.
+
+Depth of field and motion blur start off; the others start on.
+
 ## Unfiltered textures
 
 The original renders through 3dfx Glide with bilinear texture filtering, which Faithful reproduces.

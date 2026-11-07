@@ -271,7 +271,11 @@ from departed worlds do not trigger new GPU uploads.
 The Lighting fidelity area defaults to Faithful. Modern lighting compiles the same
 scene and terrain materials with a physically based branch and lights them with
 Bevy's sun, ambient and point lights (`fog/modern_lighting`); its optional
-day/night cycle moves and tints those lights, the fog and the sky by the hour.
+day/night cycle moves and tints those lights, the fog and the sky by the hour, and its
+optional effects (tonemapping and grading, auto exposure, god rays, sky glow and stars,
+water reflections, lens flare, swaying plants, depth of field, motion blur) are switched in
+`ModernEffects`. Under modern lighting the terrain writes its water weight into the colour
+alpha for the modern screen pass, which always restores an opaque alpha.
 The Textures area point-samples world textures. Existing Water and Fog switches
 remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the

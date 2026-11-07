@@ -1,7 +1,10 @@
 //! The modern lighting plugin, its camera effects and teardown, and the light marker the light
 //! module shares.
 use super::day_night::{self, DayNight, Daylight};
+use super::effects::{self, ExposureCurve, ModernEffects, ShaftVolume};
+use super::foliage;
 use super::lights::sync_lights;
+use super::post::{self, ModernPost, PostPlugin};
 use crate::camera::ViewCamera;
 use bevy::{
     anti_alias::smaa::Smaa,
@@ -12,7 +15,7 @@ use bevy::{
     },
     light::{EnvironmentMapLight, ShadowFilteringMethod},
     pbr::{ContactShadows, ScreenSpaceAmbientOcclusion},
-    post_process::bloom::Bloom,
+    post_process::{auto_exposure::AutoExposurePlugin, bloom::Bloom},
     prelude::*,
 };
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
@@ -23,20 +26,30 @@ pub struct ModernLightingPlugin;
 
 impl Plugin for ModernLightingPlugin {
     fn build(&self, app: &mut App) {
-        // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
-        // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
-        app.init_resource::<DayNight>()
+        app.add_plugins((AutoExposurePlugin, PostPlugin))
+            .init_resource::<DayNight>()
             .init_resource::<Daylight>()
+            .init_resource::<ModernEffects>()
+            .init_resource::<ExposureCurve>()
+            // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
+            // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
             .add_systems(
                 Update,
                 (
+                    foliage::find_plants,
                     (
                         (day_night::advance, sync_lights, day_night::apply).chain(),
-                        configure_camera,
+                        (configure_camera, effects::apply_camera_effects).chain(),
+                        effects::focus,
+                        effects::sun_shafts,
+                        foliage::sway,
+                        post::update_post,
                     )
+                        .chain()
                         .run_if(lit),
                     restore.run_if(not(lit)),
                     day_night::tint_sky,
+                    effects::sky_glow,
                 )
                     .chain(),
             );
@@ -51,14 +64,13 @@ fn lit(fidelity: Res<Fidelity>) -> bool {
 #[derive(Component)]
 pub(super) struct Light;
 
-/// Camera effects. Everything is Bevy's own; a Modern tuning choice. Temporal anti-aliasing is
-/// left out because the original's mesh animation rewrites vertex positions in place without
-/// motion vectors. Tonemapping is off: the lights are calibrated so a fully lit surface shows
-/// its texture colour, and the sky, water and flats keep the original's colours.
+/// Camera effects that are always on. Everything is Bevy's own; a Modern tuning choice.
+/// Temporal anti-aliasing is left out because the original's mesh animation rewrites vertex
+/// positions in place without motion vectors. Tonemapping and the optional effects come from
+/// `effects`.
 #[derive(Bundle)]
 struct CameraEffects {
     hdr: Hdr,
-    tonemapping: Tonemapping,
     // Screen-space ambient occlusion and contact shadows need depth, and the former normals.
     depth: DepthPrepass,
     normals: NormalPrepass,
@@ -73,7 +85,6 @@ impl Default for CameraEffects {
     fn default() -> Self {
         Self {
             hdr: Hdr,
-            tonemapping: Tonemapping::None,
             depth: DepthPrepass,
             normals: NormalPrepass,
             ambient_occlusion: ScreenSpaceAmbientOcclusion::default(),
@@ -95,16 +106,18 @@ fn configure_camera(
 }
 
 /// Undoes everything this module changed once modern lighting is off.
+#[allow(clippy::type_complexity)]
 fn restore(
     mut commands: Commands,
     cameras: Query<Entity, (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>)>,
-    lights: Query<Entity, With<Light>>,
+    removed: Query<Entity, Or<(With<Light>, With<ShaftVolume>)>>,
     mut daylight: ResMut<Daylight>,
+    mut plants: Query<(Entity, &foliage::Sway, &mut Transform)>,
 ) {
     daylight.set_if_neq(Daylight(None));
     for camera in &cameras {
-        commands
-            .entity(camera)
+        let mut camera = commands.entity(camera);
+        camera
             .remove::<(
                 Hdr,
                 DepthPrepass,
@@ -115,12 +128,15 @@ fn restore(
                 Bloom,
                 ShadowFilteringMethod,
                 EnvironmentMapLight,
+                ModernPost,
             )>()
             .insert(Tonemapping::default());
+        effects::remove_camera_effects(&mut camera);
     }
-    for light in &lights {
-        commands.entity(light).despawn();
+    for entity in &removed {
+        commands.entity(entity).despawn();
     }
+    foliage::settle(&mut commands, &mut plants);
 }
 
 #[cfg(test)]
@@ -135,10 +151,18 @@ mod tests {
         let mut schedule = Schedule::default();
         world.init_resource::<DayNight>();
         world.init_resource::<Daylight>();
+        world.init_resource::<ModernEffects>();
         schedule.add_systems((
             restore,
             sync_lights,
             configure_camera,
+            effects::apply_camera_effects,
+            effects::focus,
+            effects::sun_shafts,
+            effects::sky_glow,
+            foliage::find_plants,
+            foliage::sway,
+            post::update_post,
             day_night::advance,
             day_night::apply,
             day_night::tint_sky,

@@ -96,15 +96,17 @@ fn vertex(raw: Vertex,
 }
 
 
-// The terrain lit by Bevy's lights as a matte material.
+// The terrain lit by Bevy's lights as a matte material; water, weighted by `water`, is glossy
+// with its ripples in `normal`, a Modern tuning choice.
 @if(MODERN_LIGHTING)
-fn modern_lit(input: PbrInput, albedo: vec3<f32>) -> vec3<f32> {
+fn modern_lit(input: PbrInput, albedo: vec3<f32>, water: f32, normal: vec3<f32>) -> vec3<f32> {
     var lit = input;
     lit.material.base_color = vec4(albedo, 1.0);
     lit.material.emissive = vec4(0.0);
     lit.material.metallic = 0.0;
-    lit.material.perceptual_roughness = 1.0;
-    lit.material.reflectance = vec3(0.0);
+    lit.material.perceptual_roughness = mix(1.0, 0.12, water);
+    lit.material.reflectance = vec3(0.5 * water);
+    lit.N = normalize(mix(lit.N, normal, water));
     return apply_pbr_lighting(lit).rgb;
 }
 
@@ -149,7 +151,8 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
 }
     var color = srgb_to_linear(encoded);
 @if(MODERN_LIGHTING)
-    color = modern_lit(input, srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true)));
+    color = modern_lit(input, srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true)), clamp(in.water, 0.0, 1.0),
+        normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * 0.05));
     if water_weight > 0.0 {
         let normal = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
         let to_camera = normalize(view.world_position - in.world_position.xyz);
@@ -161,7 +164,9 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     var out: FragmentOutput;
     out.color = vec4(scene_color_at_fog_position(color, depth, in.position.xy, fog_position), base.a);
     // Modern lighting keeps the scene fog but not the original's 16-bit framebuffer.
+    // The water weight in the alpha marks reflecting pixels for the modern screen pass, which
+    // restores an opaque alpha.
 @if(MODERN_LIGHTING)
-    out.color = vec4(scene_fog_at_position(color, depth, fog_position), base.a);
+    out.color = vec4(scene_fog_at_position(color, depth, fog_position), 1.0 - 0.5 * clamp(in.water, 0.0, 1.0));
     return out;
 }

@@ -8,12 +8,20 @@
 //! lights as point lights), with screen-space ambient occlusion, contact shadows, anti-aliasing
 //! and bloom on the camera. The models draw their full world-space meshes and the terrain its
 //! unprojected mesh, instead of the original's per-frame camera-space preparation, so they can
-//! cast shadows and fill the depth prepass. Flats, water and sky keep the original's shading.
-//! The sun, the ambient colour and the object lights come from the world's environment.
+//! cast shadows and fill the depth prepass. Water is glossy; flats and the sky keep the
+//! original's shading. The sun, the ambient colour and the object lights come from the world's
+//! environment.
 //!
-//! The day/night cycle (`day_night`) moves and tints these lights by the hour.
+//! The day/night cycle (`day_night`) moves and tints these lights by the hour, and `effects`
+//! holds the optional effects: tonemapping and grading, automatic exposure, god rays, the sky
+//! glow, water reflections and the lens flare (`post`), swaying plants (`foliage`), depth of
+//! field and motion blur.
 mod day_night;
+mod effects;
+mod foliage;
 mod lights;
 mod plugin;
+mod post;
 pub use day_night::{DayNight, Daylight, SkyLight};
+pub use effects::{Effect, ModernEffects, Tonemapper};
 pub use plugin::ModernLightingPlugin;

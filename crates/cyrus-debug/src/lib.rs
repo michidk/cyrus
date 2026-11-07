@@ -17,6 +17,7 @@ use cyrus_render::fog::RenderDistance;
 use cyrus_script::player::Player;
 
 mod day_night;
+mod effects;
 mod performance;
 
 pub struct DebugMenuPlugin;
@@ -27,6 +28,7 @@ struct DebugMenu {
     inspector_open: bool,
     performance_open: bool,
     day_night_open: bool,
+    effects_open: bool,
 }
 
 #[derive(Resource, Default)]
@@ -69,6 +71,7 @@ impl Plugin for DebugMenuPlugin {
                 performance::performance_window
                     .run_if(|menu: Res<DebugMenu>| menu.performance_open),
                 day_night::day_night_window.run_if(|menu: Res<DebugMenu>| menu.day_night_open),
+                effects::effects_window.run_if(|menu: Res<DebugMenu>| menu.effects_open),
             )
                 .chain(),
         );
@@ -272,6 +275,14 @@ fn debug_menu(
         };
         if ui.button(day_night_label).clicked() {
             menu.day_night_open = !menu.day_night_open;
+        }
+        let effects_label = if menu.effects_open {
+            "Close effects"
+        } else {
+            "Open effects"
+        };
+        if ui.button(effects_label).clicked() {
+            menu.effects_open = !menu.effects_open;
         }
         let inspector_label = if menu.inspector_open {
             "Close inspector"

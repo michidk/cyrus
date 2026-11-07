@@ -77,6 +77,15 @@ struct DayNightParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ModernEffectParams {
+    #[schemars(
+        description = "grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, depth_of_field or motion_blur"
+    )]
+    effect: String,
+    enabled: bool,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct SkyScrollParams {
     #[schemars(description = "Captured original sky direction, 0 through 2047")]
     direction: u16,
@@ -296,6 +305,19 @@ impl Cyrus {
         text(call(Command::SetDayNight {
             hour: p.hour,
             running: p.running,
+        })?)
+    }
+
+    #[tool(
+        description = "Switch one of the modern lighting's optional effects; needs the lighting fidelity area Modern."
+    )]
+    fn set_modern_effect(
+        &self,
+        Parameters(p): Parameters<ModernEffectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::SetModernEffect {
+            effect: p.effect,
+            enabled: p.enabled,
         })?)
     }
 

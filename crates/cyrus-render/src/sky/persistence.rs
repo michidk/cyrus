@@ -132,6 +132,7 @@ impl SkySnapshot {
                 // The day/night cycle reapplies its own values every frame.
                 day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
                 day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
+                modern_sky: Vec4::ZERO,
             },
             sync: SkyScrollSync {
                 pending: self
@@ -209,6 +210,7 @@ mod tests {
                 sun_color: Vec4::ZERO,
                 day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
                 day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
+                modern_sky: Vec4::ZERO,
             });
         original.world_mut().spawn((
             Sky {

@@ -101,6 +101,10 @@ pub(crate) struct SkyMaterial {
     /// The cycle's rotation of the sun disc as a quaternion; identity (`Vec4::W`) leaves it.
     #[uniform(2)]
     pub day_night_sun: Vec4,
+    /// The modern sky effect: the direction towards the sun light, and 1 while the glow and
+    /// stars are on; zero leaves the sky as installed.
+    #[uniform(2)]
+    pub modern_sky: Vec4,
 }
 
 impl SkyMaterial {
@@ -237,6 +241,7 @@ mod tests {
                 scroll: Vec4::new(255.0, -255.0, 0.0, 0.0),
                 day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
                 day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
+                modern_sky: Vec4::ZERO,
             });
         app.world_mut().spawn((
             Sky {

@@ -116,6 +116,7 @@ fn apply_sky(
             }),
             day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
             day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
+            modern_sky: Vec4::ZERO,
         });
         active.sky = Some(
             commands

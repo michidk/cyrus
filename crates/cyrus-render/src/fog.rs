@@ -7,7 +7,9 @@ mod observation;
 mod preparation;
 pub use observation::BoundSceneLightImage;
 mod texture;
-pub use modern_lighting::{DayNight, Daylight, ModernLightingPlugin, SkyLight};
+pub use modern_lighting::{
+    DayNight, Daylight, Effect, ModernEffects, ModernLightingPlugin, SkyLight, Tonemapper,
+};
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
