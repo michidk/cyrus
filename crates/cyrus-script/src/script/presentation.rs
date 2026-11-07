@@ -58,7 +58,7 @@ pub(super) fn bind_scene(
     children: Query<&Children>,
     names: Query<&Name>,
     nodes: Query<&Name, (Without<ScriptBinding>, Without<SceneActorBound>)>,
-    hierarchy_changes: Query<(), Or<(Changed<Children>, Changed<ChildOf>, Changed<Name>)>>,
+    hierarchy_changes: HierarchyChanges,
     mut candidates: Local<SceneCandidates>,
     role_bindings: RoleBindings,
 ) {
@@ -181,11 +181,14 @@ type PresentationNode = (
 /// depends on its name, which is stored with the entry. Failures are not cached.
 #[derive(Default)]
 pub(super) struct ResolvedFrames {
-    frames: bevy::platform::collections::HashMap<
-        (AssetId<Animations>, usize, u32),
-        (bool, String, cyrus_assets::animation::ModelFrame),
-    >,
+    frames: bevy::platform::collections::HashMap<FrameKey, ResolvedFrame>,
 }
+
+type FrameKey = (AssetId<Animations>, usize, u32);
+type ResolvedFrame = (bool, String, cyrus_assets::animation::ModelFrame);
+
+type HierarchyChanges<'w, 's> =
+    Query<'w, 's, (), Or<(Changed<Children>, Changed<ChildOf>, Changed<Name>)>>;
 
 pub(super) fn apply(
     mut commands: Commands,

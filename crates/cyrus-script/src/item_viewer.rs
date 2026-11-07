@@ -479,7 +479,7 @@ fn drive(
             item_id,
             entry,
         );
-        let mut finish_scripted =
+        let finish_scripted =
             |actors: &mut Option<bevy::prelude::ResMut<crate::script::ScriptActors>>| {
                 if scripted.is_some()
                     && let Some(world) = actors.as_mut().and_then(|actors| actors.current.as_mut())
