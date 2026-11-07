@@ -10690,6 +10690,13 @@ fn ordinary_ground_prevalidation_queries_retained_support_and_restores_local_mot
         world.query_ordinary_queued_clearance(id, query()).unwrap(),
         256
     );
+    // The clearance segment starts at the query-position selector's position: a link position far
+    // from every model finds none.
+    world.set_link_position_for_test(id, [4000 * 256, 20 * 256, 4000 * 256]);
+    assert_eq!(
+        world.query_ordinary_queued_clearance(id, query()).unwrap(),
+        256000
+    );
     let empty = world
         .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id])
         .unwrap();
