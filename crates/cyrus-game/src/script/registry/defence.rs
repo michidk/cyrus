@@ -5,7 +5,7 @@ use crate::script::CombatFlags;
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     /// Read the current motion's zero-based counter-attack reference.

@@ -12,7 +12,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::PointPhase;
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 type SoundSink<'a> =
     Option<&'a mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>;

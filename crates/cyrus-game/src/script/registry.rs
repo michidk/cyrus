@@ -9,9 +9,9 @@ use crate::script::locomotion::StepDirection;
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_assets::surface::Surface;
-use cyrus_script::Native;
-use cyrus_script::program::{Call, CallKind, Operation};
-use cyrus_script::{AnimationGroup, Attribute, Attributes, Property};
+use cyrus_soup::Native;
+use cyrus_soup::program::{Call, CallKind, Operation};
+use cyrus_soup::{AnimationGroup, Attribute, Attributes, Property};
 use cyrus_world::heading::wrap;
 mod activation;
 mod actor_bounce;
@@ -92,14 +92,14 @@ use cyrus_assets::{
     animation::Animations,
     script::{CombatTaunt, Instance, Scripts},
 };
-use cyrus_script::{Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, Thread};
+use cyrus_soup::{Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, Thread};
 use cyrus_world::lifecycle::PreparedWorld;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 pub use weapon::{CombatEntryInputs, WeaponInputs};
 
 /// Runtime identity is independent of render nodes and original object-name lookup.
-pub use cyrus_script::ActorReference as ScriptActorId;
+pub use cyrus_soup::ActorReference as ScriptActorId;
 
 /// Index of the selected player: CYRUS, or GREMLIN while the swap state is set. The standalone player
 /// roles are the only candidates, so a world without the selected role has no selected player.
@@ -510,7 +510,7 @@ pub struct ScriptActor {
 /// What starting a shell script needs from its installed definition: the shared program, its
 /// code origin and a copy of the initial local variables.
 struct ShellTemplate {
-    program: Arc<cyrus_script::program::Program>,
+    program: Arc<cyrus_soup::program::Program>,
     code_origin: u32,
     locals: Vec<i32>,
     namespace: Option<String>,
@@ -3652,7 +3652,7 @@ pub(super) fn prepare(
 }
 
 struct GameHost<'a, 'sound, 'input, 'random> {
-    native_source_program: Option<std::sync::Arc<cyrus_script::program::Program>>,
+    native_source_program: Option<std::sync::Arc<cyrus_soup::program::Program>>,
     registry: &'a mut ScriptWorld,
     world: u32,
     animation_system: bool,
@@ -3706,7 +3706,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         &mut self,
         (function, mode): (Native, super::tasks::NativeTaskMode),
         arguments: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<Option<CallResult>> {
         let kind = mode.kind();
         let alignment_flag = (function == Native::WaitLineUp)
@@ -5188,8 +5188,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
 
     fn establish_native_source(
         &mut self,
-        _: cyrus_script::CodeOrigin,
-        program: std::sync::Arc<cyrus_script::program::Program>,
+        _: cyrus_soup::CodeOrigin,
+        program: std::sync::Arc<cyrus_soup::program::Program>,
     ) {
         self.registry.globals.native_source = super::activation::NativeSource::Actor {
             generation: self.generation,
@@ -5218,7 +5218,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             })
     }
 
-    fn read_value(&mut self, target: &Target, reference: u16) -> Result<cyrus_script::ScriptValue> {
+    fn read_value(&mut self, target: &Target, reference: u16) -> Result<cyrus_soup::ScriptValue> {
         if self.property(target, reference)? == Property::Address {
             let actor = if matches!(target, Target::Player) {
                 self.registry.id(self.property_receiver(target)?)?
@@ -5233,10 +5233,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.world,
                 actor.index
             );
-            return Ok(cyrus_script::ScriptValue::Actor(actor));
+            return Ok(cyrus_soup::ScriptValue::Actor(actor));
         }
         self.read_property(target, reference)
-            .map(cyrus_script::ScriptValue::Integer)
+            .map(cyrus_soup::ScriptValue::Integer)
     }
 
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
@@ -5614,7 +5614,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         Ok(())
     }
 
-    fn prepare_native_command(&mut self, site: cyrus_script::NativeCallSite) {
+    fn prepare_native_command(&mut self, site: cyrus_soup::NativeCallSite) {
         self.registry.globals.native_command.prepare(site);
     }
     fn load_native_command(&mut self, slot: usize, elapsed: Option<i32>) {
@@ -5636,7 +5636,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         kind: CallKind,
         function: Native,
         arguments: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
         flags: &mut [i32],
     ) -> Result<CallResult> {
         anyhow::ensure!(
@@ -8821,7 +8821,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         &mut self,
         token: u64,
         arguments: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> Result<bool> {
         let id = ScriptActorId {
@@ -9113,7 +9113,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         target: &Target,
         call: &Call,
         strings: &[String],
-        site: cyrus_script::NativeCallSite,
+        site: cyrus_soup::NativeCallSite,
         flags: &mut [i32],
     ) -> Result<Route> {
         let index = self.target_index(target)?;
@@ -9288,7 +9288,7 @@ mod fighting_tests {
                 index,
             })
             .collect();
-        let definition = cyrus_script::program::Definition {
+        let definition = cyrus_soup::program::Definition {
             functions: vec![],
             flags: vec![],
             references: vec![],

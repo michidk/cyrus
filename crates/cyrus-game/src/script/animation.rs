@@ -2,10 +2,10 @@
 use super::tasks::{AnimationCall, NativeTasks};
 use anyhow::Context;
 use cyrus_assets::animation::Animations;
-use cyrus_script::Native;
-use cyrus_script::program::{CallKind, Program};
-use cyrus_script::{AnimationGroup, Attribute};
-use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
+use cyrus_soup::Native;
+use cyrus_soup::program::{CallKind, Program};
+use cyrus_soup::{AnimationGroup, Attribute};
+use cyrus_soup::{Argument, CallResult, Host, Runtime, Target, Thread};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 
 /// Explicit animation-only host. Unknown native services fail instead of succeeding.
@@ -48,7 +48,7 @@ impl AnimationScript {
             .with_context(|| format!("{context}: invalid program descriptor"))?;
         anyhow::ensure!(program.entry == 0, "{context}: interrupt entry unsupported");
         Ok(AnimationScript {
-            runtime: cyrus_script::Runtime::new(program, context)?,
+            runtime: cyrus_soup::Runtime::new(program, context)?,
             tasks: NativeTasks::default(),
         })
     }
@@ -109,7 +109,7 @@ impl Host for AnimationHost<'_, '_> {
         kind: CallKind,
         function: Native,
         arguments: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         anyhow::ensure!(
@@ -135,7 +135,7 @@ impl Host for AnimationHost<'_, '_> {
         &mut self,
         token: u64,
         arguments: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
         self.tasks.poll(

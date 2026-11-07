@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::surface::Surface;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 impl ScriptWorld {
     /// Start a shell script from its installed definition, as item use and shell-creating natives do.

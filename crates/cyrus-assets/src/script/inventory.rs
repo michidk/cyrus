@@ -1,6 +1,6 @@
 //! Static SOUP census; occurrence counts do not establish runtime support or reachability.
 use super::Scripts;
-use cyrus_script::program::{Call, Object, Operation, Place, Value};
+use cyrus_soup::program::{Call, Object, Operation, Place, Value};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 #[derive(Default, Debug, Serialize)]
 pub struct Inventory {
     pub world: u32,
-    pub declared_functions: Vec<cyrus_script::Native>,
-    pub declared_references: Vec<cyrus_script::Property>,
+    pub declared_functions: Vec<cyrus_soup::Native>,
+    pub declared_references: Vec<cyrus_soup::Property>,
     pub actors: BTreeMap<String, ActorInventory>,
     pub unsupported: BTreeMap<String, String>,
 }

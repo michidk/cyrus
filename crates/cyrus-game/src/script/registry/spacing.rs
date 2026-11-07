@@ -8,7 +8,7 @@ use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::surface::Surface;
-use cyrus_script::{AnimationGroup, Attribute, Native};
+use cyrus_soup::{AnimationGroup, Attribute, Native};
 use cyrus_world::heading::wrap;
 
 /// Ordered neighbors retained by combat spacing, not a sorted nearest pair.
@@ -546,15 +546,15 @@ impl ScriptWorld {
                     operation.native(),
                     super::super::tasks::NativeTaskMode::SynchronousMovement(operation),
                 ),
-                &[cyrus_script::Argument::Integer(duration)],
-                cyrus_script::Invocation {
+                &[cyrus_soup::Argument::Integer(duration)],
+                cyrus_soup::Invocation {
                     elapsed: Some(elapsed),
                     unpaused_tasks: 0,
                     unpaused_blocking_tasks: 0,
                 },
             )?;
             match result {
-                Some(cyrus_script::CallResult::Complete(value)) => Ok(value),
+                Some(cyrus_soup::CallResult::Complete(value)) => Ok(value),
                 _ => anyhow::bail!(
                     "synchronous {} did not return an immediate movement result",
                     operation.native()

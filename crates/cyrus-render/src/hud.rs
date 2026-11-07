@@ -17,7 +17,7 @@ use cyrus_game::{
     },
     script::{ActivationInputs, ActivationOverlay, ScriptActors},
 };
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 use cyrus_world::heading::wrap;
 pub use persistence::HudPresentationSnapshot;
 use serde::{Deserialize, Serialize};
@@ -1412,7 +1412,7 @@ mod tests {
     use super::*;
     use cyrus_assets::surface::Surface;
     use cyrus_game::player::input::{Action, Input, PlayerBindings};
-    use cyrus_script::{AnimationGroup, Native};
+    use cyrus_soup::{AnimationGroup, Native};
     use std::collections::BTreeMap;
 
     fn bound(action: Action, key: KeyCode) -> PlayerBindings {
@@ -1658,7 +1658,7 @@ mod tests {
     fn prepare_script(app: &mut App, requests: &[(Native, &[i32])]) {
         use cyrus_assets::script::*;
         use cyrus_game::script::{ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread};
-        use cyrus_script::program::*;
+        use cyrus_soup::program::*;
         let player = Actor {
             header_index: 0,
             code_origin: 100,

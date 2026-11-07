@@ -6,7 +6,7 @@ use crate::script::camera::{
     GlidePlayer,
 };
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 fn wrapped_angles(angles: [i32; 3]) -> Result<[u16; 3]> {
     anyhow::ensure!(

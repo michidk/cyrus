@@ -1,6 +1,6 @@
 //! Ordinary ground-turn arithmetic from redguard-preservation's
 //! `docs/engine/player.md`. Eligibility and the simulation clock are separate.
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::heading::wrap;
 
 /// Independent held-direction acceleration for ordinary ground turning.

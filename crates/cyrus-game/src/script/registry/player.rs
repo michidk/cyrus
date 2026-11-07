@@ -18,7 +18,7 @@ use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_assets::surface::Surface;
 use cyrus_collision::ground::SupportHistory;
-use cyrus_script::{AnimationGroup, Attribute, Native};
+use cyrus_soup::{AnimationGroup, Attribute, Native};
 use cyrus_world::animation::AnimationSound;
 
 #[derive(Clone)]
@@ -606,8 +606,8 @@ impl ScriptWorld {
                 function,
                 super::super::tasks::NativeTaskMode::SynchronousMovement(operation),
             ),
-            &[cyrus_script::Argument::Integer(1)],
-            cyrus_script::Invocation {
+            &[cyrus_soup::Argument::Integer(1)],
+            cyrus_soup::Invocation {
                 elapsed: Some(0),
                 unpaused_tasks: 0,
                 unpaused_blocking_tasks: 0,
@@ -778,7 +778,7 @@ impl ScriptWorld {
                 && actor
                     .runtime
                     .as_ref()
-                    .is_some_and(cyrus_script::Runtime::has_unpaused_task))
+                    .is_some_and(cyrus_soup::Runtime::has_unpaused_task))
         {
             return Ok(false);
         }
@@ -789,8 +789,8 @@ impl ScriptWorld {
         ensure!(
             call.function == Native::PlayerMain
                 && call.arguments.is_empty()
-                && call.kind == cyrus_script::program::CallKind::Function
-                && call.target == cyrus_script::program::Object::Me,
+                && call.kind == cyrus_soup::program::CallKind::Function
+                && call.target == cyrus_soup::program::Object::Me,
             "player native hook requires direct zero-argument playermain"
         );
         let mut runtime = self.actors[index]
@@ -1398,38 +1398,38 @@ struct PlayerHookHost<'a, 'b> {
     controller: &'b mut dyn FnMut(&mut ScriptWorld) -> Result<()>,
 }
 
-impl cyrus_script::Host for PlayerHookHost<'_, '_> {
+impl cyrus_soup::Host for PlayerHookHost<'_, '_> {
     fn call(
         &mut self,
-        target: &cyrus_script::Target,
-        kind: cyrus_script::program::CallKind,
+        target: &cyrus_soup::Target,
+        kind: cyrus_soup::program::CallKind,
         function: Native,
-        arguments: &[cyrus_script::Argument],
-        _: cyrus_script::Invocation,
+        arguments: &[cyrus_soup::Argument],
+        _: cyrus_soup::Invocation,
         _: &mut [i32],
-    ) -> Result<cyrus_script::CallResult> {
+    ) -> Result<cyrus_soup::CallResult> {
         ensure!(
-            target == &cyrus_script::Target::Me
-                && kind == cyrus_script::program::CallKind::Function
+            target == &cyrus_soup::Target::Me
+                && kind == cyrus_soup::program::CallKind::Function
                 && function == Native::PlayerMain
                 && arguments.is_empty(),
             "player native hook received an unexpected call"
         );
         (self.controller)(self.world)?;
-        Ok(cyrus_script::CallResult::CompleteWithoutValue)
+        Ok(cyrus_soup::CallResult::CompleteWithoutValue)
     }
 
     fn poll(
         &mut self,
         _: u64,
-        _: &[cyrus_script::Argument],
-        _: cyrus_script::Invocation,
+        _: &[cyrus_soup::Argument],
+        _: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> Result<bool> {
         anyhow::bail!("player native hook cannot poll tasks")
     }
 
-    fn end(&mut self, _: cyrus_script::Thread) -> Result<()> {
+    fn end(&mut self, _: cyrus_soup::Thread) -> Result<()> {
         anyhow::bail!("player native hook cannot end a script body")
     }
 }

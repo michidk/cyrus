@@ -1,7 +1,7 @@
 //! Current-group playback and reverse rules from preservation's engine/animation.md.
 use super::Animations;
 use anyhow::Context;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

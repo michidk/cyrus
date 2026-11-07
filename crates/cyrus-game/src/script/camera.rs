@@ -1,7 +1,7 @@
 //! Retained logical camera records; pose correction and publication share this owner.
 use crate::script::LivingState;
 use anyhow::Result;
-use cyrus_script::Native;
+use cyrus_soup::Native;
 use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 

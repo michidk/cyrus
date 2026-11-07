@@ -6,7 +6,7 @@ use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// What the selected player's landing needs beyond the nonplayer response: the health services

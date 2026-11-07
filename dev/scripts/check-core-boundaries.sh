@@ -35,7 +35,7 @@ MANIFEST
 }
 
 check_consumer script '^(bevy(_[^ ]+)?|cyrus-assets|redguard-preservation) ' \
-    'pub use cyrus_script::{Runtime, program::Program};' cyrus-script
+    'pub use cyrus_soup::{Runtime, program::Program};' cyrus-soup
 
 check_consumer core '^(bevy_(render|window|winit|audio|pbr|gltf|mesh|image)|redguard-preservation|cyrus-(render|control)|wgpu|winit|cpal|rodio) ' \
     'pub use cyrus_assets::animation::Animations;
@@ -46,8 +46,8 @@ pub use cyrus_media::{Movie, MovieStream, Packets};
 pub use cyrus_world::{animation::AnimationPlugin, lifecycle::WorldPlugin};
 pub use cyrus_game::GamePlugin;
 pub use cyrus_console::{ConsoleApp, ConsolePlugin};
-pub use cyrus_script::Runtime;' \
-    cyrus-assets cyrus-media cyrus-world cyrus-collision cyrus-game cyrus-console cyrus-script
+pub use cyrus_soup::Runtime;' \
+    cyrus-assets cyrus-media cyrus-world cyrus-collision cyrus-game cyrus-console cyrus-soup
 
 check_consumer app '^cyrus-(game|world|collision|audio|render|startup|debug|viewer|control|mcp|web) ' \
     'pub use cyrus_app::{EguiPlugin, launch::InstallArgs, loading::LoadingOverlayPlugin};' cyrus-app

@@ -9,7 +9,7 @@ use crate::script::camera::{
 };
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 /// Switch for the camera driver.
 #[derive(Resource, Debug, Default, Clone, Copy)]

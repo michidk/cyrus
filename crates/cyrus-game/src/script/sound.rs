@@ -1,7 +1,7 @@
 //! Immediate script sound commands follow preservation's channel ownership rules.
 use anyhow::Result;
-use cyrus_script::Argument;
-use cyrus_script::Native;
+use cyrus_soup::Argument;
+use cyrus_soup::Native;
 pub use cyrus_world::sound::ScriptSound;
 
 pub(super) fn command(name: Native, arguments: &[Argument]) -> Result<Option<ScriptSound>> {

@@ -5,7 +5,7 @@ use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
 use cyrus_collision::candidates::{CandidateOwner, CandidateQuery, ModelBounds, ModelInstance};
 use cyrus_collision::distance::{point_in_sphere, rounded_distance};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 use cyrus_world::heading::wrap;
 
 /// Distance from the parent, in Q8, at which the flight ends.

@@ -1,4 +1,4 @@
-use cyrus_script::program::*;
+use cyrus_soup::program::*;
 use std::collections::BTreeMap;
 
 #[test]
@@ -6,12 +6,12 @@ fn only_literal_self_reset_task_can_exceed_its_zero_argument_declaration() {
     let definition = Definition {
         functions: vec![
             Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             },
             Function {
-                name: cyrus_script::Native::ResetAllAction,
+                name: cyrus_soup::Native::ResetAllAction,
                 param_count: 0,
                 kind: CallKind::Function,
             },
@@ -22,7 +22,7 @@ fn only_literal_self_reset_task_can_exceed_its_zero_argument_declaration() {
     };
     let call = Call {
         function_id: 1,
-        function: cyrus_script::Native::ResetAllAction,
+        function: cyrus_soup::Native::ResetAllAction,
         target: Object::Me,
         kind: CallKind::Task,
         arguments: vec![Value::Integer { value: 23 }, Value::Integer { value: -4 }],
@@ -85,9 +85,9 @@ fn only_literal_self_reset_task_can_exceed_its_zero_argument_declaration() {
             .is_err()
     );
     let mut changed_definition = definition.clone();
-    changed_definition.functions[1].name = cyrus_script::Native::TrueFunction;
+    changed_definition.functions[1].name = cyrus_soup::Native::TrueFunction;
     let mut changed = call.clone();
-    changed.function = cyrus_script::Native::TrueFunction;
+    changed.function = cyrus_soup::Native::TrueFunction;
     assert!(
         program(changed, false)
             .validate_definition(&changed_definition)

@@ -196,7 +196,7 @@ pub use group_sync::GroupSync;
 mod world_request;
 pub use animation::AnimationScript;
 use bevy::prelude::*;
-pub use cyrus_script::Thread;
+pub use cyrus_soup::Thread;
 pub use playback::ScriptedPlayback;
 pub use presentation::{ScriptBinding, ScriptEntityBinding, ScriptScene};
 pub use registry::{

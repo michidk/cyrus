@@ -223,9 +223,9 @@ fn installed_keyboard_route(modern_jump: bool) -> Result<()> {
             let index = world.selected_player().unwrap().index;
             let group = world.inspect(index, 1)["actors"][0]["animation"]["current_group"].as_u64();
             let expected = if running {
-                cyrus_script::AnimationGroup::RUN
+                cyrus_soup::AnimationGroup::RUN
             } else {
-                cyrus_script::AnimationGroup::WALK
+                cyrus_soup::AnimationGroup::WALK
             };
             ensure!(
                 group == Some(u64::from(expected.index())),

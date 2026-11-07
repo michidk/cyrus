@@ -18,5 +18,5 @@ serde_json.workspace = true
 
 [dev-dependencies]
 cyrus-assets = { workspace = true, features = ["parsers"] }
-cyrus-script.workspace = true
+cyrus-soup.workspace = true
 redguard-preservation.workspace = true

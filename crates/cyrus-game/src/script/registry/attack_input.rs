@@ -11,7 +11,7 @@ use crate::script::LivingState;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, bail};
 use cyrus_assets::script::TauntType;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 /// One key's quick-press counter. The release timer counts frames since the last release; a press
 /// inside the tap window raises the count, a longer gap restarts it.

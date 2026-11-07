@@ -1,7 +1,7 @@
 //! Public invocation contracts use independently authored portable programs.
-use cyrus_script::Native;
-use cyrus_script::program::*;
-use cyrus_script::*;
+use cyrus_soup::Native;
+use cyrus_soup::program::*;
+use cyrus_soup::*;
 use std::collections::BTreeMap;
 
 // Stand-ins: these interpreter contracts hold for any native, so the DEF's spare natives serve.
@@ -33,7 +33,7 @@ impl Host for Service {
         _: CallKind,
         function: Native,
         _: &[Argument],
-        _: cyrus_script::Invocation,
+        _: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         assert_eq!(target, &Target::Me);
@@ -51,7 +51,7 @@ impl Host for Service {
         &mut self,
         task: u64,
         _: &[Argument],
-        _: cyrus_script::Invocation,
+        _: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
         assert_eq!(task, 9);
@@ -134,7 +134,7 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
             kind: CallKind,
             _: Native,
             arguments: &[Argument],
-            _: cyrus_script::Invocation,
+            _: cyrus_soup::Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<CallResult> {
             self.observed.push(arguments.to_vec());
@@ -148,7 +148,7 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
             &mut self,
             _: u64,
             arguments: &[Argument],
-            _: cyrus_script::Invocation,
+            _: cyrus_soup::Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<bool> {
             self.observed.push(arguments.to_vec());
@@ -583,7 +583,7 @@ impl Host for Tasks {
         _: CallKind,
         _: Native,
         args: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         self.next += 1;
@@ -595,7 +595,7 @@ impl Host for Tasks {
         &mut self,
         token: u64,
         args: &[Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
         self.arguments.push((token, args.to_vec()));
@@ -681,7 +681,7 @@ fn a_function_result_clears_every_task_slot_immediately_and_only_for_functions()
             _: CallKind,
             function: Native,
             _: &[Argument],
-            _: cyrus_script::Invocation,
+            _: cyrus_soup::Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<CallResult> {
             Ok(if function == CLEAR_TASKS {
@@ -695,7 +695,7 @@ fn a_function_result_clears_every_task_slot_immediately_and_only_for_functions()
             &mut self,
             _: u64,
             _: &[Argument],
-            _: cyrus_script::Invocation,
+            _: cyrus_soup::Invocation,
             _: &mut [i32],
         ) -> anyhow::Result<bool> {
             Ok(false)
@@ -971,7 +971,7 @@ fn routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals() 
     vm.receive(
         &call,
         &["caller strings".into()],
-        cyrus_script::NativeCallSite::Statement(Some(foreign_source())),
+        cyrus_soup::NativeCallSite::Statement(Some(foreign_source())),
         &mut host,
         &mut [],
     )
@@ -1016,7 +1016,7 @@ fn routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operan
     vm.receive(
         &call,
         &[],
-        cyrus_script::NativeCallSite::Statement(Some(foreign_source())),
+        cyrus_soup::NativeCallSite::Statement(Some(foreign_source())),
         &mut host,
         &mut [],
     )
@@ -1030,7 +1030,7 @@ fn routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operan
     vm.receive(
         &call,
         &[],
-        cyrus_script::NativeCallSite::Statement(Some(alias)),
+        cyrus_soup::NativeCallSite::Statement(Some(alias)),
         &mut host,
         &mut [],
     )
@@ -1051,7 +1051,7 @@ fn missing_foreign_task_source_fails_before_polling_and_is_sticky() {
     vm.receive(
         &call,
         &[],
-        cyrus_script::NativeCallSite::Statement(Some(foreign_source())),
+        cyrus_soup::NativeCallSite::Statement(Some(foreign_source())),
         &mut host,
         &mut [],
     )
@@ -1087,7 +1087,7 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
         vm.receive(
             &call,
             &[],
-            cyrus_script::NativeCallSite::Statement(Some(source)),
+            cyrus_soup::NativeCallSite::Statement(Some(source)),
             &mut host,
             &mut [],
         )
@@ -1101,7 +1101,7 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
         .receive(
             &call,
             &[],
-            cyrus_script::NativeCallSite::Statement(Some(source)),
+            cyrus_soup::NativeCallSite::Statement(Some(source)),
             &mut host,
             &mut [],
         )
@@ -1119,7 +1119,7 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
         .receive(
             &call,
             &[],
-            cyrus_script::NativeCallSite::Statement(Some(source)),
+            cyrus_soup::NativeCallSite::Statement(Some(source)),
             &mut host,
             &mut [],
         )
@@ -1189,7 +1189,7 @@ fn entry_compares_foreign_task_operands_in_shared_code_identity() {
             .receive(
                 &call,
                 &[],
-                cyrus_script::NativeCallSite::Statement(Some(TaskSource {
+                cyrus_soup::NativeCallSite::Statement(Some(TaskSource {
                     origin: CodeOrigin(origin),
                     instruction: 0,
                     object_call: false,
@@ -1351,7 +1351,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
             target: &Target,
             _: &Call,
             _: &[String],
-            _: cyrus_script::NativeCallSite,
+            _: cyrus_soup::NativeCallSite,
             _: &mut [i32],
         ) -> anyhow::Result<Route> {
             if *target == Target::Player {
@@ -1453,7 +1453,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
         vm.receive(
             &call,
             &[],
-            cyrus_script::NativeCallSite::Statement(None),
+            cyrus_soup::NativeCallSite::Statement(None),
             &mut host,
             &mut []
         )

@@ -3,7 +3,7 @@ use super::{GameHost, ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::QuickKeys;
 use crate::script::inventory::{FLAMING_SABRE, HEALTH_POTION, SABRE, SOUL_SWORD};
 use anyhow::{Context, Result};
-use cyrus_script::{Attribute, Native};
+use cyrus_soup::{Attribute, Native};
 
 /// Items the sword key looks for, in order; the third is used without being selected.
 const SWORDS: [u16; 3] = [SABRE, SOUL_SWORD, FLAMING_SABRE];
@@ -72,7 +72,7 @@ impl ScriptWorld {
                 self.actors
                     .get(index)
                     .and_then(|actor| actor.runtime.as_ref())
-                    .map(cyrus_script::Runtime::shared_program)
+                    .map(cyrus_soup::Runtime::shared_program)
             }
             _ => None,
         };

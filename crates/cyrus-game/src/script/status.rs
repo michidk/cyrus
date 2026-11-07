@@ -80,8 +80,8 @@ pub(super) fn update(
             .iter()
             .filter(|actor| {
                 actor.runtime().is_some_and(|runtime| {
-                    runtime.waiting(cyrus_script::Thread::Main).is_some()
-                        || runtime.waiting(cyrus_script::Thread::Interrupt).is_some()
+                    runtime.waiting(cyrus_soup::Thread::Main).is_some()
+                        || runtime.waiting(cyrus_soup::Thread::Interrupt).is_some()
                 })
             })
             .count();

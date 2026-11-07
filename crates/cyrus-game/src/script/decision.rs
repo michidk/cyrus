@@ -2,7 +2,7 @@
 //! executor; callers own the animation request and the combat record fields they pass in.
 use super::combat::{CombatDecision, CombatFlags, ExecutorState};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::heading::{FULL_TURN, HALF_TURN, wrap};
 
 /// Signed difference of two headings, each masked to 0..2047 and wrapped into -1024..=1024.

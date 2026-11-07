@@ -4,7 +4,7 @@ use cyrus_assets::surface::Surface;
 use cyrus_game::script::{
     ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage, camera::CameraPose,
 };
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 pub(super) fn effects() -> Effects {
     Effects {

@@ -9,7 +9,7 @@ use crate::script::bounce::{
 use crate::script::{JumpMotion, LivingState};
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 type Sounds<'s> = &'s mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>;
 

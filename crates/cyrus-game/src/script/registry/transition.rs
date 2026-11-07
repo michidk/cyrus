@@ -3,7 +3,7 @@ use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 /// Current motion bytes and weapon predicate for a single original transition.
 /// Logical Y is Q8; `attr_jump_height` is its unsigned installed map-unit offset.

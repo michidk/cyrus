@@ -1,5 +1,5 @@
 //! Marker-based entry from preservation's player and RGM documentation.
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::heading::wrap;
 mod persistence;
 use super::Player;

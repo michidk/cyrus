@@ -144,7 +144,7 @@ fn ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_the
     // The words keep the low sixteen bits and read sign-extended; the dwords keep everything.
     assert_eq!(
         locals,
-        [1, 123_456, -7, 5, i32::MIN, 0x2345, -0x8000].map(cyrus_script::ScriptValue::Integer)
+        [1, 123_456, -7, 5, i32::MIN, 0x2345, -0x8000].map(cyrus_soup::ScriptValue::Integer)
     );
     // The node fields are the navigation owner's held nodes.
     let navigation = world.actors()[0].control_state().unwrap().navigation;
@@ -239,7 +239,7 @@ fn message_and_broadcast_index_properties_are_the_receivers_selection_bytes() {
         &[Property::BroadcastIndex, Property::MessageIndex],
     );
     let locals = world.actors()[0].runtime().unwrap().variables().to_vec();
-    assert_eq!(locals, [1, 1, 253].map(cyrus_script::ScriptValue::Integer));
+    assert_eq!(locals, [1, 1, 253].map(cyrus_soup::ScriptValue::Integer));
     // The property is the selection the broadcast natives use: with the selection at slot one, a
     // single broadcast (write cursor one) leaves nothing selected; at slot zero it is selected.
     let (sender, receiver) = (world.id(1).unwrap(), world.id(0).unwrap());
@@ -260,7 +260,7 @@ fn message_and_broadcast_index_properties_are_the_receivers_selection_bytes() {
     let wide = header_world(&[(Property::MessageIndex, 200)], &[Property::MessageIndex]);
     assert_eq!(
         wide.actors()[0].runtime().unwrap().variables()[1],
-        cyrus_script::ScriptValue::Integer(200)
+        cyrus_soup::ScriptValue::Integer(200)
     );
 }
 
@@ -283,7 +283,7 @@ fn the_node_properties_are_the_walk_map_owners_held_nodes() {
     );
     assert_eq!(
         world.actors()[0].runtime().unwrap().variables()[1..],
-        [11, 5, 6].map(cyrus_script::ScriptValue::Integer)
+        [11, 5, 6].map(cyrus_soup::ScriptValue::Integer)
     );
     assert!(
         world.globals().printed_lines()[2].starts_with("Node 11, dnode 5, "),

@@ -3,8 +3,8 @@
 use super::{GameHost, ScriptActorId};
 use crate::script::tasks::{FaceTarget, MoveTarget, PointHost, PointWrapper};
 use anyhow::{Context, Result};
-use cyrus_script::Attribute;
-use cyrus_script::Native;
+use cyrus_soup::Attribute;
+use cyrus_soup::Native;
 
 // The exact half-turn keeps the sign of the unwrapped difference.
 fn tilt_difference(current: i32, target: i32) -> i32 {
@@ -315,7 +315,7 @@ impl GameHost<'_, '_, '_, '_> {
         function: Native,
         kind: super::CallKind,
         arguments: &[super::Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<Option<super::CallResult>> {
         let mut tasks = std::mem::take(&mut self.registry.actors[self.index].tasks);
         let result = tasks.call(
@@ -338,7 +338,7 @@ impl GameHost<'_, '_, '_, '_> {
         &mut self,
         token: u64,
         arguments: &[super::Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<bool> {
         let mut tasks = std::mem::take(&mut self.registry.actors[self.index].tasks);
         let result = tasks.poll(

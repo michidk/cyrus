@@ -2,7 +2,7 @@
 use super::AnimationScript;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::{
     animation::{ActorAnimation, AnimationPose, AnimationRequest, AnimationTick},
     sound::SoundCue,

@@ -11,7 +11,7 @@ bevy = { workspace = true, features = ["bevy_log", "bevy_asset", "bevy_state", "
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-collision.workspace = true
-cyrus-script.workspace = true
+cyrus-soup.workspace = true
 anyhow.workspace = true
 blake3.workspace = true
 serde.workspace = true

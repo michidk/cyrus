@@ -3,8 +3,8 @@ use crate::preferences::Preferences;
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
 use cyrus_assets::hud::HudAsset;
-use cyrus_script::Argument;
-use cyrus_script::Native;
+use cyrus_soup::Argument;
+use cyrus_soup::Native;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 

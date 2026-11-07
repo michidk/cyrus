@@ -13,7 +13,7 @@ use crate::script::MotionDirection;
 use crate::script::decision::heading_difference;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::{HALF_TURN, wrap};
 
 /// Links searched below the requested one start this many before it.

@@ -1,8 +1,8 @@
 //! Installed global flag types and native latch operations from preservation's SOUP rules.
 use anyhow::{Context, Result};
-use cyrus_script::Argument;
-use cyrus_script::Native;
-use cyrus_script::program::{Definition, Flag};
+use cyrus_soup::Argument;
+use cyrus_soup::Native;
+use cyrus_soup::program::{Definition, Flag};
 use serde::{Deserialize, Serialize};
 
 /// Ordered global values and latches, tied to the exact installed flag schema.

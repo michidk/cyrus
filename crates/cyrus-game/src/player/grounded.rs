@@ -8,7 +8,7 @@ use cyrus_collision::{
     collision_world::StaticCandidates,
     ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
 };
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 /// Inputs supplied by the admitted ordinary movement stage.
 pub struct ForwardWalk {

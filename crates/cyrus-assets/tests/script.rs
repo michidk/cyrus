@@ -2,8 +2,8 @@
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Attributes, Native};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Attributes, Native};
 use std::collections::BTreeMap;
 
 // Stand-ins: these cache contracts hold for any native, so the DEF's spare natives serve.

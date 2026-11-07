@@ -3,8 +3,8 @@ use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::JumpMotion;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -65,7 +65,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -116,7 +116,7 @@ fn cache() -> Scripts {
 
 fn counter_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::Action; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::Action; 295];
     let place = Place::Property {
         object,
         reference: 294,
@@ -358,8 +358,8 @@ fn automatic_fixture(
         ),
     ]);
     scripts.definition.references.extend([
-        cyrus_script::Property::ActionTime,
-        cyrus_script::Property::ActionFlag,
+        cyrus_soup::Property::ActionTime,
+        cyrus_soup::Property::ActionFlag,
     ]);
     scripts.content_id = scripts.content_identity().unwrap();
     let data = cyrus_assets::animation::Animations {

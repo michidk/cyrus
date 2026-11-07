@@ -5,7 +5,7 @@ use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
 use cyrus_collision::ground::SurfaceClass;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 impl StepDirection {
     pub(super) fn mark_blocked_response(self, control: &mut super::ActorControlState) {

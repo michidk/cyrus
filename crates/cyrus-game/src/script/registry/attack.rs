@@ -8,7 +8,7 @@ use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     /// Apply the d001 response after message intent clears. The order follows the

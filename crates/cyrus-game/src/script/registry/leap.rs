@@ -3,7 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 impl ScriptWorld {
     /// Start a nonplayer leap: queued motion 2 and the jump request (`anim_jump_start`, or `anim_jump_start_torch` with a

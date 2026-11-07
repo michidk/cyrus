@@ -1,6 +1,6 @@
 use cyrus_assets::cheats::{self, CheatFile};
 use cyrus_game::cheats::{CheatEffect, CheatStore, Cheats};
-use cyrus_script::Native;
+use cyrus_soup::Native;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
@@ -550,7 +550,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
     use cyrus_assets::script::*;
     use cyrus_console::{Source, submit};
     use cyrus_game::script::{ScriptActors, ScriptWorld, Thread};
-    use cyrus_script::program::*;
+    use cyrus_soup::program::*;
     use cyrus_world::lifecycle::PreparedWorld;
 
     let mut app = console_app();

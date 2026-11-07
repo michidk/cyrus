@@ -3,8 +3,8 @@ pub mod combat;
 pub mod inventory;
 pub mod weapon;
 use anyhow::Context;
-use cyrus_script::program::{Call, Definition, Program};
-use cyrus_script::{Attribute, Attributes};
+use cyrus_soup::program::{Call, Definition, Program};
+use cyrus_soup::{Attribute, Attributes};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -699,7 +699,7 @@ impl Scripts {
                 .functions
                 .first()
                 .is_some_and(
-                    |function| function.name == cyrus_script::Native::NullFunction
+                    |function| function.name == cyrus_soup::Native::NullFunction
                         && function.param_count == 0
                 ),
             "world {}: null function metadata absent",

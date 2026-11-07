@@ -5,8 +5,8 @@ use cyrus_game::script::{
     OrdinaryForwardAmountInputs, OrdinaryMovement, ScriptHud, ScriptInputs, ScriptSound,
     ScriptStage, ScriptWorld,
 };
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -67,7 +67,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -118,15 +118,15 @@ fn cache() -> Scripts {
 
 fn fixture(name: &str, present: bool, pending: bool, sound: bool, slide: u8) -> ScriptWorld {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::SlideFlag];
+    scripts.definition.references = vec![cyrus_soup::Property::SlideFlag];
     scripts.definition.functions.extend([
         Function {
-            name: cyrus_script::Native::from_name(name).expect("known fixture native"),
+            name: cyrus_soup::Native::from_name(name).expect("known fixture native"),
             param_count: 1,
             kind: CallKind::Task,
         },
         Function {
-            name: cyrus_script::Native::PlayAnimation,
+            name: cyrus_soup::Native::PlayAnimation,
             param_count: 2,
             kind: CallKind::Function,
         },
@@ -152,7 +152,7 @@ fn fixture(name: &str, present: bool, pending: bool, sound: bool, slide: u8) -> 
             call: Call {
                 target: Object::Me,
                 function_id: 2,
-                function: cyrus_script::Native::PlayAnimation,
+                function: cyrus_soup::Native::PlayAnimation,
                 kind: CallKind::Function,
                 arguments: vec![Value::Integer { value: 30 }, Value::Integer { value: 0 }],
             },
@@ -163,7 +163,7 @@ fn fixture(name: &str, present: bool, pending: bool, sound: bool, slide: u8) -> 
             call: Call {
                 target: Object::Me,
                 function_id: 1,
-                function: cyrus_script::Native::from_name(name).expect("known fixture native"),
+                function: cyrus_soup::Native::from_name(name).expect("known fixture native"),
                 kind: CallKind::Task,
                 arguments: vec![Value::Integer { value: 4 }],
             },
@@ -225,7 +225,7 @@ fn fixture(name: &str, present: bool, pending: bool, sound: bool, slide: u8) -> 
         .bind_animation(
             world.id(0).unwrap(),
             &data,
-            cyrus_script::AnimationGroup::PANIC,
+            cyrus_soup::AnimationGroup::PANIC,
         )
         .unwrap();
     world

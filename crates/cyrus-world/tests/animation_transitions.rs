@@ -1,5 +1,5 @@
 use cyrus_assets::animation::Animations;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::animation::AnimationSound;
 use serde_json::{Value, json};
 

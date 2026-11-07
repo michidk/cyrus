@@ -3,8 +3,8 @@ use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::Thread;
-use cyrus_script::program::*;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -65,7 +65,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -116,7 +116,7 @@ fn cache() -> Scripts {
 
 fn origin_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::Origin; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::Origin; 295];
     let place = Place::Property {
         object,
         reference: 294,
@@ -212,7 +212,7 @@ fn origin_property_reads_allocator_zero_without_spatial_preparation() {
 fn script_written_origin_is_consumed_by_the_existing_falling_writer() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::OrdinaryVerticalInputs;
-    use cyrus_script::Attribute;
+    use cyrus_soup::Attribute;
 
     for (origin, expected_y) in [(8192, 4096), (-8192, -12288)] {
         let mut scripts = origin_scripts(Object::Me, origin, true);
@@ -264,7 +264,7 @@ fn script_written_origin_controls_the_public_landing_damage_threshold() {
     use cyrus_game::script::{
         ObstacleEnvironment, OrdinaryLandingDecision, OrdinaryLandingSettings,
     };
-    use cyrus_script::Attribute;
+    use cyrus_soup::Attribute;
 
     for (origin, expected, health) in [
         (25600, OrdinaryLandingDecision::Ordinary, 100),

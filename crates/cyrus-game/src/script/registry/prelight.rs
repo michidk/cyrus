@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::script::PlacementType;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 use std::collections::BTreeMap;
 
 /// A static actor's prepared instance at the prelight checkpoint. Float bits

@@ -2,9 +2,9 @@
 use super::locomotion::MotionDirection;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
-use cyrus_script::Native;
-use cyrus_script::program::CallKind;
-use cyrus_script::{AnimationGroup, Argument, CallResult, Invocation};
+use cyrus_soup::Native;
+use cyrus_soup::program::CallKind;
+use cyrus_soup::{AnimationGroup, Argument, CallResult, Invocation};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 use cyrus_world::heading::wrap;
 use std::collections::BTreeMap;
@@ -59,17 +59,17 @@ impl NativeCommandState {
         }
     }
 
-    pub(super) fn prepare(&mut self, site: cyrus_script::NativeCallSite) {
+    pub(super) fn prepare(&mut self, site: cyrus_soup::NativeCallSite) {
         match site {
-            cyrus_script::NativeCallSite::Hook => {}
-            cyrus_script::NativeCallSite::ObjectFunctionValue => {
+            cyrus_soup::NativeCallSite::Hook => {}
+            cyrus_soup::NativeCallSite::ObjectFunctionValue => {
                 *self = Self {
                     point_value: self.point_value,
                     ..Self::default()
                 };
             }
-            cyrus_script::NativeCallSite::Statement(_)
-            | cyrus_script::NativeCallSite::FunctionValue => {
+            cyrus_soup::NativeCallSite::Statement(_)
+            | cyrus_soup::NativeCallSite::FunctionValue => {
                 *self = Self::default();
             }
         }
@@ -189,7 +189,7 @@ pub(super) enum FaceTarget {
     /// A local Q8 X/Z point.
     Point([i32; 2]),
     /// An actor's local X/Z, read on every step (`FaceObject`).
-    Actor(cyrus_script::ActorReference),
+    Actor(cyrus_soup::ActorReference),
 }
 
 /// Which point wrapper a move task steps: the node wrapper claims walk nodes along routes, the
@@ -3567,7 +3567,7 @@ impl NativeTasks {
 #[cfg(test)]
 mod animation_group_tests {
     use super::animation_group_bits;
-    use cyrus_script::AnimationGroup;
+    use cyrus_soup::AnimationGroup;
 
     #[test]
     fn signed_group_operands_keep_their_bit_pattern() {

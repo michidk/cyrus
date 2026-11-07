@@ -1,8 +1,8 @@
 //! Local and composed actor poses follow preservation's SOUP attachment rules.
 use super::ScriptActor;
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Native;
-use cyrus_script::{Attribute, Attributes};
+use cyrus_soup::Native;
+use cyrus_soup::{Attribute, Attributes};
 use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 use serde::Serialize;
@@ -838,7 +838,7 @@ impl ActorSpatial {
     pub fn query(
         &self,
         name: Native,
-        arguments: &[cyrus_script::Argument],
+        arguments: &[cyrus_soup::Argument],
         inputs: QueryInputs,
     ) -> Result<Option<i32>> {
         let accurate = name == Native::AcuratePlayerDistance;

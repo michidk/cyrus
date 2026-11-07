@@ -10,7 +10,7 @@ cyrus-console.workspace = true
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-game.workspace = true
-cyrus-script.workspace = true
+cyrus-soup.workspace = true
 bevy = { workspace = true, features = ["default"] }
 cyrus-text.workspace = true
 anyhow.workspace = true

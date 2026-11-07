@@ -3,8 +3,8 @@ use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::Thread;
-use cyrus_script::program::*;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -65,7 +65,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -116,7 +116,7 @@ fn cache() -> Scripts {
 
 fn counter_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::LastCollideCount; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::LastCollideCount; 295];
     let place = Place::Property {
         object,
         reference: 294,

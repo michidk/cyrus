@@ -8,10 +8,10 @@ use cyrus_game::script::LivingState;
 use cyrus_game::script::MotionDirection;
 use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
-use cyrus_script::Native;
-use cyrus_script::program::*;
-use cyrus_script::{AnimationGroup, Thread};
-use cyrus_script::{Attribute, Attributes};
+use cyrus_soup::Native;
+use cyrus_soup::program::*;
+use cyrus_soup::{AnimationGroup, Thread};
+use cyrus_soup::{Attribute, Attributes};
 use cyrus_world::animation::AnimationSound;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -911,7 +911,7 @@ fn routed_rotation_keeps_receiver_angles_and_task_slots() {
 #[test]
 fn attached_facing_stays_composed_until_family_refresh() {
     use cyrus_game::script::{PlayerQuery, QueryInputs};
-    use cyrus_script::Argument;
+    use cyrus_soup::Argument;
     let mut data = axis_task_scripts(Native::RotateByAxis, 1, 128, 4);
     data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
     data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Master] = 1;
@@ -6571,7 +6571,7 @@ fn walk_forward_world_with(
             .collect();
         actor.program.steps.insert(
             0,
-            cyrus_script::program::Step {
+            cyrus_soup::program::Step {
                 next: 1,
                 operation: Operation::Call {
                     call: Call {
@@ -6767,7 +6767,7 @@ fn routed_torch_predicates_use_receiver_action_then_animation_without_mutation()
                         param_count: 0,
                         kind: CallKind::Function,
                     });
-                    scripts.definition.references = vec![cyrus_script::Property::ExtraFlag];
+                    scripts.definition.references = vec![cyrus_soup::Property::ExtraFlag];
                     scripts.actors.get_mut("OTHER").unwrap().program.steps = BTreeMap::from([
                         (
                             0,

@@ -1,7 +1,7 @@
 //! Native task continuations validate against saved VM calls without execution.
 use super::{NativeTasks, Task};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::{Native, persistence::Snapshot, program::CallKind};
+use cyrus_soup::{Native, persistence::Snapshot, program::CallKind};
 use cyrus_world::animation::ActorAnimation;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

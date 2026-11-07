@@ -3,7 +3,7 @@ use super::ScriptWorld;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 use serde::Serialize;
 

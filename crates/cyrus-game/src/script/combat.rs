@@ -4,7 +4,7 @@ use crate::script::AiType;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
-use cyrus_script::{Attribute, Attributes};
+use cyrus_soup::{Attribute, Attributes};
 use serde::Serialize;
 
 const QUEUE_CAPACITY: usize = 8;

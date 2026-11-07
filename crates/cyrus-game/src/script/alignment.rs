@@ -2,7 +2,7 @@
 //! targets", "Alignment distance thresholds" and "PlayerFaceObj". The functions are pure.
 //! `PlayerFaceObj` runs on them as a native task; the `PlayerLineUp` native that owns the mode,
 //! fallback flag and reference, and the player's movement, is not implemented.
-use cyrus_script::{AnimationGroup, Attribute, Attributes};
+use cyrus_soup::{AnimationGroup, Attribute, Attributes};
 use cyrus_world::heading::wrap;
 
 /// Attribute holding the speed byte for the player's current animation group, or `None` when

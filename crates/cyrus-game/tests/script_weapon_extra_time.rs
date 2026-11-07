@@ -2,8 +2,8 @@
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{AnimationGroup, Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{AnimationGroup, Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -64,7 +64,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -126,16 +126,16 @@ fn assignment(destination: Place, first: Value) -> Operation {
 fn fixture(living: i32, group: u16, sound: bool) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.references = vec![
-        cyrus_script::Property::ExtraTime,
-        cyrus_script::Property::RopeWait,
-        cyrus_script::Property::ExtraFlag,
+        cyrus_soup::Property::ExtraTime,
+        cyrus_soup::Property::RopeWait,
+        cyrus_soup::Property::ExtraFlag,
     ];
     let property = |reference| Place::Property {
         object: Object::Me,
         reference,
     };
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::PlayAnimation,
+        name: cyrus_soup::Native::PlayAnimation,
         param_count: 2,
         kind: CallKind::Function,
     });
@@ -148,7 +148,7 @@ fn fixture(living: i32, group: u16, sound: bool) -> ScriptWorld {
             call: Call {
                 target: Object::Me,
                 function_id: 1,
-                function: cyrus_script::Native::PlayAnimation,
+                function: cyrus_soup::Native::PlayAnimation,
                 kind: CallKind::Function,
                 arguments: vec![
                     Value::Integer {
@@ -384,11 +384,11 @@ fn native_sheathing_clears_extra_time_after_admission_and_keeps_rope_wait() {
     ] {
         let mut scripts = cache();
         scripts.definition.references = vec![
-            cyrus_script::Property::ExtraTime,
-            cyrus_script::Property::RopeWait,
+            cyrus_soup::Property::ExtraTime,
+            cyrus_soup::Property::RopeWait,
         ];
         scripts.definition.functions.push(Function {
-            name: cyrus_script::Native::SheathSword,
+            name: cyrus_soup::Native::SheathSword,
             param_count: 0,
             kind: CallKind::Function,
         });
@@ -409,7 +409,7 @@ fn native_sheathing_clears_extra_time_after_admission_and_keeps_rope_wait() {
                 call: Call {
                     target: Object::Me,
                     function_id: 1,
-                    function: cyrus_script::Native::SheathSword,
+                    function: cyrus_soup::Native::SheathSword,
                     kind: CallKind::Function,
                     arguments: vec![],
                 },

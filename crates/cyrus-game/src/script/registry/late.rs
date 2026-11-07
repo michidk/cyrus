@@ -9,7 +9,7 @@ use anyhow::{Context, Result, ensure};
 use cyrus_assets::surface::Surface;
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_collision::ground::SurfaceClass;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// Prevalidation, selected support and the surface updater's (previous, returned) surfaces when it ran.

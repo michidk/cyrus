@@ -308,19 +308,6 @@ module where it is defined and regenerate.
 - `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
 - `src/weapon_model.rs` — Equipped weapon models, placed from the retained logical attachment pose.
 
-## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
-
-- `src/animation_group.rs` — Animation group numbers: the index of an actor's animation group.
-- `src/attribute.rs` — Actor attribute slots: the 256 bytes every SOUP actor carries.
-- `src/native.rs` — SOUP native functions: the `[functions]` list of the installed `SOUP386.DEF`.
-- `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
-- `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
-- `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.
-- `src/property.rs` — SOUP object properties: the `[refs]` list of the installed `SOUP386.DEF`.
-- `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
-- `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
-- `src/values.rs` — Typed actor references and original integer formula and condition evaluation.
-
 ## `cyrus-session` — Shared off-live gameplay and audio assembly; native/browser storage stays host-owned.
 
 - `src/boundary.rs` — Exclusive host requests after ordinary frame updates; storage stays host-owned.
@@ -334,6 +321,19 @@ module where it is defined and regenerate.
 - `src/scene_instances.rs` — Hidden scene instances loaded without publishing a world entry request.
 - `src/sources.rs` — Host-resolved world sources retained independently of live world-entry resources.
 - `src/staging.rs` — Fresh actor targets with explicit ownership of cancellation cleanup.
+
+## `cyrus-soup` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
+
+- `src/animation_group.rs` — Animation group numbers: the index of an actor's animation group.
+- `src/attribute.rs` — Actor attribute slots: the 256 bytes every SOUP actor carries.
+- `src/native.rs` — SOUP native functions: the `[functions]` list of the installed `SOUP386.DEF`.
+- `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
+- `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
+- `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.
+- `src/property.rs` — SOUP object properties: the `[refs]` list of the installed `SOUP386.DEF`.
+- `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
+- `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
+- `src/values.rs` — Typed actor references and original integer formula and condition evaluation.
 
 ## `cyrus-startup` — Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 

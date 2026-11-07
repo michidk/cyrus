@@ -2,8 +2,8 @@
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::Thread;
-use cyrus_script::program::*;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -64,7 +64,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -115,7 +115,7 @@ fn cache() -> Scripts {
 
 fn counter_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::DisableScript; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::DisableScript; 295];
     let place = Place::Property {
         object,
         reference: 294,
@@ -305,7 +305,7 @@ fn property_controls_real_ordinary_main_without_stopping_explicit_body() {
 fn native_enable_script_changes_only_its_mask_in_property_seeded_byte() {
     let mut scripts = counter_scripts(Object::Me, 133, true);
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::EnableScript,
+        name: cyrus_soup::Native::EnableScript,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -320,7 +320,7 @@ fn native_enable_script_changes_only_its_mask_in_property_seeded_byte() {
                 operation: Operation::Call {
                     call: Call {
                         function_id: 1,
-                        function: cyrus_script::Native::EnableScript,
+                        function: cyrus_soup::Native::EnableScript,
                         target: Object::Me,
                         kind: CallKind::Function,
                         arguments: vec![],

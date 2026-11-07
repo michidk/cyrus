@@ -12,7 +12,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 /// Per-update clock inputs of the ledge services: the fine-tick increment that sets the reach
 /// of the scan and the frame scale that sets the turn rate of a ledge turn.

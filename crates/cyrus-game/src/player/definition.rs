@@ -1,6 +1,6 @@
 //! Player attributes and upright collision bounds from preservation's RGM metadata.
 use anyhow::Context;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use serde::Deserialize;
 
 /// Installed CYRUS definition. Extents are nonnegative map units in original axes.

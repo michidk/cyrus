@@ -6,7 +6,7 @@
 use super::{ActorControlState, ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
 use crate::script::{CollisionFlags, JumpMotion, LivingState};
 use anyhow::{Context, Result, bail, ensure};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 /// Whether the terrain sample puts the actor under the surface: the sample is below the actor's
 /// reference height (query Y in map units plus the positive Y extent) by more than half of

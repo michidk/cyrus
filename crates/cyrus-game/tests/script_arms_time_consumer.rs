@@ -2,8 +2,8 @@
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -64,7 +64,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -135,12 +135,12 @@ fn fixture(
     scripts.instances[0].map_position = [600, 20, 600];
     scripts.updates.animation_system = false;
     scripts.definition.references = vec![
-        cyrus_script::Property::ArmsTime,
-        cyrus_script::Property::JumpFlag,
-        cyrus_script::Property::FallFlag,
+        cyrus_soup::Property::ArmsTime,
+        cyrus_soup::Property::JumpFlag,
+        cyrus_soup::Property::FallFlag,
     ];
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::SetAction,
+        name: cyrus_soup::Native::SetAction,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -157,7 +157,7 @@ fn fixture(
         Operation::Call {
             call: Call {
                 function_id: 1,
-                function: cyrus_script::Native::SetAction,
+                function: cyrus_soup::Native::SetAction,
                 target: Object::Me,
                 kind: CallKind::Function,
                 arguments: vec![Value::Integer { value: 1 }],
@@ -198,7 +198,7 @@ fn fixture(
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &data, cyrus_script::AnimationGroup::RUN)
+        .bind_animation(id, &data, cyrus_soup::AnimationGroup::RUN)
         .unwrap();
     world
         .advance(

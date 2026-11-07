@@ -12,7 +12,7 @@ use cyrus_collision::{
     ground::{SupportHistory, TerrainGround},
 };
 use cyrus_game::player::{definition::PlayerDefinition, walk::WalkingStartup};
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 fn data(groups: serde_json::Value) -> (PlayerDefinition, Animations) {
     let metadata = serde_json::json!({
@@ -1111,7 +1111,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         world
             .advance(
                 current,
-                cyrus_game::script::ScriptStage::Body(cyrus_script::Thread::Main),
+                cyrus_game::script::ScriptStage::Body(cyrus_soup::Thread::Main),
                 cyrus_game::script::ScriptInputs {
                     nominal_ticks: Some(1),
                     frame_scale: Some(256),

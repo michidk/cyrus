@@ -11,7 +11,7 @@ use cyrus_collision::{
     candidates::CollisionCandidates, collision_mesh::BodyProbe, collision_world::ResidualBodyQuery,
     ground::SupportSource,
 };
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// Forward offsets of the scan's two passes, in local Q8.

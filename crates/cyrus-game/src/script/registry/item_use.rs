@@ -4,7 +4,7 @@ use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::hud::ItemKind;
 use cyrus_assets::surface::Surface;
-use cyrus_script::{Attribute, Native};
+use cyrus_soup::{Attribute, Native};
 
 /// Item 83 requests the island map screen, which the host presents.
 const ISLAND_MAP_ITEM: u16 = 83;

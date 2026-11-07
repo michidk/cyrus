@@ -2,7 +2,7 @@
 use super::sequence::{SequenceSnapshot, SoundDispatcher};
 use super::{AnimationSound, Animations, FrameSequence, TransitionDecision};
 use anyhow::Context;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 

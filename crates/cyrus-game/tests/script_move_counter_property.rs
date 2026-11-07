@@ -3,8 +3,8 @@ use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{AnimationGroup, Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{AnimationGroup, Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -65,7 +65,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -116,7 +116,7 @@ fn cache() -> Scripts {
 
 fn counter_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::MoveCounter; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::MoveCounter; 295];
     let place = Place::Property {
         object,
         reference: 294,
@@ -251,7 +251,7 @@ fn forward_fixture_with_living(counter: i32, collide: u8, sound: bool, living: u
         scripts
             .definition
             .references
-            .push(cyrus_script::Property::ExtraFlag);
+            .push(cyrus_soup::Property::ExtraFlag);
         actor.program.steps.get_mut(&0).unwrap().next = 4;
         actor.program.steps.insert(
             4,

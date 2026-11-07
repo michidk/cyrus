@@ -1,7 +1,7 @@
 //! Fresh-world ordinary actor membership and cached view-window traversal.
 use super::{ScriptActor, ScriptActorId, ScriptActorSource};
 use anyhow::Result;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 use std::collections::BTreeMap;
 
 pub(super) struct ActorLists {

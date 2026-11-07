@@ -4,7 +4,7 @@ use crate::script::JumpMotion;
 use anyhow::{Context, Result};
 use bevy::math::{Mat3, Vec3};
 use cyrus_collision::collision_mesh::BodyProbe;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 use cyrus_world::heading::wrap;
 use cyrus_world::transform::Matrix;
 

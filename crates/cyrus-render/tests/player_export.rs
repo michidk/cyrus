@@ -2,7 +2,7 @@
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::surface::Surface;
 use cyrus_game::player::data::PlayerScene;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 #[test]
 fn installed_scene_exports_original_player_and_ground_inputs() {

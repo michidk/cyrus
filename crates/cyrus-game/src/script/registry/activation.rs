@@ -5,7 +5,7 @@ use crate::script::{
     ScriptHud,
 };
 use anyhow::{Context, Result};
-use cyrus_script::Argument;
+use cyrus_soup::Argument;
 use std::collections::BTreeMap;
 
 fn actor_state(actor: &ScriptActor) -> Result<ActivationActor> {

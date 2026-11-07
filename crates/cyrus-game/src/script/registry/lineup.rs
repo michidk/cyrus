@@ -9,7 +9,7 @@ use crate::script::alignment::{self, CloseStep, Facing};
 use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
-use cyrus_script::{Attribute, Native};
+use cyrus_soup::{Attribute, Native};
 
 pub(super) struct PlayerLineup<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
@@ -615,7 +615,7 @@ impl GameHost<'_, '_, '_, '_> {
         function: Native,
         kind: super::CallKind,
         arguments: &[super::Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<Option<super::CallResult>> {
         let mut port = if matches!(
             function,
@@ -650,7 +650,7 @@ impl GameHost<'_, '_, '_, '_> {
         &mut self,
         token: u64,
         arguments: &[super::Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<bool> {
         let talk = self.registry.actors[self.index]
             .tasks

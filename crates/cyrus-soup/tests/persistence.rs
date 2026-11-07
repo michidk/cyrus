@@ -1,6 +1,6 @@
 //! Saved VMs resume through public invocations without replaying native effects.
-use cyrus_script::Native;
-use cyrus_script::{persistence::Snapshot, program::*, *};
+use cyrus_soup::Native;
+use cyrus_soup::{persistence::Snapshot, program::*, *};
 use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -304,7 +304,7 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
         .receive(
             &call(CallKind::Multitask),
             &[],
-            cyrus_script::NativeCallSite::Statement(Some(TaskSource {
+            cyrus_soup::NativeCallSite::Statement(Some(TaskSource {
                 origin: CodeOrigin(300),
                 instruction: 0,
                 object_call: true,

@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use cyrus_assets::animation::Animations;
 use cyrus_assets::script::TauntType;
 use cyrus_collision::{actor_models::ActorModelCollision, distance::rounded_distance};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 impl ScriptWorld {
     /// Dispatch the current motion's contact query without changing combat state.

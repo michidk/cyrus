@@ -1,6 +1,6 @@
 //! References cross the public VM boundary without a numeric pointer encoding.
 use anyhow::{Result, ensure};
-use cyrus_script::{program::*, *};
+use cyrus_soup::{program::*, *};
 use std::{collections::BTreeMap, sync::Arc};
 const REF: ActorReference = ActorReference {
     generation: 7,

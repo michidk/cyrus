@@ -4,7 +4,7 @@ use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 use cyrus_collision::ground::SurfaceClass;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// A class-two slide decision in Q8 distance and 1/2048-turn headings.

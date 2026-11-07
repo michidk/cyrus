@@ -1,6 +1,6 @@
 //! Authored task scheduling through public APIs, with synthetic program descriptors.
 use cyrus_assets::animation::Animations;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 fn asset() -> Animations {
     serde_json::from_value(serde_json::json!({

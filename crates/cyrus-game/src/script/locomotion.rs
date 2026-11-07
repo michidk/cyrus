@@ -2,7 +2,7 @@
 //! The functions are pure: the caller owns the animation request, probe query and writes.
 use crate::script::JumpMotion;
 use crate::script::LivingState;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::heading::wrap;
 
 /// Receiver state read by `MoveBackward`'s admission and animation choice.

@@ -5,7 +5,7 @@ use crate::script::CombatFlags;
 use crate::script::{DialogueEffects, DialoguePlayback};
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 struct Effects<'a> {
     generation: u64,

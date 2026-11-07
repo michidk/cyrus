@@ -3,7 +3,7 @@ use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_game::script::LivingState;
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
-use cyrus_script::{AnimationGroup, Attribute, Native};
+use cyrus_soup::{AnimationGroup, Attribute, Native};
 use cyrus_world::heading::wrap;
 
 #[test]
@@ -270,7 +270,7 @@ fn installed_caverns_fish_starts_rotation_multitask_and_retains_concurrent_movem
         ..Default::default()
     };
     for (stage, expected) in [
-        (ScriptStage::Body(cyrus_script::Thread::Main), 1036),
+        (ScriptStage::Body(cyrus_soup::Thread::Main), 1036),
         (ScriptStage::Tasks, 1046),
         (ScriptStage::Tasks, 1056),
     ] {
@@ -445,7 +445,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
         ActivationActor, ActivationInputs, PlayerQuery, QueryInputs, ScriptInputs, ScriptSound,
         ScriptStage,
     };
-    use cyrus_script::Thread;
+    use cyrus_soup::Thread;
     use std::collections::BTreeMap;
 
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
@@ -599,7 +599,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
 #[test]
 fn installed_island_mechanism_moves_its_master_and_refreshes_attached_poses() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    use cyrus_script::Thread;
+    use cyrus_soup::Thread;
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
     if !root.join("RGFX.EXE").exists() {
         eprintln!("skipped: no install (SOUP axis movement)");
@@ -748,7 +748,7 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
     let before = world.actors()[index]
         .runtime()
         .unwrap()
-        .program_counter(cyrus_script::Thread::Main);
+        .program_counter(cyrus_soup::Thread::Main);
     let error = world
         .advance(
             id,
@@ -774,7 +774,7 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
         world.actors()[index]
             .runtime()
             .unwrap()
-            .program_counter(cyrus_script::Thread::Main),
+            .program_counter(cyrus_soup::Thread::Main),
         before
     );
     assert!(world.actors()[index].failure().is_some());
@@ -802,7 +802,7 @@ fn installed_viledog_selects_its_branch_from_the_shared_random_draw() {
     world
         .advance(
             world.id(index).unwrap(),
-            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptStage::Body(cyrus_soup::Thread::Main),
             Default::default(),
             None,
             Some(&mut random),
@@ -996,7 +996,7 @@ fn installed_player_stand_query_advances_nonstanding_receiver() {
     assert_eq!(world.model_support(player).unwrap().actor, None);
     let flags = world.flags().to_vec();
     world
-        .step(world.id(receiver).unwrap(), cyrus_script::Thread::Main, 100)
+        .step(world.id(receiver).unwrap(), cyrus_soup::Thread::Main, 100)
         .unwrap();
     assert!(world.actors()[receiver].failure().is_none());
     assert_eq!(world.flags(), flags);
@@ -1028,7 +1028,7 @@ fn installed_player_arc_receiver_advances_with_distant_player() {
     world
         .advance(
             id,
-            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptStage::Body(cyrus_soup::Thread::Main),
             ScriptInputs {
                 frame_scale: Some(256),
                 nominal_ticks: Some(1),
@@ -1091,7 +1091,7 @@ fn installed_shrines_read_player_heading_before_nonstanding_branch() {
         world
             .advance(
                 id,
-                cyrus_game::script::ScriptStage::Body(cyrus_script::Thread::Main),
+                cyrus_game::script::ScriptStage::Body(cyrus_soup::Thread::Main),
                 cyrus_game::script::ScriptInputs {
                     frame_scale: Some(256),
                     nominal_ticks: Some(1),

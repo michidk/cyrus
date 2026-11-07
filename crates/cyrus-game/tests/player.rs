@@ -7,7 +7,7 @@ use cyrus_game::player::Player;
 use cyrus_game::player::PlayerPlugin;
 use cyrus_game::player::input::PlayerBindings;
 use cyrus_game::player::input::PlayerInput;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 #[test]
 fn keyboard_input_preserves_opposing_actions_and_releases() {

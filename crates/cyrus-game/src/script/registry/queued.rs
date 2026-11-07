@@ -6,7 +6,7 @@ use crate::script::MotionDirection;
 use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
 use cyrus_assets::surface::Surface;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// Current receiver state and established edge-service outcome.
@@ -1002,7 +1002,7 @@ impl super::ActorControlState {
 #[cfg(test)]
 mod action_word_tests {
     use super::super::ActorControlState;
-    use cyrus_script::AnimationGroup;
+    use cyrus_soup::AnimationGroup;
 
     #[test]
     fn action_promotion_uses_wrapping_byte_and_strict_threshold() {

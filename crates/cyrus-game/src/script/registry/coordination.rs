@@ -6,7 +6,7 @@ use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 /// The original branch remains selected for the pass even when coordination changes its state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

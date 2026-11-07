@@ -5,8 +5,8 @@ use cyrus_game::script::{
     AnimationData, DialogueLine, DialogueSource, ScriptActorId, ScriptActorSource, ScriptHud,
     ScriptInputs, ScriptStage, ScriptWorld,
 };
-use cyrus_script::program::{Call, CallKind, Object, Operation, Value};
-use cyrus_script::{Attribute, Native};
+use cyrus_soup::program::{Call, CallKind, Object, Operation, Value};
+use cyrus_soup::{Attribute, Native};
 
 #[derive(Debug)]
 struct NoLines;

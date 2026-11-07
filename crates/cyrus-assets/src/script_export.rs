@@ -4,8 +4,8 @@ use crate::script::{
     Actor, ClockSettings, CombatTaunt, Instance, Scripts, TauntType, UpdateSettings,
 };
 use anyhow::{Context, Result};
-use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
-use cyrus_script::{Attribute, Attributes, Native, Property};
+use cyrus_soup::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
+use cyrus_soup::{Attribute, Attributes, Native, Property};
 use rgpre::import::{
     rgm::{
         self, RgmFile,
@@ -39,7 +39,7 @@ pub fn flat_texture_identities(scripts: &Scripts) -> std::collections::BTreeSet<
                 continue;
             };
             let literal = |index: usize| match call.arguments.get(index) {
-                Some(cyrus_script::program::Value::Integer { value }) => Some(*value),
+                Some(cyrus_soup::program::Value::Integer { value }) => Some(*value),
                 _ => None,
             };
             let identity = match call.function {

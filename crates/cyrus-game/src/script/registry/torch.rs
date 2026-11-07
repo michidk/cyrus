@@ -9,8 +9,8 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
-use cyrus_script::Native;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::Native;
+use cyrus_soup::{AnimationGroup, Attribute};
 
 impl ScriptWorld {
     fn torch_gates(

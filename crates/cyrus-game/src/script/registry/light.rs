@@ -1,7 +1,7 @@
 //! Retained actor light controls follow preservation's script light lifecycle.
 use cyrus_assets::script::Instance;
 use cyrus_assets::script::PlacementType;
-use cyrus_script::Native;
+use cyrus_soup::Native;
 use serde::{Deserialize, Serialize};
 
 /// Logical light state stays with its actor across world retention and replacement.
@@ -33,7 +33,7 @@ impl LightState {
         record: &mut Option<Self>,
         position: [i32; 3],
         function: Native,
-        arguments: &[cyrus_script::Argument],
+        arguments: &[cyrus_soup::Argument],
         command: &mut crate::script::NativeCommandState,
         ticks: Option<u32>,
         random: Option<&mut crate::random::EngineRandom>,
@@ -70,7 +70,7 @@ impl LightState {
         );
         let values = arguments
             .iter()
-            .map(cyrus_script::Argument::integer)
+            .map(cyrus_soup::Argument::integer)
             .collect::<anyhow::Result<Vec<_>>>()?;
         let [a, b, c, d, e, f, span] = values.as_slice() else {
             anyhow::bail!("FxPhase requires seven arguments");

@@ -7,8 +7,8 @@ use crate::script::tasks::{
     PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
 };
 use cyrus_assets::surface::Surface;
-use cyrus_script::Native;
-use cyrus_script::{
+use cyrus_soup::Native;
+use cyrus_soup::{
     AnimationGroup, Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread,
     program::*,
 };

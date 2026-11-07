@@ -1,5 +1,5 @@
 //! Reverse playback, retained direction and original command boundaries through the actor API.
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::animation::{
     ActorAnimation, ActorAnimationSnapshot, AnimationSound, Animations, TransitionDecision,
 };

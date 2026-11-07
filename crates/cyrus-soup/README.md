@@ -1,4 +1,4 @@
-# cyrus-script
+# cyrus-soup
 
 Portable SOUP execution from its own `program::Program`. The `program` module
 owns instructions, definitions and validation. Asset preparation constructs these
@@ -102,7 +102,7 @@ actor/world identity and restore globals, RNG, animation, native task state and
 all other gameplay state before committing the replacement world. Native/browser
 storage, original-save import and full game restoration remain unsupported.
 
-Run `cargo test -p cyrus-script`. New handlers belong to `cyrus-game`; format and
+Run `cargo test -p cyrus-soup`. New handlers belong to `cyrus-game`; format and
 engine discoveries belong to preservation.
 
 `invoke_entry` applies the ordinary entry gate before running the interrupt

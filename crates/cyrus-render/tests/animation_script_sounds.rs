@@ -1,7 +1,7 @@
 //! Script-request cues share the ordinary actor's sound handler and tick input.
 use cyrus_assets::animation::Animations;
 use cyrus_assets::surface::Surface;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use serde_json::json;
 
 fn asset() -> Animations {

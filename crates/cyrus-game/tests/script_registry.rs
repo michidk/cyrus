@@ -14,10 +14,10 @@ use cyrus_game::script::MotionDirection;
 use cyrus_game::script::PointPhase;
 use cyrus_game::script::StepDirection;
 use cyrus_game::script::{ExecutorState, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
-use cyrus_script::{Attribute, Attributes};
-use cyrus_script::{Native, Property};
+use cyrus_soup::program::*;
+use cyrus_soup::{AnimationGroup, Argument, CallResult, Host, Target, Thread};
+use cyrus_soup::{Attribute, Attributes};
+use cyrus_soup::{Native, Property};
 use cyrus_world::heading::wrap;
 use std::collections::BTreeMap;
 
@@ -29,7 +29,7 @@ impl Host for NoServices {
         _: CallKind,
         _: Native,
         _: &[Argument],
-        _: cyrus_script::Invocation,
+        _: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         anyhow::bail!("no native services")
@@ -38,7 +38,7 @@ impl Host for NoServices {
         &mut self,
         _: u64,
         _: &[Argument],
-        _: cyrus_script::Invocation,
+        _: cyrus_soup::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
         anyhow::bail!("no tasks")
@@ -422,8 +422,8 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         assert_eq!(
             world.actors()[reader.index].runtime().unwrap().variables(),
             &[
-                cyrus_script::ScriptValue::Integer(111),
-                cyrus_script::ScriptValue::Actor(cyrus_script::ActorReference {
+                cyrus_soup::ScriptValue::Integer(111),
+                cyrus_soup::ScriptValue::Actor(cyrus_soup::ActorReference {
                     generation: first.generation,
                     index: first.index
                 })
@@ -554,8 +554,8 @@ fn retired_created_references_are_unsupported_without_promoting_duplicates() -> 
         assert_eq!(
             world.actors()[fresh.index].runtime().unwrap().variables(),
             &[
-                cyrus_script::ScriptValue::Integer(0),
-                cyrus_script::ScriptValue::Actor(captured)
+                cyrus_soup::ScriptValue::Integer(0),
+                cyrus_soup::ScriptValue::Actor(captured)
             ]
         );
         assert_eq!(world.flags(), &[12]);
@@ -4644,7 +4644,7 @@ fn player_hanging_is_false_outside_the_hanging_state() {
     world
         .advance(
             map,
-            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptStage::Body(cyrus_soup::Thread::Main),
             inputs,
             Some(&mut |_, _| Ok(())),
             None,
@@ -19274,7 +19274,7 @@ fn message_query_scripts(native: Native) -> Scripts {
 #[test]
 fn get_message_sender_returns_the_selected_entrys_sender_as_a_typed_reference() {
     use cyrus_game::script::CombatMessageCode;
-    use cyrus_script::{ActorReference, ScriptValue};
+    use cyrus_soup::{ActorReference, ScriptValue};
     let scripts = message_sender_scripts();
     // Nothing selected, a consumed message, a message and a message for another receiver.
     for (send, consume, expected) in [
@@ -19314,7 +19314,7 @@ fn get_message_sender_returns_the_selected_entrys_sender_as_a_typed_reference() 
 #[test]
 fn get_message_sender_returns_a_retained_queue_entry_unchanged_after_world_replacement() {
     use cyrus_game::script::{CombatMessageCode, WorldRestoreContext, WorldSnapshotSources};
-    use cyrus_script::{ActorReference, ScriptValue};
+    use cyrus_soup::{ActorReference, ScriptValue};
     let scripts = message_sender_scripts();
     let data = cyrus_assets::animation::Animations {
         version: 2,
@@ -19372,7 +19372,7 @@ fn get_message_sender_returns_a_retained_queue_entry_unchanged_after_world_repla
 #[test]
 fn get_message_sender_id_returns_the_selected_senders_runtime_identifier() {
     use cyrus_game::script::{CombatMessageCode, WorldRestoreContext, WorldSnapshotSources};
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     let scripts = message_query_scripts(Native::GetMessageSenderId);
     for (send, consume, expected) in [(false, false, 0), (true, true, 0), (true, false, 36)] {
         let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
@@ -19509,7 +19509,7 @@ fn delete_message_advances_the_receivers_selection_for_direct_and_object_callers
 #[test]
 fn delete_message_without_a_selection_changes_nothing_and_wraps_at_the_entry_count() {
     use cyrus_game::script::CombatMessageCode;
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     let scripts = delete_message_scripts(Object::Me);
     // No selection: the cursor stays, and a later message is still the selected one.
     let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
@@ -19548,7 +19548,7 @@ fn delete_message_without_a_selection_changes_nothing_and_wraps_at_the_entry_cou
 #[test]
 fn receive_message_returns_the_first_entry_addressed_to_the_receiver_and_keeps_it_selected() {
     use cyrus_game::script::CombatMessageCode;
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     // Direct: actor 1 receives for itself. Object: actor 1 receives on behalf of actor 0.
     for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
         let scripts = message_call_scripts(Native::ReceiveMessage, target.clone());
@@ -19676,7 +19676,7 @@ fn send_message_zero_value_returns_before_reading_the_recipient_and_other_forms_
 #[test]
 fn is_message_waiting_reports_a_selection_without_reading_or_changing_the_queue() {
     use cyrus_game::script::CombatMessageCode;
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     // Direct: actor 1 asks about itself. Object: actor 1 asks about actor 0.
     for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
         let scripts = message_call_scripts(Native::IsMessageWaiting, target.clone());
@@ -19924,7 +19924,7 @@ fn spare_natives_ignore_their_arguments_add_one_diagnostic_line_and_return_zero(
 
 #[test]
 fn actor_reference_address_preserves_resolved_identity_without_spatial_or_runtime_id_encoding() {
-    use cyrus_script::{ActorReference, ScriptValue};
+    use cyrus_soup::{ActorReference, ScriptValue};
     for (object, expected) in [
         (Object::Me, 1),
         (Object::Named { string: 0 }, 0),
@@ -35708,11 +35708,11 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
             }
             // The main thread runs the call once and resumes after the task completes.
             let stages: &[ScriptStage] = if round == 0 {
-                &[ScriptStage::Body(cyrus_script::Thread::Main)]
+                &[ScriptStage::Body(cyrus_soup::Thread::Main)]
             } else {
                 &[
                     ScriptStage::Tasks,
-                    ScriptStage::Body(cyrus_script::Thread::Main),
+                    ScriptStage::Body(cyrus_soup::Thread::Main),
                 ]
             };
             for &stage in stages {
@@ -37346,7 +37346,7 @@ fn item_use_torch_transition_requires_an_animation_owner() {
                 scripts
                     .definition
                     .references
-                    .push(cyrus_script::Property::ExtraFlag);
+                    .push(cyrus_soup::Property::ExtraFlag);
                 let function_id = scripts.definition.functions.len() as u16;
                 scripts.definition.functions.push(Function {
                     name: Native::UseItem,
@@ -38050,7 +38050,7 @@ fn sub_item_wraps_signed_counts_without_drop_effects_or_selection_changes() {
         world
             .advance(
                 world.id(0).unwrap(),
-                ScriptStage::Body(cyrus_script::Thread::Main),
+                ScriptStage::Body(cyrus_soup::Thread::Main),
                 ScriptInputs {
                     hud: Some(&hud),
                     ..Default::default()
@@ -38077,7 +38077,7 @@ fn sub_item_skips_disabled_lookup_and_rejects_missing_items_before_continuation(
     world
         .advance(
             world.id(0).unwrap(),
-            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptStage::Body(cyrus_soup::Thread::Main),
             ScriptInputs {
                 hud: Some(&disabled),
                 ..Default::default()
@@ -38100,7 +38100,7 @@ fn sub_item_skips_disabled_lookup_and_rejects_missing_items_before_continuation(
         let error = world
             .advance(
                 world.id(0).unwrap(),
-                ScriptStage::Body(cyrus_script::Thread::Main),
+                ScriptStage::Body(cyrus_soup::Thread::Main),
                 ScriptInputs {
                     hud: Some(&hud),
                     ..Default::default()
@@ -44478,7 +44478,7 @@ fn public_jump_classification_fixture(
     }
     let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::Jump,
+        name: cyrus_soup::Native::Jump,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -44555,7 +44555,7 @@ fn invoke_public_script_jump(world: &mut ScriptWorld, fail_sound: bool) -> anyho
     world
         .advance(
             id,
-            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptStage::Body(cyrus_soup::Thread::Main),
             cyrus_game::script::ScriptInputs {
                 nominal_ticks: Some(0),
                 frame_scale: Some(256),
@@ -44725,7 +44725,7 @@ fn queued_jump_lifetime_fixture(
     scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::JumpHeight] = 32;
     let function = scripts.definition.functions.len() as u16;
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::Jump,
+        name: cyrus_soup::Native::Jump,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -44733,7 +44733,7 @@ fn queued_jump_lifetime_fixture(
     scripts
         .definition
         .references
-        .push(cyrus_script::Property::JumpFlag);
+        .push(cyrus_soup::Property::JumpFlag);
     scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
         (0, assign_call(1, function, Native::Jump, &[])),
         (
@@ -44787,7 +44787,7 @@ fn queued_jump_lifetime_fixture(
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &data, cyrus_script::AnimationGroup::JUMP_START)
+        .bind_animation(id, &data, cyrus_soup::AnimationGroup::JUMP_START)
         .unwrap();
     world
         .advance(
@@ -45012,7 +45012,7 @@ fn selected_hang_fixture_with_point_task(
         |scripts| {
             let function = scripts.definition.functions.len() as u16;
             scripts.definition.functions.push(Function {
-                name: cyrus_script::Native::Jump,
+                name: cyrus_soup::Native::Jump,
                 param_count: 0,
                 kind: CallKind::Function,
             });
@@ -45026,12 +45026,12 @@ fn selected_hang_fixture_with_point_task(
             scripts
                 .definition
                 .references
-                .push(cyrus_script::Property::JumpFlag);
+                .push(cyrus_soup::Property::JumpFlag);
             let living = scripts.definition.references.len() as u16;
             scripts
                 .definition
                 .references
-                .push(cyrus_script::Property::ExtraFlag);
+                .push(cyrus_soup::Property::ExtraFlag);
             let property = |reference, value, next| Step {
                 next,
                 operation: Operation::Assign {
@@ -47381,7 +47381,7 @@ fn last_direction_reset_preserves_refusal_and_reads_the_taken_bypass_through_scr
     ] {
         let (_, mut world, data, scene) = player_walking_fixture_with(|scripts| {
             scripts.updates.final_version = true;
-            scripts.definition.references = vec![cyrus_script::Property::LastDirection];
+            scripts.definition.references = vec![cyrus_soup::Property::LastDirection];
             let player = scripts.actors.get_mut("CYRUS").unwrap();
             player.attributes[Attribute::Collide] = 4;
             player.program.steps = BTreeMap::from([
@@ -48390,7 +48390,7 @@ fn direct_point_hanging_nonselected_receiver_retains_pending_without_services() 
             PointPhase::START
         );
         assert_eq!(
-            world.actors()[id.index].attributes()[cyrus_script::Attribute::Collide],
+            world.actors()[id.index].attributes()[cyrus_soup::Attribute::Collide],
             13
         );
         assert_eq!(world.spatial(id).unwrap().local.position, before);

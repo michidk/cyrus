@@ -2,8 +2,8 @@
 use crate::script::MotionDirection;
 use crate::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
 use cyrus_assets::script::*;
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -64,7 +64,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -115,15 +115,15 @@ fn cache() -> Scripts {
 
 fn fixture(group: u16, slide: u8, spatial: bool) -> ScriptWorld {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::SlideFlag];
+    scripts.definition.references = vec![cyrus_soup::Property::SlideFlag];
     scripts.definition.functions.extend([
         Function {
-            name: cyrus_script::Native::PlayAnimation,
+            name: cyrus_soup::Native::PlayAnimation,
             param_count: 2,
             kind: CallKind::Function,
         },
         Function {
-            name: cyrus_script::Native::Wait,
+            name: cyrus_soup::Native::Wait,
             param_count: 1,
             kind: CallKind::Task,
         },
@@ -150,7 +150,7 @@ fn fixture(group: u16, slide: u8, spatial: bool) -> ScriptWorld {
             call: Call {
                 target: Object::Me,
                 function_id: 1,
-                function: cyrus_script::Native::PlayAnimation,
+                function: cyrus_soup::Native::PlayAnimation,
                 kind: CallKind::Function,
                 arguments: vec![
                     Value::Integer {
@@ -164,7 +164,7 @@ fn fixture(group: u16, slide: u8, spatial: bool) -> ScriptWorld {
             call: Call {
                 target: Object::Me,
                 function_id: 2,
-                function: cyrus_script::Native::Wait,
+                function: cyrus_soup::Native::Wait,
                 kind: CallKind::Task,
                 arguments: vec![Value::Integer { value: 4 }],
             },
@@ -211,7 +211,7 @@ fn fixture(group: u16, slide: u8, spatial: bool) -> ScriptWorld {
         .bind_animation(
             world.id(0).unwrap(),
             &data,
-            cyrus_script::AnimationGroup::PANIC,
+            cyrus_soup::AnimationGroup::PANIC,
         )
         .unwrap();
     advance(&mut world, ScriptStage::Body(Thread::Main)).unwrap();

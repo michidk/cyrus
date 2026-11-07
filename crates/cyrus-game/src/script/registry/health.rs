@@ -9,7 +9,7 @@ use crate::script::{GameplayGlobals, ScriptSound};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::script::TauntType;
 use cyrus_assets::surface::Surface;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use serde::{Deserialize, Serialize};
 
 /// Session health initialized separately from controller/combat inhibition.

@@ -5,7 +5,7 @@
 //! group; the channel is updated once per world-loop iteration after the family update.
 use super::ScriptActor;
 use anyhow::{Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

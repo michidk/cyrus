@@ -2,8 +2,8 @@
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::Thread;
-use cyrus_script::program::*;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -64,7 +64,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -115,7 +115,7 @@ fn cache() -> Scripts {
 
 fn counter_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::ExtraTime; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::ExtraTime; 295];
     let place = Place::Property {
         object,
         reference: 294,
@@ -378,9 +378,9 @@ fn extra_time_torch_entry_resets_after_admission_and_retains_on_refusal_or_sound
             scripts
                 .definition
                 .references
-                .push(cyrus_script::Property::RopeWait);
+                .push(cyrus_soup::Property::RopeWait);
             scripts.definition.functions.push(Function {
-                name: cyrus_script::Native::from_name(function).expect("known fixture native"),
+                name: cyrus_soup::Native::from_name(function).expect("known fixture native"),
                 param_count: 0,
                 kind: CallKind::Function,
             });
@@ -408,7 +408,7 @@ fn extra_time_torch_entry_resets_after_admission_and_retains_on_refusal_or_sound
                     operation: Operation::ObjectCall {
                         call: Call {
                             function_id: 1,
-                            function: cyrus_script::Native::from_name(function)
+                            function: cyrus_soup::Native::from_name(function)
                                 .expect("known fixture native"),
                             target: Object::Me,
                             kind: CallKind::Function,
@@ -464,7 +464,7 @@ fn extra_time_torch_entry_resets_after_admission_and_retains_on_refusal_or_sound
             world.prepare_spatial().unwrap();
             let id = world.id(0).unwrap();
             world
-                .bind_animation(id, &data, cyrus_script::AnimationGroup::PANIC)
+                .bind_animation(id, &data, cyrus_soup::AnimationGroup::PANIC)
                 .unwrap();
             let hud = cyrus_game::script::ScriptHud::default();
             hud.configure(
@@ -519,7 +519,7 @@ fn extra_time_is_retained_when_the_ordinary_slave_gate_refuses_the_actor() {
     use cyrus_game::script::OrdinaryInputs;
     let mut scripts = counter_scripts(Object::Me, 7, true);
     scripts.updates.disable_slaves = true;
-    scripts.actors.get_mut("LOGIC").unwrap().attributes[cyrus_script::Attribute::Slave] = 1;
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[cyrus_soup::Attribute::Slave] = 1;
     for instance in &mut scripts.instances {
         instance.object_type = PlacementType::MODEL;
         instance.active = 1;
@@ -529,8 +529,8 @@ fn extra_time_is_retained_when_the_ordinary_slave_gate_refuses_the_actor() {
     master.instances = 1;
     master.namespace = Some("master".into());
     master.instance_variables.truncate(1);
-    master.attributes[cyrus_script::Attribute::Slave] = 0;
-    master.attributes[cyrus_script::Attribute::Master] = 1;
+    master.attributes[cyrus_soup::Attribute::Slave] = 0;
+    master.attributes[cyrus_soup::Attribute::Master] = 1;
     scripts.actors.insert("MASTER".into(), master);
     scripts.instances.push(Instance {
         object_id: 2,

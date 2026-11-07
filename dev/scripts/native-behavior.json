@@ -4994,7 +4994,7 @@
       "caller": "ScriptWorld::advance -> Runtime host call/poll -> GameHost::native_task_call and poll -> Task::WaitLineUp",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::wait_line_up_stays_active_while_the_argument_actors_alignment_flag_is_set",
-        "crates/cyrus-script/tests/actor_references.rs::references_survive_copy_native_arguments_object_targets_and_pending_continuation"
+        "crates/cyrus-soup/tests/actor_references.rs::references_survive_copy_native_arguments_object_targets_and_pending_continuation"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md",
@@ -6349,10 +6349,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Evaluate formula before writing flag/local/property",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage",
-        "crates/cyrus-script/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation"
+        "crates/cyrus-soup/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage",
+        "crates/cyrus-soup/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6367,9 +6367,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Wrapping read-modify-write of decoded destination",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not"
+        "crates/cyrus-soup/tests/runtime.rs::ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6384,11 +6384,11 @@
       "status": "partial",
       "owner": 5,
       "scope": "False branch target after left-to-right condition evaluation",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::branches_fold_left_to_right_without_boolean_precedence",
-        "crates/cyrus-script/tests/runtime.rs::conditional_updates_happen_before_signed_comparison",
-        "crates/cyrus-script/tests/runtime.rs::an_or_condition_still_evaluates_the_other_mutating_operand"
+        "crates/cyrus-soup/tests/runtime.rs::branches_fold_left_to_right_without_boolean_precedence",
+        "crates/cyrus-soup/tests/runtime.rs::conditional_updates_happen_before_signed_comparison",
+        "crates/cyrus-soup/tests/runtime.rs::an_or_condition_still_evaluates_the_other_mutating_operand"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6403,9 +6403,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Replace cursor without yielding",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::failed_callbacks_and_runaway_scripts_are_sticky_and_contextual"
+        "crates/cyrus-soup/tests/runtime.rs::failed_callbacks_and_runaway_scripts_are_sticky_and_contextual"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6420,10 +6420,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Overwrite actor single return continuation and jump",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation",
-        "crates/cyrus-script/tests/runtime.rs::nested_gosub_overwrites_the_actor_return_continuation"
+        "crates/cyrus-soup/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation",
+        "crates/cyrus-soup/tests/runtime.rs::nested_gosub_overwrites_the_actor_return_continuation"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6438,11 +6438,11 @@
       "status": "partial",
       "owner": 5,
       "scope": "Resume retained continuation and saved byte, or restart base without one",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::return_without_gosub_restarts_the_script_and_yields",
-        "crates/cyrus-script/tests/runtime.rs::nested_gosub_overwrites_the_actor_return_continuation",
-        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+        "crates/cyrus-soup/tests/runtime.rs::return_without_gosub_restarts_the_script_and_yields",
+        "crates/cyrus-soup/tests/runtime.rs::nested_gosub_overwrites_the_actor_return_continuation",
+        "crates/cyrus-soup/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6457,9 +6457,9 @@
       "status": "partial",
       "owner": 9,
       "scope": "Notify host then store target and yield",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage"
+        "crates/cyrus-soup/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6474,10 +6474,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Reset active cursor to base and yield, preserving other continuation",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::interrupt_and_main_have_independent_continuations_and_shared_locals",
-        "crates/cyrus-script/tests/runtime.rs::ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not"
+        "crates/cyrus-soup/tests/runtime.rs::interrupt_and_main_have_independent_continuations_and_shared_locals",
+        "crates/cyrus-soup/tests/runtime.rs::ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6492,11 +6492,11 @@
       "status": "partial",
       "owner": 9,
       "scope": "Self statement dispatch with blocking and immediate result semantics",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::blocking_completion_resumes_the_same_stage_without_restarting_the_task",
-        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements",
-        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance"
+        "crates/cyrus-soup/tests/runtime.rs::blocking_completion_resumes_the_same_stage_without_restarting_the_task",
+        "crates/cyrus-soup/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements",
+        "crates/cyrus-soup/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6518,11 +6518,11 @@
       "status": "partial",
       "owner": 9,
       "scope": "Preserve addressed-call provenance and receiver task ownership while caller continues",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements",
-        "crates/cyrus-script/tests/runtime.rs::routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals",
-        "crates/cyrus-script/tests/runtime.rs::object_tasks_fail_before_effects_instead_of_using_the_callers_slots"
+        "crates/cyrus-soup/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements",
+        "crates/cyrus-soup/tests/runtime.rs::routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals",
+        "crates/cyrus-soup/tests/runtime.rs::object_tasks_fail_before_effects_instead_of_using_the_callers_slots"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6537,9 +6537,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Store actor anchor byte without End notification",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+        "crates/cyrus-soup/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6554,9 +6554,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Retain following cursor without host End notification",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+        "crates/cyrus-soup/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6571,9 +6571,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Compare script-return byte and conditionally save it before decoded control flow",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
+        "crates/cyrus-soup/tests/runtime.rs::yield_anchor_and_script_return_restore_do_not_issue_end_notifications"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6588,10 +6588,10 @@
       "status": "partial",
       "owner": 10,
       "scope": "Cancel all actor slots matching decoded task label",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
-        "crates/cyrus-script/tests/runtime.rs::routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operand"
+        "crates/cyrus-soup/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
+        "crates/cyrus-soup/tests/runtime.rs::routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operand"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6606,10 +6606,10 @@
       "status": "partial",
       "owner": 10,
       "scope": "Pause matching actor slots shared by entry/main without polling",
-      "caller": "cyrus_script::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
+      "caller": "cyrus_soup::Runtime::invoke / invoke_entry / invoke_body -> run; task controls -> control_tasks",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
-        "crates/cyrus-script/tests/runtime.rs::interrupt_controls_pause_the_shared_main_task_without_polling_it"
+        "crates/cyrus-soup/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
+        "crates/cyrus-soup/tests/runtime.rs::interrupt_controls_pause_the_shared_main_task_without_polling_it"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/f0c0897736d55a1525282425e15a98238acddcfc/docs/engine/SOUP.md",
@@ -6624,10 +6624,10 @@
       "status": "partial",
       "owner": 10,
       "scope": "Clear pause on matching actor task slots while retaining counters and shared operand identity",
-      "caller": "cyrus_script::Runtime::invoke_body -> run -> control_tasks; matching uses actor origin plus label plus one",
+      "caller": "cyrus_soup::Runtime::invoke_body -> run -> control_tasks; matching uses actor origin plus label plus one",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
-        "crates/cyrus-script/tests/runtime.rs::paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions"
+        "crates/cyrus-soup/tests/runtime.rs::multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots",
+        "crates/cyrus-soup/tests/runtime.rs::paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6641,9 +6641,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Retain contextual decoder refusal and prevent host execution of an unsupported actor program",
-      "caller": "cyrus_assets::script_export::prepare_source -> preservation decode_script_program -> Unsupported fallback; cyrus_script::Runtime::run returns contextual sticky error",
+      "caller": "cyrus_assets::script_export::prepare_source -> preservation decode_script_program -> Unsupported fallback; cyrus_soup::Runtime::run returns contextual sticky error",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::failed_callbacks_and_runaway_scripts_are_sticky_and_contextual"
+        "crates/cyrus-soup/tests/runtime.rs::failed_callbacks_and_runaway_scripts_are_sticky_and_contextual"
       ],
       "evidence": [
         "https://github.com/michidk/cyrus/issues/5",
@@ -6659,9 +6659,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Integer literal delivered in the portable signed32 domain",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::formula_wraps_uses_unsigned_division_and_signed_masked_shifts"
+        "crates/cyrus-soup/tests/runtime.rs::formula_wraps_uses_unsigned_division_and_signed_masked_shifts"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6676,10 +6676,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Host-resolved native string parameter with retained source context",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals",
-        "crates/cyrus-script/tests/native_source.rs::alternate_entry_keeps_previous_normal_actor_string_source"
+        "crates/cyrus-soup/tests/runtime.rs::routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals",
+        "crates/cyrus-soup/tests/native_source.rs::alternate_entry_keeps_previous_normal_actor_string_source"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6694,10 +6694,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Read a destination as integer without update",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::native_arguments_evaluate_backwards_but_retain_authored_positions",
-        "crates/cyrus-script/tests/runtime.rs::property_references_reach_the_host_without_byte_truncation"
+        "crates/cyrus-soup/tests/runtime.rs::native_arguments_evaluate_backwards_but_retain_authored_positions",
+        "crates/cyrus-soup/tests/runtime.rs::property_references_reach_the_host_without_byte_truncation"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6712,10 +6712,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Wrapping write-before-use conditional read-modify-write",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::conditional_updates_happen_before_signed_comparison",
-        "crates/cyrus-script/tests/runtime.rs::an_or_condition_still_evaluates_the_other_mutating_operand"
+        "crates/cyrus-soup/tests/runtime.rs::conditional_updates_happen_before_signed_comparison",
+        "crates/cyrus-soup/tests/runtime.rs::an_or_condition_still_evaluates_the_other_mutating_operand"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6730,10 +6730,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Function-valued native dispatch requiring a portable numeric result",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance",
-        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
+        "crates/cyrus-soup/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance",
+        "crates/cyrus-soup/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6748,10 +6748,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Addressed function expression retains ObjectFunctionValue call provenance",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance",
-        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
+        "crates/cyrus-soup/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance",
+        "crates/cyrus-soup/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6766,9 +6766,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Read/write shared global flag with bounds checked against supplied storage",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage",
+        "crates/cyrus-soup/tests/runtime.rs::immediate_statements_run_through_end_and_restart_only_on_a_later_stage",
         "crates/cyrus-assets/tests/script.rs::installed_indices_are_checked_inside_nested_function_arguments"
       ],
       "evidence": [
@@ -6784,9 +6784,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Read/write receiver instance local state",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation",
+        "crates/cyrus-soup/tests/runtime.rs::subroutines_share_locals_and_resume_the_actor_return_continuation",
         "crates/cyrus-game/tests/script_registry.rs::named_functions_resolve_namespace_and_receiver_arguments_case_insensitively"
       ],
       "evidence": [
@@ -6802,9 +6802,9 @@
       "status": "partial",
       "owner": 5,
       "scope": "Host-owned full16-bit reference read/write with target routing",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::property_references_reach_the_host_without_byte_truncation",
+        "crates/cyrus-soup/tests/runtime.rs::property_references_reach_the_host_without_byte_truncation",
         "crates/cyrus-game/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver"
       ],
       "evidence": [
@@ -6820,10 +6820,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Resolve explicit self to current runtime receiver",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::explicit_me_object_task_continues_and_matches_the_embedded_dispatch_label",
-        "crates/cyrus-script/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance"
+        "crates/cyrus-soup/tests/runtime.rs::native_command_setup_precedes_operands_and_preserves_call_provenance"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
@@ -6838,7 +6838,7 @@
       "status": "partial",
       "owner": 5,
       "scope": "Host resolves selected player independently of map placements",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::standalone_player_and_camera_receive_tasks_without_map_placements",
         "crates/cyrus-game/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver"
@@ -6856,7 +6856,7 @@
       "status": "partial",
       "owner": 5,
       "scope": "Host resolves standalone script camera, distinct from rendering camera entity",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::standalone_player_and_camera_receive_tasks_without_map_placements"
       ],
@@ -6873,7 +6873,7 @@
       "status": "partial",
       "owner": 5,
       "scope": "Resolve caller string through host namespace registry with signed runtime-id ordering",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::named_functions_resolve_namespace_and_receiver_arguments_case_insensitively",
         "crates/cyrus-game/tests/script_registry.rs::signed_identifier_order_resolves_duplicate_names_across_the_low_word_wrap"
@@ -6891,7 +6891,7 @@
       "status": "partial",
       "owner": 5,
       "scope": "Portable local target currently maps logical signed runtime identifiers; original raw-reference semantics remain unsupported",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
         "crates/cyrus-game/tests/script_registry.rs::retired_created_references_are_unsupported_without_promoting_duplicates"
       ],
@@ -6908,10 +6908,10 @@
       "status": "partial",
       "owner": 5,
       "scope": "Left-to-right signed32 wrapping arithmetic with unsigned division and masked shifts",
-      "caller": "cyrus_script::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
+      "caller": "cyrus_soup::Runtime public invoke/body/receive -> values.rs value/formula, lib.rs target/read/write; Host callbacks resolve production registry context",
       "tests": [
-        "crates/cyrus-script/tests/runtime.rs::formula_wraps_uses_unsigned_division_and_signed_masked_shifts",
-        "crates/cyrus-script/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
+        "crates/cyrus-soup/tests/runtime.rs::formula_wraps_uses_unsigned_division_and_signed_masked_shifts",
+        "crates/cyrus-soup/tests/runtime.rs::completed_effects_without_values_are_discarded_only_by_statements"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",

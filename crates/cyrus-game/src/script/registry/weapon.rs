@@ -7,7 +7,7 @@ use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 use cyrus_assets::surface::Surface;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 /// Shared engine gates for a caller-admitted weapon operation.
 /// Selected identity is validated against the current logical generation.
@@ -709,7 +709,7 @@ mod tests {
             runtime: None,
             created_retired: false,
             unavailable: None,
-            attributes: cyrus_script::Attributes::default(),
+            attributes: cyrus_soup::Attributes::default(),
             surface: Some(Surface::UNKNOWN),
             control: Some(ActorControlState {
                 combat: Some(Default::default()),

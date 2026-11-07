@@ -10,7 +10,7 @@ use cyrus_game::{
         WorldSnapshotSources, camera::CameraPose,
     },
 };
-use cyrus_script::Native;
+use cyrus_soup::Native;
 
 fn source(capacity: u32, disabled: bool) -> Effects {
     Effects {

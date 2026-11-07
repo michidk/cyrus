@@ -2,7 +2,7 @@
 //! current animation group and movement this update.
 use crate::script::JumpMotion;
 use crate::script::LivingState;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// `PlayerStatus` return codes, named after the `ps_*` list of the installed `SOUP386.DEF`.

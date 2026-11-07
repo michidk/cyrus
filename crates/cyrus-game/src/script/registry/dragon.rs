@@ -7,8 +7,8 @@ use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use crate::script::spatial::query_bearing;
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::distance::rounded_distance;
-use cyrus_script::Attribute;
-use cyrus_script::Native;
+use cyrus_soup::Attribute;
+use cyrus_soup::Native;
 use cyrus_world::heading::wrap;
 
 /// Smoke effect descriptor: texture 0x2480 on the alternate, reduced-scale path.

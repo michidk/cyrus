@@ -5,7 +5,7 @@ use cyrus_assets::{animation::Animations, script::Scripts};
 use cyrus_game::script::{
     ScriptActors, ScriptBinding, ScriptPlugin, ScriptScene, ScriptStage, Thread,
 };
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::{
     animation::{
         AnimationPlayback, AnimationPlugin, AnimationPose, AnimationRequest, AnimationTick,

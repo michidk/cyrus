@@ -1,9 +1,9 @@
 //! Immediate attribute services. Runtime writes retain the actor byte; family/model
 //! ownership is established when spatial state is prepared and is not rebound by a write.
 use anyhow::{Context, Result};
-use cyrus_script::Argument;
-use cyrus_script::Native;
-use cyrus_script::{Attribute, Attributes};
+use cyrus_soup::Argument;
+use cyrus_soup::Native;
+use cyrus_soup::{Attribute, Attributes};
 
 pub(super) fn call(
     name: Native,

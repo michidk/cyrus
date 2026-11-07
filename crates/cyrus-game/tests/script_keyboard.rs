@@ -1,8 +1,8 @@
 //! Explicit InKey inputs execute through the public native dispatcher.
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptKeys, ScriptStage, ScriptWorld};
-use cyrus_script::Thread;
-use cyrus_script::program::*;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -96,7 +96,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -157,7 +157,7 @@ fn in_key_accepts_only_the_supplied_post_clear_event_without_consuming_it() -> a
     ] {
         let mut scripts = cache();
         scripts.definition.functions.push(Function {
-            name: cyrus_script::Native::InKey,
+            name: cyrus_soup::Native::InKey,
             param_count: 1,
             kind: CallKind::Function,
         });
@@ -173,7 +173,7 @@ fn in_key_accepts_only_the_supplied_post_clear_event_without_consuming_it() -> a
                             first: Value::Call {
                                 call: Box::new(Call {
                                     function_id: 1,
-                                    function: cyrus_script::Native::InKey,
+                                    function: cyrus_soup::Native::InKey,
                                     kind: CallKind::Function,
                                     target: Object::Me,
                                     arguments: vec![Value::Integer { value: code }],
@@ -256,7 +256,7 @@ fn in_key_accepts_only_the_supplied_post_clear_event_without_consuming_it() -> a
 fn space_world() -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::SpacePressed,
+        name: cyrus_soup::Native::SpacePressed,
         param_count: 0,
         kind: CallKind::Function,
     });
@@ -267,7 +267,7 @@ fn space_world() -> ScriptWorld {
                 first: Value::Call {
                     call: Box::new(Call {
                         function_id: 1,
-                        function: cyrus_script::Native::SpacePressed,
+                        function: cyrus_soup::Native::SpacePressed,
                         kind: CallKind::Function,
                         target: Object::Me,
                         arguments: vec![],
@@ -382,7 +382,7 @@ fn space_pressed_reports_a_missing_keyboard_sample_before_continuing() {
 fn press_world(code: i32) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
-        name: cyrus_script::Native::PressKey,
+        name: cyrus_soup::Native::PressKey,
         param_count: 1,
         kind: CallKind::Function,
     });
@@ -393,7 +393,7 @@ fn press_world(code: i32) -> ScriptWorld {
                 first: Value::Call {
                     call: Box::new(Call {
                         function_id: 1,
-                        function: cyrus_script::Native::PressKey,
+                        function: cyrus_soup::Native::PressKey,
                         kind: CallKind::Function,
                         target: Object::Me,
                         arguments: vec![Value::Integer { value: code }],

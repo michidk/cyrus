@@ -7,8 +7,8 @@ use crate::script::LivingState;
 use crate::script::bounce::BouncePort;
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
-use cyrus_script::Native;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::Native;
+use cyrus_soup::{AnimationGroup, Attribute};
 
 struct BounceActor<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
@@ -214,7 +214,7 @@ impl GameHost<'_, '_, '_, '_> {
         function: Native,
         kind: super::CallKind,
         arguments: &[super::Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<Option<super::CallResult>> {
         let index = self.index;
         let mut tasks = std::mem::take(&mut self.registry.actors[index].tasks);
@@ -240,7 +240,7 @@ impl GameHost<'_, '_, '_, '_> {
         &mut self,
         token: u64,
         arguments: &[super::Argument],
-        invocation: cyrus_script::Invocation,
+        invocation: cyrus_soup::Invocation,
     ) -> Result<bool> {
         let index = self.index;
         let mut tasks = std::mem::take(&mut self.registry.actors[index].tasks);

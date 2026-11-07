@@ -2,8 +2,8 @@
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -64,7 +64,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -125,12 +125,12 @@ fn fixture_for(
     named: bool,
     native_hook: Option<Call>,
 ) -> ScriptWorld {
-    use cyrus_script::{AnimationGroup, Native};
+    use cyrus_soup::{AnimationGroup, Native};
     let mut scripts = cache();
     scripts.definition.references = vec![
-        cyrus_script::Property::AiDelay,
-        cyrus_script::Property::AiType,
-        cyrus_script::Property::AiMode,
+        cyrus_soup::Property::AiDelay,
+        cyrus_soup::Property::AiType,
+        cyrus_soup::Property::AiMode,
     ];
     scripts.definition.functions.push(Function {
         name: Native::GotoLocation,
@@ -344,7 +344,7 @@ fn self_nonarrival_refreshes_on_initial_call_and_poll_without_running_continuati
 #[test]
 fn pending_goto_location_suppresses_ordinary_hook_without_admitting_mode_eleven_progress() {
     use cyrus_game::script::AiType;
-    use cyrus_script::Native;
+    use cyrus_soup::Native;
     let hook = Call {
         function_id: 2,
         function: Native::SetAiType,
@@ -547,7 +547,7 @@ fn move_pos_fixture(
 
 enum MovementQuery {
     Position([i32; 3]),
-    Speed(Option<cyrus_script::AnimationGroup>),
+    Speed(Option<cyrus_soup::AnimationGroup>),
 }
 
 fn movement_query_fixture(
@@ -557,7 +557,7 @@ fn movement_query_fixture(
     spatial: bool,
     attached: bool,
 ) -> ScriptWorld {
-    use cyrus_script::{AnimationGroup, Native, Property};
+    use cyrus_soup::{AnimationGroup, Native, Property};
     let (function, arguments, group) = match query {
         MovementQuery::Position(target) => (
             Native::MovePos,
@@ -826,7 +826,7 @@ fn move_pos_reads_the_publicly_composed_family_position() {
 
 #[test]
 fn get_movement_speed_reads_the_receivers_unscaled_attribute_without_player_or_spatial_state() {
-    use cyrus_script::AnimationGroup;
+    use cyrus_soup::AnimationGroup;
     for (group, expected) in [
         (Some(AnimationGroup::RUN), 251),
         (Some(AnimationGroup::RUN_TORCH), 251),
@@ -877,7 +877,7 @@ fn get_movement_speed_reads_the_receivers_unscaled_attribute_without_player_or_s
 }
 
 fn bouncing_query_fixture(state: u8, named: bool, malformed: bool) -> ScriptWorld {
-    use cyrus_script::{Native, Property};
+    use cyrus_soup::{Native, Property};
     let mut scripts = cache();
     scripts.definition.references = vec![Property::ExtraFlag];
     scripts.definition.functions.push(Function {
@@ -1057,7 +1057,7 @@ fn routed_at_pos_world(
     receiver: Object,
 ) -> AtPosWorld {
     native_call_world(
-        cyrus_script::Native::AtPos,
+        cyrus_soup::Native::AtPos,
         target.to_vec(),
         instances,
         speed,
@@ -1068,7 +1068,7 @@ fn routed_at_pos_world(
 
 /// Every instance runs the native call twice with integer arguments, into flag zero.
 fn native_call_world(
-    native: cyrus_script::Native,
+    native: cyrus_soup::Native,
     arguments: Vec<i32>,
     instances: usize,
     speed: u8,
@@ -1082,7 +1082,7 @@ fn native_call_world(
 
 /// `native_call_world` whose scene carries the installed changed-actor list capacity.
 fn capacity_world(
-    native: cyrus_script::Native,
+    native: cyrus_soup::Native,
     arguments: Vec<i32>,
     instances: usize,
     speed: u8,
@@ -1090,7 +1090,7 @@ fn capacity_world(
     receiver: Object,
     capacity: Option<i32>,
 ) -> AtPosWorld {
-    use cyrus_script::AnimationGroup;
+    use cyrus_soup::AnimationGroup;
     let mut scripts = cache();
     scripts.definition.functions.push(Function {
         name: native,
@@ -1334,14 +1334,14 @@ fn at_pos_needs_the_installed_capacity_only_once_the_list_could_be_full() {
 }
 
 /// The location setters and the argument lists that name an in-table entry.
-fn location_setters() -> [(cyrus_script::Native, Vec<i32>); 3] {
+fn location_setters() -> [(cyrus_soup::Native, Vec<i32>); 3] {
     [
         (
-            cyrus_script::Native::SetPosition,
+            cyrus_soup::Native::SetPosition,
             vec![5 << 8, 6 << 8, 7 << 8],
         ),
-        (cyrus_script::Native::SetLocation, vec![0]),
-        (cyrus_script::Native::SetObjectLocation, vec![0, 1, 1, 1]),
+        (cyrus_soup::Native::SetLocation, vec![0]),
+        (cyrus_soup::Native::SetObjectLocation, vec![0, 1, 1, 1]),
     ]
 }
 
@@ -1376,7 +1376,7 @@ fn location_setters_report_error_196_after_the_store_when_the_list_is_full() {
         );
         // The coordinate stores precede the registration: SetPosition's point is in place, and
         // the others store their (unchanged) location; the list holds the same 32 actors.
-        if native == cyrus_script::Native::SetPosition {
+        if native == cyrus_soup::Native::SetPosition {
             assert_eq!(at.position(32), [5 << 8, 6 << 8, 7 << 8]);
             assert_ne!(at.position(32), before);
         } else {
@@ -1425,7 +1425,7 @@ fn move_above_me_places_a_receiver_relative_to_the_script_actor_and_registers_it
     // standing height (here -2, as a Q8 shift), with the angle masked into actor 0's yaw.
     let extent = 5;
     let mut at = native_call_world(
-        cyrus_script::Native::MoveAboveMe,
+        cyrus_soup::Native::MoveAboveMe,
         vec![256, 512, -768, 2048 + 300],
         2,
         2,
@@ -1454,7 +1454,7 @@ fn move_above_me_places_a_receiver_relative_to_the_script_actor_and_registers_it
 #[test]
 fn move_above_me_without_the_standing_height_names_the_missing_input() {
     let mut at = native_call_world(
-        cyrus_script::Native::MoveAboveMe,
+        cyrus_soup::Native::MoveAboveMe,
         vec![0, 0, 0, 0],
         2,
         2,
@@ -1470,7 +1470,7 @@ fn move_above_me_without_the_standing_height_names_the_missing_input() {
 #[test]
 fn move_above_me_reports_a_slave_source_as_original_diagnostic_137_before_moving() {
     let mut at = native_call_world(
-        cyrus_script::Native::MoveAboveMe,
+        cyrus_soup::Native::MoveAboveMe,
         vec![256, 0, 0, 0],
         2,
         2,
@@ -1492,7 +1492,7 @@ fn an_unchecked_arrival_registers_through_the_shared_list_and_fails_in_the_call_
     let origin = at_pos_world(2, [0; 3], 200, 0).position(0);
     // Thirty-four actors arrive through the shared helper; the installed capacity is 32.
     let mut at = capacity_world(
-        cyrus_script::Native::AtPos,
+        cyrus_soup::Native::AtPos,
         origin.to_vec(),
         34,
         200,

@@ -2,7 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use anyhow::{Context, Result};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 /// Factor and clock inputs follow preservation's vertical motion rules;
 /// the caller supplies the entry for the current timer and the entry after an

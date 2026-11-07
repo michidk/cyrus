@@ -4,8 +4,8 @@ use cyrus_assets::script::*;
 use cyrus_game::script::MotionDirection;
 use cyrus_game::script::OrdinaryForwardAmountInputs;
 use cyrus_game::script::{ScriptInputs, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -66,7 +66,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -117,7 +117,7 @@ fn cache() -> Scripts {
 
 fn classification_scripts(object: Object, value: i32, write: bool) -> Scripts {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::LastDirection; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::LastDirection; 295];
     let place = Place::Property {
         object,
         reference: 294,
@@ -259,8 +259,8 @@ fn motion_fixture(
 ) -> ScriptWorld {
     let mut scripts = cache();
     scripts.definition.references = vec![
-        cyrus_script::Property::ExtraFlag,
-        cyrus_script::Property::LastDirection,
+        cyrus_soup::Property::ExtraFlag,
+        cyrus_soup::Property::LastDirection,
     ];
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.attributes[Attribute::ForwardSpeed] = 8;
@@ -295,7 +295,7 @@ fn motion_fixture(
     ]);
     if pending {
         scripts.definition.functions.push(Function {
-            name: cyrus_script::Native::PlayAnimation,
+            name: cyrus_soup::Native::PlayAnimation,
             param_count: 2,
             kind: CallKind::Function,
         });
@@ -310,7 +310,7 @@ fn motion_fixture(
                             call: Box::new(Call {
                                 target: Object::Me,
                                 function_id: 1,
-                                function: cyrus_script::Native::PlayAnimation,
+                                function: cyrus_soup::Native::PlayAnimation,
                                 kind: CallKind::Function,
                                 arguments: vec![
                                     Value::Integer { value: 30 },
@@ -392,7 +392,7 @@ fn motion_fixture(
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
     world
-        .bind_animation(id, &data, cyrus_script::AnimationGroup::PANIC)
+        .bind_animation(id, &data, cyrus_soup::AnimationGroup::PANIC)
         .unwrap();
     world
         .advance(

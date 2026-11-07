@@ -18,7 +18,7 @@ use crate::script::MotionDirection;
 use crate::script::PointPhase;
 use crate::script::locomotion::StepDirection;
 use anyhow::{Context, Result};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 impl ScriptWorld {

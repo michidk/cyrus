@@ -294,7 +294,7 @@ The current original-text lifetime adapter supports ASCII without embedded NUL;
 other text encodings remain explicitly unsupported.
 
 SOUP program types and operand/definition validation belong to
-`cyrus-script::program`. This crate prepares those records from preservation,
+`cyrus-soup::program`. This crate prepares those records from preservation,
 owns world/actor cache metadata and loads the cache through Bevy. Serialization
 and cache identities are independent of the Rust module that owns each record.
 

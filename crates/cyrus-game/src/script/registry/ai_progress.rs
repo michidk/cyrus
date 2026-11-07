@@ -3,7 +3,7 @@ use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::{AiType, ScriptSound};
 use crate::script::{OrdinaryMovement, OrdinaryObstacleQuery, OrdinarySlopeInputs};
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 impl ScriptWorld {
     /// Attempt the direct-destination admission transition within AI progress.

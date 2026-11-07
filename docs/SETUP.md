@@ -449,7 +449,7 @@ group playback accepts supplied simulation ticks and updates private model
 meshes. Re-export again to retain script payloads and version-2 typed SOUP
 program descriptors plus the independent version-4 `.scripts` sidecar with actor RASC origins, installed actor-pool capacity and initialized attribute defaults. Explicit scripted playback accepts a caller-selected default,
 executes authored PushAnimation tasks, and applies their mesh frames. End stores
-its target for a later eligible stage through the shared `cyrus-script` core.
+its target for a later eligible stage through the shared `cyrus-soup` core.
 Control `state.scripts` reports cache readiness, program and unsupported counts,
 and bounded unsupported examples. Loaded scripts do not imply live execution in
 the inspection host. Production world activation and host scheduling run through

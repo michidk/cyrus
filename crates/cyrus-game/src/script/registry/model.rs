@@ -20,7 +20,7 @@ use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::surface::Surface;
 use cyrus_collision::actor_models::ActorModelCollision;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 
 /// Selected geometry and its stored transform, independent of later logical movement.
 /// The captured source pose has eight fractional bits. Stored model position and

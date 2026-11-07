@@ -8,7 +8,7 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::heading::wrap;
 
 /// The animation groups the entry request waits for: weapon, torch, plain.

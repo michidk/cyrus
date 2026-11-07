@@ -1,6 +1,6 @@
 //! Forward-walking startup from redguard-preservation's
 //! `docs/engine/player.md`. Animation eligibility and collision are separate.
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 /// Startup state for ordinary forward walking with `attr_step_type = 1`.
 #[derive(Clone, Copy)]

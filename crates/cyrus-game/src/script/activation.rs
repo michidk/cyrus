@@ -4,9 +4,9 @@ use crate::script::JumpMotion;
 use crate::script::LivingState;
 use anyhow::{Context, Result};
 use cyrus_assets::surface::Surface;
-use cyrus_script::Native;
-use cyrus_script::{AnimationGroup, Argument};
-use cyrus_script::{Attribute, Attributes};
+use cyrus_soup::Native;
+use cyrus_soup::{AnimationGroup, Argument};
+use cyrus_soup::{Attribute, Attributes};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -187,7 +187,7 @@ pub struct GameplayGlobals {
     pub(super) native_source: NativeSource,
     pub(super) native_command_return: u8,
     /// The actor reference the function that just completed returned, taken by its value site.
-    pub(super) actor_result: Option<cyrus_script::ActorReference>,
+    pub(super) actor_result: Option<cyrus_soup::ActorReference>,
     pub(super) walk_route: super::WalkRouteState,
     /// Shared direction-called flags, reset at ordinary wrapper entry.
     pub(super) locomotion_called: u8,
@@ -839,7 +839,7 @@ mod idle_tests {
     use super::{NativeSource, ScriptActorId};
     use crate::random::EngineRandom;
     use crate::script::JumpMotion;
-    use cyrus_script::AnimationGroup;
+    use cyrus_soup::AnimationGroup;
 
     impl GameplayGlobals {
         /// Both preliminary halves, refusing the pending action the world owns.

@@ -360,9 +360,9 @@ struct ActorSnapshot {
     message_read: u8,
     #[serde(default)]
     broadcast_index: u8,
-    runtime: Option<cyrus_script::persistence::Snapshot>,
+    runtime: Option<cyrus_soup::persistence::Snapshot>,
     unavailable: Option<String>,
-    attributes: cyrus_script::Attributes,
+    attributes: cyrus_soup::Attributes,
     control: Option<ControlSnapshot>,
     surface: Option<cyrus_assets::surface::Surface>,
     model: model::ModelSnapshot,
@@ -408,7 +408,7 @@ impl ScriptWorld {
 impl ActorSnapshot {
     fn capture(
         actor: &ScriptActor,
-        sources: &BTreeMap<CodeOrigin, Arc<cyrus_script::program::Program>>,
+        sources: &BTreeMap<CodeOrigin, Arc<cyrus_soup::program::Program>>,
     ) -> Result<Self> {
         Ok(Self {
             name: actor.name().to_owned(),
@@ -456,7 +456,7 @@ struct ActorRestoreContext<'a, F> {
     saved_generation: u64,
     scripts: &'a Scripts,
     animations: &'a Animations,
-    sources: &'a BTreeMap<CodeOrigin, Arc<cyrus_script::program::Program>>,
+    sources: &'a BTreeMap<CodeOrigin, Arc<cyrus_soup::program::Program>>,
     static_count: Option<usize>,
     rebind: &'a F,
     dialogue: Option<&'a super::super::DialogueState>,
@@ -720,7 +720,7 @@ impl WorldSnapshotSources<'_> {
         Ok(digest.0.finalize().to_hex().to_string())
     }
 
-    fn programs(&self) -> Result<BTreeMap<CodeOrigin, Arc<cyrus_script::program::Program>>> {
+    fn programs(&self) -> Result<BTreeMap<CodeOrigin, Arc<cyrus_soup::program::Program>>> {
         let mut sources = BTreeMap::new();
         for actor in self.scripts.actors.values() {
             if let Some(previous) = sources.insert(
@@ -1338,7 +1338,7 @@ impl LogicalSessionSnapshot {
         }
         ensure!(
             !current.actors.iter().any(|actor| {
-                actor.attributes[cyrus_script::Attribute::NonMoving] != 0
+                actor.attributes[cyrus_soup::Attribute::NonMoving] != 0
                     && actor.model.has_static_model()
             }),
             "world {}: legacy actor prelight checkpoint unavailable; save again",

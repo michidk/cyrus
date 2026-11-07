@@ -5,7 +5,7 @@ use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::actor_overlap::{OverlapSphere, actor_separation};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 impl ScriptWorld {

@@ -73,7 +73,7 @@ original walking cues and automatic runtime scheduling remain unverified. The
 [sound facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#animation-playsound)
 define this boundary.
 
-SOUP execution belongs to `cyrus-script`; game-owned hosts and explicit scripted
+SOUP execution belongs to `cyrus-soup`; game-owned hosts and explicit scripted
 playback belong to `cyrus-game::script`. `cyrus-world` supplies animation and
 sound services without depending on either executor or gameplay handlers.
 `PreparedWorld` also retains the independently exported `.scripts` asset.

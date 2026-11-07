@@ -1,6 +1,6 @@
 //! Complete animation saves resume through public playback APIs without replaying cues.
 use cyrus_assets::animation::Animations;
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::animation::{ActorAnimation, ActorAnimationSnapshot, AnimationSound};
 use serde_json::{Value, json};
 

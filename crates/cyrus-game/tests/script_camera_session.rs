@@ -5,10 +5,10 @@ use cyrus_game::script::{
     GameplayGlobals, ScriptHud, ScriptInputs, ScriptStage, ScriptWorld, WorldRestoreContext,
     WorldSnapshotSources,
 };
-use cyrus_script::Attribute;
-use cyrus_script::Native;
-use cyrus_script::Thread;
-use cyrus_script::program::*;
+use cyrus_soup::Attribute;
+use cyrus_soup::Native;
+use cyrus_soup::Thread;
+use cyrus_soup::program::*;
 use serde_json::json;
 use std::collections::BTreeMap;
 

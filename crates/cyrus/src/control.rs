@@ -566,7 +566,7 @@ fn handle(
                     None
                 };
                 let actor = cyrus_game::script::ScriptActorId { generation, index };
-                world.bind_animation(actor, data, cyrus_script::AnimationGroup::from_index(default_group))?;
+                world.bind_animation(actor, data, cyrus_soup::AnimationGroup::from_index(default_group))?;
                 if let Some(entity) = entity {
                     script_bindings.insert(entity, actor);
                     commands

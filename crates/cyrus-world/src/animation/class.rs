@@ -1,5 +1,5 @@
 //! Animation group classes follow preservation's `engine/animation.md#animation-group-classes`.
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 
 /// Class of an animation group: 1 for fighting groups, 2 for hit-reaction and death
 /// groups, 0 for every other group number (including those outside 0 to 177).

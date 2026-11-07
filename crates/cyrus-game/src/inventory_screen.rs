@@ -1,7 +1,7 @@
 //! Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
 //! Rules follow preservation's `docs/engine/hud.md` inventory screen section.
 use anyhow::Context;
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 /// Directions held during one screen update, after the host resolves installed bindings.
 #[derive(Clone, Copy, Default)]

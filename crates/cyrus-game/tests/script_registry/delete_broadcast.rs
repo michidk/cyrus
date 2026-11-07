@@ -251,13 +251,13 @@ fn broadcast_query_scripts(native: Native, target: Object) -> Scripts {
     scripts
 }
 
-fn sender_result(world: &ScriptWorld) -> cyrus_script::ScriptValue {
+fn sender_result(world: &ScriptWorld) -> cyrus_soup::ScriptValue {
     world.actors()[1].runtime().unwrap().variables()[0]
 }
 
 #[test]
 fn get_broadcast_sender_returns_the_selected_channel_zero_sender_as_a_typed_reference() {
-    use cyrus_script::{ActorReference, ScriptValue};
+    use cyrus_soup::{ActorReference, ScriptValue};
     let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Me);
     let sender_of = |world: &ScriptWorld| {
         ScriptValue::Actor(ActorReference {
@@ -311,7 +311,7 @@ fn selection_of(world: &ScriptWorld, index: usize) -> u64 {
 
 #[test]
 fn get_broadcast_sender_follows_the_broadcast_selection_not_the_class_message_cursor() {
-    use cyrus_script::{ActorReference, ScriptValue};
+    use cyrus_soup::{ActorReference, ScriptValue};
     let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Me);
     let world = ScriptWorld::prepare(&scripts, 7).unwrap();
     // The class-message cursor is on a written entry; the broadcast selection is not.
@@ -361,7 +361,7 @@ fn get_broadcast_sender_reports_a_selection_outside_the_queue_with_its_context()
 
 #[test]
 fn get_broadcast_sender_routed_call_reads_the_named_receivers_selection() {
-    use cyrus_script::{ActorReference, ScriptValue};
+    use cyrus_soup::{ActorReference, ScriptValue};
     let scripts = broadcast_query_scripts(Native::GetBroadcastSender, Object::Named { string: 0 });
     let world = ScriptWorld::prepare(&scripts, 7).unwrap();
     // The named receiver (actor 0) selects the written entry; the calling actor (1) does not, so
@@ -398,7 +398,7 @@ fn receive_broadcast_world(target: Object, selections: [u64; 2]) -> (ScriptWorld
     (world, scripts)
 }
 
-fn receive_result(world: &mut ScriptWorld) -> anyhow::Result<cyrus_script::ScriptValue> {
+fn receive_result(world: &mut ScriptWorld) -> anyhow::Result<cyrus_soup::ScriptValue> {
     let caller = world.id(1).unwrap();
     actor_reference_step(world, caller)?;
     actor_reference_step(world, caller)?;
@@ -407,7 +407,7 @@ fn receive_result(world: &mut ScriptWorld) -> anyhow::Result<cyrus_script::Scrip
 
 #[test]
 fn receive_broadcast_skips_other_receivers_and_keeps_the_accepted_entry_selected() {
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     // Direct: actor 1 receives for itself. Routed: actor 1 receives on behalf of actor 0.
     for (target, receiver_index) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
         let (mut world, _) = receive_broadcast_world(target.clone(), [0, 0]);
@@ -439,7 +439,7 @@ fn receive_broadcast_skips_other_receivers_and_keeps_the_accepted_entry_selected
 
 #[test]
 fn receive_broadcast_returns_zero_without_a_selection_or_for_an_unwritten_entry() {
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     // No selection: selection equals channel zero's write cursor.
     let (mut world, _) = receive_broadcast_world(Object::Me, [0, 0]);
     assert_eq!(receive_result(&mut world).unwrap(), ScriptValue::Integer(0));
@@ -456,7 +456,7 @@ fn receive_broadcast_returns_zero_without_a_selection_or_for_an_unwritten_entry(
 
 #[test]
 fn receive_broadcast_skipping_wraps_the_selection_and_ignores_the_class_cursor() {
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     let scripts = message_call_scripts(Native::ReceiveBroadcast, Object::Me);
     let world = ScriptWorld::prepare(&scripts, 17).unwrap();
     // Selection on the last slot, with the class-message cursor elsewhere.
@@ -486,7 +486,7 @@ fn receive_broadcast_reports_a_selection_outside_the_queue_before_changing_it() 
 
 #[test]
 fn get_broadcast_sender_id_returns_the_selected_senders_runtime_identifier() {
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     // Direct and object-routed receivers: the routed receiver (actor 0) selects the entry and
     // the calling actor does not.
     for (target, selections, found) in [
@@ -521,7 +521,7 @@ fn get_broadcast_sender_id_returns_the_selected_senders_runtime_identifier() {
 
 #[test]
 fn get_broadcast_sender_id_reports_unreadable_entries_and_leaves_the_local_unchanged() {
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     let scripts = broadcast_query_scripts(Native::GetBroadcastSenderId, Object::Me);
     // A selected slot never written has no sender; the original reads it unchecked, here it is
     // an explicit error. A selection outside the queue is one too.
@@ -567,7 +567,7 @@ fn get_broadcast_sender_id_reports_unreadable_entries_and_leaves_the_local_uncha
 
 #[test]
 fn is_broadcast_waiting_is_one_exactly_when_the_receiver_has_a_broadcast_selection() {
-    use cyrus_script::ScriptValue;
+    use cyrus_soup::ScriptValue;
     // (target, selections of actors 0 and 1, entries written, expected). The routed receiver is
     // actor 0; the calling actor is 1.
     for (target, selections, writes, expected) in [

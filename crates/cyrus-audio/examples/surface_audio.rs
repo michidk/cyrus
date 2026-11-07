@@ -27,7 +27,7 @@ use cyrus_game::player::{
     placement::initial_animation,
     walk::WalkingStartup,
 };
-use cyrus_script::AnimationGroup;
+use cyrus_soup::AnimationGroup;
 use cyrus_world::{
     animation::{ActorAnimation, AnimationSound},
     sound::{SoundCue, SoundSurface},

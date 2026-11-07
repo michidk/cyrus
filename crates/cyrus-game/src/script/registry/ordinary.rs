@@ -6,8 +6,8 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
 use cyrus_assets::script::PlacementType;
-use cyrus_script::Native;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::Native;
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::{animation::AnimationRequest, sound::SoundCue};
 
 /// Current presentation view in original Q8 coordinates, tied to its world asset.
@@ -80,7 +80,7 @@ impl ScriptWorld {
                 .contains(&call.function)
             })
             .filter_map(|call| match call.arguments.first() {
-                Some(cyrus_script::program::Value::Integer { value }) => Some(value.to_le_bytes()),
+                Some(cyrus_soup::program::Value::Integer { value }) => Some(value.to_le_bytes()),
                 _ => None,
             })
             .collect::<std::collections::BTreeSet<_>>()
@@ -509,7 +509,7 @@ impl ScriptWorld {
                     && !actor
                         .runtime
                         .as_ref()
-                        .is_some_and(cyrus_script::Runtime::has_unpaused_task)
+                        .is_some_and(cyrus_soup::Runtime::has_unpaused_task)
                 {
                     let shell = inputs
                         .shell_execution

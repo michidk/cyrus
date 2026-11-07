@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use cyrus_script::program::{Call, CallKind, Object, Operation, Program, Step, Value};
-    use cyrus_script::{Argument, CallResult, Host, Invocation, Native, Runtime, Target, Thread};
+    use cyrus_soup::program::{Call, CallKind, Object, Operation, Program, Step, Value};
+    use cyrus_soup::{Argument, CallResult, Host, Invocation, Native, Runtime, Target, Thread};
     use std::collections::BTreeMap;
 
     // A stand-in: the contract holds for any native, so a DEF spare native serves.
@@ -12,7 +12,7 @@ mod tests {
     impl Host for Recorder {
         fn establish_native_source(
             &mut self,
-            _: cyrus_script::CodeOrigin,
+            _: cyrus_soup::CodeOrigin,
             program: std::sync::Arc<Program>,
         ) {
             self.1 = Some(program);

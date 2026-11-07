@@ -1,6 +1,6 @@
 //! Retained actor flat records follow the original's per-actor flat sprite controls.
 use anyhow::{Context, Result, bail, ensure};
-use cyrus_script::Native;
+use cyrus_soup::Native;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

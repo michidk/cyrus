@@ -4,8 +4,8 @@ use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
 use cyrus_game::script::MotionDirection;
 use cyrus_game::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, ScriptWorld};
-use cyrus_script::program::*;
-use cyrus_script::{Attribute, Thread};
+use cyrus_soup::program::*;
+use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
 fn cache() -> Scripts {
@@ -66,7 +66,7 @@ fn cache() -> Scripts {
         world: 7,
         definition: Definition {
             functions: vec![Function {
-                name: cyrus_script::Native::NullFunction,
+                name: cyrus_soup::Native::NullFunction,
                 param_count: 0,
                 kind: CallKind::Function,
             }],
@@ -117,20 +117,20 @@ fn cache() -> Scripts {
 
 fn fixture(group: u16, ai_type: i32) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_script::Property::UnderSurface; 295];
+    scripts.definition.references = vec![cyrus_soup::Property::UnderSurface; 295];
     scripts.definition.functions.extend([
         Function {
-            name: cyrus_script::Native::PlayAnimation,
+            name: cyrus_soup::Native::PlayAnimation,
             param_count: 2,
             kind: CallKind::Function,
         },
         Function {
-            name: cyrus_script::Native::Wait,
+            name: cyrus_soup::Native::Wait,
             param_count: 1,
             kind: CallKind::Task,
         },
         Function {
-            name: cyrus_script::Native::SetAiType,
+            name: cyrus_soup::Native::SetAiType,
             param_count: 1,
             kind: CallKind::Function,
         },
@@ -144,7 +144,7 @@ fn fixture(group: u16, ai_type: i32) -> (ScriptWorld, cyrus_assets::animation::A
         call: Call {
             target: Object::Me,
             function_id,
-            function: cyrus_script::Native::from_name(name).expect("known fixture native"),
+            function: cyrus_soup::Native::from_name(name).expect("known fixture native"),
             kind,
             arguments,
         },
@@ -219,7 +219,7 @@ fn fixture(group: u16, ai_type: i32) -> (ScriptWorld, cyrus_assets::animation::A
         .bind_animation(
             world.id(0).unwrap(),
             &data,
-            cyrus_script::AnimationGroup::PANIC,
+            cyrus_soup::AnimationGroup::PANIC,
         )
         .unwrap();
     advance(&mut world, ScriptStage::Body(Thread::Main)).unwrap();

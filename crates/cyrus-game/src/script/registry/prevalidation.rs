@@ -3,7 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use cyrus_collision::ground::SurfaceClass;
 use cyrus_collision::ground::{GroundProbe, GroundSupport};
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 
 /// Shared results retained until the first ground prevalidation of the next wrapper.

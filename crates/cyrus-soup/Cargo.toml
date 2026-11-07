@@ -1,5 +1,5 @@
 [package]
-name = "cyrus-script"
+name = "cyrus-soup"
 description = "Portable SOUP execution with explicit host services and invocation stages."
 version.workspace = true
 edition.workspace = true

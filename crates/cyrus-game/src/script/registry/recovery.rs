@@ -3,7 +3,7 @@ use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::script::PlacementType;
-use cyrus_script::{AnimationGroup, Attribute};
+use cyrus_soup::{AnimationGroup, Attribute};
 use cyrus_world::heading::wrap;
 use cyrus_world::{
     animation::ActorAnimationCheckpoint,

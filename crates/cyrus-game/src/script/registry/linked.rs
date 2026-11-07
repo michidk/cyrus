@@ -9,7 +9,7 @@
 //! position in the model stage.
 use super::ScriptWorld;
 use anyhow::{Context, Result, ensure};
-use cyrus_script::Attribute;
+use cyrus_soup::Attribute;
 
 impl ScriptWorld {
     /// The owner-relative position of `index`: the owner's effective position and the offset
