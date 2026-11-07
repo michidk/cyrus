@@ -319,7 +319,7 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
     ]);
     assert!(receiver.snapshot(&BTreeMap::new()).is_err());
     let mut document = serde_json::to_value(receiver.snapshot(&sources).unwrap()).unwrap();
-    let mut task = document["state"]["tasks"][0].take();
+    let task = document["state"]["tasks"][0].take();
     document["state"]["tasks"][4] = task;
     document["state"]["task_pause"][4] = json!(1);
     document["state"]["task_timer"][4] = json!(65535);

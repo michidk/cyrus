@@ -262,26 +262,12 @@ fn another_actors_slot_fields_are_read_and_written_through_its_own_scheduler_sta
     let (me, master) = (world.id(0).unwrap(), world.id(1).unwrap());
     // The master runs first: its own slot is served by its running interpreter.
     world
-        .advance(
-            master,
-            ScriptStage::OrdinaryMain,
-            inputs.clone(),
-            None,
-            None,
-            100,
-        )
+        .advance(master, ScriptStage::OrdinaryMain, inputs, None, None, 100)
         .unwrap();
     // Then actor 0 reads the master's timer (one: allocated, not yet passed) and status (zero: a
     // multitask) and pauses the master's slot, not its own.
     world
-        .advance(
-            me,
-            ScriptStage::OrdinaryMain,
-            inputs.clone(),
-            None,
-            None,
-            100,
-        )
+        .advance(me, ScriptStage::OrdinaryMain, inputs, None, None, 100)
         .unwrap();
     assert_eq!(locals(&world)[..2], [1, 0]);
     let paused = |index: usize| world.actors()[index].runtime().unwrap().task_slots()[0].3;

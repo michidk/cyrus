@@ -1802,7 +1802,7 @@ fn duplicate_tokens_and_paused_vm_slots_are_checked_with_two_native_tasks() {
     vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
         .unwrap();
     let mut document = serde_json::to_value(vm.snapshot(&sources).unwrap()).unwrap();
-    document["state"]["tasks"][0]["paused"] = json!(true);
+    document["state"]["task_pause"][0] = json!(1);
     let saved: Snapshot = serde_json::from_value(document).unwrap();
     let snapshot = host.native.snapshot();
     assert_eq!(snapshot.tasks.len(), 2);
