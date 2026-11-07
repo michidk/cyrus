@@ -680,3 +680,12 @@ migrate). The running actor's own slots are served by its interpreter and anothe
 runtime; a write only changes the field. See preservation's
 [task slot control properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#task-slot-control-properties).
 `task[n]` stays unsupported: its call pointers have no portable encoding.
+
+Verified: `anim.next`, `anim.next_speed`, `anim.frame`, `anim.speed`, `anim.speed_count`, `anim.stop_flag`,
+`anim.halt_flag`, `anim.hold_flag`, `anim.loop_count`, `anim.rewind_flag` and `anim.real_frame` read and
+write the playback record fields of the receiver's `ActorAnimation` (own or another actor's), so a script write
+changes the next production advance (an expired countdown steps the cursor, a wait byte holds playback, the
+progress byte completes `WaitAnimFrame`) and is saved with the animation. See preservation's
+[animation record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties).
+`anim.rep_count`, `anim.sound_handle`, `anim.max_group`, the `anim.pos`/`anim.angle` words and `anim.address`
+stay unsupported; writing `anim.current` too.

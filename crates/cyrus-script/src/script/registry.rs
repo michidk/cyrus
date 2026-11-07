@@ -5241,6 +5241,26 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
         })
 }
 
+/// The animation record field an `anim.*` property names. The other record fields have no
+/// recovered owner or contract and stay unsupported.
+fn playback_field(name: Property) -> Option<cyrus_world::animation::PlaybackField> {
+    use cyrus_world::animation::PlaybackField;
+    Some(match name {
+        Property::AnimNext => PlaybackField::Next,
+        Property::AnimNextSpeed => PlaybackField::NextSpeed,
+        Property::AnimFrame => PlaybackField::Frame,
+        Property::AnimSpeed => PlaybackField::Speed,
+        Property::AnimSpeedCount => PlaybackField::SpeedCount,
+        Property::AnimStopFlag => PlaybackField::StopFlag,
+        Property::AnimHaltFlag => PlaybackField::HaltFlag,
+        Property::AnimHoldFlag => PlaybackField::HoldFlag,
+        Property::AnimLoopCount => PlaybackField::LoopCount,
+        Property::AnimRewindFlag => PlaybackField::RewindFlag,
+        Property::AnimRealFrame => PlaybackField::RealFrame,
+        _ => return None,
+    })
+}
+
 /// The task slot and retained word a `task_variable*` property names.
 fn task_word(name: Property) -> Option<(usize, super::tasks::TaskWord)> {
     use super::tasks::TaskWord;
@@ -5439,6 +5459,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         animation.playback.default_group().index() as i16
                     }),
             ));
+        }
+        if let Some(field) = playback_field(name) {
+            let index = self.property_receiver(target)?;
+            // An actor without an animation association reads zero, as `anim.current` does.
+            return self.registry.actors[index]
+                .animation
+                .as_ref()
+                .map_or(Ok(0), |animation| animation.playback.record_field(field))
+                .with_context(|| format!("property {name}"));
         }
         if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
@@ -5678,6 +5707,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name}: collision metadata unavailable"))?;
             *flags = value as u8;
             return Ok(());
+        }
+        if let Some(field) = playback_field(name) {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .animation
+                .as_mut()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?
+                .playback
+                .set_record_field(field, value)
+                .with_context(|| format!("property {name}"));
         }
         if name == Property::PanicGroup {
             let index = self.property_receiver(target)?;

@@ -50074,3 +50074,6 @@ mod pose_properties_tests;
 
 #[path = "script_registry/task_properties.rs"]
 mod task_properties_tests;
+
+#[path = "script_registry/anim_properties.rs"]
+mod anim_properties_tests;
