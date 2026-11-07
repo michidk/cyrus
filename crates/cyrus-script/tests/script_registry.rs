@@ -33537,7 +33537,7 @@ fn run_display_script(
     world: &mut ScriptWorld,
     data: &cyrus_assets::animation::Animations,
 ) -> anyhow::Result<()> {
-    use cyrus_game::script::{AnimationData, ScriptInputs, ScriptStage};
+    use cyrus_script::script::{AnimationData, ScriptInputs, ScriptStage};
     let id = world.id(0)?;
     world.advance(
         id,
