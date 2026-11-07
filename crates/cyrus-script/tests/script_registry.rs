@@ -33451,6 +33451,7 @@ fn display_model_fixture(
     hand: &str,
     hilt: &str,
     offsets: [i32; 3],
+    equipped: bool,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations, Scripts) {
     use cyrus_assets::animation::AnimationModel;
     let mut scripts = cache();
@@ -33463,6 +33464,22 @@ fn display_model_fixture(
         });
         id
     });
+    if equipped {
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .extend([(Attribute::Combat, 1), (Attribute::Weapon, 1)]);
+        scripts.weapons.insert(
+            1,
+            weapon::Weapon {
+                hand_model: "HAND".into(),
+                hilt_model: "HILT".into(),
+                length: 17,
+            },
+        );
+    }
     let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
     program.strings = vec![hand.into(), hilt.into()];
     let call = |id, name, string| Operation::Call {
@@ -33558,7 +33575,7 @@ fn run_display_script(
 fn display_hand_and_hilt_models_place_frame_transients_on_the_attachment_pairs() {
     // Names resolve by base file name, upper case: "hand.3d" and a directory-qualified name.
     let (mut world, data, _) =
-        display_model_fixture("hand.3d", "system\\hilt.3d", [512, 1024, 768]);
+        display_model_fixture("hand.3d", "system\\hilt.3d", [512, 1024, 768], false);
     run_display_script(&mut world, &data).unwrap();
     let shown = world.display_attachments();
     assert_eq!(shown.len(), 2);
@@ -33576,17 +33593,71 @@ fn display_hand_and_hilt_models_place_frame_transients_on_the_attachment_pairs()
     assert_eq!(shown[0].geometry.position, [12.0, 24.0, 33.0]);
     assert_eq!(shown[1].geometry.position, [12.0, 25.0, 33.0]);
     assert_eq!(shown[1].geometry.retained_point, [3072, 6400, 8448]);
+    // The helpers' retained attachment words: the last write (the hilt's) stands.
+    let retained = world.retained_attachment(actor).unwrap().unwrap();
+    assert_eq!(retained.0, [3072, 6400, 8448]);
+    assert_eq!(retained.1, shown[1].geometry.retained_angles);
+}
+
+#[test]
+fn display_models_overwrite_the_equipped_weapons_retained_words_and_expire_with_the_frame() {
+    use cyrus_script::script::{OrdinaryInputs, WeaponInputs};
+    let (mut world, data, _) = display_model_fixture("hand", "hilt", [512, 1024, 768], true);
+    let id = world.id(0).unwrap();
+    world
+        .refresh_actor_weapon_attachment(
+            id,
+            &data,
+            WeaponInputs {
+                selected_player: world.id(1).unwrap(),
+                item_system_ready: true,
+                shell_execution: false,
+            },
+        )
+        .unwrap();
+    let before = world.equipped_weapon(id).unwrap().unwrap().clone();
+    assert_eq!(before.geometry.retained_point, [2560, 5376, 7680]);
+    run_display_script(&mut world, &data).unwrap();
+    // The helper stores the same words the equipped weapon keeps: the display's replace them.
+    let after = world.equipped_weapon(id).unwrap().unwrap();
+    assert_eq!(after.geometry.retained_point, [3072, 6400, 8448]);
+    assert_eq!(after.geometry.position, before.geometry.position);
+    assert_eq!(
+        world.retained_attachment(id).unwrap().unwrap().0,
+        [3072, 6400, 8448]
+    );
+    assert_eq!(world.display_attachments().len(), 2);
+    // The next world frame empties the transient pool.
+    let mut random = cyrus_game::random::EngineRandom::default();
+    world
+        .update_ordinary(
+            &data,
+            [10, 30],
+            OrdinaryInputs {
+                scripts: cyrus_script::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                scene: None,
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            20,
+        )
+        .unwrap();
+    assert!(world.display_attachments().is_empty());
 }
 
 #[test]
 fn display_models_reject_an_unknown_name_and_a_full_pool() {
-    let (mut world, data, _) = display_model_fixture("hand", "nothere", [0; 3]);
+    let (mut world, data, _) = display_model_fixture("hand", "nothere", [0; 3], false);
     let error = run_display_script(&mut world, &data).unwrap_err();
     assert!(format!("{error:#}").contains("NOTHERE"), "{error:#}");
     // The call before the failing one still placed its record.
     assert_eq!(world.display_attachments().len(), 1);
     // The pool holds 900 records; the next allocation is the original's runtime error.
-    let (mut world, data, _) = display_model_fixture("hand", "hilt", [0; 3]);
+    let (mut world, data, _) = display_model_fixture("hand", "hilt", [0; 3], false);
     for _ in 0..450 {
         run_display_script(&mut world, &data).unwrap();
     }

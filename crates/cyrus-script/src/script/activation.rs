@@ -269,6 +269,12 @@ pub struct HostRequests {
     pub mainloop_exit: Option<i32>,
 }
 impl GameplayGlobals {
+    /// Test hook: stand in for a save written before the ledge point moved into the actor.
+    #[doc(hidden)]
+    pub fn set_legacy_ledge_anchor_for_test(&mut self, point: [i32; 3], heading: u16) {
+        self.legacy_ledge_anchor = Some((point, heading));
+    }
+
     /// Whether the swap state selects GREMLIN instead of CYRUS as the selected player.
     pub fn player_swapped(&self) -> bool {
         self.player_swapped
