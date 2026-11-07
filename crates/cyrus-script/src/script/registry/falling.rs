@@ -715,7 +715,7 @@ impl ScriptWorld {
             OrdinaryFallEntry::Start { force_group } => {
                 let (origin, timer) = ordinary_fall_origin(
                     self.spatial(id)?.local.position[1],
-                    actor.attributes[Attribute::JumpHeight],
+                    self.jump_height_of(index),
                 );
                 let control = self.actors[index]
                     .control
@@ -815,7 +815,7 @@ impl ScriptWorld {
         );
         let (origin, timer) = ordinary_fall_origin(
             self.spatial(id)?.local.position[1],
-            actor.attributes[Attribute::JumpHeight],
+            self.jump_height_of(index),
         );
         let control = self.actors[index]
             .control

@@ -54,6 +54,12 @@ interface components {
     /// and combat; it keeps control while the player is airborne or a script moves it. A claim
     /// lasts one frame, so call it every frame; when a mod stops, the original controls return.
     claim: func(heading: u32, speed: f32, run: bool, jump: bool);
+    /// Scale the player's jump while it is claimed: `jump-height` times the jump height (and the
+    /// descent of a fall, up to the attribute's byte limit) and `jump-speed` times the forward
+    /// speed of a walking or running jump, whose distance cap stays. Only a player on the ground
+    /// takes a change, so a jump in flight keeps its values. Call it each frame with `claim`; 1
+    /// and 1 are the original.
+    tune: func(jump-height: f32, jump-speed: f32);
   }
 
   /// The selected player's state (empty before a world has one).
@@ -69,6 +75,9 @@ interface components {
     view: func() -> u32;
     /// A jump or fall is in progress.
     airborne: func() -> bool;
+    /// A weapon is drawn or the combat stance is on: claimed walking and running then use the
+    /// fight animations, and `speed` the fight speeds.
+    armed: func() -> bool;
     /// The player's walking or running speed, in map units per nominal update.
     speed: func(run: bool) -> f32;
   }

@@ -124,6 +124,27 @@ pub struct LocomotionClaim {
     pub gait: Gait,
     /// Starts the original jump entry for the current gait.
     pub jump: bool,
+    pub tuning: PlayerTuning,
+}
+
+/// Scales of the player's jump, applied while a mod claims locomotion. They take effect only
+/// while the player is on the ground, so a jump in flight keeps the values it started with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlayerTuning {
+    /// Times `attr_jump_height`, the height of a jump and the descent of a fall, clamped to the
+    /// attribute's byte range.
+    pub jump_height: f32,
+    /// Times the forward speed of a walking or running jump; its distance cap is unchanged.
+    pub jump_speed: f32,
+}
+
+impl Default for PlayerTuning {
+    fn default() -> Self {
+        Self {
+            jump_height: 1.0,
+            jump_speed: 1.0,
+        }
+    }
 }
 
 /// The claim a mod made for the next update; the game consumes it and hands control back as

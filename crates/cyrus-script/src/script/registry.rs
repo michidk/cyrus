@@ -686,6 +686,8 @@ pub struct ScriptWorld {
     /// While a call routed to another actor runs, the actor that made it: the original's current
     /// script actor, which `Offset` attaches. Transient.
     routed_caller: Option<usize>,
+    /// A mod's jump scales for the selected player; not saved.
+    player_tuning: crate::player::input::PlayerTuning,
     weapons: BTreeMap<u16, cyrus_assets::script::weapon::Weapon>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
@@ -841,6 +843,41 @@ impl ScriptWorld {
             .expect("test actor has control state");
         control.falling_state = state;
         control.fall_origin_y = origin_y;
+    }
+
+    /// A mod's jump scales for the selected player. A change waits until the player is on the
+    /// ground, so a jump or fall already under way keeps one height throughout.
+    pub fn set_player_tuning(&mut self, tuning: crate::player::input::PlayerTuning) {
+        let airborne = self
+            .selected_player_index()
+            .and_then(|index| self.actors[index].control.as_ref())
+            .is_some_and(|control| {
+                control.queued_motion != JumpMotion::NONE
+                    || control.falling_state != JumpMotion::NONE
+            });
+        if !airborne {
+            self.player_tuning = tuning;
+        }
+    }
+
+    /// `attr_jump_height` of an actor, scaled by a mod's tuning for the selected player. Jump and
+    /// fall arithmetic read it through here so they agree for the length of a jump.
+    /// The selected player's `attr_jump_height` as the jump and fall arithmetic read it, after a
+    /// mod's tuning.
+    pub fn selected_jump_height(&self) -> Option<u8> {
+        self.selected_player_index()
+            .map(|index| self.jump_height_of(index))
+    }
+
+    pub(super) fn jump_height_of(&self, index: usize) -> u8 {
+        let base = self.actors[index].attributes[Attribute::JumpHeight];
+        if self.selected_player_index() == Some(index) {
+            (f32::from(base) * self.player_tuning.jump_height)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        } else {
+            base
+        }
     }
 
     pub fn selected_player(&self) -> Option<ScriptActorId> {
@@ -1554,6 +1591,7 @@ impl ScriptWorld {
             shell_templates,
             task_calls,
             routed_caller: None,
+            player_tuning: Default::default(),
             weapons: scripts.weapons.clone(),
             combat_attacks: scripts.combat_attacks.clone(),
             combat_defenses: scripts.combat_defenses.clone(),
@@ -9515,6 +9553,7 @@ mod fighting_tests {
             globals: Default::default(),
             task_calls: BTreeMap::new(),
             routed_caller: None,
+            player_tuning: Default::default(),
             weapons: BTreeMap::new(),
             combat_attacks: Vec::new(),
             combat_defenses: Vec::new(),

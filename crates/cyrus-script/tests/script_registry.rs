@@ -16297,6 +16297,7 @@ fn a_mod_claim_replaces_the_original_locomotion_with_its_own_heading_and_speed()
                         speed: 4.0,
                         gait: cyrus_script::player::input::Gait::Run,
                         jump: false,
+                        tuning: Default::default(),
                     }),
                 }),
                 hud: Some(&hud),
@@ -16335,6 +16336,132 @@ fn a_mod_claim_replaces_the_original_locomotion_with_its_own_heading_and_speed()
             .motion_direction,
         MotionDirection::FORWARD
     );
+}
+
+#[test]
+fn a_mod_claim_steers_a_jump_in_the_air_and_scales_the_jump_only_on_the_ground() {
+    use cyrus_script::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    let hud_asset = cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: Default::default(),
+        start_items: vec![],
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
+        torch_time: None,
+        inventory_screen: Default::default(),
+        island_map: Default::default(),
+    };
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
+    // Jump tuning scales the height on the ground; a change waits while the player is airborne.
+    world.set_attribute_for_test(player, cyrus_soup::Attribute::JumpHeight, 80);
+    let base = world.selected_jump_height().unwrap();
+    assert_eq!(base, 80);
+    let doubled = cyrus_script::player::input::PlayerTuning {
+        jump_height: 2.0,
+        jump_speed: 1.0,
+    };
+    world.set_player_tuning(doubled);
+    assert_eq!(
+        world.selected_jump_height(),
+        Some((u16::from(base) * 2).min(255) as u8)
+    );
+    world.set_falling_for_test(player, cyrus_script::script::JumpMotion::STANDING, 0);
+    world.set_player_tuning(Default::default());
+    assert_eq!(
+        world.selected_jump_height(),
+        Some((u16::from(base) * 2).min(255) as u8),
+        "a tuning change waits for the ground"
+    );
+    world.begin_player_movement_update(player, 0).unwrap();
+    let before = world.spatial(player).unwrap().local;
+    let held = cyrus_script::player::input::PlayerInput {
+        forward: true,
+        ..Default::default()
+    };
+    let mut cues = Vec::new();
+    world
+        .advance_player_controller(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            cyrus_script::clock::ClockStep {
+                frame_scale: 256,
+                nominal_ticks: 0,
+                fine_ticks: 0,
+            },
+            ScriptInputs {
+                player_controller: Some(PlayerControllerInput {
+                    held: &held,
+                    walk_mode: false,
+                    auto_defend: false,
+                    steer: None,
+                    claim: Some(cyrus_script::player::input::LocomotionClaim {
+                        heading: 700,
+                        speed: 4.0,
+                        gait: cyrus_script::player::input::Gait::Run,
+                        jump: false,
+                        tuning: Default::default(),
+                    }),
+                }),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                forward_step_clear: Some(true),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |id, cue| {
+                cues.push((id, cue));
+                Ok(())
+            },
+        )
+        .unwrap();
+    let after = world.spatial(player).unwrap().local;
+    // Airborne: the claim steers the heading of the jump and nothing else moves the player.
+    assert_eq!(after.angles[1], 700, "{before:?} -> {after:?}");
+    assert_eq!(after.position, before.position, "{before:?} -> {after:?}");
 }
 
 #[test]

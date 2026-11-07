@@ -62,6 +62,11 @@ pub struct LocomotionStatus {
     /// `attr_forward_walk` and `attr_forward_speed`: map units per nominal update.
     pub walk_speed: u8,
     pub run_speed: u8,
+    /// A weapon is drawn or the combat stance is on, so claimed walking and running use the
+    /// fight groups and these fight speeds (`attr_fight_forward_walk`, `attr_fight_forward_speed`).
+    pub armed: bool,
+    pub fight_walk_speed: u8,
+    pub fight_run_speed: u8,
 }
 
 impl ScriptWorld {
@@ -78,6 +83,13 @@ impl ScriptWorld {
                 || control.falling_state != JumpMotion::NONE,
             walk_speed: actor.attributes[Attribute::ForwardWalk],
             run_speed: actor.attributes[Attribute::ForwardSpeed],
+            armed: control.weapon_drawn
+                || control
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
+            fight_walk_speed: actor.attributes[Attribute::FightForwardWalk],
+            fight_run_speed: actor.attributes[Attribute::FightForwardSpeed],
         })
     }
 }
@@ -309,8 +321,14 @@ impl ScriptWorld {
             if let Some(claim) = input.claim {
                 // A mod owns ground locomotion: nothing of the original turn, walk, run or
                 // sidestep selection runs. Airborne and sliding stay with the engine.
+                if airborne {
+                    // Air control: a jump's forward displacement follows the actor's heading, so
+                    // the claimed heading steers it. A mod keeps the jump straight by claiming
+                    // the heading the player already has.
+                    world.face_claimed_heading(id, claim)?;
+                }
                 if !airborne && !sliding {
-                    world.run_claimed_locomotion(id, claim, timing, sounds)?;
+                    world.run_claimed_locomotion(id, claim, armed, timing, sounds)?;
                     if claim.jump {
                         let jump = crate::player::input::PlayerInput {
                             jump: true,
@@ -805,18 +823,12 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// One update of a mod's claimed locomotion: face the claimed heading, then, when it moves,
-    /// request the gait's animation and displace along the heading as ordinary running or
-    /// walking does. The ordinary late stages resolve the translation against the ground and
-    /// collision.
-    fn run_claimed_locomotion(
+    /// Face the heading a mod claimed.
+    fn face_claimed_heading(
         &mut self,
         id: super::ScriptActorId,
         claim: crate::player::input::LocomotionClaim,
-        timing: crate::clock::ClockStep,
-        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        use crate::player::input::Gait;
         let index = self.resolve(id)?;
         let spatial = self
             .spatial
@@ -828,15 +840,37 @@ impl ScriptWorld {
             spatial.local.angles[1] = heading;
             spatial.refresh_transform()?;
         }
+        Ok(())
+    }
+
+    /// One update of a mod's claimed locomotion: face the claimed heading, then, when it moves,
+    /// request the gait's animation and displace along the heading as ordinary running or
+    /// walking does. The ordinary late stages resolve the translation against the ground and
+    /// collision.
+    fn run_claimed_locomotion(
+        &mut self,
+        id: super::ScriptActorId,
+        claim: crate::player::input::LocomotionClaim,
+        armed: bool,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        use crate::player::input::Gait;
+        let index = self.resolve(id)?;
+        self.face_claimed_heading(id, claim)?;
         // Q8 distance: map units per nominal update times the frame scale, which has eight
         // fractional bits. A NaN speed reads as zero.
         let distance = (claim.speed.clamp(0.0, 255.0) * timing.frame_scale as f32).round() as i32;
         if distance <= 0 {
             return Ok(());
         }
-        let (group, motion) = match claim.gait {
-            Gait::Walk => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
-            Gait::Run => (AnimationGroup::RUN, MotionDirection::FORWARD),
+        // An armed player walks in the fight-run group and runs in the fight-forward group, as
+        // the ordinary movement natives choose them.
+        let (group, motion) = match (claim.gait, armed) {
+            (Gait::Walk, false) => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
+            (Gait::Run, false) => (AnimationGroup::RUN, MotionDirection::FORWARD),
+            (Gait::Walk, true) => (AnimationGroup::FIGHT_RUN, MotionDirection::WALK_FORWARD),
+            (Gait::Run, true) => (AnimationGroup::FIGHT_FORW, MotionDirection::FORWARD),
         };
         let position = self.spatial(id)?.local.position;
         let surface = self.actor_surface(id)?;

@@ -1533,6 +1533,7 @@ pub fn run_ordinary(
         _ => None,
     };
     let claim = claimed.as_deref().and_then(|claimed| claimed.0);
+    world.set_player_tuning(claim.map_or_else(Default::default, |claim| claim.tuning));
     let player_controller = if !explicit
         .as_ref()
         .is_some_and(|runtime| runtime.explicit_updated)

@@ -208,6 +208,7 @@ fn a_locomotion_claim_releases_the_movement_bindings_and_menus_take_it_back() {
         speed: 5.0,
         gait: Gait::Walk,
         jump: false,
+        tuning: Default::default(),
     };
     app.insert_resource(LocomotionClaimed(Some(claim)));
     app.update();

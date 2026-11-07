@@ -29,3 +29,25 @@ type = "number"
 default = 1
 min = 0.25
 max = 3
+
+[[setting]]
+key = "air_control"
+label = "Steer in the air (own movement only)"
+type = "bool"
+default = false
+
+[[setting]]
+key = "jump_height"
+label = "Jump height (own movement only)"
+type = "number"
+default = 1
+min = 0.5
+max = 3
+
+[[setting]]
+key = "jump_speed"
+label = "Jump speed (own movement only)"
+type = "number"
+default = 1
+min = 0.5
+max = 3

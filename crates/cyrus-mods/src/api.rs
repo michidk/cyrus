@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
 use cyrus_script::player::input::{
-    Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput, Wish,
+    Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput, PlayerTuning, Wish,
 };
 use cyrus_script::script::{CameraFrameState, ScriptActors};
 use std::collections::HashMap;
@@ -70,6 +70,7 @@ impl Camera {
 pub struct Movement {
     wish: Option<(f32, f32, bool, bool)>,
     claim: Option<(u32, f32, bool, bool)>,
+    tuning: Option<(f32, f32)>,
 }
 
 #[wasvy::methods]
@@ -79,6 +80,9 @@ impl Movement {
     }
     pub fn claim(&mut self, heading: u32, speed: f32, run: bool, jump: bool) {
         self.claim = Some((heading, speed, run, jump));
+    }
+    pub fn tune(&mut self, jump_height: f32, jump_speed: f32) {
+        self.tuning = Some((jump_height, jump_speed));
     }
 }
 
@@ -92,10 +96,14 @@ pub struct Player {
     airborne: bool,
     walk_speed: f32,
     run_speed: f32,
+    armed: bool,
 }
 
 #[wasvy::methods]
 impl Player {
+    pub fn armed(&self) -> bool {
+        self.armed
+    }
     pub fn position(&self) -> Vec<f32> {
         self.position.clone()
     }
@@ -263,6 +271,22 @@ pub(crate) fn exchange(
             wasd,
         }
     });
+    let tuning = steering
+        .tuning
+        .take()
+        .map_or_else(Default::default, |(height, speed)| PlayerTuning {
+            // A mod's NaN or infinity must not become a jump.
+            jump_height: if height.is_finite() {
+                height.max(0.0)
+            } else {
+                1.0
+            },
+            jump_speed: if speed.is_finite() {
+                speed.max(0.0)
+            } else {
+                1.0
+            },
+        });
     claimed.0 = steering
         .claim
         .take()
@@ -271,6 +295,7 @@ pub(crate) fn exchange(
             speed,
             gait: if run { Gait::Run } else { Gait::Walk },
             jump,
+            tuning,
         });
     if let Some(status) = actors
         .as_deref()
@@ -279,8 +304,15 @@ pub(crate) fn exchange(
         player.position = status.position.map(|q8| q8 as f32 / 256.0).to_vec();
         player.heading = u32::from(status.heading);
         player.airborne = status.airborne;
-        player.walk_speed = f32::from(status.walk_speed);
-        player.run_speed = f32::from(status.run_speed);
+        player.armed = status.armed;
+        (player.walk_speed, player.run_speed) = if status.armed {
+            (
+                f32::from(status.fight_walk_speed),
+                f32::from(status.fight_run_speed),
+            )
+        } else {
+            (f32::from(status.walk_speed), f32::from(status.run_speed))
+        };
     } else {
         *player = Player::default();
     }

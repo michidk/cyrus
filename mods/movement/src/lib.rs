@@ -70,7 +70,9 @@ impl bindings::Guest for Steering {
             if settings.flag("movement", "own_movement") {
                 // Owning the locomotion: face the way the keys point relative to the camera and
                 // move at the player's own walk or run speed, scaled by the setting.
-                let heading = if length > 0.0 {
+                let steering = length > 0.0
+                    && (!player.airborne() || settings.flag("movement", "air_control"));
+                let heading = if steering {
                     // The same offset the game uses: right of the view lowers the heading.
                     let offset = (-x).atan2(y) * 2048.0 / std::f32::consts::TAU;
                     (player.view() as i32 + offset.round() as i32).rem_euclid(2048) as u32
@@ -84,6 +86,10 @@ impl bindings::Guest for Steering {
                     0.0
                 };
                 movement.claim(heading, speed, run, jump);
+                movement.tune(
+                    settings.number("movement", "jump_height"),
+                    settings.number("movement", "jump_speed"),
+                );
             } else {
                 movement.steer(x, y, jump, wasd);
             }
