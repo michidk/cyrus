@@ -50145,3 +50145,6 @@ mod zap_health_tests;
 
 #[path = "script_registry/movement_tasks.rs"]
 mod movement_tasks_tests;
+
+#[path = "script_registry/player_queries.rs"]
+mod player_queries_tests;
