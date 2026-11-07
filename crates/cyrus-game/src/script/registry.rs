@@ -371,18 +371,16 @@ impl From<ActionWords> for [u32; 2] {
     }
 }
 
-/// The receiver's AI scratch fields: `ai_var1` (the signed location word `GotoLocation` stores),
-/// `ai_var2`, `ai_length` and the three node fields. Allocation zeroes the record and then sets the
-/// first variable and the node fields to minus one; reads of the word fields sign-extend them.
+/// The receiver's AI scratch fields scripts read and write by property: `ai_var1` (the signed
+/// location word `GotoLocation` stores), `ai_var2` and `ai_length`. Allocation zeroes the record and
+/// then sets the first variable to minus one; reads of the word fields sign-extend them. The node
+/// fields (`node`, `dnode`, `fdnode`) belong to [`super::ActorNavigation`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AiRecord {
     /// `ai_var1`: the location word `GotoLocation` retains independently of AI mode and delay.
     pub var1: i16,
     pub var2: i16,
     pub length: i32,
-    pub node: i32,
-    pub dnode: i32,
-    pub fdnode: i32,
 }
 impl Default for AiRecord {
     fn default() -> Self {
@@ -390,9 +388,6 @@ impl Default for AiRecord {
             var1: -1,
             var2: 0,
             length: 0,
-            node: -1,
-            dnode: -1,
-            fdnode: -1,
         }
     }
 }
@@ -5146,9 +5141,10 @@ fn ai_record_property(control: &mut ActorControlState, name: Property) -> Option
         Property::AiVar1 => AiField::Word(&mut control.ai.var1),
         Property::AiVar2 => AiField::Word(&mut control.ai.var2),
         Property::AiLength => AiField::Dword(&mut control.ai.length),
-        Property::Node => AiField::Dword(&mut control.ai.node),
-        Property::Dnode => AiField::Dword(&mut control.ai.dnode),
-        Property::Fdnode => AiField::Dword(&mut control.ai.fdnode),
+        // The node fields are the walk-map owner's held nodes: current, next and final destination.
+        Property::Node => AiField::Dword(&mut control.navigation.current),
+        Property::Dnode => AiField::Dword(&mut control.navigation.next),
+        Property::Fdnode => AiField::Dword(&mut control.navigation.destination),
         _ => return None,
     })
 }
@@ -8601,8 +8597,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let ai = control.ai;
             let record = format!(
                 "Node {}, dnode {}, ai_type {}, ai_mode {}, ai_delay {}, ai_length {}, ai_var1 {}, ai_var2 {}",
-                ai.node,
-                ai.dnode,
+                control.navigation.current,
+                control.navigation.next,
                 control.ai_type.byte(),
                 control.ai_mode,
                 control.ai_delay,

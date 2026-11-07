@@ -7304,61 +7304,67 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
       ],
-      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads zero. Saved with the actor. No native writes it yet. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads zero. Saved with the actor. No native writes it yet: no authoritative owner exists, so only script writes and the allocation default reach it. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
     },
     {
       "property": "node",
       "status": "partial",
       "owner": 5,
-      "scope": "Receiver current-node dword",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "scope": "Receiver held current walk-node index",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorNavigation",
       "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_node_properties_are_the_walk_map_owners_held_nodes",
         "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
-        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
-        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704392093",
+        "https://github.com/michidk/redguard-preservation/commit/8b29310"
       ],
-      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives keep their own route state and do not write this field yet. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified: the field is the walk-map owner's held current node index (ActorNavigation), so a script reads what the walk code holds and the walk code sees a script's write; the original copies a held next node into the previous-next record between dnode and fdnode. Allocation default -1. A raw property write stores the value without claiming or releasing a node reservation, as in the original. The map field (node_map) stays unsupported. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
     },
     {
       "property": "dnode",
       "status": "partial",
       "owner": 5,
-      "scope": "Receiver destination-node dword",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "scope": "Receiver held next walk-node index",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorNavigation",
       "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_node_properties_are_the_walk_map_owners_held_nodes",
         "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
-        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
-        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704392093",
+        "https://github.com/michidk/redguard-preservation/commit/8b29310"
       ],
-      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives do not write this field yet. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified: the field is the walk-map owner's held next node index (ActorNavigation), so a script reads what the walk code holds and the walk code sees a script's write; the original copies a held next node into the previous-next record between dnode and fdnode. Allocation default -1. A raw property write stores the value without claiming or releasing a node reservation, as in the original. The map field (node_map) stays unsupported. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
     },
     {
       "property": "fdnode",
       "status": "partial",
       "owner": 5,
-      "scope": "Receiver final-destination-node dword",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ai_record_property",
+      "scope": "Receiver held final-destination walk-node index",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorNavigation",
       "tests": [
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_node_properties_are_the_walk_map_owners_held_nodes",
         "crates/cyrus-game/tests/script_registry/header_hook.rs::ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_them",
-        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one",
-        "crates/cyrus-game/tests/script_registry/header_hook.rs::the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_defaults"
+        "crates/cyrus-game/tests/script_registry/header_hook.rs::header_hook_prints_three_lines_with_the_allocation_default_ai_record_and_returns_one"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
-        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542"
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6697187542",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6704392093",
+        "https://github.com/michidk/redguard-preservation/commit/8b29310"
       ],
-      "limits": "Verified: the generic property reader sign-extends 'w' fields and reads 'd' fields whole; the actor allocator zeroes the record then sets the first AI word and the three node dwords to -1. Reads and writes the full signed 32-bit value; a fresh actor reads -1. Saved with the actor. Navigation natives do not write this field yet. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified: the field is the walk-map owner's held final-destination node index (ActorNavigation), so a script reads what the walk code holds and the walk code sees a script's write; the original copies a held next node into the previous-next record between dnode and fdnode. Allocation default -1. A raw property write stores the value without claiming or releasing a node reservation, as in the original. The map field (node_map) stays unsupported. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "a53344ebe21b5a0393a3b6c8724ab5cf5d0146e4"
     },
     {

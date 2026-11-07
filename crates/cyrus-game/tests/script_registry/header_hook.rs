@@ -146,6 +146,12 @@ fn ai_record_properties_round_trip_with_their_widths_and_header_hook_reports_the
         locals,
         [1, 123_456, -7, 5, i32::MIN, 0x2345, -0x8000].map(cyrus_script::ScriptValue::Integer)
     );
+    // The node fields are the navigation owner's held nodes.
+    let navigation = world.actors()[0].control_state().unwrap().navigation;
+    assert_eq!(
+        (navigation.current, navigation.next, navigation.destination),
+        (123_456, -7, 5)
+    );
     assert_eq!(
         world.globals().printed_lines()[2],
         format!(
@@ -208,22 +214,10 @@ fn the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_
     };
     let saved = restore(&|saved| {
         saved["actors"][0]["control"]["ai_location"] = 9.into();
-        saved["actors"][0]["control"]["ai_record"] = serde_json::json!(
-            {"var2": -3, "length": 22, "node": 11, "dnode": 5, "fdnode": 6}
-        );
+        saved["actors"][0]["control"]["ai_record"] = serde_json::json!({"var2": -3, "length": 22});
     });
     let ai = saved.actors()[0].control_state().unwrap().ai;
-    assert_eq!(
-        [
-            ai.var1 as i32,
-            ai.var2 as i32,
-            ai.length,
-            ai.node,
-            ai.dnode,
-            ai.fdnode
-        ],
-        [9, -3, 22, 11, 5, 6]
-    );
+    assert_eq!([ai.var1 as i32, ai.var2 as i32, ai.length], [9, -3, 22]);
     // Saves written before the record existed restore the allocation defaults, keeping the
     // location word they did save.
     let older = restore(&|saved| {
@@ -234,17 +228,7 @@ fn the_ai_record_is_saved_with_the_actor_and_older_saves_restore_the_allocation_
             .remove("ai_record");
     });
     let ai = older.actors()[0].control_state().unwrap().ai;
-    assert_eq!(
-        [
-            ai.var1 as i32,
-            ai.var2 as i32,
-            ai.length,
-            ai.node,
-            ai.dnode,
-            ai.fdnode
-        ],
-        [4, 0, 0, -1, -1, -1]
-    );
+    assert_eq!([ai.var1 as i32, ai.var2 as i32, ai.length], [4, 0, 0]);
 }
 
 #[test]
@@ -277,5 +261,33 @@ fn message_and_broadcast_index_properties_are_the_receivers_selection_bytes() {
     assert_eq!(
         wide.actors()[0].runtime().unwrap().variables()[1],
         cyrus_script::ScriptValue::Integer(200)
+    );
+}
+
+#[test]
+fn the_node_properties_are_the_walk_map_owners_held_nodes() {
+    // The properties read and write the actor's held current, next and destination nodes, the
+    // fields navigation keeps, so the walk code sees a script's write and HeaderHook reports it.
+    let world = header_world(
+        &[
+            (Property::Node, 11),
+            (Property::Dnode, 5),
+            (Property::Fdnode, 6),
+        ],
+        &[Property::Node, Property::Dnode, Property::Fdnode],
+    );
+    let navigation = world.actors()[0].control_state().unwrap().navigation;
+    assert_eq!(
+        (navigation.current, navigation.next, navigation.destination),
+        (11, 5, 6)
+    );
+    assert_eq!(
+        world.actors()[0].runtime().unwrap().variables()[1..],
+        [11, 5, 6].map(cyrus_script::ScriptValue::Integer)
+    );
+    assert!(
+        world.globals().printed_lines()[2].starts_with("Node 11, dnode 5, "),
+        "{:?}",
+        world.globals().printed_lines()
     );
 }

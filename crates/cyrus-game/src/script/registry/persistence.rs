@@ -11,9 +11,6 @@ use serde::{Deserialize, Serialize};
 struct AiRecordSnapshot {
     var2: i16,
     length: i32,
-    node: i32,
-    dnode: i32,
-    fdnode: i32,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -123,9 +120,6 @@ impl ControlSnapshot {
             ai_record: Some(AiRecordSnapshot {
                 var2: control.ai.var2,
                 length: control.ai.length,
-                node: control.ai.node,
-                dnode: control.ai.dnode,
-                fdnode: control.ai.fdnode,
             }),
             living_state: control.living_state,
             motion_companion: control.motion_companion,
@@ -198,9 +192,6 @@ impl ControlSnapshot {
                     var1: self.ai_location,
                     var2: saved.map_or(defaults.var2, |saved| saved.var2),
                     length: saved.map_or(defaults.length, |saved| saved.length),
-                    node: saved.map_or(defaults.node, |saved| saved.node),
-                    dnode: saved.map_or(defaults.dnode, |saved| saved.dnode),
-                    fdnode: saved.map_or(defaults.fdnode, |saved| saved.fdnode),
                 }
             },
             living_state: self.living_state,
