@@ -218,3 +218,67 @@ fn last_angle_is_the_angle_history_set_rotation_stores() {
     assert_eq!(locals(&world)[0], -9);
     assert_ne!(locals(&world)[1], -9, "the local angle is not the history");
 }
+
+#[test]
+fn start_angle_is_the_creation_angles_reset_rotation_restores() {
+    let before = pose_world(&[
+        Step3::Read(Property::StartAngleVx),
+        Step3::Read(Property::AngleVx),
+    ]);
+    let [start, angle] = locals(&before)[..] else {
+        unreachable!()
+    };
+    assert_eq!(start, angle, "an actor is created with its start angles");
+    // SetRotation moves the angle and the history but not the creation angles.
+    let world = pose_world(&[
+        Step3::Call(Native::SetRotation, vec![100, 200, 300]),
+        Step3::Read(Property::StartAngleVx),
+        Step3::Read(Property::StartAngleVy),
+        Step3::Read(Property::StartAngleVz),
+    ]);
+    assert_eq!(locals(&world)[1..], [start, 0, 0]);
+    // A raw write replaces the creation angles, and ResetRotation then restores that component.
+    let world = pose_world(&[
+        Step3::Write(Property::StartAngleVy, 1234),
+        Step3::Call(Native::SetRotation, vec![10, 20, 30]),
+        Step3::Call(Native::ResetRotation, vec![0, 1, 0]),
+        Step3::Read(Property::StartAngleVy),
+        Step3::Read(Property::AngleVx),
+        Step3::Read(Property::AngleVy),
+        Step3::Read(Property::AngleVz),
+    ]);
+    assert_eq!(locals(&world)[2..], [1234, 10, 1234, 30]);
+}
+
+#[test]
+fn last_valid_record_is_the_stable_position_the_recovery_restores() {
+    // The flag is a byte: a read gives zero or one here, a nonzero write sets it, and a write whose
+    // low byte is zero clears it. The three dwords are the position the recovery restores.
+    let world = pose_world(&[
+        Step3::Read(Property::LastValidFlag),
+        Step3::Write(Property::LastValidPosVx, -512),
+        Step3::Write(Property::LastValidPosVy, 4096),
+        Step3::Write(Property::LastValidPosVz, i32::MAX),
+        Step3::Write(Property::LastValidFlag, 7),
+        Step3::Read(Property::LastValidFlag),
+        Step3::Read(Property::LastValidPosVx),
+        Step3::Read(Property::LastValidPosVy),
+        Step3::Read(Property::LastValidPosVz),
+    ]);
+    assert_eq!(locals(&world), [0, 1, -512, 4096, i32::MAX]);
+    let control = world.actors()[0].control_state().unwrap();
+    assert!(control.stable_position_valid);
+    assert_eq!(control.stable_local_position, [-512, 4096, i32::MAX]);
+    let world = pose_world(&[
+        Step3::Write(Property::LastValidFlag, 1),
+        Step3::Write(Property::LastValidFlag, 256),
+        Step3::Read(Property::LastValidFlag),
+    ]);
+    assert_eq!(locals(&world), [0]);
+    assert!(
+        !world.actors()[0]
+            .control_state()
+            .unwrap()
+            .stable_position_valid
+    );
+}

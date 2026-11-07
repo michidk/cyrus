@@ -656,4 +656,10 @@ previous position (what `SetPosition` stores with the current one), the saved st
 (what `DistanceFromStart` measures against) and the angle history (what `SetRotation` stores), with no
 matrix refresh. See preservation's
 [position and angle history properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#position-and-angle-history-properties).
-The slave, start-angle, valid-position, `move` and `ov` families stay unsupported.
+Verified: `start_angle.*` reads and writes the whole 32-bit creation angles ResetRotation restores
+(creation, player placement and the player swap set them with the angle history; SetRotation does not).
+`last_valid_flag` and `last_valid_pos.*` are the stable-position record the ordinary recovery restores
+from while the flag is set: the flag reads 0 or 1 and a write sets it when its low byte is nonzero, and
+the position is whole 32-bit values. See preservation's
+[stable-position and creation-angle properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#stable-position-and-creation-angle-properties).
+The slave, `move` and `ov` families stay unsupported.

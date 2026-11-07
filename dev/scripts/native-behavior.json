@@ -7547,6 +7547,118 @@
       ],
       "limits": "Verified in the original: the descriptor offset is the field SetPosition/SetStartPosition/SetRotation and DistanceFromStart use. The angle history SetRotation stores with the local angles (masked to eleven bits by that native); a raw write stores the whole 32-bit value in the history only. Reads and writes are whole signed 32-bit values. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "last_valid_flag",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver stable-position record flag",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState stable_position_valid/stable_local_position",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_valid_record_is_the_stable_position_the_recovery_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the valid record is the stable-position record the ordinary recovery restores from while its flag byte is nonzero, with the three position dwords after it. cyrus keeps the flag as a boolean, so a read gives 0 or 1 and a write sets it when its low byte is nonzero; the position reads and writes whole signed 32-bit values. The record feeds the existing recovery, fall and save paths. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
+    },
+    {
+      "property": "last_valid_pos.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver stable-position record coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState stable_position_valid/stable_local_position",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_valid_record_is_the_stable_position_the_recovery_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the valid record is the stable-position record the ordinary recovery restores from while its flag byte is nonzero, with the three position dwords after it. cyrus keeps the flag as a boolean, so a read gives 0 or 1 and a write sets it when its low byte is nonzero; the position reads and writes whole signed 32-bit values. The record feeds the existing recovery, fall and save paths. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
+    },
+    {
+      "property": "last_valid_pos.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver stable-position record coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState stable_position_valid/stable_local_position",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_valid_record_is_the_stable_position_the_recovery_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the valid record is the stable-position record the ordinary recovery restores from while its flag byte is nonzero, with the three position dwords after it. cyrus keeps the flag as a boolean, so a read gives 0 or 1 and a write sets it when its low byte is nonzero; the position reads and writes whole signed 32-bit values. The record feeds the existing recovery, fall and save paths. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
+    },
+    {
+      "property": "last_valid_pos.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver stable-position record coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState stable_position_valid/stable_local_position",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::last_valid_record_is_the_stable_position_the_recovery_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the valid record is the stable-position record the ordinary recovery restores from while its flag byte is nonzero, with the three position dwords after it. cyrus keeps the flag as a boolean, so a read gives 0 or 1 and a write sets it when its low byte is nonzero; the position reads and writes whole signed 32-bit values. The record feeds the existing recovery, fall and save paths. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
+    },
+    {
+      "property": "start_angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver creation angle coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial initial_angles",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::start_angle_is_the_creation_angles_reset_rotation_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the creation-angle triple is written by actor creation, the player placement and the player swap together with the angle history, and ResetRotation restores a component from it; SetRotation does not change it. Reads and writes are whole signed 32-bit values with no matrix refresh. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
+    },
+    {
+      "property": "start_angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver creation angle coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial initial_angles",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::start_angle_is_the_creation_angles_reset_rotation_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the creation-angle triple is written by actor creation, the player placement and the player swap together with the angle history, and ResetRotation restores a component from it; SetRotation does not change it. Reads and writes are whole signed 32-bit values with no matrix refresh. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
+    },
+    {
+      "property": "start_angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver creation angle coordinate",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorSpatial initial_angles",
+      "tests": [
+        "crates/cyrus-game/tests/script_registry/pose_properties.rs::start_angle_is_the_creation_angles_reset_rotation_restores"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
+        "https://github.com/michidk/cyrus/issues/5#issuecomment-6705134830"
+      ],
+      "limits": "Verified in the original: the creation-angle triple is written by actor creation, the player placement and the player swap together with the angle history, and ResetRotation restores a component from it; SetRotation does not change it. Reads and writes are whole signed 32-bit values with no matrix refresh. Natural authored gameplay parity remains Unknown.",
+      "reviewed_revision": "c24983f426041ac1739e45cd9d682a7cc14cfc5e"
     }
   ],
   "property_groups": [
@@ -7925,7 +8037,6 @@
         "last_collide",
         "last_collide_count",
         "last_direction",
-        "last_valid_flag",
         "loaded_matrix",
         "move_counter",
         "origin_time",
@@ -7984,9 +8095,6 @@
         "last_slave_pos.vx",
         "last_slave_pos.vy",
         "last_slave_pos.vz",
-        "last_valid_pos.vx",
-        "last_valid_pos.vy",
-        "last_valid_pos.vz",
         "local_index",
         "move.vx",
         "move.vy",
@@ -8002,9 +8110,6 @@
         "slave_pos.vx",
         "slave_pos.vy",
         "slave_pos.vz",
-        "start_angle.vx",
-        "start_angle.vy",
-        "start_angle.vz",
         "string_index",
         "task_variable2[0]",
         "task_variable2[1]",

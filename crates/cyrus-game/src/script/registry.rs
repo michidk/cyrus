@@ -5092,6 +5092,7 @@ enum PoseProperty {
     LastPosition(usize),
     StartPosition(usize),
     LastAngle(usize),
+    StartAngle(usize),
 }
 
 /// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
@@ -5135,21 +5136,31 @@ fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&m
     })
 }
 
-/// An AI-record field a script property names: the word fields read sign-extended and keep the low
-/// sixteen bits of a write, the dword fields keep all of it.
-enum AiField<'a> {
+/// A control-record field a script property names: the word fields read sign-extended and keep the
+/// low sixteen bits of a write, the dword fields keep all of it, and the flag byte reads
+/// zero-extended (cyrus keeps it as a boolean, so a read gives 0 or 1 and any nonzero write sets it).
+enum ControlField<'a> {
     Word(&'a mut i16),
     Dword(&'a mut i32),
+    Flag(&'a mut bool),
 }
-fn ai_record_property(control: &mut ActorControlState, name: Property) -> Option<AiField<'_>> {
+fn control_record_property(
+    control: &mut ActorControlState,
+    name: Property,
+) -> Option<ControlField<'_>> {
     Some(match name {
-        Property::AiVar1 => AiField::Word(&mut control.ai.var1),
-        Property::AiVar2 => AiField::Word(&mut control.ai.var2),
-        Property::AiLength => AiField::Dword(&mut control.ai.length),
+        Property::AiVar1 => ControlField::Word(&mut control.ai.var1),
+        Property::AiVar2 => ControlField::Word(&mut control.ai.var2),
+        Property::AiLength => ControlField::Dword(&mut control.ai.length),
         // The node fields are the walk-map owner's held nodes: current, next and final destination.
-        Property::Node => AiField::Dword(&mut control.navigation.current),
-        Property::Dnode => AiField::Dword(&mut control.navigation.next),
-        Property::Fdnode => AiField::Dword(&mut control.navigation.destination),
+        Property::Node => ControlField::Dword(&mut control.navigation.current),
+        Property::Dnode => ControlField::Dword(&mut control.navigation.next),
+        Property::Fdnode => ControlField::Dword(&mut control.navigation.destination),
+        // The stable-position record the fall and recovery code restores from.
+        Property::LastValidFlag => ControlField::Flag(&mut control.stable_position_valid),
+        Property::LastValidPosVx => ControlField::Dword(&mut control.stable_local_position[0]),
+        Property::LastValidPosVy => ControlField::Dword(&mut control.stable_local_position[1]),
+        Property::LastValidPosVz => ControlField::Dword(&mut control.stable_local_position[2]),
         _ => return None,
     })
 }
@@ -5157,7 +5168,8 @@ fn ai_record_property(control: &mut ActorControlState, name: Property) -> Option
 fn pose_property(name: Property) -> Option<PoseProperty> {
     use Property::{
         AngleVx, AngleVy, AngleVz, LastAngleVx, LastAngleVy, LastAngleVz, LastPosVx, LastPosVy,
-        LastPosVz, PosVx, PosVy, PosVz, StartPosVx, StartPosVy, StartPosVz,
+        LastPosVz, PosVx, PosVy, PosVz, StartAngleVx, StartAngleVy, StartAngleVz, StartPosVx,
+        StartPosVy, StartPosVz,
     };
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
     find([PosVx, PosVy, PosVz])
@@ -5166,6 +5178,7 @@ fn pose_property(name: Property) -> Option<PoseProperty> {
         .or_else(|| find([LastPosVx, LastPosVy, LastPosVz]).map(PoseProperty::LastPosition))
         .or_else(|| find([StartPosVx, StartPosVy, StartPosVz]).map(PoseProperty::StartPosition))
         .or_else(|| find([LastAngleVx, LastAngleVy, LastAngleVz]).map(PoseProperty::LastAngle))
+        .or_else(|| find([StartAngleVx, StartAngleVy, StartAngleVz]).map(PoseProperty::StartAngle))
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
@@ -5399,16 +5412,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 actor.broadcast_index
             }));
         }
-        if ai_record_property(&mut ActorControlState::default(), name).is_some() {
+        if control_record_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             return Ok(
-                match ai_record_property(control, name).expect("named AI field") {
-                    AiField::Word(word) => i32::from(*word),
-                    AiField::Dword(dword) => *dword,
+                match control_record_property(control, name).expect("named control field") {
+                    ControlField::Word(word) => i32::from(*word),
+                    ControlField::Dword(dword) => *dword,
+                    ControlField::Flag(flag) => i32::from(*flag),
                 },
             );
         }
@@ -5431,6 +5445,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name}: saved start position unavailable"))?
                 [axis],
             PoseProperty::LastAngle(axis) => spatial.angle_history[axis],
+            PoseProperty::StartAngle(axis) => spatial.initial_angles[axis],
         })
     }
 
@@ -5547,15 +5562,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
-        if ai_record_property(&mut ActorControlState::default(), name).is_some() {
+        if control_record_property(&mut ActorControlState::default(), name).is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            match ai_record_property(control, name).expect("named AI field") {
-                AiField::Word(word) => *word = value as i16,
-                AiField::Dword(dword) => *dword = value,
+            match control_record_property(control, name).expect("named control field") {
+                ControlField::Word(word) => *word = value as i16,
+                ControlField::Dword(dword) => *dword = value,
+                ControlField::Flag(flag) => *flag = value as u8 != 0,
             }
             return Ok(());
         }
@@ -5593,6 +5609,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 })?[axis] = value
             }
             PoseProperty::LastAngle(axis) => spatial.angle_history[axis] = value,
+            PoseProperty::StartAngle(axis) => spatial.initial_angles[axis] = value,
         }
         Ok(())
     }
