@@ -156,10 +156,10 @@ module where it is defined and regenerate.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
-- `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, optionally ray traced through
+- `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
 - `src/fog/modern_lighting/lights.rs` — The sun, ambient light and object lights the stand-ins are lit with.
-- `src/fog/modern_lighting/plugin.rs` — The modern lighting plugins, the Solari camera setup and teardown, and the markers the other
-- `src/fog/modern_lighting/proxies.rs` — Stand-in entities that give Solari the world meshes in the layout it accepts.
+- `src/fog/modern_lighting/plugin.rs` — The modern lighting plugin, its camera effects and teardown, and the markers the other lighting
+- `src/fog/modern_lighting/proxies.rs` — Stand-in entities that replace the world's shader-driven draws with plain PBR ones.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.

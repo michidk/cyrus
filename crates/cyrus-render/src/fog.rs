@@ -7,9 +7,7 @@ mod observation;
 mod preparation;
 pub use observation::BoundSceneLightImage;
 mod texture;
-#[cfg(feature = "raytracing")]
-pub use modern_lighting::RayTracingPlugin;
-pub use modern_lighting::{ModernLightingPlugin, RayTracingSupport};
+pub use modern_lighting::ModernLightingPlugin;
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
@@ -279,7 +277,6 @@ impl Plugin for FogPlugin {
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
-            .init_resource::<RayTracingSupport>()
             .add_plugins((
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),

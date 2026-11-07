@@ -17,7 +17,7 @@ cyrus-app = { path = "../cyrus-app" }
 cyrus-assets = { workspace = true, features = ["native"] }
 cyrus-config.workspace = true
 cyrus-world.workspace = true
-cyrus-render = { workspace = true, features = ["raytracing"] }
+cyrus-render.workspace = true
 cyrus-session.workspace = true
 cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default"] }

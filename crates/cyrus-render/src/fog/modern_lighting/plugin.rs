@@ -1,7 +1,7 @@
-//! The modern lighting plugins, the Solari camera setup and teardown, and the markers the other
-//! lighting modules share.
+//! The modern lighting plugin, its camera effects and teardown, and the markers the other lighting
+//! modules share.
 use super::{
-    Proxy, RayTracingSupport, Tier,
+    Proxy,
     lights::sync_lights,
     proxies::{hide_draws, sync_proxies},
 };
@@ -10,26 +10,28 @@ use bevy::{
     anti_alias::smaa::Smaa,
     camera::{Hdr, visibility::RenderLayers},
     core_pipeline::prepass::{DepthPrepass, NormalPrepass},
-    ecs::system::SystemParam,
     light::{EnvironmentMapLight, ShadowFilteringMethod},
     pbr::{ContactShadows, ScreenSpaceAmbientOcclusion},
     post_process::bloom::Bloom,
     prelude::*,
 };
-use cyrus_game::fidelity::Fidelity;
+use cyrus_game::fidelity::{Area, Fidelity, Mode};
 
-/// Lights the world with PBR stand-ins while `Area::Lighting` or `Area::RayTracing` is Modern.
-/// Add after `DefaultPlugins`.
+/// Lights the world with PBR stand-ins while `Area::Lighting` is Modern. Add after `DefaultPlugins`.
 pub struct ModernLightingPlugin;
 
 impl Plugin for ModernLightingPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RayTracingSupport>().add_systems(
+        app.add_systems(
             PostUpdate,
             (
-                (sync_proxies, hide_draws.after(sync_proxies), sync_lights).run_if(lit),
-                configure_raster_camera.run_if(raster),
-                leave_raster,
+                (
+                    sync_proxies,
+                    hide_draws.after(sync_proxies),
+                    sync_lights,
+                    configure_camera,
+                )
+                    .run_if(lit),
                 restore.run_if(not(lit)),
             )
                 .after(TransformSystems::Propagate)
@@ -38,25 +40,8 @@ impl Plugin for ModernLightingPlugin {
     }
 }
 
-/// The lighting tier the fidelity settings select.
-#[derive(SystemParam)]
-pub(super) struct ActiveTier<'w> {
-    fidelity: Res<'w, Fidelity>,
-    support: Res<'w, RayTracingSupport>,
-}
-
-impl ActiveTier<'_> {
-    pub(super) fn get(&self) -> Option<Tier> {
-        Tier::select(&self.fidelity, &self.support)
-    }
-}
-
-fn lit(tier: ActiveTier) -> bool {
-    tier.get().is_some()
-}
-
-fn raster(tier: ActiveTier) -> bool {
-    tier.get() == Some(Tier::Raster)
+fn lit(fidelity: Res<Fidelity>) -> bool {
+    fidelity.mode(Area::Lighting) == Mode::Modern
 }
 
 /// The source mesh a [`Proxy`] stands in for.
@@ -65,7 +50,7 @@ pub(super) struct StandInOf(pub(super) Entity);
 
 /// A source mesh that has a stand-in; its own draw is hidden.
 #[derive(Component)]
-pub(super) struct Traced;
+pub(super) struct Replaced;
 
 /// The render layers an entity had before its draw was hidden for stand-ins.
 #[derive(Component)]
@@ -75,11 +60,11 @@ pub(super) struct Hidden(pub(super) Option<RenderLayers>);
 #[derive(Component)]
 pub(super) struct Light;
 
-/// Camera effects of the raster tier. Everything is Bevy's own; a Modern tuning choice. Temporal
+/// Camera effects. Everything is Bevy's own; a Modern tuning choice. Temporal
 /// anti-aliasing is left out: the stand-ins of animated meshes are rewritten in place, so they have
 /// no valid motion vectors, and the original shader draws write none.
 #[derive(Bundle)]
-struct RasterEffects {
+struct CameraEffects {
     hdr: Hdr,
     // Screen-space ambient occlusion and contact shadows need depth, and the former normals.
     depth: DepthPrepass,
@@ -91,7 +76,7 @@ struct RasterEffects {
     shadow_filtering: ShadowFilteringMethod,
 }
 
-impl Default for RasterEffects {
+impl Default for CameraEffects {
     fn default() -> Self {
         Self {
             hdr: Hdr,
@@ -106,50 +91,35 @@ impl Default for RasterEffects {
     }
 }
 
-fn configure_raster_camera(
+fn configure_camera(
     mut commands: Commands,
     cameras: Query<Entity, (With<ViewCamera>, Without<ScreenSpaceAmbientOcclusion>)>,
 ) {
     for camera in &cameras {
-        commands.entity(camera).insert(RasterEffects::default());
+        commands.entity(camera).insert(CameraEffects::default());
     }
 }
 
-/// Removes the raster effects once the tier changes. Solari brings its own HDR and prepasses, so
-/// those stay while it lights the scene.
-fn leave_raster(
+/// Undoes everything this module changed once modern lighting is off.
+#[allow(clippy::type_complexity)] // Bevy query filters.
+fn restore(
     mut commands: Commands,
-    tier: ActiveTier,
     cameras: Query<Entity, (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>)>,
+    owned: Query<Entity, Or<(With<Proxy>, With<Light>)>>,
+    hidden: Query<(Entity, &Hidden)>,
 ) {
-    let tier = tier.get();
-    if tier == Some(Tier::Raster) {
-        return;
-    }
     for camera in &cameras {
-        let mut camera = commands.entity(camera);
-        camera.remove::<(
+        commands.entity(camera).remove::<(
+            Hdr,
+            DepthPrepass,
+            NormalPrepass,
             ScreenSpaceAmbientOcclusion,
             ContactShadows,
             Smaa,
             Bloom,
             ShadowFilteringMethod,
+            EnvironmentMapLight,
         )>();
-        if tier.is_none() {
-            camera.remove::<(Hdr, DepthPrepass, NormalPrepass)>();
-        }
-    }
-}
-
-/// Undoes everything this module changed once modern lighting is off.
-fn restore(
-    mut commands: Commands,
-    cameras: Query<Entity, (With<ViewCamera>, With<EnvironmentMapLight>)>,
-    owned: Query<Entity, Or<(With<Proxy>, With<Light>)>>,
-    hidden: Query<(Entity, &Hidden)>,
-) {
-    for camera in &cameras {
-        commands.entity(camera).remove::<EnvironmentMapLight>();
     }
     for entity in &owned {
         commands.entity(entity).despawn();
@@ -165,142 +135,7 @@ pub(super) fn unhide(commands: &mut Commands, entity: Entity, hidden: &Hidden) {
         Some(layers) => entity.insert(layers.clone()),
         None => entity.remove::<RenderLayers>(),
     };
-    entity.remove::<(Hidden, Traced)>();
-}
-
-#[cfg(feature = "raytracing")]
-pub use tracing::RayTracingPlugin;
-
-#[cfg(feature = "raytracing")]
-mod tracing {
-    use super::{ActiveTier, Light, Proxy, RayTracingSupport, Tier, sync_proxies};
-    use crate::camera::ViewCamera;
-    use bevy::{
-        camera::{CameraMainTextureUsages, Hdr},
-        core_pipeline::prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass},
-        pbr::DefaultOpaqueRendererMethod,
-        prelude::*,
-        render::{RenderApp, render_resource::TextureUsages, renderer::RenderDevice},
-        solari::prelude::{RaytracingMesh3d, SolariLighting, SolariPlugins},
-    };
-
-    /// Adds Solari behind the `RayTracing` fidelity area. Add after [`super::ModernLightingPlugin`].
-    pub struct RayTracingPlugin;
-
-    impl Plugin for RayTracingPlugin {
-        fn build(&self, app: &mut App) {
-            app.add_plugins(SolariPlugins)
-                // Solari makes every opaque material deferred, which would bypass this
-                // renderer's forward shaders. Only the traced stand-ins opt in.
-                .insert_resource(DefaultOpaqueRendererMethod::forward())
-                .add_systems(
-                    PostUpdate,
-                    (
-                        (configure_camera, trace_stand_ins.after(sync_proxies)).run_if(traced),
-                        leave_tracing.run_if(not(traced)),
-                    )
-                        .after(TransformSystems::Propagate)
-                        .after(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate),
-                );
-        }
-
-        fn finish(&self, app: &mut App) {
-            let required = SolariPlugins::required_wgpu_features();
-            let support = match app
-                .get_sub_app(RenderApp)
-                .and_then(|render| render.world().get_resource::<RenderDevice>())
-            {
-                None => RayTracingSupport::Unavailable,
-                Some(device) if device.features().contains(required) => {
-                    RayTracingSupport::Available
-                }
-                Some(device) => RayTracingSupport::MissingFeatures(format!(
-                    "{:?}",
-                    required.difference(device.features())
-                )),
-            };
-            if support != RayTracingSupport::Available {
-                warn!("ray tracing unavailable: {support:?}");
-            }
-            app.insert_resource(support);
-        }
-    }
-
-    fn traced(tier: ActiveTier) -> bool {
-        tier.get() == Some(Tier::Traced)
-    }
-
-    /// Solari settings tuned for a denoiser-free image; a Modern tuning choice. Solari's defaults
-    /// expect a denoiser, which this renderer does not have, so unlit and shadowed surfaces
-    /// would otherwise show raw per-pixel sampling noise.
-    fn solari_lighting() -> SolariLighting {
-        SolariLighting {
-            // Reuses light samples between neighbouring pixels and frames.
-            restir: true,
-            // Sun and emissive light samples per pixel, up from 8 and 4.
-            primary_di_samples: 24,
-            secondary_di_samples: 8,
-            // Longer cache history trades slower reaction to light changes for stability.
-            world_cache_max_temporal_samples: 96.0,
-            // Solari's default cells are 0.15 m, sized for a room. An island has far more cells
-            // than the per-frame update budget can fill, and the unfilled ones show as speckle in
-            // shadowed areas. World units are metres (**Inferred** from the glTF export scale).
-            world_cache_position_base_cell_size: 1.0,
-            // Reuse light samples for longer between frames.
-            confidence_weight_cap: 24.0,
-            ..default()
-        }
-    }
-
-    pub(super) fn configure_camera(
-        mut commands: Commands,
-        cameras: Query<Entity, (With<ViewCamera>, Without<SolariLighting>)>,
-    ) {
-        for camera in &cameras {
-            // `Msaa::Off` is already set at spawn. Solari also requires storage binding,
-            // and brings HDR and the deferred, depth and motion prepasses as required components.
-            commands.entity(camera).insert((
-                solari_lighting(),
-                CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING),
-            ));
-        }
-    }
-
-    /// Lets Solari trace each stand-in and each emissive light.
-    pub(super) fn trace_stand_ins(
-        mut commands: Commands,
-        proxies: Query<(Entity, &Mesh3d, Option<&RaytracingMesh3d>), With<Proxy>>,
-    ) {
-        for (entity, mesh, tracing) in &proxies {
-            if tracing.is_none_or(|tracing| tracing.0 != mesh.0) {
-                commands
-                    .entity(entity)
-                    .insert(RaytracingMesh3d(mesh.0.clone()));
-            }
-        }
-    }
-
-    /// Undoes what tracing added once Solari is no longer lighting the scene.
-    #[allow(clippy::type_complexity)] // Bevy query filters.
-    pub(super) fn leave_tracing(
-        mut commands: Commands,
-        cameras: Query<Entity, (With<ViewCamera>, With<SolariLighting>)>,
-        traced: Query<Entity, (With<RaytracingMesh3d>, Or<(With<Proxy>, With<Light>)>)>,
-    ) {
-        for camera in &cameras {
-            commands.entity(camera).remove::<(
-                SolariLighting,
-                CameraMainTextureUsages,
-                Hdr,
-                DeferredPrepass,
-                DepthPrepass,
-                MotionVectorPrepass,
-            )>();
-        }
-        for entity in &traced {
-            commands.entity(entity).remove::<RaytracingMesh3d>();
-        }
-    }
+    entity.remove::<(Hidden, Replaced)>();
 }
 
 #[cfg(test)]
@@ -322,23 +157,7 @@ mod tests {
             sync_proxies,
             hide_draws,
             sync_lights,
-            configure_raster_camera,
-            leave_raster,
-        ));
-        schedule
-            .initialize(&mut world)
-            .expect("systems initialize without query conflicts");
-    }
-
-    #[cfg(feature = "raytracing")]
-    #[test]
-    fn tracing_systems_have_disjoint_queries() {
-        let mut world = World::new();
-        let mut schedule = Schedule::default();
-        schedule.add_systems((
-            super::tracing::configure_camera,
-            super::tracing::trace_stand_ins,
-            super::tracing::leave_tracing,
+            configure_camera,
         ));
         schedule
             .initialize(&mut world)

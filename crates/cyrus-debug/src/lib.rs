@@ -13,7 +13,7 @@ use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use cyrus_render::camera::FlycamSettings;
-use cyrus_render::fog::{RayTracingSupport, RenderDistance};
+use cyrus_render::fog::RenderDistance;
 use cyrus_script::player::Player;
 
 mod performance;
@@ -120,7 +120,6 @@ fn debug_menu(
     mut flycam: ResMut<FlycamSettings>,
     mut fidelity: ResMut<Fidelity>,
     mut distance: ResMut<RenderDistance>,
-    ray_tracing: Option<Res<RayTracingSupport>>,
     mut transfers: ResMut<cyrus_game::cheats::CheatTransfer>,
     player: Query<&Transform, With<Player>>,
 ) -> Result {
@@ -241,7 +240,6 @@ fn debug_menu(
             Area::Lighting,
             "Lighting (Modern: shadows, PBR)",
         );
-        ray_tracing_control(ui, &mut fidelity, ray_tracing.as_deref());
         fidelity_control(
             ui,
             &mut fidelity,
@@ -309,39 +307,6 @@ fn fidelity_control(ui: &mut egui::Ui, fidelity: &mut Fidelity, area: Area, labe
             }
         }
     });
-}
-
-/// Ray tracing is Modern-only and needs a GPU with ray queries, so the box is greyed out without them.
-fn ray_tracing_control(
-    ui: &mut egui::Ui,
-    fidelity: &mut Fidelity,
-    support: Option<&RayTracingSupport>,
-) {
-    let unavailable = match support {
-        Some(RayTracingSupport::Available) => None,
-        Some(RayTracingSupport::MissingFeatures(missing)) => {
-            Some(format!("This GPU lacks ray query support: {missing}"))
-        }
-        Some(RayTracingSupport::Unavailable) | None => {
-            Some("This build has no ray tracing, or no renderer is running.".to_owned())
-        }
-    };
-    let mut enabled = fidelity.mode(Area::RayTracing) == Mode::Modern;
-    let response = ui.add_enabled(
-        unavailable.is_none(),
-        egui::Checkbox::new(&mut enabled, "Ray tracing (Solari, Modern)"),
-    );
-    if response.changed() {
-        let mode = if enabled {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        };
-        fidelity.set(Area::RayTracing, mode);
-    }
-    if let Some(reason) = unavailable {
-        response.on_disabled_hover_text(reason);
-    }
 }
 
 #[cfg(test)]
