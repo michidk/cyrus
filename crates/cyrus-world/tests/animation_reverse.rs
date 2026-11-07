@@ -70,8 +70,14 @@ fn reverse_controls_match_original_literal_scenarios() {
         (12, 255, 0, 2, 0, 255),
     ] {
         let mut data = data();
-        data.metadata["actors"][0]["animation_groups"][1]["commands"][3] =
-            json!({"opcode":opcode,"value":operand});
+        // Commands carry the operand fields the exporter writes for their opcode.
+        data.metadata["actors"][0]["animation_groups"][1]["commands"][3] = match opcode {
+            6 | 8 => json!({"opcode":opcode,"x":operand,"y":operand,"z":operand}),
+            7 | 9 => json!({"opcode":opcode,"axis":0,"value":operand}),
+            10 => json!({"opcode":opcode,"target_group":operand,"target_frame":0}),
+            15 => json!({"opcode":opcode,"trigger_mask":operand,"start_frame":0,"target_group":0}),
+            _ => json!({"opcode":opcode,"value":operand}),
+        };
         let mut actor =
             ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
         actor.request(AnimationGroup::from_index(7), 0, 0).unwrap();
