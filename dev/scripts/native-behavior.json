@@ -9284,6 +9284,86 @@
       ],
       "limits": "Verified in the original: the family update copies the attached pose into the last_slave fields and stores the newly composed pose in the slave fields, and an actor with attr_slave takes its effective position and angles for queries from them. Reads and writes are whole signed 32-bit values with no matrix refresh; a write reaches DistanceToLocation of an attached actor until the next family refresh replaces it. A read before the pose (or, for last_slave_*, the first family refresh) exists is an explicit error; an unattached actor's fields do not feed queries. cyrus keeps the composed angles wrapped to signed values where the original masks them to 0 through 2047. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "a637b1d539cfd0cb19a0798719e7178617368075"
+    },
+    {
+      "property": "hand_item",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver held-item byte HandItem assigns",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#held-item-and-surface-time-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "The byte reads zero until assigned and a script write keeps the low eight bits (cyrus keeps an unassigned byte as None, which every consumer treats as zero). Verified: the weapon draw and item-use checks test it only for zero and for named item numbers. Unknown: HandItem admission through a script writing the byte directly in an installed script (no installed script uses the property).",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "surface_time",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Plain actor-record byte",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#held-item-and-surface-time-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by searching the whole executable image for the record displacement: no instruction addresses the byte, so it only retains a script's stored low eight bits (zero otherwise) and is saved with the actor.",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "jump_time",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Plain actor-record byte (distinct from the jump_time attribute)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#held-item-and-surface-time-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by searching the whole executable image for the record displacement: no instruction addresses the byte, so it only retains a script's stored low eight bits (zero otherwise) and is saved with the actor.",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "jump_height",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Plain actor-record byte (distinct from the jump_height attribute)",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#held-item-and-surface-time-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by searching the whole executable image for the record displacement: no instruction addresses the byte, so it only retains a script's stored low eight bits (zero otherwise) and is saved with the actor.",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "anchor",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Plain actor-record byte",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#held-item-and-surface-time-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified by searching the whole executable image for the record displacement: the single match is unrelated library code, so it only retains a script's stored low eight bits (zero otherwise) and is saved with the actor.",
+      "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
     }
   ],
   "property_groups": [

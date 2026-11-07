@@ -597,6 +597,41 @@ fn invisible_is_a_draw_only_flag_the_script_keeps_running_under() {
 }
 
 #[test]
+fn hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage() {
+    let plain = [
+        Property::SurfaceTime,
+        Property::JumpTime,
+        Property::JumpHeight,
+        Property::Anchor,
+    ];
+    let mut steps = vec![Step3::Read(Property::HandItem)];
+    steps.extend(plain.map(Step3::Read));
+    steps.push(Step3::Write(Property::HandItem, 0x1ff));
+    steps.extend(
+        plain
+            .iter()
+            .zip([0x1a5, 0x2b6, 0x3c7, 0x4d8])
+            .map(|(&property, value)| Step3::Write(property, value)),
+    );
+    steps.push(Step3::Read(Property::HandItem));
+    steps.extend(plain.map(Step3::Read));
+    let world = pose_world(&steps);
+    // Every byte starts at the allocator's zero; a write keeps its low byte, read back zero-extended.
+    assert_eq!(locals(&world), [0, 0, 0, 0, 0, 255, 0xa5, 0xb6, 0xc7, 0xd8]);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(control.held_item, Some(255));
+    assert_eq!(
+        [
+            control.surface_time,
+            control.jump_time,
+            control.jump_height,
+            control.anchor
+        ],
+        [0xa5, 0xb6, 0xc7, 0xd8]
+    );
+}
+
+#[test]
 fn id_is_the_runtime_identifier_my_id_returns_and_cannot_be_overwritten() {
     let world = pose_world(&[Step3::Read(Property::Id), Step3::Call(Native::MyId, vec![])]);
     let values = locals(&world);

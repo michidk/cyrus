@@ -418,6 +418,12 @@ pub struct ActorControlState {
     pub motion_companion: u8,
     /// Receiver-owned ordinary countdown; zero and 255 do not decrement.
     pub extra_time: u8,
+    /// The `surface_time`, `jump_time`, `jump_height` and `anchor` bytes: no engine routine reads
+    /// or writes them, so each only retains what a script stores (allocator zero otherwise).
+    pub surface_time: u8,
+    pub jump_time: u8,
+    pub jump_height: u8,
+    pub anchor: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
     pub sliding_state: u8,
     pub falling_state: JumpMotion,
@@ -5221,6 +5227,10 @@ fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&m
     Some(match name {
         Property::RopeWait => &mut control.motion_companion,
         Property::ExtraTime => &mut control.extra_time,
+        Property::SurfaceTime => &mut control.surface_time,
+        Property::JumpTime => &mut control.jump_time,
+        Property::JumpHeight => &mut control.jump_height,
+        Property::Anchor => &mut control.anchor,
         Property::SlideFlag => &mut control.sliding_state,
         Property::MoveCounter => &mut control.move_counter,
         Property::OriginTime => &mut control.fall_timer,
@@ -5779,6 +5789,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 | Property::FallFlag
                 | Property::JumpFlag
                 | Property::LastDirection
+                | Property::HandItem
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5787,6 +5798,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             return Ok(i32::from(match name {
                 Property::AiType => control.ai_type.byte(),
+                // An unestablished held item reads as the allocator's zero.
+                Property::HandItem => control.held_item.unwrap_or(0),
                 Property::ExtraFlag => control.living_state.byte(),
                 Property::FallFlag => control.falling_state.byte(),
                 Property::LastDirection => control.motion_classification.byte(),
@@ -5979,6 +5992,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 | Property::FallFlag
                 | Property::JumpFlag
                 | Property::LastDirection
+                | Property::HandItem
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5987,6 +6001,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             let byte = value as u8;
             match name {
+                Property::HandItem => control.held_item = Some(byte),
                 Property::AiType => control.ai_type = super::AiType::from_byte(byte),
                 Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
                 Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),

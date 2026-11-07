@@ -32,6 +32,14 @@ struct ControlSnapshot {
     motion_companion: u8,
     #[serde(default)]
     extra_time: u8,
+    #[serde(default)]
+    surface_time: u8,
+    #[serde(default)]
+    jump_time: u8,
+    #[serde(default)]
+    jump_height: u8,
+    #[serde(default)]
+    anchor: u8,
     sliding_state: u8,
     falling_state: JumpMotion,
     queued_motion: JumpMotion,
@@ -134,6 +142,10 @@ impl ControlSnapshot {
             living_state: control.living_state,
             motion_companion: control.motion_companion,
             extra_time: control.extra_time,
+            surface_time: control.surface_time,
+            jump_time: control.jump_time,
+            jump_height: control.jump_height,
+            anchor: control.anchor,
             sliding_state: control.sliding_state,
             falling_state: control.falling_state,
             queued_motion: control.queued_motion,
@@ -211,6 +223,10 @@ impl ControlSnapshot {
             living_state: self.living_state,
             motion_companion: self.motion_companion,
             extra_time: self.extra_time,
+            surface_time: self.surface_time,
+            jump_time: self.jump_time,
+            jump_height: self.jump_height,
+            anchor: self.anchor,
             sliding_state: self.sliding_state,
             falling_state: self.falling_state,
             queued_motion: self.queued_motion,
