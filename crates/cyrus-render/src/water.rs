@@ -45,6 +45,20 @@ pub struct WaterPlayback {
     normals: Vec<[f32; 3]>,
     dirty_normals: Vec<bool>,
     rgb: Vec<[f32; 3]>,
+    camera: CameraGrid,
+}
+
+/// `grid` in camera clip units for the view it was transformed with. Kept across frames and
+/// updated per changed vertex, so an unchanged view never transforms the whole grid again.
+#[derive(Default)]
+struct CameraGrid {
+    view: Option<(Mat4, Vec2)>,
+    positions: Vec<[f32; 3]>,
+}
+
+fn camera_point(camera_from_local: Mat4, scale: Vec2, position: [f32; 3]) -> [f32; 3] {
+    let p = camera_from_local.transform_point3(Vec3::from(position)) * 20.0;
+    [p.x * scale.x, p.y * scale.y, -p.z]
 }
 
 impl WaterPlayback {
@@ -136,11 +150,7 @@ pub(crate) fn animate_water(
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     distance: Option<Res<crate::fog::RenderDistance>>,
-    (mut preparation, mut camera_grid, player_scene): (
-        Local<crate::terrain::Preparation>,
-        Local<Vec<[f32; 3]>>,
-        PlayerTerrain,
-    ),
+    (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
     let (parents, staged) = hierarchy;
     if playback.source != Some(request.0.id())
@@ -251,7 +261,68 @@ pub(crate) fn animate_water(
         || playback.tick.is_none()
         || (water.is_some()
             && (mode != Mode::Faithful || playback.mode != mode || playback.tick != Some(ticks)));
-    if update_grid {
+    // A faithful wave tick inside an unchanged window moves only the window's animated vertices;
+    // everything else keeps the values the last complete update gave it.
+    let count = heights.heights.len();
+    let wave_tick = update_grid
+        && !rebuild
+        && playback.tick.is_some()
+        && mode == Mode::Faithful
+        && playback.mode == mode
+        && [
+            playback.grid.len(),
+            playback.engine_heights.len(),
+            playback.normals.len(),
+            playback.dirty_normals.len(),
+            playback.rgb.len(),
+        ]
+        .iter()
+        .all(|&len| len == count);
+    if let Some(water) = water.filter(|_| wave_tick) {
+        playback.tick = Some(ticks);
+        for vertex in window.faithful_vertices() {
+            if water.animated_vertices[vertex] {
+                playback.engine_heights[vertex] =
+                    wave_height(water, vertex, ticks, heights.heights[vertex]);
+            }
+        }
+        if playback.engine_heights.len() == 256 * 256
+            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
+            && let Some(terrain) = scenes
+                .get(&request.0)
+                .and_then(|scene| scene.terrain.as_ref())
+        {
+            terrain
+                .live()
+                .publish(window.engine_center(), &playback.engine_heights);
+        }
+        let moved: Vec<_> = window
+            .vertices()
+            .filter(|&vertex| water.animated_vertices[vertex])
+            .collect();
+        for &vertex in &moved {
+            playback.grid[vertex][1] =
+                -wave_height(water, vertex, ticks, heights.heights[vertex]) / 20.0;
+        }
+        let WaterPlayback {
+            grid,
+            normals,
+            dirty_normals,
+            rgb,
+            camera,
+            ..
+        } = &mut *playback;
+        for vertex in window.vertices().filter(|&vertex| dirty_normals[vertex]) {
+            normals[vertex] = crate::lighting::grid_vertex_normal(grid, side, vertex);
+            rgb[vertex] = lighting.map_or([255.0; 3], |l| l.rgb(normals[vertex]));
+        }
+        if let Some((camera_from_local, scale)) = camera.view {
+            for &vertex in &moved {
+                camera.positions[vertex] = camera_point(camera_from_local, scale, grid[vertex]);
+            }
+        }
+    } else if update_grid {
+        playback.camera.view = None;
         if water.is_some()
             && mode == Mode::Faithful
             && (rebuild || playback.tick.is_none() || playback.mode != mode)
@@ -341,9 +412,9 @@ pub(crate) fn animate_water(
         grid,
         normals,
         rgb,
+        camera: camera_grid,
         ..
     } = &mut *playback;
-    let mut transformed = None;
 
     for terrain in terrain {
         let view = view.and_then(|mut view| {
@@ -356,16 +427,14 @@ pub(crate) fn animate_water(
         }
         if let Some(view) = view {
             let key = (view.camera_from_local, view.scale);
-            if transformed != Some(key) {
-                camera_grid.clear();
-                camera_grid.extend(grid.iter().map(|&position| {
-                    let p = view
-                        .camera_from_local
-                        .transform_point3(Vec3::from(position))
-                        * 20.0;
-                    [p.x * view.scale.x, p.y * view.scale.y, -p.z]
-                }));
-                transformed = Some(key);
+            if camera_grid.view != Some(key) || camera_grid.positions.len() != grid.len() {
+                camera_grid.positions.clear();
+                camera_grid.positions.extend(
+                    grid.iter().map(|&position| {
+                        camera_point(view.camera_from_local, view.scale, position)
+                    }),
+                );
+                camera_grid.view = Some(key);
             }
             let prepared = crate::terrain::update(
                 &mut terrain.source,
@@ -373,7 +442,7 @@ pub(crate) fn animate_water(
                 crate::terrain::Grid {
                     window,
                     local: grid,
-                    camera: &camera_grid,
+                    camera: &camera_grid.positions,
                     normals,
                     rgb,
                     water: water.map(|w| w.animated_vertices.as_slice()),
@@ -664,6 +733,116 @@ mod tests {
         match mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
             VertexAttributeValues::Float32x3(positions) => positions.clone(),
             _ => panic!("wrong position format"),
+        }
+    }
+
+    #[test]
+    fn wave_ticks_update_the_window_exactly_as_a_complete_rebuild() {
+        let side = 48;
+        let heights: Vec<f32> = (0..side * side)
+            .map(|i| ((i * 7919) % 211) as f32 * 3.0 - 300.0)
+            .collect();
+        let mut environments = Assets::<Environment>::default();
+        let environment = environments.add(Environment {
+            world_palette: Vec::new(),
+            effects: None,
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side,
+                offset: 0,
+                heights: heights.clone(),
+            }),
+            texture_scale: [1, 1],
+            object_lights: Vec::new(),
+            prelighting: Default::default(),
+            model_lighting: Default::default(),
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_lighting: None,
+            water: Some(Water {
+                parameters: [24.0, 37.0, 5.0],
+                side,
+                animated_vertices: (0..side * side).map(|i| i % 3 != 0).collect(),
+            }),
+        });
+        let mut app = App::new();
+        app.world_mut().spawn((
+            Camera::default(),
+            crate::camera::ViewCamera,
+            GlobalTransform::from_translation(Vec3::new(-20.0 * CELL_SIZE, 0.0, -25.0 * CELL_SIZE)),
+        ));
+        app.insert_resource(environments)
+            .insert_resource(EnvironmentRequest(environment))
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<WaterPlayback>()
+            .init_resource::<Fidelity>()
+            .init_resource::<Time<Real>>()
+            .add_systems(Update, animate_water);
+        let base: Vec<_> = (0..side * side)
+            .map(|i| {
+                [
+                    -((i % side) as f32) * CELL_SIZE,
+                    -heights[i] / 20.0,
+                    -((i / side) as f32) * CELL_SIZE,
+                ]
+            })
+            .collect();
+        let mut mesh = triangle(base);
+        mesh.insert_indices(bevy::mesh::Indices::U32(
+            (0..side as u32 - 1)
+                .flat_map(|row| {
+                    (0..side as u32 - 1).flat_map(move |x| {
+                        let a = row * side as u32 + x;
+                        [
+                            a,
+                            a + side as u32 + 1,
+                            a + 1,
+                            a + side as u32 + 1,
+                            a,
+                            a + side as u32,
+                        ]
+                    })
+                })
+                .collect(),
+        ));
+        let original = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        app.world_mut().spawn((
+            Name::new("Terrain"),
+            Mesh3d(original),
+            GlobalTransform::IDENTITY,
+        ));
+        let start = app.world().resource::<Time<Real>>().startup();
+        let mut advance = |app: &mut App, seconds: f64| {
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .update_with_instant(start + Duration::from_secs_f64(seconds));
+            app.update();
+        };
+        advance(&mut app, 0.0);
+        let snapshot = |app: &App| {
+            let playback = app.world().resource::<WaterPlayback>();
+            let bits = |values: &[[f32; 3]]| -> Vec<[u32; 3]> {
+                values.iter().map(|v| v.map(f32::to_bits)).collect()
+            };
+            (
+                playback.tick,
+                bits(&playback.grid),
+                bits(&playback.normals),
+                bits(&playback.rgb),
+                playback
+                    .engine_heights
+                    .iter()
+                    .map(|h| h.to_bits())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        for seconds in [0.06, 0.2, 0.31, 1.7] {
+            advance(&mut app, seconds);
+            let incremental = snapshot(&app);
+            app.world_mut().resource_mut::<WaterPlayback>().tick = None;
+            advance(&mut app, seconds);
+            assert_eq!(incremental, snapshot(&app), "after {seconds} s");
         }
     }
 
