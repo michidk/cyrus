@@ -127,9 +127,15 @@ pub struct InventoryItem {
     /// ITEM.INI `hand_object_file`: the model the hand and hilt item display natives place.
     #[serde(default)]
     pub hand_model: ItemHandModel,
+    /// ITEM.INI `inventory_object_file`: the model the item viewer shows.
+    #[serde(default)]
+    pub inventory_model: ItemHandModel,
+    /// ITEM.INI `description`: the RTX label of the viewer's first description line.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
-/// An item's hand model as exported. Exports written before the model was recorded read as
+/// An item's hand or inventory model as exported. Exports written before the model was recorded read as
 /// `Unexported`, so a valid installed model is never mistaken for an item without one.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub enum ItemHandModel {

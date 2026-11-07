@@ -695,6 +695,7 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     // Every installed item records its hand model (no export reads as unexported); weapons name one.
     for (id, item) in data["inventory"].as_object().unwrap() {
         assert_ne!(item["hand_model"], "Unexported", "item {id}");
+        assert_ne!(item["inventory_model"], "Unexported", "item {id}");
         if item["weapon"] == true {
             assert!(
                 item["hand_model"]["Model"]

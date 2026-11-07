@@ -288,6 +288,13 @@ pub(crate) fn prepare(
                     .map_or(crate::hud::ItemHandModel::Absent, |path| {
                         crate::hud::ItemHandModel::Model(crate::animation::model_key(path))
                     }),
+                inventory_model: item
+                    .inventory_object_file
+                    .as_deref()
+                    .map_or(crate::hud::ItemHandModel::Absent, |path| {
+                        crate::hud::ItemHandModel::Model(crate::animation::model_key(path))
+                    }),
+                description: item.description.clone(),
             },
         );
         if item.hide.unwrap_or(false) {
