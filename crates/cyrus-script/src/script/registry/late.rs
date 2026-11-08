@@ -1143,13 +1143,10 @@ impl ScriptWorld {
             .as_ref()
             .context("late collision control unavailable")?;
         let special = control.living_state.is_ledge();
+        // A falling byte in a ledge state needs no rule of its own: the obstacle wrapper is skipped
+        // for the ledge states, the support query takes its falling distance, and the ledge
+        // transition replaces the ground response.
         let falling = control.falling_state != JumpMotion::NONE;
-        ensure!(
-            !falling || !special,
-            "world {} instance {}: falling in a special state is unsupported",
-            self.world,
-            id.index
-        );
         // The moonraker cheat takes the selected player out of both collision passes.
         let uncollided = skips_collision(environment.selected_player, id, script);
         if !special && !uncollided {
