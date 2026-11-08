@@ -18,6 +18,11 @@ Player transforms remain independent of camera transforms. Inspection adapters
 set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
 
+Mods can request orbit-camera yaw through `CameraOrbit`; manual mouse/right-stick
+look takes priority over its relative turn. The request does not take over the camera
+pose or suppress player movement. With no mod request, faithful camera behavior remains
+unchanged.
+
 The logbook reader owns its manual-entry dialog state and keyboard focus. Installed action C
 opens an empty byte editor; presentation reads `LogbookScreen::manual_entry()` and
 `manual_entry_cursor_visible()`. Acceptance appends a style-9 journal record through the

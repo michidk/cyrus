@@ -1,4 +1,5 @@
-//! Modern water waves: two smooth crossing sine waves around the original mean height.
+//! Modern water waves: two smooth crossing sine waves around the original mean height, moving
+//! the game's "water" vertex set.
 mod bindings {
     wasvy_macros::guest_bindings!({
         path: ["../../crates/cyrus-mods/wit", "wit"],
@@ -10,49 +11,41 @@ mod bindings {
     });
 }
 
-use bindings::cyrus::mods::components::Water;
+use bindings::cyrus::mods::components::{Scene, Vertices};
 use bindings::wasvy::ecs::app::{App, Query, QueryFor, Schedule, System};
-use std::cell::RefCell;
 
 /// Exported scene units per WLD grid cell (256 engine units, 20 per scene unit).
 const CELL_SIZE: f32 = 256.0 / 20.0;
-
-thread_local! {
-    /// Horizontal positions for the published generation; they change only when the camera window moves.
-    static POSITIONS: RefCell<(Option<u32>, Vec<[f32; 2]>)> = const { RefCell::new((None, Vec::new())) };
-}
+/// The vertex set and the scene value this mod uses.
+const WATER: &str = "water";
+const WATER_WAVE: &str = "water-wave";
 
 struct ModernWater;
 
 impl bindings::Guest for ModernWater {
     fn setup(app: App) {
         let waves = System::new("waves");
-        waves.add_query(&[QueryFor::Mut(Water::type_path())]);
+        waves.add_query(&[
+            QueryFor::Mut(Vertices::type_path()),
+            QueryFor::Ref(Scene::type_path()),
+        ]);
         app.add_systems(&Schedule::Update, &[&waves]);
     }
 
     fn waves(query: Query) {
         while let Some(row) = query.iter() {
-            let water = Water::new(row.component(0));
-            let generation = water.generation();
-            let amplitude = water.parameters().first().copied().unwrap_or(0.0);
-            let seconds = water.seconds();
-            let heights: Vec<f32> = POSITIONS.with_borrow_mut(|(cached, positions)| {
-                if *cached != Some(generation) {
-                    *positions = water
-                        .positions()
-                        .chunks_exact(3)
-                        .map(|p| [p[0], p[2]])
-                        .collect();
-                    *cached = Some(generation);
-                }
-                positions
-                    .iter()
-                    .map(|&[x, z]| height(amplitude, x, z, seconds))
-                    .collect()
-            });
-            if !heights.is_empty() {
-                water.answer(generation, &heights);
+            let vertices = Vertices::new(row.component(0));
+            let scene = Scene::new(row.component(1));
+            let generation = vertices.generation(WATER);
+            let amplitude = scene.values(WATER_WAVE).first().copied().unwrap_or(0.0);
+            let seconds = scene.seconds();
+            let offsets: Vec<f32> = vertices
+                .positions(WATER)
+                .chunks_exact(3)
+                .flat_map(|p| [0.0, height(amplitude, p[0], p[2], seconds), 0.0])
+                .collect();
+            if !offsets.is_empty() {
+                vertices.displace(WATER, generation, &offsets);
             }
         }
     }

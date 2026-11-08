@@ -2,14 +2,22 @@
 
 Native-only WebAssembly mods shipped with cyrus. Each folder is its own Cargo
 crate (outside the game workspace) built for `wasm32-wasip2`; `just mods` builds
-them all and installs them into `cyrus-config/mods/<folder>/`. Activate them in
+them all and installs them into `game-config/mods/<folder>/`. Activate them in
 the Mods window that opens with F1. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
-| `modern-water` | water waves, shader replacement | Smooth crossing waves, texture ripples, sky sheen |
-| `flycam` | camera, input | F3 toggles a free camera: WASD, Space/Left Shift, mouse look |
-| `movement` | movement, player, settings, input | Moves relative to the camera with your key bindings or WASD; optionally owns the locomotion with its own heading and speed |
+| `modern-water` | vertices, scene, shader replacement | Smooth crossing waves, texture ripples, sky sheen |
+| `flycam` | camera, input, hud | F11 toggles a free camera (F2 to F6 are the original book shortcuts): WASD, Space/Left Shift, mouse look; a corner line shows whether it is on |
+| `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
+
+Modern movement optionally follows travel with the camera after a configurable delay.
+Mouse or right-stick camera input takes priority; standing still, jumping and armed
+strafing do not recenter. While a direction is held, automatic camera rotation keeps
+the travel direction fixed in the world, so holding left does not create a circle.
+Changing the held direction or looking manually chooses a new camera-relative direction.
+The Mods window offers camera follow, delay (default 0.75 seconds) and follow speed
+(default 2 per second). These are mod preferences, not recovered original behavior.
 
 ## Writing a mod
 
@@ -19,7 +27,7 @@ Copy one of these crates as a start.
 **Manifest** (`mod.toml`). `name` is required; `description`, `version` and
 `author` are optional and shown in the Mods window. A mod can offer settings
 with `[[setting]]` entries; the window draws them under the mod while it is
-active and saves the values to `cyrus-config/mod-settings.json`:
+active and saves the values to `game-config/mod-settings.json`:
 
 ```toml
 [[setting]]
@@ -52,25 +60,49 @@ includes `wasvy:ecs/guest`; `setup` registers the systems and their queries:
 
 ```rust
 fn setup(app: App) {
-    let waves = System::new("waves");
-    waves.add_query(&[QueryFor::Mut(Water::type_path())]);
-    app.add_systems(&Schedule::Update, &[&waves]);
+    let deform = System::new("deform");
+    deform.add_query(&[QueryFor::Mut(Vertices::type_path())]);
+    app.add_systems(&Schedule::Update, &[&deform]);
 }
 ```
 
-- `water`: read `positions()` (cache them per `generation()`), `parameters()`
-  and `seconds()`; call `answer(generation, heights)` every frame.
+- `vertices`: vertex sets the game lets mods move, by name. `positions(set)` and
+  `generation(set)` read a set; `displace(set, generation, offsets)` moves each
+  vertex by an x, y, z offset this frame (call it every frame; stopping restores
+  the original). Published today: `"water"`, the animated water vertices near
+  the camera.
+- `scene`: `values(key)` reads a value the game publishes by name, `seconds()`
+  its clock. Published today: `"water-wave"` (amplitude, speed, frequency).
 - `camera`: `pose()` is the current view; `drive(pose)` moves it this frame
   and suppresses player input. Stop calling it to hand control back.
+  `orbit()` each frame lets the mouse and right stick turn the follow camera
+  around the player as the Modern camera does, with the cursor captured,
+  whatever moves the player.
+  `turn(amount)` adds a yaw adjustment to the orbit camera (2048 units per turn,
+  positive left), without taking over its pose or suppressing movement. Manual
+  mouse/right-stick input wins over the adjustment. `manual()` reports recent
+  manual camera input, so a mod can delay resuming automatic movement.
 - `movement`: `steer(x, y, jump)` every frame moves the player like a tilted
   left stick relative to the camera (x right, y forward; a length below 0.75
   walks, from 0.75 runs). While a mod steers, a quick sword key among WASD does
   not draw the sword.
-- `movement.claim(heading, speed, run, jump)`: take over the player's ground
+- `movement.play(group, interrupt)`: play an animation group on the player (the
+  number a script's `PlayAnimation` takes). With `interrupt` the current group
+  gives way now; without, the request waits for the current group's exit like
+  the original's. `movement.face(heading)` sets the heading (2048 to a turn).
+  Both apply after the original controller, only on updates it runs (not while
+  a script, death or another owner moves the player), so the mod's choice wins;
+  call them each frame you want them.
+- `movement.tempo(scale)`: play the player's animation faster or slower this frame
+  (markers such as a jump's take-off arrive sooner; arithmetic on the game clock,
+  such as the jump's arc, keeps its pace). Applies like `play`.
+- `movement.claim(heading, travel, speed, run, jump)`: take over the player's ground
   locomotion for this frame (call it every frame). The original bindings read as
   released and the original turn, walk, run and jump selection do not run; the
   mod faces `heading` (2048 to a turn) and moves `speed` map units per nominal
-  update along it, walking or running; `jump` starts the original jump. The engine
+  update along `travel`, walking or running, from the first frame: the animation
+  (forward, backward or a sidestep, by `travel` against `heading`) only shows the
+  movement; `jump` starts the original jump. The engine
   still resolves ground, slopes and collision, and keeps death, dialogue and
   combat; it keeps control while the player is airborne, sliding or hanging, or a
   script moves it, and menus, the console and loading take control back.
@@ -91,17 +123,25 @@ fn setup(app: App) {
   continuation). Observation only: a call is never changed, and it keeps at most
   4096 calls per frame.
 - `player`: `position()` (map units), `heading()`, `view()` (the camera's
-  heading, same units), `airborne()`, `armed()` (a weapon is drawn or the combat stance is on: a
+  heading, same units), `airborne()`, `animation()`, `pending()` and `idle()`
+  (the playing group, the one waiting to follow it and the one it returns to;
+  each one value or empty), `armed()` (a weapon is drawn or the combat stance is on: a
   claimed player then walks and runs in the fight animations and `speed` returns
   the fight speeds) and `speed(run)` (the player's own walk or run speed per
   nominal update, the base for a speed scale).
 - `settings`: `flag(id, key)`, `number(id, key)` and `choice(id, key)` read the
   player's values; `id` is the mod's folder name. Read them every frame so a
   change in the window takes effect at once.
+- `memory`: `load(key)` and `save(key, values)` keep a list of numbers between
+  frames for the session. wasvy starts a fresh instance of the mod for every
+  system call, so a mod's own variables (statics, `thread_local!`) are gone by the
+  next frame; keep state here, under keys prefixed with the mod's folder name.
+- `hud`: `show(line)` draws a line of text in the top-left corner for this frame;
+  call it every frame the text should stay.
 - `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
   `delta` (seconds).
 
-Query `water`, `camera`, `movement`, `collision` and `natives` with `QueryFor::Mut`, `input`, `settings` and `player`
+Query `vertices`, `camera`, `movement`, `collision`, `natives`, `memory` and `hud` with `QueryFor::Mut`, `input`, `settings`, `player` and `scene`
 with `QueryFor::Ref`: wasvy 0.0.11 panics the game when a method is called through
 the other mutability.
 

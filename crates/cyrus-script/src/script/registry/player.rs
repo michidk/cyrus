@@ -69,6 +69,11 @@ pub struct LocomotionStatus {
     pub armed: bool,
     pub fight_walk_speed: u8,
     pub fight_run_speed: u8,
+    /// The playing animation group, the one waiting to follow it, and the group the player
+    /// returns to when nothing is requested.
+    pub animation: Option<AnimationGroup>,
+    pub pending_animation: Option<AnimationGroup>,
+    pub idle_animation: Option<AnimationGroup>,
 }
 
 impl ScriptWorld {
@@ -78,6 +83,10 @@ impl ScriptWorld {
         let actor = &self.actors[id.index];
         let control = actor.control.as_ref()?;
         let local = &self.spatial(id).ok()?.local;
+        let playback = actor
+            .animation
+            .as_ref()
+            .map(|animation| &animation.playback);
         Some(LocomotionStatus {
             position: local.position,
             heading: local.wrapped_angles()[1],
@@ -92,6 +101,9 @@ impl ScriptWorld {
                     .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE)),
             fight_walk_speed: actor.attributes[Attribute::FightForwardWalk],
             fight_run_speed: actor.attributes[Attribute::FightForwardSpeed],
+            animation: playback.and_then(|playback| playback.current_group()),
+            pending_animation: playback.and_then(|playback| playback.pending_group()),
+            idle_animation: playback.map(|playback| playback.default_group()),
         })
     }
 }
@@ -934,13 +946,48 @@ impl ScriptWorld {
         id: super::ScriptActorId,
         claim: crate::player::input::LocomotionClaim,
     ) -> Result<()> {
+        self.face_heading(id, claim.heading)
+    }
+
+    /// Wall response may project displacement and change heading. A grounded mod claim owns
+    /// facing independently of travel, so retain its heading after collision. Scripted states,
+    /// ledges, sliding, jumps, death and dialogue retain their own orientation.
+    pub(super) fn restore_claimed_facing(
+        &mut self,
+        id: super::ScriptActorId,
+        claim: crate::player::input::LocomotionClaim,
+    ) -> Result<()> {
+        let control = self.actors[self.resolve(id)?]
+            .control
+            .as_ref()
+            .context("claimed facing control unavailable")?;
+        if control.living_state == LivingState::ORDINARY
+            && control.sliding_state == 0
+            && control.queued_motion == JumpMotion::NONE
+            && control.falling_state == JumpMotion::NONE
+            && !control.rope_attached
+            && control.script_control & 2 == 0
+            && self
+                .globals
+                .dialogue_state()
+                .context("claimed facing dialogue state unavailable")?
+                != 1
+            && self.globals.menu_state() == 0
+        {
+            self.face_claimed_heading(id, claim)?;
+        }
+        Ok(())
+    }
+
+    /// Set an actor's heading (1/2048 turns) and refresh its transform.
+    fn face_heading(&mut self, id: super::ScriptActorId, heading: u16) -> Result<()> {
         let index = self.resolve(id)?;
         let spatial = self
             .spatial
             .as_mut()
-            .context("claimed locomotion spatial registry unavailable")?
+            .context("player heading spatial registry unavailable")?
             .actor_mut(index)?;
-        let heading = i32::from(claim.heading & 2047);
+        let heading = i32::from(heading & 2047);
         if spatial.local.angles[1] != heading {
             spatial.local.angles[1] = heading;
             spatial.refresh_transform()?;
@@ -948,10 +995,64 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// A mod's [`crate::player::input::PlayerRequests`] for the selected player, applied after
+    /// the original controller ran this update: face the heading, then play the animation,
+    /// replacing the current group at once when it interrupts.
+    pub(super) fn apply_player_requests(
+        &mut self,
+        id: super::ScriptActorId,
+        requests: crate::player::input::PlayerRequests,
+        ticks: u32,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        if let Some(heading) = requests.heading {
+            self.face_heading(id, heading)?;
+        }
+        let Some(play) = requests.animation else {
+            return Ok(());
+        };
+        let index = self.resolve(id)?;
+        let position = self.spatial(id)?.local.position;
+        let surface = self.actor_surface(id)?;
+        let event_context = super::effects::ActorEventContext::capture(self, id);
+        let event_camera = &mut self.camera;
+        let event_effects = &mut self.effects;
+        let animation = self.actors[index]
+            .animation
+            .as_mut()
+            .context("mod animation request: player animation unavailable")?;
+        let mut dispatch = |sound| {
+            if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                return event_context.dispatch(flags, event_camera.as_mut(), event_effects);
+            }
+            sounds(
+                id,
+                super::super::ScriptSound::Animation {
+                    sound,
+                    surface: Some(surface),
+                    position: Some(position),
+                },
+            )
+        };
+        let frame = if play.interrupt {
+            animation
+                .playback
+                .force_request_with_sounds(play.group, 0, ticks, &mut dispatch)
+        } else {
+            animation
+                .playback
+                .request_with_sounds(play.group, 0, ticks, &mut dispatch)
+        }
+        .with_context(|| format!("mod animation request: group {}", play.group))?;
+        animation.frame = frame.or(animation.frame);
+        Ok(())
+    }
+
     /// One update of a mod's claimed locomotion: face the claimed heading, then, when it moves,
-    /// request the gait's animation and displace along the heading as ordinary running or
-    /// walking does. The ordinary late stages resolve the translation against the ground and
-    /// collision.
+    /// request the animation of the travel direction relative to the facing (forward, backward
+    /// or to a side, in the gait and stance) and cover the claimed distance along the travel
+    /// heading at once: the animation only shows the movement, it does not gate it. The ordinary
+    /// late stages resolve the translation against the ground and collision.
     fn run_claimed_locomotion(
         &mut self,
         id: super::ScriptActorId,
@@ -962,20 +1063,59 @@ impl ScriptWorld {
     ) -> Result<()> {
         use crate::player::input::Gait;
         let index = self.resolve(id)?;
+        let before = self.spatial(id)?.local.wrapped_angles()[1];
         self.face_claimed_heading(id, claim)?;
+        // The original's running lean: bank into a turn while running, relax otherwise. The
+        // signed turn is positive to the right, which lowers the heading.
+        let turned = i64::from(cyrus_world::heading::wrap(
+            before.wrapping_sub(claim.heading).wrapping_add(1024),
+        )) - 1024;
+        let running = matches!(
+            self.actors[index]
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group()),
+            Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH)
+        );
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("claimed locomotion spatial registry unavailable")?
+            .actor_mut(index)?;
+        let roll = (spatial.local.angles[2] & 2047) as u16;
+        let leaned = crate::player::turn::lean(roll, turned, running);
+        if leaned != roll {
+            spatial.local.angles[2] = i32::from(leaned);
+            spatial.refresh_transform()?;
+        }
         // Q8 distance: map units per nominal update times the frame scale, which has eight
         // fractional bits. A NaN speed reads as zero.
         let distance = (claim.speed.clamp(0.0, 255.0) * timing.frame_scale as f32).round() as i32;
         if distance <= 0 {
             return Ok(());
         }
+        // The travel direction relative to the facing, in quarter turns centred on forward, left
+        // (headings grow to the left), backward and right.
+        let relative = cyrus_world::heading::wrap(claim.travel.wrapping_sub(claim.heading));
+        let quarter = (relative.wrapping_add(256) & 2047) / 512;
+        let walk = claim.gait == Gait::Walk;
         // An armed player walks in the fight-run group and runs in the fight-forward group, as
-        // the ordinary movement natives choose them.
-        let (group, motion) = match (claim.gait, armed) {
-            (Gait::Walk, false) => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
-            (Gait::Run, false) => (AnimationGroup::RUN, MotionDirection::FORWARD),
-            (Gait::Walk, true) => (AnimationGroup::FIGHT_RUN, MotionDirection::WALK_FORWARD),
-            (Gait::Run, true) => (AnimationGroup::FIGHT_FORW, MotionDirection::FORWARD),
+        // the ordinary movement natives choose them; it backs off and circles in the fight groups.
+        let (group, motion) = match (quarter, armed) {
+            (0, false) if walk => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
+            (0, false) => (AnimationGroup::RUN, MotionDirection::FORWARD),
+            (0, true) if walk => (AnimationGroup::FIGHT_RUN, MotionDirection::WALK_FORWARD),
+            (0, true) => (AnimationGroup::FIGHT_FORW, MotionDirection::FORWARD),
+            (2, false) if walk => (
+                AnimationGroup::WALK_BACKWARD,
+                MotionDirection::WALK_BACKWARD,
+            ),
+            (2, false) => (AnimationGroup::RUN_BACKWARD, MotionDirection::BACKWARD),
+            (2, true) => (AnimationGroup::FIGHT_BACK, MotionDirection::BACKWARD),
+            (1, false) => (AnimationGroup::STEP_LEFT, MotionDirection::LEFT),
+            (1, true) => (AnimationGroup::FIGHT_CIRCLE_LEFT, MotionDirection::LEFT),
+            (_, false) => (AnimationGroup::STEP_RIGHT, MotionDirection::RIGHT),
+            (_, true) => (AnimationGroup::FIGHT_CIRCLE_RIGHT, MotionDirection::RIGHT),
         };
         let position = self.spatial(id)?.local.position;
         let surface = self.actor_surface(id)?;
@@ -1010,7 +1150,7 @@ impl ScriptWorld {
             .as_mut()
             .context("claimed locomotion control unavailable")?
             .motion_classification = motion;
-        self.apply_ordinary_directional_motion(id, motion.byte(), distance)?;
+        self.apply_claimed_motion(id, motion, claim.travel, distance)?;
         Ok(())
     }
 

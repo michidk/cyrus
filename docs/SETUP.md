@@ -499,11 +499,12 @@ and lighting retain the existing export limitations.
 
 ### Mods
 
-The native game loads WebAssembly mods from `cyrus-config/mods/<id>/`; the
-browser build has none. `just mods` builds the bundled mods under `mods/`
-(`modern-water`, `flycam`) and installs them there. F1 opens a Mods window next
+The native game loads WebAssembly mods from `mods/<id>/` in its config directory
+(above; `game-config/mods/` in a checkout); the browser build has none. `just mods`
+builds the bundled mods under `mods/` (`modern-water`, `flycam`, `movement`) and
+installs them into `game-config/mods/`. F1 opens a Mods window next
 to the debug menu; ticking a mod activates it and saves the choice in
-`cyrus-config/mods.json`. Active mod files are reloaded when they change on
+`mods.json` there. Active mod files are reloaded when they change on
 disk. `mods/README.md` describes the mod API and how to write one.
 
 ## The original game

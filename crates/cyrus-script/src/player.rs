@@ -35,6 +35,8 @@ impl Plugin for PlayerPlugin {
             .init_resource::<input::ModernLook>()
             .init_resource::<input::MovementWish>()
             .init_resource::<input::LocomotionClaimed>()
+            .init_resource::<input::PlayerRequests>()
+            .init_resource::<input::CameraOrbit>()
             .init_resource::<input::CollisionProbes>()
             .init_resource::<input::InputSuppressed>()
             .init_resource::<placement::MarkerEntry>()

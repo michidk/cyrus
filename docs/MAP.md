@@ -166,6 +166,7 @@ module where it is defined and regenerate.
 - `src/fog/texture/checkpoint.rs` — Replacement of shared texture timelines against an independently prepared image census.
 - `src/fog/texture/effects.rs` — Prepared environmental images share the scene's canonical image timelines.
 - `src/fog/texture/frames.rs` — Retain authored texture frames during the original GLTF decode.
+- `src/hooks.rs` — What the presentation offers a provider such as a mod, without knowing what it will do with
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/hud/persistence.rs` — Retained HUD presentation continuation, separate from inventory and journal owners.
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.

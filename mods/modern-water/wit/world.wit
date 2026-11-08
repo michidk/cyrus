@@ -2,7 +2,7 @@ package cyrus:modern-water;
 
 world guest {
     use wasvy:ecs/app@0.0.11.{query};
-    use cyrus:mods/components@0.1.0.{water};
+    use cyrus:mods/components@0.1.0.{scene, vertices};
 
     export waves: func(query: query);
 

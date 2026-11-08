@@ -645,6 +645,48 @@ impl ScriptWorld {
         Ok(Some(action.direction))
     }
 
+    /// A mod's claimed movement: [`Self::apply_ordinary_directional_motion`]'s state writes for
+    /// `motion`, but covering `distance` (Q8) along the `travel` heading itself and whatever
+    /// the current animation's BreakPoint says, so the animation only shows the movement. Deep
+    /// water halves the distance as it does for the original's.
+    pub(super) fn apply_claimed_motion(
+        &mut self,
+        id: ScriptActorId,
+        motion: MotionDirection,
+        travel: u16,
+        distance: i32,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let surface = self.actors[index]
+            .surface
+            .context("claimed motion stored surface unavailable")?;
+        let Some(action) = ordinary_directional_motion(motion.byte(), 0, distance, surface, false)
+        else {
+            return Ok(());
+        };
+        let position = self.spatial(id)?.local.position;
+        let translated = action
+            .distance
+            .map(|distance| cyrus_world::transform::translate_forward(position, travel, distance))
+            .transpose()?;
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .context("claimed motion control unavailable")?;
+        control.motion_direction = action.direction;
+        control.move_counter |= action.step.counter_mask();
+        self.globals.locomotion_called |= action.step.called_flag();
+        if let Some(position) = translated {
+            self.spatial
+                .as_mut()
+                .context("claimed motion spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .position = position;
+        }
+        Ok(())
+    }
+
     /// Complete animated support-miss entry after its selector, recovery and
     /// horizontal-displacement services. The response owner establishes that
     /// those preceding branches returned normally; this stage does not bypass

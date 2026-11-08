@@ -1,6 +1,6 @@
 name = "Modern movement"
-description = "Moves the player relative to the camera. Follows your key bindings from the game's key settings, or WASD, Space and Left Shift. Optionally owns the locomotion with its own speed."
-version = "0.3.0"
+description = "Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once, and the animations only show the movement. A drawn weapon keeps the player facing the camera's way."
+version = "0.6.0"
 author = "cyrus"
 
 [[setting]]
@@ -17,37 +17,23 @@ type = "bool"
 default = false
 
 [[setting]]
-key = "own_movement"
-label = "Own the movement (replaces the original walk, run and jump selection)"
+key = "camera_follow"
+label = "Automatically follow movement with the camera"
 type = "bool"
-default = false
+default = true
 
 [[setting]]
-key = "speed_scale"
-label = "Speed (own movement only)"
+key = "camera_follow_delay"
+label = "Camera follow delay (seconds)"
 type = "number"
-default = 1
+default = 0.75
+min = 0
+max = 3
+
+[[setting]]
+key = "camera_follow_speed"
+label = "Camera follow speed (per second)"
+type = "number"
+default = 2
 min = 0.25
-max = 3
-
-[[setting]]
-key = "air_control"
-label = "Steer in the air (own movement only)"
-type = "bool"
-default = false
-
-[[setting]]
-key = "jump_height"
-label = "Jump height (own movement only)"
-type = "number"
-default = 1
-min = 0.5
-max = 3
-
-[[setting]]
-key = "jump_speed"
-label = "Jump speed (own movement only)"
-type = "number"
-default = 1
-min = 0.5
-max = 3
+max = 8

@@ -315,10 +315,11 @@ tables. Modern Fog expands the camera-centered terrain and water window to cover
 selected far frustum. Faithful Fog retains the original terrain window.
 Modern Fog defaults to four times the far distance and a gradual distant
 fade. Modern Sky is camera-centered. Fog and Sky are independently switchable
-and default to Faithful. Water has two mod hooks instead of a mode: `WaterWaves`
-takes per-vertex heights in place of the original wave for each frame a provider
-answers, and the `water_surface.wesl` library (texture offset and final colour)
-keeps the original look until a mod replaces its source. `CameraTakeover`
+and default to Faithful. Water has no mode; providers change it through the generic `hooks`: the "water"
+vertex set takes per-vertex offsets in place of the original wave for each frame a
+provider answers, "water-wave" publishes the wave parameters, and the
+`water_surface.wesl` library (texture offset and final colour) keeps the original
+look until a mod replaces its source. `CameraTakeover`
 drives the view camera for a frame and suppresses player input. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565

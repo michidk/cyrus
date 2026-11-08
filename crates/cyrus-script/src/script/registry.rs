@@ -700,6 +700,11 @@ pub struct ScriptWorld {
     routed_caller: Option<usize>,
     /// A mod's jump scales for the selected player; not saved.
     player_tuning: crate::player::input::PlayerTuning,
+    /// What a mod asks of the selected player this update; not saved.
+    player_requests: crate::player::input::PlayerRequests,
+    /// The selected player's animation pace this update and the fraction of a tick carried
+    /// between updates; not saved.
+    player_tempo: (f32, f32),
     /// Natives a mod watches and the calls made to them since the log was last taken; not saved.
     native_watch: BTreeSet<Native>,
     native_calls: Vec<NativeCall>,
@@ -887,6 +892,16 @@ impl ScriptWorld {
         if !airborne {
             self.player_tuning = tuning;
         }
+    }
+
+    /// What a mod asks of the selected player this update; see [`crate::player::input::PlayerRequests`].
+    pub fn set_player_requests(&mut self, requests: crate::player::input::PlayerRequests) {
+        // A NaN, negative or absent pace is the original's.
+        self.player_tempo.0 = requests
+            .tempo
+            .filter(|tempo| tempo.is_finite() && *tempo > 0.0)
+            .map_or(1.0, |tempo| tempo.min(8.0));
+        self.player_requests = requests;
     }
 
     /// `attr_jump_height` of an actor, scaled by a mod's tuning for the selected player. Jump and
@@ -1621,6 +1636,8 @@ impl ScriptWorld {
             task_calls,
             routed_caller: None,
             player_tuning: Default::default(),
+            player_requests: Default::default(),
+            player_tempo: (1.0, 0.0),
             native_watch: BTreeSet::new(),
             native_calls: Vec::new(),
             weapons: scripts.weapons.clone(),
@@ -4905,6 +4922,16 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .inputs
             .nominal_ticks
             .context("animation requires nominal_ticks")?;
+        // A mod's tempo scales the selected player's animation ticks, carrying the remainder.
+        let ticks = if self.registry.selected_player_index() == Some(self.index) {
+            let (tempo, carry) = &mut self.registry.player_tempo;
+            let scaled = ticks as f32 * *tempo + *carry;
+            let whole = scaled.floor();
+            *carry = scaled - whole;
+            whole as u32
+        } else {
+            ticks
+        };
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         let events = effects::ActorEventContext::capture(self.registry, id);
@@ -9772,6 +9799,8 @@ mod fighting_tests {
             task_calls: BTreeMap::new(),
             routed_caller: None,
             player_tuning: Default::default(),
+            player_requests: Default::default(),
+            player_tempo: (1.0, 0.0),
             native_watch: BTreeSet::new(),
             native_calls: Vec::new(),
             weapons: BTreeMap::new(),

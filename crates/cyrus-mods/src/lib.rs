@@ -1,10 +1,10 @@
 //! Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 //!
-//! A mod is a folder under `cyrus-config/mods/<id>/` with a `mod.toml`
+//! A mod is a folder under `mods/<id>/` in the game's config directory (`cyrus_config::config_dir`) with a `mod.toml`
 //! (`name`, `description`) and any of:
 //!
 //! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`
-//!   (water waves, camera, movement and input hooks).
+//!   (vertex sets, scene values, camera, movement and input hooks).
 //! - any shader files that `mod.toml` lists as `[[shader]]` replacements: `replaces` is
 //!   the asset path of the shader to swap (for example
 //!   `embedded://cyrus_render/water_surface.wesl`) and `file` is the replacement in the
@@ -17,7 +17,7 @@
 //! [`settings`]); the Mods window draws the settings of each active mod.
 //!
 //! Without an active mod every hook keeps the original behaviour. Activation is
-//! saved to `cyrus-config/mods.json`; the F1 debug menu lists the mods next to it.
+//! saved to `mods.json` there; the F1 debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
 mod settings;
@@ -27,7 +27,7 @@ use bevy::asset::io::AssetSourceBuilder;
 // Explicit imports: the Bevy prelude's `ContextExt` collides with `anyhow::Context`.
 use bevy::asset::{AssetApp, AssetServer, Assets, Handle};
 use bevy::ecs::change_detection::{DetectChanges, DetectChangesMut};
-use bevy::ecs::prelude::{Entity, IntoScheduleConfigs, Local, Res, ResMut, Resource};
+use bevy::ecs::prelude::{Entity, IntoScheduleConfigs, Local, Query, Res, ResMut, Resource};
 use bevy::log::{error, info, warn};
 use bevy::prelude::{App, Plugin, PreUpdate, Real, Result, Startup, Time, Update, default};
 use bevy::shader::Shader;
@@ -45,8 +45,15 @@ wasvy::auto_host_components! {
     module = cyrus_bindings,
 }
 
-const MODS_DIR: &str = "cyrus-config/mods";
-const ACTIVE_FILE: &str = "cyrus-config/mods.json";
+/// The installed mods, one folder each, in the game's config directory.
+fn mods_dir() -> PathBuf {
+    cyrus_config::config_dir().join("mods")
+}
+
+/// Which mods are active.
+fn active_file() -> PathBuf {
+    cyrus_config::config_dir().join("mods.json")
+}
 /// A mod's folder of replacement game files.
 const FILES_DIR: &str = "files";
 
@@ -54,21 +61,21 @@ const FILES_DIR: &str = "files";
 pub fn register_source(app: &mut App) {
     app.register_asset_source(
         "mods",
-        AssetSourceBuilder::platform_default(&absolute(MODS_DIR), None),
+        AssetSourceBuilder::platform_default(&absolute(&mods_dir()), None),
     );
 }
 
 /// The `files/` folders of the active mods in id order, for the game-data reader to overlay on
 /// the install. Read straight from disk, so it can run before any plugin is built.
 pub fn file_overlays() -> Vec<PathBuf> {
-    let active = match std::fs::read(ACTIVE_FILE) {
+    let active = match std::fs::read(active_file()) {
         Ok(bytes) => serde_json::from_slice::<Saved>(&bytes).map_err(anyhow::Error::from),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Saved::default()),
         Err(error) => Err(error.into()),
     };
     let mut active = active
         .unwrap_or_else(|error| {
-            error!("mods: {ACTIVE_FILE}: {error:#}");
+            error!("mods: {}: {error:#}", active_file().display());
             Saved::default()
         })
         .active;
@@ -102,17 +109,23 @@ impl Plugin for ModsPlugin {
             .register_type::<Vec<f32>>()
             .insert_resource(catalog)
             .insert_resource(settings)
-            .init_resource::<cyrus_render::WaterWaves>()
+            .init_resource::<cyrus_render::hooks::VertexSets>()
+            .init_resource::<cyrus_render::hooks::SceneValues>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
             .init_resource::<cyrus_script::player::input::MovementWish>()
             .init_resource::<cyrus_script::player::input::LocomotionClaimed>()
+            .init_resource::<cyrus_script::player::input::PlayerRequests>()
+            .init_resource::<cyrus_script::player::input::CameraOrbit>()
             .init_resource::<cyrus_script::player::input::CollisionProbes>()
             .add_systems(Startup, api::spawn_host)
             .add_systems(PreUpdate, api::exchange)
             .add_systems(Update, (watch, apply).chain())
             .add_systems(
                 EguiPrimaryContextPass,
-                window.run_if(|menu: Res<cyrus_debug::DebugMenu>| menu.open),
+                (
+                    hud,
+                    window.run_if(|menu: Res<cyrus_debug::DebugMenu>| menu.open),
+                ),
             );
     }
 }
@@ -167,21 +180,24 @@ struct Saved {
 
 impl Catalog {
     fn discover() -> anyhow::Result<Self> {
-        let saved: Saved = match std::fs::read(ACTIVE_FILE) {
-            Ok(bytes) => serde_json::from_slice(&bytes).context(ACTIVE_FILE)?,
+        let saved: Saved = match std::fs::read(active_file()) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .with_context(|| active_file().display().to_string())?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Saved::default(),
-            Err(error) => return Err(error).context(ACTIVE_FILE),
+            Err(error) => return Err(error).with_context(|| active_file().display().to_string()),
         };
         let mut entries = Vec::new();
-        let dirs = match std::fs::read_dir(MODS_DIR) {
+        let dirs = match std::fs::read_dir(mods_dir()) {
             Ok(dirs) => dirs,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Self::default());
             }
-            Err(error) => return Err(error).context(MODS_DIR),
+            Err(error) => return Err(error).with_context(|| mods_dir().display().to_string()),
         };
         for dir in dirs {
-            let dir = dir.context(MODS_DIR)?.path();
+            let dir = dir
+                .with_context(|| mods_dir().display().to_string())?
+                .path();
             let manifest = dir.join("mod.toml");
             if !manifest.is_file() {
                 continue;
@@ -232,16 +248,20 @@ impl Catalog {
                 .map(|entry| entry.id.clone())
                 .collect(),
         };
-        std::fs::write(ACTIVE_FILE, serde_json::to_vec_pretty(&saved)?).context(ACTIVE_FILE)
+        std::fs::write(active_file(), serde_json::to_vec_pretty(&saved)?)
+            .with_context(|| active_file().display().to_string())
     }
 }
 
-fn absolute(path: &str) -> String {
-    std::path::absolute(path).map_or_else(|_| path.to_owned(), |p| p.to_string_lossy().into_owned())
+fn absolute(path: &Path) -> String {
+    std::path::absolute(path)
+        .unwrap_or_else(|_| path.to_owned())
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn mod_file(id: &str, file: &str) -> PathBuf {
-    Path::new(MODS_DIR).join(id).join(file)
+    mods_dir().join(id).join(file)
 }
 
 /// Starts and stops wasm instances and installs the active shader replacements.
@@ -387,6 +407,28 @@ fn watch(
     }
 }
 
+/// Draws the lines mods wrote this frame in the top-left corner.
+fn hud(mut contexts: EguiContexts, mut host: Query<&mut api::Hud>) -> Result {
+    let Ok(mut hud) = host.single_mut() else {
+        return Ok(());
+    };
+    let lines = hud.take();
+    if lines.is_empty() {
+        return Ok(());
+    }
+    egui::Area::new(egui::Id::new("mod hud"))
+        .anchor(egui::Align2::LEFT_TOP, [12.0, 12.0])
+        .interactable(false)
+        .show(contexts.ctx_mut()?, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                for line in lines {
+                    ui.label(line);
+                }
+            });
+        });
+    Ok(())
+}
+
 fn window(
     mut contexts: EguiContexts,
     mut catalog: ResMut<Catalog>,
@@ -395,7 +437,8 @@ fn window(
     egui::Window::new("Mods").show(contexts.ctx_mut()?, |ui| {
         if catalog.entries.is_empty() {
             ui.label(format!(
-                "No mods in {MODS_DIR}. `just mods` installs the bundled ones."
+                "No mods in {}. `just mods` installs the bundled ones.",
+                mods_dir().display()
             ));
         }
         let mut toggled = false;

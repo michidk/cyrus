@@ -1,12 +1,15 @@
 //! Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
-//! saved to `cyrus-config/mod-settings.json` and read by mods through the `settings` hook.
+//! saved to `mod-settings.json` in the game's config directory and read by mods through the `settings` hook.
 use anyhow::{Context, ensure};
 use bevy::ecs::prelude::Resource;
 use bevy_egui::egui;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-const SETTINGS_FILE: &str = "cyrus-config/mod-settings.json";
+/// The player's setting values, in the game's config directory.
+fn settings_file() -> std::path::PathBuf {
+    cyrus_config::config_dir().join("mod-settings.json")
+}
 
 /// One setting a mod declares. `key` is what the mod reads; `label` is what the player sees.
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -100,10 +103,13 @@ impl ModSettings {
         mods: impl IntoIterator<Item = (&'a str, &'a [Setting])>,
     ) -> anyhow::Result<Self> {
         let mut values: BTreeMap<String, BTreeMap<String, Value>> =
-            match std::fs::read(SETTINGS_FILE) {
-                Ok(bytes) => serde_json::from_slice(&bytes).context(SETTINGS_FILE)?,
+            match std::fs::read(settings_file()) {
+                Ok(bytes) => serde_json::from_slice(&bytes)
+                    .with_context(|| settings_file().display().to_string())?,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
-                Err(error) => return Err(error).context(SETTINGS_FILE),
+                Err(error) => {
+                    return Err(error).with_context(|| settings_file().display().to_string());
+                }
             };
         for (id, declared) in mods {
             let saved = values.entry(id.to_owned()).or_default();
@@ -120,8 +126,8 @@ impl ModSettings {
 
     pub fn save(&mut self) -> anyhow::Result<()> {
         self.dirty = false;
-        std::fs::write(SETTINGS_FILE, serde_json::to_vec_pretty(&self.values)?)
-            .context(SETTINGS_FILE)
+        std::fs::write(settings_file(), serde_json::to_vec_pretty(&self.values)?)
+            .with_context(|| settings_file().display().to_string())
     }
 
     /// Draws one mod's settings. Returns the save error, if saving failed this frame.

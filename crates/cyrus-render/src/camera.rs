@@ -140,10 +140,13 @@ fn grab_cursor(
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<cyrus_game::fidelity::Fidelity>,
     mouse: Option<Res<ButtonInput<MouseButton>>>,
+    look: Option<Res<cyrus_script::player::input::ModernLook>>,
     mut windows: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
 ) {
     use bevy::window::CursorGrabMode;
-    let grab = fidelity.camera == cyrus_game::fidelity::Mode::Modern
+    // The Modern camera, or a mod asking for it, turns with the captured mouse.
+    let grab = (fidelity.camera == cyrus_game::fidelity::Mode::Modern
+        || look.is_some_and(|look| look.orbit))
         && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
         && !suppressed.0
         && pending_world.is_none()

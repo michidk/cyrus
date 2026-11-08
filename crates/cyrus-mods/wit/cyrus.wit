@@ -1,7 +1,7 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `water`, `camera`, `movement`, `collision` and `natives` with `QueryFor::Mut` and `input`, `settings`
-/// and `player` with `QueryFor::Ref`;
+/// Query `vertices`, `camera`, `movement`, `collision`, `natives`, `memory` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// `player` and `scene` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
@@ -9,22 +9,33 @@ package cyrus:mods@0.1.0;
 interface components {
   use wasvy:ecs/app@0.0.11.{component};
 
-  /// Wave heights in place of the original table wave.
-  /// Heights must answer the current generation and be written every frame;
-  /// when a mod stops writing, water returns to the original wave.
-  /// wasvy:type-path=cyrus_mods::api::Water
-  resource water {
+  /// Vertex sets the game lets mods move, by name. A set is published while it exists and
+  /// republished (with a new generation) when its vertices change. Published today:
+  /// "water", the animated water vertices of the terrain near the camera, in scene units;
+  /// moving them replaces the original wave on screen (ground under actors keeps the original).
+  /// Offsets must answer the current generation and be written every frame; when a mod stops,
+  /// the vertices return to the original.
+  /// wasvy:type-path=cyrus_mods::api::Vertices
+  resource vertices {
     constructor(component: component);
-    /// Changes whenever the published positions change.
-    generation: func() -> u32;
-    /// Base positions of animated water vertices as x, y, z triples, in scene units.
-    positions: func() -> list<f32>;
-    /// The world's wave parameters: amplitude, speed, frequency (WLD units).
-    parameters: func() -> list<f32>;
+    /// Changes whenever the set's positions change; 0 for a set not published.
+    generation: func(set: string) -> u32;
+    /// The set's base positions as x, y, z triples; empty for a set not published.
+    positions: func(set: string) -> list<f32>;
+    /// Move each vertex of `set` by an x, y, z offset this frame, one triple per position,
+    /// for `generation`.
+    displace: func(set: string, generation: u32, offsets: list<f32>);
+  }
+
+  /// Values the game publishes by name, and its clock. Published today: "water-wave", the
+  /// loaded world's wave amplitude, speed and frequency (WLD units), while it has water.
+  /// wasvy:type-path=cyrus_mods::api::Scene
+  resource scene {
+    constructor(component: component);
+    /// The values published under `key`; empty when none are.
+    values: func(key: string) -> list<f32>;
     /// Presentation clock in seconds.
     seconds: func() -> f32;
-    /// One vertical offset per position, in scene units, for `generation`.
-    answer: func(generation: u32, heights: list<f32>);
   }
 
   /// The view camera. A mod that takes it over each frame suppresses player input.
@@ -35,6 +46,16 @@ interface components {
     pose: func() -> list<f32>;
     /// Drive the camera this frame with a pose in the same layout as `pose`.
     drive: func(pose: list<f32>);
+    /// This frame the mouse and right stick turn the follow camera around the player as the
+    /// Modern camera does, with the cursor captured, whatever moves the player. Call it every
+    /// frame you want it.
+    orbit: func();
+    /// Turn the orbit camera by `amount` heading units (2048 per turn, positive left).
+    /// Call with orbit each frame; mouse/right-stick input takes priority. Does not take over
+    /// the view pose or suppress player input. Nonfinite amounts are ignored.
+    turn: func(amount: f32);
+    /// Whether manual mouse/right-stick camera input was recently sampled.
+    manual: func() -> bool;
   }
 
   /// The player's movement. While a mod steers every frame, the player moves relative to the
@@ -47,14 +68,29 @@ interface components {
     /// A length below 0.75 walks and from 0.75 runs. `jump` jumps this frame. Set `wasd` when
     /// the mod reads W, A, S and D, so the game's own actions on those keys stay quiet.
     steer: func(x: f32, y: f32, jump: bool, wasd: bool);
+    /// Play animation `group` on the player (its number, as a script's `PlayAnimation` takes it
+    /// and `player.animation` reports it). With `interrupt` the current group gives way now;
+    /// without, the request waits like the original's: it follows the current group at its exit,
+    /// by request priority. Like `face`, it applies after the original controller ran, and only
+    /// on an update the controller runs (not while a script, death or another owner moves the
+    /// player), so the mod's choice wins over the original's. Call it each frame you want it.
+    play: func(group: u32, interrupt: bool);
+    /// Face `heading` (engine units, 2048 to a turn) this frame, after the original controller.
+    face: func(heading: u32);
+    /// Play the player's animation `scale` times as fast this frame (1 is the original pace,
+    /// at most 8). Markers in the animation, such as a jump's take-off, arrive sooner; arithmetic
+    /// on the game clock (a jump's arc, a fall) keeps its pace. Applies like `play`.
+    tempo: func(scale: f32);
     /// Take over the player's ground locomotion for this frame: the original bindings read as
     /// released and the original turn, walk, run and jump selection do not run. Face `heading`
-    /// (engine units, 2048 to a turn) and move along it `speed` map units per nominal update
-    /// (see `player.speed`), walking or running; zero speed stands. `jump` starts the original
+    /// (engine units, 2048 to a turn) and move along `travel` (same units) `speed` map units per
+    /// nominal update (see `player.speed`), walking or running; zero speed stands. The distance
+    /// is covered from the first frame: the animation (forward, backward or a sidestep, by
+    /// `travel` against `heading`) only shows it. `jump` starts the original
     /// jump. The engine still resolves ground, slopes and collision, and keeps death, dialogue
     /// and combat; it keeps control while the player is airborne or a script moves it. A claim
     /// lasts one frame, so call it every frame; when a mod stops, the original controls return.
-    claim: func(heading: u32, speed: f32, run: bool, jump: bool);
+    claim: func(heading: u32, travel: u32, speed: f32, run: bool, jump: bool);
     /// Scale the player's jump while it is claimed: `jump-height` times the jump height (and the
     /// descent of a fall, up to the attribute's byte limit) and `jump-speed` times the forward
     /// speed of a walking or running jump, whose distance cap stays. Only a player on the ground
@@ -113,6 +149,11 @@ interface components {
     armed: func() -> bool;
     /// The player's walking or running speed, in map units per nominal update.
     speed: func(run: bool) -> f32;
+    /// The playing animation group, the group waiting to follow it, and the group the player
+    /// returns to when nothing is requested; each one value, or empty when there is none.
+    animation: func() -> list<u32>;
+    pending: func() -> list<u32>;
+    idle: func() -> list<u32>;
   }
 
   /// The player's values for the `[[setting]]` entries in mod.toml. `id` is the mod's folder
@@ -125,8 +166,29 @@ interface components {
     choice: func(id: string, key: string) -> string;
   }
 
+  /// Values a mod keeps between frames. wasvy starts a fresh instance of the mod for every
+  /// system call, so a mod's own variables do not survive to the next frame; keep state here.
+  /// Keys are shared by all mods, so prefix them with the mod's folder name. The values last
+  /// for the session and are not saved.
+  /// wasvy:type-path=cyrus_mods::api::Memory
+  resource memory {
+    constructor(component: component);
+    /// The values saved under `key`, or empty when nothing is.
+    load: func(key: string) -> list<f32>;
+    /// Keep `values` under `key`; empty values forget it.
+    save: func(key: string, values: list<f32>);
+  }
+
+  /// Text lines drawn in the top-left corner over the game. A line shows for the frame it was
+  /// written in, so call `show` every frame the text should stay; when a mod stops, it disappears.
+  /// wasvy:type-path=cyrus_mods::api::Hud
+  resource hud {
+    constructor(component: component);
+    show: func(line: string);
+  }
+
   /// Keyboard and mouse this frame; `tapped` means pressed this frame. Keys use Bevy `KeyCode` names such as
-  /// "KeyW", "Space", "ShiftLeft" or "F3".
+  /// "KeyW", "Space", "ShiftLeft" or "F11".
   /// wasvy:type-path=cyrus_mods::api::Input
   resource input {
     constructor(component: component);

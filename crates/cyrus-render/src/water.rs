@@ -17,25 +17,6 @@ use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use cyrus_world::heading::wrap;
 
-/// Wave heights supplied by a mod in place of the original table wave.
-/// The host publishes the animated water vertices in the camera window each frame;
-/// a provider answers with one height per position for the same `generation`.
-/// Heights are taken every frame, so a provider that stops writing hands water back.
-#[derive(Resource, Default)]
-pub struct WaterWaves {
-    /// Changes whenever `positions` are republished.
-    pub generation: u32,
-    /// Base positions of animated water vertices, in exported scene units.
-    pub positions: Vec<[f32; 3]>,
-    /// The world's wave parameters `[amplitude, speed, frequency]` in WLD units.
-    pub parameters: [f32; 3],
-    /// Presentation clock in seconds.
-    pub seconds: f32,
-    /// Vertical offsets in exported scene units for `generation`, one per position.
-    pub heights: Option<(u32, Vec<f32>)>,
-    vertices: Vec<usize>,
-}
-
 // Preservation's exporter uses 20 engine units per unit and 256 per grid cell.
 const CELL_SIZE: f32 = 256.0 / 20.0;
 const BIOS_TICKS_PER_SECOND: f64 = 1_193_182.0 / 65_536.0;
@@ -120,6 +101,12 @@ fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
     -wave_height(water, vertex, ticks, 0.0) / 20.0
 }
 
+/// The provider hooks water publishes to and reads offsets from.
+type Hooks<'w> = (
+    Option<ResMut<'w, crate::hooks::VertexSets>>,
+    Option<ResMut<'w, crate::hooks::SceneValues>>,
+);
+
 /// The loaded world's player scene, whose terrain receives the live vertex heights.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct PlayerTerrain<'w> {
@@ -146,10 +133,7 @@ pub(crate) fn animate_water(
     ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
-    (distance, mut waves): (
-        Option<Res<crate::fog::RenderDistance>>,
-        Option<ResMut<WaterWaves>>,
-    ),
+    (distance, (mut sets, mut values)): (Option<Res<crate::fog::RenderDistance>>, Hooks),
     (mut preparation, mut camera_grid, player_scene): (
         Local<crate::terrain::Preparation>,
         Local<Vec<[f32; 3]>>,
@@ -260,9 +244,23 @@ pub(crate) fn animate_water(
     }
     let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
     let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
-    let supplied = waves.as_deref_mut().and_then(|waves| {
-        let offered = waves.heights.take();
-        let water = water?;
+    // Publish the water vertices and wave parameters for a provider, and take its offsets.
+    if let Some(values) = values.as_deref_mut() {
+        values.seconds = elapsed.as_secs_f32();
+        match water {
+            Some(water) => values
+                .values
+                .insert(crate::hooks::WATER_WAVE.into(), water.parameters.to_vec()),
+            None => values.values.remove(crate::hooks::WATER_WAVE),
+        };
+    }
+    let supplied = sets.as_deref_mut().and_then(|sets| {
+        let Some(water) = water else {
+            sets.0.remove(crate::hooks::WATER);
+            return None;
+        };
+        let waves = sets.0.entry(crate::hooks::WATER.into()).or_default();
+        let offered = waves.offsets.take();
         let vertices: Vec<usize> = (0..water.animated_vertices.len())
             .filter(|&v| water.animated_vertices[v] && window.contains(v))
             .collect();
@@ -272,8 +270,6 @@ pub(crate) fn animate_water(
             waves.positions = positions;
             waves.vertices = vertices;
         }
-        waves.parameters = water.parameters;
-        waves.seconds = elapsed.as_secs_f32();
         let (generation, offered) = offered?;
         (generation == waves.generation && offered.len() == waves.vertices.len()).then(|| {
             waves
@@ -286,7 +282,7 @@ pub(crate) fn animate_water(
     });
     let overridden = supplied.is_some();
     if overridden {
-        info_once!("water: mod-supplied wave heights active");
+        info_once!("water: provider-supplied vertex offsets active");
     }
     let update_grid = rebuild
         || playback.tick.is_none()
@@ -327,8 +323,10 @@ pub(crate) fn animate_water(
         }
         let mut grid = playback.base.clone();
         if let Some(supplied) = supplied {
-            for (vertex, height) in supplied {
-                grid[vertex][1] += height;
+            for (vertex, offset) in supplied {
+                for (axis, delta) in grid[vertex].iter_mut().zip(offset) {
+                    *axis += delta;
+                }
             }
         } else if let Some(water) = water {
             for (vertex, position) in grid.iter_mut().enumerate() {
@@ -483,12 +481,19 @@ mod tests {
 
     /// Publishes positions, then answers them with a constant mod-supplied height.
     fn supply_waves(app: &mut App) {
-        app.init_resource::<WaterWaves>();
+        app.init_resource::<crate::hooks::VertexSets>();
         app.update();
-        let mut waves = app.world_mut().resource_mut::<WaterWaves>();
-        let heights = (waves.generation, vec![1.0; waves.positions.len()]);
-        assert!(!heights.1.is_empty());
-        waves.heights = Some(heights);
+        let mut sets = app.world_mut().resource_mut::<crate::hooks::VertexSets>();
+        let waves = sets
+            .0
+            .get_mut(crate::hooks::WATER)
+            .expect("published water set");
+        let offsets = (
+            waves.generation,
+            vec![[0.0, 1.0, 0.0]; waves.positions.len()],
+        );
+        assert!(!offsets.1.is_empty());
+        waves.offsets = Some(offsets);
         app.update();
     }
 

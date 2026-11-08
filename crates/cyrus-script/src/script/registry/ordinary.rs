@@ -481,8 +481,9 @@ impl ScriptWorld {
                         );
                     }
                 }
+                let mut claimed_facing = None;
                 if let Some(query) = player_query {
-                    self.advance_player_controller(
+                    let controlled = self.advance_player_controller(
                         id,
                         query,
                         player_timing,
@@ -490,6 +491,18 @@ impl ScriptWorld {
                         random,
                         sounds,
                     )?;
+                    let requests = std::mem::take(&mut self.player_requests);
+                    if controlled {
+                        self.apply_player_requests(id, requests, ticks, sounds)?;
+                        claimed_facing = inputs
+                            .player_controller
+                            .and_then(|input| input.claim)
+                            .map(|mut claim| {
+                                // Explicit face requests retain their priority over the claim.
+                                claim.heading = requests.heading.unwrap_or(claim.heading);
+                                claim
+                            });
+                    }
                 } else if !(selected_role && inputs.player_controller.is_none()) && !on_rope {
                     // A host update without a player-controller sample is a
                     // preparation/timer pass. Do not drive the selected
@@ -688,6 +701,9 @@ impl ScriptWorld {
                         }),
                     )?;
                 }
+                if let Some(claim) = claimed_facing {
+                    self.restore_claimed_facing(id, claim)?;
+                }
                 self.restore_axis_locks(id)?;
                 self.retain_ordinary_water_position(id)?;
                 if selected_player {
@@ -885,6 +901,7 @@ pub struct OrdinaryContext<'w, 's> {
     input: Option<Res<'w, crate::player::input::PlayerInput>>,
     look: Option<ResMut<'w, crate::player::input::ModernLook>>,
     claimed: Option<Res<'w, crate::player::input::LocomotionClaimed>>,
+    player_requests: Option<ResMut<'w, crate::player::input::PlayerRequests>>,
     probes: Option<Res<'w, crate::player::input::CollisionProbes>>,
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
@@ -1319,6 +1336,7 @@ pub fn run_ordinary(
         input,
         mut look,
         claimed,
+        mut player_requests,
         probes,
         quick,
         script_keys,
@@ -1497,14 +1515,16 @@ pub fn run_ordinary(
     let modes = fidelity
         .as_deref()
         .map(|fidelity| (fidelity.player_controller, fidelity.camera));
-    let follow_turn = match modes {
-        Some((_, Mode::Modern)) => Some(look.as_deref_mut().map_or(0, |look| {
+    // The Modern camera, or a mod asking for it, turns the follow camera by the look input.
+    let orbit =
+        matches!(modes, Some((_, Mode::Modern))) || look.as_deref().is_some_and(|look| look.orbit);
+    let follow_turn = orbit.then(|| {
+        look.as_deref_mut().map_or(0, |look| {
             let turn = look.turn.trunc();
             look.turn -= turn;
             turn as i32
-        })),
-        _ => None,
-    };
+        })
+    });
     world.turn_follow_camera(follow_turn);
     // Modern movement reads the held directions or the left stick relative to the drawn
     // camera's heading.
@@ -1535,6 +1555,12 @@ pub fn run_ordinary(
         ),
         _ => None,
     };
+    world.set_player_requests(
+        player_requests
+            .as_deref_mut()
+            .map(std::mem::take)
+            .unwrap_or_default(),
+    );
     let claim = claimed.as_deref().and_then(|claimed| claimed.0);
     world.set_player_tuning(claim.map_or_else(Default::default, |claim| claim.tuning));
     let player_controller = if !explicit

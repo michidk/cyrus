@@ -4,49 +4,64 @@
 //! so a mod's answer takes effect one frame after it was written.
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
-//! and panics on a mismatch, so `Water`, `Camera` and `Movement` (queried `Mut`) take
-//! `&mut self` throughout and `Input` and `Settings` (queried `Ref`) take `&self`. Method names
+//! and panics on a mismatch, so `Vertices`, `Camera`, `Movement`, `Memory` and `Hud` (queried `Mut`) take
+//! `&mut self` throughout and `Input`, `Settings`, `Player` and `Scene` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use crate::settings::{ModSettings, Value};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
-use cyrus_render::WaterWaves;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
+use cyrus_render::hooks::{SceneValues, VertexSets};
 use cyrus_script::player::input::{
-    CollisionProbes, Gait, Inputs, LocomotionClaim, LocomotionClaimed, MovementWish, PlayerInput,
-    PlayerTuning, Probe, Wish,
+    CameraOrbit, CollisionProbes, Gait, Inputs, LocomotionClaim, LocomotionClaimed, ModernLook,
+    MovementWish, PlayAnimation, PlayerInput, PlayerRequests, PlayerTuning, Probe, Wish,
 };
 use cyrus_script::script::{CameraFrameState, ScriptActors};
-use cyrus_soup::Native;
+use cyrus_soup::{AnimationGroup, Native};
 use std::collections::{BTreeSet, HashMap};
 use wasvy::prelude::*;
 
+/// Vertex sets the presentation lets mods move, by name ([`cyrus_render::hooks`] lists them).
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
-pub struct Water {
-    generation: u32,
-    positions: Vec<f32>,
-    parameters: Vec<f32>,
-    seconds: f32,
-    heights: Option<(u32, Vec<f32>)>,
+pub struct Vertices {
+    /// Generation and flattened x, y, z positions of each published set.
+    sets: HashMap<String, (u32, Vec<f32>)>,
+    /// Offsets mods answered this frame, by set.
+    offsets: HashMap<String, (u32, Vec<f32>)>,
 }
 
 #[wasvy::methods]
-impl Water {
-    pub fn generation(&mut self) -> u32 {
-        self.generation
+impl Vertices {
+    pub fn generation(&mut self, set: String) -> u32 {
+        self.sets.get(&set).map_or(0, |(generation, _)| *generation)
     }
-    pub fn positions(&mut self) -> Vec<f32> {
-        self.positions.clone()
+    pub fn positions(&mut self, set: String) -> Vec<f32> {
+        self.sets
+            .get(&set)
+            .map(|(_, positions)| positions.clone())
+            .unwrap_or_default()
     }
-    pub fn parameters(&mut self) -> Vec<f32> {
-        self.parameters.clone()
+    pub fn displace(&mut self, set: String, generation: u32, offsets: Vec<f32>) {
+        self.offsets.insert(set, (generation, offsets));
     }
-    pub fn seconds(&mut self) -> f32 {
+}
+
+/// Named values the presentation publishes and its clock ([`cyrus_render::hooks`]).
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Scene {
+    values: HashMap<String, Vec<f32>>,
+    seconds: f32,
+}
+
+#[wasvy::methods]
+impl Scene {
+    pub fn values(&self, key: String) -> Vec<f32> {
+        self.values.get(&key).cloned().unwrap_or_default()
+    }
+    pub fn seconds(&self) -> f32 {
         self.seconds
-    }
-    pub fn answer(&mut self, generation: u32, heights: Vec<f32>) {
-        self.heights = Some((generation, heights));
     }
 }
 
@@ -55,6 +70,9 @@ impl Water {
 pub struct Camera {
     pose: Vec<f32>,
     takeover: Option<Vec<f32>>,
+    orbit: bool,
+    turn: f32,
+    manual: bool,
 }
 
 #[wasvy::methods]
@@ -65,13 +83,27 @@ impl Camera {
     pub fn drive(&mut self, pose: Vec<f32>) {
         self.takeover = Some(pose);
     }
+    pub fn orbit(&mut self) {
+        self.orbit = true;
+    }
+    pub fn turn(&mut self, amount: f32) {
+        if amount.is_finite() {
+            self.turn += amount;
+        }
+    }
+    pub fn manual(&mut self) -> bool {
+        self.manual
+    }
 }
 
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
 pub struct Movement {
     wish: Option<(f32, f32, bool, bool)>,
-    claim: Option<(u32, f32, bool, bool)>,
+    play: Option<(u32, bool)>,
+    face: Option<u32>,
+    tempo: Option<f32>,
+    claim: Option<(u32, u32, f32, bool, bool)>,
     tuning: Option<(f32, f32)>,
 }
 
@@ -80,8 +112,17 @@ impl Movement {
     pub fn steer(&mut self, x: f32, y: f32, jump: bool, wasd: bool) {
         self.wish = Some((x, y, jump, wasd));
     }
-    pub fn claim(&mut self, heading: u32, speed: f32, run: bool, jump: bool) {
-        self.claim = Some((heading, speed, run, jump));
+    pub fn play(&mut self, group: u32, interrupt: bool) {
+        self.play = Some((group, interrupt));
+    }
+    pub fn face(&mut self, heading: u32) {
+        self.face = Some(heading);
+    }
+    pub fn tempo(&mut self, scale: f32) {
+        self.tempo = Some(scale);
+    }
+    pub fn claim(&mut self, heading: u32, travel: u32, speed: f32, run: bool, jump: bool) {
+        self.claim = Some((heading, travel, speed, run, jump));
     }
     pub fn tune(&mut self, jump_height: f32, jump_speed: f32) {
         self.tuning = Some((jump_height, jump_speed));
@@ -160,10 +201,23 @@ pub struct Player {
     walk_speed: f32,
     run_speed: f32,
     armed: bool,
+    /// Current, pending and idle animation group; each empty when absent.
+    animation: Vec<u32>,
+    pending: Vec<u32>,
+    idle: Vec<u32>,
 }
 
 #[wasvy::methods]
 impl Player {
+    pub fn animation(&self) -> Vec<u32> {
+        self.animation.clone()
+    }
+    pub fn pending(&self) -> Vec<u32> {
+        self.pending.clone()
+    }
+    pub fn idle(&self) -> Vec<u32> {
+        self.idle.clone()
+    }
     pub fn armed(&self) -> bool {
         self.armed
     }
@@ -215,6 +269,48 @@ impl Settings {
     }
 }
 
+/// State mods keep between frames, since each system call runs in a fresh mod instance.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Memory {
+    values: HashMap<String, Vec<f32>>,
+}
+
+#[wasvy::methods]
+impl Memory {
+    pub fn load(&mut self, key: String) -> Vec<f32> {
+        self.values.get(&key).cloned().unwrap_or_default()
+    }
+    pub fn save(&mut self, key: String, values: Vec<f32>) {
+        if values.is_empty() {
+            self.values.remove(&key);
+        } else {
+            self.values.insert(key, values);
+        }
+    }
+}
+
+/// Text lines mods wrote this frame; drawn over the game and then cleared.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Hud {
+    lines: Vec<String>,
+}
+
+#[wasvy::methods]
+impl Hud {
+    pub fn show(&mut self, line: String) {
+        self.lines.push(line);
+    }
+}
+
+impl Hud {
+    /// The lines written since the last call, oldest first.
+    pub(crate) fn take(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.lines)
+    }
+}
+
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
 pub struct Input {
@@ -247,20 +343,24 @@ impl Input {
 pub(crate) fn spawn_host(mut commands: Commands) {
     commands.spawn((
         Name::new("cyrus mod API"),
-        Water::default(),
+        Vertices::default(),
+        Scene::default(),
         Camera::default(),
         Movement::default(),
         Settings::default(),
         Player::default(),
         Collision::default(),
         Natives::default(),
+        Memory::default(),
+        Hud::default(),
         Input::default(),
     ));
 }
 
 /// Every component of the host entity.
 type Host = (
-    &'static mut Water,
+    &'static mut Vertices,
+    &'static mut Scene,
     &'static mut Camera,
     &'static mut Movement,
     &'static mut Settings,
@@ -279,9 +379,11 @@ pub(crate) fn exchange(
     camera_frame: Option<Res<CameraFrameState>>,
     mut claimed: ResMut<LocomotionClaimed>,
     values: Res<ModSettings>,
-    mut waves: ResMut<WaterWaves>,
+    (mut sets, published): (ResMut<VertexSets>, Res<SceneValues>),
     mut movement: ResMut<MovementWish>,
     mut takeover: ResMut<CameraTakeover>,
+    mut requests: ResMut<PlayerRequests>,
+    (mut orbit, look): (ResMut<CameraOrbit>, Option<Res<ModernLook>>),
     view: Query<&Transform, With<ViewCamera>>,
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Inputs,
@@ -289,7 +391,8 @@ pub(crate) fn exchange(
     time: Res<Time>,
 ) {
     let Ok((
-        mut water,
+        mut vertices,
+        mut scene,
         mut camera,
         mut steering,
         mut settings,
@@ -320,13 +423,28 @@ pub(crate) fn exchange(
             }
         }
     }
-    waves.heights = water.heights.take();
-    if water.generation != waves.generation {
-        water.generation = waves.generation;
-        water.positions = waves.positions.iter().flatten().copied().collect();
+    // Hand last frame's offsets to each published set and republish changed positions.
+    let mut answered = std::mem::take(&mut vertices.offsets);
+    for (name, set) in &mut sets.0 {
+        if let Some((generation, offsets)) = answered.remove(name) {
+            set.offsets = Some((generation, offsets.as_chunks::<3>().0.to_vec()));
+        }
+        let copy = vertices.sets.entry(name.clone()).or_default();
+        if copy.0 != set.generation || copy.1.len() != set.positions.len() * 3 {
+            *copy = (
+                set.generation,
+                set.positions.iter().flatten().copied().collect(),
+            );
+        }
     }
-    water.parameters = waves.parameters.to_vec();
-    water.seconds = waves.seconds;
+    vertices.sets.retain(|name, _| sets.0.contains_key(name));
+    for name in answered.keys() {
+        warn_once!("mods: displace: no vertex set named {name}");
+    }
+    if published.is_changed() {
+        scene.values = published.values.clone();
+    }
+    scene.seconds = published.seconds;
 
     takeover.0 = camera.takeover.take().and_then(|pose| match pose[..] {
         [x, y, z, qx, qy, qz, qw] => Some(
@@ -350,6 +468,23 @@ pub(crate) fn exchange(
             wasd,
         }
     });
+    orbit.enabled = std::mem::take(&mut camera.orbit);
+    orbit.turn = std::mem::take(&mut camera.turn);
+    camera.manual = mouse.delta != Vec2::ZERO || look.is_some_and(|look| look.manual);
+    *requests = PlayerRequests {
+        animation: steering.play.take().and_then(|(group, interrupt)| {
+            let group = u16::try_from(group).ok();
+            if group.is_none() {
+                warn_once!("mods: play: animation group out of range");
+            }
+            group.map(|group| PlayAnimation {
+                group: AnimationGroup::from_index(group),
+                interrupt,
+            })
+        }),
+        heading: steering.face.take().map(|heading| (heading & 2047) as u16),
+        tempo: steering.tempo.take(),
+    };
     probes.requests = std::mem::take(&mut collision.queued)
         .as_chunks::<6>()
         .0
@@ -411,8 +546,9 @@ pub(crate) fn exchange(
     claimed.0 = steering
         .claim
         .take()
-        .map(|(heading, speed, run, jump)| LocomotionClaim {
+        .map(|(heading, travel, speed, run, jump)| LocomotionClaim {
             heading: (heading & 2047) as u16,
+            travel: (travel & 2047) as u16,
             speed,
             gait: if run { Gait::Run } else { Gait::Walk },
             jump,
@@ -426,6 +562,15 @@ pub(crate) fn exchange(
         player.heading = u32::from(status.heading);
         player.airborne = status.airborne;
         player.armed = status.armed;
+        let group = |group: Option<cyrus_soup::AnimationGroup>| {
+            group
+                .map(|group| u32::from(group.index()))
+                .into_iter()
+                .collect()
+        };
+        player.animation = group(status.animation);
+        player.pending = group(status.pending_animation);
+        player.idle = group(status.idle_animation);
         (player.walk_speed, player.run_speed) = if status.armed {
             (
                 f32::from(status.fight_walk_speed),

@@ -16297,6 +16297,7 @@ fn a_mod_claim_replaces_the_original_locomotion_with_its_own_heading_and_speed()
                     steer: None,
                     claim: Some(cyrus_script::player::input::LocomotionClaim {
                         heading: 512,
+                        travel: 512,
                         speed: 4.0,
                         gait: cyrus_script::player::input::Gait::Run,
                         jump: false,
@@ -16439,6 +16440,7 @@ fn collision_probes_answer_in_request_order_while_a_mod_claims_locomotion() {
                     steer: None,
                     claim: Some(cyrus_script::player::input::LocomotionClaim {
                         heading: 512,
+                        travel: 512,
                         speed: 4.0,
                         gait: cyrus_script::player::input::Gait::Run,
                         jump: false,
@@ -16570,6 +16572,7 @@ fn a_mod_claim_steers_a_jump_in_the_air_and_scales_the_jump_only_on_the_ground()
                     steer: None,
                     claim: Some(cyrus_script::player::input::LocomotionClaim {
                         heading: 700,
+                        travel: 700,
                         speed: 4.0,
                         gait: cyrus_script::player::input::Gait::Run,
                         jump: false,

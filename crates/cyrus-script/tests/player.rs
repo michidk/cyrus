@@ -181,6 +181,37 @@ fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
         (false, None),
         "a mod that stops answering hands control back"
     );
+    // A mod's orbit request turns the camera whatever moves the player.
+    assert!(!app.world().resource::<ModernLook>().orbit);
+    app.insert_resource(cyrus_script::player::input::CameraOrbit {
+        enabled: true,
+        ..default()
+    });
+    app.update();
+    assert!(app.world().resource::<ModernLook>().orbit);
+    app.insert_resource(State::new(AppState::InGame));
+    app.insert_resource(cyrus_script::player::input::CameraOrbit {
+        enabled: true,
+        turn: 20.0,
+    });
+    app.update();
+    assert_eq!(app.world().resource::<ModernLook>().turn, 20.0);
+    app.world_mut().resource_mut::<ModernLook>().turn = 0.0;
+    app.insert_resource(bevy::input::mouse::AccumulatedMouseMotion {
+        delta: Vec2::new(10.0, 0.0),
+    });
+    app.update();
+    let look = app.world().resource::<ModernLook>();
+    assert!(look.manual);
+    assert!(
+        look.turn < 0.0,
+        "manual look wins over the automatic left turn"
+    );
+    app.insert_resource(cyrus_script::player::input::InputSuppressed(true));
+    app.update();
+    let look = app.world().resource::<ModernLook>();
+    assert_eq!(look.turn, 0.0);
+    assert!(!look.orbit && !look.manual);
 }
 
 #[test]
@@ -205,6 +236,7 @@ fn a_locomotion_claim_releases_the_movement_bindings_and_menus_take_it_back() {
     assert!(input.forward && input.jump, "unclaimed: original bindings");
     let claim = LocomotionClaim {
         heading: 100,
+        travel: 100,
         speed: 5.0,
         gait: Gait::Walk,
         jump: false,

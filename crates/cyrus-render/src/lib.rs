@@ -20,11 +20,12 @@ pub mod subtitles;
 mod terrain;
 mod weapon_model;
 pub use terrain::TextureAdmission as TerrainTextureAdmission;
+pub mod hooks;
 mod water;
 use bevy::prelude::*;
 pub use water::{
     CameraTerrainView, PreparedTerrainMesh, TerrainCandidate, TerrainMeshReplacement,
-    TerrainPlaybackSnapshot, WaterPlayback, WaterWaves,
+    TerrainPlaybackSnapshot, WaterPlayback,
 };
 /// Shared world presentation for native and browser hosts.
 pub struct WorldRenderPlugin;

@@ -6,6 +6,7 @@
 use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use cyrus_game::fidelity::{Fidelity, Mode};
+use cyrus_soup::AnimationGroup;
 use serde::Serialize;
 
 /// Held player actions, before movement/animation state interpretation.
@@ -95,6 +96,11 @@ pub struct ModernLook {
     /// A mod's [`MovementWish`] is steering, so movement reads camera-relative whatever the
     /// controller mode.
     pub driven: bool,
+    /// The mouse and right stick turn the follow camera: the Modern camera, or a mod's
+    /// [`CameraOrbit`].
+    pub orbit: bool,
+    /// Mouse or right-stick camera input was sampled this frame.
+    pub manual: bool,
 }
 
 /// Movement a mod asks for this frame, replacing the original keys. `None` leaves movement
@@ -118,8 +124,12 @@ pub enum Gait {
 pub struct LocomotionClaim {
     /// Heading to face, in 1/2048 turns as engine headings count.
     pub heading: u16,
-    /// Distance to travel along the heading per nominal update, in map units like the actor's
-    /// speed attributes. Zero or less stands still.
+    /// Heading to travel along, in the same units; it may differ from the facing (a sidestep or
+    /// backing away).
+    pub travel: u16,
+    /// Distance to travel per nominal update, in map units like the actor's speed attributes.
+    /// Zero or less stands still. The distance is covered from the first update, whatever the
+    /// animation shows.
     pub speed: f32,
     pub gait: Gait,
     /// Starts the original jump entry for the current gait.
@@ -192,6 +202,31 @@ impl CollisionProbes {
     }
 }
 
+/// What a mod asks of the selected player for the next update. The requests apply after the
+/// original controller has run, and only on an update it runs (not while a script task, death or
+/// another owner moves the player), so the original's choices come first and the mod's win.
+/// The game consumes them; a mod repeats a request every frame it wants it.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct PlayerRequests {
+    /// Play an animation group.
+    pub animation: Option<PlayAnimation>,
+    /// Face this heading, in 1/2048 turns.
+    pub heading: Option<u16>,
+    /// Play the player's animation this many times as fast this update; `None` is the
+    /// original pace. It changes how fast the animation runs, and so when its markers (a jump's
+    /// take-off, a step's sounds) arrive, not the arithmetic that runs on the game clock.
+    pub tempo: Option<f32>,
+}
+
+/// An animation request, as a script's `PlayAnimation` names its group.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlayAnimation {
+    pub group: AnimationGroup,
+    /// Replace the current group now. Otherwise the request waits like an ordinary one: it
+    /// follows the current group at its exit, by the original's request priority.
+    pub interrupt: bool,
+}
+
 /// The claim a mod made for the next update; the game consumes it and hands control back as
 /// soon as a mod stops claiming.
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
@@ -207,6 +242,16 @@ pub struct Wish {
     /// The mod reads W, A, S and D for this, so an installed quick action on one of them (the
     /// sword's S by default) stays quiet.
     pub wasd: bool,
+}
+
+/// A mod asks for this frame: the mouse and right stick turn the follow camera around the player
+/// as the Modern camera does, with the cursor captured. Independent of how the player moves.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct CameraOrbit {
+    pub enabled: bool,
+    /// Additional camera yaw this frame, in heading units, positive to the left.
+    /// Manual look input takes priority over this request.
+    pub turn: f32,
 }
 
 const HEADING_PER_RADIAN: f32 = 2048.0 / std::f32::consts::TAU;
@@ -775,7 +820,7 @@ pub(super) fn sample(
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
     mut look: ResMut<ModernLook>,
-    wish: Res<MovementWish>,
+    (wish, orbit): (Res<MovementWish>, Res<CameraOrbit>),
     mut claimed: ResMut<LocomotionClaimed>,
 ) {
     if suppressed.0
@@ -798,18 +843,23 @@ pub(super) fn sample(
             .is_some_and(|threshold| stick.length() > threshold)
             .then_some(stick)
     };
+    look.orbit = fidelity.camera == Mode::Modern || orbit.enabled;
+    look.manual = false;
     // Mouse travel over a menu does not turn the camera on return.
-    if fidelity.camera == Mode::Modern
-        && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
-    {
+    if look.orbit && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame) {
         if let Some(motion) = motion {
             look.turn -= motion.delta.x * MOUSE_TURN;
+            look.manual |= motion.delta != Vec2::ZERO;
         }
         let seconds = time.map_or(0.0, |time| time.delta_secs());
         for pad in &gamepads {
             if let Some(stick) = tilted(pad.right_stick()) {
                 look.turn -= stick.x * STICK_TURN * seconds;
+                look.manual = true;
             }
+        }
+        if !look.manual && orbit.turn.is_finite() {
+            look.turn += orbit.turn.clamp(-1024.0, 1024.0);
         }
     }
     look.stick = (fidelity.player_controller == Mode::Modern)

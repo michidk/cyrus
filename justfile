@@ -43,16 +43,16 @@ genmap:
 build:
     cargo build --workspace
 
-# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into cyrus-config/mods
+# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into game-config/mods
 mods:
     for dir in mods/*/; do \
         id="$(basename "$dir")"; \
         (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../target/mods" cargo build --release --target wasm32-wasip2); \
-        mkdir -p "cyrus-config/mods/$id"; \
-        cp "$dir/mod.toml" "cyrus-config/mods/$id/"; \
-        cp "target/mods/wasm32-wasip2/release/${id//-/_}.wasm" "cyrus-config/mods/$id/mod.wasm"; \
-        for shader in "$dir"/*.wesl; do [ -f "$shader" ] && cp "$shader" "cyrus-config/mods/$id/"; done; \
-        if [ -d "$dir/files" ]; then rm -rf "cyrus-config/mods/$id/files"; cp -a "$dir/files" "cyrus-config/mods/$id/files"; fi; \
+        mkdir -p "game-config/mods/$id"; \
+        cp "$dir/mod.toml" "game-config/mods/$id/"; \
+        cp "target/mods/wasm32-wasip2/release/${id//-/_}.wasm" "game-config/mods/$id/mod.wasm"; \
+        for shader in "$dir"/*.wesl; do [ -f "$shader" ] && cp "$shader" "game-config/mods/$id/"; done; \
+        if [ -d "$dir/files" ]; then rm -rf "game-config/mods/$id/files"; cp -a "$dir/files" "game-config/mods/$id/files"; fi; \
     done
 
 run *ARGS:
