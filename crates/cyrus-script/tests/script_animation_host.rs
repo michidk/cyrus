@@ -1255,11 +1255,13 @@ fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
         ActivationOverlay::Hidden
     );
     assert_eq!(world.activation().prompt(), Some("Open"));
+    assert_eq!(world.activation().shown_prompt(), None);
     assert_eq!(
         world.activation_overlay(&inputs, 0, false, 24).unwrap(),
         ActivationOverlay::Prompt("Open".into())
     );
     assert_eq!(world.activation().prompt(), None);
+    assert_eq!(world.activation().shown_prompt(), Some("Open"));
     activate_world(&mut world, &inputs);
     assert_eq!(world.flags(), [1], "the existing owner may activate again");
     // Deactivation on the caller clears holdoff but cannot release a foreign owner.

@@ -729,8 +729,21 @@ pub struct ActivationState {
     prompt: Option<String>,
     holdoff: u32,
     prompt_override: u32,
+    /// Prompt text returned by the most recent overlay update, for acceptance probes; the
+    /// pending `prompt` is consumed when the overlay is drawn.
+    shown_prompt: Option<String>,
 }
 impl ActivationState {
+    /// The prompt the last overlay update displayed, or `None` when it displayed none.
+    pub fn shown_prompt(&self) -> Option<&str> {
+        self.shown_prompt.as_deref()
+    }
+    pub(super) fn record_shown(&mut self, overlay: &ActivationOverlay) {
+        self.shown_prompt = match overlay {
+            ActivationOverlay::Prompt(text) => Some(text.clone()),
+            _ => None,
+        };
+    }
     pub fn owner(&self) -> Option<ScriptActorId> {
         self.owner
     }
@@ -1616,6 +1629,7 @@ impl ActivationState {
             prompt: saved.prompt,
             holdoff: saved.holdoff,
             prompt_override: saved.prompt_override,
+            shown_prompt: None,
         })
     }
 }

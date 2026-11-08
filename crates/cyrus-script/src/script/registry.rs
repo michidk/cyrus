@@ -3344,14 +3344,16 @@ impl ScriptWorld {
         override_ticks: u32,
     ) -> Result<super::ActivationOverlay> {
         self.validate_activation(inputs)?;
-        self.activation.overlay(
+        let overlay = self.activation.overlay(
             inputs,
             &self.actors[inputs.player.index],
             ticks,
             cycle_held,
             override_ticks,
             self.globals.lockout(),
-        )
+        )?;
+        self.activation.record_shown(&overlay);
+        Ok(overlay)
     }
 
     fn resolve(&self, actor: ScriptActorId) -> Result<usize> {
