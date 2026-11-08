@@ -692,8 +692,12 @@ progress byte completes `WaitAnimFrame`) and is saved with the animation. See pr
 Writing `anim.current` switches the command table and type flags the next advance interprets and keeps
 the cursor, countdowns and markers; -1 leaves no current group, and a group without a table or a write
 while none is current stops with an explicit error.
-`anim.sound_handle`, `anim.max_group`, `anim.last_angle` and `anim.address`
-stay unsupported.
+`anim.last_angle` is the rotation history the automatic model refresh copies from `anim.angle`.
+`anim.max_group` is the low byte of the exported RAHD control prefix (preservation 0.12; sidecars exported earlier
+read as an explicit re-export error). `anim.sound_handle`, `anim.address` (and `anim`), `handle`, `last_handle` and `rope_id` stay unsupported on purpose:
+a static census of every installed map file (27 maps, the 29 WORLD.INI entries plus the one map no entry names;
+`cargo run -p cyrus-assets --example soup_inventory --features native`) finds no script that reads or writes any of them,
+and no call of a `Pipe*` native. `rope` is read 8 times, only to test it against zero, which is supported.
 
 
 Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player

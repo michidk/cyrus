@@ -127,7 +127,9 @@ pub use registry::falling::{
     ordinary_fall_origin, ordinary_falling_request, ordinary_health_value,
     ordinary_landing_decision, ordinary_landing_request,
 };
-pub use registry::ground::{OrdinaryCollisionShape, OrdinaryGroundQuery, OrdinaryStableProbe};
+pub use registry::ground::{
+    BoundsRecord, OrdinaryCollisionShape, OrdinaryGroundQuery, OrdinaryStableProbe, RetainedBounds,
+};
 pub use registry::model::{
     ModelPresentation, ModelSupportOwners, OrdinaryCollisionQuery, StableRecoveryQuery,
 };

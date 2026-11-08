@@ -17,7 +17,7 @@ use cyrus_soup::{AnimationGroup, Attribute};
 /// Per-update clock inputs of the ledge services: the fine-tick increment that sets the reach
 /// of the scan and the frame scale that sets the turn rate of a ledge turn.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct LedgeTiming {
+pub struct LedgeTiming {
     pub fine_ticks: u32,
     pub frame_scale: Option<u32>,
 }

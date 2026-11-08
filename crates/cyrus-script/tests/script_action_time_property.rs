@@ -433,3 +433,48 @@ fn missing_late_collision_input_keeps_timer_before_its_consumer_and_sticks_failu
     assert!(advance(&mut world, 0).is_err());
     assert_eq!(world.flags(), [73]);
 }
+
+#[test]
+fn a_falling_byte_in_a_ledge_state_runs_the_late_stage_without_the_ground_response() {
+    // The original skips the obstacle wrapper and the ground response in living states 10 to 19
+    // (the ledge transition replaces the latter), so a nonselected actor keeps its falling byte.
+    for state in 10..=19u8 {
+        let (mut world, data, mut scene) = automatic_fixture(0);
+        scene.settings.post_collide_height = 8;
+        let id = world.id(0).unwrap();
+        let y = world.spatial(id).unwrap().local.position[1];
+        world.set_living_state_for_test(id, cyrus_script::script::LivingState::from_byte(state));
+        world.set_falling_for_test(id, JumpMotion::STANDING, y);
+        world
+            .update_ordinary(
+                &data,
+                [600, 600],
+                cyrus_script::script::OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        fine_ticks: Some(0),
+                        step_fps: Some(12),
+                        ..Default::default()
+                    },
+                    scene: Some(&scene),
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "living state {state}: {:?}",
+            world.actors()[0].failure()
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.living_state.byte(), state);
+        assert_eq!(
+            control.falling_state,
+            JumpMotion::STANDING,
+            "living state {state}"
+        );
+    }
+}

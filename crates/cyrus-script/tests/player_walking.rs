@@ -1209,9 +1209,11 @@ fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
 }
 
 #[test]
-fn forward_query_tests_the_body_from_the_written_center_offset() {
+fn the_residual_requery_runs_from_the_written_center_offset() {
     use bevy::math::Mat3;
-    use cyrus_script::player::grounded::{LiveBounds, StaticGroundQuery, SurfaceUpdate};
+    use cyrus_script::player::grounded::{
+        GroundedWalk, LiveBounds, StaticGroundQuery, SurfaceUpdate,
+    };
     let mut scene = ground_scene(Surface::SAND);
     scene.collision.placements.push(StaticPlacement {
         id: 0,
@@ -1268,8 +1270,10 @@ fn forward_query_tests_the_body_from_the_written_center_offset() {
         actors: vec![],
     };
     let definition = scene.definition.as_ref().unwrap();
-    let position = [512 * 256, -64 * 256, 512 * 256];
-    let accepted = |center_z: i32| {
+    let previous = [512 * 256, -64 * 256, 512 * 256];
+    // The residual requery after the support response refreshes its origin by the center offset:
+    // a +60 offset puts the body on the wall face, so the separation moves it; -60 and 0 do not.
+    let resolved = |center_z: i32| {
         let query = StaticGroundQuery {
             bounds: Some(LiveBounds {
                 positive_extent: definition.positive_extent,
@@ -1283,17 +1287,26 @@ fn forward_query_tests_the_body_from_the_written_center_offset() {
             sidedness: true,
             surface_update: SurfaceUpdate::Assign,
         };
+        let mut walk = GroundedWalk {
+            position: previous,
+            surface: Surface::UNKNOWN,
+            startup: WalkingStartup::new(1).unwrap(),
+        };
+        let (mut heading, mut veto) = (0, 0);
         let mut history = SupportHistory::new(0, 0);
-        let (mut surface, mut veto) = (Surface::GLOOP, 1);
-        query
-            .forward_support(position, position, &mut history, &mut surface, &mut veto)
-            .unwrap()
-            .is_some()
+        walk.resolve_ground(&query, previous, &mut heading, &mut history, &mut veto)
+            .unwrap();
+        (walk.position, heading)
     };
-    assert!(accepted(0), "the unshifted body is clear of the wall");
-    assert!(
-        !accepted(60),
+    let free = resolved(0);
+    assert_eq!(
+        resolved(-60),
+        free,
+        "a -60 center offset moves away from the wall"
+    );
+    assert_ne!(
+        resolved(60),
+        free,
         "a +60 center offset puts the body on the wall face"
     );
-    assert!(accepted(-60), "a -60 center offset moves it away");
 }

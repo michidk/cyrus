@@ -102,6 +102,7 @@ struct Inspection<'w, 's> {
     script_hud: Option<Res<'w, cyrus_script::script::ScriptHud>>,
     logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
     inventory_screen: Option<Res<'w, cyrus_script::inventory_screen::InventoryScreen>>,
+    examine: Option<Res<'w, cyrus_script::item_viewer::ExamineScreen>>,
     island_map: Option<Res<'w, cyrus_script::island_map::IslandMapScreen>>,
     scripts: Option<Res<'w, cyrus_script::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_script::script::ScriptActors>>,
@@ -153,6 +154,7 @@ fn handle(
         script_hud,
         logbook,
         inventory_screen,
+        examine,
         island_map,
         scripts,
         mut script_actors,
@@ -289,7 +291,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                 });
                 Ok(
-                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -340,6 +342,24 @@ fn handle(
                     .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
                 world.set_selected_torch(burning)?;
                 Ok(json!({"burning": burning}))
+            })()
+            .map_err(|error| format!("{error:#}")),
+            Command::ShowItem { item, no_text } => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                world.globals_mut().request_item_viewer(item, [0, 0], no_text);
+                Ok(json!({"item": item, "no_text": no_text}))
+            })()
+            .map_err(|error| format!("{error:#}")),
+            Command::ResetCamera => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                world.globals_mut().request_camera_reset();
+                Ok(json!({"requested": true}))
             })()
             .map_err(|error| format!("{error:#}")),
             Command::SelectItem { id } => (|| -> anyhow::Result<_> {

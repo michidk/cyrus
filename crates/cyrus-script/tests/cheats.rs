@@ -45,7 +45,7 @@ fn toggles_assigns_lists_and_restores_only_after_savecheats() {
     assert!(!restored.distance_override().unwrap());
     assert_eq!(
         restored.execute("oddjob", None).unwrap(),
-        CheatEffect::Unsupported
+        CheatEffect::RecognizedOnly
     );
     assert_eq!(
         restored.execute("magiccarpet", None).unwrap(),
@@ -325,19 +325,19 @@ fn console_editor_preserves_commands_and_never_edits_report_lines() {
         app.world_mut().resource_mut::<Console>().key(code, text);
         app.update();
     };
-    key(&mut app, KeyCode::KeyO, Some("oddjob = 2"));
+    key(&mut app, KeyCode::KeyO, Some("yeahbaby = 2"));
     key(&mut app, KeyCode::Enter, None);
     assert_eq!(
         app.world()
             .resource::<Cheats>()
             .state()
             .unwrap()
-            .value("oddjob"),
+            .value("yeahbaby"),
         Some(2)
     );
     key(&mut app, KeyCode::Tab, None);
     let console = app.world().resource::<Console>();
-    assert_eq!(console.lines[console.selected].text, "oddjob = 2");
+    assert_eq!(console.lines[console.selected].text, "yeahbaby = 2");
     key(&mut app, KeyCode::Backspace, None);
     key(&mut app, KeyCode::Digit3, Some("3"));
     key(&mut app, KeyCode::Enter, None);
@@ -346,7 +346,7 @@ fn console_editor_preserves_commands_and_never_edits_report_lines() {
             .resource::<Cheats>()
             .state()
             .unwrap()
-            .value("oddjob"),
+            .value("yeahbaby"),
         Some(3)
     );
     key(&mut app, KeyCode::ArrowUp, None);
@@ -880,4 +880,18 @@ fn moonraker_collision_skip_reads_any_nonzero_value() {
     assert!(!runtime.player_collision_skipped().unwrap());
     let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
     assert!(invalid.player_collision_skipped().is_err());
+}
+
+#[test]
+fn nodemarker_and_oddjob_are_recognized_slots_without_a_gameplay_effect() {
+    let mut runtime = Cheats::new(Store::default());
+    for name in ["nodemarker", "oddjob"] {
+        for value in [1, 2, 0] {
+            assert_eq!(
+                runtime.execute(name, Some(value)).unwrap(),
+                CheatEffect::RecognizedOnly
+            );
+            assert_eq!(runtime.state().unwrap().value(name), Some(value));
+        }
+    }
 }

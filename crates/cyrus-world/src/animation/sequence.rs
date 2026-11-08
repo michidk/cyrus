@@ -492,6 +492,11 @@ impl FrameSequence {
     }
 
     /// The playback record's bytes and cursor, which `anim.*` property accesses read and assign raw.
+    /// The retained rotation words (`anim.angle`).
+    pub(super) fn rotation_words(&self) -> [i16; 3] {
+        self.rotation
+    }
+
     pub(super) fn record(&self, field: super::PlaybackField) -> i32 {
         use super::PlaybackField::*;
         match field {
@@ -505,7 +510,9 @@ impl FrameSequence {
             RepCount => i32::from(self.repeat),
             Position(axis) => i32::from(self.position[axis]),
             Rotation(axis) => i32::from(self.rotation[axis]),
-            Next | NextSpeed | RewindFlag | RealFrame => unreachable!("not a sequence field"),
+            Next | NextSpeed | RewindFlag | RealFrame | LastRotation(_) | MaxGroup => {
+                unreachable!("not a sequence field")
+            }
         }
     }
 
@@ -522,7 +529,9 @@ impl FrameSequence {
             RepCount => self.repeat = value as u8,
             Position(axis) => self.position[axis] = value as i16,
             Rotation(axis) => self.rotation[axis] = value as i16,
-            Next | NextSpeed | RewindFlag | RealFrame => unreachable!("not a sequence field"),
+            Next | NextSpeed | RewindFlag | RealFrame | LastRotation(_) | MaxGroup => {
+                unreachable!("not a sequence field")
+            }
         }
     }
 

@@ -1321,6 +1321,75 @@ mod live {
     }
 
     #[test]
+    fn a_requested_camera_reset_runs_in_the_next_ordinary_update_at_the_placed_player() {
+        let mut scripts = function_scripts(Native::XResetCamera);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let content_id = scripts.content_id.clone();
+        let (mut world, service) = world_from(scripts);
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: 17,
+            metadata: serde_json::json!({
+                "script_content_id": content_id,
+                "actors": []
+            }),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let update = |world: &mut ScriptWorld| {
+            world.update_ordinary(
+                &data,
+                [600, 600],
+                cyrus_script::script::OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        fine_ticks: Some(0),
+                        step_fps: Some(12),
+                        camera_update: Some(&service),
+                        ..Default::default()
+                    },
+                    scene: None,
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+        };
+        // A far placement leaves the camera where it was.
+        world
+            .place_selected_player([900_000, -90_000, 700_000], 678)
+            .unwrap();
+        update(&mut world).unwrap();
+        // The camera actor's ordinary update only glides toward it under the movement limits.
+        let gliding = world.camera().unwrap().clone();
+        assert_ne!(gliding.current, gliding.previous);
+        assert!(!world.globals().camera_reset_requested());
+        // The requested reset recomputes the pose from the placed player, like XResetCamera.
+        world.globals_mut().request_camera_reset();
+        assert!(world.globals().camera_reset_requested());
+        update(&mut world).unwrap();
+        assert!(!world.globals().camera_reset_requested());
+        let camera = world.camera().unwrap();
+        assert_eq!(
+            camera.current, camera.previous,
+            "setup stores the pose as both"
+        );
+        assert_ne!(camera.current, gliding.current);
+        assert_eq!(camera.selected.index(), 0);
+        let seen = service
+            .seen
+            .borrow()
+            .expect("the service ran for the reset")
+            .0;
+        assert!(
+            seen[0] > 100_000,
+            "the pose follows the placed player: {seen:?}"
+        );
+    }
+
+    #[test]
     fn x_reset_camera_recomputes_the_first_pose_with_record_zero_selected() {
         let (mut world, service) = reset_world();
         run_with(&mut world, BODY, Some(&service)).unwrap();

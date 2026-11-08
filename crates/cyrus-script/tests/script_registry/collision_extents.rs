@@ -249,7 +249,7 @@ fn body_contacts_with_center(center_z: i32) -> (usize, usize) {
 
 /// [`body_contacts_with_center`] with an optional cached link position on the player.
 fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
-    use cyrus_script::script::OrdinaryBodyQuery;
+    use cyrus_script::script::OrdinaryResidualQuery;
     let (world, restored, mut scene, data, _) = write_extent(Property::SizePosVz, center_z);
     add_wall(&mut scene);
     let count = |mut world: ScriptWorld| {
@@ -271,15 +271,13 @@ fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
             .prepare_ordinary_collision_query(player, &scene, &data, [522, 542], &[player, map])
             .unwrap();
         world
-            .query_ordinary_body(
+            .query_ordinary_residual_body(
                 player,
-                OrdinaryBodyQuery {
+                OrdinaryResidualQuery {
                     scene: &scene,
                     animations: &data,
                     prepared: &prepared,
                     sidedness: false,
-                    excluded_candidate_type: None,
-                    terrain: None,
                 },
             )
             .unwrap()
@@ -289,7 +287,7 @@ fn body_contacts(center_z: i32, link: Option<[i32; 3]>) -> (usize, usize) {
 }
 
 #[test]
-fn center_offset_moves_the_primary_body_query_origin() {
+fn center_offset_moves_the_residual_body_query_origin() {
     let (centered, centered_restored) = body_contacts_with_center(0);
     let (forward, forward_restored) = body_contacts_with_center(30);
     let (back, _) = body_contacts_with_center(-30);
@@ -310,11 +308,164 @@ fn center_offset_moves_the_primary_body_query_origin() {
 }
 
 #[test]
-fn a_linked_actors_primary_body_query_reads_its_link_position() {
+fn a_linked_actors_residual_body_query_reads_its_link_position() {
     // The wall touches the body at the written center offset; a link position far away moves the
     // query origin there, as the original's query-position selector does.
     let (plain, _) = body_contacts(30, None);
     let (linked, _) = body_contacts(30, Some([-4000 * 256, 0, -4000 * 256]));
     assert!(plain > 0);
     assert_eq!(linked, 0, "the linked body is nowhere near the wall");
+}
+
+/// An armed actor's wall avoidance, with the player standing 12 map units from the wall face
+/// and facing it: the front probe finds the wall and the actor steps aside and back.
+fn avoidance_after(marks: u32) -> ([i32; 3], (i32, u32, i32)) {
+    avoidance_at(marks, 560, Property::SizePosVz, 0, false)
+}
+
+/// [`avoidance_after`] with the player at map Z `z` after the script wrote `property = value`.
+fn avoidance_at(
+    marks: u32,
+    z: i32,
+    property: Property,
+    value: i32,
+    rolled_back: bool,
+) -> ([i32; 3], (i32, u32, i32)) {
+    use cyrus_assets::surface::Surface;
+    use cyrus_script::script::OrdinaryGroundQuery;
+    let (_, mut world, mut scene, data, _) = write_extent(property, value);
+    add_wall(&mut scene);
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    world
+        .place_selected_player([522 * 256, -1536, z * 256], 0)
+        .unwrap();
+    world.refresh_model_presentations(&data, &[player]).unwrap();
+    world.set_combat_record_for_test(player);
+    if rolled_back {
+        // The water rollback restores the actor, which leaves the avoidance pass alone this update.
+        world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
+        assert!(world.retain_ordinary_water_position(player).unwrap());
+        let rollback = world
+            .capture_ordinary_rollback(player, &mut |_, _| Ok(()))
+            .unwrap();
+        world.set_actor_surface(player, Surface::WATER).unwrap();
+        assert!(
+            world
+                .rollback_ordinary_water(player, None, &rollback, &mut |_, _| Ok(()))
+                .unwrap()
+        );
+        world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
+    }
+    world.set_last_collide_for_test(player, marks);
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [522, z], &[player, map])
+        .unwrap();
+    world
+        .avoid_walls(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            1,
+            256,
+        )
+        .unwrap();
+    let combat = world.actors()[index]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    (
+        world.spatial(player).unwrap().local.position,
+        (combat.avoid_side, combat.avoid_mask, combat.avoid_hold),
+    )
+}
+
+#[test]
+fn an_armed_actor_steps_aside_and_back_from_a_wall_its_front_probe_finds() {
+    let start = [522 * 256, -1536, 560 * 256];
+    // Without a collision-response mark or a running hold timer the pass does nothing.
+    assert_eq!(avoidance_after(0), (start, (0, 0, 0)));
+    // A mark starts the probe: the front point meets the wall (mask 1), the first side is 2, and the
+    // actor moves 10 map units along its heading rotated by -0x200, then 10 along 0x400.
+    let (position, state) = avoidance_after(1);
+    assert_eq!(state, (2, 1, 0x10));
+    assert_eq!(position, [start[0] + 2560, start[1], start[2] - 2560]);
+}
+
+#[test]
+fn the_avoidance_radius_reads_the_written_total_height() {
+    // 12 + 24 + 12 total height: the stacked spheres have radius 11 and the front point at map Z
+    // 548 + 7 reaches 566, short of the wall face at 572. A written total of 104 makes the radius
+    // 25, the point 548 + 0 and the reach 573, which every probe point sees.
+    let start = [522 * 256, -1536, 548 * 256];
+    assert_eq!(
+        avoidance_at(1, 548, Property::SizeSizeVx, 48, false),
+        (start, (0, 0, 0))
+    );
+    let (position, state) = avoidance_at(1, 548, Property::SizeSizeVy, 104, false);
+    // The wider spheres reach the wall from all four points (mask 15); the four steps (right,
+    // left, back by 0x400, forward) cancel, and the last side chosen is 2.
+    assert_eq!(state, (2, 15, 0x10));
+    assert_eq!(position, start);
+}
+
+#[test]
+fn a_rolled_back_actor_skips_the_avoidance_pass() {
+    // The same wall and mark that make the pass step aside do nothing once the water rollback has
+    // restored the actor in this update (the original's shared changed flag).
+    let start = [522 * 256, -1536, 560 * 256];
+    assert_eq!(
+        avoidance_at(1, 560, Property::SizePosVz, 0, true),
+        (start, (0, 0, 0))
+    );
+    assert_ne!(avoidance_at(1, 560, Property::SizePosVz, 0, false).0, start);
+}
+
+#[test]
+fn the_living_animation_refresh_replaces_a_written_extent_for_a_combat_actor() {
+    use cyrus_script::script::{BoundsRecord, RetainedBounds};
+    // The player fixture has a combat record. The written extent holds until the update's refresh
+    // copies the retained primary bounds (the current group is class 0) back over it.
+    let (_, mut world, _, _, _) = write_extent(Property::SizePsizeVy, 77);
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    assert_eq!(player_shape(&world).positive_extent, [12, 77, 12]);
+    world.refresh_living_bounds(player).unwrap();
+    let shape = player_shape(&world);
+    assert_eq!(shape.positive_extent, [12, 24, 12]);
+    assert_eq!(shape.total_extent, [24, 48, 24]);
+    // The selection by group class: tertiary for class 2, secondary for class 1, else primary.
+    let record = |n: i32| BoundsRecord {
+        positive_extent: [n; 3],
+        negative_extent: [n; 3],
+        total_extent: [2 * n; 3],
+        center_offset: [0; 3],
+    };
+    let retained = RetainedBounds {
+        primary: record(1),
+        secondary: Some(record(2)),
+        tertiary: Some(record(3)),
+    };
+    assert_eq!(retained.for_group_class(2), &record(3));
+    assert_eq!(retained.for_group_class(1), &record(2));
+    assert_eq!(retained.for_group_class(0), &record(1));
+    let without = RetainedBounds::only(record(1));
+    assert_eq!(without.for_group_class(2), &record(1));
+    assert_eq!(without.for_group_class(1), &record(1));
 }

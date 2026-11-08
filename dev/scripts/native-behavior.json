@@ -7039,11 +7039,11 @@
       "property": "angle.vy",
       "status": "partial",
       "owner": 5,
-      "scope": "Local heading with current bounded representation; original complete32-bit field not fully supported",
+      "scope": "Local angle word (complete signed 32-bit field, stored without normalization)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver",
         "crates/cyrus-script/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose",
+        "crates/cyrus-script/tests/script_registry.rs::heading_property_reads_installed_name_with_full_reference_and_receiver",
         "crates/cyrus-script/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
       ],
       "evidence": [
@@ -7051,7 +7051,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests not rerun. Public fixtures resolve installed descriptor aliases at full references, write512 and preserve other pose fields; write4096 rejects without changing1536 heading. Preservation specifies complete32-bit field without normalization. Current source stores bounded u16 and refuses outside0..2048. This concrete representation gap remains unsupported, not full property parity. Unknown: wider installed writes and three-host continuation. Partial is an inferred scope judgment; static access counts never establish execution or completion.",
+      "limits": "Verified by the public test: each axis is written with i32::MIN, -4097, -1, 512, 2048 and i32::MAX and read back unchanged, with the other pose fields untouched and no pose refresh (preservation specifies the complete 32-bit field without normalization; the pose stores signed 32-bit angles, so nothing is bounded or refused). Unknown: wider installed writes (none in the installed scripts) and three-host continuation.",
       "reviewed_revision": "b2961bb088bf75a03e34faef8bec8deec1ab8ddb"
     },
     {
@@ -7061,7 +7061,7 @@
       "scope": "Logical rope-attached zero/nonzero query, not original rope pointer",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors"
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
@@ -7129,7 +7129,7 @@
       "scope": "Signed16 first scabbard word with override readback",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors",
         "crates/cyrus-script/tests/script_registry.rs::scabbard_properties_read_signed_installed_raex_words"
       ],
       "evidence": [
@@ -7147,7 +7147,7 @@
       "scope": "Signed16 second scabbard word with override readback",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors",
         "crates/cyrus-script/tests/script_registry.rs::scabbard_properties_read_signed_installed_raex_words"
       ],
       "evidence": [
@@ -7165,7 +7165,7 @@
       "scope": "Logical hidden-state byte presentation as Boolean",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::hide_rope_and_scabbard_properties_use_the_installed_descriptors"
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
@@ -7200,7 +7200,7 @@
       "property": "angle.vx",
       "status": "partial",
       "owner": 5,
-      "scope": "Local angle axis with bounded current storage; complete original32-bit descriptor not implemented",
+      "scope": "Local angle word (complete signed 32-bit field, stored without normalization)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose"
@@ -7210,14 +7210,14 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Fixture writes512 on each axis and asserts only that angle changed with position preserved. Source reads stored local angle and rejects writes outside0..2048 using shared bounded u16 path. Preservation specifies complete32-bit field without normalization. Specific wide-write refusal assertion covers heading Y, not this axis. Unknown: wider X/Z values, read-boundary fixture per axis, installed producers and original/native/browser direct property traces. Zero historical occurrences do not establish unsupported absence or faithful representation. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified by the public test: each axis is written with i32::MIN, -4097, -1, 512, 2048 and i32::MAX and read back unchanged, with the other pose fields untouched and no pose refresh (preservation specifies the complete 32-bit field without normalization; the pose stores signed 32-bit angles, so nothing is bounded or refused). Unknown: wider installed writes (none in the installed scripts) and three-host continuation.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
       "property": "angle.vz",
       "status": "partial",
       "owner": 5,
-      "scope": "Local angle axis with bounded current storage; complete original32-bit descriptor not implemented",
+      "scope": "Local angle word (complete signed 32-bit field, stored without normalization)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::local_angle_properties_read_and_write_each_axis_without_refreshing_pose"
@@ -7227,48 +7227,50 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Fixture writes512 on each axis and asserts only that angle changed with position preserved. Source reads stored local angle and rejects writes outside0..2048 using shared bounded u16 path. Preservation specifies complete32-bit field without normalization. Specific wide-write refusal assertion covers heading Y, not this axis. Unknown: wider X/Z values, read-boundary fixture per axis, installed producers and original/native/browser direct property traces. Zero historical occurrences do not establish unsupported absence or faithful representation. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified by the public test: each axis is written with i32::MIN, -4097, -1, 512, 2048 and i32::MAX and read back unchanged, with the other pose fields untouched and no pose refresh (preservation specifies the complete 32-bit field without normalization; the pose stores signed 32-bit angles, so nothing is bounded or refused). Unknown: wider installed writes (none in the installed scripts) and three-host continuation.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
       "property": "grip[0]",
       "status": "partial",
       "owner": 30,
-      "scope": "Read signed16 RAEX grip word through animation/control owner; writes unsupported",
+      "scope": "Signed16 grip word with override readback: reads the RAEX word the loader copied, a write replaces it",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words"
+        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/30"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture reads-32768 for this word using synthetic RAEX metadata; second descriptor uses uppercase name to check case-insensitive selection. Source requires control and animation data and resolves the actor RAEX word. Unlike scabbard there is no grip override/write branch; writes fall through to unsupported pose-property error. No dedicated grip-write refusal assertion was located. Unknown: runtime grip mutation, absent-data failure branches, original/native/browser descriptor traces and every model/attachment case. Weapon key-path acceptance is related presentation evidence, not direct grip property acceptance. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified: preservation names grip[0]/grip[1] as signed words copied from RAEX with the scabbard words, and a property write replaces the stored word (low sixteen bits kept), the same rule the scabbard words follow; cyrus keeps the written word beside the installed one, reads it back without needing animation data, saves it with the actor and returns it from every attachment query. Public tests read the installed signed words and write/read back -77 and 70000 (as 4464). Unknown: installed original/native/browser script writes (none use the property) and every attachment model. Verified static-only census: zero decoded read/write/update occurrences in 27 historical exports.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
       "property": "grip[1]",
       "status": "partial",
       "owner": 30,
-      "scope": "Read signed16 RAEX grip word through animation/control owner; writes unsupported",
+      "scope": "Signed16 grip word with override readback: reads the RAEX word the loader copied, a write replaces it",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words"
+        "crates/cyrus-script/tests/script_registry.rs::grip_properties_read_signed_installed_raex_words",
+        "crates/cyrus-script/tests/script_registry.rs::hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/30"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture reads32767 for this word using synthetic RAEX metadata; second descriptor uses uppercase name to check case-insensitive selection. Source requires control and animation data and resolves the actor RAEX word. Unlike scabbard there is no grip override/write branch; writes fall through to unsupported pose-property error. No dedicated grip-write refusal assertion was located. Unknown: runtime grip mutation, absent-data failure branches, original/native/browser descriptor traces and every model/attachment case. Weapon key-path acceptance is related presentation evidence, not direct grip property acceptance. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified: preservation names grip[0]/grip[1] as signed words copied from RAEX with the scabbard words, and a property write replaces the stored word (low sixteen bits kept), the same rule the scabbard words follow; cyrus keeps the written word beside the installed one, reads it back without needing animation data, saves it with the actor and returns it from every attachment query. Public tests read the installed signed words and write/read back -77 and 70000 (as 4464). Unknown: installed original/native/browser script writes (none use the property) and every attachment model. Verified static-only census: zero decoded read/write/update occurrences in 27 historical exports.",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
       "property": "rope_wait",
       "status": "partial",
       "owner": 22,
-      "scope": "Unsigned actor motion byte with low8 writes",
+      "scope": "The rope-wait byte: 24 after a rope release, counted down by the grab check (shared with the retained jump selector)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
@@ -7278,7 +7280,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/22"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.motion_companion equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified in the original attach, release, grab and late collision routines: the byte at +0x1b0 is cleared on attach, set to 24 on release, counted down by the grab check and cleared by the fall; the weapon routines leave it alone. cyrus had kept two fields for it (a 'companion' byte the property read, and the jump selector the rope code used), so a script never saw the release timer; the property now reads and writes the single retained byte, old saves merge their two fields, and the weapon-routine retention tests follow the rename. Not modelled: rope_id (the grab skips the last rope by index). Unknown: installed script use (none).",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {
@@ -7619,7 +7621,7 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor with combat and animation records has its bounds record overwritten from the retained bounds at the start of every ordinary update. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7636,7 +7638,7 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor with combat and animation records has its bounds record overwritten from the retained bounds at the start of every ordinary update. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7653,7 +7655,7 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor with combat and animation records has its bounds record overwritten from the retained bounds at the start of every ordinary update. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7670,7 +7672,7 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor with combat and animation records has its bounds record overwritten from the retained bounds at the start of every ordinary update. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7687,7 +7689,7 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor with combat and animation records has its bounds record overwritten from the retained bounds at the start of every ordinary update. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7704,7 +7706,7 @@
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
+      "limits": "Verified in the original: the bounds record inside the actor holds the extents, and the ground and hazard probes, combat bounds and box center read them live. Reads and writes are whole signed 32-bit values on the actor's collision shape extents, which are saved with the actor. The ground and fallback probes, the selected player's walking controller and forward probe, the bounds diagonals and the other extent readers take the written value with 32-bit wrapping; float conversions out of range give the integer indefinite. The sphere list is not rebuilt by a write, as in the original. An actor with combat and animation records has its bounds record overwritten from the retained bounds at the start of every ordinary update. An actor without a prepared shape is an explicit error. Totals, center offsets and the orientation byte are not implemented.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7712,16 +7714,16 @@
       "status": "partial",
       "owner": 5,
       "scope": "Receiver collision shape center offset",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; residual body query and selected-player fallback support read it",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
-        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_residual_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::the_residual_requery_runs_from_the_written_center_offset"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the residual body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The primary, destination, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7729,16 +7731,16 @@
       "status": "partial",
       "owner": 5,
       "scope": "Receiver collision shape center offset",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; residual body query and selected-player fallback support read it",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
-        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_residual_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::the_residual_requery_runs_from_the_written_center_offset"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the residual body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The primary, destination, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -7746,16 +7748,64 @@
       "status": "partial",
       "owner": 5,
       "scope": "Receiver collision shape center offset",
-      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; primary body query and selected-player fallback support read it",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape center_offset; residual body query and selected-player fallback support read it",
       "tests": [
-        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_primary_body_query_origin",
-        "crates/cyrus-script/tests/player_walking.rs::forward_query_tests_the_body_from_the_written_center_offset"
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::center_offset_moves_the_residual_body_query_origin",
+        "crates/cyrus-script/tests/player_walking.rs::the_residual_requery_runs_from_the_written_center_offset"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
         "https://github.com/michidk/cyrus/issues/13"
       ],
-      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the primary body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The destination, residual, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "limits": "Verified in the original: the bounds record's center offset is added, unrotated, to the residual body query origin and to the selected player's fallback support sphere center; sphere construction and the vertical ground probe ignore it. Authored MPSZ centers (zero in the shipped files) now load. Reads and writes are whole signed 32-bit values saved with the actor. The primary, destination, overlap, ledge and follow body queries do not apply it: their original routines are not identified as readers. An actor without a prepared shape is an explicit error.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.size.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape total extent",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape total_extent; the wall-avoidance probe reads the total height",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::the_avoidance_radius_reads_the_written_total_height"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record's totals start as the sum of the two extents and the armed nonplayer wall-avoidance probe reads the total height for its sphere radius; no other reader of the totals was found. Reads and writes are whole signed 32-bit values saved with the actor (older saves derive the sums). The X and Z totals have no reader. An actor without a prepared shape is an explicit error.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.size.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape total extent",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape total_extent; the wall-avoidance probe reads the total height",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::the_avoidance_radius_reads_the_written_total_height"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record's totals start as the sum of the two extents and the armed nonplayer wall-avoidance probe reads the total height for its sphere radius; no other reader of the totals was found. Reads and writes are whole signed 32-bit values saved with the actor (older saves derive the sums). The X and Z totals have no reader. An actor without a prepared shape is an explicit error.",
+      "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
+    },
+    {
+      "property": "size.size.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Receiver collision shape total extent",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> OrdinaryCollisionShape total_extent; the wall-avoidance probe reads the total height",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/collision_extents.rs::the_avoidance_radius_reads_the_written_total_height"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md",
+        "https://github.com/michidk/cyrus/issues/13"
+      ],
+      "limits": "Verified in the original: the bounds record's totals start as the sum of the two extents and the armed nonplayer wall-avoidance probe reads the total height for its sphere radius; no other reader of the totals was found. Reads and writes are whole signed 32-bit values saved with the actor (older saves derive the sums). The X and Z totals have no reader. An actor without a prepared shape is an explicit error.",
       "reviewed_revision": "4a7ab705dc05fd65fc9cad3115829be399b2cc69"
     },
     {
@@ -8317,13 +8367,15 @@
       "tests": [
         "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
         "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
-        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_pending_speed_byte_is_the_last_requests_modifier_plus_its_groups_byte_and_outlives_it",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_pending_speed_byte_outlives_its_request_and_follows_the_written_pending_group"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
       ],
-      "limits": "Verified in the original: request modifier plus the pending group countdown byte; without a pending request the byte is not modelled and access is an explicit error. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified in the original request routines: every request stores its modifier, then adds the selected group's countdown byte (just the modifier when no group is found); selection reads the byte into the speed and leaves it, so it stays readable with no pending request and a script write of anim.next changes only the pending group. cyrus keeps the byte with the receiver (rollback checkpoints and snapshots included; saves without it derive it from the pending request) and derives the pending modifier from it. Descriptor tag b width 1; reads extend zero, writes keep the low byte and run nothing. An actor with no animation association reads zero and a write is an explicit error. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
     },
     {
@@ -9367,6 +9419,123 @@
       ],
       "limits": "Verified by searching the whole executable image for the record displacement: the single match is unrelated library code, so it only retains a script's stored low eight bits (zero otherwise) and is saved with the actor.",
       "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "anim.last_angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rotation word the last model refresh copied from anim.angle",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_rotation_history_is_the_words_the_last_model_refresh_copied",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_last_angle_words_read_zero_and_keep_what_a_script_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "anim.last_angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rotation word the last model refresh copied from anim.angle",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_rotation_history_is_the_words_the_last_model_refresh_copied",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_last_angle_words_read_zero_and_keep_what_a_script_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "anim.last_angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rotation word the last model refresh copied from anim.angle",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_rotation_history_is_the_words_the_last_model_refresh_copied",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_last_angle_words_read_zero_and_keep_what_a_script_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "frame",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Frame index inside the model the last selected ShowFrame names, -1 before any frame",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_frame_word_is_the_frame_index_inside_the_selected_model"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#frame-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original (selection routine, update snapshot, model refresh): the word is the second patched field of the selected ShowFrame (index inside its model), -1 until the first selection, and last_frame is copied from it at the start of each ordinary update. cyrus derives the index from the retained file frame reference through the actor's RAAN table (reads need the animation data input) and records last_frame at the same point of the ordinary update; writes stay explicitly unsupported because the original word pairs with the runtime model handle, whose numbering cyrus does not model (so handle and last_handle also stay unsupported). Unknown: installed script use (none) and the value for actors whose frame was never selected through an animation record.",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "last_frame",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Frame index inside the selected model (-1 before any frame); last_frame is its value at the start of the last ordinary update",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_last_frame_record_is_supplied_by_the_owner_and_saved"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#frame-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original (selection routine, update snapshot, model refresh): the word is the second patched field of the selected ShowFrame (index inside its model), -1 until the first selection, and last_frame is copied from it at the start of each ordinary update. cyrus derives the index from the retained file frame reference through the actor's RAAN table (reads need the animation data input) and records last_frame at the same point of the ordinary update; writes stay explicitly unsupported because the original word pairs with the runtime model handle, whose numbering cyrus does not model (so handle and last_handle also stay unsupported). Unknown: installed script use (none) and the value for actors whose frame was never selected through an animation record.",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "yangle_change",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Signed word the model refresh stores: heading change over the last ordinary update",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry.rs::automatic_model_admission_reads_retained_support_before_ground_processing",
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::yangle_change_is_a_signed_word_the_refresh_stores_and_a_script_may_write"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#heading-change-property",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original: only two routines store the word (no code reads it): the per-frame model refresh stores the Y angle minus the update-start angle history for an actor with no rope, and the attached-pose composition stores its composed history angle. cyrus stores the first case after the automatic model refresh of every non-rejected actor off a rope (word truncation included), saves it with the actor, and lets scripts read and write it. Not modelled: the attached-pose composition's store for slaves. Inferred: the refresh's gating beyond a prepared non-rejected model. No installed script uses the property.",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "anim.max_group",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Animation record byte: low byte of the actor's RAHD animation control prefix",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::max_group_is_the_low_byte_of_the_exported_control_prefix_and_a_plain_byte",
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::max_group_needs_the_exported_control_prefix"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/pull/303",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties"
+      ],
+      "limits": "Verified in preservation (RAHD +0x2d low byte stored at record +0x12 when the record is built; exported as anim_control_prefix by redguard-preservation 0.12). cyrus seeds the byte from the sidecar, keeps a script write like any record byte (low eight bits, saved with the receiver) and reads it zero-extended; a sidecar exported before the field reads as an explicit re-export error instead of a guess. Unknown: whether the original reads the byte anywhere after the record is built (no installed script uses the property).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
     }
   ],
   "property_groups": [
@@ -9660,7 +9829,7 @@
       ],
       "status": "missing",
       "owner": 5,
-      "scope": "Named read/write dispatch for original tagZ, width1 pointer/subrecord/embedded descriptors",
+      "scope": "Receiver bounds record orientation byte (unobservable)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
@@ -9669,7 +9838,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagZ/width1 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "limits": "Verified in the original: the orientation byte's only reader is the per-update shape copy, which gives the second of two working records one extra sphere for an upright actor; nothing else reads that second record (its pointer appears only in the allocation, the free and the copy). The byte is therefore unobservable, and the rebuild neither stores nor reads it; the sphere builder derives it at creation. A script write has no effect on any query.",
       "descriptor_tag": "Z",
       "descriptor_width_bytes": 1,
       "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
@@ -9677,10 +9846,7 @@
     {
       "properties": [
         "size",
-        "size.address",
-        "size.size.vx",
-        "size.size.vy",
-        "size.size.vz"
+        "size.address"
       ],
       "status": "missing",
       "owner": 5,

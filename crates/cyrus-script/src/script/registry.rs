@@ -27,6 +27,7 @@ mod health;
 pub use death_exit::WorldLoopOutcome;
 pub use effects::{ActorEvent, EnvironmentalEffect, EnvironmentalEffects};
 pub use health::{SelectedDeathState, SelectedHealthState};
+pub(super) mod avoid;
 pub(super) mod body;
 mod bounce;
 pub(super) mod bounds;
@@ -50,6 +51,7 @@ mod late;
 mod leap;
 mod ledge;
 mod ledge_states;
+pub use ledge_states::LedgeTiming;
 mod light;
 mod map_marker;
 pub use map_marker::SavedPlacement;
@@ -420,8 +422,6 @@ pub struct ActorControlState {
     pub ai: AiRecord,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: LivingState,
-    /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
-    pub motion_companion: u8,
     /// Receiver-owned ordinary countdown; zero and 255 do not decrement.
     pub extra_time: u8,
     /// The `surface_time`, `jump_time`, `jump_height` and `anchor` bytes: no engine routine reads
@@ -462,7 +462,9 @@ pub struct ActorControlState {
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
-    /// Allocator-zero runtime jump selector, separate from living and torch state.
+    /// The `rope_wait` byte (+0x1b0), allocator-zero: a rope release sets it to 24, ordinary updates
+    /// count it down and the rope grab skips the released rope while it is nonzero. The weapon
+    /// routines retain it.
     pub jump_selector: u8,
     /// Validity of the separately retained stable local position.
     pub stable_position_valid: bool,
@@ -495,6 +497,11 @@ pub struct ActorControlState {
     /// The signed RAEX `scabbard0`/`scabbard1` words a script rewrote through `scabbard[0]` and
     /// `scabbard[1]`; None keeps the installed value the loader copied into the actor.
     pub scabbard_override: [Option<i16>; 2],
+    /// The signed RAEX `grip0`/`grip1` words a script rewrote through `grip[0]` and `grip[1]`.
+    pub grip_override: [Option<i16>; 2],
+    /// The `yangle_change` word the model refresh stores: the heading change over the last
+    /// ordinary update (the angle minus the update-start history, as a signed word).
+    pub yangle_change: i16,
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
     /// Actor index of the object that created this one (`shoot`, `shootPlayer`, `DragonBreath`),
@@ -746,6 +753,10 @@ pub struct ScriptWorld {
     /// Water and lava transitions the selected player's forward probes noticed, in query order;
     /// the caller that owns the random stream and sound sink runs them right after the probe.
     pending_surface_transitions: Vec<PendingSurfaceTransition>,
+    /// Whether the actor now updating was rolled back this update (the original's shared changed
+    /// flag): the stable-position or water rollback restored its pose. Cleared as each ordinary
+    /// update starts; never saved.
+    rolled_back: bool,
     /// The session flag the Home key toggles for the yeahbaby ground bypass; it is read by the
     /// ground probe only while the cheat is on and is not reset by turning the cheat off.
     ground_bypass_toggle: bool,
@@ -860,6 +871,26 @@ impl ScriptWorld {
             .actor_mut(id.index)
             .expect("test actor spatial state")
             .set_link_cache(position);
+    }
+
+    /// Test hook: give a logical actor a default combat record.
+    #[doc(hidden)]
+    pub fn set_combat_record_for_test(&mut self, id: ScriptActorId) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .combat = Some(CombatControlState::default());
+    }
+
+    /// Test hook: set a logical actor's collision-response word.
+    #[doc(hidden)]
+    pub fn set_last_collide_for_test(&mut self, id: ScriptActorId, bits: u32) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .last_collide = crate::script::CollisionFlags::from_bits(bits);
     }
 
     /// Test hook: set a logical actor's living state.
@@ -1626,6 +1657,7 @@ impl ScriptWorld {
             display_attachments: Vec::new(),
             surface_veto: None,
             pending_surface_transitions: Vec::new(),
+            rolled_back: false,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera,
@@ -2600,24 +2632,35 @@ impl ScriptWorld {
             "world {} instance {index}: actor does not use an animation model table",
             self.world
         );
-        let result = cyrus_world::animation::ActorAnimation::initialize(
-            data,
-            actor.name(),
-            ticks,
-            &mut |sound| {
-                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                    return events.dispatch(flags, camera.as_mut(), effects);
-                }
-                sounds(
-                    id,
-                    super::ScriptSound::Animation {
-                        sound,
-                        surface: actor.surface,
-                        position,
-                    },
-                )
-            },
-        );
+        // With the animation system off the request routine returns before touching the record,
+        // so the two initial panic requests leave it with no current or pending group and no frame.
+        let result = if self.updates.animation_system {
+            cyrus_world::animation::ActorAnimation::initialize(
+                data,
+                actor.name(),
+                ticks,
+                &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return events.dispatch(flags, camera.as_mut(), effects);
+                    }
+                    sounds(
+                        id,
+                        super::ScriptSound::Animation {
+                            sound,
+                            surface: actor.surface,
+                            position,
+                        },
+                    )
+                },
+            )
+        } else {
+            cyrus_world::animation::ActorAnimation::from_asset(
+                data,
+                actor.name(),
+                AnimationGroup::PANIC,
+            )
+            .map(|playback| (playback, None))
+        };
         match result {
             Ok((playback, frame)) => {
                 actor
@@ -2977,6 +3020,18 @@ impl ScriptWorld {
         }
     }
 
+    /// Test hook: replace an actor's local angles without refreshing its pose.
+    #[doc(hidden)]
+    pub fn set_local_angles_for_test(&mut self, id: ScriptActorId, angles: [i32; 3]) {
+        self.spatial
+            .as_mut()
+            .expect("spatial state prepared")
+            .actor_mut(id.index)
+            .expect("actor spatial state")
+            .local
+            .angles = angles;
+    }
+
     /// Test hook: [`Self::animation_waits`].
     #[doc(hidden)]
     pub fn animation_waits_for_test(&self) -> bool {
@@ -3290,14 +3345,16 @@ impl ScriptWorld {
         override_ticks: u32,
     ) -> Result<super::ActivationOverlay> {
         self.validate_activation(inputs)?;
-        self.activation.overlay(
+        let overlay = self.activation.overlay(
             inputs,
             &self.actors[inputs.player.index],
             ticks,
             cycle_held,
             override_ticks,
             self.globals.lockout(),
-        )
+        )?;
+        self.activation.record_shown(&overlay);
+        Ok(overlay)
     }
 
     fn resolve(&self, actor: ScriptActorId) -> Result<usize> {
@@ -5246,21 +5303,24 @@ enum PoseProperty {
 }
 
 /// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
-/// installed value the loader copied, unless a script rewrote a scabbard word through the property.
+/// installed value the loader copied, unless a script rewrote the word through its property.
 pub(super) fn raex_word(
     control: Option<&ActorControlState>,
     metadata: &serde_json::Value,
     field: &str,
 ) -> Option<i16> {
-    let word = ["scabbard0", "scabbard1"]
-        .iter()
-        .position(|name| *name == field);
-    word.and_then(|word| control?.scabbard_override[word])
-        .or_else(|| {
-            metadata["raex"][field]
-                .as_i64()
-                .and_then(|value| i16::try_from(value).ok())
-        })
+    let overridden = |control: &ActorControlState| match field {
+        "scabbard0" => control.scabbard_override[0],
+        "scabbard1" => control.scabbard_override[1],
+        "grip0" => control.grip_override[0],
+        "grip1" => control.grip_override[1],
+        _ => None,
+    };
+    control.and_then(overridden).or_else(|| {
+        metadata["raex"][field]
+            .as_i64()
+            .and_then(|value| i16::try_from(value).ok())
+    })
 }
 
 /// Script properties that name actor motion bytes. The engine's property descriptors (preservation
@@ -5271,7 +5331,7 @@ pub(super) fn raex_word(
 /// `last_direction` shares the retained movement classification written by motion producers.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
-        Property::RopeWait => &mut control.motion_companion,
+        Property::RopeWait => &mut control.jump_selector,
         Property::ExtraTime => &mut control.extra_time,
         Property::SurfaceTime => &mut control.surface_time,
         Property::JumpTime => &mut control.jump_time,
@@ -5306,6 +5366,7 @@ fn control_record_property(
         Property::AiVar1 => ControlField::Word(&mut control.ai.var1),
         Property::AiVar2 => ControlField::Word(&mut control.ai.var2),
         Property::AiLength => ControlField::Dword(&mut control.ai.length),
+        Property::YangleChange => ControlField::Word(&mut control.yangle_change),
         // The node fields are the walk-map owner's held nodes: current, next and final destination.
         Property::Node => ControlField::Dword(&mut control.navigation.current),
         Property::Dnode => ControlField::Dword(&mut control.navigation.next),
@@ -5340,18 +5401,20 @@ enum CollisionField {
     Positive(usize),
     Negative(usize),
     Center(usize),
+    Total(usize),
 }
 
 fn collision_extent_property(name: Property) -> Option<CollisionField> {
     use Property::{
         SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePosVx, SizePosVy, SizePosVz, SizePsizeVx,
-        SizePsizeVy, SizePsizeVz,
+        SizePsizeVy, SizePsizeVz, SizeSizeVx, SizeSizeVy, SizeSizeVz,
     };
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
     find([SizePsizeVx, SizePsizeVy, SizePsizeVz])
         .map(CollisionField::Positive)
         .or_else(|| find([SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]).map(CollisionField::Negative))
         .or_else(|| find([SizePosVx, SizePosVy, SizePosVz]).map(CollisionField::Center))
+        .or_else(|| find([SizeSizeVx, SizeSizeVy, SizeSizeVz]).map(CollisionField::Total))
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
@@ -5405,6 +5468,10 @@ fn playback_field(name: Property) -> Option<cyrus_world::animation::PlaybackFiel
         Property::AnimAngleVz => PlaybackField::Rotation(2),
         Property::AnimRewindFlag => PlaybackField::RewindFlag,
         Property::AnimRealFrame => PlaybackField::RealFrame,
+        Property::AnimMaxGroup => PlaybackField::MaxGroup,
+        Property::AnimLastAngleVx => PlaybackField::LastRotation(0),
+        Property::AnimLastAngleVy => PlaybackField::LastRotation(1),
+        Property::AnimLastAngleVz => PlaybackField::LastRotation(2),
         _ => return None,
     })
 }
@@ -5726,6 +5793,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .map_or(Ok(0), |animation| animation.playback.record_field(field))
                 .with_context(|| format!("property {name}"));
         }
+        if name == Property::Frame || name == Property::LastFrame {
+            // The word is the frame index inside the model the selected ShowFrame names, -1 when
+            // no frame was selected.
+            let index = self.property_receiver(target)?;
+            let animation = self.registry.actors[index]
+                .animation
+                .as_ref()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?;
+            let Some(reference) = (if name == Property::Frame {
+                animation.frame
+            } else {
+                animation.playback.last_frame()
+            }) else {
+                return Ok(-1);
+            };
+            let data = self
+                .inputs
+                .animations
+                .with_context(|| format!("property {name}: animation data unavailable"))?
+                .0;
+            let actor = &self.registry.actors[index];
+            let resolved = if actor.placement().is_some() {
+                data.resolve_map_frame(index, reference)
+            } else {
+                data.resolve_frame(actor.name(), reference)
+            }
+            .with_context(|| format!("property {name}"))?;
+            return i32::try_from(resolved.frame).with_context(|| format!("property {name}"));
+        }
         if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]
@@ -5748,14 +5844,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .control
                 .as_ref()
                 .with_context(|| format!("{name} control owner unavailable"))?;
-            let data = self
-                .inputs
-                .animations
-                .with_context(|| format!("{name} animation data unavailable"))?
-                .0;
-            let field = ["grip0", "grip1"][word];
-            let value = raex_word(Some(control), data.actor(actor.name())?, field)
-                .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
+            let value = if let Some(value) = control.grip_override[word] {
+                value
+            } else {
+                let data = self
+                    .inputs
+                    .animations
+                    .with_context(|| format!("{name} animation data unavailable"))?
+                    .0;
+                let field = ["grip0", "grip1"][word];
+                raex_word(Some(control), data.actor(actor.name())?, field)
+                    .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?
+            };
             return Ok(i32::from(value));
         }
         if let Some(word) = [Property::Scabbard0, Property::Scabbard1]
@@ -5919,6 +6019,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 CollisionField::Positive(axis) => shape.positive_extent[axis],
                 CollisionField::Negative(axis) => shape.negative_extent[axis],
                 CollisionField::Center(axis) => shape.center_offset[axis],
+                CollisionField::Total(axis) => shape.total_extent[axis],
             });
         }
         let pose = pose_property(name)
@@ -6123,15 +6224,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let scabbard = [Property::Scabbard0, Property::Scabbard1]
             .iter()
             .position(|&word| word == name);
-        if name == Property::Hide || scabbard.is_some() {
+        let grip = [Property::Grip0, Property::Grip1]
+            .iter()
+            .position(|&word| word == name);
+        if name == Property::Hide || scabbard.is_some() || grip.is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            match scabbard {
-                Some(word) => control.scabbard_override[word] = Some(value as i16),
-                None => control.hidden = value as u8 != 0,
+            match (scabbard, grip) {
+                (Some(word), _) => control.scabbard_override[word] = Some(value as i16),
+                (_, Some(word)) => control.grip_override[word] = Some(value as i16),
+                _ => control.hidden = value as u8 != 0,
             }
             return Ok(());
         }
@@ -6147,6 +6252,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 CollisionField::Positive(axis) => shape.positive_extent[axis] = value,
                 CollisionField::Negative(axis) => shape.negative_extent[axis] = value,
                 CollisionField::Center(axis) => shape.center_offset[axis] = value,
+                CollisionField::Total(axis) => shape.total_extent[axis] = value,
             }
             return Ok(());
         }
@@ -10019,6 +10125,7 @@ mod fighting_tests {
             map_updates: Default::default(),
             surface_veto: None,
             pending_surface_transitions: Vec::new(),
+            rolled_back: false,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera: None,

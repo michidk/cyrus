@@ -113,10 +113,6 @@ impl ScriptWorld {
                     if data.actor(self.actors[index].name())?["model_load_path"].as_str()
                         == Some("animation_table")
                     {
-                        anyhow::ensure!(
-                            self.updates.animation_system,
-                            "animation-disabled model initialization unsupported"
-                        );
                         self.initialize_map_animation(self.id(index)?, data, ticks, sounds)?;
                     }
                     Ok(())
@@ -198,6 +194,18 @@ impl ScriptWorld {
             ..inputs
         };
         self.update_created(created_inputs, random, sounds, budget)?;
+        if self.globals.camera_reset_request
+            && self.camera.is_some()
+            && let Some(service) = inputs.camera_update
+        {
+            self.globals.camera_reset_request = false;
+            // The same reset `XResetCamera` runs: record zero reloaded, pose recomputed at the
+            // selected player, so the update window follows the player from the next frame.
+            let player = self.selected_player_index().ok_or_else(|| {
+                anyhow::anyhow!("camera reset request: selected player unavailable")
+            })?;
+            self.reset_camera_session(player, service)?;
+        }
         for &id in &selected {
             if matches!(
                 self.actors[id.index].source,
@@ -265,6 +273,10 @@ impl ScriptWorld {
                     self.begin_player_movement_update(id, ticks)?;
                 }
                 self.snapshot_spatial(id)?;
+                if let Some(animation) = self.actors[id.index].animation.as_mut() {
+                    let frame = animation.frame;
+                    animation.playback.set_last_frame(frame);
+                }
                 if !self.actors[id.index]
                     .control
                     .as_ref()
@@ -333,6 +345,8 @@ impl ScriptWorld {
                         }),
                         sounds,
                     )?;
+                self.rolled_back = false;
+                self.refresh_living_bounds(id)?;
                 let rollback = self.capture_ordinary_rollback(id, sounds)?;
                 if let Some(scale) = inputs.frame_scale {
                     let backward = self.actors[id.index]
@@ -664,6 +678,48 @@ impl ScriptWorld {
                         ),
                         "ordinary late collision response",
                     )?;
+                    // An armed or combat-stance nonplayer steers away from walls after its
+                    // collision passes.
+                    if !selected_player {
+                        let actor = &self.actors[id.index];
+                        let control = actor.control.as_ref().expect("admitted control");
+                        let armed = super::super::activation::weapon_predicates(
+                            control.living_state,
+                            actor.animation.as_ref().map(|animation| {
+                                super::super::ActivationAnimation {
+                                    group: animation.playback.current_group(),
+                                }
+                            }),
+                            control.combat.is_some(),
+                            control.weapon_drawn,
+                            actor.attributes[Attribute::HoldingWeapon],
+                            inputs
+                                .hud
+                                .map(super::super::ScriptHud::inventory_ready)
+                                .transpose()?
+                                .unwrap_or(false),
+                            inputs.shell_execution.unwrap_or(false),
+                        )
+                        .0;
+                        let stance = control
+                            .combat
+                            .as_ref()
+                            .is_some_and(super::avoid::in_combat_stance);
+                        if armed || stance {
+                            self.avoid_walls(
+                                id,
+                                super::ground::OrdinaryGroundQuery {
+                                    scene,
+                                    animations: data,
+                                    prepared: collision,
+                                    distance: scene.settings.post_collide_height,
+                                    sidedness: false,
+                                },
+                                ticks,
+                                inputs.frame_scale.expect("validated frame scale"),
+                            )?;
+                        }
+                    }
                 }
                 super::super::locomotion::finish_step_counters(
                     &mut self.actors[id.index]
@@ -893,6 +949,8 @@ pub struct OrdinaryContext<'w, 's> {
     camera_drive: Option<Res<'w, super::CameraDrive>>,
     camera_frame: Option<ResMut<'w, super::CameraFrameState>>,
     bindings: Query<'w, 's, (Entity, &'static super::super::ScriptBinding)>,
+    /// Animation sounds whose actor has no scene node yet, in emission order.
+    deferred_sounds: Local<'s, DeferredSounds>,
     players:
         Query<'w, 's, &'static crate::player::placement::PlayerPose, With<crate::player::Player>>,
 }
@@ -944,7 +1002,16 @@ impl OrdinaryContext<'_, '_> {
                 .zip(self.prepared.scenes.as_ref())
                 .and_then(|(request, scenes)| scenes.get(&request.0)),
             self.entry.as_deref().copied(),
-            &mut |actor, sound| send_actor_sound(actor, sound, &request.0, &self.bindings, emit),
+            &mut |actor, sound| {
+                send_actor_sound(
+                    actor,
+                    sound,
+                    &request.0,
+                    &self.bindings,
+                    &mut self.deferred_sounds,
+                    emit,
+                )
+            },
         )?;
         Ok(true)
     }
@@ -1143,11 +1210,81 @@ fn queued_step(
     });
 }
 
+/// Animation sounds an actor emitted before its scene node was bound, in emission order. The
+/// original plays them at the actor's position at once; here they wait for the node, which the
+/// scene binds a few frames after the world's first update.
+type DeferredSounds = Vec<(ScriptActorId, super::super::ScriptSound)>;
+
+/// Most sounds held for unbound actors; more means a node that never appears.
+const DEFERRED_SOUND_LIMIT: usize = 64;
+
+/// The scene node an actor's animation sounds belong to: none before the scene binds it.
+fn animation_node(
+    actor: ScriptActorId,
+    source: &Handle<Animations>,
+    bindings: &Query<(Entity, &super::super::ScriptBinding)>,
+) -> anyhow::Result<Option<Entity>> {
+    let mut nodes = bindings
+        .iter()
+        .filter(|(_, binding)| binding.actor == actor && binding.source == *source);
+    let Some((entity, _)) = nodes.next() else {
+        return Ok(None);
+    };
+    anyhow::ensure!(
+        nodes.next().is_none(),
+        "animation sound scene binding ambiguous"
+    );
+    Ok(Some(entity))
+}
+
+/// Emit every deferred sound whose actor has been bound since, keeping each actor's order and
+/// dropping sounds of an expired world.
+fn release_deferred_sounds(
+    deferred: &mut DeferredSounds,
+    generation: u64,
+    source: &Handle<Animations>,
+    bindings: &Query<(Entity, &super::super::ScriptBinding)>,
+    emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    let mut waiting: DeferredSounds = Vec::new();
+    for (actor, sound) in std::mem::take(deferred) {
+        if actor.generation != generation {
+            continue;
+        }
+        if waiting.iter().any(|(held, _)| *held == actor) {
+            waiting.push((actor, sound));
+            continue;
+        }
+        match animation_node(actor, source, bindings)? {
+            Some(entity) => {
+                let super::super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                } = sound
+                else {
+                    anyhow::bail!("only animation sounds are deferred");
+                };
+                emit(SoundCue::Animation {
+                    actor: entity,
+                    sound,
+                    surface,
+                    position,
+                })?;
+            }
+            None => waiting.push((actor, sound)),
+        }
+    }
+    *deferred = waiting;
+    Ok(())
+}
+
 fn send_actor_sound(
     actor: ScriptActorId,
     sound: super::super::ScriptSound,
     source: &Handle<Animations>,
     bindings: &Query<(Entity, &super::super::ScriptBinding)>,
+    deferred: &mut DeferredSounds,
     emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
     let cue = match sound {
@@ -1164,16 +1301,24 @@ fn send_actor_sound(
             surface,
             position,
         } => {
-            let mut nodes = bindings
-                .iter()
-                .filter(|(_, binding)| binding.actor == actor && binding.source == *source);
-            let (entity, _) = nodes
-                .next()
-                .ok_or_else(|| anyhow::anyhow!("animation sound scene binding unavailable"))?;
-            anyhow::ensure!(
-                nodes.next().is_none(),
-                "animation sound scene binding ambiguous"
-            );
+            let node = animation_node(actor, source, bindings)?;
+            let held = deferred.iter().any(|(held, _)| *held == actor);
+            let Some(entity) = node.filter(|_| !held) else {
+                anyhow::ensure!(
+                    deferred.len() < DEFERRED_SOUND_LIMIT,
+                    "animation sound scene binding unavailable: {} sounds already wait for a node",
+                    deferred.len()
+                );
+                deferred.push((
+                    actor,
+                    super::super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ));
+                return Ok(());
+            };
             SoundCue::Animation {
                 actor: entity,
                 sound,
@@ -1325,6 +1470,7 @@ pub fn run_ordinary(
         camera_drive,
         camera_frame,
         bindings,
+        mut deferred_sounds,
         players,
     } = context;
     if hud.as_ref().is_some_and(|hud| !hud.ready()) {
@@ -1378,6 +1524,16 @@ pub fn run_ordinary(
         return;
     }
     let timing = clock.step();
+    if let Err(error) = release_deferred_sounds(
+        &mut deferred_sounds,
+        world.generation(),
+        &request.0,
+        &bindings,
+        emit,
+    ) {
+        actors.error = Some(format!("deferred animation sound: {error:#}"));
+        return;
+    }
     let mut send_sound = |actor: ScriptActorId, sound: super::super::ScriptSound| {
         // The animation stage decides masks 1, 2, 4 and the selected player's 8 itself; every
         // other trigger is never taken.
@@ -1388,7 +1544,14 @@ pub fn run_ordinary(
         {
             return Ok(());
         }
-        send_actor_sound(actor, sound, &request.0, &bindings, emit)
+        send_actor_sound(
+            actor,
+            sound,
+            &request.0,
+            &bindings,
+            &mut deferred_sounds,
+            emit,
+        )
     };
     if phase == OrdinaryPhase::ModelPresentation {
         // Ordinary world scheduling runs outside the separate shell-script context.
@@ -1657,5 +1820,166 @@ pub fn run_ordinary(
         )
     {
         actors.error = Some(format!("camera frame: {error:#}"));
+    }
+}
+
+#[cfg(test)]
+mod deferred_sound_tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use cyrus_world::animation::AnimationSound;
+
+    fn actor(index: usize) -> ScriptActorId {
+        ScriptActorId {
+            generation: 1,
+            index,
+        }
+    }
+
+    fn play(effect: i16) -> super::super::super::ScriptSound {
+        super::super::super::ScriptSound::Animation {
+            sound: AnimationSound::Play {
+                effect,
+                rate_offset_hz: 0,
+            },
+            surface: None,
+            position: Some([1, 2, 3]),
+        }
+    }
+
+    type PassInput = (
+        DeferredSounds,
+        u64,
+        Vec<(ScriptActorId, super::super::super::ScriptSound)>,
+    );
+
+    /// One scheduler pass over the bindings: release what can be released, then emit `sends`.
+    fn pass(
+        world: &mut World,
+        deferred: DeferredSounds,
+        generation: u64,
+        sends: Vec<(ScriptActorId, super::super::super::ScriptSound)>,
+    ) -> (anyhow::Result<()>, DeferredSounds, Vec<SoundCue>) {
+        world
+            .run_system_once_with(
+                |In((mut deferred, generation, sends)): In<PassInput>,
+                 bindings: Query<(Entity, &super::super::super::ScriptBinding)>| {
+                    let source = Handle::<Animations>::default();
+                    let mut cues = Vec::new();
+                    let mut emit = |cue| {
+                        cues.push(cue);
+                        Ok(())
+                    };
+                    let result = release_deferred_sounds(
+                        &mut deferred,
+                        generation,
+                        &source,
+                        &bindings,
+                        &mut emit,
+                    )
+                    .and_then(|()| {
+                        for (id, sound) in sends {
+                            send_actor_sound(
+                                id,
+                                sound,
+                                &source,
+                                &bindings,
+                                &mut deferred,
+                                &mut emit,
+                            )?;
+                        }
+                        Ok(())
+                    });
+                    (result, deferred, cues)
+                },
+                (deferred, generation, sends),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn a_sound_for_an_unbound_actor_waits_for_its_node_and_keeps_its_order() {
+        let mut world = World::new();
+        // Two sounds of one actor and one of another arrive before any node exists: nothing is
+        // played and nothing fails.
+        let (result, deferred, cues) = pass(
+            &mut world,
+            Vec::new(),
+            1,
+            vec![
+                (actor(0), play(1)),
+                (actor(1), play(2)),
+                (actor(0), play(3)),
+            ],
+        );
+        result.unwrap();
+        assert!(cues.is_empty());
+        assert_eq!(deferred.len(), 3);
+        // Only the first actor's node appears: its two sounds are released in order, the
+        // other actor's keeps waiting.
+        let node = world
+            .spawn(super::super::super::ScriptBinding {
+                actor: actor(0),
+                source: Handle::default(),
+            })
+            .id();
+        let (result, deferred, cues) = pass(&mut world, deferred, 1, vec![]);
+        result.unwrap();
+        let effects: Vec<_> = cues
+            .iter()
+            .map(|cue| match cue {
+                SoundCue::Animation {
+                    actor: entity,
+                    sound: AnimationSound::Play { effect, .. },
+                    position: Some([1, 2, 3]),
+                    ..
+                } => {
+                    assert_eq!(*entity, node);
+                    *effect
+                }
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(effects, [1, 3]);
+        assert_eq!(deferred.len(), 1);
+        // A later sound for the now-bound actor plays at once; the unbound one still waits.
+        let (result, deferred, cues) = pass(
+            &mut world,
+            deferred,
+            1,
+            vec![(actor(0), play(4)), (actor(1), play(5))],
+        );
+        result.unwrap();
+        assert_eq!(cues.len(), 1);
+        assert_eq!(deferred.len(), 2);
+        // Sounds of a replaced world are dropped instead of played or kept.
+        let (result, deferred, cues) = pass(&mut world, deferred, 2, vec![]);
+        result.unwrap();
+        assert!(cues.is_empty() && deferred.is_empty());
+    }
+
+    #[test]
+    fn deferral_is_bounded_and_two_nodes_for_one_actor_stay_an_error() {
+        let mut world = World::new();
+        let (result, deferred, _) = pass(
+            &mut world,
+            Vec::new(),
+            1,
+            (0..DEFERRED_SOUND_LIMIT)
+                .map(|n| (actor(0), play(n as i16)))
+                .collect(),
+        );
+        result.unwrap();
+        assert_eq!(deferred.len(), DEFERRED_SOUND_LIMIT);
+        let (result, _, _) = pass(&mut world, deferred, 1, vec![(actor(0), play(0))]);
+        assert!(format!("{:#}", result.unwrap_err()).contains("sounds already wait for a node"));
+        for _ in 0..2 {
+            world.spawn(super::super::super::ScriptBinding {
+                actor: actor(7),
+                source: Handle::default(),
+            });
+        }
+        let (result, _, _) = pass(&mut world, Vec::new(), 1, vec![(actor(7), play(1))]);
+        assert!(format!("{:#}", result.unwrap_err()).contains("ambiguous"));
     }
 }

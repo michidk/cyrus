@@ -51,21 +51,48 @@ pub struct ItemViewer {
     exiting: bool,
     released: bool,
     exit_angles: [i32; 3],
+    /// Offset from the resting position at fade factor one, as it enters.
+    entry_offset: [f32; 3],
+    /// The place the view flies back to when it closes.
+    exit_target: [f32; 3],
     exit_offset: [f32; 3],
 }
 
 impl ItemViewer {
-    /// `extents` are the model's x, y and z bounding extents; `aspect` is screen height over
-    /// width. Only the form every installed script uses is supported: both request words zero.
-    pub fn open(extents: [i32; 3], words: [i32; 2], aspect: f32) -> Result<Self> {
-        ensure!(
-            words == [0, 0],
-            "item viewer: request words {words:?} are not the scripted form (0, 0)"
-        );
+    /// The scripted entry (`ShowItem`). `extents` are the model's x, y and z bounding extents,
+    /// `aspect` is screen height over width. The model flies in from `(first, second, 1490)`
+    /// and flies back to `(second, first, 1490)`: the original's exit swaps the two words.
+    pub fn open(extents: [i32; 3], words: [i32; 2], aspect: f32) -> Self {
+        let [first, second] = words.map(|word| word as f32);
+        Self::new(
+            extents,
+            aspect,
+            [first, second, ENTRY_DEPTH],
+            [second, first, ENTRY_DEPTH],
+        )
+    }
+
+    /// The inventory screen's entry: the model flies in from the cursor cell at visible `row` and
+    /// `column` and flies back to it.
+    pub fn open_inventory(extents: [i32; 3], row: i32, column: i32, aspect: f32) -> Self {
+        let cell = [
+            (column * 0x184 - 0x246) as f32,
+            (row * 0x17a - 0x1b0) as f32,
+        ];
+        let start = extents[2] as f32 + 180.0;
+        Self::new(
+            extents,
+            aspect,
+            [cell[0], cell[1], ENTRY_DEPTH - start],
+            [cell[0], cell[1], ENTRY_DEPTH],
+        )
+    }
+
+    fn new(extents: [i32; 3], aspect: f32, entry_offset: [f32; 3], exit_target: [f32; 3]) -> Self {
         let largest = extents.into_iter().max().unwrap_or(0);
         let depth_min = extents[2] as f32;
         let start = depth_min + 180.0;
-        Ok(Self {
+        Self {
             largest,
             depth_min,
             depth_max: (8 * largest) as f32 + start,
@@ -77,8 +104,10 @@ impl ItemViewer {
             exiting: false,
             released: false,
             exit_angles: [0; 3],
+            entry_offset,
+            exit_target,
             exit_offset: [0.0; 3],
-        })
+        }
     }
 
     fn scale(&self) -> f32 {
@@ -150,7 +179,11 @@ impl ItemViewer {
         self.exit_angles = self
             .angles
             .map(|angle| i32::from(angle) - if angle > 0x400 { 0x800 } else { 0 });
-        self.exit_offset = [-self.pan[0], -self.pan[1], ENTRY_DEPTH - self.depth];
+        self.exit_offset = [
+            self.exit_target[0] - self.pan[0],
+            self.exit_target[1] - self.pan[1],
+            self.exit_target[2] - self.depth,
+        ];
         self.fade = (f64::from(self.fade) + FADE_STEP) as f32;
         self.interpolate_angles();
     }
@@ -165,7 +198,7 @@ impl ItemViewer {
         let offset = if self.exiting {
             self.exit_offset
         } else {
-            [0.0, 0.0, ENTRY_DEPTH]
+            self.entry_offset
         };
         ViewerPose {
             turn: self.angles[0],
@@ -243,6 +276,15 @@ pub struct ExamineItem {
     pub description: Option<String>,
 }
 
+/// The inventory screen's request to examine its cursor item, at the cursor cell's visible
+/// `row` and `column`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct InventoryCell {
+    pub item: u16,
+    pub row: i32,
+    pub column: i32,
+}
+
 /// The loaded world's look that the examine view draws with: model lighting inputs in the
 /// original's axes and the palette textures resolve through (preservation `engine/hud.md`).
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
@@ -285,12 +327,23 @@ pub struct ExamineScreen {
     pub error: Option<String>,
     /// The loaded world's look, published by the renderer that owns it.
     pub look: Option<ExamineLook>,
+    /// The inventory screen asks to examine its cursor item.
+    pub inventory_request: Option<InventoryCell>,
+    /// Set when an inventory-entry view closes: true when Activate or Enter was held at the close
+    /// request, which closes the inventory screen. The inventory screen takes it.
+    pub inventory_result: Option<bool>,
+    #[serde(skip)]
+    from_inventory: bool,
+    #[serde(skip)]
+    confirm: bool,
     /// A label the audio owner starts as speech (and its subtitle), then answers through
     /// [`Self::speech_reply`].
     pub speech_request: Option<[u8; 4]>,
     /// The audio owner's answer: the clip length in seconds, or `None` when the label has no
     /// speech record, which ends the line sequence.
     pub speech_reply: Option<Option<f32>>,
+    /// Set when the exit starts: the audio owner stops the line's speech and clears it.
+    pub speech_stop: bool,
     #[serde(skip)]
     viewer: Option<ItemViewer>,
     #[serde(skip)]
@@ -309,6 +362,11 @@ impl ExamineScreen {
     /// Gameplay input must not be consumed.
     pub fn suspended(&self) -> bool {
         self.open || self.waiting_for_release
+    }
+
+    /// Gameplay and the inventory screen leave the view's request alone until it has run.
+    pub fn busy(&self) -> bool {
+        self.suspended() || self.inventory_request.is_some() || self.inventory_result.is_some()
     }
 }
 
@@ -332,15 +390,25 @@ fn drive(
     inputs: crate::player::input::Inputs,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<ExamineScreen>,
-    (hud, actors, console): (
+    (hud, mut actors, console): (
         Option<bevy::prelude::Res<crate::script::ScriptHud>>,
         Option<bevy::prelude::ResMut<crate::script::ScriptActors>>,
         Option<bevy::prelude::Res<cyrus_console::Console>>,
     ),
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
+    mut sounds: Option<bevy::prelude::MessageWriter<cyrus_world::sound::SoundCue>>,
 ) {
     use crate::player::input::Action;
+    let mut cue = |effect: usize| {
+        if let Some(sounds) = sounds.as_mut() {
+            sounds.write(cyrus_world::sound::SoundCue::Flat {
+                effect,
+                volume: 0,
+                rate_offset_hz: 0,
+            });
+        }
+    };
     use bevy::prelude::KeyCode;
     let tick = crate::clock::bios_tick(time.elapsed());
     let resume =
@@ -381,28 +449,67 @@ fn drive(
         if !screen.enabled || console.is_some_and(|console| console.open) {
             return;
         }
-        let (Some(hud), Some(mut actors)) = (hud, actors) else {
+        let Some(hud) = hud else {
             return;
         };
-        let Some(world) = actors.current.as_mut() else {
-            return;
+        let cell = screen.inventory_request.take();
+        let scripted = if cell.is_none() {
+            let Some(world) = actors.as_mut().and_then(|actors| actors.current.as_mut()) else {
+                return;
+            };
+            let Some(request) = world.globals_mut().take_item_viewer_request() else {
+                return;
+            };
+            Some(request)
+        } else {
+            None
         };
-        let Some(request) = world.globals_mut().take_item_viewer_request() else {
-            return;
+        let (item_id, entry, no_rtx) = match (cell, scripted) {
+            (Some(cell), _) => (
+                i32::from(cell.item),
+                Entry::Inventory {
+                    row: cell.row,
+                    column: cell.column,
+                },
+                false,
+            ),
+            (None, Some(request)) => (
+                request.item,
+                Entry::Scripted {
+                    words: request.words,
+                },
+                request.no_rtx,
+            ),
+            (None, None) => return,
         };
-        let opened = open(&hud, world.globals(), &request);
+        let opened = open(
+            &hud,
+            actors
+                .as_ref()
+                .and_then(|actors| actors.current.as_ref())
+                .map(|world| world.globals()),
+            item_id,
+            entry,
+        );
+        let finish_scripted =
+            |actors: &mut Option<bevy::prelude::ResMut<crate::script::ScriptActors>>| {
+                if scripted.is_some()
+                    && let Some(world) = actors.as_mut().and_then(|actors| actors.current.as_mut())
+                {
+                    world.globals_mut().finish_item_viewer();
+                }
+            };
         match opened {
             Ok(Some((viewer, lines, model))) => {
                 screen.error = None;
                 screen.model = Some(model);
                 screen.pose = Some(viewer.pose());
                 screen.viewer = Some(viewer);
-                screen.lines = (!request.no_rtx).then_some(lines);
-                screen.line = if request.no_rtx {
-                    Line::Ended
-                } else {
-                    Line::Idle
-                };
+                screen.lines = (!no_rtx).then_some(lines);
+                screen.line = if no_rtx { Line::Ended } else { Line::Idle };
+                screen.from_inventory = cell.is_some();
+                screen.confirm = false;
+                screen.speech_stop = false;
                 if let Some(time) = virtual_time.as_mut()
                     && !time.is_paused()
                 {
@@ -412,12 +519,18 @@ fn drive(
                 screen.checkpoint = clock.as_ref().map(|clock| clock.checkpoint());
                 screen.last_tick = Some(tick);
                 screen.open = true;
+                // Sound effect 61 plays when the view opens (preservation engine/hud.md).
+                cue(61);
             }
-            Ok(None) => world.globals_mut().finish_item_viewer(),
+            Ok(None) => {
+                finish_scripted(&mut actors);
+                screen.inventory_result = cell.map(|_| false);
+            }
             Err(error) => {
                 log::warn!("item viewer: {error:#}");
                 screen.error = Some(format!("{error:#}"));
-                world.globals_mut().finish_item_viewer();
+                finish_scripted(&mut actors);
+                screen.inventory_result = cell.map(|_| false);
             }
         }
         return;
@@ -438,8 +551,15 @@ fn drive(
     let Some(viewer) = screen.viewer.as_mut() else {
         return;
     };
+    let was_exiting = viewer.exiting();
     let finished = viewer.update(input);
     let (exiting, pose) = (viewer.exiting(), viewer.pose());
+    if exiting && !was_exiting {
+        screen.confirm = inputs.pressed(Action::Use) || keys.pressed(KeyCode::Enter);
+        // Sound effect 60 plays when the view begins to close, and its speech stops.
+        cue(60);
+        screen.speech_stop = true;
+    }
     screen.pose = Some(pose);
     if exiting {
         screen.line = Line::Ended;
@@ -455,7 +575,10 @@ fn drive(
         screen.lines = None;
         screen.speech_request = None;
         screen.speech_reply = None;
-        if let Some(mut actors) = actors
+        if screen.from_inventory {
+            screen.inventory_result = Some(screen.confirm);
+            screen.from_inventory = false;
+        } else if let Some(actors) = actors.as_mut()
             && let Some(world) = actors.current.as_mut()
         {
             world.globals_mut().finish_item_viewer();
@@ -469,38 +592,43 @@ fn default_screen() -> ExamineScreen {
 }
 
 /// The viewer, description lines and model for a request; `None` is an item absent from the list.
+/// How a view is entered.
+#[derive(Clone, Copy)]
+enum Entry {
+    Scripted { words: [i32; 2] },
+    Inventory { row: i32, column: i32 },
+}
+
 fn open(
     hud: &crate::script::ScriptHud,
-    globals: &crate::script::GameplayGlobals,
-    request: &crate::script::ItemViewerRequest,
+    globals: Option<&crate::script::GameplayGlobals>,
+    item_id: i32,
+    entry: Entry,
 ) -> Result<Option<(ItemViewer, DescriptionLines, String)>> {
-    let Some(item) = hud.examine_item(request.item as u32)? else {
+    let Some(item) = hud.examine_item(item_id as u32)? else {
         return Ok(None);
     };
     ensure!(
         item.exported,
-        "item {}: the HUD export predates the inventory model record; export it again",
-        request.item
+        "item {item_id}: the HUD export predates the inventory model record; export it again",
     );
-    let model = item.model.with_context(|| {
-        format!(
-            "item {}: ITEM.INI names no inventory_object_file",
-            request.item
-        )
-    })?;
-    let extents = item.extents.with_context(|| {
-        format!(
-            "item {}: inventory model {model} has no extents",
-            request.item
-        )
-    })?;
-    let viewer = ItemViewer::open(extents, request.words, ASPECT)
-        .with_context(|| format!("item {}", request.item))?;
-    let potion = usize::try_from((request.item - 20) / 2)
+    let model = item
+        .model
+        .with_context(|| format!("item {item_id}: ITEM.INI names no inventory_object_file"))?;
+    let extents = item
+        .extents
+        .with_context(|| format!("item {item_id}: inventory model {model} has no extents"))?;
+    let viewer = match entry {
+        Entry::Scripted { words } => ItemViewer::open(extents, words, ASPECT),
+        Entry::Inventory { row, column } => {
+            ItemViewer::open_inventory(extents, row, column, ASPECT)
+        }
+    };
+    let potion = usize::try_from((item_id - 20) / 2)
         .ok()
-        .and_then(|index| globals.potion(index))
+        .and_then(|index| globals?.potion(index))
         .unwrap_or(0);
-    let lines = DescriptionLines::new(request.item, item.description.as_deref(), potion);
+    let lines = DescriptionLines::new(item_id, item.description.as_deref(), potion);
     Ok(Some((viewer, lines, model)))
 }
 
@@ -555,7 +683,7 @@ mod tests {
     };
 
     fn viewer() -> ItemViewer {
-        ItemViewer::open([100, 60, 40], [0, 0], 0.75).unwrap()
+        ItemViewer::open([100, 60, 40], [0, 0], 0.75)
     }
 
     fn settle(viewer: &mut ItemViewer) {
@@ -565,9 +693,27 @@ mod tests {
     }
 
     #[test]
-    fn only_the_scripted_request_form_opens() {
-        assert!(ItemViewer::open([1, 1, 1], [1, 0], 0.75).is_err());
-        assert!(ItemViewer::open([1, 1, 1], [0, 2], 0.75).is_err());
+    fn request_words_offset_the_entry_and_swap_on_the_way_out() {
+        let mut viewer = ItemViewer::open([100, 60, 40], [30, 70], 0.75);
+        assert_eq!(viewer.pose().position, [30.0, 70.0, 220.0 + 1490.0]);
+        settle(&mut viewer);
+        viewer.update(ViewerInput { exit: true, ..HELD });
+        // At the first exit step the model is a fifth of the way from rest to the swapped
+        // target `(70, 30, 1490)`.
+        let position = viewer.pose().position;
+        assert!((position[0] - 70.0 * 0.15).abs() < 1e-3, "{position:?}");
+        assert!((position[1] - 30.0 * 0.15).abs() < 1e-3);
+        assert!((position[2] - (220.0 + (1490.0 - 220.0) * 0.15)).abs() < 1e-2);
+    }
+
+    #[test]
+    fn the_inventory_entry_flies_from_the_cursor_cell_and_back_to_it() {
+        let mut viewer = ItemViewer::open_inventory([100, 60, 40], 1, 2, 0.75);
+        let cell = [2.0 * 388.0 - 582.0, 1.0 * 378.0 - 432.0];
+        let start = viewer.pose().position;
+        assert_eq!(start, [cell[0], cell[1], 1490.0]);
+        settle(&mut viewer);
+        assert_eq!(viewer.pose().position, [0.0, 0.0, 220.0]);
     }
 
     #[test]

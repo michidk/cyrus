@@ -331,12 +331,9 @@ fn paint(
             })
             .collect();
         for index in 1..corners.len().saturating_sub(1) {
-            let mut triangle = [corners[0], corners[index], corners[index + 1]];
-            // Back-face handling is unrecovered: both sides draw and the depth test resolves them.
-            let [a, b, c] = triangle.map(|(vertex, _)| Vec2::new(vertex[0], vertex[1]));
-            if (b - a).perp_dot(c - a) >= 0.0 {
-                triangle.swap(1, 2);
-            }
+            // The Glide state culls by winding, as the book menu's does: only negative signed
+            // area (positive screen Y down) is visible.
+            let triangle = [corners[0], corners[index], corners[index + 1]];
             faces.push(MenuFace {
                 vertices: triangle.map(|(vertex, _)| vertex),
                 texture,
@@ -381,9 +378,9 @@ mod tests {
             faces: vec![ExamineFace {
                 corners: vec![
                     corner(0, 0.0, 0.0),
-                    corner(1, 4.0, 0.0),
-                    corner(2, 4.0, 4.0),
                     corner(3, 0.0, 4.0),
+                    corner(2, 4.0, 4.0),
+                    corner(1, 4.0, 0.0),
                 ],
                 texture: Some(0),
                 solid: None,
@@ -453,6 +450,61 @@ mod tests {
         model.faces[0].normals = vec![[0.0, 0.0, -1.0]; 4];
         let towards = paint(&artwork, &model, &pose(), &look()).unwrap();
         assert!(towards.get_pixel(320, 240).0[0] > away.get_pixel(320, 240).0[0] + 50);
+    }
+
+    /// Every installed inventory model draws visibly at its resting pose with the installed
+    /// extents, so a draw that culls or misplaces real geometry is caught.
+    #[test]
+    fn every_installed_inventory_model_is_visible_at_its_resting_pose() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match cyrus_assets::install::GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let files = cyrus_assets::game::prepare(&source, "hud/overlay.hud").unwrap();
+        let artwork: ExamineArtwork = serde_json::from_slice(&files["hud/examine.models"]).unwrap();
+        artwork.validate().unwrap();
+        let hud: serde_json::Value = serde_json::from_slice(&files["hud/overlay.hud"]).unwrap();
+        let look = ExamineLook {
+            ambient: [64.0; 3],
+            directional: [128.0; 3],
+            direction: [0.3, -0.6, 0.7],
+            palette: (0..=255).map(|i| [i as u8; 3]).collect(),
+        };
+        let mut drawn = 0;
+        for (id, item) in hud["inventory"].as_object().unwrap() {
+            let Some(name) = item["inventory_model"]["Model"].as_str() else {
+                continue;
+            };
+            let extents = item["inventory_extents"].as_array().unwrap();
+            let depth = extents[2].as_i64().unwrap() as f32 + 180.0;
+            let pose = ViewerPose {
+                position: [0.0, 0.0, depth],
+                ..pose()
+            };
+            let image = paint(&artwork, &artwork.models[name], &pose, &look).unwrap();
+            let visible = image.pixels().filter(|pixel| pixel.0[3] != 0).count();
+            assert!(
+                visible > 100,
+                "item {id} model {name}: {visible} visible pixels"
+            );
+            drawn += 1;
+        }
+        assert!(drawn > 20, "only {drawn} models drawn");
+    }
+
+    #[test]
+    fn faces_with_positive_screen_winding_are_culled() {
+        let (artwork, mut model) = quad(0);
+        model.faces[0].corners.reverse();
+        model.faces[0].normals.reverse();
+        let image = paint(&artwork, &model, &pose(), &look()).unwrap();
+        assert_eq!(image.get_pixel(320, 240).0[3], 0);
     }
 
     #[test]

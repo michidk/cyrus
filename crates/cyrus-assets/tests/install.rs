@@ -652,8 +652,15 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let data: serde_json::Value =
         serde_json::from_slice(&std::fs::read(hud.join("overlay.hud")).unwrap()).unwrap();
     assert_eq!(data["candle_mode"], 2);
+    let examine_bytes = std::fs::read(hud.join("examine.models")).unwrap();
+    // The view loads this when a game starts, so it carries only the images the models use.
+    assert!(
+        examine_bytes.len() < 16_000_000,
+        "examine.models is {} bytes",
+        examine_bytes.len()
+    );
     let examine: cyrus_assets::examine::ExamineArtwork =
-        serde_json::from_slice(&std::fs::read(hud.join("examine.models")).unwrap()).unwrap();
+        serde_json::from_slice(&examine_bytes).unwrap();
     examine.validate().unwrap();
     for (id, item) in data["inventory"].as_object().unwrap() {
         if let Some(model) = item["inventory_model"]["Model"].as_str() {
@@ -786,4 +793,67 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
         assert!((0..count).all(|f| hud.join(format!("{name}-{f:02}.png")).is_file()));
     }
     std::fs::remove_dir_all(&output).unwrap();
+}
+
+/// Which examine-view description labels have speech. A label with a text entry only would show
+/// as text for twice its length in updates; the viewer's audio owner handles speech only.
+#[test]
+fn examine_description_labels_all_have_speech_audio() {
+    let Some(install) = install() else {
+        return;
+    };
+    let source = cyrus_assets::native::Files::open(&install).unwrap();
+    let rtx = rgpre::import::rtx::parse_rtx_file(
+        &std::fs::read(install.root.join("ENGLISH.RTX")).expect("ENGLISH.RTX"),
+    )
+    .unwrap();
+    let audio: std::collections::BTreeSet<String> = rtx
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            rgpre::import::rtx::RtxEntry::Audio { .. } => {
+                Some(entry.tag_str().to_ascii_lowercase())
+            }
+            _ => None,
+        })
+        .collect();
+    let text: std::collections::BTreeSet<String> = rtx
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            rgpre::import::rtx::RtxEntry::Text { .. } => Some(entry.tag_str().to_ascii_lowercase()),
+            _ => None,
+        })
+        .collect();
+    let items = std::fs::read_to_string(install.root.join("ITEM.INI")).unwrap();
+    let definitions = rgpre::import::item_ini::ItemIni::parse(&items).unwrap();
+    let mut labels: Vec<String> = definitions
+        .items
+        .values()
+        .filter_map(|item| item.description.clone())
+        .collect();
+    labels.extend(["cibe", "cibl", "cikj"].map(String::from));
+    labels.extend((2..=8).map(|n| format!("iij{n}")));
+    labels.extend((1..=11).map(|n| format!("ny{n:02}")));
+    labels.extend((1..=3).map(|n| format!("cip{n}")));
+    let _ = &source;
+    let mut text_only = Vec::new();
+    let mut missing = Vec::new();
+    for label in labels {
+        let label = label.to_ascii_lowercase();
+        let label: String = label.chars().take(4).collect();
+        if audio.contains(&label) {
+            continue;
+        }
+        if text.contains(&label) {
+            text_only.push(label);
+        } else {
+            missing.push(label);
+        }
+    }
+    eprintln!("text-only: {text_only:?}; absent: {missing:?}");
+    assert!(
+        text_only.is_empty(),
+        "text-only description labels: {text_only:?}"
+    );
 }

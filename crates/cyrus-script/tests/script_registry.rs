@@ -7604,6 +7604,45 @@ fn pvo_secondary_ids_use_load_time_z_x_order_and_preserve_cell_chains() {
 }
 
 #[test]
+fn model_initialization_with_the_animation_system_off_selects_no_group_or_frame() {
+    // The request routine returns before touching the record, so the two initial panic
+    // requests select nothing: the actor has no frame and the original does not draw it.
+    for (animation_system, frame) in [(true, Some(0)), (false, None)] {
+        let mut scripts = cache();
+        scripts.updates.animation_system = animation_system;
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.instances = 1;
+        actor.instance_variables = vec![vec![4]];
+        scripts.instances.truncate(1);
+        scripts.instances[0].object_type = PlacementType::MODEL;
+        scripts.instances[0].active = 1;
+        scripts.instances[0].map_position = [10, 20, 30];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (_, mut data, _) = static_model_fixture(scripts.clone());
+        data.metadata["actors"] = serde_json::json!([
+            {"script_name":"LOGIC", "model_load_path":"animation_table",
+             "raan_entries":[{"file_path":"MOVING.3D","frame_count":1}],
+             "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                 "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}
+        ]);
+        data.metadata["mpob_objects"] =
+            serde_json::json!([{"script_name":"LOGIC", "object_type":1}]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(
+            world.animation_frame(id).unwrap(),
+            frame,
+            "animation system {animation_system}"
+        );
+        assert!(world.actors()[0].failure().is_none());
+    }
+}
+
+#[test]
 fn automatic_model_admission_reads_retained_support_before_ground_processing() {
     use cyrus_assets::{
         animation::AnimationModel,
@@ -7731,6 +7770,33 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         )
         .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_some());
+    // The refresh stores the heading change since the update-start history in `yangle_change`.
+    assert_eq!(
+        world.actors()[actor.index]
+            .control_state()
+            .unwrap()
+            .yangle_change,
+        0
+    );
+    world.set_local_angles_for_test(actor, [0, 300, 0]);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            cyrus_script::script::ScriptInputs::default(),
+            None,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[actor.index]
+            .control_state()
+            .unwrap()
+            .yangle_change,
+        300
+    );
+    world.set_local_angles_for_test(actor, [0, 0, 0]);
     assert!(world.model_presentation(support_actor).unwrap().is_none());
     world
         .set_model_support(
@@ -10155,6 +10221,13 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
 fn ordinary_bounds_endpoints_keep_stored_negative_magnitudes_and_positive_y() {
     use cyrus_script::script::{OrdinaryCollisionShape, ordinary_bounds_segments};
     let shape = OrdinaryCollisionShape {
+        retained: cyrus_script::script::RetainedBounds::only(cyrus_script::script::BoundsRecord {
+            positive_extent: [10, 20, 30],
+            negative_extent: [40, 50, 60],
+            total_extent: [50, 70, 90],
+            center_offset: [0; 3],
+        }),
+        total_extent: [50, 70, 90],
         center_offset: [0; 3],
         positive_extent: [10, 20, 30],
         negative_extent: [40, 50, 60],
@@ -11201,7 +11274,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert!(
         !world
-            .begin_ordinary_jump(id, &data, 0, true, environment, &mut |_, _| Ok(()))
+            .begin_ordinary_jump(id, &data, 0, true, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
     assert_eq!(
@@ -11219,7 +11292,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert!(
         world
-            .begin_ordinary_jump(id, &data, 0, false, environment, &mut |_, _| Ok(()))
+            .begin_ordinary_jump(id, &data, 0, false, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
     assert!(!world.retain_ordinary_stable_position(id).unwrap());
@@ -11248,7 +11321,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert!(
         !world
-            .begin_ordinary_jump(id, &data, 0, false, environment, &mut |_, _| Ok(()))
+            .begin_ordinary_jump(id, &data, 0, false, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
     let (_, _, models) = static_model_fixture(cache());
@@ -21184,7 +21257,7 @@ fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_change
 fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
     use cyrus_script::script::{ScriptInputs, ScriptStage};
     for (name, field) in [
-        (Property::RopeWait, "motion_companion"),
+        (Property::RopeWait, "jump_selector"),
         (Property::SlideFlag, "sliding_state"),
         (Property::FallFlag, "falling_state"),
         (Property::JumpFlag, "queued_motion"),
@@ -21252,7 +21325,7 @@ fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
 }
 
 #[test]
-fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
+fn hide_rope_scabbard_and_grip_properties_use_the_installed_descriptors() {
     use cyrus_script::script::{ScriptInputs, ScriptStage};
     // (property, value written first, then read back)
     for (name, write, read) in [
@@ -21260,6 +21333,8 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
         (Property::Rope, None, true),
         (Property::Scabbard0, Some(42), true),
         (Property::Scabbard1, Some(-3), true),
+        (Property::Grip0, Some(-77), true),
+        (Property::Grip1, Some(70000), true),
     ] {
         let mut scripts = heading_property_scripts(294, Object::Me);
         scripts.definition.references[294] = name;
@@ -21321,6 +21396,15 @@ fn hide_rope_and_scabbard_properties_use_the_installed_descriptors() {
             Property::Scabbard0 => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [42]);
                 assert_eq!(control["scabbard_override"], serde_json::json!([42, null]));
+            }
+            Property::Grip0 => {
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [-77]);
+                assert_eq!(control["grip_override"], serde_json::json!([-77, null]));
+            }
+            Property::Grip1 => {
+                // The word keeps the low sixteen bits of the stored value.
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4464]);
+                assert_eq!(control["grip_override"], serde_json::json!([null, 4464]));
             }
             _ => {
                 assert_eq!(world.actors()[0].runtime().unwrap().variables(), [-3]);
@@ -45306,9 +45390,15 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         };
         assert!(
             !world
-                .begin_ordinary_jump(id, &data, motion, true, environment, &mut |_, _| panic!(
-                    "refusal emitted sound"
-                ))
+                .begin_ordinary_jump(
+                    id,
+                    &data,
+                    motion,
+                    true,
+                    environment,
+                    None,
+                    &mut |_, _| panic!("refusal emitted sound")
+                )
                 .unwrap()
         );
         assert_eq!(
@@ -45320,7 +45410,9 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         );
         assert!(
             world
-                .begin_ordinary_jump(id, &data, motion, false, environment, &mut |_, _| Ok(()))
+                .begin_ordinary_jump(id, &data, motion, false, environment, None, &mut |_, _| Ok(
+                    ()
+                ))
                 .unwrap()
         );
         let control = world.actors()[0].control_state().unwrap();
@@ -45330,9 +45422,15 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         );
         assert!(
             !world
-                .begin_ordinary_jump(id, &data, motion, false, environment, &mut |_, _| panic!(
-                    "queued refusal emitted sound"
-                ))
+                .begin_ordinary_jump(
+                    id,
+                    &data,
+                    motion,
+                    false,
+                    environment,
+                    None,
+                    &mut |_, _| panic!("queued refusal emitted sound")
+                )
                 .unwrap()
         );
         invoke_public_script_jump(&mut world, true).unwrap();
@@ -45407,6 +45505,7 @@ fn normal_and_script_jump_initialization_failure_precedes_classification_write()
                         shell_execution: false,
                         ticks: 0,
                     },
+                    None,
                     &mut |_, _| anyhow::bail!("public Jump sound rejected"),
                 )
                 .unwrap_err()
@@ -50312,3 +50411,6 @@ mod player_queries_tests;
 
 #[path = "script_registry/flat_texture.rs"]
 mod flat_texture_tests;
+
+#[path = "script_registry/jump_fall_guards.rs"]
+mod jump_fall_guards_tests;

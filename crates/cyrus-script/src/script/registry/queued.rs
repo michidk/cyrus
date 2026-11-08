@@ -120,9 +120,13 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
 impl super::ScriptWorld {
     /// Begin an admitted ordinary jump through the original state writer.
     /// `native_task_active` comes from the motion-task owner; it is not inferred
-    /// from script continuations. This entry accepts nonselected actors outside
-    /// `HANGING`; selected-player admission runs through `begin_player_jump`.
+    /// from script continuations. The original runs one routine for every actor: the selected
+    /// player's edge services (`edge`, the ground query and clock inputs they read) run inside
+    /// it, and for any other actor they do nothing, so a nonselected actor in living state 15
+    /// clears its stable-position flag and leaves everything else unchanged. The selected player
+    /// enters through `begin_player_jump` and fails here without `edge`.
     /// Returns whether ordinary queued state was initialized.
+    #[allow(clippy::too_many_arguments)] // The selected player's ledge services take the full query.
     pub fn begin_ordinary_jump(
         &mut self,
         id: super::ScriptActorId,
@@ -130,6 +134,7 @@ impl super::ScriptWorld {
         requested_motion: u8,
         native_task_active: bool,
         environment: super::transition::ObstacleEnvironment,
+        edge: Option<(super::ground::OrdinaryGroundQuery<'_>, super::LedgeTiming)>,
         sounds: &mut dyn FnMut(
             super::ScriptActorId,
             super::super::ScriptSound,
@@ -154,16 +159,31 @@ impl super::ScriptWorld {
         {
             return Ok(false);
         }
-        anyhow::ensure!(
-            environment.selected_player != Some(id),
-            "world {} instance {index} jump selected-player edge service unsupported",
-            self.world
-        );
-        anyhow::ensure!(
-            control.living_state != LivingState::HANGING,
-            "world {} instance {index} jump state-15 exit service unsupported",
-            self.world
-        );
+        if environment.selected_player == Some(id) {
+            let (query, timing) = edge.with_context(|| {
+                format!(
+                    "world {} instance {index}: the selected player's jump entry needs its edge geometry and clock inputs",
+                    self.world
+                )
+            })?;
+            return self.begin_player_jump(
+                id,
+                query,
+                environment,
+                timing,
+                requested_motion,
+                sounds,
+            );
+        }
+        // Nonselected actors skip both edge services; hang release does nothing for them.
+        if control.living_state == LivingState::HANGING {
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("validated ordinary jump control")
+                .stable_position_valid = false;
+            return Ok(false);
+        }
         self.initialize_ordinary_jump(id, requested_motion, false, environment, sounds)
     }
 
@@ -590,6 +610,7 @@ impl super::ScriptWorld {
                     motion,
                     task_active,
                     environment,
+                    None,
                     sounds,
                 )?;
             }

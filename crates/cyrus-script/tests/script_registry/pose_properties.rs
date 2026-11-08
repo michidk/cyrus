@@ -733,3 +733,16 @@ fn the_animation_state_two_runs_the_system_without_the_movement_natives_group_wa
         );
     }
 }
+
+#[test]
+fn yangle_change_is_a_signed_word_the_refresh_stores_and_a_script_may_write() {
+    let world = pose_world(&[
+        Step3::Read(Property::YangleChange),
+        Step3::Write(Property::YangleChange, 70000),
+        Step3::Read(Property::YangleChange),
+        Step3::Write(Property::YangleChange, 0x8000),
+        Step3::Read(Property::YangleChange),
+    ]);
+    // Zero until a refresh stores a heading change; a write keeps the low sixteen bits, read signed.
+    assert_eq!(locals(&world), [0, 4464, -32768]);
+}

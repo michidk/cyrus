@@ -254,10 +254,7 @@ fn cleanup_clears_extra_time_only_in_sword_states_and_public_reads_continue() {
                 serde_json::to_value(world.actors()[0].control_state().unwrap()).unwrap(),
                 expected
             );
-            assert_eq!(
-                world.actors()[0].control_state().unwrap().motion_companion,
-                23
-            );
+            assert_eq!(world.actors()[0].control_state().unwrap().jump_selector, 23);
             advance(&mut world).unwrap();
             assert_eq!(world.actors()[0].runtime().unwrap().variables(), [counter]);
             world
@@ -289,10 +286,7 @@ fn cleanup_request_failure_retains_both_independent_bytes_before_the_clear() {
             before
         );
         assert_eq!(world.actors()[0].control_state().unwrap().extra_time, 19);
-        assert_eq!(
-            world.actors()[0].control_state().unwrap().motion_companion,
-            23
-        );
+        assert_eq!(world.actors()[0].control_state().unwrap().jump_selector, 23);
         assert!(
             world
                 .cleanup_actor_weapon(id, id, 0, &mut |_, _| Ok(()))
@@ -317,7 +311,7 @@ fn cleanup_rejects_a_stale_owner_before_either_byte_changes() {
     assert_eq!(
         (
             control.extra_time,
-            control.motion_companion,
+            control.jump_selector,
             control.living_state.byte()
         ),
         (19, 23, 20)
@@ -467,7 +461,7 @@ fn native_sheathing_clears_extra_time_after_admission_and_keeps_rope_wait() {
             30,
         );
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!(control.motion_companion, 23);
+        assert_eq!(control.jump_selector, 23);
         if missing_hud {
             assert!(format!("{:#}", result.unwrap_err()).contains("inventory owner unavailable"));
             assert_eq!((control.extra_time, control.living_state.byte()), (19, 0));

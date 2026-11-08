@@ -772,7 +772,8 @@ impl ScriptWorld {
         Ok(matches!(entry, OrdinaryFallEntry::Start { .. }))
     }
 
-    /// Start a static/model-less ordinary fall after an admitted support miss.
+    /// Start a static/model-less ordinary fall after an admitted support miss; the ledge living
+    /// states 10 to 19 start none.
     /// Animated entry has separate recovery and displacement services and must
     /// use its own admission path. Existing falls retain their origin and timer.
     pub fn begin_static_ordinary_fall(
@@ -795,11 +796,11 @@ impl ScriptWorld {
             "world {} instance {index}: static fall entry motion admission unavailable",
             self.world
         );
-        anyhow::ensure!(
-            !(control.living_state.is_ledge() || control.living_state.is_bounce()),
-            "world {} instance {index}: static fall entry special state unsupported",
-            self.world
-        );
+        // The ordinary support response starts no fall in the ledge states (10 to 19); it only ends
+        // its query. The bounce states have no branch of their own there.
+        if control.living_state.is_ledge() {
+            return Ok(false);
+        }
         let path = data.actor(actor.name())?["model_load_path"]
             .as_str()
             .context("ordinary fall entry model path unavailable")?;
