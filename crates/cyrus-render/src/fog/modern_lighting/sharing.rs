@@ -41,7 +41,7 @@ fn key(material: &SceneMaterial, animation: Option<&Binding>) -> Option<String> 
         return None;
     }
     Some(format!(
-        "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{}|{:?}",
+        "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{}|{:?}|{}",
         material.base,
         model.solid_color,
         model.chroma_key,
@@ -51,6 +51,7 @@ fn key(material: &SceneMaterial, animation: Option<&Binding>) -> Option<String> 
         model.texture_scale,
         model.fog.water.y,
         animation.map(|binding| &binding.key),
+        model.calm_water,
     ))
 }
 
@@ -69,7 +70,11 @@ pub(super) fn share(
             Option<&RenderLayers>,
             Option<&Binding>,
         ),
-        (Without<Unshared>, Without<KeepsOwn>),
+        (
+            Without<Unshared>,
+            Without<KeepsOwn>,
+            With<super::glow::GlowChecked>,
+        ),
     >,
     (parents, excluded): (
         Query<&ChildOf>,
@@ -173,7 +178,9 @@ mod tests {
             &Handle::default(),
         );
         let handle = world.resource_mut::<Assets<SceneMaterial>>().add(material);
-        world.spawn(MeshMaterial3d(handle)).id()
+        world
+            .spawn((MeshMaterial3d(handle), super::super::glow::GlowChecked))
+            .id()
     }
 
     fn material(world: &World, entity: Entity) -> AssetId<SceneMaterial> {

@@ -37,6 +37,10 @@ pub struct Environment {
     pub prelighting: Prelighting,
     /// Authored kind-6 runtime lights in file order, before active-region selection.
     pub object_lights: Vec<LocalLight>,
+    /// Packed `(set << 7) | image` keys of the textures SURFACE.INI marks as water. Empty in
+    /// caches that predate it.
+    #[serde(default)]
+    pub water_textures: Vec<u16>,
 }
 
 #[derive(Default, Serialize, Deserialize)]

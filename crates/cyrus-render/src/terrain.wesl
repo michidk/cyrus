@@ -10,11 +10,35 @@ import bevy_pbr::render::{
 @if(MODERN_LIGHTING)
 import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::srgb_to_linear;
-import package::scene_shading::{fog, point_sampled, scene_color_at_fog_position, scene_fog_at_position};
+import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, scene_color_at_fog_position, scene_fog_at_position};
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
-import package::sampling::{sample_encoded, color_channel};
+import package::sampling::{base_color_size, sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
-import bevy_pbr::render::pbr_bindings::base_color_texture;
+import constants::MATERIAL_BIND_GROUP;
+@if(BINDLESS)
+import bevy_pbr::render::mesh_bindings::mesh;
+
+@if(BINDLESS) {
+// The terrain extension's bindless index table, `range(50..51)`.
+struct TerrainBindings {
+    material: u32,
+};
+@group(MATERIAL_BIND_GROUP) @binding(100) var<storage> terrain_bindings: array<TerrainBindings>;
+@group(MATERIAL_BIND_GROUP) @binding(101) var<storage> terrain_materials: array<SceneFog>;
+}
+@if(!BINDLESS)
+@group(MATERIAL_BIND_GROUP) @binding(50) var<uniform> terrain_material: SceneFog;
+
+// Loads the drawn terrain's fog; both entry points call it first.
+fn load_terrain_material(instance_index: u32) {
+@if(BINDLESS) {
+    material_slot = mesh[instance_index].material_and_lightmap_bind_group_slot & 0xffffu;
+    fog = terrain_materials[terrain_bindings[material_slot].material];
+}
+@if(!BINDLESS) {
+    fog = terrain_material;
+}
+}
 
 struct TerrainVertex {
     @builtin(position) position: vec4<f32>,
@@ -80,6 +104,7 @@ fn vertex(raw: Vertex,
 @if(PREPARED_TERRAIN)
     @location(15) texture4: vec4<u32>,
 ) -> TerrainVertex {
+    load_terrain_material(raw.instance_index);
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
     var out: TerrainVertex;
@@ -136,6 +161,7 @@ fn modern_lit(input: PbrInput, albedo: vec3<f32>, water: f32, normal: vec3<f32>)
 
 @fragment
 fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+    load_terrain_material(in.instance_index);
     var depth = -(view.view_from_world * in.world_position).z * 20.0;
 @if(PREPARED_TERRAIN) { depth = in.depth; }
 @if(!PREPARED_TERRAIN) {
@@ -149,7 +175,7 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     var fog_position = fog_table_position(depth);
 @if(PREPARED_TERRAIN) {
     let pixel = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
-    surface.uv = terrain_texture_uv(in.texture0, in.texture1, in.texture2, in.texture3, in.texture4, pixel, textureDimensions(base_color_texture));
+    surface.uv = terrain_texture_uv(in.texture0, in.texture1, in.texture2, in.texture3, in.texture4, pixel, base_color_size());
     let reciprocal = texture_plane(in.texture3.xy, in.texture3.zw, in.texture4.xy, pixel);
     fog_position = fog_table_position_from_reciprocal(reciprocal.x);
 }

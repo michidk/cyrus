@@ -132,6 +132,9 @@ fn stars(direction: vec3<f32>) -> f32 {
         * smoothstep(0.02, 0.2, direction.y);
 }
 
+// Colour of the clouds at night, as a factor on their daytime colour; a Modern tuning choice.
+const MOONLIT_CLOUDS: vec3<f32> = vec3(0.16, 0.18, 0.26);
+
 // The modern sky effect: glow around the sun, a warm horizon while it is low, and stars at night.
 fn modern_sky(color: vec3<f32>, clouds: vec3<f32>, ray: vec3<f32>) -> vec3<f32> {
     let direction = normalize(ray);
@@ -158,6 +161,8 @@ fn modern_sky(color: vec3<f32>, clouds: vec3<f32>, ray: vec3<f32>) -> vec3<f32> 
     if night > 0.0 {
         let cloud = smoothstep(0.35, 0.7, dot(clouds, vec3(0.2126, 0.7152, 0.0722)));
         result += vec3(0.9, 0.95, 1.0) * stars(direction) * night * (1.0 - cloud) * 0.8;
+        // The night tint darkens the clouds with the sky; moonlight keeps them visible.
+        result = mix(result, clouds * MOONLIT_CLOUDS, cloud * night);
     }
     return result;
 }

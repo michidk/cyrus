@@ -1,6 +1,6 @@
 //! Off-live material construction using the ordinary geometry and sampling rules.
 use super::{
-    SceneMaterial, TerrainExtension, TerrainMaterial, fog_extension, model_material,
+    SceneMaterial, TerrainExtension, TerrainMaterial, calm_water, fog_extension, model_material,
     prepare_model_geometry,
 };
 use anyhow::{Context, Result, ensure};
@@ -175,7 +175,7 @@ pub fn prepare_scene_materials(
                 .with_context(|| format!("replacement model {entity:?}"))?,
             )
         };
-        let material = model_material(
+        let mut material = model_material(
             base,
             &extension,
             terrain,
@@ -189,6 +189,11 @@ pub fn prepare_scene_materials(
             geometry.as_ref().map_or(Vec4::ZERO, |g| g.texture_scale),
             &Handle::default(),
         );
+        material.extension.calm_water = !terrain
+            && calm_water(
+                world.get::<bevy::gltf::GltfMaterialName>(entity),
+                environment,
+            );
         prepared.push((
             entity,
             geometry.map(|g| g.mesh),

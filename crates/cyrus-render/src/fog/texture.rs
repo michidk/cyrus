@@ -592,6 +592,7 @@ mod tests {
                 lights: Handle::default(),
                 placement: Mat4::IDENTITY,
                 lighting: Vec4::ZERO,
+                calm_water: false,
             },
         };
         let terrain_frames: Vec<_> = (0..4)

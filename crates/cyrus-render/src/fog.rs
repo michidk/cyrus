@@ -96,11 +96,19 @@ type MaterialCache = HashMap<
 >;
 type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
+// Bindless where the platform allows, so terrain pieces with different textures share a batch.
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 #[bind_group_data(TerrainKey)]
+#[data(50, FogExtension, binding_array(101))]
+#[bindless(index_table(range(50..51), binding(100)))]
 struct TerrainExtension {
-    #[uniform(100)]
     fog: FogExtension,
+}
+
+impl From<&TerrainExtension> for FogExtension {
+    fn from(extension: &TerrainExtension) -> Self {
+        extension.fog.clone()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -192,25 +200,17 @@ impl MaterialExtension for TerrainExtension {
     }
 }
 
-#[derive(Asset, TypePath, AsBindGroup, ShaderType, Clone, PartialEq)]
+#[derive(ShaderType, Clone, Debug, PartialEq)]
 struct FogExtension {
-    #[uniform(100)]
     color: Vec4,
-    #[uniform(100)]
     clipping: Vec4,
-    #[uniform(100)]
     table: [Vec4; 16],
-    #[uniform(100)]
     water: Vec4,
-    #[uniform(100)]
     ambient: Vec4,
-    #[uniform(100)]
     directional: Vec4,
-    #[uniform(100)]
     direction: Vec4,
     /// x: 1 while `Area::Lighting` is Modern; y: 1 while `Area::Textures` is Modern, which
     /// point-samples world textures.
-    #[uniform(100)]
     lighting: Vec4,
 }
 
@@ -220,28 +220,65 @@ impl FogExtension {
     }
 }
 
+// Bindless where the platform allows, so models with different textures share a batch; the
+// values travel in one buffer, `ModelUniform`, which also keeps WebGL within its fragment binding
+// budget.
 #[derive(Asset, TypePath, AsBindGroup, Clone, PartialEq)]
 #[bind_group_data(ModelKey)]
+#[data(50, ModelUniform, binding_array(101))]
+#[bindless(index_table(range(50..52), binding(100)))]
 struct ModelExtension {
-    #[uniform(100)]
     fog: FogExtension,
-    #[texture(101, sample_type = "float", filterable = false)]
+    /// The light table of `lighting::runtime`, RGBA8 bytes of 32-bit floats.
+    #[texture(51)]
     lights: Handle<Image>,
-    // Share one model buffer to stay within the minimum WebGL fragment binding budget.
-    #[uniform(102)]
     placement: Mat4,
-    #[uniform(102)]
     lighting: Vec4,
-    #[uniform(102)]
     solid_color: Vec4,
-    #[uniform(102)]
     compositing: Vec4,
-    #[uniform(102)]
     chroma_key: Vec4,
-    #[uniform(102)]
     texture_layout: UVec4,
-    #[uniform(102)]
     texture_scale: Vec4,
+    /// The texture is water by SURFACE.INI; the modern screen pass reflects it without ripples.
+    calm_water: bool,
+}
+
+/// `ModelExtension` as the shaders read it, `ModelMaterial` in `model_lights.wesl`.
+#[derive(ShaderType)]
+struct ModelUniform {
+    fog: FogExtension,
+    model: ModelParameters,
+}
+
+#[derive(ShaderType)]
+struct ModelParameters {
+    placement: Mat4,
+    parameters: Vec4,
+    solid_color: Vec4,
+    compositing: Vec4,
+    chroma_key: Vec4,
+    texture_layout: UVec4,
+    texture_scale: Vec4,
+    /// x: 1 on calm water.
+    surface: Vec4,
+}
+
+impl From<&ModelExtension> for ModelUniform {
+    fn from(extension: &ModelExtension) -> Self {
+        Self {
+            fog: extension.fog.clone(),
+            model: ModelParameters {
+                placement: extension.placement,
+                parameters: extension.lighting,
+                solid_color: extension.solid_color,
+                compositing: extension.compositing,
+                chroma_key: extension.chroma_key,
+                texture_layout: extension.texture_layout,
+                texture_scale: extension.texture_scale,
+                surface: Vec4::new(f32::from(u8::from(extension.calm_water)), 0.0, 0.0, 0.0),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -424,6 +461,7 @@ fn apply_scene_fog(
             &mut Mesh3d,
             Option<&bevy::gltf::GltfExtras>,
             Option<&bevy::gltf::GltfMaterialExtras>,
+            Option<&bevy::gltf::GltfMaterialName>,
         ),
         Without<RejectedLighting>,
     >,
@@ -577,7 +615,7 @@ fn apply_scene_fog(
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
-    for (entity, handle, mut mesh, extras, material_extras) in &mut entities {
+    for (entity, handle, mut mesh, extras, material_extras, material_name) in &mut entities {
         if std::iter::once(entity)
             .chain(parents.iter_ancestors(entity))
             .any(|node| staged.contains(node))
@@ -759,7 +797,7 @@ fn apply_scene_fog(
                 flats.get(entity).ok().map(|flat| flat.alpha),
             ))
             .or_insert_with(|| {
-                fog_materials.add(model_material(
+                let mut material = model_material(
                     base,
                     &extension,
                     terrain,
@@ -772,13 +810,37 @@ fn apply_scene_fog(
                     texture_layout,
                     texture_scale,
                     &light_texture,
-                ))
+                );
+                material.extension.calm_water = !terrain && calm_water(material_name, environment);
+                fog_materials.add(material)
             })
             .clone();
         commands
             .entity(entity)
             .remove::<MeshMaterial3d<StandardMaterial>>()
             .insert(MeshMaterial3d(material));
+    }
+}
+
+/// Whether a model mesh's texture is water by SURFACE.INI, read from the glTF material name
+/// preservation gives it, `TEXBSI.<set> / <name> (image <index>)`.
+fn calm_water(name: Option<&bevy::gltf::GltfMaterialName>, environment: &Environment) -> bool {
+    let Some((set, rest)) = name
+        .and_then(|name| name.0.strip_prefix("TEXBSI."))
+        .and_then(|rest| rest.split_once(' '))
+    else {
+        return false;
+    };
+    let image = rest
+        .rsplit_once("(image ")
+        .and_then(|(_, image)| image.strip_suffix(')'))
+        .and_then(|image| image.parse::<u16>().ok());
+    match (set.parse::<u16>(), image) {
+        (Ok(set), Some(image)) if image < 128 => environment
+            .water_textures
+            .binary_search(&((set << 7) | image))
+            .is_ok(),
+        _ => false,
     }
 }
 
@@ -839,6 +901,7 @@ fn model_material(
                 u8::from(!terrain) as f32,
                 attributes.map_or(-1.0, f32::from),
             ),
+            calm_water: false,
         },
     }
 }
@@ -1022,6 +1085,7 @@ mod tests {
                 direction: [0.0, -1.0, 0.0],
             },
             prelighting: Default::default(),
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
         };
         let faithful = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
@@ -1069,6 +1133,7 @@ mod tests {
                 direction: [0.0, -1.0, 0.0],
             },
             prelighting: Default::default(),
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
         };
         assert_eq!(modern_waves(&environment, &fidelity), Vec4::ZERO);
@@ -1318,6 +1383,7 @@ mod tests {
                     },
                     prelighting: Default::default(),
                     world_palette: Vec::new(),
+                    water_textures: Vec::new(),
                     object_lights: vec![cyrus_assets::environment::LocalLight {
                         position: [9216, 0, 9728],
                         radius: 100,
@@ -1419,8 +1485,8 @@ mod tests {
         assert_eq!(first.world, scripts.world);
         assert_eq!(first.generation, 10);
         assert_eq!(first.environment, "MGUILD.environment");
-        assert_eq!(first.dimensions, [2, 257]);
-        assert_eq!(first.format, "Rgba32Float");
+        assert_eq!(first.dimensions, [8, 257]);
+        assert_eq!(first.format, "Rgba8Unorm");
         let bound_material = app
             .world()
             .get::<MeshMaterial3d<SceneMaterial>>(entity)
@@ -1565,6 +1631,7 @@ mod tests {
                 heights: vec![0.0; 4],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: vec![cyrus_assets::environment::LocalLight {
                 position: [512, 0, 512],
                 radius: 100,

@@ -704,6 +704,7 @@ mod tests {
             placement: Mat4::IDENTITY,
             lighting: Vec4::ZERO,
             compositing: Vec4::splat(-1.0),
+            calm_water: false,
         }
     }
 

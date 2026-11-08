@@ -201,6 +201,29 @@ pub(super) fn tint_sky(
     }
 }
 
+/// Gives the background beyond the scenery the cycle's fog tint, so the far edge of the world darkens
+/// with the sky; without the cycle it is the installed background colour.
+pub(super) fn tint_clear_color(
+    daylight: Res<Daylight>,
+    request: Res<crate::environment::EnvironmentRequest>,
+    environments: Res<Assets<cyrus_assets::environment::Environment>>,
+    mut clear: ResMut<ClearColor>,
+) {
+    // Without the cycle the world's own background stays, except once after the cycle stops.
+    if daylight.0.is_none() && !daylight.is_changed() {
+        return;
+    }
+    let Some(environment) = environments.get(&request.0) else {
+        return;
+    };
+    let tint = daylight.0.map_or(Vec3::ONE, |sky| sky.tint);
+    let [r, g, b] = environment.background.map(|value| f32::from(value) / 255.0);
+    let color = Color::srgb(r * tint.x, g * tint.y, b * tint.z);
+    if clear.0 != color {
+        clear.0 = color;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

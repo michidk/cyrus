@@ -16,7 +16,7 @@ import package::scene_shading::{fog, point_sampled, scene_color, scene_fog_at_po
 import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
-import package::model_lights::{apply_local_lights, model};
+import package::model_lights::{apply_local_lights, load_model_material, model};
 import package::sampling::{sample_encoded, sample_flat, sample_model, matches_chroma, color_channel};
 import package::terrain_texture::texture_coordinates;
 
@@ -68,6 +68,7 @@ fn vertex(raw: Vertex,
 @if(PREPARED_MODEL)
     @location(14) texture_e: vec4<u32>,
 ) -> ModelVertex {
+    load_model_material(raw.instance_index);
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
     var out: ModelVertex;
@@ -121,6 +122,15 @@ fn vertex(raw: Vertex,
 
 // The surface lit by Bevy's lights as a matte material, then the scene fog without the original's
 // 16-bit framebuffer.
+// Light a glowing lamp gives off on top of its texture: the base material's emissive strength on
+// the bright texels only, so a lantern's glass or a flame glows and its frame does not. The
+// strength is zero except on the lamps `modern_lighting::glow` finds.
+fn lamp_glow(input: PbrInput, rgb: vec3<f32>, linear: vec3<f32>) -> vec3<f32> {
+    let strength = input.material.emissive.r;
+    if strength <= 0.0 { return vec3(0.0); }
+    return linear * strength * smoothstep(0.55, 0.9, max(rgb.r, max(rgb.g, rgb.b)));
+}
+
 @if(MODERN_LIGHTING)
 fn modern_lit(input: PbrInput, albedo: vec3<f32>, depth: f32) -> vec3<f32> {
     var lit = input;
@@ -129,11 +139,13 @@ fn modern_lit(input: PbrInput, albedo: vec3<f32>, depth: f32) -> vec3<f32> {
     lit.material.metallic = 0.0;
     lit.material.perceptual_roughness = 1.0;
     lit.material.reflectance = vec3(0.0);
-    return scene_fog_at_position(apply_pbr_lighting(lit).rgb, depth, fog_table_position(depth));
+    let glow = lamp_glow(input, linear_to_srgb(albedo), albedo);
+    return scene_fog_at_position(apply_pbr_lighting(lit).rgb + glow, depth, fog_table_position(depth));
 }
 
 @fragment
 fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+    load_model_material(in.instance_index);
     let depth = -(view.view_from_world * in.world_position).z * 20.0;
     if depth < fog.clipping.x || depth > fog.clipping.y { discard; }
     var surface: VertexOutput;
@@ -175,7 +187,8 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
 @if(MODERN_LIGHTING) {
     var lit_out: FragmentOutput;
-    lit_out.color = vec4(modern_lit(input, srgb_to_linear(texture_rgb) * (in.color * in.position.w), depth), base.a);
+    // Calm water writes a zero alpha, which the modern screen pass reflects without ripples.
+    lit_out.color = vec4(modern_lit(input, srgb_to_linear(texture_rgb) * (in.color * in.position.w), depth), select(base.a, 0.0, model.surface.x != 0.0));
     return lit_out;
 }
     var encoded = texture_rgb * (in.color * in.position.w);
@@ -198,6 +211,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
         out.color = vec4(result, 1.0);
     }
 }
+    out.color = vec4(out.color.rgb + lamp_glow(input, texture_rgb, color), out.color.a);
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }

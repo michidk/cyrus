@@ -58,6 +58,8 @@ pub(super) fn find_plants(mut commands: Commands, named: Query<(Entity, &Name), 
 }
 
 /// Sways the plants while the effect is on, and puts them back at rest once it is off.
+// Bevy supplies the plant, bounds and camera queries as separate parameters.
+#[allow(clippy::type_complexity)]
 pub(super) fn sway(
     mut commands: Commands,
     effects: Res<ModernEffects>,
@@ -65,6 +67,10 @@ pub(super) fn sway(
     new: Query<(Entity, &Plant, &Transform, &Children), Without<Sway>>,
     bounds: Query<(&Aabb, &Transform), Without<Sway>>,
     mut swaying: Query<(Entity, &Sway, &mut Transform)>,
+    (places, cameras): (
+        Query<&GlobalTransform, With<Sway>>,
+        Query<&GlobalTransform, (With<crate::camera::ViewCamera>, Without<Sway>)>,
+    ),
 ) {
     if !effects.foliage {
         settle(&mut commands, &mut swaying);
@@ -91,8 +97,15 @@ pub(super) fn sway(
         });
     }
     let seconds = time.elapsed_secs_wrapped();
-    for (_, sway, mut transform) in &mut swaying {
-        transform.set_if_neq(swayed(sway, seconds));
+    let eye = cameras.iter().next().map(GlobalTransform::translation);
+    for (entity, sway, mut transform) in &mut swaying {
+        // Far plants hold their pose: their sway is not visible, and still plants cost nothing.
+        let near = eye.zip(places.get(entity).ok()).is_none_or(|(eye, place)| {
+            eye.distance_squared(place.translation()) <= SWAY_RANGE * SWAY_RANGE
+        });
+        if near {
+            transform.set_if_neq(swayed(sway, seconds));
+        }
     }
 }
 
@@ -106,6 +119,9 @@ pub(super) fn settle(
         commands.entity(entity).remove::<Sway>();
     }
 }
+
+/// Distance from the camera, in world units, within which plants sway.
+const SWAY_RANGE: f32 = 200.0;
 
 /// The wind's heading in world space; one direction for every world.
 const WIND: Vec3 = Vec3::new(0.94, 0.0, 0.34);

@@ -62,7 +62,8 @@ which moves six times farther than the world's installed clipping distance.
 separate world variant. Under Modern lighting, the debug menu's day/night panel (and the control
 port's `set_day_night`) can turn on a time of day. Noon reproduces the world's installed sun; the sun
 moves on an arc through it and sets at 6 and 18 o'clock, and its colour, the ambient light, the fog and
-the sky darken and warm with the hour, with a dim moonlight at night. Worlds without an installed sun,
+the sky darken and warm with the hour, with a dim moonlight at night. The background beyond the scenery
+darkens with the fog, and moonlit clouds stay visible at night. Worlds without an installed sun,
 such as interiors, are not affected. The cycle is off by default, and every colour, the speed and the
 direction of the arc are Modern tuning choices.
 
@@ -83,8 +84,15 @@ every value is a Modern tuning choice:
 - swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
   about their base, while collision keeps the installed placement;
 - depth of field focused on the player, and motion blur.
+- the map's object and baked lights (lamps and fires) shine as point lights. Map light colours are
+  signed and the original subtracts the negative channels; point lights only add, so each light
+  shines with its positive channels and darkening-only lights are left out. Each lights a facing
+  surface fully at a sixteenth of its radius, where the original's attenuation reaches one. Small
+  models that hold a light glow on their bright texels;
+- calm water: models whose texture SURFACE.INI marks as water reflect like the sea, without its
+  ripples.
 
-Depth of field and motion blur start off; the others start on.
+All of them start on.
 
 ## Unfiltered textures
 

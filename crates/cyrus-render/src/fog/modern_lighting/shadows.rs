@@ -108,13 +108,15 @@ pub(super) fn add_twins(
 
 /// Keeps each twin on its parent's current mesh, bounds and world transform, and off while the camera
 /// does not see its parent. Script poses write world transforms directly, so propagation alone
-/// can leave a child behind.
-// Bevy supplies the twin and parent queries as separate parameters.
+/// can leave a child behind. Only parents that changed are copied, unless a twin is new or the
+/// camera's layers changed.
+// Bevy supplies the twin, parent and camera queries as separate parameters.
 #[allow(clippy::type_complexity)]
 pub(super) fn follow(
+    mut last_seen: Local<Option<RenderLayers>>,
+    added: Query<(), Added<ShadowTwin>>,
     mut twins: Query<
         (
-            &ChildOf,
             &mut Mesh3d,
             &mut GlobalTransform,
             &mut RenderLayers,
@@ -124,33 +126,31 @@ pub(super) fn follow(
     >,
     parents: Query<
         (
-            &Mesh3d,
-            &GlobalTransform,
-            Option<&RenderLayers>,
-            Option<&Aabb>,
+            &Children,
+            Ref<Mesh3d>,
+            Ref<GlobalTransform>,
+            Option<Ref<RenderLayers>>,
+            Option<Ref<Aabb>>,
         ),
-        Without<ShadowTwin>,
+        (With<Twinned>, Without<ShadowTwin>),
     >,
     cameras: Query<Option<&RenderLayers>, (With<ViewCamera>, Without<ShadowTwin>)>,
 ) {
     let seen = cameras.iter().fold(RenderLayers::none(), |seen, layers| {
         seen.union(layers.unwrap_or(&RenderLayers::default()))
     });
+    let all = last_seen.as_ref() != Some(&seen) || !added.is_empty();
     let shadow = RenderLayers::layer(SHADOW_LAYER);
-    for (parent, mut mesh, mut transform, mut layers, bounds) in &mut twins {
-        let Ok((parent_mesh, parent_transform, parent_layers, parent_bounds)) =
-            parents.get(parent.parent())
-        else {
+    for (children, parent_mesh, parent_transform, parent_layers, parent_bounds) in &parents {
+        let changed = parent_mesh.is_changed()
+            || parent_transform.is_changed()
+            || parent_layers.as_ref().is_some_and(Ref::is_changed)
+            || parent_bounds.as_ref().is_some_and(Ref::is_changed);
+        if !all && !changed {
             continue;
-        };
-        if mesh.0 != parent_mesh.0 {
-            mesh.0 = parent_mesh.0.clone();
-        }
-        transform.set_if_neq(*parent_transform);
-        if let (Some(mut bounds), Some(parent_bounds)) = (bounds, parent_bounds) {
-            bounds.set_if_neq(*parent_bounds);
         }
         let visible = parent_layers
+            .as_deref()
             .unwrap_or(&RenderLayers::default())
             .intersects(&seen);
         let wanted = if visible {
@@ -158,10 +158,24 @@ pub(super) fn follow(
         } else {
             &RenderLayers::none()
         };
-        if *layers != *wanted {
-            *layers = wanted.clone();
+        let mut iter = twins.iter_many_mut(children);
+        while let Some(twin) = iter.fetch_next() {
+            let Ok((mut mesh, mut transform, mut layers, bounds)) = twin else {
+                continue;
+            };
+            if mesh.0 != parent_mesh.0 {
+                mesh.0 = parent_mesh.0.clone();
+            }
+            transform.set_if_neq(*parent_transform);
+            if let (Some(mut bounds), Some(parent_bounds)) = (bounds, parent_bounds.as_deref()) {
+                bounds.set_if_neq(*parent_bounds);
+            }
+            if *layers != *wanted {
+                *layers = wanted.clone();
+            }
         }
     }
+    *last_seen = Some(seen);
 }
 
 /// Removes the twins and lets the originals cast again.

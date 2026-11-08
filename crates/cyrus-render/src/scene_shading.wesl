@@ -1,4 +1,3 @@
-import constants::MATERIAL_BIND_GROUP;
 import package::glide_fog::{fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565};
 
 struct SceneFog {
@@ -16,7 +15,11 @@ struct SceneFog {
 fn point_sampled() -> bool {
     return fog.lighting.y != 0.0;
 }
-@group(MATERIAL_BIND_GROUP) @binding(100) var<uniform> fog: SceneFog;
+// The drawn material's fog, which the entry point loads first: `model_lights::load_model_material`
+// for models, `load_terrain_material` for terrain.
+var<private> fog: SceneFog;
+// The drawn mesh's slot in the bindless material tables; unused without bindless materials.
+var<private> material_slot: u32;
 
 fn scene_color(color: vec3<f32>, depth: f32, pixel: vec2<f32>) -> vec3<f32> {
     return scene_color_at_fog_position(color, depth, pixel, fog_table_position(depth));

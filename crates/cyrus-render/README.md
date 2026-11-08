@@ -284,6 +284,16 @@ share one material (`fog/modern_lighting/sharing`) and get their own back in Fai
 Water is Modern too, the terrain shader moves the modern waves on the unprojected terrain and the
 CPU no longer rewrites the terrain mesh each frame; the ground heights still follow the
 original's waves.
+The model and terrain materials are bindless where the platform supports it, so models with
+different textures share one draw batch; their values travel in one buffer per material
+(`ModelUniform`) and the shaders read the texture and the light table through Bevy's binding
+arrays. The light table stores each 32-bit float as one RGBA8 texel of its bytes, because binding
+arrays only take filterable textures; the shader reassembles the exact bits. WebGL keeps plain
+bindings.
+Under modern lighting the map's object and baked lights are point lights with their positive
+channels, and small models that hold a light glow on their bright texels
+(`fog/modern_lighting/glow`). Models whose texture SURFACE.INI marks as water write a zero alpha,
+which the screen pass reflects as calm water without ripples.
 The Textures area point-samples world textures. Existing Water and Fog switches
 remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the

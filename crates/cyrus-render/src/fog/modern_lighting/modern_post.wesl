@@ -57,12 +57,12 @@ fn water_normal(position: vec3<f32>) -> vec3<f32> {
     return normalize(vec3(ripple.x * 0.05, 1.0, ripple.y * 0.05));
 }
 
-fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32) -> vec3<f32> {
+fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f32> {
     let surface_depth = depth_at(uv);
     if surface_depth <= 0.0 { return color; }
     let origin = world_at(uv, surface_depth);
     let view_direction = normalize(origin - view.world_position);
-    let normal = water_normal(origin);
+    let normal = select(water_normal(origin), vec3(0.0, 1.0, 0.0), calm);
     let ray = reflect(view_direction, normal);
     let fresnel = 0.02 + 0.98 * pow(1.0 - clamp(dot(-view_direction, normal), 0.0, 1.0), 5.0);
     // A ray that leaves the screen sees the horizon, but keeps a brighter glint of the sun.
@@ -138,10 +138,12 @@ fn lens_flare(uv: vec2<f32>) -> vec3<f32> {
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let source = textureSampleLevel(screen, screen_sampler, in.uv, 0.0);
     var color = source.rgb;
-    // The terrain writes one minus half its water weight into the alpha.
-    let water = clamp((1.0 - source.a) * 2.0, 0.0, 1.0);
+    // The terrain writes one minus half its water weight into the alpha, 0.5 to 1; calm water models
+    // (fountains, moats) write zero and reflect fully without ripples.
+    let calm = source.a < 0.25;
+    let water = select(clamp((1.0 - source.a) * 2.0, 0.0, 1.0), 1.0, calm);
     if water > 0.0 && settings.horizon.w > 0.0 {
-        color = reflection(in.uv, color, water);
+        color = reflection(in.uv, color, water, calm);
     }
     if settings.sun.z > 0.0 && settings.sun.w > 0.0 {
         color += lens_flare(in.uv);

@@ -1,4 +1,4 @@
-//! The sun, ambient light and object lights the modern lighting shades the world with.
+//! The sun, ambient light, object lights and baked lights the modern lighting shades the world with.
 //!
 //! The lights are calibrated against the camera's exposure so a surface that faces the sun shows
 //! its texture colour scaled by the original's light values, read as the original's 0..=255 light
@@ -20,9 +20,10 @@ use bevy::{
 use cyrus_assets::environment::{Environment, LocalLight, ModelLighting};
 use std::f32::consts::PI;
 
-/// Distance from an object light, as a fraction of its radius, where it lights a facing surface
-/// as fully as the sun at full strength; a Modern tuning choice.
-const OBJECT_LIGHT_FULL_AT: f32 = 0.25;
+/// Distance from a map light, as a fraction of its radius, where it lights a facing surface with its
+/// full colour. The original's vertex lighting attenuates by `(r² + 3r) / 256 / (d² + 3d)`
+/// (`lighting::runtime`, `model_lights.wesl`), which is 1 at about a sixteenth of the radius r.
+const OBJECT_LIGHT_FULL_AT: f32 = 1.0 / 16.0;
 /// Distance of the first sun shadow cascade, in world units; a Modern tuning choice.
 const SHADOW_FIRST_CASCADE: f32 = 20.0;
 /// Distance the sun shadow cascades reach, in world units; a Modern tuning choice.
@@ -76,6 +77,7 @@ impl RetainedLights<'_> {
 pub(super) struct LightAssets<'w> {
     environments: Res<'w, Assets<Environment>>,
     images: ResMut<'w, Assets<Image>>,
+    lamps: ResMut<'w, super::glow::LampLights>,
 }
 
 fn peak(rgb: [f32; 3]) -> f32 {
@@ -120,6 +122,15 @@ pub(super) fn sync_lights(
         commands.entity(camera).insert(ambient.clone());
     }
     spawn_object_lights(&mut commands, &lights);
+    // The lamps and fires the original bakes into vertex lighting when the world loads; modern
+    // lighting replaces that lighting, so they shine as point lights too.
+    spawn_object_lights(&mut commands, &environment.prelighting.lights);
+    assets.lamps.set_if_neq(super::glow::LampLights(
+        placed(&lights)
+            .chain(placed(&environment.prelighting.lights))
+            .map(|light| light.position)
+            .collect(),
+    ));
     *built = Some(Built {
         environment: request.0.id(),
         lights,
@@ -227,17 +238,20 @@ struct Placed {
     rgb: [f32; 3],
 }
 
-/// The object lights that give off light; the original skips disabled and negative ones.
+/// The lights that add light. Map light colours are signed: the original's vertex lighting adds
+/// the positive channels and takes the negative ones away, so a fire is orange with its blue
+/// removed and some lights only darken. Bevy's point lights only add, so each light shines with
+/// its positive channels and darkening-only lights are left out; a Modern tuning choice.
 fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
     lights
         .iter()
-        .filter(|light| light.radius > 0 && light.rgb.iter().all(|value| *value >= 0))
+        .filter(|light| light.radius > 0 && light.rgb.iter().any(|value| *value > 0))
         .map(|light| Placed {
             position: Vec3::from(cyrus_game::rope::world_position(
                 light.position.map(f64::from),
             )),
             radius: f32::from(light.radius) / cyrus_game::ENGINE_UNIT_SCALE,
-            rgb: light.rgb.map(f32::from),
+            rgb: light.rgb.map(|value| f32::from(value.max(0))),
         })
 }
 
@@ -248,7 +262,7 @@ fn point_light_power(distance: f32) -> f32 {
     4.0 * PI * PI * distance * distance / exposure()
 }
 
-/// Object lights are point lights.
+/// Object and baked lights are point lights.
 fn spawn_object_lights(commands: &mut Commands, lights: &[LocalLight]) {
     for light in placed(lights) {
         commands.spawn((
@@ -263,5 +277,27 @@ fn spawn_object_lights(commands: &mut Commands, lights: &[LocalLight]) {
             },
             Transform::from_translation(light.position),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signed_lights_shine_with_their_positive_channels_only() {
+        let light = |radius, rgb| LocalLight {
+            position: [0, 0, 0],
+            radius,
+            rgb,
+        };
+        let lights = [
+            light(2709, [255, 121, -255]),
+            light(1000, [-255, -255, -255]),
+            light(0, [255, 255, 255]),
+            light(1500, [-75, 21, 40]),
+        ];
+        let placed: Vec<_> = placed(&lights).map(|light| light.rgb).collect();
+        assert_eq!(placed, [[255.0, 121.0, 0.0], [0.0, 21.0, 40.0]]);
     }
 }

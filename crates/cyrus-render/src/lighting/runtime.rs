@@ -89,6 +89,12 @@ fn selected(lights: &[LocalLight], origin: [i32; 2]) -> Vec<&LocalLight> {
     selected.into_iter().map(|(_, light)| light).collect()
 }
 
+/// Texels per light table row: eight floats of four bytes each.
+pub(crate) const LIGHT_TABLE_WIDTH: u32 = 8;
+
+/// The light table the model shader reads: 256 square-root rows, then one row per light, each row
+/// eight little-endian 32-bit floats. Every float is one RGBA8 texel of its four bytes, because
+/// bindless materials only bind filterable textures; the shader reassembles the exact bits.
 fn texture(lights: &[&LocalLight]) -> Image {
     let mut values = Vec::with_capacity((256 + lights.len()) * 8);
     for index in 0..256_u32 {
@@ -122,13 +128,13 @@ fn texture(lights: &[&LocalLight]) -> Image {
     }
     Image::new(
         Extent3d {
-            width: 2,
+            width: LIGHT_TABLE_WIDTH,
             height: (256 + lights.len()) as u32,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
         values.into_iter().flat_map(f32::to_le_bytes).collect(),
-        TextureFormat::Rgba32Float,
+        TextureFormat::Rgba8Unorm,
         RenderAssetUsages::default(),
     )
 }

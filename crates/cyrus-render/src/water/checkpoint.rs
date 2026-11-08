@@ -497,6 +497,7 @@ mod tests {
                 heights: vec![0.0; 16],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),

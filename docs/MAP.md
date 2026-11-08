@@ -163,9 +163,11 @@ module where it is defined and regenerate.
 - `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
 - `src/fog/modern_lighting/effects.rs` — The modern lighting's optional effects, switched from the debug menu's effects panel and the
 - `src/fog/modern_lighting/foliage.rs` — Palm trees and plants that sway in the wind.
-- `src/fog/modern_lighting/lights.rs` — The sun, ambient light and object lights the modern lighting shades the world with.
+- `src/fog/modern_lighting/lights.rs` — The sun, ambient light, object lights and baked lights the modern lighting shades the world with.
 - `src/fog/modern_lighting/plugin.rs` — The modern lighting plugin, its camera effects and teardown, and the light marker the light
 - `src/fog/modern_lighting/post.rs` — The modern lighting's own screen pass: screen-space reflections on water and the sun's lens
+- `src/fog/modern_lighting/shadows.rs` — Shadow-only twins of the models and terrain, so the sun's shadow cascades batch their draws.
+- `src/fog/modern_lighting/sharing.rs` — Shared materials for the models under modern lighting, so the camera's passes batch their draws.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.

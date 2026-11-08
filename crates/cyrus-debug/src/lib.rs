@@ -131,8 +131,13 @@ fn debug_menu(
 ) -> Result {
     let player_position = player.single().ok().map(|transform| transform.translation);
 
-    let window = egui::Window::new("cyrus debug").vscroll(true);
-    window.show(contexts.ctx_mut()?, |ui| {
+    let ctx = contexts.ctx_mut()?;
+    // Tall enough for every section; it scrolls only where the screen is shorter.
+    let height = (ctx.content_rect().height() - 40.0).max(200.0);
+    let window = egui::Window::new("cyrus debug")
+        .vscroll(true)
+        .default_height(height);
+    window.show(ctx, |ui| {
         let label = |name: &str| {
             world
                 .options

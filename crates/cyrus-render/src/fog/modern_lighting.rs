@@ -21,6 +21,7 @@
 mod day_night;
 mod effects;
 mod foliage;
+mod glow;
 mod lights;
 mod plugin;
 mod post;

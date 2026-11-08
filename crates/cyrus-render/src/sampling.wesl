@@ -1,17 +1,53 @@
-import bevy_pbr::render::pbr_bindings::{base_color_texture, base_color_sampler};
 import bevy_render::color_operations::linear_to_srgb;
+@if(BINDLESS)
+import bevy_render::bindless::{bindless_textures_2d, bindless_samplers_filtering};
+@if(BINDLESS)
+import bevy_pbr::render::pbr_bindings::material_indices;
+@if(!BINDLESS)
+import bevy_pbr::render::pbr_bindings::{base_color_texture, base_color_sampler};
+@if(BINDLESS)
+import package::scene_shading::material_slot;
+
+// The drawn material's base colour texture, through the bindless arrays where Bevy uses them.
+fn base_color_level(uv: vec2<f32>) -> vec4<f32> {
+@if(BINDLESS) {
+    let bindings = material_indices[material_slot];
+    return textureSampleLevel(bindless_textures_2d[bindings.base_color_texture], bindless_samplers_filtering[bindings.base_color_sampler], uv, 0.0);
+}
+@if(!BINDLESS) {
+    return textureSampleLevel(base_color_texture, base_color_sampler, uv, 0.0);
+}
+}
+
+fn base_color_load(pixel: vec2<i32>) -> vec4<f32> {
+@if(BINDLESS) {
+    return textureLoad(bindless_textures_2d[material_indices[material_slot].base_color_texture], pixel, 0);
+}
+@if(!BINDLESS) {
+    return textureLoad(base_color_texture, pixel, 0);
+}
+}
+
+fn base_color_size() -> vec2<u32> {
+@if(BINDLESS) {
+    return textureDimensions(bindless_textures_2d[material_indices[material_slot].base_color_texture]);
+}
+@if(!BINDLESS) {
+    return textureDimensions(base_color_texture);
+}
+}
 
 // World COL channels pass through six-bit storage before texture upload.
 // https://github.com/michidk/redguard-preservation/commit/395e669
 fn encoded_texel(uv: vec2<f32>, world_palette: bool) -> vec3<f32> {
-    let rgb = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, uv, 0.0).rgb) * 255.0);
+    let rgb = round(linear_to_srgb(base_color_level(uv).rgb) * 255.0);
     return select(rgb, floor(rgb / 4.0) * 4.0, world_palette);
 }
 
 // Software Voodoo 1 filtering uses encoded bytes and four-bit fractions.
 fn sample_encoded(uv: vec2<f32>, point: bool, world_palette: bool) -> vec3<f32> {
     if point { return encoded_texel(uv, world_palette) / 255.0; }
-    let size = vec2<f32>(textureDimensions(base_color_texture));
+    let size = vec2<f32>(base_color_size());
     let texel = uv * size - vec2(0.5);
     // Exported images reverse rows, so original downward V rounding reverses too.
     let fraction = vec2(floor(fract(texel.x) * 16.0), ceil(fract(texel.y) * 16.0)) / 16.0;
@@ -28,7 +64,7 @@ fn sample_encoded(uv: vec2<f32>, point: bool, world_palette: bool) -> vec3<f32> 
 // Placed flats point-sample the converted world palette; exported alpha marks index zero.
 // https://github.com/michidk/redguard-preservation/commit/fe530cc
 fn sample_flat(uv: vec2<f32>) -> vec3<f32> {
-    let texel = textureSampleLevel(base_color_texture, base_color_sampler, uv, 0.0);
+    let texel = base_color_level(uv);
     let rgb = round(linear_to_srgb(texel.rgb) * 255.0);
     return select(floor(rgb / 4.0) * 4.0, vec3(0.0), texel.a == 0.0) / 255.0;
 }
@@ -51,12 +87,12 @@ fn color_channel(plane: vec4<i32>, offset: vec2<i32>) -> f32 {
 fn model_texel(pixel: vec2<i32>, allocation: vec4<u32>, zero: vec3<f32>) -> vec3<f32> {
     let wrapped = vec2<u32>(pixel) & (allocation.xy - vec2(1u));
     let source = wrapped * allocation.zw;
-    let size = textureDimensions(base_color_texture);
+    let size = base_color_size();
     if any(source >= size) { return zero; }
     let flipped = vec2<i32>(vec2(source.x, size.y - 1u - source.y));
     // World model textures share the converted COL table; exported alpha marks index zero.
     // https://github.com/michidk/redguard-preservation/commit/fe530cc
-    let texel = textureLoad(base_color_texture, flipped, 0);
+    let texel = base_color_load(flipped);
     let rgb = round(linear_to_srgb(texel.rgb) * 255.0);
     return select(floor(rgb / 4.0) * 4.0, zero, texel.a == 0.0);
 }

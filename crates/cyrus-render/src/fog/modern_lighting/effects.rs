@@ -77,10 +77,9 @@ impl Default for ModernEffects {
             sky: true,
             water_reflections: true,
             foliage: true,
-            // Both soften gameplay views, so they are opt-in.
-            depth_of_field: false,
+            depth_of_field: true,
             aperture: 0.12,
-            motion_blur: false,
+            motion_blur: true,
         }
     }
 }
@@ -362,9 +361,11 @@ pub(super) fn apply_camera_effects(
         }
         if differs(old, new, |e| e.motion_blur) {
             if new.motion_blur {
+                // A film camera's 180-degree shutter; eight samples per pixel keep fast turns smooth
+                // instead of ghosted.
                 camera.insert(MotionBlur {
                     shutter_angle: 0.5,
-                    samples: 2,
+                    samples: 8,
                 });
             } else {
                 camera.remove::<(MotionBlur, MotionVectorPrepass)>();

@@ -42,6 +42,7 @@ impl Plugin for ModernLightingPlugin {
         .init_resource::<AutoExposureAssets>()
         .init_resource::<shadows::TwinMaterial>()
         .init_resource::<SharedMaterials>()
+        .init_resource::<super::glow::LampLights>()
         // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
         // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
         .add_systems(
@@ -56,12 +57,14 @@ impl Plugin for ModernLightingPlugin {
                     foliage::sway,
                     post::update_post,
                     shadows::add_twins,
+                    super::glow::find_lamps,
                     sharing::share,
                 )
                     .chain()
                     .run_if(lit),
-                restore.run_if(not(lit)),
+                (restore, super::glow::restore).chain().run_if(not(lit)),
                 day_night::tint_sky,
+                day_night::tint_clear_color,
                 effects::sky_glow,
             )
                 .chain(),
@@ -212,6 +215,8 @@ mod tests {
             shadows::add_twins,
             shadows::follow,
             sharing::share,
+            super::super::glow::find_lamps,
+            super::super::glow::restore,
             day_night::advance,
             day_night::apply,
             day_night::tint_sky,
