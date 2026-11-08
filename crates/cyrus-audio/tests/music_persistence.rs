@@ -16,7 +16,7 @@ fn source() -> AudioSource {
 #[test]
 fn cd_replacement_retains_track_gain_pause_and_exact_source_cursor() {
     let expected = [0.5, -0.5, 0.25, -0.25, 32767.0 / 32768.0, -1.0];
-    for consumed in [0, 1, 5, 6, 9, 19] {
+    for consumed in [0, 1, 5, 6] {
         for paused in [false, true] {
             let mut music = Music::default();
             music.track = Some(2);
@@ -25,11 +25,7 @@ fn cd_replacement_retains_track_gain_pause_and_exact_source_cursor() {
             let mut live = track.decoder();
             assert_eq!(
                 live.by_ref().take(consumed).collect::<Vec<_>>(),
-                expected
-                    .into_iter()
-                    .cycle()
-                    .take(consumed)
-                    .collect::<Vec<_>>()
+                expected.into_iter().take(consumed).collect::<Vec<_>>()
             );
             let saved = serde_json::to_vec(&music.snapshot(&[(&track, paused)]).unwrap()).unwrap();
             let snapshot: MusicSnapshot = serde_json::from_slice(&saved).unwrap();
@@ -52,12 +48,7 @@ fn cd_replacement_retains_track_gain_pause_and_exact_source_cursor() {
                 .unwrap(),
                 saved
             );
-            let expected: Vec<_> = expected
-                .into_iter()
-                .cycle()
-                .skip(consumed)
-                .take(18)
-                .collect();
+            let expected: Vec<_> = expected.into_iter().skip(consumed).take(18).collect();
             assert_eq!(
                 restored_track.decoder().take(18).collect::<Vec<_>>(),
                 expected
@@ -77,7 +68,7 @@ fn cd_transport_preserves_every_signed_pcm16_value_at_unity_gain() {
     let track = MusicTransport::new(source).unwrap();
     assert_eq!(
         track.decoder().take(expected.len() * 2).collect::<Vec<_>>(),
-        expected.repeat(2)
+        expected
     );
 }
 
@@ -99,11 +90,11 @@ fn invalid_music_candidates_preserve_live_track_and_stopped_music_needs_no_sourc
     ] {
         let mut invalid = saved.clone();
         let replacement = match path {
-            "version" => serde_json::json!(2),
+            "version" => serde_json::json!(3),
             "track" => serde_json::json!(0),
             "gain" => serde_json::json!(0.5),
             "playback.transport.speed" => serde_json::json!(0.75),
-            "playback.transport.repetitions" => serde_json::json!(1),
+            "playback.transport.repetitions" => serde_json::json!(0),
             _ => serde_json::json!({"Sixteen":[64,64]}),
         };
         let mut field = &mut invalid;
@@ -137,4 +128,13 @@ fn invalid_music_candidates_preserve_live_track_and_stopped_music_needs_no_sourc
     let candidate = Music::from_snapshot(stopped, None).unwrap();
     assert!(candidate.music.track.is_none());
     assert!(candidate.playback.is_none());
+}
+
+#[test]
+fn cd_transport_finishes_without_replaying_inside_the_decoder() {
+    let track = MusicTransport::new(source()).unwrap();
+    let mut decoder = track.decoder();
+    let samples = decoder.by_ref().take(100).collect::<Vec<_>>();
+    assert_eq!(samples, [0.5, -0.5, 0.25, -0.25, 32767.0 / 32768.0, -1.0]);
+    assert_eq!(decoder.next(), None);
 }

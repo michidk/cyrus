@@ -34,7 +34,7 @@ impl MusicTransport {
         Ok(Self::wrap(Panned::with_playback(
             source,
             PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
-            true,
+            false,
             1.0,
         )?))
     }
@@ -44,7 +44,7 @@ impl MusicTransport {
         self.transport.source()
     }
 
-    /// The decoder owns looping; apply linear drive gain and pause to these settings.
+    /// The decoder plays one complete pass; apply linear drive gain and pause to these settings.
     pub fn playback_settings(&self) -> PlaybackSettings {
         self.transport.playback_settings()
     }
@@ -73,8 +73,8 @@ impl MusicTransport {
 
     fn from_snapshot(source: AudioSource, snapshot: PannedSnapshot) -> Result<Self> {
         ensure!(
-            snapshot.is_unscaled_loop(),
-            "CD music transport is not an unscaled normal-speed loop"
+            snapshot.is_unscaled_once(),
+            "CD music transport is not an unscaled normal-speed single pass"
         );
         // A Modern music session captured the muted bytes; the host supplies the installed ones.
         let source = if snapshot.source_identity() == blake3::hash(&source.bytes).to_hex().as_str()
@@ -103,6 +103,7 @@ pub struct MusicSnapshot {
     version: u32,
     track: Option<u32>,
     gain: f32,
+    source_identity: Option<String>,
     playback: Option<TrackSnapshot>,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -116,11 +117,9 @@ impl MusicSnapshot {
         self.track
     }
 
-    /// Expected identity of the prepared track bytes; absent for stopped music.
+    /// Expected prepared-track identity, retained when its playback completes.
     pub fn source_identity(&self) -> Option<&str> {
-        self.playback
-            .as_ref()
-            .map(|state| state.transport.source_identity())
+        self.source_identity.as_deref()
     }
 }
 
@@ -149,6 +148,7 @@ impl Music {
         ensure!(valid_gain(self.gain), "CD music drive gain is invalid");
         let playback = match (self.track, players) {
             (None, []) => None,
+            (Some(track), []) if track >= 2 && self.source.is_some() => None,
             (Some(track), [(transport, paused)]) if track >= 2 => Some(TrackSnapshot {
                 transport: transport.snapshot()?,
                 paused: *paused,
@@ -160,9 +160,14 @@ impl Music {
             ),
         };
         Ok(MusicSnapshot {
-            version: 1,
+            version: 2,
             track: self.track,
             gain: self.gain,
+            source_identity: self
+                .source
+                .as_ref()
+                .or_else(|| players.first().map(|(transport, _)| transport.source()))
+                .map(|source| blake3::hash(&source.bytes).to_hex().to_string()),
             playback,
         })
     }
@@ -174,13 +179,33 @@ impl Music {
         source: Option<AudioSource>,
     ) -> Result<MusicCandidate> {
         ensure!(
-            snapshot.version == 1,
+            snapshot.version == 2,
             "CD music snapshot version {} is unsupported",
             snapshot.version
         );
         ensure!(valid_gain(snapshot.gain), "CD music drive gain is invalid");
+        match (
+            snapshot.track,
+            snapshot.source_identity.as_deref(),
+            source.as_ref(),
+        ) {
+            (None, None, None) => {}
+            (Some(track), Some(identity), Some(source)) if track >= 2 => {
+                ensure!(
+                    blake3::hash(&source.bytes).to_hex().as_str() == identity
+                        || super::muted(source)
+                            .is_some_and(
+                                |source| blake3::hash(&source.bytes).to_hex().as_str() == identity
+                            ),
+                    "CD music requested source bytes differ"
+                );
+            }
+            _ => anyhow::bail!("CD music requested source ownership differs"),
+        }
+        let retained_source = source.clone();
         let playback = match (snapshot.track, snapshot.playback, source) {
             (None, None, None) => None,
+            (Some(track), None, Some(_)) if track >= 2 => None,
             (Some(track), Some(saved), Some(source)) if track >= 2 => {
                 let transport = MusicTransport::from_snapshot(source, saved.transport)?;
                 let mut settings = transport
@@ -196,6 +221,7 @@ impl Music {
                 track: snapshot.track,
                 gain: snapshot.gain,
                 load: None,
+                source: retained_source,
             },
             playback,
         })
@@ -229,12 +255,13 @@ pub(super) fn cd_buffer(source: &AudioSource, initial: &PannedSnapshot) -> Resul
         !samples.is_empty() && samples.len() % 2 == 0,
         "browser CD buffer has incomplete frames"
     );
-    let offset = initial.input_samples() as usize % samples.len();
+    let offset = initial.input_samples() as usize;
+    ensure!(offset <= samples.len(), "browser CD cursor exceeds source");
     let mut left = Vec::with_capacity(samples.len() / 2);
     let mut right = Vec::with_capacity(samples.len() / 2);
-    for frame in 0..samples.len() / 2 {
-        left.push(f32::from(samples[(offset + frame * 2) % samples.len()]) / 32768.0);
-        right.push(f32::from(samples[(offset + frame * 2 + 1) % samples.len()]) / 32768.0);
+    for frame in samples[offset..].chunks(2) {
+        left.push(f32::from(frame[0]) / 32768.0);
+        right.push(f32::from(frame.get(1).copied().unwrap_or(0)) / 32768.0);
     }
     Ok(CdBuffer {
         left,
@@ -259,7 +286,7 @@ mod buffer_tests {
         let source = AudioSource {
             bytes: pcm_wav(AudioType::Stereo16, 44100, &pcm).unwrap().into(),
         };
-        for consumed in 0..18 {
+        for consumed in 0..=6 {
             let track = MusicTransport::new(source.clone()).unwrap();
             let mut native = track.decoder();
             native.by_ref().take(consumed).for_each(drop);
@@ -272,18 +299,19 @@ mod buffer_tests {
                 .zip(&buffer.right)
                 .flat_map(|(left, right)| [*left, *right])
                 .collect();
-            assert_eq!(native.by_ref().take(6).collect::<Vec<_>>(), interleaved);
-            let advanced = (initial.input_samples() + 4) % 6;
+            let remaining = native.by_ref().take(6).collect::<Vec<_>>();
+            assert_eq!(&interleaved[..remaining.len()], remaining);
+            assert!(
+                interleaved[remaining.len()..]
+                    .iter()
+                    .all(|sample| *sample == 0.0)
+            );
+            let advanced = (initial.input_samples() + 4).min(6);
             let saved = initial.at_stereo_input_sample(advanced);
             let restored = MusicTransport::from_snapshot(source.clone(), saved).unwrap();
             assert_eq!(
                 restored.decoder().take(8).collect::<Vec<_>>(),
-                interleaved
-                    .into_iter()
-                    .cycle()
-                    .skip(4)
-                    .take(8)
-                    .collect::<Vec<_>>()
+                remaining.into_iter().skip(4).take(8).collect::<Vec<_>>()
             );
         }
     }

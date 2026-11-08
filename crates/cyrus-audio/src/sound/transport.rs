@@ -57,12 +57,12 @@ impl PannedSnapshot {
         self.input_samples
     }
 
-    pub(crate) fn is_unscaled_loop(&self) -> bool {
+    pub(crate) fn is_unscaled_once(&self) -> bool {
         let unity = PcmScale::new(PcmWidth::Sixteen, 127, 256, 64);
         self.width == PcmWidth::Sixteen
             && self.gains == unity
             && self.frame_gains == unity
-            && self.repetitions.is_infinite()
+            && self.repetitions == SampleRepetitions::ONCE
             && self.speed == 1.0
     }
 }

@@ -5,8 +5,8 @@ use anyhow::{Context, Result, ensure};
 use bevy::{
     audio::AudioPlayer,
     prelude::{
-        App, Assets, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut, Resource,
-        Update, With, error,
+        App, Assets, Commands, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut,
+        Resource, Update, With, error,
     },
 };
 use std::{collections::HashMap, io::Cursor, sync::atomic::Ordering};
@@ -26,6 +26,8 @@ extern "C" {
     fn update_music(id: u32, gain: f32, paused: bool) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = musicFrames)]
     fn music_frames(id: u32) -> Result<f64, JsValue>;
+    #[wasm_bindgen(catch, js_name = musicEnded)]
+    fn music_ended(id: u32) -> Result<bool, JsValue>;
     #[wasm_bindgen(js_name = stopMusic)]
     fn stop_music(id: u32);
 }
@@ -46,6 +48,7 @@ pub(super) fn register(app: &mut App) {
 }
 
 fn sync(
+    mut commands: Commands,
     mut players: ResMut<Players>,
     transports: Res<Assets<MusicTransport>>,
     query: Query<(Entity, &AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>,
@@ -64,6 +67,12 @@ fn sync(
         };
         let result = (|| -> Result<()> {
             if let Some(id) = players.0.get(&entity) {
+                if music_ended(*id)
+                    .map_err(|e| anyhow::anyhow!("reading WebAudio CD completion: {e:?}"))?
+                {
+                    commands.entity(entity).despawn();
+                    return Ok(());
+                }
                 update_music(*id, settings.volume.to_linear(), settings.paused)
                     .map_err(|e| anyhow::anyhow!("updating WebAudio CD player: {e:?}"))?;
             } else {
@@ -73,6 +82,10 @@ fn sync(
                 );
                 let initial = transport.initial_snapshot()?;
                 let buffer = super::checkpoint::cd_buffer(transport.source(), &initial)?;
+                if buffer.left.is_empty() {
+                    commands.entity(entity).despawn();
+                    return Ok(());
+                }
                 let id = create_music(
                     &buffer.left,
                     &buffer.right,
@@ -110,10 +123,10 @@ pub(super) fn snapshot(
         frames.is_finite()
             && frames >= 0.0
             && frames.fract() == 0.0
-            && frames < (samples / 2) as f64,
+            && frames <= (samples / 2) as f64,
         "browser CD render cursor is invalid"
     );
     Ok(initial
         .clone()
-        .at_stereo_input_sample((initial.input_samples() + frames as u64 * 2) % samples))
+        .at_stereo_input_sample((initial.input_samples() + frames as u64 * 2).min(samples)))
 }

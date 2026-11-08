@@ -40,8 +40,14 @@ resampler/device buffers; complete session audio restoration remains unavailable
 decoder progress. Capture rejects in-flight track preparation or an inconsistent
 player census. `Music::from_snapshot` validates caller-prepared installed bytes
 and returns an off-live `MusicCandidate` for coordinated session publication.
-`MusicTransport` reuses the source cursor at unity PCM gain. CD volume stays on
-the sink, and queued starts receive the current drive gain and cinematic pause.
+Music checkpoint version 2 represents a retained requested track even after its
+player has completed; previous looping checkpoints reject. The native and browser
+hosts prepare that track's installed bytes for later replay when restoring a
+completed track. `MusicTransport` plays one pass at unity PCM gain and reuses the
+source cursor when restored. World execution restarts a completed requested track
+from retained bytes. The book, last-game confirmation, movies and credits do not
+run that replay check; entering the death book leaves current playback running.
+CD volume stays on the sink, and queued starts receive the current drive gain and cinematic pause.
 Browser CD playback requests the browser's playback latency policy and uses one
 retained WebAudio buffer per live player, so loading
 and rendering on the main thread do not interrupt the track. Its checkpoint maps
@@ -112,7 +118,9 @@ same rules as windowed playback. Installed audio facts and units are documented
 in [preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).
 
 Run `cargo test -p cyrus-audio`; installed decoder tests report skips when the
-install is absent. Check the browser target and native headless assembly for
+install is absent. Run the dependency-free browser CD adapter tests with
+`bun test ./crates/cyrus-audio/tests/music_browser.test.js`.
+Check the browser target and native headless assembly for
 platform boundaries. Audible parity requires a separate original-game comparison.
 
 ## Surface-audio comparison

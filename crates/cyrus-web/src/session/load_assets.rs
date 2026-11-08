@@ -58,15 +58,8 @@ impl LoadAssets {
             dialogue,
             music: snapshot
                 .music()
-                .source_identity()
-                .map(|_| {
-                    snapshot
-                        .music()
-                        .track()
-                        .context("session CD source has no track")
-                        .map(|track| server.load(format!("cache://music/{track:02}.wav")))
-                })
-                .transpose()?,
+                .track()
+                .map(|track| server.load(format!("cache://music/{track:02}.wav"))),
         })
     }
 

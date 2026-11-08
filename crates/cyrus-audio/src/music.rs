@@ -8,8 +8,9 @@
 //! `0` or another negative value stops the music. A different track stops the
 //! playing one when the world request begins, so the loading screen is silent,
 //! and the new track starts once the world is prepared. The startup book menu
-//! restarts track 2 from its beginning. A track repeats until another one
-//! starts. `SYSTEM.INI` `redbook` disables music.
+//! restarts track 2 from its beginning. A completed track repeats only while
+//! the world runs. The book leaves current playback unchanged and does not
+//! replay a completed track. `SYSTEM.INI` `redbook` disables music.
 //!
 //! Volume: `redbook_volume` 0..=127 sets the drive's channel volume to twice
 //! the value out of 255, which GOG's DOSBox applies linearly; other values are
@@ -79,6 +80,7 @@ impl Plugin for MusicPlugin {
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
                     credits_track,
                     finish_track,
+                    replay_track,
                     pause_track,
                 )
                     .chain()
@@ -87,12 +89,14 @@ impl Plugin for MusicPlugin {
     }
 }
 
-/// The track playing or loading, as numbered on the CD (1 is the data track).
+/// The last requested CD track, retained after playback finishes (1 is the data track).
 #[derive(Resource)]
 pub struct Music {
     pub track: Option<u32>,
     /// The drive's linear channel gain; it starts at full level and only accepted volumes change it.
     pub gain: f32,
+    /// Installed bytes retained for replay without repeating disk I/O.
+    source: Option<AudioSource>,
     #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<Result<AudioSource, String>>>,
     #[cfg(target_arch = "wasm32")]
@@ -104,6 +108,7 @@ impl Default for Music {
         Self {
             track: None,
             gain: 1.0,
+            source: None,
             load: None,
         }
     }
@@ -158,6 +163,7 @@ fn request(install: &GameInstall, music: &mut Music, track: u32) {
         );
     };
     music.track = Some(track);
+    music.source = None;
     music.load = Some(IoTaskPool::get().spawn(async move {
         read_track(&cue, track).map(|bytes| AudioSource {
             bytes: bytes.into(),
@@ -168,6 +174,7 @@ fn request(install: &GameInstall, music: &mut Music, track: u32) {
 #[cfg(target_arch = "wasm32")]
 fn request(assets: &AssetServer, music: &mut Music, track: u32) {
     music.track = Some(track);
+    music.source = None;
     music.load = Some(assets.load(format!("cache://music/{track:02}.wav")));
 }
 
@@ -210,7 +217,10 @@ fn credits_track(
         return;
     }
     if !now {
-        stop_track(&mut commands, &mut music, &playing);
+        for entity in &playing {
+            commands.entity(entity).despawn();
+        }
+        music.load = None;
     } else if music_enabled(&settings, &audio) {
         #[cfg(not(target_arch = "wasm32"))]
         request(&install, &mut music, MENU_TRACK);
@@ -229,6 +239,7 @@ fn stop_track(
     }
     music.track = None;
     music.load = None;
+    music.source = None;
 }
 
 /// A world load stops the CD when it begins, ahead of the loading screen, if the
@@ -286,7 +297,10 @@ fn start_world_track(
         };
         bank.world_tracks.get(&world).copied().unwrap_or(-1)
     };
-    if value == -1 || u32::try_from(value).ok() == music.track {
+    if value == -1
+        || (u32::try_from(value).ok() == music.track
+            && (!playing.is_empty() || music.load.is_some()))
+    {
         return;
     }
     stop_track(&mut commands, &mut music, &playing);
@@ -341,6 +355,7 @@ fn finish_track(
             return error!("music: {e}");
         }
     };
+    music.source = Some(source.clone());
     let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
         muted(&source).unwrap_or(source)
     } else {
@@ -365,6 +380,56 @@ fn finish_track(
         AudioPlayer(transports.add(transport)),
         playback,
     ));
+}
+
+/// Requested tracks restart only during world execution, never inside the book or a movie.
+fn replay_track(
+    mut commands: Commands,
+    music: Res<Music>,
+    (state, credits): (
+        Option<Res<State<cyrus_game::AppState>>>,
+        Option<Res<cyrus_script::script::CreditsPlaying>>,
+    ),
+    settings: Option<Res<SoundSettings>>,
+    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
+    mut transports: Option<ResMut<Assets<MusicTransport>>>,
+    (playing, movie): (
+        Query<(), With<MusicPlayer>>,
+        Query<(), With<crate::CinematicAudio>>,
+    ),
+) {
+    if !state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+        || !playing.is_empty()
+        || !movie.is_empty()
+        || credits.is_some()
+        || music.load.is_some()
+        || music.track.is_none()
+        || !settings.as_ref().is_some_and(|settings| settings.music)
+    {
+        return;
+    }
+    let (Some(source), Some(transports)) = (music.source.as_ref(), transports.as_mut()) else {
+        return;
+    };
+    let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
+        muted(source).unwrap_or_else(|| source.clone())
+    } else {
+        source.clone()
+    };
+    match MusicTransport::new(source) {
+        Ok(transport) => {
+            let mut playback = transport
+                .playback_settings()
+                .with_volume(bevy::audio::Volume::Linear(music.gain));
+            playback.paused = settings.is_some_and(|settings| settings.redbook_volume == 0);
+            commands.spawn((
+                MusicPlayer,
+                AudioPlayer(transports.add(transport)),
+                playback,
+            ));
+        }
+        Err(error) => error!("music: replaying CD track {:?}: {error:#}", music.track),
+    }
 }
 
 /// Applies a changed `redbook_volume`: accepted values set the drive level.
@@ -536,10 +601,7 @@ mod tests {
                 .resource::<Assets<MusicTransport>>()
                 .get(&player.0)
                 .unwrap();
-            assert_eq!(
-                transport.decoder().take(6).collect::<Vec<_>>(),
-                [0.5, -0.5, 0.5, -0.5, 0.5, -0.5]
-            );
+            assert_eq!(transport.decoder().take(6).collect::<Vec<_>>(), [0.5, -0.5]);
             let music = app.world().resource::<Music>();
             let saved = music.snapshot(&[(transport, settings.paused)]).unwrap();
             let candidate = Music::from_snapshot(saved, Some(transport.source().clone())).unwrap();
@@ -547,6 +609,105 @@ mod tests {
             assert_eq!(restored_settings.paused, cinematic || volume == 0);
             assert_eq!(candidate.music.gain, expected_gain);
         }
+    }
+
+    #[test]
+    fn completed_cd_stays_stopped_in_the_book_and_replays_when_the_world_resumes() {
+        use bevy::audio::Decodable;
+        let source = AudioSource {
+            bytes: cyrus_assets::audio::pcm_wav(
+                rgpre::import::sfx::AudioType::Stereo16,
+                44100,
+                &[0, 64, 0, 192],
+            )
+            .unwrap()
+            .into(),
+        };
+        let mut app = prepared_music(source.clone(), 64, false);
+        app.insert_resource(cyrus_script::script::DeathBookEntry { override_group: 74 });
+        app.world_mut()
+            .resource_mut::<NextState<cyrus_game::AppState>>()
+            .set(cyrus_game::AppState::Menu);
+        app.update();
+        let (entity, player) = app
+            .world_mut()
+            .query_filtered::<(Entity, &AudioPlayer<MusicTransport>), With<MusicPlayer>>()
+            .single(app.world())
+            .unwrap();
+        let transport = app
+            .world()
+            .resource::<Assets<MusicTransport>>()
+            .get(&player.0)
+            .unwrap();
+        assert_eq!(transport.decoder().collect::<Vec<_>>(), [0.5, -0.5]);
+        app.world_mut().despawn(entity);
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(
+            app.world_mut()
+                .query::<&MusicPlayer>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        let saved = app.world().resource::<Music>().snapshot(&[]).unwrap();
+        assert_eq!(saved.track(), Some(2));
+        assert!(saved.source_identity().is_some());
+        let wrong_source = AudioSource {
+            bytes: cyrus_assets::audio::pcm_wav(
+                rgpre::import::sfx::AudioType::Stereo16,
+                44100,
+                &[0; 4],
+            )
+            .unwrap()
+            .into(),
+        };
+        assert!(Music::from_snapshot(saved.clone(), Some(wrong_source)).is_err());
+        let candidate = Music::from_snapshot(saved, Some(source)).unwrap();
+        assert!(candidate.playback.is_none());
+        app.insert_resource(candidate.music);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&MusicPlayer>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        let movie = app.world_mut().spawn(crate::CinematicAudio).id();
+        app.world_mut()
+            .resource_mut::<NextState<cyrus_game::AppState>>()
+            .set(cyrus_game::AppState::InGame);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&MusicPlayer>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        app.world_mut().despawn(movie);
+        app.update();
+        let player = app
+            .world_mut()
+            .query_filtered::<&AudioPlayer<MusicTransport>, With<MusicPlayer>>()
+            .single(app.world())
+            .unwrap();
+        let transport = app
+            .world()
+            .resource::<Assets<MusicTransport>>()
+            .get(&player.0)
+            .unwrap();
+        assert_eq!(transport.decoder().collect::<Vec<_>>(), [0.5, -0.5]);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&MusicPlayer>()
+                .iter(app.world())
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -616,7 +777,7 @@ mod tests {
         app.world_mut()
             .remove_resource::<cyrus_script::script::CreditsPlaying>();
         app.update();
-        assert_eq!(app.world().resource::<Music>().track, None);
+        assert_eq!(app.world().resource::<Music>().track, Some(2));
         assert!(
             app.world_mut()
                 .query::<&MusicPlayer>()
