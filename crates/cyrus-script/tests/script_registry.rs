@@ -21787,6 +21787,12 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
             ..Default::default()
         };
         scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        assert!(
+            world
+                .player_in_sight_retained(ids[0], ids[1], &scene, &data)
+                .unwrap(),
+            "before the first gather, nearby geometry alone must not block sight"
+        );
         let prepared = world
             .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &[ids[0], ids[1]])
             .unwrap();
@@ -21815,6 +21821,22 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
                 .unwrap(),
             !wall,
             "retained list, wall {wall}"
+        );
+        let mut empty_scene =
+            ordinary_collision_scene(world.world, static_model_fixture(cache()).2);
+        empty_scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            ..Default::default()
+        };
+        empty_scene.static_collision = StaticCollision::new(&empty_scene.collision).unwrap();
+        world
+            .prepare_ordinary_collision_query(ids[1], &empty_scene, &data, [10, 30], &[])
+            .unwrap();
+        assert!(
+            world
+                .player_in_sight_retained(ids[0], ids[1], &scene, &data)
+                .unwrap(),
+            "another actor's empty gather replaces the wall list rather than accumulating it"
         );
     }
 }
