@@ -813,7 +813,7 @@ mod tests {
             GlobalTransform::IDENTITY,
         ));
         let start = app.world().resource::<Time<Real>>().startup();
-        let mut advance = |app: &mut App, seconds: f64| {
+        let advance = |app: &mut App, seconds: f64| {
             app.world_mut()
                 .resource_mut::<Time<Real>>()
                 .update_with_instant(start + Duration::from_secs_f64(seconds));
