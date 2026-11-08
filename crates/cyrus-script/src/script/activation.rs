@@ -244,6 +244,8 @@ pub struct GameplayGlobals {
     pub(super) printed: Vec<String>,
     /// The latest `ShowItem`/`ShowItemNoRtx` request, retained for the viewer.
     pub(super) item_viewer: ItemViewerRequest,
+    /// A host asked for the camera reset `XResetCamera` performs; the next driven ordinary update runs it.
+    pub(super) camera_reset_request: bool,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
     /// Using item 83 asks the island map screen to open; transient like the host requests.
@@ -401,6 +403,18 @@ impl GameplayGlobals {
             item,
             words,
         };
+    }
+
+    /// Ask for the selected player's camera reset (the original's camera force reset); for hosts
+    /// that place the player far from the camera and acceptance runs. The next ordinary update
+    /// that has the camera update service runs it through the `XResetCamera` path.
+    pub fn request_camera_reset(&mut self) {
+        self.camera_reset_request = true;
+    }
+
+    /// Whether a camera reset is waiting for the next ordinary update.
+    pub fn camera_reset_requested(&self) -> bool {
+        self.camera_reset_request
     }
 
     /// The host viewer takes the pending request: the pending flag clears, the request words and
@@ -1566,6 +1580,7 @@ impl GameplayGlobals {
             turn: Default::default(),
             printed: Vec::new(),
             item_viewer: ItemViewerRequest::default(),
+            camera_reset_request: false,
             host_requests: HostRequests::default(),
             island_map_request: false,
         })

@@ -194,6 +194,18 @@ impl ScriptWorld {
             ..inputs
         };
         self.update_created(created_inputs, random, sounds, budget)?;
+        if self.globals.camera_reset_request
+            && self.camera.is_some()
+            && let Some(service) = inputs.camera_update
+        {
+            self.globals.camera_reset_request = false;
+            // The same reset `XResetCamera` runs: record zero reloaded, pose recomputed at the
+            // selected player, so the update window follows the player from the next frame.
+            let player = self.selected_player_index().ok_or_else(|| {
+                anyhow::anyhow!("camera reset request: selected player unavailable")
+            })?;
+            self.reset_camera_session(player, service)?;
+        }
         for &id in &selected {
             if matches!(
                 self.actors[id.index].source,

@@ -126,6 +126,10 @@ pub enum Command {
         #[serde(default)]
         no_text: bool,
     },
+    /// Reset the camera at the selected player, as the original's camera force reset does after a
+    /// far placement; the next ordinary update runs the `XResetCamera` path, which refreshes the
+    /// update window around the player. For acceptance runs that place the player far away.
+    ResetCamera,
     /// Set the selected player's burning-torch counter (zero is unlit), without the lighting
     /// animation; for acceptance runs of `TorchActivate` and other burning-torch gates.
     SetTorch {
