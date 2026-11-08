@@ -9795,7 +9795,7 @@
       ],
       "status": "missing",
       "owner": 5,
-      "scope": "Named read/write dispatch for original tagZ, width1 pointer/subrecord/embedded descriptors",
+      "scope": "Receiver bounds record orientation byte (unobservable)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost property_name -> exhaustive read_property/write_property -> unsupported named property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes"
@@ -9804,7 +9804,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/cyrus/issues/5"
       ],
-      "limits": "Verified by exhaustive source inspection: all current read branches, write branches, motion_property and pose_property admit only the19 individually reviewed names. These explicit members reach unsupported property/read or write errors after installed name resolution, rather than named field access. Published descriptor tagZ/width1 identifies a valid installed pointer/subrecord/embedded descriptor; an in-range descriptor is not a malformed reference index. The original descriptor may address a pointer or nested record; this audit does not authorize arbitrary memory access or invent a portable representation. Null, retired and original unsafe-memory behavior remain Unknown. The linked generic unknown-property fixture asserts an unknown name error, not execution of every group member. No Rust tests/runtime rerun; no original/native/browser acceptance for missing handlers. Static zero occurrences in27 decoded exports do not establish absence from hidden unsupported bodies or original game. Missing means only absent named read/write implementation at reviewed source, not every behavior involving the field.",
+      "limits": "Verified in the original: the orientation byte's only reader is the per-update shape copy, which gives the second of two working records one extra sphere for an upright actor; nothing else reads that second record (its pointer appears only in the allocation, the free and the copy). The byte is therefore unobservable, and the rebuild neither stores nor reads it; the sphere builder derives it at creation. A script write has no effect on any query.",
       "descriptor_tag": "Z",
       "descriptor_width_bytes": 1,
       "reviewed_revision": "915d81a8e23ac1788ac0bf928976ab522a64b25f"
