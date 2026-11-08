@@ -364,8 +364,9 @@ impl ScriptWorld {
             })
             .collect::<Vec<_>>();
         let pose = self.spatial(id)?.local;
-        // The query-position selector: attached, else linked, else local.
-        let origin = self.query_position(id)?;
+        // The primary query reads the selected shape record, whose origin the shape preparation
+        // sets to the local position (not the query-position selector's).
+        let origin = pose.position;
         let rows = cyrus_world::transform::Matrix::collision_orientation(pose.wrapped_angles())
             .0
             .map(Vec3::from_array);
