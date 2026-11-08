@@ -171,6 +171,11 @@ dev container the renderer, not the game logic, limits the frame rate: an optimi
 default size runs at about 5 to 11. Measure the frame rate (control `state`, field `frame`)
 before comparing timing-dependent behaviour such as combat pacing with the original.
 
+The window waits for the display's refresh by default, so a measured frame rate is capped at it
+(and drops to half of it when a frame just misses). `CYRUS_PRESENT_MODE=novsync` presents at
+once; use it, on a machine with no other builds running, when measuring what the game can
+render. `vsync` is the default.
+
 Unoptimized native loader threads need a larger stack. Launch such binaries
 with `RUST_MIN_STACK=8388608`; container launches also need
 `-e RUST_MIN_STACK=8388608`. The test runner sets this automatically; native
