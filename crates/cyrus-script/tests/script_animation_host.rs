@@ -5971,9 +5971,11 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
             .insert_resource(Time::<Real>::default())
             .insert_resource(Time::<Virtual>::default())
             .init_resource::<ButtonInput<KeyCode>>()
+            .add_message::<cyrus_world::sound::SoundCue>()
             .insert_resource(hud)
             .insert_resource(actors);
         cyrus_script::item_viewer::register(&mut app);
+        let effects = std::cell::RefCell::new(Vec::new());
         let tick = |app: &mut App, enter: bool| {
             let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
             keys.reset_all();
@@ -5984,6 +5986,15 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
                 .resource_mut::<Time<Real>>()
                 .advance_by(std::time::Duration::from_millis(60));
             app.update();
+            effects.borrow_mut().extend(
+                app.world_mut()
+                    .resource_mut::<Messages<cyrus_world::sound::SoundCue>>()
+                    .drain()
+                    .map(|cue| match cue {
+                        cyrus_world::sound::SoundCue::Flat { effect, .. } => effect,
+                        other => panic!("unexpected cue {other:?}"),
+                    }),
+            );
         };
         // Without a presentation the request stays pending and the game keeps running.
         tick(&mut app, false);
@@ -6038,6 +6049,7 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
             updates += 1;
             assert!(updates < 12);
         }
+        assert_eq!(*effects.borrow(), [61, 60]);
         let screen = app.world().resource::<ExamineScreen>();
         assert!(screen.waiting_for_release && screen.suspended());
         assert!(!app.world().resource::<Time<Virtual>>().is_paused());

@@ -393,6 +393,16 @@ impl GameplayGlobals {
         self.item_viewer
     }
 
+    /// Leave a viewer request as the `ShowItem` natives do; for hosts that drive acceptance runs.
+    pub fn request_item_viewer(&mut self, item: i32, words: [i32; 2], no_rtx: bool) {
+        self.item_viewer = ItemViewerRequest {
+            pending: true,
+            no_rtx: self.item_viewer.no_rtx | no_rtx,
+            item,
+            words,
+        };
+    }
+
     /// The host viewer takes the pending request: the pending flag clears, the request words and
     /// the no-text flag stay until [`Self::finish_item_viewer`].
     pub fn take_item_viewer_request(&mut self) -> Option<ItemViewerRequest> {

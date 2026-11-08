@@ -395,8 +395,18 @@ fn drive(
     ),
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
+    mut sounds: Option<bevy::prelude::MessageWriter<cyrus_world::sound::SoundCue>>,
 ) {
     use crate::player::input::Action;
+    let mut cue = |effect: usize| {
+        if let Some(sounds) = sounds.as_mut() {
+            sounds.write(cyrus_world::sound::SoundCue::Flat {
+                effect,
+                volume: 0,
+                rate_offset_hz: 0,
+            });
+        }
+    };
     use bevy::prelude::KeyCode;
     let tick = crate::clock::bios_tick(time.elapsed());
     let resume =
@@ -506,6 +516,8 @@ fn drive(
                 screen.checkpoint = clock.as_ref().map(|clock| clock.checkpoint());
                 screen.last_tick = Some(tick);
                 screen.open = true;
+                // Sound effect 61 plays when the view opens (preservation engine/hud.md).
+                cue(61);
             }
             Ok(None) => {
                 finish_scripted(&mut actors);
@@ -541,6 +553,8 @@ fn drive(
     let (exiting, pose) = (viewer.exiting(), viewer.pose());
     if exiting && !was_exiting {
         screen.confirm = inputs.pressed(Action::Use) || keys.pressed(KeyCode::Enter);
+        // Sound effect 60 plays when the view begins to close.
+        cue(60);
     }
     screen.pose = Some(pose);
     if exiting {
