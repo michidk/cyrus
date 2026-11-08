@@ -316,3 +316,63 @@ fn a_linked_actors_residual_body_query_reads_its_link_position() {
     assert!(plain > 0);
     assert_eq!(linked, 0, "the linked body is nowhere near the wall");
 }
+
+/// An armed actor's wall avoidance, with the player standing 12 map units from the wall face
+/// and facing it: the front probe finds the wall and the actor steps aside and back.
+fn avoidance_after(marks: u32) -> ([i32; 3], (i32, u32, i32)) {
+    use cyrus_script::script::OrdinaryGroundQuery;
+    let (_, mut world, mut scene, data, _) = write_extent(Property::SizePosVz, 0);
+    add_wall(&mut scene);
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    world
+        .place_selected_player([522 * 256, -1536, 560 * 256], 0)
+        .unwrap();
+    world.refresh_model_presentations(&data, &[player]).unwrap();
+    world.set_combat_record_for_test(player);
+    world.set_last_collide_for_test(player, marks);
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [522, 560], &[player, map])
+        .unwrap();
+    world
+        .avoid_walls(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            1,
+            256,
+        )
+        .unwrap();
+    let combat = world.actors()[index]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    (
+        world.spatial(player).unwrap().local.position,
+        (combat.avoid_side, combat.avoid_mask, combat.avoid_hold),
+    )
+}
+
+#[test]
+fn an_armed_actor_steps_aside_and_back_from_a_wall_its_front_probe_finds() {
+    let start = [522 * 256, -1536, 560 * 256];
+    // Without a collision-response mark or a running hold timer the pass does nothing.
+    assert_eq!(avoidance_after(0), (start, (0, 0, 0)));
+    // A mark starts the probe: the front point meets the wall (mask 1), the first side is 2, and the
+    // actor moves 10 map units along its heading rotated by -0x200, then 10 along 0x400.
+    let (position, state) = avoidance_after(1);
+    assert_eq!(state, (2, 1, 0x10));
+    assert_eq!(position, [start[0] + 2560, start[1], start[2] - 2560]);
+}

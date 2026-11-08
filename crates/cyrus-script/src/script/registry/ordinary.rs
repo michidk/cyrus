@@ -660,6 +660,48 @@ impl ScriptWorld {
                         ),
                         "ordinary late collision response",
                     )?;
+                    // An armed or combat-stance nonplayer steers away from walls after its
+                    // collision passes.
+                    if !selected_player {
+                        let actor = &self.actors[id.index];
+                        let control = actor.control.as_ref().expect("admitted control");
+                        let armed = super::super::activation::weapon_predicates(
+                            control.living_state,
+                            actor.animation.as_ref().map(|animation| {
+                                super::super::ActivationAnimation {
+                                    group: animation.playback.current_group(),
+                                }
+                            }),
+                            control.combat.is_some(),
+                            control.weapon_drawn,
+                            actor.attributes[Attribute::HoldingWeapon],
+                            inputs
+                                .hud
+                                .map(super::super::ScriptHud::inventory_ready)
+                                .transpose()?
+                                .unwrap_or(false),
+                            inputs.shell_execution.unwrap_or(false),
+                        )
+                        .0;
+                        let stance = control
+                            .combat
+                            .as_ref()
+                            .is_some_and(super::avoid::in_combat_stance);
+                        if armed || stance {
+                            self.avoid_walls(
+                                id,
+                                super::ground::OrdinaryGroundQuery {
+                                    scene,
+                                    animations: data,
+                                    prepared: collision,
+                                    distance: scene.settings.post_collide_height,
+                                    sidedness: false,
+                                },
+                                ticks,
+                                inputs.frame_scale.expect("validated frame scale"),
+                            )?;
+                        }
+                    }
                 }
                 super::super::locomotion::finish_step_counters(
                     &mut self.actors[id.index]

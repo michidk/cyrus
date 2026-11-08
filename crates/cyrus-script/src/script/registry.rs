@@ -27,6 +27,7 @@ mod health;
 pub use death_exit::WorldLoopOutcome;
 pub use effects::{ActorEvent, EnvironmentalEffect, EnvironmentalEffects};
 pub use health::{SelectedDeathState, SelectedHealthState};
+pub(super) mod avoid;
 pub(super) mod body;
 mod bounce;
 pub(super) mod bounds;
@@ -862,6 +863,26 @@ impl ScriptWorld {
             .actor_mut(id.index)
             .expect("test actor spatial state")
             .set_link_cache(position);
+    }
+
+    /// Test hook: give a logical actor a default combat record.
+    #[doc(hidden)]
+    pub fn set_combat_record_for_test(&mut self, id: ScriptActorId) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .combat = Some(CombatControlState::default());
+    }
+
+    /// Test hook: set a logical actor's collision-response word.
+    #[doc(hidden)]
+    pub fn set_last_collide_for_test(&mut self, id: ScriptActorId, bits: u32) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .last_collide = crate::script::CollisionFlags::from_bits(bits);
     }
 
     /// Test hook: set a logical actor's living state.

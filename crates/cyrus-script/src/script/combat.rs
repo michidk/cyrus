@@ -132,6 +132,11 @@ pub struct CombatControlState {
     pub armor: i32,
     /// Nonplayer decision-stage state; see [`CombatDecision`].
     pub decision: CombatDecision,
+    /// Wall avoidance: the side last steered to (2 or 8; zero before the first pass), the last
+    /// corner-probe mask and the ticks it still steers after the probe stops reporting.
+    pub avoid_side: i32,
+    pub avoid_mask: u32,
+    pub avoid_hold: i32,
 }
 
 impl Default for CombatControlState {
@@ -160,6 +165,9 @@ impl Default for CombatControlState {
             strength: 0,
             armor: 0,
             decision: CombatDecision::default(),
+            avoid_side: 0,
+            avoid_mask: 0,
+            avoid_hold: 0,
         }
     }
 }

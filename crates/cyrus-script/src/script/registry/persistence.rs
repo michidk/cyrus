@@ -124,6 +124,12 @@ struct CombatSnapshot {
     armor: i32,
     #[serde(default)]
     decision: super::super::combat::CombatDecision,
+    #[serde(default)]
+    avoid_side: i32,
+    #[serde(default)]
+    avoid_mask: u32,
+    #[serde(default)]
+    avoid_hold: i32,
 }
 
 impl ControlSnapshot {
@@ -304,6 +310,9 @@ impl CombatSnapshot {
             strength: combat.strength,
             armor: combat.armor,
             decision: combat.decision,
+            avoid_side: combat.avoid_side,
+            avoid_mask: combat.avoid_mask,
+            avoid_hold: combat.avoid_hold,
         }
     }
 
@@ -338,6 +347,9 @@ impl CombatSnapshot {
             strength: self.strength,
             armor: self.armor,
             decision: self.decision,
+            avoid_side: self.avoid_side,
+            avoid_mask: self.avoid_mask,
+            avoid_hold: self.avoid_hold,
         })
     }
 }
