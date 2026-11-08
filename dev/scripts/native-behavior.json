@@ -9502,6 +9502,23 @@
       ],
       "limits": "Verified in the original (selection routine, update snapshot, model refresh): the word is the second patched field of the selected ShowFrame (index inside its model), -1 until the first selection, and last_frame is copied from it at the start of each ordinary update. cyrus derives the index from the retained file frame reference through the actor's RAAN table (reads need the animation data input) and records last_frame at the same point of the ordinary update; writes stay explicitly unsupported because the original word pairs with the runtime model handle, whose numbering cyrus does not model (so handle and last_handle also stay unsupported). Unknown: installed script use (none) and the value for actors whose frame was never selected through an animation record.",
       "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "yangle_change",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Signed word the model refresh stores: heading change over the last ordinary update",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorControlState",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry.rs::automatic_model_admission_reads_retained_support_before_ground_processing",
+        "crates/cyrus-script/tests/script_registry/pose_properties.rs::yangle_change_is_a_signed_word_the_refresh_stores_and_a_script_may_write"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#heading-change-property",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original: only two routines store the word (no code reads it): the per-frame model refresh stores the Y angle minus the update-start angle history for an actor with no rope, and the attached-pose composition stores its composed history angle. cyrus stores the first case after the automatic model refresh of every non-rejected actor off a rope (word truncation included), saves it with the actor, and lets scripts read and write it. Not modelled: the attached-pose composition's store for slaves. Inferred: the refresh's gating beyond a prepared non-rejected model. No installed script uses the property.",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
     }
   ],
   "property_groups": [

@@ -7770,6 +7770,33 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         )
         .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_some());
+    // The refresh stores the heading change since the update-start history in `yangle_change`.
+    assert_eq!(
+        world.actors()[actor.index]
+            .control_state()
+            .unwrap()
+            .yangle_change,
+        0
+    );
+    world.set_local_angles_for_test(actor, [0, 300, 0]);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            cyrus_script::script::ScriptInputs::default(),
+            None,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[actor.index]
+            .control_state()
+            .unwrap()
+            .yangle_change,
+        300
+    );
+    world.set_local_angles_for_test(actor, [0, 0, 0]);
     assert!(world.model_presentation(support_actor).unwrap().is_none());
     world
         .set_model_support(

@@ -393,6 +393,15 @@ impl ScriptWorld {
                     self.actors[id.index].model.animation_radius = None;
                     return Ok(());
                 }
+                // The matrix refresh stores the heading change of the update for an actor off a rope.
+                if let Some(spatial) = self.spatial.as_ref().and_then(|s| s.actor(id.index).ok()) {
+                    let change = spatial.local.angles[1].wrapping_sub(spatial.angle_history[1]);
+                    if let Some(control) = self.actors[id.index].control.as_mut()
+                        && !control.rope_attached
+                    {
+                        control.yangle_change = change as i16;
+                    }
+                }
                 // The refresh of a drawn model also keeps the rotation words it applied.
                 if let Some(animation) = self.actors[id.index].animation.as_mut() {
                     animation.playback.refresh_rotation_history();

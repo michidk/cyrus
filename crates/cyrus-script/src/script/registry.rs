@@ -498,6 +498,9 @@ pub struct ActorControlState {
     pub scabbard_override: [Option<i16>; 2],
     /// The signed RAEX `grip0`/`grip1` words a script rewrote through `grip[0]` and `grip[1]`.
     pub grip_override: [Option<i16>; 2],
+    /// The `yangle_change` word the model refresh stores: the heading change over the last
+    /// ordinary update (the angle minus the update-start history, as a signed word).
+    pub yangle_change: i16,
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
     /// Actor index of the object that created this one (`shoot`, `shootPlayer`, `DragonBreath`),
@@ -3016,6 +3019,18 @@ impl ScriptWorld {
         }
     }
 
+    /// Test hook: replace an actor's local angles without refreshing its pose.
+    #[doc(hidden)]
+    pub fn set_local_angles_for_test(&mut self, id: ScriptActorId, angles: [i32; 3]) {
+        self.spatial
+            .as_mut()
+            .expect("spatial state prepared")
+            .actor_mut(id.index)
+            .expect("actor spatial state")
+            .local
+            .angles = angles;
+    }
+
     /// Test hook: [`Self::animation_waits`].
     #[doc(hidden)]
     pub fn animation_waits_for_test(&self) -> bool {
@@ -5348,6 +5363,7 @@ fn control_record_property(
         Property::AiVar1 => ControlField::Word(&mut control.ai.var1),
         Property::AiVar2 => ControlField::Word(&mut control.ai.var2),
         Property::AiLength => ControlField::Dword(&mut control.ai.length),
+        Property::YangleChange => ControlField::Word(&mut control.yangle_change),
         // The node fields are the walk-map owner's held nodes: current, next and final destination.
         Property::Node => ControlField::Dword(&mut control.navigation.current),
         Property::Dnode => ControlField::Dword(&mut control.navigation.next),
