@@ -34,10 +34,12 @@ pub(crate) fn day_night_window(
                 .on_hover_text("Off keeps the world's installed sun.");
             ui.add_enabled_ui(cycle.enabled, |ui| {
                 ui.heading(cycle.clock());
+                // No step and edit-only clamping: a slider with either rounds the hour to its grid
+                // and writes it back every frame, which undid the running cycle's small advances.
                 ui.add(
                     egui::Slider::new(&mut cycle.hour, 0.0..=24.0)
                         .text("Hour")
-                        .step_by(0.25),
+                        .clamping(egui::SliderClamping::Edits),
                 )
                 .on_hover_text("12:00 is the world's installed sun.");
                 ui.horizontal(|ui| {
@@ -45,7 +47,7 @@ pub(crate) fn day_night_window(
                     ui.add(
                         egui::DragValue::new(&mut cycle.minutes_per_second)
                             .range(0.0..=1440.0)
-                            .speed(1.0)
+                            .speed(0.1)
                             .suffix(" min/s"),
                     )
                     .on_hover_text("In-game minutes per real second.");
@@ -63,7 +65,9 @@ pub(crate) fn day_night_window(
                     }
                 });
             });
-            ui.label("Worlds without an installed sun, such as interiors, are not affected.");
+            ui.label(
+                "Worlds without an installed sun or sky, such as interiors, are not affected.",
+            );
         });
     menu.day_night_open = open;
     Ok(())
