@@ -357,15 +357,21 @@ fn run_body(fixture: &mut Fixture) -> anyhow::Result<()> {
 }
 
 #[test]
-fn a_pending_requests_speed_is_its_modifier_plus_the_groups_own_byte() {
-    // Group 9's own byte is 5. Naming it as pending leaves modifier zero; writing the speed stores
-    // the modifier that leaves the written value.
-    let mut ops = vec![write(Property::AnimNext, 9)];
-    ops.extend(reads(&[Property::AnimNextSpeed]));
+fn the_pending_speed_byte_is_the_last_requests_modifier_plus_its_groups_byte_and_outlives_it() {
+    // The started group 7 has its own byte 3, so the byte reads 3 with no request pending. Naming
+    // group 9 as pending (its own byte is 5) leaves the byte alone; writing it stores the value.
+    let mut ops = reads(&[Property::AnimNextSpeed]);
     ops.extend([
-        write(Property::AnimNextSpeed, 12),
+        write(Property::AnimNext, 9),
         assign(
             Place::Local { index: 1 },
+            Value::Read {
+                place: me(Property::AnimNextSpeed),
+            },
+        ),
+        write(Property::AnimNextSpeed, 12),
+        assign(
+            Place::Local { index: 2 },
             Value::Read {
                 place: me(Property::AnimNextSpeed),
             },
@@ -374,16 +380,7 @@ fn a_pending_requests_speed_is_its_modifier_plus_the_groups_own_byte() {
     ]);
     let mut fixture = Fixture::new(ops);
     run_body(&mut fixture).unwrap();
-    assert_eq!(fixture.locals()[..2], [5, 12]);
-    // Without a pending request the byte is not modelled: an explicit error, never a zero.
-    let mut ops = reads(&[Property::AnimNextSpeed]);
-    ops.push(Operation::End { target: 0 });
-    let mut fixture = Fixture::new(ops);
-    let error = run_body(&mut fixture).unwrap_err();
-    assert!(
-        format!("{error:#}").contains("no pending request"),
-        "{error:#}"
-    );
+    assert_eq!(fixture.locals()[..3], [3, 3, 12]);
 }
 
 #[test]

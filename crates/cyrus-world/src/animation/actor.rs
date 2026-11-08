@@ -53,6 +53,9 @@ pub struct ActorAnimation {
     default: AnimationGroup,
     current: Option<(AnimationGroup, FrameSequence)>,
     pending: Option<(AnimationGroup, u8)>,
+    /// The record's pending-speed byte: the last request's modifier plus the speed byte of the group
+    /// it selected (`anim.next_speed`). It outlives the pending request it came from.
+    next_speed: u8,
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
@@ -73,6 +76,7 @@ pub struct ActorAnimationCheckpoint {
     context: String,
     current: Option<(AnimationGroup, FrameSequence)>,
     pending: Option<(AnimationGroup, u8)>,
+    next_speed: u8,
     frame_progress: u8,
     reverse: bool,
 }
@@ -88,6 +92,9 @@ pub struct ActorAnimationSnapshot {
     default: AnimationGroup,
     current: Option<(AnimationGroup, SequenceSnapshot)>,
     pending: Option<(AnimationGroup, u8)>,
+    /// Absent in saves written before the byte was kept: derived from the pending request.
+    #[serde(default)]
+    next_speed: Option<u8>,
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
@@ -111,6 +118,7 @@ impl ActorAnimation {
                 .as_ref()
                 .map(|(group, sequence)| (*group, sequence.snapshot())),
             pending: self.pending,
+            next_speed: Some(self.next_speed),
             frame_progress: self.frame_progress,
             reverse: self.reverse,
             failure: self.failure.clone(),
@@ -165,6 +173,14 @@ impl ActorAnimation {
                 ));
             }
             animation.pending = snapshot.pending;
+            animation.next_speed = match (snapshot.next_speed, snapshot.pending) {
+                (Some(byte), _) => byte,
+                (None, Some((group, modifier))) => animation
+                    .group_speed(group)
+                    .unwrap_or(0)
+                    .wrapping_add(modifier),
+                (None, None) => 0,
+            };
             animation.frame_progress = snapshot.frame_progress;
             animation.reverse = snapshot.reverse;
             animation.failure = snapshot.failure;
@@ -182,6 +198,7 @@ impl ActorAnimation {
             context: self.context.clone(),
             current: self.current.clone(),
             pending: self.pending,
+            next_speed: self.next_speed,
             frame_progress: self.frame_progress,
             reverse: self.reverse,
         })
@@ -202,6 +219,7 @@ impl ActorAnimation {
         );
         self.current = checkpoint.current.clone();
         self.pending = checkpoint.pending;
+        self.next_speed = checkpoint.next_speed;
         self.frame_progress = checkpoint.frame_progress;
         self.reverse = checkpoint.reverse;
         Ok(())
@@ -258,6 +276,7 @@ impl ActorAnimation {
             default,
             current: None,
             pending: None,
+            next_speed: 0,
             frame_progress: 0,
             reverse: false,
             failure: None,
@@ -517,12 +536,7 @@ impl ActorAnimation {
             PlaybackField::Next => self
                 .pending_group()
                 .map_or(-1, |group| i32::from(group.index() as i16)),
-            PlaybackField::NextSpeed => {
-                let (group, modifier) = self.pending.with_context(|| {
-                    format!("{}: no pending request holds a speed", self.context)
-                })?;
-                i32::from(self.group_speed(group)?.wrapping_add(modifier))
-            }
+            PlaybackField::NextSpeed => i32::from(self.next_speed),
             PlaybackField::RewindFlag => i32::from(self.reverse),
             PlaybackField::RealFrame => i32::from(self.frame_progress),
             PlaybackField::LastRotation(axis) => i32::from(self.last_rotation[axis]),
@@ -538,19 +552,19 @@ impl ActorAnimation {
         self.check_failure()?;
         match field {
             PlaybackField::Next => {
+                // The speed byte stays; the modifier a later selection reads follows from it.
                 self.pending = (value as i16 != -1).then(|| {
-                    (
-                        AnimationGroup::from_index(value as u16),
-                        self.pending.map_or(0, |(_, modifier)| modifier),
-                    )
+                    let group = AnimationGroup::from_index(value as u16);
+                    let speed = self.group_speed(group).unwrap_or(0);
+                    (group, self.next_speed.wrapping_sub(speed))
                 });
             }
             PlaybackField::NextSpeed => {
-                let (group, _) = self.pending.with_context(|| {
-                    format!("{}: no pending request holds a speed", self.context)
-                })?;
-                let speed = self.group_speed(group)?;
-                self.pending = Some((group, (value as u8).wrapping_sub(speed)));
+                self.next_speed = value as u8;
+                if let Some((group, _)) = self.pending {
+                    let speed = self.group_speed(group).unwrap_or(0);
+                    self.pending = Some((group, self.next_speed.wrapping_sub(speed)));
+                }
             }
             PlaybackField::RewindFlag => self.reverse = value as u8 == 1,
             PlaybackField::RealFrame => self.frame_progress = value as u8,
@@ -782,6 +796,12 @@ impl ActorAnimation {
             Some((self.default, modifier))
         } else {
             None
+        };
+        // The request stores its modifier first and adds the selected group's own byte when one
+        // was found, so a request that finds no group leaves just the modifier.
+        self.next_speed = match self.pending {
+            Some((group, _)) => modifier.wrapping_add(self.group_speed(group).unwrap_or(0)),
+            None => modifier,
         };
     }
 

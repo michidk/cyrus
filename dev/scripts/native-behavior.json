@@ -8367,13 +8367,15 @@
       "tests": [
         "crates/cyrus-script/tests/script_registry/anim_properties.rs::an_expired_countdown_written_by_a_script_advances_one_command_and_counts_the_frame",
         "crates/cyrus-script/tests/script_registry/anim_properties.rs::another_actors_playback_record_is_reached_by_name",
-        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw"
+        "crates/cyrus-world/tests/animation_persistence.rs::the_playback_record_fields_are_saved_and_restored_raw",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_pending_speed_byte_is_the_last_requests_modifier_plus_its_groups_byte_and_outlives_it",
+        "crates/cyrus-world/tests/animation_persistence.rs::the_pending_speed_byte_outlives_its_request_and_follows_the_written_pending_group"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6707893248"
       ],
-      "limits": "Verified in the original: request modifier plus the pending group countdown byte; without a pending request the byte is not modelled and access is an explicit error. Descriptor tag b width 1; reads extend zero (bytes) or sign (words), writes keep the low byte or word and run nothing. An actor with no animation association reads zero and a write is an explicit error; a group-less actor has no sequence, so sequence fields are explicit errors. Natural authored gameplay parity remains Unknown.",
+      "limits": "Verified in the original request routines: every request stores its modifier, then adds the selected group's countdown byte (just the modifier when no group is found); selection reads the byte into the speed and leaves it, so it stays readable with no pending request and a script write of anim.next changes only the pending group. cyrus keeps the byte with the receiver (rollback checkpoints and snapshots included; saves without it derive it from the pending request) and derives the pending modifier from it. Descriptor tag b width 1; reads extend zero, writes keep the low byte and run nothing. An actor with no animation association reads zero and a write is an explicit error. Natural authored gameplay parity remains Unknown.",
       "reviewed_revision": "adec8a385f8d70a816b1c339d52778cba3cae4cc"
     },
     {
