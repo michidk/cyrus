@@ -49632,6 +49632,41 @@ fn removed_pickup_revisit_skips_ordinary_calls_without_repeating_inventory_award
     assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
     app.world_mut().remove_resource::<PreparedWorld>();
     app.update();
+    let mut other_scripts: Scripts =
+        serde_json::from_value(serde_json::to_value(&scripts).unwrap()).unwrap();
+    other_scripts.world = 8;
+    other_scripts.content_id = other_scripts.content_identity().unwrap();
+    let mut other_animations: cyrus_assets::animation::Animations =
+        serde_json::from_value(serde_json::to_value(&animations).unwrap()).unwrap();
+    other_animations.world = 8;
+    other_animations.metadata["script_content_id"] = other_scripts.content_id.clone().into();
+    let other_scripts = app
+        .world_mut()
+        .resource_mut::<bevy::prelude::Assets<Scripts>>()
+        .add(other_scripts);
+    let other_animations = app
+        .world_mut()
+        .resource_mut::<bevy::prelude::Assets<cyrus_assets::animation::Animations>>()
+        .add(other_animations);
+    let mut other_prepared = prepared.clone();
+    other_prepared.world = Some(8);
+    other_prepared.requested_name = "OTHER".into();
+    other_prepared.scripts = other_scripts;
+    other_prepared.animations = other_animations;
+    app.insert_resource(other_prepared);
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .world,
+        8
+    );
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
     app.insert_resource(prepared);
     app.update();
     let collision = cyrus_assets::collision::CollisionScene::default();
