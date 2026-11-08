@@ -9417,6 +9417,57 @@
       ],
       "limits": "Verified by searching the whole executable image for the record displacement: the single match is unrelated library code, so it only retains a script's stored low eight bits (zero otherwise) and is saved with the actor.",
       "reviewed_revision": "412c95acfa349aab09401aac3f5e01b436ce0e32"
+    },
+    {
+      "property": "anim.last_angle.vx",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rotation word the last model refresh copied from anim.angle",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_rotation_history_is_the_words_the_last_model_refresh_copied",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_last_angle_words_read_zero_and_keep_what_a_script_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "anim.last_angle.vy",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rotation word the last model refresh copied from anim.angle",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_rotation_history_is_the_words_the_last_model_refresh_copied",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_last_angle_words_read_zero_and_keep_what_a_script_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "anim.last_angle.vz",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Rotation word the last model refresh copied from anim.angle",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_rotation_history_is_the_words_the_last_model_refresh_copied",
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_last_angle_words_read_zero_and_keep_what_a_script_writes"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties",
+        "https://github.com/michidk/cyrus/issues/11"
+      ],
+      "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
     }
   ],
   "property_groups": [

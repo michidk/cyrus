@@ -692,8 +692,8 @@ progress byte completes `WaitAnimFrame`) and is saved with the animation. See pr
 Writing `anim.current` switches the command table and type flags the next advance interprets and keeps
 the cursor, countdowns and markers; -1 leaves no current group, and a group without a table or a write
 while none is current stops with an explicit error.
-`anim.sound_handle`, `anim.max_group`, `anim.last_angle` and `anim.address`
-stay unsupported.
+`anim.last_angle` is the rotation history the automatic model refresh copies from `anim.angle`.
+`anim.sound_handle`, `anim.max_group` and `anim.address` stay unsupported.
 
 
 Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player

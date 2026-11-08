@@ -393,6 +393,10 @@ impl ScriptWorld {
                     self.actors[id.index].model.animation_radius = None;
                     return Ok(());
                 }
+                // The refresh of a drawn model also keeps the rotation words it applied.
+                if let Some(animation) = self.actors[id.index].animation.as_mut() {
+                    animation.playback.refresh_rotation_history();
+                }
                 let actor = &self.actors[id.index];
                 if actor.attributes[Attribute::Weapon] == 0
                     || actor

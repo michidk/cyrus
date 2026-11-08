@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 19] = [
+const REFERENCES: [Property; 20] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -28,6 +28,7 @@ const REFERENCES: [Property; 19] = [
     Property::AnimAngleVy,
     Property::AnimAngleVz,
     Property::AnimCurrent,
+    Property::AnimLastAngleVx,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -533,11 +534,8 @@ fn writing_anim_current_switches_the_commands_a_later_step_reads() {
     fixture.body();
     assert_eq!(fixture.locals()[0], 9, "the written word reads back");
     fixture.animate(1);
-    assert_eq!(
-        fixture.frame(),
-        None,
-        "group 9's end, not group 7's frame 11"
-    );
+    // Group 9's end keeps the prior pose; group 7 would show its frame 11 here.
+    assert_eq!(fixture.frame(), Some(10));
     // A group without commands stops the script with an explicit error.
     let mut fixture = Fixture::new(vec![
         write(Property::AnimCurrent, 40),
@@ -560,4 +558,25 @@ fn writing_anim_current_switches_the_commands_a_later_step_reads() {
         )
         .unwrap_err();
     assert!(format!("{error:#}").contains("absent group"), "{error:#}");
+}
+
+#[test]
+fn the_last_angle_words_read_zero_and_keep_what_a_script_writes() {
+    let mut ops = reads(&[Property::AnimLastAngleVx]);
+    ops.push(write(Property::AnimLastAngleVx, 70000));
+    ops.extend(
+        reads(&[Property::AnimLastAngleVx])
+            .into_iter()
+            .map(|op| match op {
+                Operation::Assign { formula, .. } => {
+                    assign(Place::Local { index: 1 }, formula.first)
+                }
+                other => other,
+            }),
+    );
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    fixture.body();
+    // The word starts at zero and keeps the low sixteen bits of the stored value, read signed.
+    assert_eq!(fixture.locals()[..2], [0, 4464]);
 }

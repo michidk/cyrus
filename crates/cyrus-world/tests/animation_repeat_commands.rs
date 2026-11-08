@@ -213,3 +213,33 @@ fn writing_the_current_group_switches_the_commands_in_use_without_touching_the_c
         "{error:#}"
     );
 }
+
+#[test]
+fn the_rotation_history_is_the_words_the_last_model_refresh_copied() {
+    let data = asset(json!([
+        {"opcode":8,"x":1,"y":2,"z":3},
+        {"opcode":0,"frame_reference":0}, {"opcode":0,"frame_reference":1}, {"opcode":1}
+    ]));
+    let (mut actor, _) = started(&data);
+    let history = |actor: &ActorAnimation| {
+        [LastRotation(0), LastRotation(1), LastRotation(2)]
+            .map(|field| actor.record_field(field).unwrap())
+    };
+    // Nothing is copied until a refresh runs.
+    assert_eq!(history(&actor), [0; 3]);
+    actor.refresh_rotation_history();
+    assert_eq!(history(&actor), [8, 16, 24]);
+    // The next cursor step clears the words but not the history, until the next refresh.
+    actor.advance(1).unwrap();
+    assert_eq!(actor.record_field(Rotation(0)).unwrap(), 0);
+    assert_eq!(history(&actor), [8, 16, 24]);
+    actor.refresh_rotation_history();
+    assert_eq!(history(&actor), [0; 3]);
+    // The history is a plain word a script can write, and is saved with the receiver.
+    actor.set_record_field(LastRotation(1), -9).unwrap();
+    let saved = serde_json::to_vec(&actor.snapshot()).unwrap();
+    let restored =
+        ActorAnimation::from_snapshot(&data, "ACTOR", serde_json::from_slice(&saved).unwrap())
+            .unwrap();
+    assert_eq!(restored.record_field(LastRotation(1)).unwrap(), -9);
+}

@@ -40,6 +40,8 @@ pub enum PlaybackField {
     RewindFlag,
     /// Wrapping frame-progress byte.
     RealFrame,
+    /// One word of the rotation triple the last model refresh applied (signed, by axis).
+    LastRotation(usize),
 }
 
 /// One actor's current, pending and explicitly supplied default group.
@@ -54,6 +56,8 @@ pub struct ActorAnimation {
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
+    /// The rotation words the last model refresh copied from the current group (`anim.last_angle`).
+    last_rotation: [i16; 3],
     /// Transient mirror of the actor's falling byte (nonzero), kept by the owner. It is not
     /// saved: the owner sets it before the next advance.
     motion_active: bool,
@@ -84,6 +88,8 @@ pub struct ActorAnimationSnapshot {
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
+    #[serde(default)]
+    last_rotation: [i16; 3],
 }
 
 impl ActorAnimation {
@@ -103,6 +109,7 @@ impl ActorAnimation {
             frame_progress: self.frame_progress,
             reverse: self.reverse,
             failure: self.failure.clone(),
+            last_rotation: self.last_rotation,
         }
     }
 
@@ -155,6 +162,7 @@ impl ActorAnimation {
             animation.frame_progress = snapshot.frame_progress;
             animation.reverse = snapshot.reverse;
             animation.failure = snapshot.failure;
+            animation.last_rotation = snapshot.last_rotation;
             Ok(animation)
         };
         restore().with_context(|| context)
@@ -246,6 +254,7 @@ impl ActorAnimation {
             frame_progress: 0,
             reverse: false,
             failure: None,
+            last_rotation: [0; 3],
             motion_active: false,
         })
     }
@@ -508,6 +517,7 @@ impl ActorAnimation {
             }
             PlaybackField::RewindFlag => i32::from(self.reverse),
             PlaybackField::RealFrame => i32::from(self.frame_progress),
+            PlaybackField::LastRotation(axis) => i32::from(self.last_rotation[axis]),
             _ => self.sequence(field)?.record(field),
         })
     }
@@ -536,9 +546,18 @@ impl ActorAnimation {
             }
             PlaybackField::RewindFlag => self.reverse = value as u8 == 1,
             PlaybackField::RealFrame => self.frame_progress = value as u8,
+            PlaybackField::LastRotation(axis) => self.last_rotation[axis] = value as i16,
             _ => self.sequence_mut(field)?.set_record(field, value),
         }
         Ok(())
+    }
+
+    /// The model refresh's copy of the current group's rotation words into the history the next
+    /// `anim.last_angle` read returns. Without a current group the history stays as it was.
+    pub fn refresh_rotation_history(&mut self) {
+        if let Some((_, sequence)) = &self.current {
+            self.last_rotation = sequence.rotation_words();
+        }
     }
 
     /// Writes the record's current-group word (`anim.current`). A group makes that group's command
