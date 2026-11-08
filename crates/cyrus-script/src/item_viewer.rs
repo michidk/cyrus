@@ -342,6 +342,8 @@ pub struct ExamineScreen {
     /// The audio owner's answer: the clip length in seconds, or `None` when the label has no
     /// speech record, which ends the line sequence.
     pub speech_reply: Option<Option<f32>>,
+    /// Set when the exit starts: the audio owner stops the line's speech and clears it.
+    pub speech_stop: bool,
     #[serde(skip)]
     viewer: Option<ItemViewer>,
     #[serde(skip)]
@@ -507,6 +509,7 @@ fn drive(
                 screen.line = if no_rtx { Line::Ended } else { Line::Idle };
                 screen.from_inventory = cell.is_some();
                 screen.confirm = false;
+                screen.speech_stop = false;
                 if let Some(time) = virtual_time.as_mut()
                     && !time.is_paused()
                 {
@@ -553,8 +556,9 @@ fn drive(
     let (exiting, pose) = (viewer.exiting(), viewer.pose());
     if exiting && !was_exiting {
         screen.confirm = inputs.pressed(Action::Use) || keys.pressed(KeyCode::Enter);
-        // Sound effect 60 plays when the view begins to close.
+        // Sound effect 60 plays when the view begins to close, and its speech stops.
         cue(60);
+        screen.speech_stop = true;
     }
     screen.pose = Some(pose);
     if exiting {

@@ -6050,6 +6050,7 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
             assert!(updates < 12);
         }
         assert_eq!(*effects.borrow(), [61, 60]);
+        assert!(app.world().resource::<ExamineScreen>().speech_stop);
         let screen = app.world().resource::<ExamineScreen>();
         assert!(screen.waiting_for_release && screen.suspended());
         assert!(!app.world().resource::<Time<Virtual>>().is_paused());

@@ -284,6 +284,9 @@ pub(crate) struct Channels {
     animation: HashMap<Entity, u8>,
     /// One post-advancement animation slot snapshot per bound actor, including None.
     animation_checkpoint: HashMap<Entity, Option<u8>>,
+    /// The slot of the last speech clip a [`SoundRequest::Speech`] started, which the examine
+    /// view stops when it begins to close.
+    speech: Option<u8>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -716,10 +719,18 @@ fn examine_speech(
     screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
     speech: Res<Speech>,
     mut requests: MessageWriter<SoundRequest>,
+    mut commands: Commands,
+    mut channels: ResMut<Channels>,
 ) {
     let Some(mut screen) = screen else {
         return;
     };
+    if screen.speech_stop {
+        screen.speech_stop = false;
+        if let Some(slot) = channels.speech.take() {
+            channels.stop_slot(&mut commands, slot);
+        }
+    }
     if screen.speech_request.is_none() {
         return;
     }
@@ -812,7 +823,7 @@ fn play_requests(
                     warn_once!("sound: voice clip {label} is not loaded");
                     continue;
                 };
-                channels.start(
+                channels.speech = channels.start(
                     &mut commands,
                     &mut mixer,
                     Start {
@@ -1112,6 +1123,7 @@ mod examine_speech_tests {
         app.add_message::<SoundRequest>()
             .init_resource::<Speech>()
             .init_resource::<ExamineScreen>()
+            .init_resource::<Channels>()
             .add_systems(Update, examine_speech);
         app.world_mut().resource_mut::<Speech>().0.insert(
             "cisw".into(),
