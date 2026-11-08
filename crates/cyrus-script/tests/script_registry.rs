@@ -11274,7 +11274,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert!(
         !world
-            .begin_ordinary_jump(id, &data, 0, true, environment, &mut |_, _| Ok(()))
+            .begin_ordinary_jump(id, &data, 0, true, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
     assert_eq!(
@@ -11292,7 +11292,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert!(
         world
-            .begin_ordinary_jump(id, &data, 0, false, environment, &mut |_, _| Ok(()))
+            .begin_ordinary_jump(id, &data, 0, false, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
     assert!(!world.retain_ordinary_stable_position(id).unwrap());
@@ -11321,7 +11321,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
     );
     assert!(
         !world
-            .begin_ordinary_jump(id, &data, 0, false, environment, &mut |_, _| Ok(()))
+            .begin_ordinary_jump(id, &data, 0, false, environment, None, &mut |_, _| Ok(()))
             .unwrap()
     );
     let (_, _, models) = static_model_fixture(cache());
@@ -45389,9 +45389,15 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         };
         assert!(
             !world
-                .begin_ordinary_jump(id, &data, motion, true, environment, &mut |_, _| panic!(
-                    "refusal emitted sound"
-                ))
+                .begin_ordinary_jump(
+                    id,
+                    &data,
+                    motion,
+                    true,
+                    environment,
+                    None,
+                    &mut |_, _| panic!("refusal emitted sound")
+                )
                 .unwrap()
         );
         assert_eq!(
@@ -45403,7 +45409,9 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         );
         assert!(
             world
-                .begin_ordinary_jump(id, &data, motion, false, environment, &mut |_, _| Ok(()))
+                .begin_ordinary_jump(id, &data, motion, false, environment, None, &mut |_, _| Ok(
+                    ()
+                ))
                 .unwrap()
         );
         let control = world.actors()[0].control_state().unwrap();
@@ -45413,9 +45421,15 @@ fn ordinary_jump_publishes_classification_after_admission_and_retains_it_on_refu
         );
         assert!(
             !world
-                .begin_ordinary_jump(id, &data, motion, false, environment, &mut |_, _| panic!(
-                    "queued refusal emitted sound"
-                ))
+                .begin_ordinary_jump(
+                    id,
+                    &data,
+                    motion,
+                    false,
+                    environment,
+                    None,
+                    &mut |_, _| panic!("queued refusal emitted sound")
+                )
                 .unwrap()
         );
         invoke_public_script_jump(&mut world, true).unwrap();
@@ -45490,6 +45504,7 @@ fn normal_and_script_jump_initialization_failure_precedes_classification_write()
                         shell_execution: false,
                         ticks: 0,
                     },
+                    None,
                     &mut |_, _| anyhow::bail!("public Jump sound rejected"),
                 )
                 .unwrap_err()
@@ -50395,3 +50410,6 @@ mod player_queries_tests;
 
 #[path = "script_registry/flat_texture.rs"]
 mod flat_texture_tests;
+
+#[path = "script_registry/jump_fall_guards.rs"]
+mod jump_fall_guards_tests;

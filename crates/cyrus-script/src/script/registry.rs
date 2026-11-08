@@ -51,6 +51,7 @@ mod late;
 mod leap;
 mod ledge;
 mod ledge_states;
+pub use ledge_states::LedgeTiming;
 mod light;
 mod map_marker;
 pub use map_marker::SavedPlacement;

@@ -399,7 +399,15 @@ impl ScriptWorld {
                 sounds,
             )?;
         } else {
-            self.begin_ordinary_jump(id, query.animations, 8, task_active, environment, sounds)?;
+            self.begin_ordinary_jump(
+                id,
+                query.animations,
+                8,
+                task_active,
+                environment,
+                None,
+                sounds,
+            )?;
         }
         if self.updates.animation_system {
             self.request_ordinary_group(
@@ -477,6 +485,7 @@ impl ScriptWorld {
                     8,
                     task_active,
                     environment,
+                    None,
                     sounds,
                 )?;
             }
