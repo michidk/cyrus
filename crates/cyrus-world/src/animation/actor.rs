@@ -40,6 +40,8 @@ pub enum PlaybackField {
     RewindFlag,
     /// Wrapping frame-progress byte.
     RealFrame,
+    /// The record's `max_group` byte (the actor's RAHD control prefix, low byte).
+    MaxGroup,
     /// One word of the rotation triple the last model refresh applied (signed, by axis).
     LastRotation(usize),
 }
@@ -64,6 +66,8 @@ pub struct ActorAnimation {
     /// The selected model frame the owner recorded at the start of the last ordinary update
     /// (`last_frame`); the owner supplies it, as the frame itself lives beside this receiver.
     last_frame: Option<u32>,
+    /// The `max_group` byte; `None` when the sidecar predates the exported control prefix.
+    max_group: Option<u8>,
     /// Transient mirror of the actor's falling byte (nonzero), kept by the owner. It is not
     /// saved: the owner sets it before the next advance.
     motion_active: bool,
@@ -102,6 +106,8 @@ pub struct ActorAnimationSnapshot {
     last_rotation: [i16; 3],
     #[serde(default)]
     last_frame: Option<u32>,
+    #[serde(default)]
+    max_group: Option<u8>,
 }
 
 impl ActorAnimation {
@@ -124,6 +130,7 @@ impl ActorAnimation {
             failure: self.failure.clone(),
             last_rotation: self.last_rotation,
             last_frame: self.last_frame,
+            max_group: self.max_group,
         }
     }
 
@@ -186,6 +193,7 @@ impl ActorAnimation {
             animation.failure = snapshot.failure;
             animation.last_rotation = snapshot.last_rotation;
             animation.last_frame = snapshot.last_frame;
+            animation.max_group = snapshot.max_group;
             Ok(animation)
         };
         restore().with_context(|| context)
@@ -282,6 +290,7 @@ impl ActorAnimation {
             failure: None,
             last_rotation: [0; 3],
             last_frame: None,
+            max_group: data.max_group(actor)?,
             motion_active: false,
         })
     }
@@ -540,6 +549,12 @@ impl ActorAnimation {
             PlaybackField::RewindFlag => i32::from(self.reverse),
             PlaybackField::RealFrame => i32::from(self.frame_progress),
             PlaybackField::LastRotation(axis) => i32::from(self.last_rotation[axis]),
+            PlaybackField::MaxGroup => i32::from(self.max_group.with_context(|| {
+                format!(
+                    "{}: animation control prefix absent; re-export the world",
+                    self.context
+                )
+            })?),
             _ => self.sequence(field)?.record(field),
         })
     }
@@ -569,6 +584,7 @@ impl ActorAnimation {
             PlaybackField::RewindFlag => self.reverse = value as u8 == 1,
             PlaybackField::RealFrame => self.frame_progress = value as u8,
             PlaybackField::LastRotation(axis) => self.last_rotation[axis] = value as i16,
+            PlaybackField::MaxGroup => self.max_group = Some(value as u8),
             _ => self.sequence_mut(field)?.set_record(field, value),
         }
         Ok(())

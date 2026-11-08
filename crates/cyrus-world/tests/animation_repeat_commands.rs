@@ -256,3 +256,24 @@ fn the_last_frame_record_is_supplied_by_the_owner_and_saved() {
             .unwrap();
     assert_eq!(restored.last_frame(), Some(4));
 }
+
+#[test]
+fn max_group_needs_the_exported_control_prefix() {
+    let mut data = asset(json!([{"opcode":0,"frame_reference":0}, {"opcode":1}]));
+    let (actor, _) = started(&data);
+    // A sidecar exported before the prefix was added has no byte to read.
+    let error = actor.record_field(MaxGroup).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("re-export the world"),
+        "{error:#}"
+    );
+    data.metadata["actors"][0]["anim_control_prefix"] = (-1).into();
+    let (mut actor, _) = started(&data);
+    assert_eq!(actor.record_field(MaxGroup).unwrap(), 255);
+    actor.set_record_field(MaxGroup, 3).unwrap();
+    let saved = serde_json::to_vec(&actor.snapshot()).unwrap();
+    let restored =
+        ActorAnimation::from_snapshot(&data, "ACTOR", serde_json::from_slice(&saved).unwrap())
+            .unwrap();
+    assert_eq!(restored.record_field(MaxGroup).unwrap(), 3);
+}

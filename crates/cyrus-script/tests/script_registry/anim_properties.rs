@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 21] = [
+const REFERENCES: [Property; 22] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -30,6 +30,7 @@ const REFERENCES: [Property; 21] = [
     Property::AnimCurrent,
     Property::AnimLastAngleVx,
     Property::Frame,
+    Property::AnimMaxGroup,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -92,6 +93,7 @@ fn animation_data(scripts: &Scripts, actor: &str) -> Animations {
             "actors": [{
             "script_name": actor,
             "model_load_path": "animation_table",
+            "anim_control_prefix": 1193131,
             "raan_entries": [{"file_path": "LOGIC.3D", "frame_count": 30}],
             "animation_groups": [
                 {"group_index": 7, "anim_id": 3, "anim_type": 0, "commands": [
@@ -595,4 +597,21 @@ fn the_frame_word_is_the_frame_index_inside_the_selected_model() {
     assert_eq!(fixture.frame(), Some(11));
     fixture.body();
     assert_eq!(fixture.locals()[0], 11);
+}
+
+#[test]
+fn max_group_is_the_low_byte_of_the_exported_control_prefix_and_a_plain_byte() {
+    let mut ops = reads(&[Property::AnimMaxGroup]);
+    ops.push(write(Property::AnimMaxGroup, 70000));
+    ops.push(assign(
+        Place::Local { index: 1 },
+        Value::Read {
+            place: me(Property::AnimMaxGroup),
+        },
+    ));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    fixture.body();
+    // 1193131 keeps its low byte 171; a write keeps the low byte of 70000, which is 112.
+    assert_eq!(fixture.locals()[..2], [171, 112]);
 }

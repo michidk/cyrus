@@ -510,7 +510,7 @@ impl FrameSequence {
             RepCount => i32::from(self.repeat),
             Position(axis) => i32::from(self.position[axis]),
             Rotation(axis) => i32::from(self.rotation[axis]),
-            Next | NextSpeed | RewindFlag | RealFrame | LastRotation(_) => {
+            Next | NextSpeed | RewindFlag | RealFrame | LastRotation(_) | MaxGroup => {
                 unreachable!("not a sequence field")
             }
         }
@@ -529,7 +529,7 @@ impl FrameSequence {
             RepCount => self.repeat = value as u8,
             Position(axis) => self.position[axis] = value as i16,
             Rotation(axis) => self.rotation[axis] = value as i16,
-            Next | NextSpeed | RewindFlag | RealFrame | LastRotation(_) => {
+            Next | NextSpeed | RewindFlag | RealFrame | LastRotation(_) | MaxGroup => {
                 unreachable!("not a sequence field")
             }
         }

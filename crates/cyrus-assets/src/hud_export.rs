@@ -281,9 +281,7 @@ pub(crate) fn prepare(
                     None | Some(ItemType::General) => ItemKind::GENERAL,
                     Some(ItemType::Weapon) => ItemKind::WEAPON,
                     Some(ItemType::HandObject) => ItemKind::HAND_OBJECT,
-                    // The released rgpre reads the torch's code 3 as Unknown(3); preservation
-                    // 44d30920 (https://github.com/michidk/redguard-preservation/commit/44d30920)
-                    // names it ItemType::Torch for the next release.
+                    Some(ItemType::Torch) => ItemKind::TORCH,
                     Some(ItemType::Unknown(code)) => {
                         ItemKind::from_code(u32::try_from(code).with_context(|| {
                             format!("hud: {item_path} type[{id}] = {code} is negative")

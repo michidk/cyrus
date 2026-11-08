@@ -9519,6 +9519,23 @@
       ],
       "limits": "Verified in the original: only two routines store the word (no code reads it): the per-frame model refresh stores the Y angle minus the update-start angle history for an actor with no rope, and the attached-pose composition stores its composed history angle. cyrus stores the first case after the automatic model refresh of every non-rejected actor off a rope (word truncation included), saves it with the actor, and lets scripts read and write it. Not modelled: the attached-pose composition's store for slaves. Inferred: the refresh's gating beyond a prepared non-rejected model. No installed script uses the property.",
       "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "anim.max_group",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Animation record byte: low byte of the actor's RAHD animation control prefix",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::max_group_is_the_low_byte_of_the_exported_control_prefix_and_a_plain_byte",
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::max_group_needs_the_exported_control_prefix"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/pull/303",
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties"
+      ],
+      "limits": "Verified in preservation (RAHD +0x2d low byte stored at record +0x12 when the record is built; exported as anim_control_prefix by redguard-preservation 0.12). cyrus seeds the byte from the sidecar, keeps a script write like any record byte (low eight bits, saved with the receiver) and reads it zero-extended; a sidecar exported before the field reads as an explicit re-export error instead of a guess. Unknown: whether the original reads the byte anywhere after the record is built (no installed script uses the property).",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
     }
   ],
   "property_groups": [

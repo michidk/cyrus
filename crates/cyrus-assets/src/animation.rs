@@ -344,6 +344,15 @@ impl Animations {
         })
     }
 
+    /// The animation record's `max_group` byte: the low byte of the actor's RAHD
+    /// `anim_control_prefix` (preservation `SOUPPROPS.md`). `None` for sidecars exported before
+    /// preservation 0.12 added the field.
+    pub fn max_group(&self, name: &str) -> anyhow::Result<Option<u8>> {
+        Ok(self.actor(name)?["anim_control_prefix"]
+            .as_i64()
+            .map(|prefix| prefix as u8))
+    }
+
     pub fn actor(&self, name: &str) -> anyhow::Result<&serde_json::Value> {
         self.metadata["actors"]
             .as_array()

@@ -5465,6 +5465,7 @@ fn playback_field(name: Property) -> Option<cyrus_world::animation::PlaybackFiel
         Property::AnimAngleVz => PlaybackField::Rotation(2),
         Property::AnimRewindFlag => PlaybackField::RewindFlag,
         Property::AnimRealFrame => PlaybackField::RealFrame,
+        Property::AnimMaxGroup => PlaybackField::MaxGroup,
         Property::AnimLastAngleVx => PlaybackField::LastRotation(0),
         Property::AnimLastAngleVy => PlaybackField::LastRotation(1),
         Property::AnimLastAngleVz => PlaybackField::LastRotation(2),

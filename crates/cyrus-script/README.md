@@ -693,7 +693,8 @@ Writing `anim.current` switches the command table and type flags the next advanc
 the cursor, countdowns and markers; -1 leaves no current group, and a group without a table or a write
 while none is current stops with an explicit error.
 `anim.last_angle` is the rotation history the automatic model refresh copies from `anim.angle`.
-`anim.sound_handle`, `anim.max_group` and `anim.address` stay unsupported.
+`anim.max_group` is the low byte of the exported RAHD control prefix (preservation 0.12; sidecars exported earlier
+read as an explicit re-export error). `anim.sound_handle` and `anim.address` stay unsupported.
 
 
 Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player
