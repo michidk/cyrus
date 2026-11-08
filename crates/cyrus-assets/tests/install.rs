@@ -652,8 +652,15 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let data: serde_json::Value =
         serde_json::from_slice(&std::fs::read(hud.join("overlay.hud")).unwrap()).unwrap();
     assert_eq!(data["candle_mode"], 2);
+    let examine_bytes = std::fs::read(hud.join("examine.models")).unwrap();
+    // The view loads this when a game starts, so it carries only the images the models use.
+    assert!(
+        examine_bytes.len() < 16_000_000,
+        "examine.models is {} bytes",
+        examine_bytes.len()
+    );
     let examine: cyrus_assets::examine::ExamineArtwork =
-        serde_json::from_slice(&std::fs::read(hud.join("examine.models")).unwrap()).unwrap();
+        serde_json::from_slice(&examine_bytes).unwrap();
     examine.validate().unwrap();
     for (id, item) in data["inventory"].as_object().unwrap() {
         if let Some(model) = item["inventory_model"]["Model"].as_str() {

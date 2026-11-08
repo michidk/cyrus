@@ -490,6 +490,7 @@ fn examine_artwork(
     use rgpre::import::model3d::TextureData;
     let mut artwork = ExamineArtwork::default();
     let mut references = BTreeMap::new();
+    let mut banks = BTreeMap::new();
     for item in definitions.items.values() {
         let Some(path) = item.inventory_object_file.as_deref() else {
             continue;
@@ -520,25 +521,38 @@ fn examine_artwork(
                     texture_id,
                     image_id,
                 } => {
-                    if !references.keys().any(|(bank, _)| *bank == texture_id) {
-                        let bank = rgpre::import::bsi::parse_bsi_file(&read(&format!(
-                            "fxart/TEXBSI.{texture_id:03}"
-                        ))?)
-                        .with_context(|| format!("TEXBSI.{texture_id:03}"))?;
-                        for (image, decoded) in bank.images.iter().enumerate() {
-                            references.insert((texture_id, image as u16), artwork.textures.len());
+                    // Only the images the models use are exported: a bank holds hundreds.
+                    let image_key = (texture_id, u16::from(image_id));
+                    let id = match references.get(&image_key) {
+                        Some(&id) => id,
+                        None => {
+                            let bank = match banks.entry(texture_id) {
+                                std::collections::btree_map::Entry::Occupied(entry) => {
+                                    entry.into_mut()
+                                }
+                                std::collections::btree_map::Entry::Vacant(entry) => entry.insert(
+                                    rgpre::import::bsi::parse_bsi_file(&read(&format!(
+                                        "fxart/TEXBSI.{texture_id:03}"
+                                    ))?)
+                                    .with_context(|| format!("TEXBSI.{texture_id:03}"))?,
+                                ),
+                            };
+                            let decoded =
+                                bank.images.get(usize::from(image_id)).with_context(|| {
+                                    format!(
+                                        "model {key}: TEXBSI.{texture_id:03} image {image_id} absent"
+                                    )
+                                })?;
+                            let id = artwork.textures.len();
+                            references.insert(image_key, id);
                             artwork.textures.push(ExamineTexture {
                                 width: decoded.width,
                                 height: decoded.height,
                                 indices: decoded.pixel_data.clone(),
                             });
+                            id
                         }
-                    }
-                    let id = *references
-                        .get(&(texture_id, u16::from(image_id)))
-                        .with_context(|| {
-                            format!("model {key}: TEXBSI.{texture_id:03} image {image_id} absent")
-                        })?;
+                    };
                     (Some(id), None)
                 }
                 TextureData::SolidColor(index) => (None, Some(index)),
