@@ -58,6 +58,9 @@ pub struct ActorAnimation {
     failure: Option<String>,
     /// The rotation words the last model refresh copied from the current group (`anim.last_angle`).
     last_rotation: [i16; 3],
+    /// The selected model frame the owner recorded at the start of the last ordinary update
+    /// (`last_frame`); the owner supplies it, as the frame itself lives beside this receiver.
+    last_frame: Option<u32>,
     /// Transient mirror of the actor's falling byte (nonzero), kept by the owner. It is not
     /// saved: the owner sets it before the next advance.
     motion_active: bool,
@@ -90,6 +93,8 @@ pub struct ActorAnimationSnapshot {
     failure: Option<String>,
     #[serde(default)]
     last_rotation: [i16; 3],
+    #[serde(default)]
+    last_frame: Option<u32>,
 }
 
 impl ActorAnimation {
@@ -110,6 +115,7 @@ impl ActorAnimation {
             reverse: self.reverse,
             failure: self.failure.clone(),
             last_rotation: self.last_rotation,
+            last_frame: self.last_frame,
         }
     }
 
@@ -163,6 +169,7 @@ impl ActorAnimation {
             animation.reverse = snapshot.reverse;
             animation.failure = snapshot.failure;
             animation.last_rotation = snapshot.last_rotation;
+            animation.last_frame = snapshot.last_frame;
             Ok(animation)
         };
         restore().with_context(|| context)
@@ -255,6 +262,7 @@ impl ActorAnimation {
             reverse: false,
             failure: None,
             last_rotation: [0; 3],
+            last_frame: None,
             motion_active: false,
         })
     }
@@ -550,6 +558,17 @@ impl ActorAnimation {
             _ => self.sequence_mut(field)?.set_record(field, value),
         }
         Ok(())
+    }
+
+    /// Records the selected file frame reference at the start of an ordinary update, which the
+    /// next `last_frame` read returns.
+    pub fn set_last_frame(&mut self, frame: Option<u32>) {
+        self.last_frame = frame;
+    }
+
+    /// The file frame reference recorded by [`Self::set_last_frame`].
+    pub fn last_frame(&self) -> Option<u32> {
+        self.last_frame
     }
 
     /// The model refresh's copy of the current group's rotation words into the history the next

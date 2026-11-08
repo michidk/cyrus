@@ -5773,6 +5773,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .map_or(Ok(0), |animation| animation.playback.record_field(field))
                 .with_context(|| format!("property {name}"));
         }
+        if name == Property::Frame || name == Property::LastFrame {
+            // The word is the frame index inside the model the selected ShowFrame names, -1 when
+            // no frame was selected.
+            let index = self.property_receiver(target)?;
+            let animation = self.registry.actors[index]
+                .animation
+                .as_ref()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?;
+            let Some(reference) = (if name == Property::Frame {
+                animation.frame
+            } else {
+                animation.playback.last_frame()
+            }) else {
+                return Ok(-1);
+            };
+            let data = self
+                .inputs
+                .animations
+                .with_context(|| format!("property {name}: animation data unavailable"))?
+                .0;
+            let actor = &self.registry.actors[index];
+            let resolved = if actor.placement().is_some() {
+                data.resolve_map_frame(index, reference)
+            } else {
+                data.resolve_frame(actor.name(), reference)
+            }
+            .with_context(|| format!("property {name}"))?;
+            return i32::try_from(resolved.frame).with_context(|| format!("property {name}"));
+        }
         if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]

@@ -9468,6 +9468,38 @@
       ],
       "limits": "Verified in the original's model refresh: the angle words are applied relative to the history and then stored as the new history while the record has a current or pending group. cyrus copies the current group's words after the automatic model refresh of a non-rejected actor and keeps the history with the receiver and its snapshot; scripts read and write it like the other record words. Inferred: the refresh's exact gating (the original also requires the model to be in view and unhidden). Unknown: the pending-only case (the original copies stale words; cyrus leaves the history), installed use (the shipped game never sets the angle words).",
       "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "frame",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Frame index inside the model the last selected ShowFrame names, -1 before any frame",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-script/tests/script_registry/anim_properties.rs::the_frame_word_is_the_frame_index_inside_the_selected_model"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#frame-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original (selection routine, update snapshot, model refresh): the word is the second patched field of the selected ShowFrame (index inside its model), -1 until the first selection, and last_frame is copied from it at the start of each ordinary update. cyrus derives the index from the retained file frame reference through the actor's RAAN table (reads need the animation data input) and records last_frame at the same point of the ordinary update; writes stay explicitly unsupported because the original word pairs with the runtime model handle, whose numbering cyrus does not model (so handle and last_handle also stay unsupported). Unknown: installed script use (none) and the value for actors whose frame was never selected through an animation record.",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
+    },
+    {
+      "property": "last_frame",
+      "status": "partial",
+      "owner": 5,
+      "scope": "Frame index inside the selected model (-1 before any frame); last_frame is its value at the start of the last ordinary update",
+      "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::read_property/write_property -> ActorAnimation::record_field/set_record_field",
+      "tests": [
+        "crates/cyrus-world/tests/animation_repeat_commands.rs::the_last_frame_record_is_supplied_by_the_owner_and_saved"
+      ],
+      "evidence": [
+        "https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#frame-properties",
+        "https://github.com/michidk/cyrus/issues/5"
+      ],
+      "limits": "Verified in the original (selection routine, update snapshot, model refresh): the word is the second patched field of the selected ShowFrame (index inside its model), -1 until the first selection, and last_frame is copied from it at the start of each ordinary update. cyrus derives the index from the retained file frame reference through the actor's RAAN table (reads need the animation data input) and records last_frame at the same point of the ordinary update; writes stay explicitly unsupported because the original word pairs with the runtime model handle, whose numbering cyrus does not model (so handle and last_handle also stay unsupported). Unknown: installed script use (none) and the value for actors whose frame was never selected through an animation record.",
+      "reviewed_revision": "929fb3286c2b89e9224c80736ba058276c78d048"
     }
   ],
   "property_groups": [

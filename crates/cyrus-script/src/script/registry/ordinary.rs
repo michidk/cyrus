@@ -261,6 +261,10 @@ impl ScriptWorld {
                     self.begin_player_movement_update(id, ticks)?;
                 }
                 self.snapshot_spatial(id)?;
+                if let Some(animation) = self.actors[id.index].animation.as_mut() {
+                    let frame = animation.frame;
+                    animation.playback.set_last_frame(frame);
+                }
                 if !self.actors[id.index]
                     .control
                     .as_ref()

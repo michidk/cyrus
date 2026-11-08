@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 20] = [
+const REFERENCES: [Property; 21] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -29,6 +29,7 @@ const REFERENCES: [Property; 20] = [
     Property::AnimAngleVz,
     Property::AnimCurrent,
     Property::AnimLastAngleVx,
+    Property::Frame,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -124,6 +125,7 @@ fn animation_data(scripts: &Scripts, actor: &str) -> Animations {
 struct Fixture {
     world: ScriptWorld,
     id: cyrus_script::script::ScriptActorId,
+    data: Animations,
 }
 
 impl Fixture {
@@ -165,7 +167,7 @@ impl Fixture {
         world
             .bind_animation(id, &data, AnimationGroup::IDLE_LEDGE)
             .unwrap();
-        let mut fixture = Self { world, id };
+        let mut fixture = Self { world, id, data };
         fixture.animate(1);
         fixture
     }
@@ -197,6 +199,7 @@ impl Fixture {
                 caller,
                 ScriptStage::Body(Thread::Main),
                 ScriptInputs {
+                    animations: Some(cyrus_script::script::AnimationData(&self.data)),
                     nominal_ticks: Some(0),
                     frame_scale: Some(256),
                     ..Default::default()
@@ -579,4 +582,20 @@ fn the_last_angle_words_read_zero_and_keep_what_a_script_writes() {
     fixture.body();
     // The word starts at zero and keeps the low sixteen bits of the stored value, read signed.
     assert_eq!(fixture.locals()[..2], [0, 4464]);
+}
+
+#[test]
+fn the_frame_word_is_the_frame_index_inside_the_selected_model() {
+    // Group 7 starts on file frame reference 10 of the single 30-frame model. The script also
+    // expires the countdown, so one tick later playback shows reference 11.
+    let mut ops = reads(&[Property::Frame]);
+    ops.push(write(Property::AnimSpeedCount, 0));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 10);
+    fixture.animate(1);
+    assert_eq!(fixture.frame(), Some(11));
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 11);
 }

@@ -243,3 +243,16 @@ fn the_rotation_history_is_the_words_the_last_model_refresh_copied() {
             .unwrap();
     assert_eq!(restored.record_field(LastRotation(1)).unwrap(), -9);
 }
+
+#[test]
+fn the_last_frame_record_is_supplied_by_the_owner_and_saved() {
+    let data = asset(json!([{"opcode":0,"frame_reference":4}, {"opcode":1}]));
+    let (mut actor, _) = started(&data);
+    assert_eq!(actor.last_frame(), None);
+    actor.set_last_frame(Some(4));
+    let saved = serde_json::to_vec(&actor.snapshot()).unwrap();
+    let restored =
+        ActorAnimation::from_snapshot(&data, "ACTOR", serde_json::from_slice(&saved).unwrap())
+            .unwrap();
+    assert_eq!(restored.last_frame(), Some(4));
+}
