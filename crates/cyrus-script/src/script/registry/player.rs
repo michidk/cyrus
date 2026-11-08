@@ -343,6 +343,7 @@ impl ScriptWorld {
                     // the claimed heading steers it. A mod keeps the jump straight by claiming
                     // the heading the player already has.
                     world.face_claimed_heading(id, claim)?;
+                    world.update_claimed_bank(id, 0, false)?;
                 }
                 if !airborne && !sliding {
                     world.run_claimed_locomotion(id, claim, armed, timing, sounds)?;
@@ -946,7 +947,47 @@ impl ScriptWorld {
         id: super::ScriptActorId,
         claim: crate::player::input::LocomotionClaim,
     ) -> Result<()> {
-        self.face_heading(id, claim.heading)
+        let index = self.resolve(id)?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("claimed heading spatial registry unavailable")?
+            .actor_mut(index)?;
+        spatial.local.angles[1] = i32::from(claim.heading & 2047);
+        Self::rebuild_claimed_orientation(spatial)
+    }
+
+    // A claim supplies absolute facing. Incrementally composing yaw and bank deltas in the
+    // original rotation mode accumulates tilt: Euler rotations do not commute. Rebuild only
+    // the claimed pose, preserving the ordinary angle snapshot used by axis locks.
+    fn rebuild_claimed_orientation(
+        spatial: &mut super::super::spatial::ActorSpatial,
+    ) -> Result<()> {
+        ensure!(
+            spatial.parent.is_none(),
+            "claimed orientation requires an unattached player"
+        );
+        spatial.local.matrix =
+            cyrus_world::transform::Matrix::orientation(spatial.local.wrapped_angles());
+        spatial.effective = Some(spatial.local);
+        Ok(())
+    }
+
+    fn update_claimed_bank(
+        &mut self,
+        id: super::ScriptActorId,
+        turned: i64,
+        running: bool,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("claimed bank spatial registry unavailable")?
+            .actor_mut(index)?;
+        let roll = (spatial.local.angles[2] & 2047) as u16;
+        spatial.local.angles[2] = i32::from(crate::player::turn::lean(roll, turned, running));
+        Self::rebuild_claimed_orientation(spatial)
     }
 
     /// Wall response may project displacement and change heading. A grounded mod claim owns
@@ -1077,17 +1118,7 @@ impl ScriptWorld {
                 .and_then(|animation| animation.playback.current_group()),
             Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH)
         );
-        let spatial = self
-            .spatial
-            .as_mut()
-            .context("claimed locomotion spatial registry unavailable")?
-            .actor_mut(index)?;
-        let roll = (spatial.local.angles[2] & 2047) as u16;
-        let leaned = crate::player::turn::lean(roll, turned, running);
-        if leaned != roll {
-            spatial.local.angles[2] = i32::from(leaned);
-            spatial.refresh_transform()?;
-        }
+        self.update_claimed_bank(id, turned, running)?;
         // Q8 distance: map units per nominal update times the frame scale, which has eight
         // fractional bits. A NaN speed reads as zero.
         let distance = (claim.speed.clamp(0.0, 255.0) * timing.frame_scale as f32).round() as i32;

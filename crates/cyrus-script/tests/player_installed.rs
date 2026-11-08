@@ -484,20 +484,55 @@ fn claim(app: &mut App) -> Result<()> {
         Ok(world.spatial(id)?.local.angles[2] & 2047)
     };
     let mut banked = 0;
+    let orientation = |app: &App| -> Result<()> {
+        let world = app
+            .world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .context("world")?;
+        let spatial = world.spatial(world.selected_player().context("player")?)?;
+        let expected = cyrus_world::transform::Matrix::orientation(spatial.local.wrapped_angles());
+        for (actual, expected) in spatial
+            .local
+            .matrix
+            .0
+            .iter()
+            .flatten()
+            .zip(expected.0.iter().flatten())
+        {
+            ensure!(
+                (actual - expected).abs() < 0.0001,
+                "claimed orientation accumulated tilt: {:?}, angles {:?}",
+                spatial.local.matrix,
+                spatial.local.angles
+            );
+        }
+        Ok(())
+    };
     for turn in 1..=12u16 {
         let facing = cyrus_world::heading::wrap(heading.wrapping_add(turn * 40));
         app.insert_resource(LocomotionClaimed(Some(LocomotionClaim {
             heading: facing,
             travel: facing,
-            speed,
+            speed: 0.0,
             gait: Gait::Run,
             jump: false,
             tuning: Default::default(),
         })));
         app.update();
         banked = banked.max(roll(app)?);
+        orientation(app)?;
     }
     ensure!(banked != 0, "a running turn did not bank the player");
+    // Jump directly out of a banked running turn. The airborne controller must relax the
+    // bank as well as keep the model matrix consistent with its absolute facing.
+    jump(app, None)?;
+    for _ in 0..20 {
+        app.update();
+        orientation(app)?;
+    }
+    ensure!(roll(app)? == 0, "jump retained the running bank");
     // Stand, then travel to the left of the facing.
     app.insert_resource(LocomotionClaimed(Some(LocomotionClaim {
         heading,
