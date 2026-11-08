@@ -252,7 +252,7 @@ module where it is defined and regenerate.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
 - `src/script/registry/attack_input.rs` — The selected player's armed attack input: per-key tap latches and the combo move start.
 - `src/script/registry/avoid.rs` — Armed nonplayer actors steer away from walls: four stacked-sphere probes around the body set a
-- `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
+- `src/script/registry/body.rs` — Ordinary body queries use the selected vertex-bound or initial shape and current pose.
 - `src/script/registry/bounce.rs` — The receiver's side of `BounceObject`: live actor state behind [`BouncePort`]. The rules are
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/camera.rs` — Live session camera services: first pose establishment and one atomic update.

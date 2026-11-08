@@ -1,4 +1,4 @@
-//! Ordinary primary body queries use the actor's initial shape and current pose.
+//! Ordinary body queries use the selected vertex-bound or initial shape and current pose.
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -51,8 +51,8 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary residual control unavailable")?;
         let shape = self.ordinary_collision_shape(id)?;
-        let initial = shape
-            .body
+        let selected = self.selected_collision_spheres(id, query.animations)?;
+        let initial = selected
             .first()
             .context("ordinary residual first sphere unavailable")?
             .radius;
@@ -68,8 +68,7 @@ impl ScriptWorld {
             initial
         };
         let center_offset = shape.center_offset;
-        let spheres = shape
-            .body
+        let spheres = selected
             .iter()
             .map(|sphere| {
                 (
@@ -294,7 +293,7 @@ impl ScriptWorld {
 
     /// Test a nonplayer destination against retained model candidates, stopping
     /// at the first blocker. The receiver keeps its current collision orientation
-    /// and original sphere shape; stored position and support state are untouched.
+    /// and selected sphere shape; stored position and support state are untouched.
     pub fn ordinary_destination_body_clear(
         &self,
         id: ScriptActorId,
@@ -304,8 +303,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let spheres = self
-            .ordinary_collision_shape(id)?
-            .body
+            .selected_collision_spheres(id, query.animations)?
             .iter()
             .map(|sphere| {
                 (
@@ -343,7 +341,7 @@ impl ScriptWorld {
 
     /// Collect primary contacts in retained model order with original integer
     /// normals and owners. Rebuilds collision orientation from current local
-    /// angles and initial body spheres; other models retain presentation poses.
+    /// angles and selected body spheres; other models retain presentation poses.
     /// Does not change support owners, surface state, or logical motion.
     pub fn query_ordinary_body(
         &mut self,
@@ -353,8 +351,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let spheres = self
-            .ordinary_collision_shape(id)?
-            .body
+            .selected_collision_spheres(id, query.animations)?
             .iter()
             .map(|sphere| {
                 (

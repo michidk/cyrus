@@ -715,3 +715,8 @@ honours for the body (scripts, animation and collision continue); all read as 0 
 Verified: `id` reads the receiver's signed runtime identifier word (what `MyId` returns); a write is refused because the
 identifier is installed identity that name lookup and restore validation key on. See preservation's
 [runtime identifier property](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#runtime-identifier-property).
+
+Verified: ordinary primary, residual and destination body queries select vertex-bound RAVC
+spheres instead of initial MPSZ spheres when those records exist, following preservation's
+[player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).
+The routed fixture checks displaced vertices, contact restoration and ordinary-update continuation.

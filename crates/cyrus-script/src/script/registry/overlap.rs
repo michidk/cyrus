@@ -67,13 +67,6 @@ impl ScriptWorld {
                 radius,
             }]);
         }
-        let definition = data.actor(actor.name())?;
-        let count = definition["ravc_count"].as_i64().with_context(|| {
-            format!(
-                "world {} instance {index}: overlap RAVC count absent",
-                self.world
-            )
-        })?;
         let transform = |local: [f32; 3], radius: f32| -> Result<OverlapSphere> {
             let local = pose.matrix.transform_stored(local)?;
             let center = std::array::from_fn(|axis| origin[axis] + local[axis]);
@@ -84,6 +77,37 @@ impl ScriptWorld {
             );
             Ok(OverlapSphere { center, radius })
         };
+        self.selected_collision_spheres(id, data)?
+            .iter()
+            .take(32)
+            .map(|sphere| {
+                transform(
+                    sphere.center.map(|value| value as f32),
+                    sphere.radius as f32,
+                )
+            })
+            .collect()
+    }
+
+    /// Current RAVC spheres replace the initial MPSZ spheres for ordinary shape queries.
+    pub(super) fn selected_collision_spheres(
+        &self,
+        id: ScriptActorId,
+        data: &Animations,
+    ) -> Result<Vec<cyrus_collision::actor_shape::BodySphere>> {
+        self.require_model_identity(data)?;
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let definition = data.actor(actor.name())?;
+        if actor.model.static_radius.is_some() && definition.get("ravc_count").is_none() {
+            return Ok(self.ordinary_collision_shape(id)?.body.clone());
+        }
+        let count = definition["ravc_count"].as_i64().with_context(|| {
+            format!(
+                "world {} instance {index}: overlap RAVC count absent",
+                self.world
+            )
+        })?;
         if count != 0 {
             // Vertex-bound records replace the initial shape: one sphere each, centered on the
             // record's model vertex (Q8, truncated to map units) plus its signed offset.
@@ -114,23 +138,16 @@ impl ScriptWorld {
                     )?;
                     let offsets = [field("offset_x")?, field("offset_y")?, field("offset_z")?];
                     let local = std::array::from_fn(|axis| {
-                        (vertex[axis] / 256 + offsets[axis] as i32) as f32
+                        (vertex[axis] / 256).wrapping_add(offsets[axis] as i32)
                     });
-                    transform(local, field("radius")? as f32)
+                    Ok(cyrus_collision::actor_shape::BodySphere {
+                        center: local,
+                        radius: i32::try_from(field("radius")?)?,
+                    })
                 })
                 .collect();
         }
-        self.ordinary_collision_shape(id)?
-            .body
-            .iter()
-            .take(32)
-            .map(|sphere| {
-                transform(
-                    sphere.center.map(|value| value as f32),
-                    sphere.radius as f32,
-                )
-            })
-            .collect()
+        Ok(self.ordinary_collision_shape(id)?.body.clone())
     }
 }
 
