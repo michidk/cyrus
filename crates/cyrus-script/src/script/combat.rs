@@ -888,14 +888,14 @@ mod sheath_tests {
     #[test]
     fn begin_sheathing_sets_state_clears_the_combat_flag_and_starts_the_cooldown() {
         let mut control = armed();
-        control.motion_companion = 9;
+        control.jump_selector = 9;
         control.extra_time = 19;
         begin_sheathing(&mut control);
         let combat = control.combat.unwrap();
         assert_eq!(
             (
                 control.living_state,
-                control.motion_companion,
+                control.jump_selector,
                 control.extra_time
             ),
             (LivingState::SHEATHING_SWORD, 9, 0)

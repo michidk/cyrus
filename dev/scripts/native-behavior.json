@@ -7270,7 +7270,7 @@
       "property": "rope_wait",
       "status": "partial",
       "owner": 22,
-      "scope": "Unsigned actor motion byte with low8 writes",
+      "scope": "The rope-wait byte: 24 after a rope release, counted down by the grab check (shared with the retained jump selector)",
       "caller": "ScriptWorld::advance -> Runtime read/write -> GameHost::property_name/property_receiver -> read_property/write_property",
       "tests": [
         "crates/cyrus-script/tests/script_registry.rs::motion_byte_properties_read_and_write_the_actor_motion_bytes"
@@ -7280,7 +7280,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6c1f44638ab5f8b1c8aa7a5cddc565e81/docs/engine/SOUP.md",
         "https://github.com/michidk/cyrus/issues/22"
       ],
-      "limits": "Verified by source/assertion inspection; Rust tests were not rerun. Public fixture writes7 then reads7 and checks control.motion_companion equals7. Source uses unsigned byte reads and low8 writes. Unlike torch-counter fixture it does not assert signed extremes or overflow. Unknown: all byte values, routed/selected receivers, original/native/browser descriptor lifecycle, and save/revisit boundaries. Underlying motion/rope gameplay acceptance does not isolate this property. Verified static-only census: zero decoded read/write/update occurrences in27 historical exports. Unsupported fallback bodies and other content are not represented by that absence. Partial is an inferred scope judgment, not completion from source presence.",
+      "limits": "Verified in the original attach, release, grab and late collision routines: the byte at +0x1b0 is cleared on attach, set to 24 on release, counted down by the grab check and cleared by the fall; the weapon routines leave it alone. cyrus had kept two fields for it (a 'companion' byte the property read, and the jump selector the rope code used), so a script never saw the release timer; the property now reads and writes the single retained byte, old saves merge their two fields, and the weapon-routine retention tests follow the rename. Not modelled: rope_id (the grab skips the last rope by index). Unknown: installed script use (none).",
       "reviewed_revision": "f52c0dbd738bd176de83e48eb024a1d5290f9313"
     },
     {

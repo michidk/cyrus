@@ -21251,7 +21251,7 @@ fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_change
 fn motion_byte_properties_read_and_write_the_actor_motion_bytes() {
     use cyrus_script::script::{ScriptInputs, ScriptStage};
     for (name, field) in [
-        (Property::RopeWait, "motion_companion"),
+        (Property::RopeWait, "jump_selector"),
         (Property::SlideFlag, "sliding_state"),
         (Property::FallFlag, "falling_state"),
         (Property::JumpFlag, "queued_motion"),

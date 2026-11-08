@@ -29,6 +29,8 @@ struct ControlSnapshot {
     #[serde(default)]
     ai_record: Option<AiRecordSnapshot>,
     living_state: LivingState,
+    /// Saves written before the byte had one field kept it here as well as in `jump_selector`.
+    #[serde(default, skip_serializing)]
     motion_companion: u8,
     #[serde(default)]
     extra_time: u8,
@@ -150,7 +152,7 @@ impl ControlSnapshot {
                 length: control.ai.length,
             }),
             living_state: control.living_state,
-            motion_companion: control.motion_companion,
+            motion_companion: 0,
             extra_time: control.extra_time,
             surface_time: control.surface_time,
             jump_time: control.jump_time,
@@ -233,7 +235,6 @@ impl ControlSnapshot {
                 }
             },
             living_state: self.living_state,
-            motion_companion: self.motion_companion,
             extra_time: self.extra_time,
             surface_time: self.surface_time,
             jump_time: self.jump_time,
@@ -257,7 +258,11 @@ impl ControlSnapshot {
             },
             fall_origin_y: self.fall_origin_y,
             fall_timer: self.fall_timer,
-            jump_selector: self.jump_selector,
+            jump_selector: if self.jump_selector != 0 {
+                self.jump_selector
+            } else {
+                self.motion_companion
+            },
             stable_position_valid: self.stable_position_valid,
             stable_local_position: self.stable_local_position,
             sliding_distance: self.sliding_distance,

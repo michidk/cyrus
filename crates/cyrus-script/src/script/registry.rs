@@ -421,8 +421,6 @@ pub struct ActorControlState {
     pub ai: AiRecord,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: LivingState,
-    /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
-    pub motion_companion: u8,
     /// Receiver-owned ordinary countdown; zero and 255 do not decrement.
     pub extra_time: u8,
     /// The `surface_time`, `jump_time`, `jump_height` and `anchor` bytes: no engine routine reads
@@ -463,7 +461,9 @@ pub struct ActorControlState {
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
-    /// Allocator-zero runtime jump selector, separate from living and torch state.
+    /// The `rope_wait` byte (+0x1b0), allocator-zero: a rope release sets it to 24, ordinary updates
+    /// count it down and the rope grab skips the released rope while it is nonzero. The weapon
+    /// routines retain it.
     pub jump_selector: u8,
     /// Validity of the separately retained stable local position.
     pub stable_position_valid: bool,
@@ -5328,7 +5328,7 @@ pub(super) fn raex_word(
 /// `last_direction` shares the retained movement classification written by motion producers.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
-        Property::RopeWait => &mut control.motion_companion,
+        Property::RopeWait => &mut control.jump_selector,
         Property::ExtraTime => &mut control.extra_time,
         Property::SurfaceTime => &mut control.surface_time,
         Property::JumpTime => &mut control.jump_time,

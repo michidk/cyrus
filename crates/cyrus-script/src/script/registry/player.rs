@@ -1531,7 +1531,7 @@ fn steer_airborne(
         // shortcut: the two retained rope-release flags are not modelled (ropes #21);
         // upgrade when the rope owner retains them.
         if control.falling_state != JumpMotion::NONE {
-            control.motion_companion = 0;
+            control.jump_selector = 0;
         }
         if control
             .actions
@@ -1607,13 +1607,13 @@ mod airborne_tests {
         };
         let mut control = super::super::ActorControlState {
             falling_state: JumpMotion::STANDING,
-            motion_companion: 5,
+            jump_selector: 5,
             actions: [6, 0x82].into(),
             ..Default::default()
         };
         steer_airborne(&mut control, None, &held);
         assert_eq!(
-            (control.motion_companion, <[u32; 2]>::from(control.actions)),
+            (control.jump_selector, <[u32; 2]>::from(control.actions)),
             (0, [4, 0x80])
         );
         control.actions = [1, 0].into();
