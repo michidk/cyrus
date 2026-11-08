@@ -749,6 +749,10 @@ pub struct ScriptWorld {
     /// Water and lava transitions the selected player's forward probes noticed, in query order;
     /// the caller that owns the random stream and sound sink runs them right after the probe.
     pending_surface_transitions: Vec<PendingSurfaceTransition>,
+    /// Whether the actor now updating was rolled back this update (the original's shared changed
+    /// flag): the stable-position or water rollback restored its pose. Cleared as each ordinary
+    /// update starts; never saved.
+    rolled_back: bool,
     /// The session flag the Home key toggles for the yeahbaby ground bypass; it is read by the
     /// ground probe only while the cheat is on and is not reset by turning the cheat off.
     ground_bypass_toggle: bool,
@@ -1649,6 +1653,7 @@ impl ScriptWorld {
             display_attachments: Vec::new(),
             surface_veto: None,
             pending_surface_transitions: Vec::new(),
+            rolled_back: false,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera,
@@ -10071,6 +10076,7 @@ mod fighting_tests {
             map_updates: Default::default(),
             surface_veto: None,
             pending_surface_transitions: Vec::new(),
+            rolled_back: false,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera: None,

@@ -27,6 +27,10 @@ impl ScriptWorld {
         frame_scale: u32,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        // An actor rolled back earlier in this update is left where the rollback put it.
+        if self.rolled_back {
+            return Ok(());
+        }
         let control = self.actors[index]
             .control
             .as_ref()

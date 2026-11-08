@@ -329,6 +329,7 @@ impl ScriptWorld {
                         }),
                         sounds,
                     )?;
+                self.rolled_back = false;
                 let rollback = self.capture_ordinary_rollback(id, sounds)?;
                 if let Some(scale) = inputs.frame_scale {
                     let backward = self.actors[id.index]

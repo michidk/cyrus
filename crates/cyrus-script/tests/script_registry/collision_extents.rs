@@ -320,11 +320,18 @@ fn a_linked_actors_residual_body_query_reads_its_link_position() {
 /// An armed actor's wall avoidance, with the player standing 12 map units from the wall face
 /// and facing it: the front probe finds the wall and the actor steps aside and back.
 fn avoidance_after(marks: u32) -> ([i32; 3], (i32, u32, i32)) {
-    avoidance_at(marks, 560, Property::SizePosVz, 0)
+    avoidance_at(marks, 560, Property::SizePosVz, 0, false)
 }
 
 /// [`avoidance_after`] with the player at map Z `z` after the script wrote `property = value`.
-fn avoidance_at(marks: u32, z: i32, property: Property, value: i32) -> ([i32; 3], (i32, u32, i32)) {
+fn avoidance_at(
+    marks: u32,
+    z: i32,
+    property: Property,
+    value: i32,
+    rolled_back: bool,
+) -> ([i32; 3], (i32, u32, i32)) {
+    use cyrus_assets::surface::Surface;
     use cyrus_script::script::OrdinaryGroundQuery;
     let (_, mut world, mut scene, data, _) = write_extent(property, value);
     add_wall(&mut scene);
@@ -340,6 +347,21 @@ fn avoidance_at(marks: u32, z: i32, property: Property, value: i32) -> ([i32; 3]
         .unwrap();
     world.refresh_model_presentations(&data, &[player]).unwrap();
     world.set_combat_record_for_test(player);
+    if rolled_back {
+        // The water rollback restores the actor, which leaves the avoidance pass alone this update.
+        world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
+        assert!(world.retain_ordinary_water_position(player).unwrap());
+        let rollback = world
+            .capture_ordinary_rollback(player, &mut |_, _| Ok(()))
+            .unwrap();
+        world.set_actor_surface(player, Surface::WATER).unwrap();
+        assert!(
+            world
+                .rollback_ordinary_water(player, None, &rollback, &mut |_, _| Ok(()))
+                .unwrap()
+        );
+        world.set_actor_surface(player, Surface::UNKNOWN).unwrap();
+    }
     world.set_last_collide_for_test(player, marks);
     let prepared = world
         .prepare_ordinary_collision_query(player, &scene, &data, [522, z], &[player, map])
@@ -389,12 +411,24 @@ fn the_avoidance_radius_reads_the_written_total_height() {
     // 25, the point 548 + 0 and the reach 573, which every probe point sees.
     let start = [522 * 256, -1536, 548 * 256];
     assert_eq!(
-        avoidance_at(1, 548, Property::SizeSizeVx, 48),
+        avoidance_at(1, 548, Property::SizeSizeVx, 48, false),
         (start, (0, 0, 0))
     );
-    let (position, state) = avoidance_at(1, 548, Property::SizeSizeVy, 104);
+    let (position, state) = avoidance_at(1, 548, Property::SizeSizeVy, 104, false);
     // The wider spheres reach the wall from all four points (mask 15); the four steps (right,
     // left, back by 0x400, forward) cancel, and the last side chosen is 2.
     assert_eq!(state, (2, 15, 0x10));
     assert_eq!(position, start);
+}
+
+#[test]
+fn a_rolled_back_actor_skips_the_avoidance_pass() {
+    // The same wall and mark that make the pass step aside do nothing once the water rollback has
+    // restored the actor in this update (the original's shared changed flag).
+    let start = [522 * 256, -1536, 560 * 256];
+    assert_eq!(
+        avoidance_at(1, 560, Property::SizePosVz, 0, true),
+        (start, (0, 0, 0))
+    );
+    assert_ne!(avoidance_at(1, 560, Property::SizePosVz, 0, false).0, start);
 }
