@@ -91,3 +91,46 @@ fn the_selected_players_ordinary_jump_entry_names_the_missing_edge_inputs() {
         "{error:#}"
     );
 }
+
+#[test]
+fn script_jump_admission_blocks_only_the_four_listed_groups() {
+    use cyrus_script::script::{ScriptInputs, ScriptStage};
+    // The original's group block tests a range whose bounds cannot both hold, so only the listed
+    // groups refuse (preservation: Script Jump admission); the fall and fight groups in between
+    // admit the jump like any other group.
+    for (group, admitted) in [
+        (27, true),
+        (32, true),
+        (33, true),
+        (34, true),
+        (35, true),
+        (111, true),
+        (114, false),
+        (116, false),
+        (130, false),
+        (131, false),
+    ] {
+        let (mut world, _, _) = script_jump_fixture(group, |_| {});
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            control.queued_motion != JumpMotion::NONE,
+            admitted,
+            "group {group}"
+        );
+    }
+}

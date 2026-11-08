@@ -194,7 +194,7 @@ fn fixture(group: u16, ai_type: i32) -> (ScriptWorld, cyrus_assets::animation::A
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,"actors":[{
-            "script_name":"LOGIC","model_load_path":"none",
+            "script_name":"LOGIC","model_load_path":"none","ravc_count":0,
             "animation_groups":([0,94,95].into_iter().map(|g|
                 serde_json::json!({"group_index":g,"anim_id":1,"anim_type":0,
                     "commands":[{"opcode":0,"frame_reference":g},{"opcode":2,"value":0}]})).collect::<Vec<_>>()) }]}),

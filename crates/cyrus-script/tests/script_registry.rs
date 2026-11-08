@@ -21787,6 +21787,12 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
             ..Default::default()
         };
         scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        assert!(
+            world
+                .player_in_sight_retained(ids[0], ids[1], &scene, &data)
+                .unwrap(),
+            "before the first gather, nearby geometry alone must not block sight"
+        );
         let prepared = world
             .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &[ids[0], ids[1]])
             .unwrap();
@@ -21815,6 +21821,22 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
                 .unwrap(),
             !wall,
             "retained list, wall {wall}"
+        );
+        let mut empty_scene =
+            ordinary_collision_scene(world.world, static_model_fixture(cache()).2);
+        empty_scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            ..Default::default()
+        };
+        empty_scene.static_collision = StaticCollision::new(&empty_scene.collision).unwrap();
+        world
+            .prepare_ordinary_collision_query(ids[1], &empty_scene, &data, [10, 30], &[])
+            .unwrap();
+        assert!(
+            world
+                .player_in_sight_retained(ids[0], ids[1], &scene, &data)
+                .unwrap(),
+            "another actor's empty gather replaces the wall list rather than accumulating it"
         );
     }
 }
@@ -49611,6 +49633,41 @@ fn removed_pickup_revisit_skips_ordinary_calls_without_repeating_inventory_award
     assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
     app.world_mut().remove_resource::<PreparedWorld>();
     app.update();
+    let mut other_scripts: Scripts =
+        serde_json::from_value(serde_json::to_value(&scripts).unwrap()).unwrap();
+    other_scripts.world = 8;
+    other_scripts.content_id = other_scripts.content_identity().unwrap();
+    let mut other_animations: cyrus_assets::animation::Animations =
+        serde_json::from_value(serde_json::to_value(&animations).unwrap()).unwrap();
+    other_animations.world = 8;
+    other_animations.metadata["script_content_id"] = other_scripts.content_id.clone().into();
+    let other_scripts = app
+        .world_mut()
+        .resource_mut::<bevy::prelude::Assets<Scripts>>()
+        .add(other_scripts);
+    let other_animations = app
+        .world_mut()
+        .resource_mut::<bevy::prelude::Assets<cyrus_assets::animation::Animations>>()
+        .add(other_animations);
+    let mut other_prepared = prepared.clone();
+    other_prepared.world = Some(8);
+    other_prepared.requested_name = "OTHER".into();
+    other_prepared.scripts = other_scripts;
+    other_prepared.animations = other_animations;
+    app.insert_resource(other_prepared);
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .world,
+        8
+    );
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 1);
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
     app.insert_resource(prepared);
     app.update();
     let collision = cyrus_assets::collision::CollisionScene::default();
@@ -50414,3 +50471,138 @@ mod flat_texture_tests;
 
 #[path = "script_registry/jump_fall_guards.rs"]
 mod jump_fall_guards_tests;
+
+#[test]
+fn ordinary_body_uses_vertex_bound_shape_instead_of_initial_spheres() {
+    use cyrus_assets::animation::AnimationModel;
+    use cyrus_script::script::{OrdinaryBodyQuery, OrdinaryResidualQuery};
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 1;
+    let (mut world, mut data, models) = static_model_fixture(scripts);
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    world.refresh_model_presentations(&data, &[other]).unwrap();
+    data.metadata["actors"][0]["model_load_path"] = "animation_table".into();
+    data.metadata["actors"][0]["ravc_count"] = 1.into();
+    data.metadata["actors"][0]["collision_volumes"] = serde_json::json!([
+        {"vertex":0,"offset_x":0,"offset_y":0,"offset_z":0,"radius":24}
+    ]);
+    data.metadata["actors"][0]["raan_entries"] = serde_json::json!([
+        {"file_path":"VOLUME.3D","frame_count":1}
+    ]);
+    data.metadata["actors"][0]["animation_groups"] = serde_json::json!([
+        {"group_index":0,"anim_id":1,"anim_type":0,
+         "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}
+    ]);
+    data.metadata["mpob_objects"][0]["script_name"] = "LOGIC".into();
+    data.metadata["mpob_objects"][0]["object_type"] = 1.into();
+    data.models.insert(
+        "VOLUME".into(),
+        AnimationModel {
+            radius: Some(100.0),
+            base_positions: vec![],
+            base_normals: vec![],
+            faces: vec![],
+            corner_normals: vec![],
+            encoding: "animated_i16".into(),
+            positions: vec![vec![[100.0, 0.0, 0.0]]],
+            normals: vec![vec![]],
+        },
+    );
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_body(
+                id,
+                OrdinaryBodyQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                    excluded_candidate_type: None,
+                    terrain: None,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    // Move the selected vertex back onto the support face without changing initial bounds.
+    data.models.get_mut("VOLUME").unwrap().positions[0][0] = [0.0, -1.0, 0.0];
+    assert!(
+        !world
+            .query_ordinary_body(
+                id,
+                OrdinaryBodyQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                    excluded_candidate_type: None,
+                    terrain: None,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+
+    data.models.get_mut("VOLUME").unwrap().positions[0][0] = [100.0, 0.0, 0.0];
+    let position = world.spatial(id).unwrap().local.position;
+    for expected in [5, 6, 7] {
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                cyrus_script::script::OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: cyrus_script::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+        assert_eq!(world.spatial(id).unwrap().local.position, position);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .last_collide
+                .bits(),
+            0
+        );
+    }
+}
