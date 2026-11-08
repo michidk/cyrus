@@ -843,6 +843,23 @@ fn model_material(
     }
 }
 
+/// x: 1 while `Area::Water` is Modern. While Lighting is Modern too, the terrain shader moves the
+/// modern waves (see `water`): z is their amplitude in world units and w the grid cell size, which is
+/// 0 otherwise. y is set later, for terrain.
+fn modern_waves(environment: &Environment, fidelity: &Fidelity) -> Vec4 {
+    let modern = fidelity.mode(Area::Water) == Mode::Modern;
+    let amplitude = environment
+        .water
+        .as_ref()
+        .map_or(0.0, |water| water.parameters[0] / 20.0);
+    let shader_waves = modern && fidelity.mode(Area::Lighting) == Mode::Modern && amplitude != 0.0;
+    if shader_waves {
+        Vec4::new(1.0, 0.0, amplitude, crate::water::CELL_SIZE)
+    } else {
+        Vec4::new(u8::from(modern) as f32, 0.0, 0.0, 0.0)
+    }
+}
+
 fn fog_extension(
     environment: &Environment,
     fidelity: &Fidelity,
@@ -859,12 +876,7 @@ fn fog_extension(
             u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
             0.0,
         ),
-        water: Vec4::new(
-            u8::from(fidelity.mode(Area::Water) == Mode::Modern) as f32,
-            0.0,
-            0.0,
-            0.0,
-        ),
+        water: modern_waves(environment, fidelity),
         lighting: Vec4::new(
             u8::from(fidelity.mode(Area::Lighting) == Mode::Modern) as f32,
             u8::from(fidelity.mode(Area::Textures) == Mode::Modern) as f32,
@@ -1028,6 +1040,47 @@ mod tests {
         fidelity.set(Area::Textures, Mode::Modern);
         let unfiltered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
         assert_eq!(unfiltered.lighting.y, 1.0);
+    }
+
+    // The terrain shader moves the modern waves only while it draws the unprojected terrain, which
+    // modern lighting does; otherwise the CPU keeps moving them in the mesh.
+    #[test]
+    fn the_terrain_shader_moves_the_waves_only_under_modern_water_and_lighting() {
+        let mut fidelity = Fidelity::default();
+        let water = cyrus_assets::environment::Water {
+            parameters: [24.0, 512.0, 0.0],
+            side: 2,
+            animated_vertices: vec![true; 4],
+        };
+        let mut environment = Environment {
+            world_palette: Vec::new(),
+            effects: None,
+            texture_scale: [1, 1],
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_heights: None,
+            water: Some(water),
+            terrain_lighting: None,
+            model_lighting: cyrus_assets::environment::ModelLighting {
+                ambient: [64.0; 3],
+                directional: [0.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            },
+            prelighting: Default::default(),
+            object_lights: Vec::new(),
+        };
+        assert_eq!(modern_waves(&environment, &fidelity), Vec4::ZERO);
+        fidelity.set(Area::Water, Mode::Modern);
+        assert_eq!(modern_waves(&environment, &fidelity), Vec4::X);
+        fidelity.set(Area::Lighting, Mode::Modern);
+        assert_eq!(
+            modern_waves(&environment, &fidelity),
+            Vec4::new(1.0, 0.0, 1.2, crate::water::CELL_SIZE)
+        );
+        environment.water = None;
+        assert_eq!(modern_waves(&environment, &fidelity), Vec4::X);
     }
 
     #[test]

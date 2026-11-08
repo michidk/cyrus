@@ -39,8 +39,9 @@ struct MaterialExtras {
 struct Inspected;
 
 #[derive(Component)]
-struct Binding {
-    key: String,
+pub(super) struct Binding {
+    /// The animation whose playback state every model with this key shares.
+    pub(super) key: String,
     frames: Vec<Handle<Image>>,
 }
 

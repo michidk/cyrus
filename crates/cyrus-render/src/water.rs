@@ -18,7 +18,7 @@ use cyrus_game::fidelity::Mode;
 use cyrus_world::heading::wrap;
 
 // Preservation's exporter uses 20 engine units per unit and 256 per grid cell.
-const CELL_SIZE: f32 = 256.0 / 20.0;
+pub(crate) const CELL_SIZE: f32 = 256.0 / 20.0;
 const BIOS_TICKS_PER_SECOND: f64 = 1_193_182.0 / 65_536.0;
 
 struct TerrainMesh {
@@ -40,6 +40,8 @@ pub struct WaterPlayback {
     tick: Option<u64>,
     window: Option<crate::terrain::Window>,
     mode: Mode,
+    /// Whether the terrain shader moves the modern waves, so the mesh keeps the base grid.
+    shader_waves: bool,
     grid: Vec<[f32; 3]>,
     engine_heights: Vec<f32>,
     normals: Vec<[f32; 3]>,
@@ -128,6 +130,38 @@ fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
 pub(crate) struct PlayerTerrain<'w> {
     request: Option<Res<'w, cyrus_script::player::data::PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<cyrus_script::player::data::PlayerScene>>>,
+}
+
+/// The engine heights the ground queries read: the original's waves on the window's animated
+/// vertices and the base heights elsewhere.
+fn engine_heights(
+    water: Option<&Water>,
+    window: crate::terrain::Window,
+    ticks: u64,
+    base: &[f32],
+) -> Vec<f32> {
+    base.iter()
+        .enumerate()
+        .map(|(vertex, &base)| match water {
+            Some(water) if water.animated_vertices[vertex] && window.faithful_contains(vertex) => {
+                wave_height(water, vertex, ticks, base)
+            }
+            _ => base,
+        })
+        .collect()
+}
+
+/// Hands the engine heights to the player scene's terrain; ground queries near the camera read
+/// these live vertex heights (water moves actors).
+fn publish_heights(player: &PlayerTerrain, window: crate::terrain::Window, heights: &[f32]) {
+    if heights.len() == 256 * 256
+        && let (Some(request), Some(scenes)) = (&player.request, &player.scenes)
+        && let Some(terrain) = scenes
+            .get(&request.0)
+            .and_then(|scene| scene.terrain.as_ref())
+    {
+        terrain.live().publish(window.engine_center(), heights);
+    }
 }
 
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
@@ -257,10 +291,29 @@ pub(crate) fn animate_water(
     let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
     let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
     let mode = fidelity.mode(Area::Water);
-    let update_grid = rebuild
-        || playback.tick.is_none()
-        || (water.is_some()
-            && (mode != Mode::Faithful || playback.mode != mode || playback.tick != Some(ticks)));
+    // Under modern lighting the terrain draws its unprojected mesh, so the terrain shader can move
+    // the modern waves; rewriting and uploading the whole terrain mesh every frame cost most of
+    // a frame. The mesh then keeps the base grid and only the ground heights follow the waves.
+    let shader_waves =
+        water.is_some() && mode == Mode::Modern && fidelity.mode(Area::Lighting) == Mode::Modern;
+    let update_grid = if shader_waves {
+        playback.tick.is_none() || playback.mode != mode || !playback.shader_waves
+    } else {
+        rebuild
+            || playback.tick.is_none()
+            || playback.shader_waves
+            || (water.is_some()
+                && (mode != Mode::Faithful
+                    || playback.mode != mode
+                    || playback.tick != Some(ticks)))
+    };
+    if let Some(water) = water.filter(|_| shader_waves && !update_grid)
+        && (rebuild || playback.tick != Some(ticks))
+    {
+        playback.tick = Some(ticks);
+        playback.engine_heights = engine_heights(Some(water), window, ticks, &heights.heights);
+        publish_heights(&player_scene, window, &playback.engine_heights);
+    }
     // A faithful wave tick inside an unchanged window moves only the window's animated vertices;
     // everything else keeps the values the last complete update gave it.
     let count = heights.heights.len();
@@ -286,16 +339,7 @@ pub(crate) fn animate_water(
                     wave_height(water, vertex, ticks, heights.heights[vertex]);
             }
         }
-        if playback.engine_heights.len() == 256 * 256
-            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
-            && let Some(terrain) = scenes
-                .get(&request.0)
-                .and_then(|scene| scene.terrain.as_ref())
-        {
-            terrain
-                .live()
-                .publish(window.engine_center(), &playback.engine_heights);
-        }
+        publish_heights(&player_scene, window, &playback.engine_heights);
         let moved: Vec<_> = window
             .vertices()
             .filter(|&vertex| water.animated_vertices[vertex])
@@ -331,31 +375,9 @@ pub(crate) fn animate_water(
         }
         playback.tick = Some(ticks);
         playback.mode = mode;
-        playback.engine_heights = heights
-            .heights
-            .iter()
-            .enumerate()
-            .map(|(vertex, &base)| {
-                if let Some(water) = water
-                    .filter(|w| w.animated_vertices[vertex] && window.faithful_contains(vertex))
-                {
-                    wave_height(water, vertex, ticks, base)
-                } else {
-                    base
-                }
-            })
-            .collect();
-        // Ground queries near the camera read these live vertex heights (water moves actors).
-        if playback.engine_heights.len() == 256 * 256
-            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
-            && let Some(terrain) = scenes
-                .get(&request.0)
-                .and_then(|scene| scene.terrain.as_ref())
-        {
-            terrain
-                .live()
-                .publish(window.engine_center(), &playback.engine_heights);
-        }
+        playback.shader_waves = shader_waves;
+        playback.engine_heights = engine_heights(water, window, ticks, &heights.heights);
+        publish_heights(&player_scene, window, &playback.engine_heights);
         let mut grid = playback.base.clone();
         for (vertex, position) in grid.iter_mut().enumerate() {
             if let Some(water) =
@@ -365,6 +387,7 @@ pub(crate) fn animate_water(
                     Mode::Faithful => {
                         -wave_height(water, vertex, ticks, heights.heights[vertex]) / 20.0
                     }
+                    Mode::Modern if shader_waves => playback.base[vertex][1],
                     Mode::Modern => {
                         playback.base[vertex][1]
                             + modern_displacement(

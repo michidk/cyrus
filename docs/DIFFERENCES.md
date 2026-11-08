@@ -47,7 +47,9 @@ the ambient colour as an environment light and the object lights as point lights
 installed lighting data. The lights are calibrated so a fully lit surface shows its texture colour, and
 tonemapping is off so the sky, water and flats keep the original's colours. Models and terrain draw their
 full world-space meshes instead of the original's screen-space prepared geometry, and they cast and
-receive shadows. The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
+receive shadows (each caster through a shadow-only twin that shares one material, so
+the cascades batch their draws, and static models with equal modern material values share one
+material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
 bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
 measured matches. Flats keep their original shading.
 

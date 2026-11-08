@@ -276,6 +276,14 @@ optional effects (tonemapping and grading, auto exposure, god rays, sky glow and
 water reflections, lens flare, swaying plants, depth of field, motion blur) are switched in
 `ModernEffects`. Under modern lighting the terrain writes its water weight into the colour
 alpha for the modern screen pass, which always restores an opaque alpha.
+Every model and terrain piece has its own material, so the sun's shadow cascades would draw
+each one alone; instead each caster gets a shadow-only twin that shares its mesh and one plain
+material on a layer only the sun lights (`fog/modern_lighting/shadows`). The camera's passes
+batch the same way: static scene models whose material values modern lighting reads are equal
+share one material (`fog/modern_lighting/sharing`) and get their own back in Faithful. While
+Water is Modern too, the terrain shader moves the modern waves on the unprojected terrain and the
+CPU no longer rewrites the terrain mesh each frame; the ground heights still follow the
+original's waves.
 The Textures area point-samples world textures. Existing Water and Fog switches
 remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the

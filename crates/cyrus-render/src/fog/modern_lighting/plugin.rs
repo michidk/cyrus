@@ -5,6 +5,8 @@ use super::effects::{self, AutoExposureAssets, ModernEffects, ShaftVolume};
 use super::foliage;
 use super::lights::sync_lights;
 use super::post::{self, ModernPost, PostPlugin};
+use super::shadows;
+use super::sharing::{self, SharedMaterials};
 use crate::camera::ViewCamera;
 use bevy::{
     anti_alias::smaa::Smaa,
@@ -29,33 +31,47 @@ pub struct ModernLightingPlugin;
 
 impl Plugin for ModernLightingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((AutoExposurePlugin, PostPlugin))
-            .init_resource::<DayNight>()
-            .init_resource::<Daylight>()
-            .init_resource::<ModernEffects>()
-            .init_resource::<AutoExposureAssets>()
-            // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
-            // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
-            .add_systems(
-                Update,
+        app.add_plugins((
+            AutoExposurePlugin,
+            PostPlugin,
+            MaterialPlugin::<shadows::ShadowMaterial>::default(),
+        ))
+        .init_resource::<DayNight>()
+        .init_resource::<Daylight>()
+        .init_resource::<ModernEffects>()
+        .init_resource::<AutoExposureAssets>()
+        .init_resource::<shadows::TwinMaterial>()
+        .init_resource::<SharedMaterials>()
+        // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
+        // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
+        .add_systems(
+            Update,
+            (
+                foliage::find_plants,
                 (
-                    foliage::find_plants,
-                    (
-                        (day_night::advance, sync_lights, day_night::apply).chain(),
-                        (configure_camera, effects::apply_camera_effects).chain(),
-                        effects::focus,
-                        effects::sun_shafts,
-                        foliage::sway,
-                        post::update_post,
-                    )
-                        .chain()
-                        .run_if(lit),
-                    restore.run_if(not(lit)),
-                    day_night::tint_sky,
-                    effects::sky_glow,
+                    (day_night::advance, sync_lights, day_night::apply).chain(),
+                    (configure_camera, effects::apply_camera_effects).chain(),
+                    effects::focus,
+                    effects::sun_shafts,
+                    foliage::sway,
+                    post::update_post,
+                    shadows::add_twins,
+                    sharing::share,
                 )
-                    .chain(),
-            );
+                    .chain()
+                    .run_if(lit),
+                restore.run_if(not(lit)),
+                day_night::tint_sky,
+                effects::sky_glow,
+            )
+                .chain(),
+        )
+        .add_systems(
+            PostUpdate,
+            shadows::follow
+                .after(bevy::transform::TransformSystems::Propagate)
+                .run_if(lit),
+        );
     }
 }
 
@@ -120,6 +136,18 @@ fn restore(
     mut daylight: ResMut<Daylight>,
     auto_exposure: Res<AutoExposureAssets>,
     mut plants: Query<(Entity, &foliage::Sway, &mut Transform)>,
+    (twins, twinned, mut shared, mut scene_materials, mut shared_models, kept): (
+        Query<Entity, With<shadows::ShadowTwin>>,
+        Query<Entity, With<shadows::Twinned>>,
+        ResMut<SharedMaterials>,
+        ResMut<Assets<super::super::SceneMaterial>>,
+        Query<(
+            Entity,
+            &mut MeshMaterial3d<super::super::SceneMaterial>,
+            &sharing::Unshared,
+        )>,
+        Query<Entity, With<sharing::KeepsOwn>>,
+    ),
 ) {
     daylight.set_if_neq(Daylight(None));
     for (camera, exposure) in &cameras {
@@ -146,6 +174,14 @@ fn restore(
         commands.entity(entity).despawn();
     }
     foliage::settle(&mut commands, &mut plants);
+    shadows::remove_twins(&mut commands, &twins, &twinned);
+    sharing::unshare(
+        &mut commands,
+        &mut shared,
+        &mut scene_materials,
+        &mut shared_models,
+        &kept,
+    );
 }
 
 #[cfg(test)]
@@ -161,6 +197,7 @@ mod tests {
         world.init_resource::<DayNight>();
         world.init_resource::<Daylight>();
         world.init_resource::<ModernEffects>();
+        world.init_resource::<SharedMaterials>();
         schedule.add_systems((
             restore,
             sync_lights,
@@ -172,6 +209,9 @@ mod tests {
             foliage::find_plants,
             foliage::sway,
             post::update_post,
+            shadows::add_twins,
+            shadows::follow,
+            sharing::share,
             day_night::advance,
             day_night::apply,
             day_night::tint_sky,

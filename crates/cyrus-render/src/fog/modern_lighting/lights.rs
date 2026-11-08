@@ -187,6 +187,7 @@ fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
             }
             .build(),
             light_transform(direction),
+            super::shadows::sun_layers(),
         ));
     }
 }

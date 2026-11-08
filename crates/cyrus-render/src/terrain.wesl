@@ -44,6 +44,21 @@ struct TerrainVertex {
     @location(14) @interpolate(flat) texture4: vec4<u32>,
 };
 
+// The modern waves of `water::modern_displacement` at a grid position: the height above the base
+// grid and its slope along x and z. `fog.water.z` is the amplitude, `fog.water.w` the cell size.
+fn modern_wave(position: vec2<f32>, seconds: f32) -> vec3<f32> {
+    let tau = 6.283185307;
+    let amplitude = fog.water.z;
+    let along = tau / (fog.water.w * 6.0);
+    let across = tau / (fog.water.w * 2.5);
+    let phase = (position.x + position.y * 0.35) * along - seconds * 0.8;
+    let cross = (position.y - position.x * 0.6) * across - seconds * 1.3;
+    let height = amplitude * (0.5 + 0.35 * sin(phase) + 0.15 * sin(cross));
+    let slope_x = amplitude * (0.35 * cos(phase) * along - 0.15 * cos(cross) * 0.6 * across);
+    let slope_z = amplitude * (0.35 * cos(phase) * 0.35 * along + 0.15 * cos(cross) * across);
+    return vec3(height, slope_x, slope_z);
+}
+
 @vertex
 fn vertex(raw: Vertex,
 @if(PREPARED_TERRAIN)
@@ -68,7 +83,16 @@ fn vertex(raw: Vertex,
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
     var out: TerrainVertex;
-    out.world_position = mesh_functions::mesh_position_local_to_world(transform, vec4(vertex.position, 1.0));
+    var position = vertex.position;
+    var normal = vertex.normal;
+@if(VERTEX_UVS_B) {
+    if fog.water.w > 0.0 && vertex.uv_b.x > 0.0 {
+        let wave = modern_wave(position.xz, globals.time);
+        position.y += wave.x;
+        normal = normalize(vec3(-wave.y, 1.0, -wave.z));
+    }
+}
+    out.world_position = mesh_functions::mesh_position_local_to_world(transform, vec4(position, 1.0));
     out.position = position_world_to_clip(out.world_position.xyz);
 @if(PREPARED_TERRAIN) {
     out.position = view.clip_from_view * vec4(0.0, 0.0, -projected.z, 1.0);
@@ -84,7 +108,7 @@ fn vertex(raw: Vertex,
     out.texture3 = texture3;
     out.texture4 = texture4;
 }
-    out.normal = mesh_functions::mesh_normal_local_to_world(vertex.normal, raw.instance_index);
+    out.normal = mesh_functions::mesh_normal_local_to_world(normal, raw.instance_index);
     out.uv = vertex.uv;
 @if(VERTEX_UVS_B)
     out.water = vertex.uv_b.x;
