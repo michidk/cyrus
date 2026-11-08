@@ -432,3 +432,40 @@ fn a_rolled_back_actor_skips_the_avoidance_pass() {
     );
     assert_ne!(avoidance_at(1, 560, Property::SizePosVz, 0, false).0, start);
 }
+
+#[test]
+fn the_living_animation_refresh_replaces_a_written_extent_for_a_combat_actor() {
+    use cyrus_script::script::{BoundsRecord, RetainedBounds};
+    // The player fixture has a combat record. The written extent holds until the update's refresh
+    // copies the retained primary bounds (the current group is class 0) back over it.
+    let (_, mut world, _, _, _) = write_extent(Property::SizePsizeVy, 77);
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    assert_eq!(player_shape(&world).positive_extent, [12, 77, 12]);
+    world.refresh_living_bounds(player).unwrap();
+    let shape = player_shape(&world);
+    assert_eq!(shape.positive_extent, [12, 24, 12]);
+    assert_eq!(shape.total_extent, [24, 48, 24]);
+    // The selection by group class: tertiary for class 2, secondary for class 1, else primary.
+    let record = |n: i32| BoundsRecord {
+        positive_extent: [n; 3],
+        negative_extent: [n; 3],
+        total_extent: [2 * n; 3],
+        center_offset: [0; 3],
+    };
+    let retained = RetainedBounds {
+        primary: record(1),
+        secondary: Some(record(2)),
+        tertiary: Some(record(3)),
+    };
+    assert_eq!(retained.for_group_class(2), &record(3));
+    assert_eq!(retained.for_group_class(1), &record(2));
+    assert_eq!(retained.for_group_class(0), &record(1));
+    let without = RetainedBounds::only(record(1));
+    assert_eq!(without.for_group_class(2), &record(1));
+    assert_eq!(without.for_group_class(1), &record(1));
+}

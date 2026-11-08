@@ -372,6 +372,9 @@ struct CollisionSnapshot {
     total_extent: Option<[i32; 3]>,
     #[serde(default)]
     center_offset: [i32; 3],
+    /// Saves from before the retained bounds existed keep the live record as their primary.
+    #[serde(default)]
+    retained: Option<ground::RetainedBounds>,
     body: Vec<([i32; 3], i32)>,
     additional: Option<([i32; 3], i32)>,
 }
@@ -382,6 +385,7 @@ impl CollisionSnapshot {
             negative_extent: shape.negative_extent,
             total_extent: Some(shape.total_extent),
             center_offset: shape.center_offset,
+            retained: Some(shape.retained),
             body: shape
                 .body
                 .iter()
@@ -407,6 +411,18 @@ impl CollisionSnapshot {
                 })
             }),
             center_offset: self.center_offset,
+            retained: self.retained.unwrap_or_else(|| {
+                ground::RetainedBounds::only(ground::BoundsRecord {
+                    positive_extent: self.positive_extent,
+                    negative_extent: self.negative_extent,
+                    total_extent: self.total_extent.unwrap_or_else(|| {
+                        std::array::from_fn(|axis| {
+                            self.positive_extent[axis].wrapping_add(self.negative_extent[axis])
+                        })
+                    }),
+                    center_offset: self.center_offset,
+                })
+            }),
             body: self.body.into_iter().map(sphere).collect::<Result<_>>()?,
             additional: self.additional.map(sphere).transpose()?,
         })

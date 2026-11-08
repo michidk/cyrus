@@ -19,6 +19,37 @@ pub struct OrdinaryGroundQuery<'a> {
     pub sidedness: bool,
 }
 
+/// One bounds record: the extents, totals and center offset the actor's embedded record holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BoundsRecord {
+    pub positive_extent: [i32; 3],
+    pub negative_extent: [i32; 3],
+    pub total_extent: [i32; 3],
+    pub center_offset: [i32; 3],
+}
+
+/// The three bounds an animated actor retains: its initial (primary) bounds and the secondary and
+/// tertiary ones its RAHD record names. Every ordinary update copies one of them into the live
+/// record by the current animation group's class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RetainedBounds {
+    pub primary: BoundsRecord,
+    pub secondary: Option<BoundsRecord>,
+    pub tertiary: Option<BoundsRecord>,
+}
+
+impl RetainedBounds {
+    /// The bounds the group class selects: class 2 the tertiary when present, class 1 the
+    /// secondary when present, otherwise the primary.
+    pub fn for_group_class(&self, class: u8) -> &BoundsRecord {
+        match class {
+            2 => self.tertiary.as_ref().unwrap_or(&self.primary),
+            1 => self.secondary.as_ref().unwrap_or(&self.primary),
+            _ => &self.primary,
+        }
+    }
+}
+
 /// Initial ordinary collision shape, distinct from the currently rendered model.
 /// Extents and sphere coordinates are original map units. Model-less initialization
 /// has one body sphere and no separately prepared additional sphere.
@@ -31,6 +62,8 @@ pub struct OrdinaryCollisionShape {
     /// The bounds record's center offset (`size.pos`): added unrotated to the residual body query's
     /// origin and to the selected player's fallback support sphere. Sphere construction ignores it.
     pub center_offset: [i32; 3],
+    /// The retained primary, secondary and tertiary bounds the living-animation refresh copies from.
+    pub retained: RetainedBounds,
     pub body: Vec<BodySphere>,
     pub additional: Option<BodySphere>,
 }
@@ -67,7 +100,55 @@ fn mpsz_bounds(
     ))
 }
 
+impl RetainedBounds {
+    /// Bounds with only the primary record, as an actor without secondary or tertiary shapes.
+    pub fn only(primary: BoundsRecord) -> Self {
+        Self {
+            primary,
+            secondary: None,
+            tertiary: None,
+        }
+    }
+}
+
 impl ScriptWorld {
+    /// The original's per-update bounds refresh: an actor with a combat and an animation record
+    /// copies the retained bounds its current group class selects into its live bounds record, so a
+    /// script-written extent lasts only until the next update. Spheres are not rebuilt.
+    pub fn refresh_living_bounds(&mut self, id: ScriptActorId) -> Result<()> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        if actor
+            .control
+            .as_ref()
+            .is_none_or(|control| control.combat.is_none())
+        {
+            return Ok(());
+        }
+        let Some(group) = actor
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group())
+        else {
+            return Ok(());
+        };
+        let Some(shape) = actor.collision.as_ref() else {
+            return Ok(());
+        };
+        let record = *shape
+            .retained
+            .for_group_class(cyrus_world::animation::group_class(group));
+        let shape = self.actors[index]
+            .collision
+            .as_mut()
+            .expect("checked collision shape");
+        shape.positive_extent = record.positive_extent;
+        shape.negative_extent = record.negative_extent;
+        shape.total_extent = record.total_extent;
+        shape.center_offset = record.center_offset;
+        Ok(())
+    }
+
     /// Initialize the original ordinary loader shape once. Its definition path
     /// precedes placed-model fallback; changing presentation does not rebuild it.
     pub fn prepare_ordinary_collision_shape(
@@ -168,6 +249,14 @@ impl ScriptWorld {
                     positive_extent[axis].wrapping_add(negative_extent[axis])
                 }),
                 center_offset,
+                retained: RetainedBounds::only(BoundsRecord {
+                    positive_extent,
+                    negative_extent,
+                    total_extent: std::array::from_fn(|axis| {
+                        positive_extent[axis].wrapping_add(negative_extent[axis])
+                    }),
+                    center_offset,
+                }),
                 body: spheres.body,
                 additional: Some(spheres.additional),
             }
@@ -181,6 +270,12 @@ impl ScriptWorld {
                 negative_extent: [12; 3],
                 total_extent: [24; 3],
                 center_offset: [0; 3],
+                retained: RetainedBounds::only(BoundsRecord {
+                    positive_extent: [12; 3],
+                    negative_extent: [12; 3],
+                    total_extent: [24; 3],
+                    center_offset: [0; 3],
+                }),
                 body: vec![BodySphere {
                     center: [0; 3],
                     radius: 12,
@@ -188,6 +283,43 @@ impl ScriptWorld {
                 additional: None,
             }
         };
+        let mut shape = shape;
+        if path == "animation_table" {
+            // The animated loader retains the bounds the second and third RAHD indices name.
+            for (key, slot) in [
+                ("mpsz_bounds_0", &mut shape.retained.secondary),
+                ("mpsz_bounds_1", &mut shape.retained.tertiary),
+            ] {
+                // An index of -1 (or an absent key) leaves the shape absent.
+                let Some(record) = definition
+                    .get(key)
+                    .and_then(|value| value.as_i64())
+                    .filter(|record| *record >= 0)
+                else {
+                    continue;
+                };
+                let scale = definition["raex"]["unknown_12"]
+                    .as_i64()
+                    .context("ordinary collision RAEX radius scale absent")?;
+                let scale = i32::from(
+                    i16::try_from(scale)
+                        .context("ordinary collision RAEX radius scale outside signed word")?,
+                );
+                let record = usize::try_from(record)
+                    .with_context(|| format!("ordinary collision {key} index negative"))?;
+                let (bounds, center_offset) = mpsz_bounds(data, record, scale)?;
+                let (positive_extent, negative_extent) =
+                    (bounds.positive_extent(), bounds.negative_extent());
+                *slot = Some(BoundsRecord {
+                    positive_extent,
+                    negative_extent,
+                    total_extent: std::array::from_fn(|axis| {
+                        positive_extent[axis].wrapping_add(negative_extent[axis])
+                    }),
+                    center_offset,
+                });
+            }
+        }
         self.actors[index].collision = Some(shape);
         Ok(())
     }
