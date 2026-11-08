@@ -331,12 +331,9 @@ fn paint(
             })
             .collect();
         for index in 1..corners.len().saturating_sub(1) {
-            let mut triangle = [corners[0], corners[index], corners[index + 1]];
-            // Back-face handling is unrecovered: both sides draw and the depth test resolves them.
-            let [a, b, c] = triangle.map(|(vertex, _)| Vec2::new(vertex[0], vertex[1]));
-            if (b - a).perp_dot(c - a) >= 0.0 {
-                triangle.swap(1, 2);
-            }
+            // The Glide state culls by winding, as the book menu's does: only negative signed
+            // area (positive screen Y down) is visible.
+            let triangle = [corners[0], corners[index], corners[index + 1]];
             faces.push(MenuFace {
                 vertices: triangle.map(|(vertex, _)| vertex),
                 texture,
@@ -381,9 +378,9 @@ mod tests {
             faces: vec![ExamineFace {
                 corners: vec![
                     corner(0, 0.0, 0.0),
-                    corner(1, 4.0, 0.0),
-                    corner(2, 4.0, 4.0),
                     corner(3, 0.0, 4.0),
+                    corner(2, 4.0, 4.0),
+                    corner(1, 4.0, 0.0),
                 ],
                 texture: Some(0),
                 solid: None,
@@ -499,6 +496,15 @@ mod tests {
             drawn += 1;
         }
         assert!(drawn > 20, "only {drawn} models drawn");
+    }
+
+    #[test]
+    fn faces_with_positive_screen_winding_are_culled() {
+        let (artwork, mut model) = quad(0);
+        model.faces[0].corners.reverse();
+        model.faces[0].normals.reverse();
+        let image = paint(&artwork, &model, &pose(), &look()).unwrap();
+        assert_eq!(image.get_pixel(320, 240).0[3], 0);
     }
 
     #[test]
