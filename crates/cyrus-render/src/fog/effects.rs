@@ -469,7 +469,8 @@ fn draw(
                 meshes.insert(slot.mesh.id(), geometry::mesh(&packet)?)?;
                 slot.shape = Some(shape);
             }
-            materials.insert(
+            replace_material(
+                &mut materials,
                 slot.material.id(),
                 geometry::material(&packet, &fog, &lights),
             )?;
@@ -532,7 +533,8 @@ fn draw(
                 meshes.insert(slot.mesh.id(), geometry::mesh(packet)?)?;
                 slot.shape = Some(shape);
             }
-            materials.insert(
+            replace_material(
+                &mut materials,
                 slot.material.id(),
                 geometry::material(packet, &fog, &lights),
             )?;
@@ -568,6 +570,23 @@ fn exported_position([x, y, z]: [i32; 3]) -> Vec3 {
         -(y as f32) / 20.0,
         -((16_777_215.0 - f64::from(z) * 256.0) as f32) * (1.0 / 5120.0),
     )
+}
+
+/// Replaces an effect slot's material only when it differs. A replaced material is prepared again
+/// before its next draw, so rewriting an unchanged one every frame costs work and can drop the draw.
+fn replace_material(
+    materials: &mut Assets<SceneMaterial>,
+    id: AssetId<SceneMaterial>,
+    next: SceneMaterial,
+) -> anyhow::Result<()> {
+    if materials.get(id).is_some_and(|current| {
+        current.extension == next.extension
+            && current.base.base_color_texture == next.base.base_color_texture
+    }) {
+        return Ok(());
+    }
+    materials.insert(id, next)?;
+    Ok(())
 }
 
 #[cfg(test)]

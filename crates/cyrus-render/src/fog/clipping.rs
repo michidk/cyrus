@@ -217,7 +217,7 @@ fn prepare(
         ),
         Without<Draw>,
     >,
-    mut draws: Query<(&Mesh3d, &mut MeshMaterial3d<SceneMaterial>), With<Draw>>,
+    mut draws: Query<(&mut Mesh3d, &mut MeshMaterial3d<SceneMaterial>), With<Draw>>,
     cameras: Query<(&GlobalTransform, &Projection, &Camera), With<ViewCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<SceneMaterial>>,
@@ -309,7 +309,7 @@ fn prepare(
             extension.clone(),
             viewport,
         );
-        let Ok((draw, mut draw_material)) = draws.get_mut(source.draw) else {
+        let Ok((mut draw, mut draw_material)) = draws.get_mut(source.draw) else {
             continue;
         };
         if draw_material.0 != material.0 {
@@ -347,6 +347,10 @@ fn prepare(
                 if let Some(mut target) = meshes.get_mut(&draw.0) {
                     *target = prepared;
                 }
+                // Bevy re-reads a mesh's place in its vertex buffers only for entities whose `Mesh3d` or
+                // bounds changed; this draw has no bounds, so a rewritten mesh that moved would
+                // otherwise be drawn from its old place, with other meshes' vertices.
+                draw.set_changed();
                 source.previous = Some(key);
                 source.pending = false;
             }
