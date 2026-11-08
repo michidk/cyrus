@@ -1,7 +1,7 @@
 //! The modern lighting plugin, its camera effects and teardown, and the light marker the light
 //! module shares.
 use super::day_night::{self, DayNight, Daylight};
-use super::effects::{self, ExposureCurve, ModernEffects, ShaftVolume};
+use super::effects::{self, AutoExposureAssets, ModernEffects, ShaftVolume};
 use super::foliage;
 use super::lights::sync_lights;
 use super::post::{self, ModernPost, PostPlugin};
@@ -15,7 +15,10 @@ use bevy::{
     },
     light::{EnvironmentMapLight, ShadowFilteringMethod},
     pbr::{ContactShadows, ScreenSpaceAmbientOcclusion},
-    post_process::{auto_exposure::AutoExposurePlugin, bloom::Bloom},
+    post_process::{
+        auto_exposure::{AutoExposure, AutoExposurePlugin},
+        bloom::Bloom,
+    },
     prelude::*,
 };
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
@@ -30,7 +33,7 @@ impl Plugin for ModernLightingPlugin {
             .init_resource::<DayNight>()
             .init_resource::<Daylight>()
             .init_resource::<ModernEffects>()
-            .init_resource::<ExposureCurve>()
+            .init_resource::<AutoExposureAssets>()
             // Update, so a new sun is propagated and gets its shadow cascades in the same frame:
             // Bevy builds cascades in PostUpdate, and a light without them panics in the renderer.
             .add_systems(
@@ -109,14 +112,21 @@ fn configure_camera(
 #[allow(clippy::type_complexity)]
 fn restore(
     mut commands: Commands,
-    cameras: Query<Entity, (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>)>,
+    cameras: Query<
+        (Entity, Option<&AutoExposure>),
+        (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>),
+    >,
     removed: Query<Entity, Or<(With<Light>, With<ShaftVolume>)>>,
     mut daylight: ResMut<Daylight>,
+    auto_exposure: Res<AutoExposureAssets>,
     mut plants: Query<(Entity, &foliage::Sway, &mut Transform)>,
 ) {
     daylight.set_if_neq(Daylight(None));
-    for camera in &cameras {
+    for (camera, exposure) in &cameras {
         let mut camera = commands.entity(camera);
+        if !effects::remove_camera_effects(&mut camera, exposure, &auto_exposure) {
+            continue;
+        }
         camera
             .remove::<(
                 Hdr,
@@ -131,7 +141,6 @@ fn restore(
                 ModernPost,
             )>()
             .insert(Tonemapping::default());
-        effects::remove_camera_effects(&mut camera);
     }
     for entity in &removed {
         commands.entity(entity).despawn();

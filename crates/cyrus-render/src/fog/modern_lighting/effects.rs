@@ -9,6 +9,7 @@
 use super::lights::Sun;
 use crate::{camera::ViewCamera, sky::SkyMaterial};
 use bevy::{
+    asset::RenderAssetUsages,
     core_pipeline::{prepass::MotionVectorPrepass, tonemapping::Tonemapping},
     curve::cubic_splines::LinearSpline,
     light::{FogVolume, VolumetricFog, VolumetricLight},
@@ -18,7 +19,10 @@ use bevy::{
         motion_blur::MotionBlur,
     },
     prelude::*,
-    render::view::{ColorGrading, ColorGradingGlobal, ColorGradingSection},
+    render::{
+        render_resource::{Extent3d, TextureDimension, TextureFormat},
+        view::{ColorGrading, ColorGradingGlobal, ColorGradingSection},
+    },
 };
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
 use cyrus_script::player::Player;
@@ -193,28 +197,81 @@ impl From<Tonemapper> for Tonemapping {
 const EXPOSURE_TARGET: f32 = -2.5;
 /// How far, in stops, the automatic exposure darkens a bright screen and brightens a dark one.
 const EXPOSURE_LIMITS: [f32; 2] = [-1.0, 1.5];
+/// The log2 luminance range the automatic exposure meters.
+const METERED: [f32; 2] = [-12.0, 4.0];
 
-/// The automatic exposure's compensation curve: Bevy's exposure moves the screen's average log
-/// luminance to the curve's value, which is chosen so the change stays within
-/// `EXPOSURE_LIMITS` of the `EXPOSURE_TARGET`.
+/// The automatic exposure's compensation curves and its blind metering mask.
+///
+/// Bevy 0.20 keeps applying a camera's automatic exposure after the component is removed, so
+/// it is switched off before it is removed: the camera then meters through a black mask.
+/// Nothing reaches the histogram, Bevy reads the lowest metered luminance, and the identity
+/// curve maps that to no change; changing the settings also resets the adapted exposure to
+/// none. Modern lighting keeps the switched-off exposure on its camera, and restoring Faithful
+/// removes it, with the high dynamic range it requires, one frame later.
 #[derive(Resource)]
-pub(super) struct ExposureCurve(Handle<AutoExposureCompensationCurve>);
+pub(super) struct AutoExposureAssets {
+    /// Bevy's exposure moves the screen's average log luminance to this curve's value, which
+    /// keeps the change within `EXPOSURE_LIMITS` of the `EXPOSURE_TARGET`.
+    adaptive: Handle<AutoExposureCompensationCurve>,
+    identity: Handle<AutoExposureCompensationCurve>,
+    blind: Handle<Image>,
+}
 
-impl FromWorld for ExposureCurve {
+impl FromWorld for AutoExposureAssets {
     fn from_world(world: &mut World) -> Self {
+        let [low, high] = METERED;
         let [darken, brighten] = EXPOSURE_LIMITS;
-        let curve = AutoExposureCompensationCurve::from_curve(LinearSpline::new([
-            vec2(-12.0, -12.0 + brighten),
+        let adaptive = AutoExposureCompensationCurve::from_curve(LinearSpline::new([
+            vec2(low, low + brighten),
             vec2(EXPOSURE_TARGET - brighten, EXPOSURE_TARGET),
             vec2(EXPOSURE_TARGET - darken, EXPOSURE_TARGET),
-            vec2(4.0, 4.0 + darken),
+            vec2(high, high + darken),
         ]))
         .expect("the exposure curve is continuous and increasing");
-        Self(
-            world
-                .resource_mut::<Assets<AutoExposureCompensationCurve>>()
-                .add(curve),
-        )
+        let identity = AutoExposureCompensationCurve::from_curve(LinearSpline::new([
+            vec2(low, low),
+            vec2(high, high),
+        ]))
+        .expect("the identity curve is continuous and increasing");
+        let mut curves = world.resource_mut::<Assets<AutoExposureCompensationCurve>>();
+        let (adaptive, identity) = (curves.add(adaptive), curves.add(identity));
+        let blind = world.resource_mut::<Assets<Image>>().add(Image::new_fill(
+            Extent3d::default(),
+            TextureDimension::D2,
+            &[0, 0, 0, 255],
+            TextureFormat::Rgba8Unorm,
+            RenderAssetUsages::RENDER_WORLD,
+        ));
+        Self {
+            adaptive,
+            identity,
+            blind,
+        }
+    }
+}
+
+impl AutoExposureAssets {
+    /// The camera's automatic exposure, adapting or switched off.
+    fn auto_exposure(&self, adapting: bool) -> AutoExposure {
+        let [low, high] = METERED;
+        let exposure = AutoExposure {
+            range: low..=high,
+            speed_brighten: 1.0,
+            speed_darken: 1.5,
+            ..default()
+        };
+        if adapting {
+            AutoExposure {
+                compensation_curve: self.adaptive.clone(),
+                ..exposure
+            }
+        } else {
+            AutoExposure {
+                compensation_curve: self.identity.clone(),
+                metering_mask: self.blind.clone(),
+                ..exposure
+            }
+        }
     }
 }
 
@@ -235,7 +292,7 @@ fn differs<T: PartialEq>(
 pub(super) fn apply_camera_effects(
     mut commands: Commands,
     effects: Res<ModernEffects>,
-    curve: Res<ExposureCurve>,
+    auto_exposure: Res<AutoExposureAssets>,
     cameras: Query<(Entity, Option<&Applied>), With<ViewCamera>>,
 ) {
     let new = effects.as_ref();
@@ -277,17 +334,7 @@ pub(super) fn apply_camera_effects(
             camera.insert((tonemapping, grading));
         }
         if differs(old, new, |e| e.auto_exposure) {
-            if new.auto_exposure {
-                camera.insert(AutoExposure {
-                    range: -12.0..=4.0,
-                    speed_brighten: 1.0,
-                    speed_darken: 1.5,
-                    compensation_curve: curve.0.clone(),
-                    ..default()
-                });
-            } else {
-                camera.remove::<AutoExposure>();
-            }
+            camera.insert(auto_exposure.auto_exposure(new.auto_exposure));
         }
         if differs(old, new, |e| e.god_rays) {
             if new.god_rays {
@@ -327,8 +374,18 @@ pub(super) fn apply_camera_effects(
     }
 }
 
-/// Removes every component `apply_camera_effects` added.
-pub(super) fn remove_camera_effects(camera: &mut EntityCommands) {
+/// Removes every component `apply_camera_effects` added. While the automatic exposure still
+/// adapts it only switches it off and returns false: Bevy must run one frame with it off, so
+/// the exposure it keeps applying after removal is none.
+pub(super) fn remove_camera_effects(
+    camera: &mut EntityCommands,
+    exposure: Option<&AutoExposure>,
+    auto_exposure: &AutoExposureAssets,
+) -> bool {
+    if exposure.is_some_and(|exposure| exposure.metering_mask != auto_exposure.blind) {
+        camera.insert(auto_exposure.auto_exposure(false));
+        return false;
+    }
     camera
         .remove::<(
             Applied,
@@ -339,6 +396,7 @@ pub(super) fn remove_camera_effects(camera: &mut EntityCommands) {
             MotionVectorPrepass,
         )>()
         .insert(ColorGrading::default());
+    true
 }
 
 /// Distance the depth of field focuses at without a player, in world units.
@@ -488,14 +546,12 @@ mod tests {
     }
 
     #[test]
-    fn exposure_curve_builds() {
+    fn exposure_curves_build() {
         let mut world = World::new();
         world.init_resource::<Assets<AutoExposureCompensationCurve>>();
-        let curve = ExposureCurve::from_world(&mut world);
-        assert!(
-            world
-                .resource::<Assets<AutoExposureCompensationCurve>>()
-                .contains(&curve.0)
-        );
+        world.init_resource::<Assets<Image>>();
+        let assets = AutoExposureAssets::from_world(&mut world);
+        let curves = world.resource::<Assets<AutoExposureCompensationCurve>>();
+        assert!(curves.contains(&assets.adaptive) && curves.contains(&assets.identity));
     }
 }
