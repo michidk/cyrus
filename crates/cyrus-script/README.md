@@ -694,7 +694,10 @@ the cursor, countdowns and markers; -1 leaves no current group, and a group with
 while none is current stops with an explicit error.
 `anim.last_angle` is the rotation history the automatic model refresh copies from `anim.angle`.
 `anim.max_group` is the low byte of the exported RAHD control prefix (preservation 0.12; sidecars exported earlier
-read as an explicit re-export error). `anim.sound_handle` and `anim.address` stay unsupported.
+read as an explicit re-export error). `anim.sound_handle`, `anim.address` (and `anim`), `handle`, `last_handle` and `rope_id` stay unsupported on purpose:
+a static census of every installed map file (27 maps, the 29 WORLD.INI entries plus the one map no entry names;
+`cargo run -p cyrus-assets --example soup_inventory --features native`) finds no script that reads or writes any of them,
+and no call of a `Pipe*` native. `rope` is read 8 times, only to test it against zero, which is supported.
 
 
 Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player
