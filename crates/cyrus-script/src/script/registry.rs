@@ -5377,18 +5377,20 @@ enum CollisionField {
     Positive(usize),
     Negative(usize),
     Center(usize),
+    Total(usize),
 }
 
 fn collision_extent_property(name: Property) -> Option<CollisionField> {
     use Property::{
         SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePosVx, SizePosVy, SizePosVz, SizePsizeVx,
-        SizePsizeVy, SizePsizeVz,
+        SizePsizeVy, SizePsizeVz, SizeSizeVx, SizeSizeVy, SizeSizeVz,
     };
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
     find([SizePsizeVx, SizePsizeVy, SizePsizeVz])
         .map(CollisionField::Positive)
         .or_else(|| find([SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]).map(CollisionField::Negative))
         .or_else(|| find([SizePosVx, SizePosVy, SizePosVz]).map(CollisionField::Center))
+        .or_else(|| find([SizeSizeVx, SizeSizeVy, SizeSizeVz]).map(CollisionField::Total))
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
@@ -5960,6 +5962,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 CollisionField::Positive(axis) => shape.positive_extent[axis],
                 CollisionField::Negative(axis) => shape.negative_extent[axis],
                 CollisionField::Center(axis) => shape.center_offset[axis],
+                CollisionField::Total(axis) => shape.total_extent[axis],
             });
         }
         let pose = pose_property(name)
@@ -6192,6 +6195,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 CollisionField::Positive(axis) => shape.positive_extent[axis] = value,
                 CollisionField::Negative(axis) => shape.negative_extent[axis] = value,
                 CollisionField::Center(axis) => shape.center_offset[axis] = value,
+                CollisionField::Total(axis) => shape.total_extent[axis] = value,
             }
             return Ok(());
         }

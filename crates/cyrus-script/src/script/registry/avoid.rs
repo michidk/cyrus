@@ -112,7 +112,7 @@ impl ScriptWorld {
         let [mx, my, mz] = shape.negative_extent;
         let post = i32::try_from(query.scene.settings.post_collide_height)
             .context("wall avoidance post_collide_height exceeds signed range")?;
-        let total = shape.positive_extent[1].wrapping_add(my);
+        let total = shape.total_extent[1];
         let radius = total.wrapping_sub(post) / 4;
         let half = radius / 2;
         let base = -(my.wrapping_sub(radius / 3));

@@ -10194,6 +10194,7 @@ fn ordinary_forward_obstacle_uses_effective_motion_and_preserves_y_and_model_pos
 fn ordinary_bounds_endpoints_keep_stored_negative_magnitudes_and_positive_y() {
     use cyrus_script::script::{OrdinaryCollisionShape, ordinary_bounds_segments};
     let shape = OrdinaryCollisionShape {
+        total_extent: [50, 70, 90],
         center_offset: [0; 3],
         positive_extent: [10, 20, 30],
         negative_extent: [40, 50, 60],

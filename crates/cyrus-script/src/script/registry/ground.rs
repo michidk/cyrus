@@ -25,6 +25,9 @@ pub struct OrdinaryGroundQuery<'a> {
 pub struct OrdinaryCollisionShape {
     pub positive_extent: [i32; 3],
     pub negative_extent: [i32; 3],
+    /// The bounds record's totals (`size.size`): the sum of the two extents at creation, read back
+    /// by the wall-avoidance probe's radius, and plain words a script may overwrite.
+    pub total_extent: [i32; 3],
     /// The bounds record's center offset (`size.pos`): added unrotated to the residual body query's
     /// origin and to the selected player's fallback support sphere. Sphere construction ignores it.
     pub center_offset: [i32; 3],
@@ -161,6 +164,9 @@ impl ScriptWorld {
             OrdinaryCollisionShape {
                 positive_extent,
                 negative_extent,
+                total_extent: std::array::from_fn(|axis| {
+                    positive_extent[axis].wrapping_add(negative_extent[axis])
+                }),
                 center_offset,
                 body: spheres.body,
                 additional: Some(spheres.additional),
@@ -173,6 +179,7 @@ impl ScriptWorld {
             OrdinaryCollisionShape {
                 positive_extent: [12; 3],
                 negative_extent: [12; 3],
+                total_extent: [24; 3],
                 center_offset: [0; 3],
                 body: vec![BodySphere {
                     center: [0; 3],

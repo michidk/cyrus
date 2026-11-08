@@ -358,6 +358,9 @@ impl CombatSnapshot {
 struct CollisionSnapshot {
     positive_extent: [i32; 3],
     negative_extent: [i32; 3],
+    /// Saves from before the totals were retained have none; restore derives the sums.
+    #[serde(default)]
+    total_extent: Option<[i32; 3]>,
     #[serde(default)]
     center_offset: [i32; 3],
     body: Vec<([i32; 3], i32)>,
@@ -368,6 +371,7 @@ impl CollisionSnapshot {
         Self {
             positive_extent: shape.positive_extent,
             negative_extent: shape.negative_extent,
+            total_extent: Some(shape.total_extent),
             center_offset: shape.center_offset,
             body: shape
                 .body
@@ -388,6 +392,11 @@ impl CollisionSnapshot {
         Ok(ground::OrdinaryCollisionShape {
             positive_extent: self.positive_extent,
             negative_extent: self.negative_extent,
+            total_extent: self.total_extent.unwrap_or_else(|| {
+                std::array::from_fn(|axis| {
+                    self.positive_extent[axis].wrapping_add(self.negative_extent[axis])
+                })
+            }),
             center_offset: self.center_offset,
             body: self.body.into_iter().map(sphere).collect::<Result<_>>()?,
             additional: self.additional.map(sphere).transpose()?,

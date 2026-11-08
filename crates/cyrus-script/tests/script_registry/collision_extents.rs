@@ -320,8 +320,13 @@ fn a_linked_actors_residual_body_query_reads_its_link_position() {
 /// An armed actor's wall avoidance, with the player standing 12 map units from the wall face
 /// and facing it: the front probe finds the wall and the actor steps aside and back.
 fn avoidance_after(marks: u32) -> ([i32; 3], (i32, u32, i32)) {
+    avoidance_at(marks, 560, Property::SizePosVz, 0)
+}
+
+/// [`avoidance_after`] with the player at map Z `z` after the script wrote `property = value`.
+fn avoidance_at(marks: u32, z: i32, property: Property, value: i32) -> ([i32; 3], (i32, u32, i32)) {
     use cyrus_script::script::OrdinaryGroundQuery;
-    let (_, mut world, mut scene, data, _) = write_extent(Property::SizePosVz, 0);
+    let (_, mut world, mut scene, data, _) = write_extent(property, value);
     add_wall(&mut scene);
     let index = world
         .actors()
@@ -331,13 +336,13 @@ fn avoidance_after(marks: u32) -> ([i32; 3], (i32, u32, i32)) {
     let player = world.id(index).unwrap();
     let map = world.id(0).unwrap();
     world
-        .place_selected_player([522 * 256, -1536, 560 * 256], 0)
+        .place_selected_player([522 * 256, -1536, z * 256], 0)
         .unwrap();
     world.refresh_model_presentations(&data, &[player]).unwrap();
     world.set_combat_record_for_test(player);
     world.set_last_collide_for_test(player, marks);
     let prepared = world
-        .prepare_ordinary_collision_query(player, &scene, &data, [522, 560], &[player, map])
+        .prepare_ordinary_collision_query(player, &scene, &data, [522, z], &[player, map])
         .unwrap();
     world
         .avoid_walls(
@@ -375,4 +380,21 @@ fn an_armed_actor_steps_aside_and_back_from_a_wall_its_front_probe_finds() {
     let (position, state) = avoidance_after(1);
     assert_eq!(state, (2, 1, 0x10));
     assert_eq!(position, [start[0] + 2560, start[1], start[2] - 2560]);
+}
+
+#[test]
+fn the_avoidance_radius_reads_the_written_total_height() {
+    // 12 + 24 + 12 total height: the stacked spheres have radius 11 and the front point at map Z
+    // 548 + 7 reaches 566, short of the wall face at 572. A written total of 104 makes the radius
+    // 25, the point 548 + 0 and the reach 573, which every probe point sees.
+    let start = [522 * 256, -1536, 548 * 256];
+    assert_eq!(
+        avoidance_at(1, 548, Property::SizeSizeVx, 48),
+        (start, (0, 0, 0))
+    );
+    let (position, state) = avoidance_at(1, 548, Property::SizeSizeVy, 104);
+    // The wider spheres reach the wall from all four points (mask 15); the four steps (right,
+    // left, back by 0x400, forward) cancel, and the last side chosen is 2.
+    assert_eq!(state, (2, 15, 0x10));
+    assert_eq!(position, start);
 }
