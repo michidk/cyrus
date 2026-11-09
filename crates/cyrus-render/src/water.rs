@@ -36,8 +36,8 @@ struct TerrainMesh {
 pub struct WaterPlayback {
     source: Option<AssetId<Environment>>,
     base: Vec<[f32; 3]>,
-    /// Distance of every grid vertex to the shore, for the terrain's water channel.
-    shore: Vec<f32>,
+    /// Where the terrain meets the water, for the terrain.s water channel.
+    shore: preparation::Shore,
     terrain: Vec<TerrainMesh>,
     tick: Option<u64>,
     window: Option<crate::terrain::Window>,

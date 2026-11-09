@@ -97,10 +97,11 @@ every value is a Modern tuning choice:
   ripples, where they face up; a waterfall does not mirror;
 - with Modern water, the sea moves in several crossing, sharp-crested waves that calm towards the
   shore, with ripples whose crests bend so they never line up into stripes. Foam breaks along the
-  shore with breakers rolling in to it, and the beach behind is darker and glossier where the swash
-  wets it. The shore is where the terrain cells whose texture SURFACE.INI marks as water meet the
-  rest, which runs through the beach transition tiles where their drawn waterline does; the still
-  water out to it reflects like the sea. The waves, ripples, foam and wet sand are tuning choices.
+  shore, running up and back with the swash while wash lines roll in, and the beach behind is darker
+  and glossier where the swash wets it. The foam follows the waterline the terrain textures draw:
+  the beach tiles SURFACE.INI marks as water draw it across the cell, and elsewhere it is the
+  border between a water-textured cell and a land cell. The still water out to it reflects like the
+  sea. The waves, ripples, foam and wet sand are tuning choices.
 
 All of them start on.
 

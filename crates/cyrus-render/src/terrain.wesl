@@ -9,12 +9,12 @@ import bevy_pbr::render::{
 };
 @if(MODERN_LIGHTING)
 import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
-import bevy_render::color_operations::srgb_to_linear;
+import bevy_render::color_operations::{srgb_to_linear, linear_to_srgb};
 import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, scene_fog_at_position};
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
-import package::sampling::{base_color_size, sample_encoded, color_channel};
+import package::sampling::{base_color_level, base_color_size, sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
-import package::water_surface::{water_wave, water_ripple, shore_foam, shore_wetness};
+import package::water_surface::{water_wave, water_ripple, shore_foam, shore_wetness, shore_distance, land_border_mask, land_border_distance};
 import constants::MATERIAL_BIND_GROUP;
 @if(BINDLESS)
 import bevy_pbr::render::mesh_bindings::mesh;
@@ -100,7 +100,7 @@ fn vertex(raw: Vertex,
 @if(VERTEX_UVS_B) {
     // The modern waves, `fog.water.z` high on a grid of `fog.water.w` cells, calming at the shore.
     if fog.water.w > 0.0 && vertex.uv_b.x > 0.0 {
-        let calm = 1.0 - smoothstep(0.5, 3.0, vertex.uv_b.y);
+        let calm = 1.0 - smoothstep(0.5, 3.0, shore_distance(vertex.uv_b.y));
         let wave = water_wave(position.xz, globals.time, fog.water.z, fog.water.w, calm);
         position.y += wave.x;
         // Far off, the waves' tilt would band the water's shine into regular stripes.
@@ -138,6 +138,34 @@ fn vertex(raw: Vertex,
     return out;
 }
 
+
+// How much the terrain texel at `uv`, kept inside the cell's tile, looks like water, 0..1: water
+// texels are bluer than they are red, sand and rock are not. A Modern tuning choice that finds the
+// waterline the beach tiles draw.
+fn texel_water(uv: vec2<f32>) -> f32 {
+    let inside = vec2(0.5) / vec2<f32>(base_color_size());
+    let rgb = linear_to_srgb(base_color_level(clamp(uv, inside, vec2(1.0) - inside)).rgb);
+    return smoothstep(0.02, 0.12, rgb.b - rgb.r);
+}
+
+// Roughly how many texels `uv` lies from land in the same tile, from rings of eight taps out to
+// eight texels; `LAND_FAR` where no ring finds any.
+const LAND_FAR: f32 = 10.0;
+fn land_texels(uv: vec2<f32>) -> f32 {
+    let texel = 1.0 / vec2<f32>(base_color_size());
+    var inner = 0.0;
+    for (var ring = 0u; ring < 4u; ring++) {
+        let radius = 1.5 * f32(ring + 1u) + 0.5 * f32(ring * ring);
+        var land = 0.0;
+        for (var i = 0u; i < 8u; i++) {
+            let angle = (f32(i) + 0.5 * f32(ring)) * 0.7853982;
+            land = max(land, 1.0 - texel_water(uv + vec2(cos(angle), sin(angle)) * radius * texel));
+        }
+        if land > 0.5 { return mix(inner, radius, 1.5 - land); }
+        inner = radius;
+    }
+    return LAND_FAR;
+}
 
 // The terrain lit by Bevy's lights as a matte material; water, weighted by `water`, is glossy
 // with its ripples in `normal`, and wet sand, weighted by `wet`, a little glossy; Modern tuning
@@ -181,11 +209,21 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     let position = in.world_position.xz;
     // Modern water (`fog.water.x`): foam where the sea meets the shore, which neither shines nor
     // reflects, and wet sand on the beach behind it.
-    let foam = fog.water.x * shore_foam(position, in.water.y, globals.time);
-    // The wave vertices, and the still shallows the water textures draw out to the waterline.
-    let surface_water = max(clamp(in.water.x, 0.0, 1.0), smoothstep(-0.15, 0.35, in.water.y));
+    let shore = shore_distance(in.water.y);
+    // Away from the shore: the wave vertices, and the still water the water textures draw.
+    var surface_water = max(clamp(in.water.x, 0.0, 1.0), smoothstep(-0.15, 0.35, shore));
+    // How far, in texels, this water lies from the drawn waterline.
+    var land = LAND_FAR;
+    if fog.water.x > 0.0 && shore > -1.0 && shore < 1.0 {
+        // Near it, the texels themselves: the beach tiles draw the waterline across the cell.
+        surface_water = texel_water(surface.uv);
+        // Where a water cell meets a land cell, the cell border is the waterline.
+        let border = land_border_distance(in.uv, land_border_mask(in.water.y));
+        land = min(land_texels(surface.uv), border * f32(base_color_size().x));
+    }
+    let foam = fog.water.x * surface_water * shore_foam(position, land, shore, globals.time);
     let water_mask = surface_water * (1.0 - foam);
-    let wet = fog.water.x * shore_wetness(in.water.y, position, globals.time) * (1.0 - surface_water);
+    let wet = fog.water.x * shore_wetness(shore, position, globals.time) * (1.0 - surface_water);
     let water_weight = fog.water.x * water_mask;
     let ripple = water_ripple(position, globals.time, length(view.world_position - in.world_position.xyz));
     surface.uv += ripple * (0.006 * water_weight);

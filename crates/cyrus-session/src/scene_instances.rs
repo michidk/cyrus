@@ -379,15 +379,6 @@ impl SessionSceneInstances {
             supplied.len() == targets.len() && supplied == terrain,
             "session terrain target census differs"
         );
-        let data = world
-            .get_resource::<Assets<cyrus_assets::environment::Environment>>()
-            .and_then(|assets| assets.get(environment))
-            .context("session terrain environment absent")?;
-        let targets: Vec<_> = targets
-            .iter()
-            .map(|&entity| cyrus_render::TerrainTarget::of_entity(world, entity, data))
-            .collect::<Option<_>>()
-            .context("session terrain target has no mesh")?;
         ensure!(
             world.contains_resource::<Assets<Mesh>>(),
             "session terrain mesh store absent"
@@ -398,6 +389,11 @@ impl SessionSceneInstances {
                     .get_resource::<Assets<cyrus_assets::environment::Environment>>()
                     .and_then(|assets| assets.get(environment))
                     .context("session terrain environment absent")?;
+                let targets: Vec<_> = targets
+                    .iter()
+                    .map(|&entity| cyrus_render::TerrainTarget::of_entity(world, entity, data))
+                    .collect::<Option<_>>()
+                    .context("session terrain target has no mesh")?;
                 cyrus_render::WaterPlayback::prepare_meshes(
                     data,
                     environment.id(),

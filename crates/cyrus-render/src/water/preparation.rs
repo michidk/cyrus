@@ -160,9 +160,10 @@ impl WaterPlayback {
                 bounds,
             ));
         }
-        let shore = shore_field(&water_cells, water, side);
+        let shore = Shore::new(water_cells, water, side);
         for (_, _, vertices, _, animated, _) in &mut prepared {
-            animated.insert_attribute(Mesh::ATTRIBUTE_UV_1, water_channel(water, &shore, vertices));
+            let channel = shore.channel(water, animated, vertices);
+            animated.insert_attribute(Mesh::ATTRIBUTE_UV_1, channel);
         }
         let mut playback = Self {
             source: Some(source),
@@ -191,20 +192,139 @@ impl WaterPlayback {
     }
 }
 
-/// The terrain's water channel for the mesh vertices at grid `vertices`: x is 1 on the water's wave
-/// vertices, y the grid vertex's distance to the shore (`shore_field`) the Modern shore effects read.
-pub(super) fn water_channel(
-    water: Option<&Water>,
-    shore: &[f32],
-    vertices: &[usize],
-) -> Vec<[f32; 2]> {
-    vertices
-        .iter()
-        .map(|&vertex| {
-            let wave = water.is_some_and(|water| water.animated_vertices[vertex]);
-            [f32::from(u8::from(wave)), shore[vertex]]
-        })
-        .collect()
+/// Where the terrain meets the water, for the Modern shore effects.
+#[derive(Default)]
+pub(super) struct Shore {
+    /// Distance of every grid vertex to the shore (`shore_field`).
+    distance: Vec<f32>,
+    /// Per grid cell, by its lowest corner: None where no mesh covers it, else whether its texture
+    /// is water.
+    cells: Vec<Option<bool>>,
+    side: usize,
+}
+
+impl Shore {
+    fn new(cells: Vec<Option<bool>>, water: Option<&Water>, side: usize) -> Self {
+        Self {
+            distance: shore_field(&cells, water, side),
+            cells,
+            side,
+        }
+    }
+
+    /// The terrain's water channel for `mesh`, whose vertices sit at grid `vertices`: x is 1 on the
+    /// water's wave vertices; y is the grid vertex's shore distance plus ten times its cell's
+    /// `land_borders` mask, which is the same on every vertex of the cell and so survives
+    /// interpolation. The distance stays within ±4.5, so the shader splits the two exactly.
+    pub(super) fn channel(
+        &self,
+        water: Option<&Water>,
+        mesh: &Mesh,
+        vertices: &[usize],
+    ) -> Vec<[f32; 2]> {
+        let borders = self.land_borders(mesh, vertices);
+        vertices
+            .iter()
+            .zip(borders)
+            .map(|(&vertex, mask)| {
+                let wave = water.is_some_and(|water| water.animated_vertices[vertex]);
+                let distance = self.distance.get(vertex).copied().unwrap_or(-4.0);
+                [f32::from(u8::from(wave)), distance + 10.0 * f32::from(mask)]
+            })
+            .collect()
+    }
+
+    /// For each mesh vertex, which edges and corners of its water cell's texture tile border a land
+    /// cell, in the tile's UV space, so the shader finds a waterline that runs along a cell border
+    /// whatever the tile's rotation. Bits 0 to 3: the edges at u = 0, u = 1, v = 0 and v = 1; bits 4
+    /// to 7: the corners at (0, 0), (1, 0), (0, 1) and (1, 1) where only the diagonal neighbour is land.
+    /// Zero on land cells and on cells whose triangles are not whole.
+    fn land_borders(&self, mesh: &Mesh, vertices: &[usize]) -> Vec<u8> {
+        let mut masks = vec![0u8; vertices.len()];
+        let (Some(indices), Ok(VertexAttributeValues::Float32x2(uvs))) =
+            (mesh.indices(), mesh.try_attribute(Mesh::ATTRIBUTE_UV_0))
+        else {
+            return masks;
+        };
+        let side = self.side;
+        let indices: Vec<usize> = indices.iter().collect();
+        let cell_of = |triangle: &[usize; 3]| {
+            let corners = triangle.iter().filter_map(|&index| vertices.get(index));
+            let x = corners.clone().map(|&vertex| vertex % side).min()?;
+            let row = corners.map(|&vertex| vertex / side).min()?;
+            Some((x, row))
+        };
+        // Each cell's tile corner, as (u > 0.5, v > 0.5), at each of its grid corners.
+        type TileCorners = [Option<(bool, bool)>; 4];
+        let mut corners: std::collections::HashMap<(usize, usize), TileCorners> =
+            std::collections::HashMap::new();
+        for triangle in indices.as_chunks::<3>().0 {
+            let Some((x, row)) = cell_of(triangle) else {
+                continue;
+            };
+            for &index in triangle {
+                let (Some(&vertex), Some(uv)) = (vertices.get(index), uvs.get(index)) else {
+                    continue;
+                };
+                let corner = (vertex % side - x) + 2 * (vertex / side - row);
+                if let Some(slot) = corners.entry((x, row)).or_default().get_mut(corner) {
+                    *slot = Some((uv[0] > 0.5, uv[1] > 0.5));
+                }
+            }
+        }
+        let land = |x: isize, row: isize| {
+            (0..side as isize).contains(&x)
+                && (0..side as isize).contains(&row)
+                && self.cells[x as usize + row as usize * side] == Some(false)
+        };
+        for triangle in indices.as_chunks::<3>().0 {
+            let Some((x, row)) = cell_of(triangle) else {
+                continue;
+            };
+            if self.cells[x + row * side] != Some(true) {
+                continue;
+            }
+            let Some(tile) = corners
+                .get(&(x, row))
+                .and_then(|corners| corners.iter().copied().collect::<Option<Vec<_>>>())
+            else {
+                continue;
+            };
+            let (gx, grow) = (x as isize, row as isize);
+            let mut mask = 0u8;
+            // A grid edge is the tile edge where its two corners share u or v.
+            let edge = |a: (bool, bool), b: (bool, bool)| match (a, b) {
+                ((u, _), (w, _)) if u == w => 1u8 << u8::from(u),
+                ((_, v), (_, w)) if v == w => 1u8 << (2 + u8::from(v)),
+                _ => 0,
+            };
+            // Grid corners: 0 (x, row), 1 (x + 1, row), 2 (x, row + 1), 3 (x + 1, row + 1).
+            let neighbours = [
+                ((-1, 0), (0, 2)),
+                ((1, 0), (1, 3)),
+                ((0, -1), (0, 1)),
+                ((0, 1), (2, 3)),
+            ];
+            for ((dx, dz), (a, b)) in neighbours {
+                if land(gx + dx, grow + dz) {
+                    mask |= edge(tile[a], tile[b]);
+                }
+            }
+            let diagonals = [((-1, -1), 0), ((1, -1), 1), ((-1, 1), 2), ((1, 1), 3)];
+            for ((dx, dz), corner) in diagonals {
+                if land(gx + dx, grow + dz) {
+                    let (u, v) = tile[corner];
+                    mask |= 1 << (4 + u8::from(u) + 2 * u8::from(v));
+                }
+            }
+            for &index in triangle {
+                if let Some(slot) = masks.get_mut(index) {
+                    *slot = mask;
+                }
+            }
+        }
+        masks
+    }
 }
 
 /// Record the grid cells a terrain mesh's triangles cover, each by its lowest corner, as water or
@@ -230,11 +350,12 @@ fn mark_cells(
     }
 }
 
-/// The shore distance at every grid vertex (`shore_distances`). The shore is where the terrain's
-/// water-textured cells meet the rest: a vertex is water when every covered cell around it is. The
-/// water textures include the beach transition tiles, whose drawn shoreline crosses the cell, so
-/// the zero line falls inside them. Without water textures (caches that predate them) the wave
-/// vertices stand in; without either, every vertex is far inland.
+/// The shore distance at every grid vertex (`shore_distances`). A vertex is water when every
+/// covered cell around it has a water texture, so a vertex on the border of a land cell is land
+/// even where the waves reach it. The water textures include the beach transition tiles, whose
+/// drawn waterline crosses the cell; the terrain shader finds that line in the texels. Caches that
+/// predate the water textures fall back to the wave vertices; without either, every vertex is far
+/// inland.
 fn shore_field(cells: &[Option<bool>], water: Option<&Water>, side: usize) -> Vec<f32> {
     let around = |vertex: usize| {
         let (x, row) = (vertex % side, vertex / side);
@@ -317,7 +438,51 @@ pub(super) fn shore_distances(animated: &[bool], side: usize) -> Vec<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{shore_distances, shore_field};
+    use super::{Shore, shore_distances, shore_field};
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    use bevy::prelude::Mesh;
+
+    #[test]
+    fn land_borders_name_the_tile_edge_whatever_its_rotation() {
+        // Cell (0, 0) is water, its east neighbour (1, 0) land, on a 3-wide grid.
+        let side = 3;
+        let mut cells = vec![None; side * side];
+        cells[0] = Some(true);
+        cells[1] = Some(false);
+        let shore = Shore {
+            distance: vec![0.0; side * side],
+            cells,
+            side,
+        };
+        // Grid corners 0, 1, 3, 4 of cell (0, 0), as two unrolled triangles.
+        let vertices = [0, 1, 3, 1, 4, 3];
+        let mesh = |uvs: [[f32; 2]; 4]| {
+            let corner = |vertex: usize| match vertex {
+                0 => uvs[0],
+                1 => uvs[1],
+                3 => uvs[2],
+                _ => uvs[3],
+            };
+            Mesh::new(
+                PrimitiveTopology::TriangleList,
+                RenderAssetUsages::default(),
+            )
+            .with_inserted_attribute(
+                Mesh::ATTRIBUTE_UV_0,
+                vertices
+                    .iter()
+                    .map(|&vertex| corner(vertex))
+                    .collect::<Vec<_>>(),
+            )
+            .with_inserted_indices(Indices::U32((0..6).collect()))
+        };
+        // Unrotated, the east grid edge is the tile's u = 1 edge; turned, its v = 0 edge.
+        let upright = mesh([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]);
+        assert_eq!(shore.land_borders(&upright, &vertices), vec![2; 6]);
+        let turned = mesh([[0.0, 1.0], [0.0, 0.0], [1.0, 1.0], [1.0, 0.0]]);
+        assert_eq!(shore.land_borders(&turned, &vertices), vec![4; 6]);
+    }
 
     #[test]
     fn shore_follows_water_textured_cells_not_the_wave_vertices() {
@@ -329,8 +494,17 @@ mod tests {
             })
             .collect();
         let shore = shore_field(&cells, None, side);
-        // Vertices 0 and 1 touch only water cells; vertex 2 also touches land.
+        // In row 2, vertices 0 and 1 touch only water cells; vertex 2 also touches land.
         assert_eq!(shore[2 * side..2 * side + 4], [1.5, 0.5, -0.5, -1.5]);
+        // Wave vertices on land-textured cells stay land; without water textures they stand in.
+        let water = cyrus_assets::environment::Water {
+            parameters: [1.0, 1.0, 1.0],
+            side,
+            animated_vertices: (0..side * side).map(|vertex| vertex % side >= 4).collect(),
+        };
+        assert_eq!(shore_field(&cells, Some(&water), side), shore);
+        let untextured = vec![Some(false); side * side];
+        assert!(shore_field(&untextured, Some(&water), side)[2 * side + 5] > 0.0);
     }
 
     #[test]

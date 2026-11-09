@@ -231,11 +231,7 @@ impl WaterPlayback {
                 if saved.water_attribute {
                     mesh.insert_attribute(
                         Mesh::ATTRIBUTE_UV_1,
-                        super::preparation::water_channel(
-                            water,
-                            &prepared.shore,
-                            &terrain.vertices,
-                        ),
+                        prepared.shore.channel(water, original, &terrain.vertices),
                     );
                 }
                 mesh.insert_attribute(
