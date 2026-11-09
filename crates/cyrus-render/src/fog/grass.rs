@@ -8,15 +8,28 @@
 //! there is grass, and takes that texel's colour, so the grass blends into the ground it grows
 //! from and thins out where a tile blends into sand. Blades are merged into one mesh per square
 //! chunk of the terrain near the camera, built a few per frame and dropped when the camera
-//! leaves; placement is deterministic, so a chunk grows the same blades each time. Blades are
-//! plain lit meshes: ray tracing shades them but does not trace them, and they cast no shadows.
-use super::{Fidelity, ModernEffects, TerrainMaterial};
+//! leaves; placement is deterministic, so a chunk grows the same blades each time.
+//!
+//! Under raster Modern lighting the blades have a material of their own (`grass.wesl`): Bevy's
+//! lights, the scene fog, and wind that bends each tip along the heading the swaying plants use
+//! (`foliage`), which the Swaying plants switch turns off. Under ray tracing the blades are drawn
+//! the same way, and a sparse share of the nearest ones is traced as well, so the meadow shades
+//! the ground and bounces light; the traced stand-ins cannot move each frame, so they stand still
+//! while the drawn blades sway. Blades cast no raster shadows, and Solari does not light them.
+use super::{
+    Fidelity, FogExtension, ModernEffects, SceneFog, TerrainMaterial, define_modern_lighting,
+    is_prepass, skip_prepass,
+};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use bevy::{
-    asset::RenderAssetUsages,
+    asset::{RenderAssetUsages, embedded_asset},
     light::NotShadowCaster,
+    material::OpaqueRendererMethod,
     mesh::{Indices, PrimitiveTopology},
+    pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
+    render::render_resource::{AsBindGroup, ShaderType},
+    shader::ShaderRef,
 };
 use cyrus_assets::terrain_grass::{grass_share, has_grass, is_grass};
 use cyrus_game::fidelity::{Area, Mode};
@@ -27,8 +40,8 @@ const CHUNK: f32 = 24.0;
 /// Chunks built per frame.
 const CHUNKS_PER_FRAME: usize = 2;
 /// Height and base width of a blade, in world units; the player is about three tall.
-const BLADE_HEIGHT: f32 = 1.3;
-const BLADE_WIDTH: f32 = 0.3;
+const BLADE_HEIGHT: f32 = 0.75;
+const BLADE_WIDTH: f32 = 0.13;
 
 /// How blades grow within a range of distances from the camera: fewer and larger the farther
 /// they are, so the meadow keeps its coverage at a fraction of the blades.
@@ -44,22 +57,22 @@ struct Band {
 
 const BANDS: [Band; 3] = [
     Band {
-        reach: 40.0,
-        density: 20.0,
+        reach: 30.0,
+        density: 50.0,
         width: 1.0,
         height: 1.0,
     },
     Band {
-        reach: 90.0,
-        density: 5.0,
+        reach: 70.0,
+        density: 12.0,
         width: 2.0,
-        height: 1.15,
+        height: 1.2,
     },
     Band {
         reach: 150.0,
-        density: 1.2,
+        density: 2.5,
         width: 3.5,
-        height: 1.3,
+        height: 1.5,
     },
 ];
 
@@ -78,20 +91,82 @@ fn keeps(band: usize, distance: f32) -> bool {
         && (band == 0 || distance >= BANDS[band - 1].reach - BAND_MARGIN)
 }
 /// Brightness of a blade's base and tip against the ground colour, so blades read as depth.
-const BASE_SHADE: f32 = 0.55;
-const TIP_SHADE: f32 = 1.1;
+const BASE_SHADE: f32 = 0.45;
+const TIP_SHADE: f32 = 1.0;
+/// How far a blade's own tone strays from the ground's, either way.
+const TONE_SPREAD: f32 = 0.25;
+
+/// How far the wind bends a blade's tip, in world units.
+const WIND_BEND: f32 = 0.18;
+
+/// The blades' material while raster Modern lighting draws them.
+type GrassMaterial = ExtendedMaterial<StandardMaterial, GrassExtension>;
+
+// Bindless where the platform allows, as the terrain's is.
+#[derive(Asset, TypePath, AsBindGroup, Clone, PartialEq)]
+#[data(50, GrassUniform, binding_array(101))]
+#[bindless(index_table(range(50..51), binding(100)))]
+struct GrassExtension {
+    fog: FogExtension,
+    /// How far the wind bends a blade's tip, in world units; 0 holds the blades still.
+    wind: f32,
+}
+
+/// `GrassExtension` as the shader reads it, `GrassMaterial` in `grass.wesl`.
+#[derive(ShaderType)]
+struct GrassUniform {
+    fog: FogExtension,
+    wind: Vec4,
+}
+
+impl From<&GrassExtension> for GrassUniform {
+    fn from(extension: &GrassExtension) -> Self {
+        Self {
+            fog: extension.fog.clone(),
+            wind: Vec4::new(extension.wind, 0.0, 0.0, 0.0),
+        }
+    }
+}
+
+impl MaterialExtension for GrassExtension {
+    fn vertex_shader() -> ShaderRef {
+        "embedded://cyrus_render/fog/grass.wesl".into()
+    }
+    fn fragment_shader() -> ShaderRef {
+        "embedded://cyrus_render/fog/grass.wesl".into()
+    }
+
+    fn specialize(
+        _pipeline: &bevy::pbr::MaterialExtensionPipeline,
+        descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
+        _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        _key: bevy::pbr::MaterialExtensionKey<Self>,
+    ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
+        if is_prepass(descriptor) {
+            // Blades sway in the main pass only; a prepass depth of the resting blades would
+            // reject the swayed ones.
+            skip_prepass(descriptor);
+        } else {
+            define_modern_lighting(descriptor);
+        }
+        Ok(())
+    }
+}
 
 pub(super) struct GrassPlugin;
 
 impl Plugin for GrassPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<GrassField>().add_systems(
-            Update,
-            (
-                (index_terrain, grow).chain().run_if(grassy),
-                clear.run_if(not(grassy)),
-            ),
-        );
+        embedded_asset!(app, "grass.wesl");
+        app.add_plugins(MaterialPlugin::<GrassMaterial>::default())
+            .init_resource::<GrassField>()
+            .add_systems(
+                Update,
+                (
+                    (index_terrain, grow).chain().run_if(grassy),
+                    clear.run_if(not(grassy)),
+                ),
+            );
     }
 }
 
@@ -149,8 +224,28 @@ struct GrassField {
     indexed: bool,
     /// The blade meshes standing now, with the band each was grown for.
     chunks: HashMap<IVec2, (Entity, usize)>,
-    material: Option<Handle<StandardMaterial>>,
+    /// How the standing chunks are drawn; they are grown again when it changes.
+    look: Option<Look>,
+    /// The raster blades' material.
+    leaf: Option<Handle<GrassMaterial>>,
+    /// The ray-traced blades' material as bounced light sees them.
+    #[cfg_attr(not(feature = "raytracing"), allow(dead_code))]
+    bounce: Option<Handle<StandardMaterial>>,
 }
+
+/// How blades are drawn.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Look {
+    /// Drawn alone, under raster Modern lighting.
+    Raster,
+    /// Drawn the same, with a sparse stand-in traced up to `TRACED_BANDS`, while Solari lights
+    /// the scene.
+    Traced,
+}
+
+/// The nearest bands, as many as this, are in the ray-traced scene; farther blades are only drawn.
+#[cfg_attr(not(feature = "raytracing"), allow(dead_code))]
+const TRACED_BANDS: usize = 1;
 
 /// A chunk of blades. The scene material pass leaves it alone.
 #[derive(Component)]
@@ -180,7 +275,9 @@ fn index_terrain(
         }
         *field = GrassField {
             world: Some(request.0.id()),
-            material: field.material.take(),
+            leaf: field.leaf.take(),
+            bounce: field.bounce.take(),
+            look: field.look,
             ..default()
         };
     }
@@ -299,13 +396,66 @@ fn grow(
     cameras: Query<&GlobalTransform, With<ViewCamera>>,
     images: Res<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    (mut standard, mut leaves): (
+        ResMut<Assets<StandardMaterial>>,
+        ResMut<Assets<GrassMaterial>>,
+    ),
+    (fidelity, support, scene_fog, effects): (
+        Res<Fidelity>,
+        Option<Res<super::RayTracingSupport>>,
+        Res<SceneFog>,
+        Res<ModernEffects>,
+    ),
 ) {
     let Some(camera) = cameras.iter().next().map(GlobalTransform::translation) else {
         return;
     };
     if !field.indexed || field.patches.is_empty() {
         return;
+    }
+    let look = if support.is_some_and(|support| super::ray_tracing::ray_traced(&fidelity, &support))
+    {
+        Look::Traced
+    } else {
+        Look::Raster
+    };
+    if field.look != Some(look) {
+        for (_, (chunk, _)) in field.chunks.drain().collect::<Vec<_>>() {
+            commands.entity(chunk).despawn();
+        }
+        field.look = Some(look);
+    }
+    // The fog of the world, which the scene materials carry too; nothing is drawn before the scene
+    // has set it.
+    let Some(fog) = scene_fog.0.clone() else {
+        return;
+    };
+    let extension = GrassExtension {
+        fog,
+        wind: if effects.foliage { WIND_BEND } else { 0.0 },
+    };
+    let leaf = field
+        .leaf
+        .get_or_insert_with(|| {
+            leaves.add(GrassMaterial {
+                base: StandardMaterial {
+                    base_color: Color::WHITE,
+                    perceptual_roughness: 1.0,
+                    reflectance: 0.0,
+                    double_sided: true,
+                    cull_mode: None,
+                    ..default()
+                },
+                extension: extension.clone(),
+            })
+        })
+        .clone();
+    if leaves
+        .get(&leaf)
+        .is_some_and(|leaf| leaf.extension != extension)
+        && let Some(mut leaf) = leaves.get_mut(&leaf)
+    {
+        leaf.extension = extension;
     }
     let near = |chunk: IVec2| {
         let centre = (chunk.as_vec2() + Vec2::splat(0.5)) * CHUNK;
@@ -329,15 +479,16 @@ fn grow(
         .filter(|chunk| !field.chunks.contains_key(chunk) && band_of(near(*chunk)).is_some())
         .collect();
     wanted.sort_by(|a, b| near(*a).total_cmp(&near(*b)));
-    let material = field
-        .material
+    let bounce = field
+        .bounce
         .get_or_insert_with(|| {
-            materials.add(StandardMaterial {
-                base_color: Color::WHITE,
+            standard.add(StandardMaterial {
+                base_color: Color::srgb(0.25, 0.38, 0.12),
                 perceptual_roughness: 1.0,
                 reflectance: 0.0,
                 double_sided: true,
                 cull_mode: None,
+                opaque_render_method: OpaqueRendererMethod::Deferred,
                 ..default()
             })
         })
@@ -357,14 +508,29 @@ fn grow(
                     "grass chunk {chunk} band {band}: {} blades",
                     mesh.count_vertices() / 3
                 );
-                commands
-                    .spawn((
-                        GrassChunk,
-                        Mesh3d(meshes.add(mesh)),
-                        MeshMaterial3d(material.clone()),
-                        NotShadowCaster,
-                    ))
-                    .id()
+                let traced = (look == Look::Traced && band < TRACED_BANDS)
+                    .then(|| traceable(&mesh))
+                    .flatten();
+                #[cfg_attr(not(feature = "raytracing"), allow(unused_mut))]
+                let mut chunk = commands.spawn((
+                    GrassChunk,
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(leaf.clone()),
+                    NotShadowCaster,
+                ));
+                #[cfg(feature = "raytracing")]
+                if let Some(traced) = traced {
+                    let traced = meshes.add(traced);
+                    chunk.with_children(|chunk| {
+                        chunk.spawn((
+                            bevy::solari::prelude::RaytracingMesh3d(traced),
+                            MeshMaterial3d(bounce.clone()),
+                        ));
+                    });
+                }
+                #[cfg(not(feature = "raytracing"))]
+                let _ = (traced, &bounce);
+                chunk.id()
             }
             // A chunk of tiles whose texels held no grass keeps an empty entity, so it is not
             // tried again every frame.
@@ -372,6 +538,42 @@ fn grow(
         };
         field.chunks.insert(chunk, (entity, band));
     }
+}
+
+/// One blade in this many is in the ray-traced scene. Traced, every blade of a dense meadow shadows
+/// its neighbours and the blades come out black; a sparse stand-in still lets the meadow shade
+/// and bounce light onto the ground, and the drawn blades are lit by it.
+const TRACED_EVERY: usize = 6;
+
+/// A sparse share of the blades in the layout Solari traces: position, normal, UV 0 and tangent,
+/// as indexed triangles.
+fn traceable(blades: &Mesh) -> Option<Mesh> {
+    fn every<T: Copy>(values: &[T]) -> Vec<T> {
+        values
+            .chunks(3)
+            .step_by(TRACED_EVERY)
+            .flatten()
+            .copied()
+            .collect()
+    }
+    let positions = every(blades.attribute(Mesh::ATTRIBUTE_POSITION)?.as_float3()?);
+    let normals = every(blades.attribute(Mesh::ATTRIBUTE_NORMAL)?.as_float3()?);
+    let uvs = match blades.attribute(Mesh::ATTRIBUTE_UV_0)? {
+        bevy::mesh::VertexAttributeValues::Float32x2(uvs) => every(uvs),
+        _ => return None,
+    };
+    let count = positions.len();
+    Some(
+        Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_TANGENT, vec![[0.0; 4]; count])
+        .with_inserted_indices(Indices::U32((0..count as u32).collect())),
+    )
 }
 
 /// The texel of a tile image at texture coordinates `uv`, nearest, wrapping.
@@ -418,6 +620,7 @@ fn blades(
     let mut positions = Vec::<[f32; 3]>::new();
     let mut normals = Vec::<[f32; 3]>::new();
     let mut colors = Vec::<[f32; 4]>::new();
+    let mut uvs = Vec::<[f32; 2]>::new();
     for (index, patch) in patches {
         let seed = u64::from(*index) << 20;
         let wanted = patch.area() * band.density;
@@ -443,18 +646,23 @@ fn blades(
             let width = BLADE_WIDTH * band.width * (0.8 + 0.4 * unit(key ^ 0x7777));
             let tip = base + Vec3::Y * height + lean;
             let facing = across.cross(Vec3::Y).normalize_or_zero();
-            for (point, shade) in [
-                (base - across * width * 0.5, BASE_SHADE),
-                (base + across * width * 0.5, BASE_SHADE),
-                (tip, TIP_SHADE),
+            // UV 0 carries what the wind needs: the blade's own phase, and 0 at its base to 1 at
+            // its tip.
+            let phase = unit(key ^ 0x8888);
+            let tone = 1.0 + TONE_SPREAD * (2.0 * unit(key ^ 0x9999) - 1.0);
+            for (point, shade, tip_weight) in [
+                (base - across * width * 0.5, BASE_SHADE, 0.0),
+                (base + across * width * 0.5, BASE_SHADE, 0.0),
+                (tip, TIP_SHADE, 1.0),
             ] {
                 positions.push(point.to_array());
+                uvs.push([phase, tip_weight]);
                 // Lit as the ground is, with the blade's own facing mixed in.
                 normals.push((Vec3::Y + facing * 0.3).normalize().to_array());
                 colors.push([
-                    ground.red * shade,
-                    ground.green * shade,
-                    ground.blue * shade,
+                    ground.red * shade * tone,
+                    ground.green * shade * tone,
+                    ground.blue * shade * tone,
                     1.0,
                 ]);
             }
@@ -471,6 +679,7 @@ fn blades(
         )
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices(Indices::U32(indices)),
     )
@@ -516,7 +725,7 @@ mod tests {
         // 100 square units at the near band's density, give or take the rounding of each patch.
         let blades = points.len() / 3;
         assert_eq!(points.len() % 3, 0);
-        assert!((1990..=2010).contains(&blades), "{blades} blades");
+        assert!((4990..=5010).contains(&blades), "{blades} blades");
         for point in points {
             assert!(
                 (-BLADE_HEIGHT..=10.0 + BLADE_HEIGHT).contains(&point.x)
@@ -559,9 +768,54 @@ mod tests {
             panic!("colours are float4");
         };
         let ground = Color::srgb_u8(GREEN[0], GREEN[1], GREEN[2]).to_linear();
-        // A base is darker than the ground, a tip brighter.
-        assert!((colors[0][1] - ground.green * BASE_SHADE).abs() < 1e-5);
-        assert!((colors[2][1] - ground.green * TIP_SHADE).abs() < 1e-5);
+        // A base is darker than the ground, a tip brighter, each by the blade's own tone.
+        let tone = colors[0][1] / (ground.green * BASE_SHADE);
+        assert!(
+            (1.0 - TONE_SPREAD..=1.0 + TONE_SPREAD).contains(&tone),
+            "{tone}"
+        );
+        assert!((colors[2][1] - ground.green * TIP_SHADE * tone).abs() < 1e-5);
+    }
+
+    #[test]
+    fn blades_carry_their_phase_and_tip_weight_for_the_wind() {
+        let mesh = blades(&square(), &|_, _| Some(GREEN), &BANDS[0]).expect("blades");
+        let Some(bevy::mesh::VertexAttributeValues::Float32x2(uvs)) =
+            mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+        else {
+            panic!("UV 0 is float2");
+        };
+        for blade in uvs.chunks(3) {
+            // The base corners stay planted, the tip moves, and the three share one phase.
+            assert_eq!([blade[0][1], blade[1][1], blade[2][1]], [0.0, 0.0, 1.0]);
+            assert!(blade.iter().all(|uv| uv[0] == blade[0][0]));
+            assert!((0.0..1.0).contains(&blade[0][0]));
+        }
+    }
+
+    #[test]
+    fn traced_blades_have_the_layout_solari_accepts() {
+        let mesh = blades(&square(), &|_, _| Some(GREEN), &BANDS[0]).expect("blades");
+        let traced = traceable(&mesh).expect("traced blades");
+        let names: std::collections::BTreeSet<_> = traced
+            .attributes()
+            .map(|(attribute, _)| attribute.name)
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "Vertex_Normal",
+                "Vertex_Position",
+                "Vertex_Tangent",
+                "Vertex_Uv"
+            ]
+            .into_iter()
+            .collect()
+        );
+        // A sparse share, whole blades.
+        assert_eq!(traced.count_vertices() % 3, 0);
+        assert!(traced.count_vertices() * TRACED_EVERY <= mesh.count_vertices() + 3 * TRACED_EVERY);
+        assert!(traced.count_vertices() > 0);
     }
 
     #[test]

@@ -90,8 +90,10 @@ every value is a Modern tuning choice:
 - grass: blades stand on the terrain wherever its texture is grass, under Modern lighting and ray
   tracing. The game has no grass class, so grass is read from the terrain textures: a pixel is grass
   when green is its strongest channel, and a blade grows only where the texel under it is. Blades
-  take that texel's colour, grow denser and finer near the camera and out to 150 world units, cast
-  no shadows, and are not traced by ray tracing, which only lights them. They do not sway yet;
+  take that texel's colour, grow denser and finer near the camera and out to 150 world units, fade
+  with the scene fog, and bend in the wind the swaying plants use (the Swaying plants switch turns
+  it off). They cast no shadows. Under ray tracing a sparse share of the nearest blades is traced, so
+  the meadow shades and bounces light onto the ground; those stand-ins do not sway;
 - depth of field focused on the player, and motion blur.
 - the map's object and baked lights (lamps and fires) shine as point lights. Map light colours are
   signed and the original subtracts the negative channels; point lights only add, so each light
