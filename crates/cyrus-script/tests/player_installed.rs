@@ -136,47 +136,6 @@ fn installed_keyboard_route(modern_jump: bool, banked_turns: bool) -> Result<()>
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
-    let position = |app: &mut App| -> Result<[i32; 3]> {
-        let actors = app.world().resource::<ScriptActors>();
-        ensure!(
-            !matches!(
-                app.world().resource::<cyrus_script::script::ScriptStatus>(),
-                cyrus_script::script::ScriptStatus::Failed { .. }
-            ),
-            "registry: {:?}",
-            app.world().resource::<cyrus_script::script::ScriptStatus>()
-        );
-        let world = actors
-            .current
-            .as_ref()
-            .context("logical world unavailable")?;
-        let index = world
-            .actors()
-            .iter()
-            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
-            .context("selected player unavailable")?;
-        let actor = &world.actors()[index];
-        ensure!(
-            actor.failure().is_none(),
-            "selected player: {:?}, control: {:?}",
-            actor.failure(),
-            actor.control_state()
-        );
-        let position = world.spatial(world.id(index)?)?.local.position;
-        let entity = app
-            .world_mut()
-            .query_filtered::<Entity, With<Player>>()
-            .single(app.world())?;
-        ensure!(
-            app.world()
-                .get::<PlayerPose>(entity)
-                .context("presentation pose unavailable")?
-                .position
-                == position.map(i64::from),
-            "presentation differs from logical player"
-        );
-        Ok(position)
-    };
     for _ in 0..4 {
         app.update();
     }
@@ -187,50 +146,7 @@ fn installed_keyboard_route(modern_jump: bool, banked_turns: bool) -> Result<()>
         "idle player moved before input"
     );
     if banked_turns {
-        let key = |index: usize| -> Result<KeyCode> {
-            match cyrus_script::player::input::Input::try_from(codes[index]) {
-                Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
-                other => anyhow::bail!("installed binding {index} is not a key: {other:?}"),
-            }
-        };
-        app.world_mut().resource_mut::<PlayerToggles>().walk_mode = false;
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(key(0)?);
-        let mut banked = false;
-        for turn in [key(2)?, key(3)?].into_iter().cycle().take(8) {
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .press(turn);
-            for _ in 0..8 {
-                app.update();
-            }
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .release(turn);
-            for _ in 0..8 {
-                app.update();
-                let actors = app.world().resource::<ScriptActors>();
-                let world = actors.current.as_ref().context("world")?;
-                let spatial = world.spatial(world.selected_player().context("player")?)?;
-                banked |= spatial.local.angles[2] & 2047 != 0;
-                if spatial.local.angles[2] & 2047 == 0 {
-                    ensure!(
-                        spatial.local.matrix.0[1]
-                            .iter()
-                            .zip([0.0, 1.0, 0.0])
-                            .all(|(a, b)| (a - b).abs() < 0.0001),
-                        "base running turn retained tilt: {:?}",
-                        spatial.local
-                    );
-                }
-            }
-        }
-        ensure!(banked, "base turn route never banked");
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .release_all();
-        return Ok(());
+        return banked_turn_route(&mut app, &codes);
     }
     if modern_jump {
         let ground = position(&mut app)?;
@@ -356,4 +272,97 @@ impl cyrus_game::preferences::PreferenceStore for EmptyPreferences {
     fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> Result<()> {
         anyhow::bail!("headless controller test must not write preferences")
     }
+}
+
+/// Exercise base running turns while checking script health and presentation each update.
+fn banked_turn_route(app: &mut App, codes: &[u8]) -> Result<()> {
+    let key = |index: usize| -> Result<KeyCode> {
+        match cyrus_script::player::input::Input::try_from(codes[index]) {
+            Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
+            other => anyhow::bail!("installed binding {index} is not a key: {other:?}"),
+        }
+    };
+    app.world_mut().resource_mut::<PlayerToggles>().walk_mode = false;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key(0)?);
+    let mut banked = false;
+    for turn in [key(2)?, key(3)?].into_iter().cycle().take(8) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(turn);
+        for _ in 0..8 {
+            app.update();
+            position(app)?;
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(turn);
+        for _ in 0..8 {
+            app.update();
+            position(app)?;
+            let actors = app.world().resource::<ScriptActors>();
+            let world = actors.current.as_ref().context("world")?;
+            let spatial = world.spatial(world.selected_player().context("player")?)?;
+            banked |= spatial.local.angles[2] & 2047 != 0;
+            if spatial.local.angles[2] & 2047 == 0 {
+                ensure!(
+                    spatial.local.matrix.0[1]
+                        .iter()
+                        .zip([0.0, 1.0, 0.0])
+                        .all(|(a, b)| (a - b).abs() < 0.0001),
+                    "base running turn retained tilt: {:?}",
+                    spatial.local
+                );
+            }
+        }
+    }
+    ensure!(banked, "base turn route never banked");
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release_all();
+    Ok(())
+}
+
+/// Validate script health and agreement between logical and presented player positions.
+fn position(app: &mut App) -> Result<[i32; 3]> {
+    let actors = app.world().resource::<ScriptActors>();
+    ensure!(
+        !matches!(
+            app.world().resource::<cyrus_script::script::ScriptStatus>(),
+            cyrus_script::script::ScriptStatus::Failed { .. }
+        ),
+        "registry: {:?}",
+        app.world().resource::<cyrus_script::script::ScriptStatus>()
+    );
+    let world = actors
+        .current
+        .as_ref()
+        .context("logical world unavailable")?;
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .context("selected player unavailable")?;
+    let actor = &world.actors()[index];
+    ensure!(
+        actor.failure().is_none(),
+        "selected player: {:?}, control: {:?}",
+        actor.failure(),
+        actor.control_state()
+    );
+    let position = world.spatial(world.id(index)?)?.local.position;
+    let entity = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())?;
+    ensure!(
+        app.world()
+            .get::<PlayerPose>(entity)
+            .context("presentation pose unavailable")?
+            .position
+            == position.map(i64::from),
+        "presentation differs from logical player"
+    );
+    Ok(position)
 }
