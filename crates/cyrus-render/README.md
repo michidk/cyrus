@@ -270,8 +270,9 @@ from departed worlds do not trigger new GPU uploads.
 
 The Lighting fidelity area defaults to Faithful. Modern lighting compiles the same
 scene and terrain materials with a physically based branch and lights them with
-Bevy's sun, ambient and point lights (`fog/modern_lighting`); its optional
-day/night cycle moves and tints those lights, the fog and the sky by the hour, and its
+Bevy's sun, ambient and point lights (`fog/modern_lighting`); its
+day/night cycle, off unless turned on so the game keeps its own times of day, moves and tints those lights, lights the player with a candle while the sky is dark, the fog
+and the sky by the hour, and its
 optional effects (tonemapping and grading, auto exposure, god rays, sky glow and stars,
 water reflections, lens flare, swaying plants, depth of field, motion blur) are switched in
 `ModernEffects`. Under modern lighting the terrain writes its water weight into the colour

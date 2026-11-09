@@ -51,9 +51,7 @@ receive shadows (each caster through a shadow-only twin that shares one material
 the cascades batch their draws, and static models with equal modern material values share one
 material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
 bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
-measured matches. Flats keep their original shading. While the day/night cycle runs and its hour is night,
-the player in an outdoor world (one with a sky) carries a candle: a faint, flickering warm light just
-above the head. The original lights nothing around the player; its HUD candle shows health.
+measured matches. Flats keep their original shading.
 
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
 which moves six times farther than the world's installed clipping distance.
@@ -66,8 +64,11 @@ port's `set_day_night`) can turn on a time of day. Noon reproduces the world's i
 moves on an arc through it and sets at 6 and 18 o'clock, and its colour, the ambient light, the fog and
 the sky darken and warm with the hour, with a dim moonlight at night. The background beyond the scenery
 darkens with the fog, and moonlit clouds stay visible at night. Worlds without an installed sun,
-such as interiors, are not affected. The cycle is off by default, and every colour, the speed and the
-direction of the arc are Modern tuning choices.
+such as interiors, are not affected. The cycle is off by default, so the game keeps its own times of
+day; once on, it runs one in-game minute per real second, so a day lasts 24 minutes. The night sky and
+background are nearly black. While the sky is dark, the player carries a candle: a faint, flickering warm light follows
+the player, the stronger the darker it is, and is out by day. Every colour, the speed and the direction of the arc are Modern tuning
+choices.
 
 ## Modern effects
 

@@ -4,8 +4,9 @@
 //! variant. While the cycle is on and `Area::Lighting` is Modern, the hour of the day moves
 //! the sun along an arc whose noon is the world's installed sun, and it scales the sun, the
 //! ambient light, the fog colour and the sky. Below the horizon a dim moonlight replaces the
-//! sun. Worlds without an installed sun, such as interiors, are left alone. Every colour and
-//! the arc's orientation are Modern tuning choices, not recovered behaviour.
+//! sun. Worlds without an installed sun or a sky, such as interiors, are left alone. The cycle is
+//! off by default: the game has its own times of day, which it keeps unless the cycle is turned on.
+//! Every colour and the arc's orientation are Modern tuning choices, not recovered behaviour.
 use super::lights::{Ambient, Sun, ambient_texels, light_color, light_transform};
 use crate::sky::SkyMaterial;
 use bevy::prelude::*;
@@ -14,13 +15,15 @@ use std::f32::consts::TAU;
 /// The cycle's settings, edited from the debug menu's day/night panel and the control port.
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub struct DayNight {
-    /// Off keeps the world's installed lighting, also in Modern.
+    /// Off keeps the world's installed lighting, also in Modern. Worlds that declare no sky, such
+    /// as interiors, keep it either way.
     pub enabled: bool,
     /// Whether the hour advances on its own.
     pub running: bool,
     /// Hour of the day, `0.0..24.0`; 12 is the world's installed sun.
     pub hour: f32,
-    /// In-game minutes that pass per real second while running.
+    /// In-game minutes that pass per real second while running. The default of one makes a day
+    /// last 24 real minutes, slow enough to play through; a Modern tuning choice.
     pub minutes_per_second: f32,
 }
 
@@ -30,7 +33,7 @@ impl Default for DayNight {
             enabled: false,
             running: true,
             hour: 12.0,
-            minutes_per_second: 30.0,
+            minutes_per_second: 1.0,
         }
     }
 }
@@ -63,9 +66,9 @@ const WHITE: Vec3 = Vec3::ONE;
 const SUNSET_LIGHT: Vec3 = Vec3::new(1.0, 0.55, 0.32);
 const SUNSET_AMBIENT: Vec3 = Vec3::new(1.0, 0.75, 0.6);
 const SUNSET_SKY: Vec3 = Vec3::new(1.0, 0.68, 0.52);
-const MOONLIGHT: Vec3 = Vec3::new(0.12, 0.15, 0.24);
-const NIGHT_AMBIENT: Vec3 = Vec3::new(0.2, 0.25, 0.42);
-const NIGHT_SKY: Vec3 = Vec3::new(0.1, 0.13, 0.27);
+const MOONLIGHT: Vec3 = Vec3::new(0.06, 0.075, 0.12);
+const NIGHT_AMBIENT: Vec3 = Vec3::new(0.08, 0.1, 0.17);
+const NIGHT_SKY: Vec3 = Vec3::new(0.03, 0.04, 0.09);
 
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
@@ -84,12 +87,6 @@ struct Phase {
     /// Factor on the installed ambient colour.
     ambient: Vec3,
     sky: SkyLight,
-}
-
-/// How much night it is at `hour`, `0.0` by day to `1.0` once the sun is well below the horizon:
-/// the inverse of the daylight the phase fades the sky and ambient light with.
-pub(super) fn night(noon_direction: Dir3, hour: f32) -> f32 {
-    1.0 - smoothstep(-0.05, 0.15, phase(noon_direction, hour).sun_position.y)
 }
 
 /// The phase at `hour` for a world whose installed sun shines along `noon_direction`.
@@ -143,6 +140,7 @@ pub(super) fn advance(time: Res<Time>, mut cycle: ResMut<DayNight>) {
 /// Moves and tints the sun and the ambient light to the hour, or back to the installed values.
 pub(super) fn apply(
     cycle: Res<DayNight>,
+    skies: Query<(), With<MeshMaterial3d<SkyMaterial>>>,
     mut suns: Query<(&Sun, &mut DirectionalLight, &mut Transform)>,
     ambients: Query<&Ambient>,
     mut images: ResMut<Assets<Image>>,
@@ -151,7 +149,7 @@ pub(super) fn apply(
     let phase = suns
         .iter()
         .next()
-        .filter(|_| cycle.enabled)
+        .filter(|_| cycle.enabled && !skies.is_empty())
         .map(|(sun, ..)| phase(sun.direction, cycle.hour));
     for (sun, mut light, mut transform) in &mut suns {
         let (rgb, direction) = match phase {
@@ -263,8 +261,40 @@ mod tests {
         assert!(night.light.max_element() < 0.3);
         assert!(night.ambient.max_element() < 0.5);
         assert_eq!(night.sky.sun_disc, 0.0);
+        assert!(
+            night.sky.tint.max_element() < 0.1,
+            "the night sky and background are dark"
+        );
         let dusk = phase(installed(), 17.5);
         assert!(dusk.light.x > dusk.light.z, "a low sun is warm");
+    }
+
+    // Interiors declare no sky, so a cycle turned on must keep their lighting.
+    #[test]
+    fn the_cycle_leaves_worlds_without_a_sky_alone() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .init_resource::<Daylight>()
+            .insert_resource(DayNight {
+                enabled: true,
+                hour: 0.0,
+                ..default()
+            })
+            .add_systems(Update, apply);
+        app.world_mut().spawn((
+            Sun {
+                rgb: [255.0; 3],
+                direction: installed(),
+            },
+            DirectionalLight::default(),
+            Transform::default(),
+        ));
+        app.update();
+        assert_eq!(app.world().resource::<Daylight>().0, None);
+        app.world_mut()
+            .spawn(MeshMaterial3d::<SkyMaterial>(Handle::default()));
+        app.update();
+        assert!(app.world().resource::<Daylight>().0.is_some());
     }
 
     #[test]

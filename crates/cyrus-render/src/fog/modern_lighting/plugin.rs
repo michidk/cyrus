@@ -38,6 +38,7 @@ impl Plugin for ModernLightingPlugin {
         ))
         .init_resource::<DayNight>()
         .init_resource::<Daylight>()
+        .init_resource::<super::candle::Candle>()
         .init_resource::<ModernEffects>()
         .init_resource::<AutoExposureAssets>()
         .init_resource::<shadows::TwinMaterial>()
@@ -54,7 +55,8 @@ impl Plugin for ModernLightingPlugin {
                         day_night::advance,
                         sync_lights,
                         day_night::apply,
-                        super::candle::follow,
+                        super::candle::track,
+                        super::candle::light,
                     )
                         .chain(),
                     (configure_camera, effects::apply_camera_effects).chain(),
@@ -141,8 +143,15 @@ fn restore(
         (Entity, Option<&AutoExposure>),
         (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>),
     >,
-    removed: Query<Entity, Or<(With<Light>, With<ShaftVolume>)>>,
-    mut daylight: ResMut<Daylight>,
+    removed: Query<
+        Entity,
+        Or<(
+            With<Light>,
+            With<ShaftVolume>,
+            With<super::candle::CandleLamp>,
+        )>,
+    >,
+    (mut daylight, mut candle): (ResMut<Daylight>, ResMut<super::candle::Candle>),
     auto_exposure: Res<AutoExposureAssets>,
     mut plants: Query<(Entity, &foliage::Sway, &mut Transform)>,
     (twins, twinned, mut shared, mut scene_materials, mut shared_models, kept): (
@@ -159,6 +168,7 @@ fn restore(
     ),
 ) {
     daylight.set_if_neq(Daylight(None));
+    candle.set_if_neq(super::candle::Candle(None));
     for (camera, exposure) in &cameras {
         let mut camera = commands.entity(camera);
         if !effects::remove_camera_effects(&mut camera, exposure, &auto_exposure) {
@@ -205,6 +215,7 @@ mod tests {
         let mut schedule = Schedule::default();
         world.init_resource::<DayNight>();
         world.init_resource::<Daylight>();
+        world.init_resource::<super::super::candle::Candle>();
         world.init_resource::<ModernEffects>();
         world.init_resource::<SharedMaterials>();
         schedule.add_systems((
@@ -225,8 +236,8 @@ mod tests {
             super::super::glow::restore,
             day_night::advance,
             day_night::apply,
-            super::super::candle::follow,
             day_night::tint_sky,
+            (super::super::candle::track, super::super::candle::light),
         ));
         schedule
             .initialize(&mut world)

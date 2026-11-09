@@ -23,7 +23,7 @@ use std::f32::consts::PI;
 /// Distance from a map light, as a fraction of its radius, where it lights a facing surface with its
 /// full colour. The original's vertex lighting attenuates by `(r² + 3r) / 256 / (d² + 3d)`
 /// (`lighting::runtime`, `model_lights.wesl`), which is 1 at about a sixteenth of the radius r.
-const OBJECT_LIGHT_FULL_AT: f32 = 1.0 / 16.0;
+pub(in crate::fog) const OBJECT_LIGHT_FULL_AT: f32 = 1.0 / 16.0;
 /// Distance of the first sun shadow cascade, in world units; a Modern tuning choice.
 const SHADOW_FIRST_CASCADE: f32 = 20.0;
 /// Distance the sun shadow cascades reach, in world units; a Modern tuning choice.
@@ -122,7 +122,6 @@ pub(super) fn sync_lights(
         commands.entity(camera).insert(ambient.clone());
     }
     spawn_object_lights(&mut commands, &lights);
-    super::candle::spawn(&mut commands, environment.sky.is_some());
     // The lamps and fires the original bakes into vertex lighting when the world loads; modern
     // lighting replaces that lighting, so they shine as point lights too.
     spawn_object_lights(&mut commands, &environment.prelighting.lights);
@@ -259,7 +258,7 @@ fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
 /// Luminous power, in lumens, of a point light that gives a facing surface the sun's full light
 /// factor at `distance` world units: `power / (4π·d²)` is the illuminance and `π / exposure` the
 /// sun's.
-pub(super) fn point_light_power(distance: f32) -> f32 {
+pub(in crate::fog) fn point_light_power(distance: f32) -> f32 {
     4.0 * PI * PI * distance * distance / exposure()
 }
 

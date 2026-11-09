@@ -1,49 +1,50 @@
-//! The candle the player carries at night: a faint, flickering warm light that follows the player.
+//! The candle the player carries at night.
 //!
-//! **Modern only.** The original lights nothing around the player; its HUD candle shows health.
-//! The candle belongs to the day/night cycle: it burns only while the cycle runs and its hour is
-//! night, in outdoor worlds, those with a sky, and fades with the cycle's daylight. Its colour,
-//! reach, brightness and flicker are Modern tuning choices, kept subtle.
-use super::day_night::{self, DayNight};
-use super::lights::{Sun, point_light_power};
+//! **Modern only.** The original lights nothing around the player. While the day/night cycle
+//! darkens the sky, a faint, flickering warm light follows the player, more the darker it is. The
+//! colour, reach, brightness, height and flicker are Modern tuning choices, not recovered
+//! behaviour. Both lighting tiers read the one `Candle`: the raster tier lights it with a point
+//! light (`light`), ray tracing with an emissive sphere beside its object lights.
+use super::day_night::Daylight;
+use super::lights::{light_color, point_light_power};
 use super::plugin::Light;
 use bevy::prelude::*;
 use cyrus_script::player::Player;
 
-/// Warm candle flame colour, linear light factors.
-const CANDLE_COLOR: Color = Color::srgb(1.0, 0.78, 0.55);
+/// How far the candle's light reaches, in world units.
+pub(in crate::fog) const REACH: f32 = 30.0;
+/// The candle's colour as a 0..=255 light triple.
+pub(in crate::fog) const RGB: [f32; 3] = [255.0, 170.0, 80.0];
+/// Height above the player's origin the candle is held at, in world units; the player is about
+/// three tall.
+const HEIGHT: f32 = 4.0;
+/// Darkness below which the candle stays unlit, so day leaves no stray light in the scene.
+const DARK_FROM: f32 = 0.02;
 /// Distance from the flame, in world units, where a facing surface gets the full candle colour;
-/// small, so the candle only warms the player and the ground at their feet.
-const CANDLE_FULL_AT: f32 = 0.9;
-/// Distance the candle reaches, in world units.
-const CANDLE_RANGE: f32 = 10.0;
-/// Height of the light above the player's origin at the feet, in world units: just above the head,
-/// so it lights the player and the ground around them rather than shining from inside the body.
-const CANDLE_HEIGHT: f32 = 4.5;
+/// small, so the candle stays faint and mostly warms the player and the ground at their feet.
+const FULL_AT: f32 = 0.9;
 /// How far the flicker dims the flame below its full strength, as a fraction.
 const FLICKER_DEPTH: f32 = 0.25;
+/// Luminance weights of linear sRGB.
+const LUMINANCE: Vec3 = Vec3::new(0.2126, 0.7152, 0.0722);
 
-/// The player's candle; `outdoor` while the world has a sky.
-#[derive(Component)]
-pub(super) struct Candle {
-    outdoor: bool,
+/// The lit candle, if any.
+#[derive(Resource, Default, Clone, Copy, PartialEq, Debug)]
+pub(in crate::fog) struct Candle(pub(in crate::fog) Option<Flame>);
+
+/// Where the candle burns and how strongly: `darkness` is 0 by day and up to 1 in the dark of
+/// night, dimmed by the flicker.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(in crate::fog) struct Flame {
+    pub(in crate::fog) position: Vec3,
+    pub(in crate::fog) darkness: f32,
 }
 
-/// Spawns the candle, out (zero intensity) until `follow` finds the player at night.
-pub(super) fn spawn(commands: &mut Commands, outdoor: bool) {
-    commands.spawn((
-        Light,
-        Candle { outdoor },
-        PointLight {
-            color: CANDLE_COLOR,
-            intensity: 0.0,
-            range: CANDLE_RANGE,
-            // The player stands in it, so its own shadow pass would cost every frame.
-            shadow_maps_enabled: false,
-            ..default()
-        },
-        Transform::default(),
-    ));
+/// How dark the cycle's sky is: 0 at noon, towards 1 at night. Without the cycle, 0.
+fn darkness(daylight: &Daylight) -> f32 {
+    daylight
+        .0
+        .map_or(0.0, |sky| (1.0 - sky.tint.dot(LUMINANCE)).clamp(0.0, 1.0))
 }
 
 /// The flame's strength at `seconds`, `1.0 - FLICKER_DEPTH..=1.0`: a few unrelated sines, so the
@@ -55,41 +56,76 @@ fn flicker(seconds: f32) -> f32 {
     1.0 - FLICKER_DEPTH * (0.5 + 0.5 * wave)
 }
 
-/// Keeps the candle above the player, lit as much as the cycle's hour is night, and flickering.
-pub(super) fn follow(
+/// Lights the candle on the player once the cycle has made the sky dark.
+pub(in crate::fog) fn track(
     time: Res<Time>,
-    cycle: Res<DayNight>,
-    mut candles: Query<(&Candle, &mut PointLight, &mut Transform)>,
-    suns: Query<&Sun>,
+    daylight: Res<Daylight>,
     players: Query<&GlobalTransform, With<Player>>,
+    mut candle: ResMut<Candle>,
 ) {
-    let night = suns
+    let darkness = darkness(&daylight);
+    let flame = players
         .iter()
         .next()
-        .filter(|_| cycle.enabled)
-        .map_or(0.0, |sun| day_night::night(sun.direction, cycle.hour));
-    let player = players.iter().next();
-    for (candle, mut light, mut transform) in &mut candles {
-        let strength = if candle.outdoor && player.is_some() {
-            night * flicker(time.elapsed_secs())
-        } else {
-            0.0
-        };
-        let intensity = point_light_power(CANDLE_FULL_AT) * strength;
-        if light.intensity != intensity {
-            light.intensity = intensity;
+        .filter(|_| darkness >= DARK_FROM)
+        .map(|player| Flame {
+            position: player.translation() + Vec3::Y * HEIGHT,
+            darkness: darkness * flicker(time.elapsed_secs()),
+        });
+    candle.set_if_neq(Candle(flame));
+}
+
+/// Marks the raster tier's candle light.
+#[derive(Component)]
+pub(in crate::fog) struct CandleLamp;
+
+/// The raster tier's candle: a point light that follows the flame and goes out with it.
+pub(in crate::fog) fn light(
+    mut commands: Commands,
+    candle: Res<Candle>,
+    mut lamps: Query<(Entity, &mut Transform, &mut PointLight), With<CandleLamp>>,
+) {
+    let Some(flame) = candle.0 else {
+        for (lamp, ..) in &lamps {
+            commands.entity(lamp).despawn();
         }
-        if let Some(player) = player {
-            transform.set_if_neq(Transform::from_translation(
-                player.translation() + Vec3::Y * CANDLE_HEIGHT,
-            ));
-        }
+        return;
+    };
+    let intensity = point_light_power(FULL_AT) * flame.darkness;
+    let mut held = false;
+    for (_, mut transform, mut light) in &mut lamps {
+        held = true;
+        transform.translation = flame.position;
+        light.intensity = intensity;
+    }
+    if !held {
+        commands.spawn((
+            Light,
+            CandleLamp,
+            PointLight {
+                color: light_color(RGB),
+                intensity,
+                range: REACH,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(flame.position),
+        ));
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::day_night::SkyLight;
     use super::*;
+
+    fn dark_sky(tint: Vec3) -> Daylight {
+        Daylight(Some(SkyLight {
+            tint,
+            sun_rotation: Quat::IDENTITY,
+            sun_disc: 0.0,
+        }))
+    }
 
     #[test]
     fn the_flicker_only_dims_the_flame_a_little() {
@@ -104,11 +140,12 @@ mod tests {
     }
 
     #[test]
-    fn the_candle_burns_only_at_the_cycles_night() {
-        let installed = Dir3::new(Vec3::new(-0.5, -0.8, 0.3)).unwrap();
-        assert_eq!(day_night::night(installed, 12.0), 0.0);
-        assert_eq!(day_night::night(installed, 0.0), 1.0);
-        let dusk = day_night::night(installed, 18.0);
-        assert!(dusk > 0.0 && dusk < 1.0);
+    fn the_candle_burns_only_in_the_dark() {
+        assert_eq!(darkness(&Daylight(None)), 0.0, "no cycle, no candle");
+        assert!(darkness(&dark_sky(Vec3::ONE)) < DARK_FROM, "noon");
+        assert!(
+            darkness(&dark_sky(Vec3::new(0.03, 0.04, 0.09))) > 0.9,
+            "night"
+        );
     }
 }
