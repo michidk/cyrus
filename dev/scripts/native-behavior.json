@@ -436,7 +436,7 @@
       "evidence": [
         "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
       ],
-      "limits": "Verified by inspection: public stage tests cover local angle change, routed identity/task slots and cancellation. Unknown: complete separate-object host publication and installed original/native/browser turn/refresh timing.",
+      "limits": "Verified by inspection: public stage tests cover local angle change, routed identity/task slots and cancellation. Verified (2026-11-09, DRINT lever DR_LVRD2 driving door DR_DORD2, the original's actor yaw read from memory against native): both turn 256 to 4, wrap to 1884, hold that value, then return through 2010 to 256; the extreme and end angles are identical and the hold and return durations agree within the original's frame-rate drift (hold 5.0 s native, 5.7 s original; return 1.66 s and 1.94 s, a constant ratio of about 0.87). Unknown: complete separate-object host publication and browser turn/refresh timing.",
       "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
     },
     {
