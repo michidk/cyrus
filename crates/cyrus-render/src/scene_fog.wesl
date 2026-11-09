@@ -13,7 +13,7 @@ import bevy_pbr::render::pbr_functions::premultiply_alpha;
 import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
 import package::scene_shading::{fog, point_sampled, scene_color, scene_fog_at_position};
-import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
+import package::glide_fog::{fog_table_position, framebuffer_blend_integer};
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
 import package::model_lights::{apply_local_lights, load_model_material, model};
@@ -120,8 +120,6 @@ fn vertex(raw: Vertex,
     return out;
 }
 
-// The surface lit by Bevy's lights as a matte material, then the scene fog without the original's
-// 16-bit framebuffer.
 // Light a glowing lamp gives off on top of its texture: the base material's emissive strength on
 // the bright texels only, so a lantern's glass or a flame glows and its frame does not. The
 // strength is zero except on the lamps `modern_lighting::glow` finds.
@@ -131,6 +129,7 @@ fn lamp_glow(input: PbrInput, rgb: vec3<f32>, linear: vec3<f32>) -> vec3<f32> {
     return linear * strength * smoothstep(0.55, 0.9, max(rgb.r, max(rgb.g, rgb.b)));
 }
 
+// The surface lit by Bevy's lights as a matte material, then the scene fog.
 @if(MODERN_LIGHTING)
 fn modern_lit(input: PbrInput, albedo: vec3<f32>, depth: f32) -> vec3<f32> {
     var lit = input;
@@ -199,15 +198,14 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
 }
     let color = srgb_to_linear(encoded);
     var out: FragmentOutput;
-    out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
+    out.color = vec4(scene_color(color, depth), base.a);
 @if(VIEW_TRANSMISSION_TEXTURE) {
     if model.compositing.x >= 0.0 {
         var result = scene_fog_at_position(color, depth, fog_table_position(depth));
         if model.compositing.x < 254.0 {
             let destination = textureLoad(view_transmission_texture, vec2<i32>(in.position.xy), 0).rgb;
-            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(model.compositing.x) & 255u, framebuffer_dither(in.position.xy));
+            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(model.compositing.x) & 255u);
         }
-        if fog.clipping.z == 0.0 { result = framebuffer_rgb565(result, in.position.xy); }
         out.color = vec4(result, 1.0);
     }
 }

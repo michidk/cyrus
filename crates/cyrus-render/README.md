@@ -3,7 +3,7 @@
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
 camera, HUD and subtitles.
 The game camera explicitly disables MSAA. Sky materials retain encoded-color
-filtering and fog without adding a software RGB565 framebuffer dither pass.
+filtering and fog. Faithful has no RGB565 framebuffer quantization or dither: see Fog.
 The game camera keeps the original horizontal field of view when its viewport
 resizes. **Verified:** preservation's [Glide projection](https://github.com/michidk/redguard-preservation/blob/6520206/docs/engine/projection.md)
 defines its scale. The original follow camera is now the default game view; matched-view pixel
@@ -229,7 +229,7 @@ inverted triangles with a small upright flame at the original sample's location;
 the previous geometry fails the measured flame-region comparison. Constant-alpha compositing uses a framebuffer copy per admitted flat, strict
 depth testing and retained depth writes. It follows preservation's
 [integer blend rule](https://github.com/michidk/redguard-preservation/blob/abd8576/docs/engine/model-lighting.md#flat-framebuffer-blending).
-Fog precedes the blend, and RGB565 quantization follows it. Billboard-local normals
+Fog precedes the blend. Billboard-local normals
 and light coordinates follow the [generated-flat lighting contract](https://github.com/michidk/redguard-preservation/commit/999c1e73ba07f86dc2dbbd8c0a72cd754a32cdba).
 Ordinary flats use the [spatial-list and alpha-partition order](https://github.com/michidk/redguard-preservation/blob/a9e6b62/docs/engine/model-lighting.md#flat-submission-order),
 with the inspection camera selecting the region. Excluded retained draws return
@@ -345,20 +345,19 @@ fine texture ripples, and view-dependent sheen while retaining the installed
 textures. Water, Fog, and Sky are independently switchable and default to
 Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
-Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
-framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
-shader arithmetic checks cover the dither matrix and fog boundaries.
+Faithful fog uses the Voodoo 1 integer lookup and channel blend. The framebuffer
+keeps eight bits per channel without RGB565 quantization or ordered dither:
+**Verified:** an in-game capture of the GOG release, which presents through the
+32-bit nGlide wrapper, shows smooth dark gravel with no dither pattern and almost
+no RGB565 colour levels (1.1% of sampled pixels, chance level). Voodoo hardware
+dithered to RGB565; that is a technical limit of the card, not what GOG players see.
 Faithful sky filtering uses encoded palette bytes, four-bit subtexel fractions,
 and horizontal then vertical integer rounding, following preservation
 [sky filtering facts](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
 Sun alpha uses the same staged integer interpolation and wrapped texture loads,
 following preservation's [sun filtering](https://github.com/michidk/redguard-preservation/commit/306bdf59a3a968dcec73848f24db6c7cab7bda9d).
-With Faithful Sky and Fog, the sun reads truncated RGB565 destination channels,
-subtracts dithering and blends separately truncated source/destination terms,
-following the [sun blend contract](https://github.com/michidk/redguard-preservation/commit/421912a01adfbce8c6116fc4b1892cbdc77551ea).
 Modern Sky retains hardware alpha filtering; either Modern Sky or Modern Fog
-retains continuous blending. Modern Fog continues to bypass framebuffer
-quantization. **Verified:** original/native/browser ISLAND captures use the same
+retains continuous blending. **Verified:** original/native/browser ISLAND captures use the same
 viewpoint and 640×480 render size; the native/browser build sources match.
 The coastal comparison freezes cloud phase and follows an original book-menu
 return; native/browser use direct world entry. Sampled sun and cloud errors

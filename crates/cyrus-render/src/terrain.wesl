@@ -10,7 +10,7 @@ import bevy_pbr::render::{
 @if(MODERN_LIGHTING)
 import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::srgb_to_linear;
-import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, scene_color_at_fog_position, scene_fog_at_position};
+import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, scene_fog_at_position};
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::{base_color_size, sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
@@ -212,8 +212,7 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
         color = mix(rippled, reflected_sky, sheen * 0.12 * water_weight);
     }
     var out: FragmentOutput;
-    out.color = vec4(scene_color_at_fog_position(color, depth, in.position.xy, fog_position), base.a);
-    // Modern lighting keeps the scene fog but not the original's 16-bit framebuffer.
+    out.color = vec4(scene_fog_at_position(color, depth, fog_position), base.a);
     // The water weight in the alpha marks reflecting pixels for the modern screen pass, which
     // restores an opaque alpha.
 @if(MODERN_LIGHTING)

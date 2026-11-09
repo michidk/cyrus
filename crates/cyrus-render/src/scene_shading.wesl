@@ -1,4 +1,4 @@
-import package::glide_fog::{fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565};
+import package::glide_fog::{fog_table_position, table_density, blend_fog, blend_fog_integer};
 
 struct SceneFog {
     color: vec4<f32>,
@@ -21,14 +21,8 @@ var<private> fog: SceneFog;
 // The drawn mesh's slot in the bindless material tables; unused without bindless materials.
 var<private> material_slot: u32;
 
-fn scene_color(color: vec3<f32>, depth: f32, pixel: vec2<f32>) -> vec3<f32> {
-    return scene_color_at_fog_position(color, depth, pixel, fog_table_position(depth));
-}
-
-fn scene_color_at_fog_position(color: vec3<f32>, depth: f32, pixel: vec2<f32>, position: vec2<u32>) -> vec3<f32> {
-    let result = scene_fog_at_position(color, depth, position);
-    if fog.clipping.z != 0.0 { return result; }
-    return framebuffer_rgb565(result, pixel);
+fn scene_color(color: vec3<f32>, depth: f32) -> vec3<f32> {
+    return scene_fog_at_position(color, depth, fog_table_position(depth));
 }
 
 // Higher values keep the near scene clearer and thicken the haze closer to the far clip; a Modern
