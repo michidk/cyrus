@@ -286,6 +286,29 @@ fn differs<T: PartialEq>(
     old.is_none_or(|old| key(old) != key(new))
 }
 
+/// The tonemapping curve and colour grading for `effects`. Automatic exposure is applied in the
+/// tonemapping pass, which needs a curve.
+fn grading(effects: &ModernEffects) -> (Tonemapping, ColorGrading) {
+    match (effects.grading, effects.auto_exposure) {
+        (true, _) => (
+            Tonemapping::from(effects.tonemapper),
+            ColorGrading::with_identical_sections(
+                ColorGradingGlobal {
+                    exposure: effects.exposure,
+                    post_saturation: effects.saturation,
+                    ..default()
+                },
+                ColorGradingSection {
+                    contrast: effects.contrast,
+                    ..default()
+                },
+            ),
+        ),
+        (false, true) => (Tonemapping::Linear, ColorGrading::default()),
+        (false, false) => (Tonemapping::None, ColorGrading::default()),
+    }
+}
+
 /// Gives the view camera the effects' Bevy components, touching only those whose settings
 /// changed, so adjusting one does not restart another's adaptation.
 pub(super) fn apply_camera_effects(
@@ -311,26 +334,7 @@ pub(super) fn apply_camera_effects(
                 e.contrast,
             )
         }) {
-            // Automatic exposure is applied in the tonemapping pass, which needs a curve.
-            let (tonemapping, grading) = match (new.grading, new.auto_exposure) {
-                (true, _) => (
-                    Tonemapping::from(new.tonemapper),
-                    ColorGrading::with_identical_sections(
-                        ColorGradingGlobal {
-                            exposure: new.exposure,
-                            post_saturation: new.saturation,
-                            ..default()
-                        },
-                        ColorGradingSection {
-                            contrast: new.contrast,
-                            ..default()
-                        },
-                    ),
-                ),
-                (false, true) => (Tonemapping::Linear, ColorGrading::default()),
-                (false, false) => (Tonemapping::None, ColorGrading::default()),
-            };
-            camera.insert((tonemapping, grading));
+            camera.insert(grading(new));
         }
         if differs(old, new, |e| e.auto_exposure) {
             camera.insert(auto_exposure.auto_exposure(new.auto_exposure));

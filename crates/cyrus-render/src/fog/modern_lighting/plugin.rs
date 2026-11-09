@@ -135,15 +135,20 @@ fn configure_camera(
     }
 }
 
-/// Undoes everything this module changed once modern lighting is off.
+/// Everything `restore` puts back: the modern cameras, the lights and volumes it spawned, the
+/// day/night and candle state, swaying plants, shadow twins and shared materials.
 #[allow(clippy::type_complexity)]
-fn restore(
-    mut commands: Commands,
+#[derive(bevy::ecs::system::SystemParam)]
+struct Modernized<'w, 's> {
     cameras: Query<
-        (Entity, Option<&AutoExposure>),
+        'w,
+        's,
+        (Entity, Option<&'static AutoExposure>),
         (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>),
     >,
     removed: Query<
+        'w,
+        's,
         Entity,
         Or<(
             With<Light>,
@@ -151,22 +156,42 @@ fn restore(
             With<super::candle::CandleLamp>,
         )>,
     >,
-    (mut daylight, mut candle): (ResMut<Daylight>, ResMut<super::candle::Candle>),
-    auto_exposure: Res<AutoExposureAssets>,
-    mut plants: Query<(Entity, &foliage::Sway, &mut Transform)>,
-    (twins, twinned, mut shared, mut scene_materials, mut shared_models, kept): (
-        Query<Entity, With<shadows::ShadowTwin>>,
-        Query<Entity, With<shadows::Twinned>>,
-        ResMut<SharedMaterials>,
-        ResMut<Assets<super::super::SceneMaterial>>,
-        Query<(
+    daylight: ResMut<'w, Daylight>,
+    candle: ResMut<'w, super::candle::Candle>,
+    auto_exposure: Res<'w, AutoExposureAssets>,
+    plants: foliage::Swaying<'w, 's>,
+    twins: Query<'w, 's, Entity, With<shadows::ShadowTwin>>,
+    twinned: Query<'w, 's, Entity, With<shadows::Twinned>>,
+    shared: ResMut<'w, SharedMaterials>,
+    scene_materials: ResMut<'w, Assets<super::super::SceneMaterial>>,
+    shared_models: Query<
+        'w,
+        's,
+        (
             Entity,
-            &mut MeshMaterial3d<super::super::SceneMaterial>,
-            &sharing::Unshared,
-        )>,
-        Query<Entity, With<sharing::KeepsOwn>>,
-    ),
-) {
+            &'static mut MeshMaterial3d<super::super::SceneMaterial>,
+            &'static sharing::Unshared,
+        ),
+    >,
+    kept: Query<'w, 's, Entity, With<sharing::KeepsOwn>>,
+}
+
+/// Undoes everything this module changed once modern lighting is off.
+fn restore(mut commands: Commands, modernized: Modernized) {
+    let Modernized {
+        cameras,
+        removed,
+        mut daylight,
+        mut candle,
+        auto_exposure,
+        mut plants,
+        twins,
+        twinned,
+        mut shared,
+        mut scene_materials,
+        mut shared_models,
+        kept,
+    } = modernized;
     daylight.set_if_neq(Daylight(None));
     candle.set_if_neq(super::candle::Candle(None));
     for (camera, exposure) in &cameras {

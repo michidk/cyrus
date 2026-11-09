@@ -57,25 +57,50 @@ pub(super) fn find_plants(mut commands: Commands, named: Query<(Entity, &Name), 
     }
 }
 
-/// Sways the plants while the effect is on, and puts them back at rest once it is off.
-// Bevy supplies the plant, bounds and camera queries as separate parameters.
+/// The plants swaying, as `sway` moves them and `settle` puts them back.
+pub(super) type Swaying<'w, 's> = Query<'w, 's, (Entity, &'static Sway, &'static mut Transform)>;
+
+/// What `sway` reads besides the swaying plants: plants still to start, their children's bounds,
+/// the swaying plants' places and the view camera.
+// Bevy query filters keep the plant, bounds and camera queries disjoint.
 #[allow(clippy::type_complexity)]
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct Plants<'w, 's> {
+    new: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static Plant,
+            &'static Transform,
+            &'static Children,
+        ),
+        Without<Sway>,
+    >,
+    bounds: Query<'w, 's, (&'static Aabb, &'static Transform), Without<Sway>>,
+    places: Query<'w, 's, &'static GlobalTransform, With<Sway>>,
+    cameras:
+        Query<'w, 's, &'static GlobalTransform, (With<crate::camera::ViewCamera>, Without<Sway>)>,
+}
+
+/// Sways the plants while the effect is on, and puts them back at rest once it is off.
 pub(super) fn sway(
     mut commands: Commands,
     effects: Res<ModernEffects>,
     time: Res<Time>,
-    new: Query<(Entity, &Plant, &Transform, &Children), Without<Sway>>,
-    bounds: Query<(&Aabb, &Transform), Without<Sway>>,
-    mut swaying: Query<(Entity, &Sway, &mut Transform)>,
-    (places, cameras): (
-        Query<&GlobalTransform, With<Sway>>,
-        Query<&GlobalTransform, (With<crate::camera::ViewCamera>, Without<Sway>)>,
-    ),
+    plants: Plants,
+    mut swaying: Swaying,
 ) {
     if !effects.foliage {
         settle(&mut commands, &mut swaying);
         return;
     }
+    let Plants {
+        new,
+        bounds,
+        places,
+        cameras,
+    } = plants;
     for (entity, plant, transform, children) in &new {
         let Some(bottom) = children
             .iter()
@@ -110,10 +135,7 @@ pub(super) fn sway(
 }
 
 /// Puts every swaying plant back at rest.
-pub(super) fn settle(
-    commands: &mut Commands,
-    swaying: &mut Query<(Entity, &Sway, &mut Transform)>,
-) {
+pub(super) fn settle(commands: &mut Commands, swaying: &mut Swaying) {
     for (entity, sway, mut transform) in swaying {
         transform.set_if_neq(sway.rest);
         commands.entity(entity).remove::<Sway>();

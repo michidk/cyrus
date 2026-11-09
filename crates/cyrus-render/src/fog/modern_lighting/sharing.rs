@@ -55,33 +55,48 @@ fn key(material: &SceneMaterial, animation: Option<&Binding>) -> Option<String> 
     ))
 }
 
-/// Moves visible static scene models onto shared materials.
-// Bevy supplies the model, hierarchy and camera queries as separate parameters.
+/// Static scene models not yet on a shared material, with their render layers and script binding.
 #[allow(clippy::type_complexity)]
+type Unsorted<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static mut MeshMaterial3d<SceneMaterial>,
+        Option<&'static RenderLayers>,
+        Option<&'static Binding>,
+    ),
+    (
+        Without<Unshared>,
+        Without<KeepsOwn>,
+        With<super::glow::GlowChecked>,
+    ),
+>;
+
+/// Where a model sits: its ancestors, the scripted or staged roots that keep their own materials,
+/// and the view cameras' layers.
+#[allow(clippy::type_complexity)]
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct Placement<'w, 's> {
+    parents: Query<'w, 's, &'static ChildOf>,
+    excluded: Query<'w, 's, (), Or<(With<ScriptBinding>, With<StagedRenderRoot>)>>,
+    cameras: Query<'w, 's, Option<&'static RenderLayers>, With<ViewCamera>>,
+}
+
+/// Moves visible static scene models onto shared materials.
 pub(super) fn share(
     mut commands: Commands,
     request: Res<EnvironmentRequest>,
     mut shared: ResMut<SharedMaterials>,
     mut materials: ResMut<Assets<SceneMaterial>>,
-    mut models: Query<
-        (
-            Entity,
-            &mut MeshMaterial3d<SceneMaterial>,
-            Option<&RenderLayers>,
-            Option<&Binding>,
-        ),
-        (
-            Without<Unshared>,
-            Without<KeepsOwn>,
-            With<super::glow::GlowChecked>,
-        ),
-    >,
-    (parents, excluded): (
-        Query<&ChildOf>,
-        Query<(), Or<(With<ScriptBinding>, With<StagedRenderRoot>)>>,
-    ),
-    cameras: Query<Option<&RenderLayers>, With<ViewCamera>>,
+    mut models: Unsorted,
+    placement: Placement,
 ) {
+    let Placement {
+        parents,
+        excluded,
+        cameras,
+    } = placement;
     if shared.environment != Some(request.0.id()) {
         shared.environment = Some(request.0.id());
         shared.by_key.clear();

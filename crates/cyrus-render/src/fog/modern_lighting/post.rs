@@ -75,71 +75,127 @@ fn sun_direction(sky: Option<&SkyMaterial>, light: Option<&GlobalTransform>) -> 
         })
         .or_else(|| light.and_then(|light| (-light.forward().as_vec3()).try_normalize()))
 }
+/// What `update_post` reads to describe the frame's sun, horizon and water.
+#[allow(clippy::type_complexity)]
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct PostInputs<'w, 's> {
+    effects: Res<'w, ModernEffects>,
+    time: Res<'w, Time>,
+    fidelity: Res<'w, cyrus_game::fidelity::Fidelity>,
+    daylight: Res<'w, Daylight>,
+    request: Option<Res<'w, EnvironmentRequest>>,
+    environments: Res<'w, Assets<Environment>>,
+    sky_handles: Query<'w, 's, &'static MeshMaterial3d<SkyMaterial>>,
+    sky_materials: Res<'w, Assets<SkyMaterial>>,
+    suns: Query<'w, 's, (&'static DirectionalLight, &'static GlobalTransform), With<Sun>>,
+}
+
+/// The view cameras and the pass settings they already carry.
+#[allow(clippy::type_complexity)]
+type PostCameras<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Camera,
+        &'static GlobalTransform,
+        Option<&'static mut ModernPost>,
+    ),
+    With<ViewCamera>,
+>;
+
+/// The frame's sun and horizon, the same for every camera.
+struct FrameSky {
+    /// Direction towards the sun, if there is one.
+    direction: Option<Vec3>,
+    /// How visible the sun disc is, 0 to 1.
+    visibility: f32,
+    sun_color: Vec3,
+    horizon: Vec3,
+    /// `crate::fog::modern_waves` for the loaded world.
+    waves: Vec4,
+}
+
+impl PostInputs<'_, '_> {
+    fn frame_sky(&self) -> FrameSky {
+        let sky = self
+            .sky_handles
+            .iter()
+            .find_map(|handle| self.sky_materials.get(&handle.0));
+        let sun = self.suns.iter().next();
+        let direction = sun_direction(sky, sun.map(|(_, transform)| transform));
+        // Hidden below the horizon by the day/night cycle, and absent without a sun.
+        let visibility = match (direction, self.daylight.0) {
+            (None, _) => 0.0,
+            (Some(_), Some(cycle)) => cycle.sun_disc,
+            (Some(_), None) => 1.0,
+        };
+        let sun_color = sun.map_or(Vec3::ZERO, |(light, _)| {
+            Vec3::from_array(light.color.to_linear().to_f32_array_no_alpha())
+        });
+        let tint = self.daylight.0.map_or(Vec3::ONE, |cycle| cycle.tint);
+        let environment = self
+            .request
+            .as_ref()
+            .and_then(|request| self.environments.get(&request.0));
+        let waves = environment.map_or(Vec4::ZERO, |environment| {
+            crate::fog::modern_waves(environment, &self.fidelity)
+        });
+        let horizon = environment.map_or(Vec3::ZERO, |environment| {
+            let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;
+            Vec3::from_array(
+                Color::srgb(encoded.x, encoded.y, encoded.z)
+                    .to_linear()
+                    .to_f32_array_no_alpha(),
+            )
+        });
+        FrameSky {
+            direction,
+            visibility,
+            sun_color,
+            horizon,
+            waves,
+        }
+    }
+}
+
+/// The sun's place on `camera`'s screen: x and y in 0..1 from the top left, z 1 when it is in
+/// front, and w the lens flare's strength.
+fn sun_on_screen(
+    sky: &FrameSky,
+    camera: &Camera,
+    transform: &GlobalTransform,
+    lens_flare: bool,
+) -> Option<Vec4> {
+    let direction = sky.direction?;
+    let in_front = direction.dot(transform.forward().as_vec3()) > 0.0;
+    let point = transform.translation() + direction * SUN_DISTANCE;
+    let ndc = camera.world_to_ndc(transform, point)?;
+    Some(Vec4::new(
+        ndc.x * 0.5 + 0.5,
+        0.5 - ndc.y * 0.5,
+        f32::from(u8::from(in_front)),
+        if lens_flare { sky.visibility } else { 0.0 },
+    ))
+}
 
 /// Updates every modern-lit camera's pass settings.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn update_post(
-    mut commands: Commands,
-    effects: Res<ModernEffects>,
-    (time, fidelity): (Res<Time>, Res<cyrus_game::fidelity::Fidelity>),
-    daylight: Res<Daylight>,
-    environment: (Option<Res<EnvironmentRequest>>, Res<Assets<Environment>>),
-    skies: (
-        Query<&MeshMaterial3d<SkyMaterial>>,
-        Res<Assets<SkyMaterial>>,
-    ),
-    suns: Query<(&DirectionalLight, &GlobalTransform), With<Sun>>,
-    mut cameras: Query<
-        (Entity, &Camera, &GlobalTransform, Option<&mut ModernPost>),
-        With<ViewCamera>,
-    >,
-) {
-    let (request, environments) = environment;
-    let (sky_handles, sky_materials) = skies;
-    let sky = sky_handles
-        .iter()
-        .find_map(|handle| sky_materials.get(&handle.0));
-    let sun = suns.iter().next();
-    let direction = sun_direction(sky, sun.map(|(_, transform)| transform));
-    // Hidden below the horizon by the day/night cycle, and absent without a sun.
-    let visibility = match (direction, daylight.0) {
-        (None, _) => 0.0,
-        (Some(_), Some(cycle)) => cycle.sun_disc,
-        (Some(_), None) => 1.0,
-    };
-    let sun_color = sun.map_or(Vec3::ZERO, |(light, _)| {
-        Vec3::from_array(light.color.to_linear().to_f32_array_no_alpha())
-    });
-    let tint = daylight.0.map_or(Vec3::ONE, |cycle| cycle.tint);
-    let environment = request.and_then(|request| environments.get(&request.0));
-    let waves = environment.map_or(Vec4::ZERO, |environment| {
-        crate::fog::modern_waves(environment, &fidelity)
-    });
-    let horizon = environment.map_or(Vec3::ZERO, |environment| {
-        let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;
-        Vec3::from_array(
-            Color::srgb(encoded.x, encoded.y, encoded.z)
-                .to_linear()
-                .to_f32_array_no_alpha(),
-        )
-    });
+pub(super) fn update_post(mut commands: Commands, inputs: PostInputs, mut cameras: PostCameras) {
+    let sky = inputs.frame_sky();
+    let effects = &inputs.effects;
     for (entity, camera, transform, post) in &mut cameras {
-        let screen = direction.and_then(|direction| {
-            let in_front = direction.dot(transform.forward().as_vec3()) > 0.0;
-            let point = transform.translation() + direction * SUN_DISTANCE;
-            let ndc = camera.world_to_ndc(transform, point)?;
-            Some(Vec4::new(
-                ndc.x * 0.5 + 0.5,
-                0.5 - ndc.y * 0.5,
-                f32::from(u8::from(in_front)),
-                if effects.lens_flare { visibility } else { 0.0 },
-            ))
-        });
         let settings = ModernPost {
-            sun: screen.unwrap_or(Vec4::ZERO),
-            sun_color: sun_color.extend(0.0),
-            horizon: horizon.extend(f32::from(u8::from(effects.water_reflections))),
-            time: Vec4::new(time.elapsed_secs_wrapped(), waves.z, waves.w, 0.0),
+            sun: sun_on_screen(&sky, camera, transform, effects.lens_flare).unwrap_or(Vec4::ZERO),
+            sun_color: sky.sun_color.extend(0.0),
+            horizon: sky
+                .horizon
+                .extend(f32::from(u8::from(effects.water_reflections))),
+            time: Vec4::new(
+                inputs.time.elapsed_secs_wrapped(),
+                sky.waves.z,
+                sky.waves.w,
+                0.0,
+            ),
         };
         match post {
             Some(mut post) => {
@@ -276,16 +332,18 @@ fn sample_depth(mut cameras: Query<&mut Camera3d, With<ModernPost>>) {
     }
 }
 
-#[allow(clippy::type_complexity)]
+/// The view's target, pipeline, depth, uniform offsets and sampling, as the pass reads them.
+type PostView = (
+    &'static ViewTarget,
+    &'static PostPipelineId,
+    &'static ViewDepthStencilTexture,
+    &'static ViewUniformOffset,
+    &'static DynamicUniformIndex<ModernPost>,
+    &'static Msaa,
+);
+
 fn modern_post(
-    view: ViewQuery<(
-        &ViewTarget,
-        &PostPipelineId,
-        &ViewDepthStencilTexture,
-        &ViewUniformOffset,
-        &DynamicUniformIndex<ModernPost>,
-        &Msaa,
-    )>,
+    view: ViewQuery<PostView>,
     pipeline: Res<PostPipeline>,
     cache: Res<PipelineCache>,
     settings: Res<ComponentUniforms<ModernPost>>,

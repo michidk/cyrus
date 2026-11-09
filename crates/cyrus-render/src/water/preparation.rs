@@ -234,6 +234,43 @@ impl Shore {
             .collect()
     }
 
+    /// The `land_borders` mask of the water cell at `x`, `row`, whose grid corners (x, row),
+    /// (x + 1, row), (x, row + 1) and (x + 1, row + 1) sit at tile corners `tile`, each as
+    /// (u > 0.5, v > 0.5).
+    fn cell_mask(&self, x: usize, row: usize, tile: &[(bool, bool)]) -> u8 {
+        let side = self.side as isize;
+        let land = |dx: isize, dz: isize| {
+            let (x, row) = (x as isize + dx, row as isize + dz);
+            (0..side).contains(&x)
+                && (0..side).contains(&row)
+                && self.cells[(x + row * side) as usize] == Some(false)
+        };
+        // A grid edge is the tile edge where its two corners share u or v.
+        let edge = |a: (bool, bool), b: (bool, bool)| match (a, b) {
+            ((u, _), (w, _)) if u == w => 1u8 << u8::from(u),
+            ((_, v), (_, w)) if v == w => 1u8 << (2 + u8::from(v)),
+            _ => 0,
+        };
+        let neighbours = [
+            ((-1, 0), (0, 2)),
+            ((1, 0), (1, 3)),
+            ((0, -1), (0, 1)),
+            ((0, 1), (2, 3)),
+        ];
+        let diagonals = [((-1, -1), 0), ((1, -1), 1), ((-1, 1), 2), ((1, 1), 3)];
+        let edges = neighbours
+            .into_iter()
+            .filter(|&((dx, dz), _)| land(dx, dz))
+            .fold(0, |mask, (_, (a, b))| mask | edge(tile[a], tile[b]));
+        diagonals
+            .into_iter()
+            .filter(|&((dx, dz), _)| land(dx, dz))
+            .fold(edges, |mask, (_, corner)| {
+                let (u, v) = tile[corner];
+                mask | 1 << (4 + u8::from(u) + 2 * u8::from(v))
+            })
+    }
+
     /// For each mesh vertex, which edges and corners of its water cell's texture tile border a land
     /// cell, in the tile's UV space, so the shader finds a waterline that runs along a cell border
     /// whatever the tile's rotation. Bits 0 to 3: the edges at u = 0, u = 1, v = 0 and v = 1; bits 4
@@ -272,11 +309,6 @@ impl Shore {
                 }
             }
         }
-        let land = |x: isize, row: isize| {
-            (0..side as isize).contains(&x)
-                && (0..side as isize).contains(&row)
-                && self.cells[x as usize + row as usize * side] == Some(false)
-        };
         for triangle in indices.as_chunks::<3>().0 {
             let Some((x, row)) = cell_of(triangle) else {
                 continue;
@@ -290,33 +322,7 @@ impl Shore {
             else {
                 continue;
             };
-            let (gx, grow) = (x as isize, row as isize);
-            let mut mask = 0u8;
-            // A grid edge is the tile edge where its two corners share u or v.
-            let edge = |a: (bool, bool), b: (bool, bool)| match (a, b) {
-                ((u, _), (w, _)) if u == w => 1u8 << u8::from(u),
-                ((_, v), (_, w)) if v == w => 1u8 << (2 + u8::from(v)),
-                _ => 0,
-            };
-            // Grid corners: 0 (x, row), 1 (x + 1, row), 2 (x, row + 1), 3 (x + 1, row + 1).
-            let neighbours = [
-                ((-1, 0), (0, 2)),
-                ((1, 0), (1, 3)),
-                ((0, -1), (0, 1)),
-                ((0, 1), (2, 3)),
-            ];
-            for ((dx, dz), (a, b)) in neighbours {
-                if land(gx + dx, grow + dz) {
-                    mask |= edge(tile[a], tile[b]);
-                }
-            }
-            let diagonals = [((-1, -1), 0), ((1, -1), 1), ((-1, 1), 2), ((1, 1), 3)];
-            for ((dx, dz), corner) in diagonals {
-                if land(gx + dx, grow + dz) {
-                    let (u, v) = tile[corner];
-                    mask |= 1 << (4 + u8::from(u) + 2 * u8::from(v));
-                }
-            }
+            let mask = self.cell_mask(x, row, &tile);
             for &index in triangle {
                 if let Some(slot) = masks.get_mut(index) {
                     *slot = mask;
