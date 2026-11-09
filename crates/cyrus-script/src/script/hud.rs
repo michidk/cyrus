@@ -253,6 +253,11 @@ impl ScriptHud {
         state.data.is_some() && state.inventory_error.is_none()
     }
 
+    /// Installed RTX text for `label`, including entries without speech.
+    pub(crate) fn rtx_text(&self, label: &str) -> Result<Option<String>> {
+        self.activation_label(label)
+    }
+
     /// Resolve installed RTX prompt text independently of journal storage errors.
     pub(super) fn activation_label(&self, label: &str) -> Result<Option<String>> {
         let state = self.0.lock().expect("script HUD lock poisoned");

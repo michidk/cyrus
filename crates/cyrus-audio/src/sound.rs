@@ -716,9 +716,8 @@ fn positional(
 }
 
 /// Start the examine view's next description line as speech and report the clip length, or report
-/// that the label has no speech record. The view draws the text itself, so no dialogue subtitle is
-/// created. Text-only description lines are not shown: the voice-clip table holds only labels with
-/// audio.
+/// that the label has no speech clip. The view draws the text itself, so no dialogue subtitle is
+/// created, and shows a line without a clip as text only.
 fn examine_speech(
     screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
     speech: Res<Speech>,
