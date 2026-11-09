@@ -3,7 +3,9 @@
 Native/browser effects, speech and CD music playback. `SoundPlugin` and
 `MusicPlugin` retain the shared request, cue and playback-state interfaces.
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
-in presentation. This crate has no rendering or startup dependency.
+in presentation. Gameplay cues drain before control requests, so a book stop
+clears starts already queued for that drain as well as live and browser-pending
+samples. This crate has no rendering or startup dependency.
 Native credits music waits for `GameInstall` before its update runs, so the
 install picker can stay open without initializing CD playback.
 

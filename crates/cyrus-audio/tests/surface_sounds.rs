@@ -837,3 +837,30 @@ fn installed_loop_pcm_updates_gains_and_reconstructs_through_the_headless_host()
         restored.by_ref().take(1024).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn book_stop_all_runs_after_unread_gameplay_cues() {
+    use cyrus_audio::sound::SoundRequest;
+    let (mut app, _) = fixture();
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.world_mut().write_message(SoundRequest::StopAll);
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        0,
+        "book teardown must stop unread gameplay starts"
+    );
+
+    // The stop is a boundary, not a persistent mute. Later starts still play.
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+}

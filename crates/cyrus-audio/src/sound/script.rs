@@ -447,11 +447,12 @@ fn play_cues(
 // Cached systems share their message cursors between the pre-ordinary drain and
 // the post-animation drain. A second reader would replay earlier commands.
 pub(super) fn play_audio(world: &mut World) {
-    if let Err(error) = world.run_system_cached(play_requests) {
-        error_once!("sound control consumer: {error}");
-    }
+    // Book teardown must run after gameplay cues already waiting in this drain.
     if let Err(error) = world.run_system_cached(play_cues) {
         error_once!("sound cue consumer: {error}");
+    }
+    if let Err(error) = world.run_system_cached(play_requests) {
+        error_once!("sound control consumer: {error}");
     }
 }
 
