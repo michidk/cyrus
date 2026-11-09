@@ -31,9 +31,9 @@ struct SoundFrame<'w, 's> {
     bank_loading: Option<Res<'w, crate::sound_bank::SoundBankHandle>>,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 #[derive(Resource, Default)]
-pub(super) struct PendingSounds(Vec<PendingCue>);
+pub(super) struct PendingSounds(pub(super) Vec<PendingCue>);
 
 impl SoundFrame<'_, '_> {
     fn prepare(&mut self, ownership: Option<Option<u64>>) {

@@ -114,7 +114,9 @@ unsupported; the adapter does not assume a clear periodic-reset flag.
 
 Headless hosts omit Bevy's audio backend and retain requests/control state.
 Channel ownership, actor cleanup, world expiry and browser queued starts use the
-same rules as windowed playback. Installed audio facts and units are documented
+same rules as windowed playback. Global sound teardown also cancels browser
+cues waiting for the sound bank, so they cannot start after the book opens.
+Installed audio facts and units are documented
 in [preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).
 
 Run `cargo test -p cyrus-audio`; installed decoder tests report skips when the
