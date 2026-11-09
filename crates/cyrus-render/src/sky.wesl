@@ -40,7 +40,7 @@ fn sky_fog_density(depth: f32) -> f32 {
 }
 
 // Preservation sky filtering: encoded palette channels and four-bit fractions.
-fn faithful_cloud_sample(uv: vec2<f32>) -> vec3<f32> {
+fn faithful_cloud_single(uv: vec2<f32>) -> vec3<f32> {
     let size = vec2<i32>(textureDimensions(sky));
     let texel = uv * vec2<f32>(size) - vec2(0.5);
     let fraction = floor(fract(texel) * 16.0) / 16.0;
@@ -57,7 +57,7 @@ fn faithful_cloud_sample(uv: vec2<f32>) -> vec3<f32> {
 }
 
 // Sun alpha uses preservation's software Voodoo 1 sun alpha filtering.
-fn faithful_sun_sample(uv: vec2<f32>) -> u32 {
+fn faithful_sun_single(uv: vec2<f32>) -> u32 {
     let size = vec2<i32>(textureDimensions(sun));
     let texel = uv * vec2<f32>(size) - vec2(0.5);
     let fraction = floor(fract(texel) * 16.0) / 16.0;
@@ -79,7 +79,8 @@ fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
         let direction = normalize(ray);
         let cloud_plane = direction.xz / max(direction.y, 0.001) * abs(sky_parameters.plane.x);
         let uv = (-sky_parameters.plane.y * cloud_plane / 65000.0 + sky_parameters.scroll.xy) / sky_parameters.plane.zw;
-        let color = textureSampleLevel(sky, sky_sampler, uv, 0.0).rgb;
+        var color = textureSampleLevel(sky, sky_sampler, uv, 0.0).rgb;
+        if sky_parameters.fog_rgb.w != 0.0 { color = faithful_cloud_sample(uv); }
         let depth = abs(sky_parameters.plane.x) * (-near.z / length(near)) / max(direction.y, 0.001);
         let haze = sky_fog_density(depth);
         return blend_fog(color, sky_parameters.fog_rgb.rgb, haze);
@@ -188,7 +189,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         if depth >= 0.05 && depth <= 3276.75 && all(uv >= vec2(0.0)) && all(uv <= vec2(1.0)) {
             var opacity: f32;
             var alpha = 0u;
-            if sky_parameters.scroll.z == 0.0 {
+            if sky_parameters.scroll.z == 0.0 || sky_parameters.fog_rgb.w != 0.0 {
                 alpha = faithful_sun_sample(uv);
                 opacity = f32(alpha) / 255.0;
             } else {
@@ -202,4 +203,32 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         color = modern_sky(color, clouds, ray);
     }
     return vec4(color, 1.0);
+}
+
+fn footprint(dx: vec2<f32>, dy: vec2<f32>) -> vec3<f32> {
+    let major = select(dy, dx, dot(dx, dx) >= dot(dy, dy));
+    let minor = min(length(dx), length(dy));
+    return vec3(major, clamp(ceil(length(major) / max(minor, 1.0)), 1.0, 16.0));
+}
+
+fn faithful_cloud_sample(uv: vec2<f32>) -> vec3<f32> {
+    let size = vec2<f32>(textureDimensions(sky));
+    let axis = footprint(dpdx(uv) * size, dpdy(uv) * size);
+    if sky_parameters.fog_rgb.w == 0.0 { return faithful_cloud_single(uv); }
+    var sum = vec3(0.0);
+    for (var i = 0u; i < u32(axis.z); i++) {
+        sum += faithful_cloud_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5));
+    }
+    return sum / axis.z;
+}
+
+fn faithful_sun_sample(uv: vec2<f32>) -> u32 {
+    let size = vec2<f32>(textureDimensions(sun));
+    let axis = footprint(dpdx(uv) * size, dpdy(uv) * size);
+    if sky_parameters.fog_rgb.w == 0.0 { return faithful_sun_single(uv); }
+    var sum = 0.0;
+    for (var i = 0u; i < u32(axis.z); i++) {
+        sum += f32(faithful_sun_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5)));
+    }
+    return u32(round(sum / axis.z));
 }

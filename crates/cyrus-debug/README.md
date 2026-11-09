@@ -57,3 +57,7 @@ Modern Fog; Original clears the override and returns Fog to Faithful. Modern Fog
 also expands terrain and water submission to the selected distance. Modern Fog
 defaults to four times the original distance with a gradual distant fade.
 Water, Fog, and Sky have independent Faithful/Modern buttons.
+
+F1's **Anisotropic filtering (up to 16×)** checkbox independently filters world
+textures at oblique angles. It defaults off and works with either lighting mode.
+**All Faithful** turns it off; **All modern** turns it on.

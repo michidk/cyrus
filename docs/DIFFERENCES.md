@@ -223,3 +223,14 @@ per update before waiting for the next BIOS tick, so a mouse binding there reads
 successive updates; cyrus does the same. **Unknown:** the dead zone a particular original
 joystick showed, and whether the original's menus read the joystick; no joystick read was found in the menu
 code, so menu navigation by gamepad is not provided in Faithful mode.
+
+## Optional anisotropic filtering
+
+F1's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
+modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
+models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture
+footprint, which also replaces the Modern `textures` point sampling. Other colour images use linear
+samplers with a hardware anisotropy limit of sixteen. The indexed world paths integrate their
+existing source textures without mipmaps, which costs GPU time. Turning it off restores the image
+samplers.

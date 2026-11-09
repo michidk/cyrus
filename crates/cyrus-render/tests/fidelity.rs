@@ -26,6 +26,7 @@ fn environmental_modes_switch_independently_and_roundtrip() {
         Area::Sky,
         Area::Lighting,
         Area::Textures,
+        Area::AnisotropicFiltering,
     ] {
         fidelity.set(area, Mode::Modern);
         let saved = toml::to_string(&fidelity).unwrap();

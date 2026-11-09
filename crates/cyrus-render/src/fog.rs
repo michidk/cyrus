@@ -221,7 +221,7 @@ struct FogExtension {
     directional: Vec4,
     direction: Vec4,
     /// x: 1 while `Area::Lighting` is Modern; y: 1 while `Area::Textures` is Modern, which
-    /// point-samples world textures.
+    /// point-samples world textures. z enables optional anisotropic filtering.
     lighting: Vec4,
 }
 
@@ -963,7 +963,7 @@ fn fog_extension(
         lighting: Vec4::new(
             u8::from(fidelity.mode(Area::Lighting) == Mode::Modern) as f32,
             u8::from(fidelity.mode(Area::Textures) == Mode::Modern) as f32,
-            0.0,
+            u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32,
             0.0,
         ),
         table: environment
@@ -1124,6 +1124,11 @@ mod tests {
         fidelity.set(Area::Textures, Mode::Modern);
         let unfiltered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
         assert_eq!(unfiltered.lighting.y, 1.0);
+        assert_eq!(unfiltered.lighting.z, 0.0);
+        fidelity.set(Area::AnisotropicFiltering, Mode::Modern);
+        let filtered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        assert_eq!(filtered.lighting.z, 1.0);
+        assert_eq!(filtered.lighting.y, unfiltered.lighting.y);
     }
 
     // The terrain shader moves the modern waves only while it draws the unprojected terrain, which

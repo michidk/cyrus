@@ -265,6 +265,20 @@ fn debug_menu(
         );
 
         ui.separator();
+        let mut anisotropic = fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern;
+        if ui
+            .checkbox(&mut anisotropic, "Anisotropic filtering (up to 16×)")
+            .changed()
+        {
+            fidelity.set(
+                Area::AnisotropicFiltering,
+                if anisotropic {
+                    Mode::Modern
+                } else {
+                    Mode::Faithful
+                },
+            );
+        }
         let performance_label = if menu.performance_open {
             "Close performance"
         } else {

@@ -651,3 +651,8 @@ The scene and effect material paths share this selection. Inspection cameras and
 pending or mismatched camera publications use the rendered view. Off-live session
 material preparation keeps the supplied destination camera and does not read the
 current world's camera publication.
+
+Optional `anisotropic_filtering` Modern mode integrates up to sixteen samples along
+the major texture footprint for terrain, models, flats and sky. Color-image
+samplers also use linear filtering and hardware anisotropy up to sixteen.
+Disabling the area restores each retained image sampler. No mipmaps are generated.

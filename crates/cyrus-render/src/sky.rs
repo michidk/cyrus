@@ -79,7 +79,7 @@ pub(crate) struct SkyMaterial {
     /// Engine level, UV half-span in texels, image width, image height.
     #[uniform(2)]
     pub plane: Vec4,
-    /// Encoded Glide fog color shared with the scene background.
+    /// Encoded Glide fog color; w enables the optional anisotropic texture filter.
     #[uniform(2)]
     pub fog_rgb: Vec4,
     /// U/V scroll in texels, Modern sky flag, Modern fog flag.
@@ -189,15 +189,21 @@ fn animate_sky(
             }
         }
         if tick == sky.tick
-            && materials
-                .get(&handle.0)
-                .is_some_and(|m| m.scroll.z == modern && m.scroll.w == modern_fog)
+            && materials.get(&handle.0).is_some_and(|m| {
+                m.scroll.z == modern
+                    && m.scroll.w == modern_fog
+                    && m.fog_rgb.w
+                        == u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern)
+                            as f32
+            })
         {
             continue;
         }
         let Some(mut material) = materials.get_mut(&handle.0) else {
             continue;
         };
+        material.fog_rgb.w =
+            u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32;
         material.scroll.z = modern;
         material.scroll.w = modern_fog;
         for _ in 0..tick.saturating_sub(sky.tick).min(36) {
