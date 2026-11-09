@@ -4,9 +4,9 @@
 //! variant. While the cycle is on and `Area::Lighting` is Modern, the hour of the day moves
 //! the sun along an arc whose noon is the world's installed sun, and it scales the sun, the
 //! ambient light, the fog colour and the sky. Below the horizon a dim moonlight replaces the
-//! sun. Worlds without an installed sun or a sky, such as interiors, are left alone, so the cycle
-//! can be on by default. Every colour and
-//! the arc's orientation are Modern tuning choices, not recovered behaviour.
+//! sun. Worlds without an installed sun or a sky, such as interiors, are left alone. The cycle is
+//! off by default: the game has its own times of day, which it keeps unless the cycle is turned on.
+//! Every colour and the arc's orientation are Modern tuning choices, not recovered behaviour.
 use super::lights::{Ambient, Sun, ambient_texels, light_color, light_transform};
 use crate::sky::SkyMaterial;
 use bevy::prelude::*;
@@ -30,7 +30,7 @@ pub struct DayNight {
 impl Default for DayNight {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             running: true,
             hour: 12.0,
             minutes_per_second: 1.0,
@@ -269,13 +269,14 @@ mod tests {
         assert!(dusk.light.x > dusk.light.z, "a low sun is warm");
     }
 
-    // The cycle is on by default, so interiors, which declare no sky, must keep their lighting.
+    // Interiors declare no sky, so a cycle turned on must keep their lighting.
     #[test]
     fn the_cycle_leaves_worlds_without_a_sky_alone() {
         let mut app = App::new();
         app.init_resource::<Assets<Image>>()
             .init_resource::<Daylight>()
             .insert_resource(DayNight {
+                enabled: true,
                 hour: 0.0,
                 ..default()
             })
