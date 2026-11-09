@@ -501,6 +501,7 @@ pub mod sound_export;
 #[cfg(feature = "parsers")]
 pub mod startup;
 pub mod surface;
+pub mod terrain_grass;
 
 #[cfg(feature = "parsers")]
 pub mod music;
