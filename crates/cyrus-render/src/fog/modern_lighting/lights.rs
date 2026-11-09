@@ -122,6 +122,7 @@ pub(super) fn sync_lights(
         commands.entity(camera).insert(ambient.clone());
     }
     spawn_object_lights(&mut commands, &lights);
+    super::candle::spawn(&mut commands, environment.sky.is_some());
     // The lamps and fires the original bakes into vertex lighting when the world loads; modern
     // lighting replaces that lighting, so they shine as point lights too.
     spawn_object_lights(&mut commands, &environment.prelighting.lights);
@@ -258,7 +259,7 @@ fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
 /// Luminous power, in lumens, of a point light that gives a facing surface the sun's full light
 /// factor at `distance` world units: `power / (4π·d²)` is the illuminance and `π / exposure` the
 /// sun's.
-fn point_light_power(distance: f32) -> f32 {
+pub(super) fn point_light_power(distance: f32) -> f32 {
     4.0 * PI * PI * distance * distance / exposure()
 }
 

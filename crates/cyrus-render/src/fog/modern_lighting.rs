@@ -17,7 +17,8 @@
 //! The day/night cycle (`day_night`) moves and tints these lights by the hour, and `effects`
 //! holds the optional effects: tonemapping and grading, automatic exposure, god rays, the sky
 //! glow, water reflections and the lens flare (`post`), swaying plants (`foliage`), depth of
-//! field and motion blur.
+//! field and motion blur. At night the player carries a candle (`candle`).
+mod candle;
 mod day_night;
 mod effects;
 mod foliage;

@@ -40,7 +40,7 @@ sync-marked data sectors and keeps the track's length and timing.
 
 ## Modern lighting
 
-The original lights models and terrain with vertex-driven shading in a 16-bit framebuffer. The `lighting`
+The original lights models and terrain with vertex-driven shading. The `lighting`
 fidelity area, Modern only (set by `--mode modern` or the debug menu; it has no flag of its own), switches
 the world's own materials to physically based shading through Bevy's lights: a cascaded shadow-mapped sun,
 the ambient colour as an environment light and the object lights as point lights, all read from the world's
@@ -51,7 +51,9 @@ receive shadows (each caster through a shadow-only twin that shares one material
 the cascades batch their draws, and static models with equal modern material values share one
 material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
 bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
-measured matches. Flats keep their original shading.
+measured matches. Flats keep their original shading. At night in an outdoor world, one with a sky, the
+player carries a candle: a warm point light just above the head that fades in as the sun dims below
+the installed day sun. The original lights nothing around the player; its HUD candle shows health.
 
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
 which moves six times farther than the world's installed clipping distance.

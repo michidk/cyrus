@@ -50,7 +50,13 @@ impl Plugin for ModernLightingPlugin {
             (
                 foliage::find_plants,
                 (
-                    (day_night::advance, sync_lights, day_night::apply).chain(),
+                    (
+                        day_night::advance,
+                        sync_lights,
+                        day_night::apply,
+                        super::candle::follow,
+                    )
+                        .chain(),
                     (configure_camera, effects::apply_camera_effects).chain(),
                     effects::focus,
                     effects::sun_shafts,
@@ -219,6 +225,7 @@ mod tests {
             super::super::glow::restore,
             day_night::advance,
             day_night::apply,
+            super::super::candle::follow,
             day_night::tint_sky,
         ));
         schedule
