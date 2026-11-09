@@ -30,7 +30,7 @@ fn forward(
             SoundRequest::StopAll => {
                 subtitles.write(SubtitleRequest::StopAll);
             }
-            SoundRequest::Play { .. } => {}
+            SoundRequest::Play { .. } | SoundRequest::Voice(_) => {}
         }
     }
 }
@@ -40,7 +40,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn forwards_known_speech_and_stop_in_order_without_effect_requests() {
+    fn forwards_known_speech_and_stop_in_order_without_effect_or_voice_requests() {
         let mut app = App::new();
         app.add_message::<SoundRequest>()
             .add_message::<SubtitleRequest>()
@@ -59,6 +59,7 @@ mod tests {
         for request in [
             SoundRequest::Speech("missing".into()),
             SoundRequest::Speech("greeting".into()),
+            SoundRequest::Voice("greeting".into()),
             SoundRequest::Play {
                 effect: 0,
                 position: None,

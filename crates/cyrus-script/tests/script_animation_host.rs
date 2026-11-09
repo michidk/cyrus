@@ -6035,16 +6035,23 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
         let screen = app.world().resource::<ExamineScreen>();
         assert_eq!(screen.speech_request, lines.then_some(*b"cisw"));
         if lines {
-            app.world_mut().resource_mut::<ExamineScreen>().speech_reply = Some(Some(0.01));
+            app.world_mut().resource_mut::<ExamineScreen>().speech_reply = Some(Some(60.0));
         }
         for _ in 0..8 {
             tick(&mut app, false);
         }
         let screen = app.world().resource::<ExamineScreen>();
         assert_eq!(screen.pose.unwrap().position, [0.0, 0.0, 220.0]);
+        // The view draws the playing line's text itself.
+        assert_eq!(screen.text, lines.then_some(*b"cisw"));
         // An exit held from the start would not count; this one follows released updates.
         tick(&mut app, true);
         assert!(app.world().resource::<ExamineScreen>().open);
+        // The text stays while the view closes.
+        assert_eq!(
+            app.world().resource::<ExamineScreen>().text,
+            lines.then_some(*b"cisw")
+        );
         let mut updates = 0;
         while app.world().resource::<ExamineScreen>().open {
             tick(&mut app, false);
@@ -6055,6 +6062,7 @@ fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
         assert!(app.world().resource::<ExamineScreen>().speech_stop);
         let screen = app.world().resource::<ExamineScreen>();
         assert!(screen.waiting_for_release && screen.suspended());
+        assert_eq!(screen.text, None);
         assert!(!app.world().resource::<Time<Virtual>>().is_paused());
         assert!(!globals(&app).no_rtx);
         tick(&mut app, true);

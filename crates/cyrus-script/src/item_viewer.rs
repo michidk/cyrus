@@ -303,7 +303,9 @@ enum Line {
     #[default]
     Idle,
     /// The audio owner has been asked to start this label and has not answered.
-    Requested,
+    Requested {
+        label: [u8; 4],
+    },
     Playing {
         until: std::time::Duration,
     },
@@ -336,9 +338,13 @@ pub struct ExamineScreen {
     from_inventory: bool,
     #[serde(skip)]
     confirm: bool,
-    /// A label the audio owner starts as speech (and its subtitle), then answers through
+    /// A label the audio owner starts as speech without a dialogue subtitle, then answers through
     /// [`Self::speech_reply`].
     pub speech_request: Option<[u8; 4]>,
+    /// The description line whose RTX text the view draws itself (preservation `engine/hud.md`
+    /// examine view): set when its speech starts, kept through the close, cleared when the next
+    /// line starts or the view returns.
+    pub text: Option<[u8; 4]>,
     /// The audio owner's answer: the clip length in seconds, or `None` when the label has no
     /// speech record, which ends the line sequence.
     pub speech_reply: Option<Option<f32>>,
@@ -575,6 +581,7 @@ fn drive(
         screen.lines = None;
         screen.speech_request = None;
         screen.speech_reply = None;
+        screen.text = None;
         if screen.from_inventory {
             screen.inventory_result = Some(screen.confirm);
             screen.from_inventory = false;
@@ -638,17 +645,19 @@ fn advance_line(screen: &mut ExamineScreen, now: std::time::Duration) {
     loop {
         match screen.line {
             Line::Idle => {
+                screen.text = None;
                 let Some(label) = screen.lines.as_mut().and_then(Iterator::next) else {
                     screen.line = Line::Ended;
                     return;
                 };
                 screen.speech_request = Some(label);
                 screen.speech_reply = None;
-                screen.line = Line::Requested;
+                screen.line = Line::Requested { label };
                 return;
             }
-            Line::Requested => match screen.speech_reply.take() {
+            Line::Requested { label } => match screen.speech_reply.take() {
                 Some(Some(seconds)) => {
+                    screen.text = Some(label);
                     screen.line = Line::Playing {
                         until: now + std::time::Duration::from_secs_f32(seconds.max(0.0)),
                     };
