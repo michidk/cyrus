@@ -128,9 +128,19 @@ impl From<&TerrainExtension> for TerrainKey {
 /// runs Bevy's own prepass shader on the standard vertex attributes, so the original's extra
 /// attributes and depth states must stay out of it.
 fn is_prepass(descriptor: &bevy::render::render_resource::RenderPipelineDescriptor) -> bool {
-    descriptor.vertex.shader_defs.iter().any(|def| {
-        matches!(def, bevy::shader::ShaderDefVal::Bool(name, true) if name == "PREPASS_PIPELINE")
-    })
+    has_def(descriptor, "PREPASS_PIPELINE")
+}
+
+/// Whether the pipeline's vertex stage sets the boolean shader define `define`.
+fn has_def(
+    descriptor: &bevy::render::render_resource::RenderPipelineDescriptor,
+    define: &str,
+) -> bool {
+    descriptor
+        .vertex
+        .shader_defs
+        .iter()
+        .any(|def| matches!(def, bevy::shader::ShaderDefVal::Bool(name, true) if name == define))
 }
 
 /// Adds the `MODERN_LIGHTING` shader define to both stages.
@@ -143,8 +153,9 @@ fn define_modern_lighting(
     }
 }
 
-/// Makes a prepass pipeline write nothing. Its depth would cover the whole mesh where the main
-/// pass discards keyed texels, so the mesh casts no shadow and leaves no hole in the prepass.
+/// Makes a prepass pipeline write nothing. Without a fragment shader its depth would cover the whole
+/// mesh where the main pass discards keyed texels, so the mesh casts no shadow and leaves no hole in
+/// the prepass.
 fn skip_prepass(descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor) {
     if let Some(depth) = &mut descriptor.depth_stencil {
         depth.depth_write_enabled = Some(false);
@@ -311,7 +322,12 @@ impl MaterialExtension for ModelExtension {
         key: bevy::pbr::MaterialExtensionKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
         if is_prepass(descriptor) {
-            if key.bind_group_data.flat || key.bind_group_data.keyed {
+            // The camera prepass, which writes normals, cuts keyed texels out in
+            // `model_prepass.wesl`; the shadow pass runs no fragment shader, so keyed models
+            // still cast no shadow.
+            if key.bind_group_data.flat
+                || (key.bind_group_data.keyed && !has_def(descriptor, "NORMAL_PREPASS"))
+            {
                 skip_prepass(descriptor);
             }
             return Ok(());
@@ -357,6 +373,9 @@ impl MaterialExtension for ModelExtension {
     fn fragment_shader() -> ShaderRef {
         "embedded://cyrus_render/scene_fog.wesl".into()
     }
+    fn prepass_fragment_shader() -> ShaderRef {
+        "embedded://cyrus_render/model_prepass.wesl".into()
+    }
 }
 
 #[derive(Component)]
@@ -375,6 +394,7 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");
         embedded_asset!(app, "scene_fog.wesl");
+        embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
             .add_plugins((
