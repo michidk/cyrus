@@ -34298,6 +34298,7 @@ fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
             },
         );
         data.metadata["actors"][0]["model_load_path"] = "none".into();
+        data.metadata["actors"][0]["ravc_count"] = 0.into();
         data.models.insert(
             "WEAPON".into(),
             cyrus_assets::animation::AnimationModel {
@@ -45617,7 +45618,7 @@ fn queued_jump_lifetime_fixture(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
-            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","animation_groups":groups}]}),
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","ravc_count":0,"animation_groups":groups}]}),
         sections: Default::default(),
         models: Default::default(),
         unsupported: Default::default(),
