@@ -86,6 +86,12 @@ struct Phase {
     sky: SkyLight,
 }
 
+/// How much night it is at `hour`, `0.0` by day to `1.0` once the sun is well below the horizon:
+/// the inverse of the daylight the phase fades the sky and ambient light with.
+pub(super) fn night(noon_direction: Dir3, hour: f32) -> f32 {
+    1.0 - smoothstep(-0.05, 0.15, phase(noon_direction, hour).sun_position.y)
+}
+
 /// The phase at `hour` for a world whose installed sun shines along `noon_direction`.
 ///
 /// The sun moves on a great circle through the installed sun at noon and the horizon at 6

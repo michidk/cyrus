@@ -160,7 +160,7 @@ module where it is defined and regenerate.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
-- `src/fog/modern_lighting/candle.rs` — The candle the player carries at night: a warm point light that follows the player.
+- `src/fog/modern_lighting/candle.rs` — The candle the player carries at night: a faint, flickering warm light that follows the player.
 - `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
 - `src/fog/modern_lighting/effects.rs` — The modern lighting's optional effects, switched from the debug menu's effects panel and the
 - `src/fog/modern_lighting/foliage.rs` — Palm trees and plants that sway in the wind.

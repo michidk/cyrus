@@ -51,9 +51,9 @@ receive shadows (each caster through a shadow-only twin that shares one material
 the cascades batch their draws, and static models with equal modern material values share one
 material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
 bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
-measured matches. Flats keep their original shading. At night in an outdoor world, one with a sky, the
-player carries a candle: a warm point light just above the head that fades in as the sun dims below
-the installed day sun. The original lights nothing around the player; its HUD candle shows health.
+measured matches. Flats keep their original shading. While the day/night cycle runs and its hour is night,
+the player in an outdoor world (one with a sky) carries a candle: a faint, flickering warm light just
+above the head. The original lights nothing around the player; its HUD candle shows health.
 
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
 which moves six times farther than the world's installed clipping distance.
