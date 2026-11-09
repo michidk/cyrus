@@ -289,6 +289,10 @@ struct HudContent;
 #[derive(Component)]
 struct InventoryOverlay;
 
+/// The examine view's description text, drawn above the examined model.
+#[derive(Component)]
+struct ExamineTextOverlay;
+
 /// The island map screen: the map image and the cross frame over a black screen.
 #[derive(Component)]
 struct IslandMapOverlay;
@@ -423,6 +427,12 @@ impl Plugin for HudPlugin {
             )
             .add_systems(
                 Update,
+                examine_text_draw
+                    .after(update)
+                    .run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(
+                Update,
                 island_map_draw
                     .after(update)
                     .run_if(in_state(AppState::InGame)),
@@ -489,6 +499,14 @@ fn spawn_inventory(mut commands: Commands, viewports: Query<Entity, With<HudView
         InventoryOverlay,
         Visibility::Hidden,
         // Artwork and text use the same 640×480 coordinates as the world HUD.
+        place([0, 0], [640, 480]),
+    ));
+    commands.entity(viewport).with_child((
+        ExamineTextOverlay,
+        Visibility::Hidden,
+        // Above the examine view's model canvas.
+        GlobalZIndex(106),
+        ImageNode::default(),
         place([0, 0], [640, 480]),
     ));
 }
@@ -587,8 +605,10 @@ fn island_map_draw(
     });
 }
 
+#[allow(clippy::too_many_arguments)] // The inventory and examine states, the HUD asset and the overlay it rebuilds.
 fn inventory_draw(
     screen: Option<Res<cyrus_script::inventory_screen::InventoryScreen>>,
+    examine: Option<Res<cyrus_script::item_viewer::ExamineScreen>>,
     hud_handle: Option<Res<HudHandle>>,
     huds: Res<Assets<HudAsset>>,
     assets: Res<AssetServer>,
@@ -609,6 +629,16 @@ fn inventory_draw(
     let Some(hud) = huds.get(&handle.0) else {
         return;
     };
+    // From the View request until the examine view returns, the cursor item's bitmap, count and
+    // name are not drawn.
+    let viewing =
+        examine.is_some_and(|examine| examine.suspended() || examine.inventory_request.is_some());
+    let cells: Vec<_> = screen
+        .layout
+        .cells
+        .iter()
+        .filter(|cell| !(viewing && cell.cursor))
+        .collect();
     if let Some(children) = children {
         for child in children.iter() {
             commands.entity(child).despawn();
@@ -651,7 +681,7 @@ fn inventory_draw(
                 hud.inventory_screen[2],
             );
         }
-        for cell in &screen.layout.cells {
+        for cell in &cells {
             let Some(item) = hud.items.iter().find(|item| item.id == cell.id) else {
                 continue;
             };
@@ -675,7 +705,7 @@ fn inventory_draw(
             .font
             .glyph(b'a')
             .map_or(0, |g| i32::from(g.offset[1]) + i32::from(g.height));
-        for cell in &screen.layout.cells {
+        for cell in &cells {
             let Some(item) = hud.items.iter().find(|item| item.id == cell.id) else {
                 continue;
             };
@@ -742,6 +772,79 @@ fn inventory_draw(
             ZIndex(2),
         ));
     });
+}
+
+/// The examine view's current description line (preservation `engine/hud.md` examine view): the
+/// RTX text wrapped with a 30-byte step, each line centred on x = 320 with its top at
+/// `10 + trunc(0.9 × n × line_height)`, shown only with `[dialog] dialog_print_text`.
+fn examine_text_draw(
+    examine: Option<Res<cyrus_script::item_viewer::ExamineScreen>>,
+    settings: Option<Res<cyrus_assets::sound::SoundSettings>>,
+    hud_handle: Option<Res<HudHandle>>,
+    huds: Res<Assets<HudAsset>>,
+    mut images: ResMut<Assets<Image>>,
+    mut overlays: Query<(&mut Visibility, &mut ImageNode), With<ExamineTextOverlay>>,
+    mut shown: Local<Option<[u8; 4]>>,
+) {
+    let Ok((mut visibility, mut node)) = overlays.single_mut() else {
+        return;
+    };
+    let printing = settings.as_ref().is_none_or(|settings| settings.subtitles);
+    let label = examine
+        .filter(|examine| examine.open && printing)
+        .and_then(|examine| examine.text);
+    if label == *shown {
+        return;
+    }
+    let Some(label) = label else {
+        *shown = None;
+        visibility.set_if_neq(Visibility::Hidden);
+        return;
+    };
+    let Some(hud) = hud_handle.and_then(|handle| huds.get(&handle.0)) else {
+        return;
+    };
+    *shown = Some(label);
+    let key = String::from_utf8_lossy(&label);
+    // Text starting with byte 0x9E counts as absent.
+    let Some(text) = hud
+        .labels
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(&key))
+        .map(|(_, text)| text.as_str())
+        .filter(|text| !text.is_empty() && !text.starts_with('\u{9e}'))
+    else {
+        visibility.set_if_neq(Visibility::Hidden);
+        return;
+    };
+    let mut rgba = vec![0; 640 * 480 * 4];
+    for (line, text) in cyrus_script::inventory_screen::wrap_lines(text, 30)
+        .iter()
+        .enumerate()
+    {
+        let y = 10 + (line as i32 * i32::from(hud.font.line_height) * 9) / 10;
+        hud.font.draw_shadowed(
+            &mut rgba,
+            640,
+            text,
+            [320 - hud.font.width(text) / 2, y],
+            hud.text_alpha,
+        );
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: 640,
+            height: 480,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        rgba,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::nearest();
+    node.image = images.add(image);
+    visibility.set_if_neq(Visibility::Inherited);
 }
 
 /// Absolute node covering a 640×480 screen rectangle within the viewport.
@@ -2858,6 +2961,20 @@ mod tests {
             app.world().get::<BackgroundColor>(children[0]).unwrap().0,
             Color::srgba(10.0 / 255.0, 10.0 / 255.0, 10.0 / 255.0, 180.0 / 255.0)
         );
+        // From the View request until the view returns, the cursor item is not drawn.
+        let mut examine = cyrus_script::item_viewer::ExamineScreen::default();
+        examine.inventory_request = Some(cyrus_script::item_viewer::InventoryCell {
+            item: 4,
+            row: 0,
+            column: 0,
+        });
+        app.insert_resource(examine);
+        app.update();
+        let children = app.world().get::<Children>(overlay).unwrap();
+        assert_eq!(children.len(), 3, "backing, border and text raster");
+        app.world_mut()
+            .resource_mut::<cyrus_script::item_viewer::ExamineScreen>()
+            .inventory_request = None;
         app.world_mut()
             .resource_mut::<cyrus_script::inventory_screen::InventoryScreen>()
             .open = false;
@@ -2866,5 +2983,52 @@ mod tests {
             app.world().get::<Visibility>(overlay),
             Some(&Visibility::Hidden)
         );
+    }
+
+    #[test]
+    fn the_examine_view_shows_its_line_text_while_open() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .init_asset::<HudAsset>();
+        app.world_mut().spawn(HudViewport);
+        app.add_systems(Startup, spawn_inventory)
+            .add_systems(Update, examine_text_draw);
+        let mut hud = asset(0);
+        hud.labels.insert("ABCD".into(), "SOME TEXT".into());
+        hud.labels.insert("NONE".into(), "\u{9e}".into());
+        let handle = app.world_mut().resource_mut::<Assets<HudAsset>>().add(hud);
+        app.insert_resource(HudHandle(handle));
+        let mut examine = cyrus_script::item_viewer::ExamineScreen::default();
+        examine.open = true;
+        examine.text = Some(*b"abcd");
+        app.insert_resource(examine);
+        let visibility = |app: &mut App| {
+            *app.world_mut()
+                .query_filtered::<&Visibility, With<ExamineTextOverlay>>()
+                .single(app.world())
+                .unwrap()
+        };
+        app.update();
+        assert_eq!(visibility(&mut app), Visibility::Inherited);
+        app.world_mut()
+            .resource_mut::<cyrus_script::item_viewer::ExamineScreen>()
+            .text = Some(*b"none");
+        app.update();
+        assert_eq!(
+            visibility(&mut app),
+            Visibility::Hidden,
+            "0x9E text is absent"
+        );
+        app.world_mut()
+            .resource_mut::<cyrus_script::item_viewer::ExamineScreen>()
+            .text = Some(*b"abcd");
+        app.update();
+        assert_eq!(visibility(&mut app), Visibility::Inherited);
+        app.world_mut()
+            .resource_mut::<cyrus_script::item_viewer::ExamineScreen>()
+            .open = false;
+        app.update();
+        assert_eq!(visibility(&mut app), Visibility::Hidden);
     }
 }

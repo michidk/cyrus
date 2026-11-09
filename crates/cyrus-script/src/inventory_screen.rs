@@ -133,17 +133,23 @@ impl InventoryGrid {
     }
 }
 
-/// Split an item name into lines: from byte 13, the first space found becomes a line break
-/// and the search resumes 14 bytes later. The final byte is never replaced.
+/// Split an item name into lines with a 13-byte [`wrap_lines`] step.
 pub fn name_lines(text: &str) -> Vec<&str> {
+    wrap_lines(text, 13)
+}
+
+/// The RTX text wrap the inventory and examine view share: from byte `step`, the first space
+/// found becomes a line break and the search resumes `step + 1` bytes later. The final byte is
+/// never replaced.
+pub fn wrap_lines(text: &str, step: usize) -> Vec<&str> {
     let bytes = text.as_bytes();
     let mut lines = Vec::new();
-    let (mut start, mut index) = (0, 13);
+    let (mut start, mut index) = (0, step);
     while index + 1 < bytes.len() {
         if bytes[index] == b' ' {
             lines.push(&text[start..index]);
             start = index + 1;
-            index += 13;
+            index += step;
         }
         index += 1;
     }
@@ -585,6 +591,21 @@ mod tests {
             ["'ELVEN ARTIFACTS", "VIII'"]
         );
         assert_eq!(name_lines("ABCDEFGHIJKLMNOP "), ["ABCDEFGHIJKLMNOP "]);
+    }
+
+    #[test]
+    fn examine_text_breaks_at_the_first_space_from_byte_thirty() {
+        assert_eq!(
+            wrap_lines(
+                "ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT NINE TEN ELEVEN TWELVE THIRTEEN FOURTEEN FIFTEEN",
+                30
+            ),
+            [
+                "ONE TWO THREE FOUR FIVE SIX SEVEN",
+                "EIGHT NINE TEN ELEVEN TWELVE THIRTEEN",
+                "FOURTEEN FIFTEEN"
+            ]
+        );
     }
     fn close_asset() -> cyrus_assets::hud::HudAsset {
         cyrus_assets::hud::HudAsset {

@@ -165,7 +165,10 @@ pub enum SoundRequest {
         effect: usize,
         position: Option<Vec3>,
     },
+    /// A voice clip by RTX label, shown as a dialogue subtitle.
     Speech(String),
+    /// A voice clip without a dialogue subtitle: the examine view draws its own text.
+    Voice(String),
     StopAll,
 }
 
@@ -284,7 +287,7 @@ pub(crate) struct Channels {
     animation: HashMap<Entity, u8>,
     /// One post-advancement animation slot snapshot per bound actor, including None.
     animation_checkpoint: HashMap<Entity, Option<u8>>,
-    /// The slot of the last speech clip a [`SoundRequest::Speech`] started, which the examine
+    /// The slot of the last speech clip a [`SoundRequest::Speech`] or [`SoundRequest::Voice`] started, which the examine
     /// view stops when it begins to close.
     speech: Option<u8>,
 }
@@ -712,9 +715,9 @@ fn positional(
     Ok((volume, pan))
 }
 
-/// Start the examine view's next description line as speech with its subtitle and report the clip
-/// length, or report that the label has no speech record. Text-only description lines are not
-/// shown: the voice-clip table holds only labels with audio.
+/// Start the examine view's next description line as speech and report the clip length, or report
+/// that the label has no speech clip. The view draws the text itself, so no dialogue subtitle is
+/// created, and shows a line without a clip as text only.
 fn examine_speech(
     screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
     speech: Res<Speech>,
@@ -742,7 +745,7 @@ fn examine_speech(
             .iter()
             .find(|(key, _)| key.eq_ignore_ascii_case(&name))
             .map(|(key, clip)| {
-                requests.write(SoundRequest::Speech(key.clone()));
+                requests.write(SoundRequest::Voice(key.clone()));
                 clip.seconds as f32
             }),
     );
@@ -815,7 +818,7 @@ fn play_requests(
                     },
                 );
             }
-            SoundRequest::Speech(label) => {
+            SoundRequest::Speech(label) | SoundRequest::Voice(label) => {
                 if !settings.as_ref().is_some_and(|s| s.speech) {
                     continue;
                 }
@@ -1147,7 +1150,7 @@ mod examine_speech_tests {
             .resource_mut::<Messages<SoundRequest>>()
             .drain()
             .collect();
-        assert!(matches!(requests.as_slice(), [SoundRequest::Speech(label)] if label == "cisw"));
+        assert!(matches!(requests.as_slice(), [SoundRequest::Voice(label)] if label == "cisw"));
         app.world_mut()
             .resource_mut::<ExamineScreen>()
             .speech_request = Some(*b"nope");

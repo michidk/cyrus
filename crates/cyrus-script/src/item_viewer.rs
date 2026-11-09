@@ -303,9 +303,16 @@ enum Line {
     #[default]
     Idle,
     /// The audio owner has been asked to start this label and has not answered.
-    Requested,
+    Requested { label: [u8; 4] },
     Playing {
+        label: [u8; 4],
         until: std::time::Duration,
+    },
+    /// The line's text shows without speech. With sound on (`[system] sound`) it stays until the
+    /// view returns; with sound off the next line starts after `remaining` more updates.
+    Silent {
+        label: [u8; 4],
+        remaining: Option<usize>,
     },
     /// No further lines: the sequence ended or a label has no record.
     Ended,
@@ -336,11 +343,16 @@ pub struct ExamineScreen {
     from_inventory: bool,
     #[serde(skip)]
     confirm: bool,
-    /// A label the audio owner starts as speech (and its subtitle), then answers through
+    /// A label the audio owner starts as speech without a dialogue subtitle, then answers through
     /// [`Self::speech_reply`].
     pub speech_request: Option<[u8; 4]>,
+    /// The description line whose RTX text the view draws itself (preservation `engine/hud.md`
+    /// examine view): set when the line starts, kept through the close, cleared when the next
+    /// line starts or the view returns.
+    pub text: Option<[u8; 4]>,
     /// The audio owner's answer: the clip length in seconds, or `None` when the label has no
-    /// speech record, which ends the line sequence.
+    /// speech clip; the line then shows its RTX text without speech, or ends the sequence when
+    /// the label has no RTX record.
     pub speech_reply: Option<Option<f32>>,
     /// Set when the exit starts: the audio owner stops the line's speech and clears it.
     pub speech_stop: bool,
@@ -390,10 +402,11 @@ fn drive(
     inputs: crate::player::input::Inputs,
     time: bevy::prelude::Res<bevy::prelude::Time<bevy::prelude::Real>>,
     mut screen: bevy::prelude::ResMut<ExamineScreen>,
-    (hud, mut actors, console): (
+    (hud, mut actors, console, settings): (
         Option<bevy::prelude::Res<crate::script::ScriptHud>>,
         Option<bevy::prelude::ResMut<crate::script::ScriptActors>>,
         Option<bevy::prelude::Res<cyrus_console::Console>>,
+        Option<bevy::prelude::Res<cyrus_assets::sound::SoundSettings>>,
     ),
     mut clock: Option<bevy::prelude::ResMut<crate::clock::SimulationClock>>,
     mut virtual_time: Option<bevy::prelude::ResMut<bevy::prelude::Time<bevy::prelude::Virtual>>>,
@@ -561,11 +574,21 @@ fn drive(
         screen.speech_stop = true;
     }
     screen.pose = Some(pose);
-    if exiting {
-        screen.line = Line::Ended;
-    } else {
-        advance_line(&mut screen, time.elapsed());
+    let sound = settings.as_ref().is_none_or(|settings| settings.effects);
+    let text_length = |label: [u8; 4]| {
+        let label = String::from_utf8_lossy(&label);
+        hud.as_ref()
+            .and_then(|hud| hud.rtx_text(&label).ok().flatten())
+            .map(|text| text.len())
+    };
+    if exiting && !was_exiting {
+        // The stopped speech leaves the line's text as a line without speech.
+        if let Line::Playing { label, .. } | Line::Requested { label } = screen.line {
+            screen.speech_request = None;
+            screen.line = silent(label, sound, &text_length);
+        }
     }
+    advance_line(&mut screen, time.elapsed(), sound, &text_length);
     if finished {
         screen.open = false;
         screen.waiting_for_release = true;
@@ -575,6 +598,7 @@ fn drive(
         screen.lines = None;
         screen.speech_request = None;
         screen.speech_reply = None;
+        screen.text = None;
         if screen.from_inventory {
             screen.inventory_result = Some(screen.confirm);
             screen.from_inventory = false;
@@ -632,38 +656,91 @@ fn open(
     Ok(Some((viewer, lines, model)))
 }
 
-/// Start the next description line when none is playing, and end the sequence at a label with no
-/// speech record. A line ends with its speech clip, measured on the real clock.
-fn advance_line(screen: &mut ExamineScreen, now: std::time::Duration) {
+/// A line shown without speech: it holds while sound is on, or counts twice its text length in
+/// updates while sound is off (preservation `engine/hud.md` examine view). A label without an RTX
+/// record ends the sequence.
+fn silent(label: [u8; 4], sound: bool, text_length: &dyn Fn([u8; 4]) -> Option<usize>) -> Line {
+    match text_length(label) {
+        Some(length) => Line::Silent {
+            label,
+            remaining: (!sound).then_some(2 * length),
+        },
+        None => Line::Ended,
+    }
+}
+
+/// Run one update of the description lines. With sound on, a line plays its speech and the next
+/// starts when the clip ends (measured on the real clock); a line without speech shows its text
+/// and holds. With sound off, no speech plays and each line lasts twice its text length in
+/// updates. [`ExamineScreen::text`] follows the current line.
+fn advance_line(
+    screen: &mut ExamineScreen,
+    now: std::time::Duration,
+    sound: bool,
+    text_length: &dyn Fn([u8; 4]) -> Option<usize>,
+) {
     loop {
         match screen.line {
             Line::Idle => {
+                screen.text = None;
                 let Some(label) = screen.lines.as_mut().and_then(Iterator::next) else {
                     screen.line = Line::Ended;
                     return;
                 };
-                screen.speech_request = Some(label);
-                screen.speech_reply = None;
-                screen.line = Line::Requested;
+                if sound {
+                    screen.speech_request = Some(label);
+                    screen.speech_reply = None;
+                    screen.line = Line::Requested { label };
+                } else {
+                    screen.line = silent(label, sound, text_length);
+                    if let Line::Silent { .. } = screen.line {
+                        screen.text = Some(label);
+                    }
+                }
                 return;
             }
-            Line::Requested => match screen.speech_reply.take() {
+            Line::Requested { label } => match screen.speech_reply.take() {
                 Some(Some(seconds)) => {
+                    screen.text = Some(label);
                     screen.line = Line::Playing {
+                        label,
                         until: now + std::time::Duration::from_secs_f32(seconds.max(0.0)),
                     };
                     return;
                 }
-                Some(None) => screen.line = Line::Ended,
+                Some(None) => {
+                    screen.line = silent(label, sound, text_length);
+                    if let Line::Silent { .. } = screen.line {
+                        screen.text = Some(label);
+                    }
+                    return;
+                }
                 None => return,
             },
-            Line::Playing { until } => {
+            Line::Playing { until, .. } => {
                 if now < until {
                     return;
                 }
                 screen.line = Line::Idle;
             }
-            Line::Ended => return,
+            Line::Silent {
+                label,
+                remaining: Some(remaining),
+            } => {
+                let remaining = remaining.saturating_sub(1);
+                if remaining > 0 {
+                    screen.line = Line::Silent {
+                        label,
+                        remaining: Some(remaining),
+                    };
+                    return;
+                }
+                screen.line = Line::Idle;
+            }
+            Line::Silent {
+                remaining: None, ..
+            }
+            | Line::Ended => return,
         }
     }
 }
@@ -681,6 +758,67 @@ mod tests {
         jump: false,
         exit: false,
     };
+
+    /// Two description lines (`cibe`, `cibl`); `cibe` has 3 bytes of text, `cibl` none.
+    fn described() -> ExamineScreen {
+        ExamineScreen {
+            lines: Some(DescriptionLines::new(36, None, 0)),
+            ..ExamineScreen::default()
+        }
+    }
+
+    fn text_length(label: [u8; 4]) -> Option<usize> {
+        (&label == b"cibe").then_some(3)
+    }
+
+    #[test]
+    fn with_sound_a_line_without_speech_shows_its_text_and_holds() {
+        let mut screen = described();
+        let now = std::time::Duration::ZERO;
+        advance_line(&mut screen, now, true, &text_length);
+        assert_eq!(screen.speech_request, Some(*b"cibe"));
+        screen.speech_request = None;
+        screen.speech_reply = Some(None);
+        for _ in 0..50 {
+            advance_line(&mut screen, now, true, &text_length);
+            assert_eq!(screen.text, Some(*b"cibe"));
+            assert_eq!(screen.speech_request, None);
+        }
+    }
+
+    #[test]
+    fn without_sound_each_line_lasts_twice_its_text_length_in_updates() {
+        let mut screen = described();
+        let now = std::time::Duration::ZERO;
+        advance_line(&mut screen, now, false, &text_length);
+        assert_eq!(screen.speech_request, None);
+        let mut shown = 1;
+        loop {
+            advance_line(&mut screen, now, false, &text_length);
+            if screen.text != Some(*b"cibe") {
+                break;
+            }
+            shown += 1;
+        }
+        assert_eq!(shown, 6);
+        // `cibl` has no RTX record, which ends the sequence.
+        assert_eq!(screen.text, None);
+        assert!(matches!(screen.line, Line::Ended));
+    }
+
+    #[test]
+    fn a_label_without_speech_or_text_ends_the_sequence() {
+        let mut screen = ExamineScreen {
+            lines: Some(DescriptionLines::new(55, Some("x"), 0)),
+            ..ExamineScreen::default()
+        };
+        let now = std::time::Duration::ZERO;
+        advance_line(&mut screen, now, true, &text_length);
+        screen.speech_reply = Some(None);
+        advance_line(&mut screen, now, true, &text_length);
+        assert_eq!(screen.text, None);
+        assert!(matches!(screen.line, Line::Ended));
+    }
 
     fn viewer() -> ItemViewer {
         ItemViewer::open([100, 60, 40], [0, 0], 0.75)
