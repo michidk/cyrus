@@ -667,17 +667,16 @@ fn multitask_operands_are_reevaluated_pause_resume_and_stop_share_actor_slots() 
     assert_eq!(vm.active_tasks(), 0);
 }
 #[test]
-fn actor_task_capacity_fails_before_a_seventh_effect_and_teardown_cancels_all() {
+fn actor_task_capacity_drops_a_seventh_task_without_effect_and_teardown_cancels_all() {
     let mut ops = vec![call(Native::Wait, CallKind::Multitask); 7];
     ops.push(Operation::End { target: 0 });
     let mut vm = runtime(ops);
     let mut host = Tasks::default();
-    let error = vm
-        .invoke(Thread::Main, &mut host, &mut [], 20)
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("task capacity"));
+    // The original's task start finds no free slot for the seventh and returns silently: the
+    // script runs on to its end, no seventh native effect happens and no failure is recorded.
+    vm.invoke(Thread::Main, &mut host, &mut [], 20).unwrap();
     assert_eq!(host.next, 6);
+    assert!(vm.failure().is_none());
     vm.cancel_tasks(&mut host).unwrap();
     assert_eq!(host.cancelled, [1, 2, 3, 4, 5, 6]);
     assert_eq!(vm.active_tasks(), 0);
@@ -1090,7 +1089,7 @@ fn missing_foreign_task_source_fails_before_polling_and_is_sticky() {
     );
 }
 #[test]
-fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
+fn routed_capacity_overflow_drops_the_task_and_identity_overflow_fails_before_native_effects() {
     let mut vm = runtime(vec![Operation::Yield, Operation::End { target: 0 }]);
     let mut call = foreign_call();
     call.arguments.clear();
@@ -1113,19 +1112,19 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
         instruction: 6,
         ..foreign_source()
     };
-    let error = vm
-        .receive(
-            &call,
-            &[],
-            cyrus_soup::NativeCallSite::Statement(Some(source)),
-            &mut host,
-            &mut [],
-        )
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("actor task capacity exhausted"), "{error}");
+    // A seventh task finds no free slot: the original drops it without running the native or
+    // disturbing the six running tasks, and the script continues.
+    vm.receive(
+        &call,
+        &[],
+        cyrus_soup::NativeCallSite::Statement(Some(source)),
+        &mut host,
+        &mut [],
+    )
+    .unwrap();
     assert_eq!(host.next, 6);
     assert_eq!(vm.active_tasks(), 6);
+    assert!(vm.failure().is_none());
     let mut vm = runtime(vec![Operation::Yield, Operation::End { target: 0 }]);
     let source = TaskSource {
         origin: CodeOrigin(u32::MAX),

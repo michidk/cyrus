@@ -233,10 +233,12 @@ impl Runtime {
             return Ok((Some(0), false));
         }
         let slot = self.state.tasks.iter().position(Option::is_none);
-        anyhow::ensure!(
-            call.kind == CallKind::Function || slot.is_some(),
-            "actor task capacity exhausted"
-        );
+        if call.kind != CallKind::Function && slot.is_none() {
+            // The original's task start scans the six slots for a free one and, finding none,
+            // returns without starting the task, running the native or touching any slot: the
+            // task is dropped silently and the script continues.
+            return Ok((Some(0), false));
+        }
         host.prepare_native_command(site);
         let arguments = self.arguments(call, flags, host, strings)?;
         let invocation = self.invocation((call.kind != CallKind::Function).then_some(0));
