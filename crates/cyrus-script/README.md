@@ -8,6 +8,11 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: the base selected-player controller rebuilds banked orientations, following
+preservation's [player orientation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#upright-actor-orientation).
+The transition back to zero bank also rebuilds so the last banked matrix cannot retain
+tilt. Upright player turns and ordinary nonplayer actors retain incremental rotation.
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
