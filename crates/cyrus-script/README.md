@@ -68,6 +68,13 @@ live in Rust documentation beside their definitions. The generated
 
 ## SOUP integration
 
+Verified: positional `Sound` and ambient tasks select the receiver's emitter
+through the live `Slave` attribute. Clearing it before family refresh selects the local or linked
+position even while a cached attachment parent remains. This shares the established
+position-query selector and follows preservation's
+[positional sound contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#distance).
+Animation sound position capture remains owned by animation dispatch.
+
 Verified: killed map pickups retain their removal state across world restoration.
 Public standalone ordinary main and hook stages skip killed records, so restored pickups cannot
 restart their acquisition scripts. Competing activation callers retain one owner

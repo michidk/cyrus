@@ -4278,14 +4278,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     fn ambient_call(&self) -> super::tasks::AmbientCall<'input> {
         let actor = &self.registry.actors[self.index];
-        let position = self.registry.spatial.as_ref().and_then(|world| {
-            let spatial = world.actor(self.index).ok()?;
-            if spatial.parent.is_some() {
-                Some(spatial.effective?.position)
-            } else {
-                Some(spatial.linked_position.unwrap_or(spatial.local.position))
-            }
-        });
+        let position = self
+            .registry
+            .query_position(ScriptActorId {
+                generation: self.generation,
+                index: self.index,
+            })
+            .ok();
         super::tasks::AmbientCall {
             driver: self.inputs.ambient_sound,
             reset: self.inputs.sound_reset,
@@ -8935,20 +8934,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [effect, volume, rate] = arguments else {
                 anyhow::bail!("Sound requires three arguments")
             };
-            let spatial = self
+            let position = self
                 .registry
-                .spatial
-                .as_ref()
-                .context("Sound receiver pose unavailable")?
-                .actor(self.index)?;
-            let position = if spatial.parent.is_some() {
-                spatial
-                    .effective
-                    .context("Sound attached receiver pose unavailable")?
-                    .position
-            } else {
-                spatial.linked_position.unwrap_or(spatial.local.position)
-            };
+                .query_position(id)
+                .context("Sound receiver pose unavailable")?;
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(

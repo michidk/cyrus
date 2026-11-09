@@ -6862,6 +6862,170 @@ fn deferred_movement_relocates_cells_and_retains_nearby_cached_order() {
 }
 
 #[test]
+fn positional_sound_reads_live_slave_state_before_family_refresh() {
+    use cyrus_script::script::{ScriptInputs, ScriptSound, ScriptStage};
+    use cyrus_world::sound::{AmbientSoundDriver, AmbientSoundRequest, AmbientSoundUpdate};
+    use std::sync::Mutex;
+    #[derive(Debug, Default)]
+    struct Driver(Mutex<Vec<AmbientSoundRequest>>);
+    impl AmbientSoundDriver for Driver {
+        fn update(&self, request: AmbientSoundRequest) -> Result<AmbientSoundUpdate, String> {
+            self.0.lock().unwrap().push(request);
+            Ok(AmbientSoundUpdate {
+                channel: None,
+                active: false,
+            })
+        }
+    }
+    for function in [Native::Sound, Native::AmbientSound] {
+        for clear_slave in [false, true] {
+            let kind = if function == Native::Sound {
+                CallKind::Function
+            } else {
+                CallKind::Multitask
+            };
+            let mut scripts = random_scripts(function, vec![], Object::Me);
+            scripts.definition.functions[1].param_count = 3;
+            scripts.definition.functions[1].kind = kind;
+            scripts.definition.functions.push(Function {
+                name: Native::SetAttribute,
+                param_count: 2,
+                kind: CallKind::Function,
+            });
+            let mut master = scripts.actors["LOGIC"].clone();
+            master.attributes[Attribute::Master] = 1;
+            master.header_index = 1;
+            master.instances = 1;
+            master.namespace = Some("master".into());
+            master.instance_variables.truncate(1);
+            master.program.steps = BTreeMap::from([(
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::End { target: 0 },
+                },
+            )]);
+            scripts.actors.insert("MASTER".into(), master);
+            let slave = scripts.actors.get_mut("LOGIC").unwrap();
+            slave.attributes[Attribute::Slave] = 1;
+            slave.instances = 1;
+            slave.instance_variables.truncate(1);
+            slave.program.steps = BTreeMap::from([
+                (
+                    0,
+                    assign_call(
+                        1,
+                        2,
+                        Native::SetAttribute,
+                        &[Attribute::Slave.index() as i32, i32::from(!clear_slave)],
+                    ),
+                ),
+                (
+                    1,
+                    Step {
+                        next: 2,
+                        operation: Operation::Call {
+                            call: Call {
+                                function_id: 1,
+                                function,
+                                kind,
+                                target: Object::Me,
+                                arguments: [7, -40, 2000]
+                                    .map(|value| Value::Integer { value })
+                                    .to_vec(),
+                            },
+                        },
+                    },
+                ),
+                (
+                    2,
+                    Step {
+                        next: 3,
+                        operation: Operation::End { target: 0 },
+                    },
+                ),
+            ]);
+            scripts.instances[0].map_position = [103, 4, 0];
+            scripts.instances[1].map_position = [100, 0, 0];
+            scripts.instances[1].actor = "MASTER".into();
+            scripts.instances[1].angles = [0; 3];
+            scripts.content_id = scripts.content_identity().unwrap();
+            let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+            world.prepare_spatial().unwrap();
+            world.refresh_families().unwrap();
+            let actor = world.id(0).unwrap();
+            let before = world.spatial(actor).unwrap();
+            assert_eq!(before.parent, Some(1));
+            assert_eq!(before.local.position, [3 * 256, 4 * 256, 0]);
+            assert_eq!(before.effective.unwrap().position, [103 * 256, 4 * 256, 0]);
+            let mut cues = Vec::new();
+            let driver = Driver::default();
+            world
+                .advance(
+                    actor,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(0),
+                        ambient_sound: Some(&driver),
+                        sound_reset: Some(false),
+                        ..Default::default()
+                    },
+                    Some(&mut |id, sound| {
+                        cues.push((id, sound));
+                        Ok(())
+                    }),
+                    None,
+                    30,
+                )
+                .unwrap();
+            assert_eq!(
+                world.actors()[0].attributes()[Attribute::Slave],
+                u8::from(!clear_slave)
+            );
+            assert_eq!(
+                world.spatial(actor).unwrap().parent,
+                Some(1),
+                "attribute writes do not implicitly refresh the cached family"
+            );
+            let position = [if clear_slave { 3 * 256 } else { 103 * 256 }, 4 * 256, 0];
+            if function == Native::Sound {
+                assert_eq!(
+                    cues,
+                    [(
+                        actor,
+                        ScriptSound::Positional {
+                            effect: 7,
+                            volume: -40,
+                            rate_offset_hz: 2000,
+                            position,
+                            start_index: None,
+                        }
+                    )],
+                    "Sound must select its emitter from the live Slave attribute"
+                );
+            } else {
+                assert_eq!(
+                    *driver.0.lock().unwrap(),
+                    [AmbientSoundRequest {
+                        generation: 1,
+                        actor_index: 0,
+                        channel: None,
+                        effect: 7,
+                        volume: -40,
+                        rate_offset_hz: 2000,
+                        position,
+                        object_update_excluded: false,
+                    }],
+                    "AmbientSound must select its emitter from the live Slave attribute"
+                );
+                assert!(cues.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
 fn positional_sound_uses_the_routed_receivers_pose_and_returns_zero() {
     use cyrus_script::script::{ScriptSound, ScriptStage};
     let mut scripts = random_scripts(
