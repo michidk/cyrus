@@ -190,7 +190,7 @@ impl ScriptWorld {
         let working_spheres =
             self.selected_collision_spheres(id, data, scene.actor_collision.as_ref())?;
         let spatial = self.spatial(id)?;
-        let working_angles = spatial.angle_history;
+        let working_angles = spatial.local.angles;
         let model =
             self.model_presentation(id)?
                 .map(|record| cyrus_collision::candidates::ModelBounds {

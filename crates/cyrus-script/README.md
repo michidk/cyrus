@@ -730,3 +730,9 @@ when the ordinary query was prepared, together with its copied angles, and refre
 only its effective origin. A new update prepares a fresh working record. Working
 spheres belong to the ephemeral query, not persisted actor bounds. This follows
 preservation's per-update collision shape preparation contract.
+
+Verified: ordinary working collision orientation is copied from the current local
+angles when the query is prepared. Previous angle history belongs to movement and
+rollback and does not supply this copy. Later script rotation changes primary
+collision while residual collision retains the prepared orientation until the next
+query preparation, following preservation's per-update shape contract.

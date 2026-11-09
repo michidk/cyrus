@@ -50918,3 +50918,188 @@ fn ordinary_base_model_ravc_uses_scene_vertices_and_rebinds_working_records() {
         position
     );
 }
+
+#[test]
+fn ordinary_working_orientation_copies_current_angles_before_script_rotation() {
+    use cyrus_script::script::{
+        OrdinaryBodyQuery, OrdinaryResidualQuery, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 30];
+        placement.active = 1;
+    }
+    let function = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::SetRotation,
+        kind: CallKind::Function,
+        param_count: 3,
+    });
+    let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+    program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: wait(
+                    function,
+                    Native::SetRotation,
+                    CallKind::Function,
+                    vec![
+                        Value::Integer { value: 0 },
+                        Value::Integer { value: 512 },
+                        Value::Integer { value: 0 },
+                    ],
+                ),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Increment {
+                    destination: Place::Local { index: 0 },
+                    delta: 1,
+                },
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, models) = static_model_fixture(scripts.clone());
+    let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+    world.refresh_model_presentations(&data, &ids).unwrap();
+    // Base vertex (-20,0,-20) plus (120,-1,20) yields (100,-1,0).
+    data.metadata["actors"][0]["ravc_count"] = 1.into();
+    data.metadata["actors"][0]["collision_volumes"] = serde_json::json!([
+        {"vertex":0,"offset_x":120,"offset_y":-1,"offset_z":20,"radius":24}
+    ]);
+    let scene = ordinary_collision_scene(world.world, models);
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    // A completed prior heading differs from the current selected shape orientation.
+    // Current yaw zero puts the sphere over the other actor's face at (10,20,30).
+    // Prior yaw 512 puts it 100 units away on Z instead.
+    saved["spatial"]["actors"][0]["local"]["position"] =
+        serde_json::json!([-90 * 256, 20 * 256, 30 * 256]);
+    saved["spatial"]["actors"][0]["angle_history"] = serde_json::json!([0, 512, 0]);
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 0, 0]);
+    assert_eq!(world.spatial(id).unwrap().angle_history, [0, 512, 0]);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    let primary = |prepared| OrdinaryBodyQuery {
+        scene: &scene,
+        animations: &data,
+        prepared,
+        sidedness: false,
+        excluded_candidate_type: None,
+        terrain: None,
+    };
+    let residual = |prepared| OrdinaryResidualQuery {
+        scene: &scene,
+        animations: &data,
+        prepared,
+        sidedness: false,
+    };
+    assert!(
+        !world
+            .query_ordinary_body(id, primary(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !world
+            .query_ordinary_residual_body(id, residual(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            cyrus_script::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 512, 0]);
+    assert!(
+        world
+            .query_ordinary_body(id, primary(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !world
+            .query_ordinary_residual_body(id, residual(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    let next = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_residual_body(id, residual(&next))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
+    for expected in [6, 7] {
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                cyrus_script::script::OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: cyrus_script::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+    }
+}
