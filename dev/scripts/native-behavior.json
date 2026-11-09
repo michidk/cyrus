@@ -18,7 +18,7 @@
         "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
         "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
       ],
-      "limits": "Verified: installed BAT native/browser pending-token continuation is accepted under #9. Unknown: all group initialization/default/model-replacement branches and rendered cue ordering under #11. A closed encoding scope does not complete the whole native."
+      "limits": "Verified: installed BAT native/browser pending-token continuation is accepted under #9. Verified (2026-11-09, TAVERN, original state reader against a native run, both build from the same scripts): the ambient actors' group sequences match. The original's full sequences for THUGTV2, THUGTV3 and TOBIAS (69, 72 and 68 changes in 150 s) occur as contiguous runs in native's; THUGTV1 matches except one 0.3 s-sampled short group. Unknown: all group initialization/default/model-replacement branches and rendered cue ordering under #11. A closed encoding scope does not complete the whole native."
     },
     {
       "native": "PushAnimation",
@@ -35,7 +35,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership",
         "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
       ],
-      "limits": "Verified by source inspection: synthetic public-stage tests exercise requests, receiver identity and token cleanup. Unknown: matched installed original/native/browser request and replacement sequences. #11 draw/sheath observations are related playback evidence, not acceptance of every PushAnimation branch."
+      "limits": "Verified by source inspection: synthetic public-stage tests exercise requests, receiver identity and token cleanup. Verified (2026-11-09): installed TAVERN actors' request sequences match the original (see PlayAnimation); the player draw and sheathe cycle through the S key matches over 30 taps (groups 91, 8, 129, 0 in both). Unknown: browser sequences and replacement of a running request by another receiver. #11 draw/sheath observations are related playback evidence, not acceptance of every PushAnimation branch."
     },
     {
       "native": "PushControlAnimation",
@@ -50,7 +50,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership",
         "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
       ],
-      "limits": "Verified by source inspection: task-manager call/poll test checks turn and group lifetime. It is below the public ScriptWorld caller. Unknown: installed routed dispatch, replacement and original/native/browser turn/render parity."
+      "limits": "Verified by source inspection: task-manager call/poll test checks turn and group lifetime. It is below the public ScriptWorld caller. The only installed caller is the flask item script (item 51), whose public routed test is installed_flask_second_use_ends_the_throw_loop. Unknown: original comparison, because a new game holds no flask and the original's inventory memory layout is not recovered; browser and render parity."
     },
     {
       "native": "WaitAnimFrame",
