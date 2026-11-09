@@ -66,8 +66,8 @@ const WHITE: Vec3 = Vec3::ONE;
 const SUNSET_LIGHT: Vec3 = Vec3::new(1.0, 0.55, 0.32);
 const SUNSET_AMBIENT: Vec3 = Vec3::new(1.0, 0.75, 0.6);
 const SUNSET_SKY: Vec3 = Vec3::new(1.0, 0.68, 0.52);
-const MOONLIGHT: Vec3 = Vec3::new(0.12, 0.15, 0.24);
-const NIGHT_AMBIENT: Vec3 = Vec3::new(0.2, 0.25, 0.42);
+const MOONLIGHT: Vec3 = Vec3::new(0.06, 0.075, 0.12);
+const NIGHT_AMBIENT: Vec3 = Vec3::new(0.08, 0.1, 0.17);
 const NIGHT_SKY: Vec3 = Vec3::new(0.03, 0.04, 0.09);
 
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
