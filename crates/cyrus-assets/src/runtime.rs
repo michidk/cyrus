@@ -10,6 +10,7 @@ pub mod geometry;
 mod palettes;
 mod prepare;
 mod splash;
+pub mod terrain_grass;
 
 /// A preview and generated media. These bytes are runtime results, never build inputs.
 pub struct Prepared {
