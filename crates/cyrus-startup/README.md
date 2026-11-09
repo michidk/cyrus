@@ -167,7 +167,8 @@ bilinear filtering within 0.3% of full scale, lettering and scroll lighting pres
 
 Available-save death entry presents the installed last-game dialog over a captured
 world frame. Its input and byte-colour composition use the shared confirmation
-core. No enters the short death book; Yes submits the retained selection to the
+core. No enters the short death book and stops every effects/speech channel,
+matching ordinary book entry. Yes submits the retained selection to the
 host's `LastGameLoader`. Missing capture or load support produces an explicit
 error. Native/browser rendered parity and successful restored-session acceptance
 remain unverified; image resizing still requires comparison.
