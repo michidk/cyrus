@@ -58,6 +58,7 @@ module where it is defined and regenerate.
 - `src/runtime/palettes.rs` — Palette and texture relationships derived from installed world and model references.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
 - `src/runtime/splash.rs` — Original splash-file members and object-space mesh presentation through preservation.
+- `src/runtime/terrain_grass.rs` — Where the terrain is grass, read from the terrain's own textures.
 - `src/scene.rs` — Native scene export and installed world selection.
 - `src/script.rs` — World script caches and validated installed clock/update settings.
 - `src/script/combat.rs` — Prepared combat moves with authored omissions retained explicitly.
