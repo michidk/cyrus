@@ -108,7 +108,9 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        16u32,
+        // The export format's version: raise it whenever an output's layout changes, so caches
+        // written in an older layout are rebuilt rather than failing to parse.
+        17u32,
         (&system, &items, &keys, &worlds, &inventory_models),
         (&selected_bytes, &border_bytes, &arrow_bytes),
         (&map_bytes, &cross_bytes),
