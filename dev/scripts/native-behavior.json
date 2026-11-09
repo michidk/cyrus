@@ -1216,14 +1216,15 @@
       "scope": "First matching class from selected-player motion/living/playback/position state",
       "caller": "ScriptWorld::advance -> crates/cyrus-script/src/script/registry.rs -> player_status.rs::player_status",
       "tests": [
-        "crates/cyrus-script/src/script/player_status.rs::the_first_matching_rule_wins"
+        "crates/cyrus-script/src/script/player_status.rs::the_first_matching_rule_wins",
+        "crates/cyrus-script/tests/script_registry.rs::player_status_classifies_the_selected_player_through_the_public_native"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerstatus",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6282324102",
         "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
       ],
-      "limits": "Verified by inspection: helper tests assert class values and precedence for supplied queued/falling/sliding/living/group/moved inputs. Public registry gathers these from selected actor, animation and spatial history. No direct named public dispatch assertion found. Unknown: complete live input mapping and installed original/native/browser status transitions; early landing explicitly called motion-byte mapping inferred.",
+      "limits": "Verified by inspection: helper tests assert class values and precedence for supplied queued/falling/sliding/living/group/moved inputs. Public registry gathers these from selected actor, animation and spatial history. A public dispatch test reads class zero for a selected player at rest and checks the contextual failure without a selected player and the no-argument rule; the nonzero classes are covered only by the helper tests. Unknown: complete live input mapping and installed original/native/browser status transitions; early landing explicitly called motion-byte mapping inferred.",
       "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
     },
     {

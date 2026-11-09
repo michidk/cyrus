@@ -4719,6 +4719,64 @@ fn player_on_scape_reads_the_selected_players_ground_response_and_needs_a_player
 }
 
 #[test]
+fn player_status_classifies_the_selected_player_through_the_public_native() {
+    use cyrus_script::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: Native::PlayerStatus,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            assign_call(1, id, Native::PlayerStatus, &[]).operation,
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    let map = world.id(0).unwrap();
+    let hud = cyrus_script::script::ScriptHud::default();
+    world
+        .advance(
+            map,
+            ScriptStage::Body(cyrus_soup::Thread::Main),
+            ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )
+        .unwrap();
+    let status = world.actors()[map.index].runtime().unwrap().variables()[0]
+        .integer()
+        .unwrap();
+    // A player at rest (no queued, falling or sliding motion, living state zero, no movement
+    // since the update entry) matches no rule: class zero.
+    assert_eq!(status, 0);
+    // Without a selected player the query fails with its name, and it takes no arguments.
+    let error = run_native_calls(&[(Native::PlayerStatus, &[])]).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerStatus"), "{error:#}");
+    let error = run_native_calls(&[(Native::PlayerStatus, &[1])]).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerStatus"), "{error:#}");
+}
+
+#[test]
 fn speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000() {
     // The helper's frame scale is 256, which maps values to themselves with the sign kept.
     assert_eq!(
