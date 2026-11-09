@@ -831,7 +831,8 @@ fn apply_scene_fog(
                     texture_scale,
                     &light_texture,
                 );
-                material.extension.calm_water = !terrain && calm_water(material_name, environment);
+                material.extension.calm_water =
+                    !terrain && is_water_texture(material_name, environment);
                 fog_materials.add(material)
             })
             .clone();
@@ -844,7 +845,10 @@ fn apply_scene_fog(
 
 /// Whether a model mesh's texture is water by SURFACE.INI, read from the glTF material name
 /// preservation gives it, `TEXBSI.<set> / <name> (image <index>)`.
-fn calm_water(name: Option<&bevy::gltf::GltfMaterialName>, environment: &Environment) -> bool {
+pub fn is_water_texture(
+    name: Option<&bevy::gltf::GltfMaterialName>,
+    environment: &Environment,
+) -> bool {
     let Some((set, rest)) = name
         .and_then(|name| name.0.strip_prefix("TEXBSI."))
         .and_then(|rest| rest.split_once(' '))

@@ -182,8 +182,10 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // Modern water (`fog.water.x`): foam where the sea meets the shore, which neither shines nor
     // reflects, and wet sand on the beach behind it.
     let foam = fog.water.x * shore_foam(position, in.water.y, globals.time);
-    let water_mask = clamp(in.water.x, 0.0, 1.0) * (1.0 - foam);
-    let wet = fog.water.x * shore_wetness(in.water.y, position, globals.time) * (1.0 - clamp(in.water.x, 0.0, 1.0));
+    // The wave vertices, and the still shallows the water textures draw out to the waterline.
+    let surface_water = max(clamp(in.water.x, 0.0, 1.0), smoothstep(-0.15, 0.35, in.water.y));
+    let water_mask = surface_water * (1.0 - foam);
+    let wet = fog.water.x * shore_wetness(in.water.y, position, globals.time) * (1.0 - surface_water);
     let water_weight = fog.water.x * water_mask;
     let ripple = water_ripple(position, globals.time, length(view.world_position - in.world_position.xyz));
     surface.uv += ripple * (0.006 * water_weight);

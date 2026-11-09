@@ -4,7 +4,7 @@ mod heights;
 mod preparation;
 pub use checkpoint::{TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot};
 pub use heights::CameraTerrainView;
-pub use preparation::PreparedTerrainMesh;
+pub use preparation::{PreparedTerrainMesh, TerrainTarget};
 
 use crate::environment::EnvironmentRequest;
 use bevy::camera::primitives::MeshAabb;
@@ -36,6 +36,8 @@ struct TerrainMesh {
 pub struct WaterPlayback {
     source: Option<AssetId<Environment>>,
     base: Vec<[f32; 3]>,
+    /// Distance of every grid vertex to the shore, for the terrain's water channel.
+    shore: Vec<f32>,
     terrain: Vec<TerrainMesh>,
     tick: Option<u64>,
     window: Option<crate::terrain::Window>,
@@ -196,13 +198,14 @@ pub(crate) fn animate_water(
     hierarchy: (
         Query<&ChildOf>,
         Query<(), With<crate::persistence::StagedRenderRoot>>,
+        Query<&bevy::gltf::GltfMaterialName>,
     ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     distance: Option<Res<crate::fog::RenderDistance>>,
     (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
-    let (parents, staged) = hierarchy;
+    let (parents, staged, material_names) = hierarchy;
     if playback.source != Some(request.0.id())
         || playback
             .terrain
@@ -251,12 +254,19 @@ pub(crate) fn animate_water(
                                 .is_ok_and(|name| name.as_str() == "Terrain")
                         })
             })
-            .map(|(entity, mesh)| (entity, mesh.0.clone()))
+            .map(|(entity, mesh)| preparation::TerrainTarget {
+                entity,
+                mesh: mesh.0.clone(),
+                water_texture: crate::fog::is_water_texture(
+                    material_names.get(entity).ok(),
+                    environment,
+                ),
+            })
             .collect();
         if terrain.is_empty()
             || terrain
                 .iter()
-                .any(|(_, handle)| meshes.get(handle).is_none())
+                .any(|target| meshes.get(&target.mesh).is_none())
         {
             return;
         }

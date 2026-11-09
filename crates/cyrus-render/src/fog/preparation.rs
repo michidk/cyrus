@@ -1,7 +1,7 @@
 //! Off-live material construction using the ordinary geometry and sampling rules.
 use super::{
-    SceneMaterial, TerrainExtension, TerrainMaterial, calm_water, fog_extension, model_material,
-    prepare_model_geometry,
+    SceneMaterial, TerrainExtension, TerrainMaterial, fog_extension, is_water_texture,
+    model_material, prepare_model_geometry,
 };
 use anyhow::{Context, Result, ensure};
 use bevy::prelude::{
@@ -190,7 +190,7 @@ pub fn prepare_scene_materials(
             &Handle::default(),
         );
         material.extension.calm_water = !terrain
-            && calm_water(
+            && is_water_texture(
                 world.get::<bevy::gltf::GltfMaterialName>(entity),
                 environment,
             );

@@ -7,6 +7,32 @@ use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::{AssetId, Assets, Entity, Handle, Mesh};
 use cyrus_assets::environment::{Environment, Water};
 
+/// One terrain mesh to bind: its entity, its source mesh, and whether its texture is water by
+/// SURFACE.INI (`crate::fog::is_water_texture`), which places the Modern shore effects.
+pub struct TerrainTarget {
+    pub entity: Entity,
+    pub mesh: Handle<Mesh>,
+    pub water_texture: bool,
+}
+
+impl TerrainTarget {
+    /// The target for a spawned terrain mesh entity, None when it has no mesh.
+    pub fn of_entity(
+        world: &bevy::prelude::World,
+        entity: Entity,
+        environment: &Environment,
+    ) -> Option<Self> {
+        Some(Self {
+            entity,
+            mesh: world.get::<bevy::prelude::Mesh3d>(entity)?.0.clone(),
+            water_texture: crate::fog::is_water_texture(
+                world.get::<bevy::gltf::GltfMaterialName>(entity),
+                environment,
+            ),
+        })
+    }
+}
+
 /// Private mesh binding produced without changing any entity or live playback.
 pub struct PreparedTerrainMesh {
     pub entity: Entity,
@@ -21,7 +47,7 @@ impl WaterPlayback {
     pub fn prepare_meshes(
         environment: &Environment,
         source: AssetId<Environment>,
-        targets: &[(Entity, Handle<Mesh>)],
+        targets: &[TerrainTarget],
         meshes: &mut Assets<Mesh>,
     ) -> Result<(Self, Vec<PreparedTerrainMesh>)> {
         environment.validate()?;
@@ -75,7 +101,15 @@ impl WaterPlayback {
             .collect();
         let mut seen = std::collections::HashSet::new();
         let mut prepared = Vec::with_capacity(targets.len());
-        for (entity, original) in targets {
+        // Per grid cell, indexed by its lowest corner: None where no mesh covers it, else whether
+        // its texture is water.
+        let mut water_cells = vec![None; size];
+        for TerrainTarget {
+            entity,
+            mesh: original,
+            water_texture,
+        } in targets
+        {
             ensure!(seen.insert(*entity), "terrain target {entity:?} duplicated");
             let mesh = meshes
                 .get(original)
@@ -100,6 +134,7 @@ impl WaterPlayback {
                 let vertex = x + row * side;
                 vertices.push(vertex);
             }
+            mark_cells(&mut water_cells, mesh, &vertices, side, *water_texture);
             let mesh_source = crate::terrain::Source::new(mesh, vertices.len())
                 .map_err(|error| anyhow::anyhow!("terrain {entity:?}: {error}"))?;
             let mut animated = mesh.clone();
@@ -110,7 +145,6 @@ impl WaterPlayback {
                     .map(|&vertex| base[vertex])
                     .collect::<Vec<_>>(),
             );
-            animated.insert_attribute(Mesh::ATTRIBUTE_UV_1, water_channel(water, &vertices));
             let bounds = animated.get_aabb().map(|mut bounds| {
                 bounds.half_extents.y +=
                     water.map_or(0.0, |water| water.parameters[0].abs()) * 1.5 / 20.0;
@@ -126,9 +160,14 @@ impl WaterPlayback {
                 bounds,
             ));
         }
+        let shore = shore_field(&water_cells, water, side);
+        for (_, _, vertices, _, animated, _) in &mut prepared {
+            animated.insert_attribute(Mesh::ATTRIBUTE_UV_1, water_channel(water, &shore, vertices));
+        }
         let mut playback = Self {
             source: Some(source),
             base,
+            shore,
             ..Default::default()
         };
         let mut bindings = Vec::with_capacity(prepared.len());
@@ -153,20 +192,67 @@ impl WaterPlayback {
 }
 
 /// The terrain's water channel for the mesh vertices at grid `vertices`: x is 1 on the water's wave
-/// vertices, y the distance to the shore (`shore_distances`) the Modern shore effects read.
-pub(super) fn water_channel(water: Option<&Water>, vertices: &[usize]) -> Vec<[f32; 2]> {
-    let shore = water.map(|water| shore_distances(&water.animated_vertices, water.side));
+/// vertices, y the grid vertex's distance to the shore (`shore_field`) the Modern shore effects read.
+pub(super) fn water_channel(
+    water: Option<&Water>,
+    shore: &[f32],
+    vertices: &[usize],
+) -> Vec<[f32; 2]> {
     vertices
         .iter()
-        .map(|&vertex| match (water, &shore) {
-            (Some(water), Some(shore)) => [
-                f32::from(u8::from(water.animated_vertices[vertex])),
-                shore[vertex],
-            ],
-            // Without water every vertex is land, far from any shore.
-            _ => [0.0, -4.0],
+        .map(|&vertex| {
+            let wave = water.is_some_and(|water| water.animated_vertices[vertex]);
+            [f32::from(u8::from(wave)), shore[vertex]]
         })
         .collect()
+}
+
+/// Record the grid cells a terrain mesh's triangles cover, each by its lowest corner, as water or
+/// not by the mesh's texture.
+fn mark_cells(
+    cells: &mut [Option<bool>],
+    mesh: &Mesh,
+    vertices: &[usize],
+    side: usize,
+    water_texture: bool,
+) {
+    let Some(indices) = mesh.indices() else {
+        return;
+    };
+    let indices: Vec<usize> = indices.iter().collect();
+    for triangle in indices.as_chunks::<3>().0 {
+        let corners = triangle.iter().filter_map(|&index| vertices.get(index));
+        let x = corners.clone().map(|&vertex| vertex % side).min();
+        let row = corners.map(|&vertex| vertex / side).min();
+        if let (Some(x), Some(row)) = (x, row) {
+            cells[x + row * side] = Some(water_texture);
+        }
+    }
+}
+
+/// The shore distance at every grid vertex (`shore_distances`). The shore is where the terrain's
+/// water-textured cells meet the rest: a vertex is water when every covered cell around it is. The
+/// water textures include the beach transition tiles, whose drawn shoreline crosses the cell, so
+/// the zero line falls inside them. Without water textures (caches that predate them) the wave
+/// vertices stand in; without either, every vertex is far inland.
+fn shore_field(cells: &[Option<bool>], water: Option<&Water>, side: usize) -> Vec<f32> {
+    let around = |vertex: usize| {
+        let (x, row) = (vertex % side, vertex / side);
+        [(0, 0), (1, 0), (0, 1), (1, 1)]
+            .into_iter()
+            .filter(move |&(dx, dz)| x >= dx && row >= dz)
+            .filter_map(move |(dx, dz)| cells[x - dx + (row - dz) * side])
+    };
+    if cells.contains(&Some(true)) {
+        let textured: Vec<bool> = (0..cells.len())
+            .map(|vertex| around(vertex).next().is_some() && around(vertex).all(|water| water))
+            .collect();
+        return shore_distances(&textured, side);
+    }
+    match water {
+        Some(water) => shore_distances(&water.animated_vertices, side),
+        None => vec![-4.0; cells.len()],
+    }
 }
 
 /// Distance of every grid vertex to the shore, in grid cells, for the Modern shore effects: positive
@@ -231,7 +317,21 @@ pub(super) fn shore_distances(animated: &[bool], side: usize) -> Vec<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::shore_distances;
+    use super::{shore_distances, shore_field};
+
+    #[test]
+    fn shore_follows_water_textured_cells_not_the_wave_vertices() {
+        // A 6-wide grid whose left two cell columns are water-textured; no wave vertices at all.
+        let side = 6;
+        let cells: Vec<Option<bool>> = (0..side * side)
+            .map(|cell| {
+                (cell % side < side - 1 && cell / side < side - 1).then_some(cell % side < 2)
+            })
+            .collect();
+        let shore = shore_field(&cells, None, side);
+        // Vertices 0 and 1 touch only water cells; vertex 2 also touches land.
+        assert_eq!(shore[2 * side..2 * side + 4], [1.5, 0.5, -0.5, -1.5]);
+    }
 
     #[test]
     fn shore_distance_is_signed_and_halfway_between_water_and_land() {

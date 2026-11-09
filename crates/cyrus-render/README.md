@@ -296,8 +296,9 @@ channels, and small models that hold a light glow on their bright texels
 (`fog/modern_lighting/glow`). Models whose texture SURFACE.INI marks as water write a zero alpha,
 which the screen pass reflects as calm water without ripples, on faces that face up. The terrain
 and the screen pass share the modern waves and ripples (`water_surface.wesl`); the terrain's second
-UV channel carries each vertex's signed distance to the shore, in grid cells, from the water mask
-(`water::preparation::shore_distances`), which places the foam and the wet sand.
+UV channel carries each vertex's signed distance to the shore, in grid cells, from the terrain
+cells whose texture SURFACE.INI marks as water (`water::preparation::shore_field`), which places
+the foam and the wet sand and makes the still shallows reflect.
 The Textures area point-samples world textures. Existing Water and Fog switches
 remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the

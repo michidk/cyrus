@@ -73,24 +73,27 @@ fn water_noise(position: vec2<f32>) -> f32 {
 // Foam on the water side of the shore, 0..1. `shore` is the distance to the shoreline in grid
 // cells, positive on water: a broken band along the beach and breaker lines rolling in to it.
 fn shore_foam(position: vec2<f32>, shore: f32, seconds: f32) -> f32 {
-    if shore < -0.6 || shore > 2.8 { return 0.0; }
+    if shore < -0.6 || shore > 1.4 { return 0.0; }
     // The shore distance follows the terrain grid; warping it hides the grid's stair steps.
-    let warped = shore + (water_noise(position * 0.11) - 0.5) * 0.9;
+    let warped = shore + (water_noise(position * 0.11) - 0.5) * 0.4;
     let breakup = water_noise(position * 0.35 + vec2(seconds * 0.05, 0.0));
-    let fine = water_noise(position * 1.4 - vec2(0.0, seconds * 0.12));
-    // A thin, ragged band hugging the beach.
-    let band = (1.0 - smoothstep(-0.1, 0.2 + 0.3 * breakup, warped)) * smoothstep(-0.5, -0.1, warped);
-    // Breakers: thin lines that travel towards the shore and fade as they arrive.
-    let roll = fract(warped * 0.5 + seconds * 0.2 + breakup * 0.4);
-    let line = smoothstep(0.0, 0.06, roll) * (1.0 - smoothstep(0.06, 0.18, roll));
-    let breakers = line * (1.0 - smoothstep(0.4, 2.2, warped)) * smoothstep(0.45, 0.7, fine);
-    return clamp(max(band * smoothstep(0.25, 0.75, fine), breakers * 0.6), 0.0, 0.85);
+    // Two octaves, the second rotated, so the noise grid never shows as blocks.
+    let drift = vec2(0.0, seconds * 0.12);
+    let turned = vec2(0.8 * position.x - 0.6 * position.y, 0.6 * position.x + 0.8 * position.y);
+    let fine = 0.6 * water_noise(position * 0.7 - drift) + 0.4 * water_noise(turned * 1.9 + drift);
+    // A thin, ragged band on the water side of the waterline.
+    let band = (1.0 - smoothstep(0.05, 0.2 + 0.15 * breakup, warped)) * smoothstep(-0.2, 0.0, warped);
+    // A breaker: one thin line at a time that rolls in to the waterline and fades as it arrives.
+    let roll = fract(warped * 0.4 + seconds * 0.15 + breakup * 0.3);
+    let line = smoothstep(0.0, 0.04, roll) * (1.0 - smoothstep(0.04, 0.12, roll));
+    let breakers = line * (1.0 - smoothstep(0.2, 1.1, warped)) * smoothstep(0.45, 0.7, fine);
+    return clamp(max(band * smoothstep(0.3, 0.65, fine), breakers * 0.45), 0.0, 0.85);
 }
 
 // How wet the beach is, 0..1, on the land side of the shore, with the swash running up and back.
 fn shore_wetness(shore: f32, position: vec2<f32>, seconds: f32) -> f32 {
-    if shore > 0.8 || shore < -3.5 { return 0.0; }
-    let warped = shore + (water_noise(position * 0.11) - 0.5) * 0.9;
-    let swash = 1.1 + 0.45 * sin(seconds * 0.6 + water_noise(position * 0.2) * 6.0);
-    return (1.0 - smoothstep(swash, swash + 0.9, -warped)) * smoothstep(-0.5, 0.0, -warped + 0.3);
+    if shore > 0.4 || shore < -1.6 { return 0.0; }
+    let warped = shore + (water_noise(position * 0.11) - 0.5) * 0.4;
+    let swash = 0.45 + 0.2 * sin(seconds * 0.6 + water_noise(position * 0.2) * 6.0);
+    return (1.0 - smoothstep(swash, swash + 0.5, -warped)) * smoothstep(-0.3, 0.0, -warped + 0.15);
 }
