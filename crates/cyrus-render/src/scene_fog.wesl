@@ -186,8 +186,9 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
 @if(MODERN_LIGHTING) {
     var lit_out: FragmentOutput;
-    // Calm water writes a zero alpha, which the modern screen pass reflects without ripples.
-    lit_out.color = vec4(modern_lit(input, srgb_to_linear(texture_rgb) * (in.color * in.position.w), depth), select(base.a, 0.0, model.surface.x != 0.0));
+    // Calm water writes a zero alpha, which the modern screen pass reflects without ripples; only
+    // where it faces up, so a waterfall does not mirror like a pool.
+    lit_out.color = vec4(modern_lit(input, srgb_to_linear(texture_rgb) * (in.color * in.position.w), depth), select(base.a, 0.0, model.surface.x != 0.0 && input.N.y > 0.7));
     return lit_out;
 }
     var encoded = texture_rgb * (in.color * in.position.w);

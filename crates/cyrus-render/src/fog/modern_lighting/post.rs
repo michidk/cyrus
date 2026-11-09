@@ -57,7 +57,8 @@ pub(super) struct ModernPost {
     /// Linear horizon colour reflected where a ray leaves the screen, and the reflections'
     /// strength (0 turns them off).
     horizon: Vec4,
-    /// Seconds as the scene shaders read them, for the water's ripples.
+    /// Seconds as the scene shaders read them, for the water's ripples, and the modern waves'
+    /// amplitude and grid cell size in world units (both 0 without them; see `fog::modern_waves`).
     time: Vec4,
 }
 
@@ -80,7 +81,7 @@ fn sun_direction(sky: Option<&SkyMaterial>, light: Option<&GlobalTransform>) -> 
 pub(super) fn update_post(
     mut commands: Commands,
     effects: Res<ModernEffects>,
-    time: Res<Time>,
+    (time, fidelity): (Res<Time>, Res<cyrus_game::fidelity::Fidelity>),
     daylight: Res<Daylight>,
     environment: (Option<Res<EnvironmentRequest>>, Res<Assets<Environment>>),
     skies: (
@@ -110,16 +111,18 @@ pub(super) fn update_post(
         Vec3::from_array(light.color.to_linear().to_f32_array_no_alpha())
     });
     let tint = daylight.0.map_or(Vec3::ONE, |cycle| cycle.tint);
-    let horizon = request
-        .and_then(|request| environments.get(&request.0))
-        .map_or(Vec3::ZERO, |environment| {
-            let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;
-            Vec3::from_array(
-                Color::srgb(encoded.x, encoded.y, encoded.z)
-                    .to_linear()
-                    .to_f32_array_no_alpha(),
-            )
-        });
+    let environment = request.and_then(|request| environments.get(&request.0));
+    let waves = environment.map_or(Vec4::ZERO, |environment| {
+        crate::fog::modern_waves(environment, &fidelity)
+    });
+    let horizon = environment.map_or(Vec3::ZERO, |environment| {
+        let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;
+        Vec3::from_array(
+            Color::srgb(encoded.x, encoded.y, encoded.z)
+                .to_linear()
+                .to_f32_array_no_alpha(),
+        )
+    });
     for (entity, camera, transform, post) in &mut cameras {
         let screen = direction.and_then(|direction| {
             let in_front = direction.dot(transform.forward().as_vec3()) > 0.0;
@@ -136,7 +139,7 @@ pub(super) fn update_post(
             sun: screen.unwrap_or(Vec4::ZERO),
             sun_color: sun_color.extend(0.0),
             horizon: horizon.extend(f32::from(u8::from(effects.water_reflections))),
-            time: Vec4::new(time.elapsed_secs_wrapped(), 0.0, 0.0, 0.0),
+            time: Vec4::new(time.elapsed_secs_wrapped(), waves.z, waves.w, 0.0),
         };
         match post {
             Some(mut post) => {

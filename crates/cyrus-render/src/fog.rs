@@ -392,6 +392,7 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");
+        load_shader_library!(app, "water_surface.wesl");
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");

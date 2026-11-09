@@ -97,13 +97,29 @@ fn dirty_normals(water: &Water, window: crate::terrain::Window) -> Vec<bool> {
     dirty
 }
 
-/// Modern art-style preset: two smooth crossing waves around the original mean height.
+/// The modern waves' direction, wavelength in grid cells, speed in cells per second and share of
+/// the amplitude, as `water_surface.wesl` has them; a Modern tuning choice.
+const MODERN_WAVES: [([f32; 2], f32, f32, f32); 4] = [
+    ([0.940, 0.342], 11.0, 1.10, 0.20),
+    ([0.643, -0.766], 7.0, 0.95, 0.13),
+    ([-0.259, 0.966], 5.0, 0.80, 0.09),
+    ([0.996, -0.087], 4.0, 0.70, 0.08),
+];
+
+/// Modern art-style preset: crossing sharpened waves around the original mean height, the open-sea
+/// height of `water_surface.wesl`'s `water_wave`.
 fn modern_displacement(water: &Water, position: [f32; 3], seconds: f32) -> f32 {
-    let phase = (position[0] + position[2] * 0.35) / (CELL_SIZE * 6.0) * std::f32::consts::TAU
-        - seconds * 0.8;
-    let cross = (position[2] - position[0] * 0.6) / (CELL_SIZE * 2.5) * std::f32::consts::TAU
-        - seconds * 1.3;
-    water.parameters[0] / 20.0 * (0.5 + 0.35 * phase.sin() + 0.15 * cross.sin())
+    use std::f32::consts::TAU;
+    let height = MODERN_WAVES
+        .iter()
+        .fold(0.5, |height, &(direction, length, speed, share)| {
+            let k = TAU / (length * CELL_SIZE);
+            let phase = (position[0] * direction[0] + position[2] * direction[1]) * k
+                - seconds * speed * TAU / length;
+            let s = phase.sin();
+            height + share * s * (1.0 - 0.25 * (1.0 - s.abs()))
+        });
+    water.parameters[0] / 20.0 * height
 }
 
 /// Wave height in engine units, rounded only after the complete expression.

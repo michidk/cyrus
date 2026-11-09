@@ -231,18 +231,7 @@ impl WaterPlayback {
                 if saved.water_attribute {
                     mesh.insert_attribute(
                         Mesh::ATTRIBUTE_UV_1,
-                        terrain
-                            .vertices
-                            .iter()
-                            .map(|&vertex| {
-                                [
-                                    f32::from(u8::from(
-                                        water.is_some_and(|water| water.animated_vertices[vertex]),
-                                    )),
-                                    0.0,
-                                ]
-                            })
-                            .collect::<Vec<_>>(),
+                        super::preparation::water_channel(water, &terrain.vertices),
                     );
                 }
                 mesh.insert_attribute(

@@ -94,7 +94,12 @@ every value is a Modern tuning choice:
   surface fully at a sixteenth of its radius, where the original's attenuation reaches one. Small
   models that hold a light glow on their bright texels;
 - calm water: models whose texture SURFACE.INI marks as water reflect like the sea, without its
-  ripples.
+  ripples, where they face up; a waterfall does not mirror;
+- with Modern water, the sea moves in several crossing, sharp-crested waves that calm towards the
+  shore, with ripples whose crests bend so they never line up into stripes. Foam breaks along the
+  shore with breakers rolling in to it, and the beach behind is darker and glossier where the swash
+  wets it. The shore is where the wave vertices of the installed water mask meet the land; the
+  waves, ripples, foam and wet sand are tuning choices.
 
 All of them start on.
 

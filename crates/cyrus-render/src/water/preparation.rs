@@ -5,7 +5,7 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::primitives::MeshAabb;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::{AssetId, Assets, Entity, Handle, Mesh};
-use cyrus_assets::environment::Environment;
+use cyrus_assets::environment::{Environment, Water};
 
 /// Private mesh binding produced without changing any entity or live playback.
 pub struct PreparedTerrainMesh {
@@ -110,19 +110,7 @@ impl WaterPlayback {
                     .map(|&vertex| base[vertex])
                     .collect::<Vec<_>>(),
             );
-            animated.insert_attribute(
-                Mesh::ATTRIBUTE_UV_1,
-                vertices
-                    .iter()
-                    .map(|&vertex| {
-                        [
-                            u8::from(water.is_some_and(|water| water.animated_vertices[vertex]))
-                                as f32,
-                            0.0,
-                        ]
-                    })
-                    .collect::<Vec<_>>(),
-            );
+            animated.insert_attribute(Mesh::ATTRIBUTE_UV_1, water_channel(water, &vertices));
             let bounds = animated.get_aabb().map(|mut bounds| {
                 bounds.half_extents.y +=
                     water.map_or(0.0, |water| water.parameters[0].abs()) * 1.5 / 20.0;
@@ -161,5 +149,102 @@ impl WaterPlayback {
             });
         }
         Ok((playback, bindings))
+    }
+}
+
+/// The terrain's water channel for the mesh vertices at grid `vertices`: x is 1 on the water's wave
+/// vertices, y the distance to the shore (`shore_distances`) the Modern shore effects read.
+pub(super) fn water_channel(water: Option<&Water>, vertices: &[usize]) -> Vec<[f32; 2]> {
+    let shore = water.map(|water| shore_distances(&water.animated_vertices, water.side));
+    vertices
+        .iter()
+        .map(|&vertex| match (water, &shore) {
+            (Some(water), Some(shore)) => [
+                f32::from(u8::from(water.animated_vertices[vertex])),
+                shore[vertex],
+            ],
+            // Without water every vertex is land, far from any shore.
+            _ => [0.0, -4.0],
+        })
+        .collect()
+}
+
+/// Distance of every grid vertex to the shore, in grid cells, for the Modern shore effects: positive
+/// on water (`animated` vertices), negative on land, zero halfway between a water vertex and its
+/// land neighbour, and at most `SHORE_REACH` either way. Chamfer distances over the 8-neighbourhood.
+pub(super) fn shore_distances(animated: &[bool], side: usize) -> Vec<f32> {
+    const SHORE_REACH: f32 = 4.0;
+    let steps = [
+        (-1, -1, std::f32::consts::SQRT_2),
+        (0, -1, 1.0),
+        (1, -1, std::f32::consts::SQRT_2),
+        (-1, 0, 1.0),
+    ];
+    // Distance from each vertex to the nearest vertex of the other kind.
+    let mut distance: Vec<f32> = (0..animated.len())
+        .map(|vertex| {
+            let (x, row) = ((vertex % side) as isize, (vertex / side) as isize);
+            let border = (-1..=1).any(|dz| {
+                (-1..=1).any(|dx| {
+                    let (nx, nz) = (x + dx, row + dz);
+                    (0..side as isize).contains(&nx)
+                        && (0..side as isize).contains(&nz)
+                        && animated[nx as usize + nz as usize * side] != animated[vertex]
+                })
+            });
+            if border { 1.0 } else { f32::INFINITY }
+        })
+        .collect();
+    let index = |x: isize, row: isize| {
+        ((0..side as isize).contains(&x) && (0..side as isize).contains(&row))
+            .then(|| x as usize + row as usize * side)
+    };
+    for vertex in 0..animated.len() {
+        let (x, row) = ((vertex % side) as isize, (vertex / side) as isize);
+        for (dx, dz, cost) in steps {
+            if let Some(neighbour) = index(x + dx, row + dz)
+                && animated[neighbour] == animated[vertex]
+            {
+                distance[vertex] = distance[vertex].min(distance[neighbour] + cost);
+            }
+        }
+    }
+    for vertex in (0..animated.len()).rev() {
+        let (x, row) = ((vertex % side) as isize, (vertex / side) as isize);
+        for (dx, dz, cost) in steps {
+            if let Some(neighbour) = index(x - dx, row - dz)
+                && animated[neighbour] == animated[vertex]
+            {
+                distance[vertex] = distance[vertex].min(distance[neighbour] + cost);
+            }
+        }
+    }
+    distance
+        .iter()
+        .zip(animated)
+        .map(|(distance, &water)| {
+            let reach = (distance - 0.5).min(SHORE_REACH);
+            if water { reach } else { -reach }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shore_distances;
+
+    #[test]
+    fn shore_distance_is_signed_and_halfway_between_water_and_land() {
+        // Water on the left three columns of a 6-wide grid.
+        let side = 6;
+        let animated: Vec<bool> = (0..side * side).map(|vertex| vertex % side < 3).collect();
+        let shore = shore_distances(&animated, side);
+        let row: Vec<f32> = shore[2 * side..3 * side].to_vec();
+        assert_eq!(row, vec![2.5, 1.5, 0.5, -0.5, -1.5, -2.5]);
+        let land_only = shore_distances(&[false; 4], 2);
+        assert!(
+            land_only.iter().all(|&value| value == -4.0),
+            "no water is far from shore"
+        );
     }
 }

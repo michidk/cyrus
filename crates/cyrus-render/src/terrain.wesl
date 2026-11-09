@@ -14,6 +14,7 @@ import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, sce
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::{base_color_size, sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
+import package::water_surface::{water_wave, water_ripple, shore_foam, shore_wetness};
 import constants::MATERIAL_BIND_GROUP;
 @if(BINDLESS)
 import bevy_pbr::render::mesh_bindings::mesh;
@@ -45,7 +46,8 @@ struct TerrainVertex {
     @location(0) world_position: vec4<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @location(3) water: f32,
+    // x: the water weight; y: the distance to the shore in grid cells, positive on water.
+    @location(3) water: vec2<f32>,
     @location(4) color: vec3<f32>,
     @location(5) @interpolate(flat) instance_index: u32,
 @if(PREPARED_TERRAIN)
@@ -67,21 +69,6 @@ struct TerrainVertex {
 @if(PREPARED_TERRAIN)
     @location(14) @interpolate(flat) texture4: vec4<u32>,
 };
-
-// The modern waves of `water::modern_displacement` at a grid position: the height above the base
-// grid and its slope along x and z. `fog.water.z` is the amplitude, `fog.water.w` the cell size.
-fn modern_wave(position: vec2<f32>, seconds: f32) -> vec3<f32> {
-    let tau = 6.283185307;
-    let amplitude = fog.water.z;
-    let along = tau / (fog.water.w * 6.0);
-    let across = tau / (fog.water.w * 2.5);
-    let phase = (position.x + position.y * 0.35) * along - seconds * 0.8;
-    let cross = (position.y - position.x * 0.6) * across - seconds * 1.3;
-    let height = amplitude * (0.5 + 0.35 * sin(phase) + 0.15 * sin(cross));
-    let slope_x = amplitude * (0.35 * cos(phase) * along - 0.15 * cos(cross) * 0.6 * across);
-    let slope_z = amplitude * (0.35 * cos(phase) * 0.35 * along + 0.15 * cos(cross) * across);
-    return vec3(height, slope_x, slope_z);
-}
 
 @vertex
 fn vertex(raw: Vertex,
@@ -111,10 +98,15 @@ fn vertex(raw: Vertex,
     var position = vertex.position;
     var normal = vertex.normal;
 @if(VERTEX_UVS_B) {
+    // The modern waves, `fog.water.z` high on a grid of `fog.water.w` cells, calming at the shore.
     if fog.water.w > 0.0 && vertex.uv_b.x > 0.0 {
-        let wave = modern_wave(position.xz, globals.time);
+        let calm = 1.0 - smoothstep(0.5, 3.0, vertex.uv_b.y);
+        let wave = water_wave(position.xz, globals.time, fog.water.z, fog.water.w, calm);
         position.y += wave.x;
-        normal = normalize(vec3(-wave.y, 1.0, -wave.z));
+        // Far off, the waves' tilt would band the water's shine into regular stripes.
+        let world = mesh_functions::mesh_position_local_to_world(transform, vec4(position, 1.0)).xyz;
+        let fade = 1.0 - smoothstep(60.0, 260.0, length(world - view.world_position));
+        normal = normalize(vec3(-wave.y * fade, 1.0, -wave.z * fade));
     }
 }
     out.world_position = mesh_functions::mesh_position_local_to_world(transform, vec4(position, 1.0));
@@ -135,8 +127,10 @@ fn vertex(raw: Vertex,
 }
     out.normal = mesh_functions::mesh_normal_local_to_world(normal, raw.instance_index);
     out.uv = vertex.uv;
+    // Without a water channel the terrain is land, far from any shore.
+    out.water = vec2(0.0, -4.0);
 @if(VERTEX_UVS_B)
-    out.water = vertex.uv_b.x;
+    out.water = vertex.uv_b;
 @if(VERTEX_COLORS)
     // WebGL lacks affine varyings; cancel perspective weighting with clip W.
     out.color = vertex.color.rgb * out.position.w;
@@ -146,14 +140,15 @@ fn vertex(raw: Vertex,
 
 
 // The terrain lit by Bevy's lights as a matte material; water, weighted by `water`, is glossy
-// with its ripples in `normal`, a Modern tuning choice.
+// with its ripples in `normal`, and wet sand, weighted by `wet`, a little glossy; Modern tuning
+// choices.
 @if(MODERN_LIGHTING)
-fn modern_lit(input: PbrInput, albedo: vec3<f32>, water: f32, normal: vec3<f32>) -> vec3<f32> {
+fn modern_lit(input: PbrInput, albedo: vec3<f32>, water: f32, wet: f32, normal: vec3<f32>) -> vec3<f32> {
     var lit = input;
     lit.material.base_color = vec4(albedo, 1.0);
     lit.material.emissive = vec4(0.0);
     lit.material.metallic = 0.0;
-    lit.material.perceptual_roughness = mix(1.0, 0.12, water);
+    lit.material.perceptual_roughness = mix(mix(1.0, 0.45, wet), 0.12, water);
     lit.material.reflectance = vec3(0.5 * water);
     lit.N = normalize(mix(lit.N, normal, water));
     return apply_pbr_lighting(lit).rgb;
@@ -183,10 +178,14 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     surface.color = vec4(1.0);
 @if(VERTEX_OUTPUT_INSTANCE_INDEX)
     surface.instance_index = in.instance_index;
-    let water_weight = fog.water.x * clamp(in.water, 0.0, 1.0);
     let position = in.world_position.xz;
-    let ripple = vec2(sin(dot(position, vec2(1.3, 0.7)) - globals.time * 1.7),
-                      sin(dot(position, vec2(-0.6, 2.1)) - globals.time * 2.3));
+    // Modern water (`fog.water.x`): foam where the sea meets the shore, which neither shines nor
+    // reflects, and wet sand on the beach behind it.
+    let foam = fog.water.x * shore_foam(position, in.water.y, globals.time);
+    let water_mask = clamp(in.water.x, 0.0, 1.0) * (1.0 - foam);
+    let wet = fog.water.x * shore_wetness(in.water.y, position, globals.time) * (1.0 - clamp(in.water.x, 0.0, 1.0));
+    let water_weight = fog.water.x * water_mask;
+    let ripple = water_ripple(position, globals.time, length(view.world_position - in.world_position.xyz));
     surface.uv += ripple * (0.006 * water_weight);
     var input = pbr_input_from_standard_material(surface, is_front);
     let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
@@ -200,9 +199,13 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     encoded = floor(round(sample_encoded(surface.uv, point_sampled(), true) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
 }
     var color = srgb_to_linear(encoded);
-@if(MODERN_LIGHTING)
-    color = modern_lit(input, srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true)), clamp(in.water, 0.0, 1.0),
+@if(MODERN_LIGHTING) {
+    // Wet sand is darker; foam is near white.
+    let foam_color = vec3(0.80, 0.86, 0.88);
+    let albedo = srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true));
+    color = modern_lit(input, mix(albedo * (1.0 - 0.45 * wet), foam_color, foam), water_mask, wet,
         normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * 0.05));
+}
     if water_weight > 0.0 {
         let normal = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
         let to_camera = normalize(view.world_position - in.world_position.xyz);
@@ -216,6 +219,6 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // The water weight in the alpha marks reflecting pixels for the modern screen pass, which
     // restores an opaque alpha.
 @if(MODERN_LIGHTING)
-    out.color = vec4(scene_fog_at_position(color, depth, fog_position), 1.0 - 0.5 * clamp(in.water, 0.0, 1.0));
+    out.color = vec4(scene_fog_at_position(color, depth, fog_position), 1.0 - 0.5 * water_mask);
     return out;
 }

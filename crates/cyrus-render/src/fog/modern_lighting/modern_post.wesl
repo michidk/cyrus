@@ -1,6 +1,7 @@
 // The modern lighting's screen pass: water reflections and the sun's lens flare; see `post.rs`.
 import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 import bevy_render::view::View;
+import package::water_surface::{water_wave, water_ripple};
 
 struct ModernPost {
     sun: vec4<f32>,
@@ -49,12 +50,18 @@ fn on_screen(uv: vec2<f32>) -> bool {
     return all(uv >= vec2(0.0)) && all(uv <= vec2(1.0));
 }
 
-// The water's ripples, matching `terrain.wesl`.
+// The water's surface normal, matching `terrain.wesl`: its waves (`settings.time.y` high on a grid
+// of `settings.time.z` cells, as the open sea) and its ripples.
 fn water_normal(position: vec3<f32>) -> vec3<f32> {
     let t = settings.time.x;
-    let ripple = vec2(sin(dot(position.xz, vec2(1.3, 0.7)) - t * 1.7),
-                      sin(dot(position.xz, vec2(-0.6, 2.1)) - t * 2.3));
-    return normalize(vec3(ripple.x * 0.05, 1.0, ripple.y * 0.05));
+    var slope = vec2(0.0);
+    if settings.time.z > 0.0 {
+        // Far off, the waves' tilt would band the reflections into regular stripes.
+        let fade = 1.0 - smoothstep(60.0, 260.0, length(position - view.world_position));
+        slope = water_wave(position.xz, t, settings.time.y, settings.time.z, 0.0).yz * fade;
+    }
+    let ripple = water_ripple(position.xz, t, length(position - view.world_position));
+    return normalize(vec3(-slope.x + ripple.x * 0.05, 1.0, -slope.y + ripple.y * 0.05));
 }
 
 fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f32> {

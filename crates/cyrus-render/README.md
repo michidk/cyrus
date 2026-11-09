@@ -294,7 +294,10 @@ bindings.
 Under modern lighting the map's object and baked lights are point lights with their positive
 channels, and small models that hold a light glow on their bright texels
 (`fog/modern_lighting/glow`). Models whose texture SURFACE.INI marks as water write a zero alpha,
-which the screen pass reflects as calm water without ripples.
+which the screen pass reflects as calm water without ripples, on faces that face up. The terrain
+and the screen pass share the modern waves and ripples (`water_surface.wesl`); the terrain's second
+UV channel carries each vertex's signed distance to the shore, in grid cells, from the water mask
+(`water::preparation::shore_distances`), which places the foam and the wet sand.
 The Textures area point-samples world textures. Existing Water and Fog switches
 remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the
@@ -340,9 +343,9 @@ Scene rendering uses the installed near/far planes, including a nonzero
 editing it switches Fog to Modern. Faithful uses the original range and fog
 tables. Modern Fog expands the camera-centered terrain and water window to cover the
 selected far frustum. Faithful Fog retains the original terrain window.
-Modern Fog defaults to four times the far distance and a gradual distant
-fade. Modern Sky is camera-centered; Modern Water adds smooth crossing waves,
-fine texture ripples, and view-dependent sheen while retaining the installed
+Modern Fog defaults to 50,000 engine units and a gradual distant
+fade. Modern Sky is camera-centered; Modern Water adds crossing waves,
+ripples, shore foam and wet sand, and view-dependent sheen while retaining the installed
 textures. Water, Fog, and Sky are independently switchable and default to
 Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
