@@ -17,6 +17,8 @@ persistence precedes runtime application. Fidelity areas default to Faithful.
 Player transforms remain independent of camera transforms. Inspection adapters
 set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
+Marker placement waits from the replacement request through host preparation, so
+the destination marker never changes the retiring player's pose or support state.
 
 The logbook reader owns its manual-entry dialog state and keyboard focus. Installed action C
 opens an empty byte editor; presentation reads `LogbookScreen::manual_entry()` and

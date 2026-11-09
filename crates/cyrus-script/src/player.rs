@@ -57,6 +57,10 @@ impl Plugin for PlayerPlugin {
                     .in_set(placement::PlayerPlacement)
                     .after(cyrus_world::lifecycle::WorldChange)
                     .after(data::PlayerSceneLoading)
+                    .run_if(not(resource_exists::<cyrus_world::lifecycle::ReloadScene>))
+                    .run_if(not(resource_exists::<
+                        cyrus_world::lifecycle::WorldPreparationPending,
+                    >))
                     .run_if(in_state(AppState::InGame)),
             );
     }
