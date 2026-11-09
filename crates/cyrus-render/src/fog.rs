@@ -2,6 +2,7 @@
 mod clipping;
 mod compositing;
 mod effects;
+mod grass;
 pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;
@@ -412,6 +413,7 @@ impl Plugin for FogPlugin {
             .add_plugins((
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
+                grass::GrassPlugin,
             ))
             .add_systems(
                 Update,
@@ -500,7 +502,12 @@ fn apply_scene_fog(
             Option<&bevy::gltf::GltfMaterialExtras>,
             Option<&bevy::gltf::GltfMaterialName>,
         ),
-        (Without<RejectedLighting>, Without<ray_tracing::StandIn>),
+        (
+            Without<RejectedLighting>,
+            Without<ray_tracing::StandIn>,
+            // Grass keeps the plain lit material it is built with.
+            Without<grass::GrassChunk>,
+        ),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,

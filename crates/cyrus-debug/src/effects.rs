@@ -84,6 +84,6 @@ fn settings(ui: &mut egui::Ui, effects: &mut ModernEffects, effect: Effect) {
         Effect::WaterReflections => {
             ui.label("Reflects what is on screen; the horizon colour elsewhere.");
         }
-        Effect::LensFlare | Effect::Sky | Effect::Foliage | Effect::MotionBlur => {}
+        Effect::LensFlare | Effect::Sky | Effect::Foliage | Effect::Grass | Effect::MotionBlur => {}
     });
 }

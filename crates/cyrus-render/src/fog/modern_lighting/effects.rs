@@ -54,6 +54,8 @@ pub struct ModernEffects {
     pub water_reflections: bool,
     /// Palm trees and plants sway in the wind.
     pub foliage: bool,
+    /// Blades of grass on the terrain's grass tiles.
+    pub grass: bool,
     /// Blurs what is far nearer and farther than the player.
     pub depth_of_field: bool,
     /// Lens aperture in f-stops; lower blurs more.
@@ -77,6 +79,7 @@ impl Default for ModernEffects {
             sky: true,
             water_reflections: true,
             foliage: true,
+            grass: true,
             depth_of_field: true,
             aperture: 0.12,
             motion_blur: true,
@@ -95,12 +98,13 @@ pub enum Effect {
     Sky,
     WaterReflections,
     Foliage,
+    Grass,
     DepthOfField,
     MotionBlur,
 }
 
 impl Effect {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Grading,
         Self::AutoExposure,
         Self::GodRays,
@@ -108,6 +112,7 @@ impl Effect {
         Self::Sky,
         Self::WaterReflections,
         Self::Foliage,
+        Self::Grass,
         Self::DepthOfField,
         Self::MotionBlur,
     ];
@@ -122,6 +127,7 @@ impl Effect {
             Self::Sky => "Sky glow and stars",
             Self::WaterReflections => "Water reflections",
             Self::Foliage => "Swaying plants",
+            Self::Grass => "Grass",
             Self::DepthOfField => "Depth of field",
             Self::MotionBlur => "Motion blur",
         }
@@ -139,6 +145,7 @@ impl ModernEffects {
             Effect::Sky => &mut self.sky,
             Effect::WaterReflections => &mut self.water_reflections,
             Effect::Foliage => &mut self.foliage,
+            Effect::Grass => &mut self.grass,
             Effect::DepthOfField => &mut self.depth_of_field,
             Effect::MotionBlur => &mut self.motion_blur,
         }

@@ -33,7 +33,7 @@ lighting and says so.
 
 Press F1, then click **Open effects** for the modern lighting's optional effects: a switch
 for each one (tonemapping and colour grading, auto exposure, god rays, lens flare and sun
-glare, sky glow and stars, water reflections, swaying plants, depth of field, motion blur),
+glare, sky glow and stars, water reflections, swaying plants, grass, depth of field, motion blur),
 with the tonemapper, exposure, saturation, contrast, haze density and aperture beneath them.
 They need Modern lighting, and the panel offers to switch it.
 

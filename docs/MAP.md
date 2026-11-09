@@ -77,6 +77,7 @@ module where it is defined and regenerate.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
+- `src/terrain_grass.rs` — Where the terrain is grass, read from the terrain's own textures.
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 
@@ -159,6 +160,7 @@ module where it is defined and regenerate.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/grass.rs` — Grass on the terrain's grass tiles.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
 - `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
 - `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
