@@ -43,6 +43,13 @@ pub struct ActorCollisionModels {
     pub collision_flags: BTreeMap<usize, u8>,
     /// Loaded-model references whose geometry could not be prepared.
     pub unsupported: BTreeMap<usize, String>,
+    /// Terminal models of the world's `MPRP` ropes, by rope index. The original keeps each as a
+    /// transient record that takes part in collision candidates. Older caches omit them.
+    #[serde(default)]
+    pub transients: BTreeMap<usize, String>,
+    /// Terminal models whose geometry could not be prepared, by rope index.
+    #[serde(default)]
+    pub transient_unsupported: BTreeMap<usize, String>,
 }
 
 impl ActorCollisionModels {
@@ -84,6 +91,16 @@ impl ActorCollisionModels {
             anyhow::ensure!(
                 index < self.object_count,
                 "unsupported live model MPOB {index}: outside object table"
+            );
+        }
+        for (&rope, name) in &self.transients {
+            anyhow::ensure!(
+                self.models.contains_key(name),
+                "rope {rope} terminal model: missing geometry {name}"
+            );
+            anyhow::ensure!(
+                !self.transient_unsupported.contains_key(&rope),
+                "rope {rope} terminal model: both supported and unsupported"
             );
         }
         Ok(())

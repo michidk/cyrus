@@ -113,6 +113,44 @@ pub(super) fn prepare(
             }
         }
     }
+    // A rope's terminal model is a transient record that takes part in collision candidates.
+    for (rope, record) in metadata["ropes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let Some(path) = record["static_model"]
+            .as_str()
+            .filter(|path| !path.is_empty())
+        else {
+            continue;
+        };
+        let name = model_key(path);
+        let loaded = if name.is_empty() {
+            Err(anyhow::anyhow!("empty terminal model name {path:?}"))
+        } else {
+            load(path, &name, registry, archive)
+        };
+        match loaded {
+            Ok(geometry) => {
+                if let Some(previous) = result.models.get(&name) {
+                    ensure!(
+                        serde_json::to_vec(previous)? == serde_json::to_vec(&geometry)?,
+                        "world {world} rope {rope} model {name}: conflicting selected geometry"
+                    );
+                } else {
+                    result.models.insert(name.clone(), geometry);
+                }
+                result.transients.insert(rope, name);
+            }
+            Err(error) => {
+                result
+                    .transient_unsupported
+                    .insert(rope, format!("world {world} rope {rope}: {error:#}"));
+            }
+        }
+    }
     result.validate()?;
     Ok(result)
 }

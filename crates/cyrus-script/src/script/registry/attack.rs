@@ -629,13 +629,9 @@ impl ScriptWorld {
                 .actor_collision
                 .as_ref()
                 .context("attack live geometry unavailable; re-export world")?;
-            let mut poses = std::collections::BTreeMap::new();
-            if let CandidateOwner::Actor(index) = candidate.owner {
-                let record = self.model_presentation(self.id(index)?)?.with_context(|| {
-                    format!("face candidate actor {index}: stored model pose unavailable")
-                })?;
-                poses.insert(index, record.collision_pose()?);
-            }
+            // Actor-owned faces use their stored model pose and a rope's terminal transient its
+            // swung pose; unowned static models need none.
+            let poses = self.candidate_poses(&single)?;
             let contacts = ground.scene.static_collision.runtime_segment_contacts(
                 &single,
                 models,

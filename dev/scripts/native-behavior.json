@@ -18,7 +18,7 @@
         "https://github.com/michidk/cyrus/issues/9#issuecomment-6523394456",
         "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
       ],
-      "limits": "Verified: installed BAT native/browser pending-token continuation is accepted under #9. Unknown: all group initialization/default/model-replacement branches and rendered cue ordering under #11. A closed encoding scope does not complete the whole native."
+      "limits": "Verified: installed BAT native/browser pending-token continuation is accepted under #9. Verified (2026-11-09, TAVERN, original state reader against a native run, both build from the same scripts): the ambient actors' group sequences match. The original's full sequences for THUGTV2, THUGTV3 and TOBIAS (69, 72 and 68 changes in 150 s) occur as contiguous runs in native's; THUGTV1 matches except one 0.3 s-sampled short group. Unknown: all group initialization/default/model-replacement branches and rendered cue ordering under #11. A closed encoding scope does not complete the whole native."
     },
     {
       "native": "PushAnimation",
@@ -35,7 +35,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership",
         "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
       ],
-      "limits": "Verified by source inspection: synthetic public-stage tests exercise requests, receiver identity and token cleanup. Unknown: matched installed original/native/browser request and replacement sequences. #11 draw/sheath observations are related playback evidence, not acceptance of every PushAnimation branch."
+      "limits": "Verified by source inspection: synthetic public-stage tests exercise requests, receiver identity and token cleanup. Verified (2026-11-09): installed TAVERN actors' request sequences match the original (see PlayAnimation); the player draw and sheathe cycle through the S key matches over 30 taps (groups 91, 8, 129, 0 in both). Unknown: browser sequences and replacement of a running request by another receiver. #11 draw/sheath observations are related playback evidence, not acceptance of every PushAnimation branch."
     },
     {
       "native": "PushControlAnimation",
@@ -50,7 +50,7 @@
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership",
         "https://github.com/michidk/cyrus/issues/11#issuecomment-6524950891"
       ],
-      "limits": "Verified by source inspection: task-manager call/poll test checks turn and group lifetime. It is below the public ScriptWorld caller. Unknown: installed routed dispatch, replacement and original/native/browser turn/render parity."
+      "limits": "Verified by source inspection: task-manager call/poll test checks turn and group lifetime. It is below the public ScriptWorld caller. The only installed caller is the flask item script (item 51), whose public routed test is installed_flask_second_use_ends_the_throw_loop. Unknown: original comparison, because a new game holds no flask and the original's inventory memory layout is not recovered; browser and render parity."
     },
     {
       "native": "WaitAnimFrame",
@@ -436,7 +436,7 @@
       "evidence": [
         "https://github.com/michidk/cyrus/issues/17#issuecomment-6500420948"
       ],
-      "limits": "Verified by inspection: public stage tests cover local angle change, routed identity/task slots and cancellation. Unknown: complete separate-object host publication and installed original/native/browser turn/refresh timing.",
+      "limits": "Verified by inspection: public stage tests cover local angle change, routed identity/task slots and cancellation. Verified (2026-11-09, DRINT lever DR_LVRD2 driving door DR_DORD2, the original's actor yaw read from memory against native): both turn 256 to 4, wrap to 1884, hold that value, then return through 2010 to 256; the extreme and end angles are identical and the hold and return durations agree within the original's frame-rate drift (hold 5.0 s native, 5.7 s original; return 1.66 s and 1.94 s, a constant ratio of about 0.87). Unknown: complete separate-object host publication and browser turn/refresh timing.",
       "reviewed_revision": "5682fe29c2f0337c032037b2dd139384023fc486"
     },
     {
@@ -1181,13 +1181,14 @@
       "scope": "Query whether selected-player last ground response is terrain",
       "caller": "ScriptWorld::advance -> crates/cyrus-script/src/script/registry.rs",
       "tests": [
-        "crates/cyrus-script/tests/script_registry.rs::selected_player_collision_uses_logical_pose_and_live_map_support"
+        "crates/cyrus-script/tests/script_registry.rs::selected_player_collision_uses_logical_pose_and_live_map_support",
+        "crates/cyrus-script/tests/script_registry.rs::player_on_scape_reads_the_selected_players_ground_response_and_needs_a_player"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playeronscape",
         "https://github.com/michidk/cyrus/issues/48#issuecomment-6305098934"
       ],
-      "limits": "Verified by inspection: cited support test checks ground_kind0x20 for actor face; it never calls PlayerOnScape. Public registry dispatch reads selected-player ground_kind against terrain kind. No direct named public native test found in reviewed suite. Unknown: query routing/missing-input behavior and installed original/native/browser terrain-to-model transition.",
+      "limits": "Verified by inspection: the support test checks ground_kind 0x20 for an actor face; a direct public native test calls PlayerOnScape and asserts zero for a player with no ground response, a contextual named failure without a selected player, and rejection of an argument. The terrain result (kind 0x40) is covered only through the ground-kind mapping unit test. Unknown: installed original/native/browser terrain-to-model transition.",
       "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
     },
     {
@@ -1215,14 +1216,15 @@
       "scope": "First matching class from selected-player motion/living/playback/position state",
       "caller": "ScriptWorld::advance -> crates/cyrus-script/src/script/registry.rs -> player_status.rs::player_status",
       "tests": [
-        "crates/cyrus-script/src/script/player_status.rs::the_first_matching_rule_wins"
+        "crates/cyrus-script/src/script/player_status.rs::the_first_matching_rule_wins",
+        "crates/cyrus-script/tests/script_registry.rs::player_status_classifies_the_selected_player_through_the_public_native"
       ],
       "evidence": [
         "https://github.com/michidk/redguard-preservation/blob/d2e961a6/docs/engine/SOUP.md#playerstatus",
         "https://github.com/michidk/cyrus/issues/5#issuecomment-6282324102",
         "https://github.com/michidk/cyrus/issues/48#issuecomment-6574798330"
       ],
-      "limits": "Verified by inspection: helper tests assert class values and precedence for supplied queued/falling/sliding/living/group/moved inputs. Public registry gathers these from selected actor, animation and spatial history. No direct named public dispatch assertion found. Unknown: complete live input mapping and installed original/native/browser status transitions; early landing explicitly called motion-byte mapping inferred.",
+      "limits": "Verified by inspection: helper tests assert class values and precedence for supplied queued/falling/sliding/living/group/moved inputs. Public registry gathers these from selected actor, animation and spatial history. A public dispatch test reads class zero for a selected player at rest and checks the contextual failure without a selected player and the no-argument rule; the nonzero classes are covered only by the helper tests. Unknown: complete live input mapping and installed original/native/browser status transitions; early landing explicitly called motion-byte mapping inferred.",
       "reviewed_revision": "be4911b5b6740b4c35eef78734cba25e2c850efe"
     },
     {

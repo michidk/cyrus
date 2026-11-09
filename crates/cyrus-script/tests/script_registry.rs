@@ -4660,6 +4660,123 @@ fn player_hanging_is_false_outside_the_hanging_state() {
 }
 
 #[test]
+fn player_on_scape_reads_the_selected_players_ground_response_and_needs_a_player() {
+    use cyrus_script::script::{ScriptInputs, ScriptStage};
+    // A player that has not run a ground update has no response record: not on terrain.
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: Native::PlayerOnScape,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            assign_call(1, id, Native::PlayerOnScape, &[]).operation,
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    let map = world.id(0).unwrap();
+    let hud = cyrus_script::script::ScriptHud::default();
+    world
+        .advance(
+            map,
+            ScriptStage::Body(cyrus_soup::Thread::Main),
+            ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[map.index].runtime().unwrap().variables()[0]
+            .integer()
+            .unwrap(),
+        0
+    );
+    // Without a selected player the query fails with its name, and it takes no arguments.
+    let error = run_native_calls(&[(Native::PlayerOnScape, &[])]).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerOnScape"), "{error:#}");
+    let error = run_native_calls(&[(Native::PlayerOnScape, &[1])]).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerOnScape"), "{error:#}");
+}
+
+#[test]
+fn player_status_classifies_the_selected_player_through_the_public_native() {
+    use cyrus_script::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: Native::PlayerStatus,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+            assign_call(1, id, Native::PlayerStatus, &[]).operation,
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    });
+    let map = world.id(0).unwrap();
+    let hud = cyrus_script::script::ScriptHud::default();
+    world
+        .advance(
+            map,
+            ScriptStage::Body(cyrus_soup::Thread::Main),
+            ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            20,
+        )
+        .unwrap();
+    let status = world.actors()[map.index].runtime().unwrap().variables()[0]
+        .integer()
+        .unwrap();
+    // A player at rest (no queued, falling or sliding motion, living state zero, no movement
+    // since the update entry) matches no rule: class zero.
+    assert_eq!(status, 0);
+    // Without a selected player the query fails with its name, and it takes no arguments.
+    let error = run_native_calls(&[(Native::PlayerStatus, &[])]).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerStatus"), "{error:#}");
+    let error = run_native_calls(&[(Native::PlayerStatus, &[1])]).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerStatus"), "{error:#}");
+}
+
+#[test]
 fn speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000() {
     // The helper's frame scale is 256, which maps values to themselves with the sign kept.
     assert_eq!(
@@ -6999,6 +7116,7 @@ fn static_model_fixture_session(
         instances: BTreeMap::from([(0, "STATIC".into()), (1, "STATIC".into())]),
         collision_flags: BTreeMap::from([(0, 6), (1, 7)]),
         unsupported: Default::default(),
+        ..Default::default()
     })
     .unwrap();
     let mut world = if fresh_session {
@@ -11240,7 +11358,7 @@ fn ordinary_jump_entry_drives_queued_motion_to_falling_through_shared_animation(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id": scripts.content_id,
-            "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+            "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table", "ravc_count":0,
                 "animation_groups": ([0, 32, 39, 56, 58].into_iter().map(|group| serde_json::json!({
                     "group_index":group,"anim_id":1,"anim_type":0,
                     "commands":[{"opcode":0,"frame_reference":group},{"opcode":1}]
@@ -34298,6 +34416,7 @@ fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
             },
         );
         data.metadata["actors"][0]["model_load_path"] = "none".into();
+        data.metadata["actors"][0]["ravc_count"] = 0.into();
         data.models.insert(
             "WEAPON".into(),
             cyrus_assets::animation::AnimationModel {
@@ -45618,7 +45737,7 @@ fn queued_jump_lifetime_fixture(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
-            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","animation_groups":groups}]}),
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","ravc_count":0,"animation_groups":groups}]}),
         sections: Default::default(),
         models: Default::default(),
         unsupported: Default::default(),
@@ -50472,6 +50591,9 @@ mod flat_texture_tests;
 #[path = "script_registry/jump_fall_guards.rs"]
 mod jump_fall_guards_tests;
 
+#[path = "script_registry/rope_terminal.rs"]
+mod rope_terminal_tests;
+
 #[test]
 fn ordinary_body_uses_vertex_bound_shape_instead_of_initial_spheres() {
     use cyrus_assets::animation::AnimationModel;
@@ -50569,6 +50691,55 @@ fn ordinary_body_uses_vertex_bound_shape_instead_of_initial_spheres() {
             .is_empty()
     );
 
+    // The residual record was copied before that vertex changed. Primary and destination
+    // read the live selection, but residual must keep the distant copied sphere.
+    assert!(
+        world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !world
+            .ordinary_destination_body_clear(
+                id,
+                world.spatial(id).unwrap().local.position,
+                cyrus_script::script::OrdinaryObstacleQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                }
+            )
+            .unwrap()
+    );
+    let rebound = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        !world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &rebound,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+
     data.models.get_mut("VOLUME").unwrap().positions[0][0] = [100.0, 0.0, 0.0];
     let position = world.spatial(id).unwrap().local.position;
     for expected in [5, 6, 7] {
@@ -50604,5 +50775,453 @@ fn ordinary_body_uses_vertex_bound_shape_instead_of_initial_spheres() {
                 .bits(),
             0
         );
+    }
+}
+
+#[test]
+fn ordinary_base_model_ravc_uses_scene_vertices_and_rebinds_working_records() {
+    use cyrus_script::script::{OrdinaryBodyQuery, OrdinaryObstacleQuery, OrdinaryResidualQuery};
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 1;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, models) = static_model_fixture(scripts.clone());
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    world
+        .refresh_model_presentations(&data, &[id, other])
+        .unwrap();
+    data.metadata["actors"][0]["ravc_count"] = 1.into();
+    // Base vertex zero is (-20, 0, -20). Signed offsets put its sphere at
+    // (100, 0, 0), away from the face, despite the initial sphere intersecting it.
+    data.metadata["actors"][0]["collision_volumes"] = serde_json::json!([
+        {"vertex":0,"offset_x":120,"offset_y":0,"offset_z":20,"radius":24}
+    ]);
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_body(
+                id,
+                OrdinaryBodyQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                    excluded_candidate_type: None,
+                    terrain: None,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    let position = world.spatial(id).unwrap().local.position;
+    assert!(
+        world
+            .ordinary_destination_body_clear(
+                id,
+                position,
+                OrdinaryObstacleQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                }
+            )
+            .unwrap()
+    );
+    // Rebind the current selection to (0, -1, 0). Only a newly prepared working
+    // record may see that change; candidates retain their original admission.
+    data.metadata["actors"][0]["collision_volumes"][0]["offset_x"] = 20.into();
+    data.metadata["actors"][0]["collision_volumes"][0]["offset_y"] = (-1).into();
+    assert!(
+        !world
+            .query_ordinary_body(
+                id,
+                OrdinaryBodyQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                    excluded_candidate_type: None,
+                    terrain: None,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !world
+            .ordinary_destination_body_clear(
+                id,
+                position,
+                OrdinaryObstacleQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                }
+            )
+            .unwrap()
+    );
+    assert!(
+        world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    let rebound = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        !world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &rebound,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    // Unsupported vertex indices fail contextually, without poisoning the retained
+    // working copy; repairing the source admits the next ordinary update.
+    data.metadata["actors"][0]["collision_volumes"][0]["vertex"] = 999.into();
+    let error = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("vertex 999"));
+    assert!(
+        !world
+            .query_ordinary_residual_body(
+                id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &rebound,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    data.metadata["actors"][0]["collision_volumes"][0]["vertex"] = 0.into();
+    data.metadata["actors"][0]["collision_volumes"][0]["offset_x"] = 120.into();
+    data.metadata["actors"][0]["collision_volumes"][0]["offset_y"] = 0.into();
+    for expected in [5, 6, 7] {
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                cyrus_script::script::OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: cyrus_script::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+        assert_eq!(world.spatial(id).unwrap().local.position, position);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .last_collide
+                .bits(),
+            0
+        );
+    }
+
+    // Restoration persists actor state, then binds new working records to the
+    // restored generation and existing scene geometry. Old query IDs are rejected.
+    let sources = cyrus_script::script::WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let mut restored = ScriptWorld::from_snapshot(
+        world.snapshot(&sources).unwrap(),
+        &sources,
+        cyrus_script::script::WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let restored_id = restored.id(0).unwrap();
+    assert!(
+        restored
+            .query_ordinary_residual_body(
+                restored_id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    sidedness: false,
+                }
+            )
+            .is_err()
+    );
+    let fresh = restored
+        .prepare_ordinary_collision_query(
+            restored_id,
+            &scene,
+            &data,
+            [10, 30],
+            &[restored_id, restored.id(1).unwrap()],
+        )
+        .unwrap();
+    assert!(
+        restored
+            .query_ordinary_residual_body(
+                restored_id,
+                OrdinaryResidualQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &fresh,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(restored.actors()[0].runtime().unwrap().variables(), [7]);
+    assert_eq!(
+        restored.spatial(restored_id).unwrap().local.position,
+        position
+    );
+}
+
+#[test]
+fn ordinary_working_orientation_copies_current_angles_before_script_rotation() {
+    use cyrus_script::script::{
+        OrdinaryBodyQuery, OrdinaryResidualQuery, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 30];
+        placement.active = 1;
+    }
+    let function = scripts.definition.functions.len() as u16;
+    scripts.definition.functions.push(Function {
+        name: Native::SetRotation,
+        kind: CallKind::Function,
+        param_count: 3,
+    });
+    let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+    program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: wait(
+                    function,
+                    Native::SetRotation,
+                    CallKind::Function,
+                    vec![
+                        Value::Integer { value: 0 },
+                        Value::Integer { value: 512 },
+                        Value::Integer { value: 0 },
+                    ],
+                ),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::Increment {
+                    destination: Place::Local { index: 0 },
+                    delta: 1,
+                },
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, models) = static_model_fixture(scripts.clone());
+    let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+    world.refresh_model_presentations(&data, &ids).unwrap();
+    // Base vertex (-20,0,-20) plus (120,-1,20) yields (100,-1,0).
+    data.metadata["actors"][0]["ravc_count"] = 1.into();
+    data.metadata["actors"][0]["collision_volumes"] = serde_json::json!([
+        {"vertex":0,"offset_x":120,"offset_y":-1,"offset_z":20,"radius":24}
+    ]);
+    let scene = ordinary_collision_scene(world.world, models);
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    // A completed prior heading differs from the current selected shape orientation.
+    // Current yaw zero puts the sphere over the other actor's face at (10,20,30).
+    // Prior yaw 512 puts it 100 units away on Z instead.
+    saved["spatial"]["actors"][0]["local"]["position"] =
+        serde_json::json!([-90 * 256, 20 * 256, 30 * 256]);
+    saved["spatial"]["actors"][0]["angle_history"] = serde_json::json!([0, 512, 0]);
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 0, 0]);
+    assert_eq!(world.spatial(id).unwrap().angle_history, [0, 512, 0]);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    let primary = |prepared| OrdinaryBodyQuery {
+        scene: &scene,
+        animations: &data,
+        prepared,
+        sidedness: false,
+        excluded_candidate_type: None,
+        terrain: None,
+    };
+    let residual = |prepared| OrdinaryResidualQuery {
+        scene: &scene,
+        animations: &data,
+        prepared,
+        sidedness: false,
+    };
+    assert!(
+        !world
+            .query_ordinary_body(id, primary(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !world
+            .query_ordinary_residual_body(id, residual(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            cyrus_script::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 512, 0]);
+    assert!(
+        world
+            .query_ordinary_body(id, primary(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !world
+            .query_ordinary_residual_body(id, residual(&prepared))
+            .unwrap()
+            .is_empty()
+    );
+    let next = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_residual_body(id, residual(&next))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
+    for expected in [6, 7] {
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                cyrus_script::script::OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: cyrus_script::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{:?}",
+            world.actors()[0].failure()
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
     }
 }

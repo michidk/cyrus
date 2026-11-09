@@ -598,9 +598,8 @@ impl ScriptWorld {
                     static_placement: None,
                 },
                 SupportSource::Terrain => Default::default(),
-                SupportSource::Transient { .. } => {
-                    anyhow::bail!("ordinary ground transient support owner unavailable")
-                }
+                // A transient record has neither a static-placement nor an actor owner.
+                SupportSource::Transient { .. } => Default::default(),
             };
             // A terrain result does not overwrite a prior face-query owner. The
             // ordinary boundary clears that owner before the first query.

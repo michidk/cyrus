@@ -2533,11 +2533,17 @@ impl ScriptWorld {
     /// Refresh an unattached actor matrix without consuming its angle snapshot.
     pub fn refresh_transform(&mut self, id: ScriptActorId) -> Result<()> {
         let index = self.resolve(id)?;
-        self.spatial
+        let selected = self.selected_player_index() == Some(index);
+        let spatial = self
+            .spatial
             .as_mut()
             .context("spatial state not prepared")?
-            .actor_mut(index)?
-            .refresh_transform()
+            .actor_mut(index)?;
+        if selected {
+            spatial.refresh_player_transform()
+        } else {
+            spatial.refresh_transform()
+        }
     }
 
     /// Explicit family pass, publishing attached model transforms even without geometry.

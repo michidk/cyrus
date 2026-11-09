@@ -165,3 +165,24 @@ Baseline image comparisons still use `CYRUS_COMPARE_TOLERANCE` and local baselin
 images. Test pose rejection with `node --test dev/scripts/matched-capture.test.mjs`.
 
 Replay waits for the current render instance to finish spawning on native and browser before applying the fixture settling time. Entering `InGame` alone can precede asynchronous geometry loading. Failed or unfinished loading does not produce an accepted triplet.
+
+## Rune dial interaction
+
+`python3 dev/scripts/dial-acceptance.py --port 7117 --case rune` drives installed
+CATACOMB `CTDIAL01` through the public control port. Start a fresh native process
+with `--scene CATACOMB` for each case, and serialize container runs with
+`flock /tmp/cyrus-live.lock`. Run `--case empty` in another fresh process as the
+negative inventory control. The driver requires a ready CATACOMB world, checks
+its displayed prompt before tapping Activate, observes the dial task, and checks
+inventory consumption, completion, released lockout and twelve later world
+updates. It checks the inserted-rune removal prompt. The empty control activates again
+without granting a rune. Any inspected
+actor failure fails the run. stdout contains the observations as JSONL.
+
+Verified: the original and native ordinary dial observations end at
+`[34838,496,32833]`; the native rune observation consumes item 15 after displaying
+`INSERT RUNE INTO NOTCH`. Original rune insertion remains unverified. The fixture
+uses diagnostic placement and inventory setup, not a natural route to the puzzle.
+It does not assert frame timing, artwork, audio or puzzle completion.
+`python3 dev/scripts/test-dial-acceptance.py` checks the rejection controls,
+including a failure followed by otherwise successful continuation.

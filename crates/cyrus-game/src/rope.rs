@@ -61,6 +61,8 @@ pub struct RopeRecord {
     pub speed: i32,
     pub links: usize,
     pub has_end_model: bool,
+    /// The terminal model's name as the record writes it (absent when `has_end_model` is false).
+    pub end_model: Option<String>,
     /// Effect numbers for low, medium and high swing; zero is none.
     pub sounds: [i32; 3],
 }
@@ -98,6 +100,10 @@ impl RopeRecord {
             has_end_model: value["static_model"]
                 .as_str()
                 .is_some_and(|m| !m.is_empty()),
+            end_model: value["static_model"]
+                .as_str()
+                .filter(|m| !m.is_empty())
+                .map(str::to_owned),
             sounds: [sound(0), sound(1), sound(2)],
         })
     }
@@ -178,6 +184,7 @@ pub struct Rope {
     /// controls each update (actor index, link): the lowest node a downward step may reach.
     pub down_limit: Option<(usize, i32)>,
     has_end_model: bool,
+    end_model: Option<String>,
 }
 
 impl Rope {
@@ -245,7 +252,21 @@ impl Rope {
             attachments: Vec::new(),
             down_limit: None,
             has_end_model: record.has_end_model,
+            end_model: record.end_model.clone(),
         }
+    }
+
+    /// The terminal model's name from the record, if the rope has one.
+    pub fn end_model(&self) -> Option<&str> {
+        self.end_model.as_deref()
+    }
+
+    /// The terminal model's collision pose: its engine map position and the rows of its engine
+    /// matrix (local to world), as the original stores them for the transient record's candidate.
+    pub fn end_collision_pose(&self) -> Option<([f32; 3], [[f32; 3]; 3])> {
+        let pose = self.end_pose()?;
+        let position = engine_position(pose.position).map(|value| value as f32);
+        Some((position, matrix(pose.yaw, pose.pitch)))
     }
 
     /// One update: the swing step, then each attachment's climb. `group_of` is the actor's current
@@ -507,6 +528,7 @@ mod tests {
                 speed: 100,
                 links,
                 has_end_model: false,
+                end_model: None,
                 sounds: [60, 61, 62],
             },
             0.8,
@@ -595,6 +617,7 @@ mod tests {
                 speed: 0,
                 kind: 0x20,
                 has_end_model: true,
+                end_model: Some("TERMINAL".into()),
                 ..rope(1, 7).as_record()
             },
             0.8,
@@ -614,6 +637,7 @@ mod tests {
                 speed: self.speed,
                 links: self.links,
                 has_end_model: false,
+                end_model: None,
                 sounds: self.sounds,
             }
         }

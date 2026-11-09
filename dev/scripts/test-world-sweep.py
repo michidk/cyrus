@@ -14,7 +14,7 @@ spec.loader.exec_module(sweep)
 
 
 class WorldSweepTests(unittest.TestCase):
-    def run_sweep(self, frames, generations=None, actors=False, script_error=False, console_error=False, flag=False, script_states=None, readiness_error=None):
+    def run_sweep(self, frames, generations=None, actors=False, script_error=False, console_error=False, flag=False, script_states=None, readiness_error=None, switch_at=None, expect_transition=False, failure=None):
         now = [0]
         frames = iter(frames)
         generations = iter(generations) if generations else None
@@ -29,7 +29,7 @@ class WorldSweepTests(unittest.TestCase):
             def sendall(self, request):
                 cmd = json.loads(request)["cmd"]
                 if cmd["type"] == "state":
-                    result = {"state": "InGame", "scene_ready": True, "scene": "START"}
+                    result = {"state": "InGame", "scene_ready": True, "scene": "ISLAND" if switch_at is not None and now[0] >= switch_at else "START"}
                     if script_states:
                         result["scripts"] = {"state": next(script_states, "Loaded"), "error": readiness_error}
                     # Readiness does not sample game_seconds.
@@ -40,11 +40,11 @@ class WorldSweepTests(unittest.TestCase):
                         return
                     result = {
                         "actors": [], "world": 1,
-                        "generation": next(generations) if generations else 7,
+                        "generation": next(generations) if generations else (8 if switch_at is not None and now[0] >= switch_at else 7),
                         "content_id": "synthetic",
                     }
                     if actors and cmd["limit"] in (64, 1024) and cmd["offset"] == 0:
-                        result["actors"] = [{"name": "actor", "failure": None}]
+                        result["actors"] = [{"name": "actor", "failure": failure}]
                     if cmd["limit"] == 1:
                         result["globals"] = {"world_loop_frame": next(frames)}
                 elif cmd["type"] == "console":
@@ -68,6 +68,8 @@ class WorldSweepTests(unittest.TestCase):
         argv = ["world-sweep.py", "--seconds", "1"]
         if flag:
             argv += ["--flag", "START:scene2=1"]
+        if expect_transition:
+            argv += ["--expect-transition"]
         argv += ["START"]
         with patch.object(sweep.socket, "create_connection", side_effect=lambda *a, **k: Connection()), \
              patch.object(sweep.time, "time", side_effect=lambda: now[0]), \
@@ -119,6 +121,26 @@ class WorldSweepTests(unittest.TestCase):
             "START: script world failed during readiness: CYRUS group 74: animation sound scene binding unavailable",
             output,
         )
+
+    def test_expected_transition_is_followed_into_the_destination_world(self):
+        result, output = self.run_sweep([3, 4, 5, 6, 7], switch_at=11, expect_transition=True)
+        self.assertEqual(result, 0, output)
+        self.assertIn("START: scene left for ISLAND", output)
+        self.assertIn("ISLAND: 0 failing actors", output)
+
+    def test_destination_actor_failures_after_a_transition_are_reported(self):
+        result, output = self.run_sweep([3, 4, 5, 6, 7], switch_at=11, expect_transition=True, actors=True, failure="unsupported branch")
+        self.assertEqual(result, 1, output)
+        self.assertIn("ISLAND: actor: unsupported branch", output)
+
+    def test_destination_that_does_not_advance_fails(self):
+        result, output = self.run_sweep([3, 3, 3, 3, 3], switch_at=11, expect_transition=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("did not advance after leaving START", output)
+
+    def test_transition_without_the_option_remains_a_failure(self):
+        result, output = self.run_sweep([3, 4, 5, 6, 7], switch_at=11)
+        self.assertEqual(result, 1, output)
 
     def test_direct_scene_state_remains_compatible(self):
         result, output = self.run_sweep([3, 4])

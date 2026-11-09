@@ -496,6 +496,40 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
         app.world().get::<PlayerEntrySupport>(player),
         Some(&PlayerEntrySupport::StaticSettled)
     );
+    // A destination marker must not be read against the retiring world's sources.
+    app.insert_resource(cyrus_world::lifecycle::ReloadScene);
+    app.world_mut().resource_mut::<MarkerEntry>().marker = 9;
+    app.update();
+    assert_eq!(app.world().get::<PlayerPose>(player).unwrap().heading, 2047);
+    assert_eq!(
+        app.world().get::<PlayerEntrySupport>(player),
+        Some(&PlayerEntrySupport::StaticSettled)
+    );
+    app.insert_resource(cyrus_world::lifecycle::WorldPreparationPending);
+    app.world_mut()
+        .remove_resource::<cyrus_world::lifecycle::ReloadScene>();
+    app.update();
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap(),
+        &PlayerPose {
+            position: [10_448_896, -190_464, 10_502_144],
+            heading: 2047,
+        }
+    );
+    assert_eq!(
+        app.world().get::<PlayerEntrySupport>(player),
+        Some(&PlayerEntrySupport::StaticSettled)
+    );
+    *app.world_mut().resource_mut::<MarkerEntry>() = MarkerEntry {
+        marker: 0,
+        heading: 1024,
+    };
+    app.world_mut()
+        .remove_resource::<cyrus_world::lifecycle::WorldPreparationPending>();
+    app.update();
+    assert_eq!(app.world().get::<PlayerPose>(player).unwrap().heading, 1024);
+    app.world_mut().resource_mut::<MarkerEntry>().heading = -1;
+    app.update();
     // Entry is one-shot; later updates must not undo movement or ground settling.
     app.world_mut()
         .get_mut::<Transform>(player)

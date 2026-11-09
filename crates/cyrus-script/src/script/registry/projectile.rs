@@ -80,7 +80,7 @@ impl GameHost<'_, '_, '_, '_> {
             source.view,
             &query,
             &self.registry.live_collision_inputs(source.actors)?,
-            &[],
+            &self.registry.transient_collision_models(source.scene)?,
         )?;
         let start = previous.map(|value| value >> 8);
         let end = position.map(|value| value >> 8);

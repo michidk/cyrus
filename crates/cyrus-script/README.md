@@ -8,6 +8,11 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: the base selected-player controller rebuilds banked orientations, following
+preservation's [player orientation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#upright-actor-orientation).
+The transition back to zero bank also rebuilds so the last banked matrix cannot retain
+tilt. Upright player turns and ordinary nonplayer actors retain incremental rotation.
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
@@ -17,6 +22,8 @@ persistence precedes runtime application. Fidelity areas default to Faithful.
 Player transforms remain independent of camera transforms. Inspection adapters
 set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
+Marker placement waits from the replacement request through host preparation, so
+the destination marker never changes the retiring player's pose or support state.
 
 The logbook reader owns its manual-entry dialog state and keyboard focus. Installed action C
 opens an empty byte editor; presentation reads `LogbookScreen::manual_entry()` and
@@ -720,3 +727,17 @@ Verified: ordinary primary, residual and destination body queries select vertex-
 spheres instead of initial MPSZ spheres when those records exist, following preservation's
 [player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).
 The routed fixture checks displaced vertices, contact restoration and ordinary-update continuation.
+
+Verified: ordinary RAVC body selection reads current animation vertices for animated
+models and scene-owned base vertices otherwise. Primary and destination body
+queries read the current selection. Residual response retains the spheres copied
+when the ordinary query was prepared, together with its copied angles, and refreshes
+only its effective origin. A new update prepares a fresh working record. Working
+spheres belong to the ephemeral query, not persisted actor bounds. This follows
+preservation's per-update collision shape preparation contract.
+
+Verified: ordinary working collision orientation is copied from the current local
+angles when the query is prepared. Previous angle history belongs to movement and
+rollback and does not supply this copy. Later script rotation changes primary
+collision while residual collision retains the prepared orientation until the next
+query preparation, following preservation's per-update shape contract.

@@ -73,10 +73,16 @@ impl PlayerScene {
                 let assignments = self.collision.texture_surfaces.as_ref();
                 models.face_surface(actor, face, assignments)
             }
-            cyrus_collision::ground::SupportSource::Transient { model, face } => anyhow::bail!(
-                "world {} transient model {model} face {face}: surface owner unavailable",
-                self.world
-            ),
+            cyrus_collision::ground::SupportSource::Transient { model, face } => {
+                let models = self.actor_collision.as_ref().with_context(|| {
+                    format!(
+                        "world {}: missing live collision geometry; re-export",
+                        self.world
+                    )
+                })?;
+                let assignments = self.collision.texture_surfaces.as_ref();
+                models.face_surface(model, face, assignments)
+            }
             cyrus_collision::ground::SupportSource::Terrain => {
                 let context = || format!("world {} terrain surface", self.world);
                 let terrain = self

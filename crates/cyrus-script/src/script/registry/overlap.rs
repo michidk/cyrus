@@ -77,7 +77,7 @@ impl ScriptWorld {
             );
             Ok(OverlapSphere { center, radius })
         };
-        self.selected_collision_spheres(id, data)?
+        self.selected_collision_spheres(id, data, None)?
             .iter()
             .take(32)
             .map(|sphere| {
@@ -94,6 +94,7 @@ impl ScriptWorld {
         &self,
         id: ScriptActorId,
         data: &Animations,
+        statics: Option<&cyrus_collision::actor_models::ActorModelCollision>,
     ) -> Result<Vec<cyrus_collision::actor_shape::BodySphere>> {
         self.require_model_identity(data)?;
         let index = self.resolve(id)?;
@@ -131,15 +132,17 @@ impl ScriptWorld {
                             )
                         })
                     };
-                    let vertex = self.actor_animation_source_vertex(
-                        id,
-                        data,
-                        i32::try_from(field("vertex")?)?,
-                    )?;
+                    let vertex_index = i32::try_from(field("vertex")?)?;
+                    let vertex = if definition["model_load_path"] == "animation_table" {
+                        self.actor_animation_source_vertex(id, data, vertex_index)?
+                            .map(|value| value / 256)
+                    } else {
+                        self.actor_model_source_vertex(id, data, statics, vertex_index)?
+                            .map(|value| (value / 256.0).trunc() as i32)
+                    };
                     let offsets = [field("offset_x")?, field("offset_y")?, field("offset_z")?];
-                    let local = std::array::from_fn(|axis| {
-                        (vertex[axis] / 256).wrapping_add(offsets[axis] as i32)
-                    });
+                    let local =
+                        std::array::from_fn(|axis| vertex[axis].wrapping_add(offsets[axis] as i32));
                     Ok(cyrus_collision::actor_shape::BodySphere {
                         center: local,
                         radius: i32::try_from(field("radius")?)?,
@@ -591,11 +594,11 @@ impl ScriptWorld {
                     );
                     self.resolve_ordinary_actor_overlap(id, self.id(index)?, data)?
                 }
-                CandidateOwner::Transient => anyhow::bail!(
-                    "world {} instance {}: transient actor-style overlap owner unavailable",
-                    self.world,
-                    id.index
-                ),
+                // Transient records enter only the face list, never the actor-style list that
+                // the overlap pass walks.
+                CandidateOwner::Transient => {
+                    unreachable!("transient candidates are face candidates")
+                }
             };
             if response == OrdinaryOverlapMotion::Touch {
                 return Ok(OrdinaryOverlapPass::Touch);
