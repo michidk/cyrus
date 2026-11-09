@@ -33,9 +33,9 @@ use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use std::collections::{HashMap, HashSet};
 
-/// How much farther Modern fog lets the scene reach than the original's clipping by default; a
-/// Modern tuning choice.
-pub const MODERN_RENDER_DISTANCE_SCALE: f32 = 6.0;
+/// How far Modern fog lets the scene reach by default, in engine units, unless the world's own
+/// clipping reaches farther; a Modern tuning choice.
+pub const MODERN_RENDER_DISTANCE: f32 = 50_000.0;
 
 /// Original scene clipping and a debug-only Modern fog override, in engine units.
 #[derive(Resource, Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -53,8 +53,7 @@ impl RenderDistance {
             [
                 near,
                 if fidelity.mode(Area::Fog) == Mode::Modern {
-                    self.override_far
-                        .unwrap_or(far * MODERN_RENDER_DISTANCE_SCALE)
+                    self.override_far.unwrap_or(far.max(MODERN_RENDER_DISTANCE))
                 } else {
                     far
                 },
@@ -2053,11 +2052,7 @@ mod tests {
         for (mode, override_far, expected) in [
             (Mode::Faithful, Some(8000.0), 190.0),
             (Mode::Modern, Some(8000.0), 400.0),
-            (
-                Mode::Modern,
-                None,
-                3800.0 * MODERN_RENDER_DISTANCE_SCALE / 20.0,
-            ),
+            (Mode::Modern, None, MODERN_RENDER_DISTANCE / 20.0),
         ] {
             app.world_mut()
                 .resource_mut::<Fidelity>()
@@ -2106,7 +2101,7 @@ mod tests {
                 .fog
                 .clipping
                 .y,
-            3800.0 * MODERN_RENDER_DISTANCE_SCALE,
+            MODERN_RENDER_DISTANCE,
             "retained materials without scene entities must not be uploaded again"
         );
         assert_eq!(
@@ -2118,7 +2113,7 @@ mod tests {
                 .fog
                 .clipping
                 .y,
-            3800.0 * MODERN_RENDER_DISTANCE_SCALE
+            MODERN_RENDER_DISTANCE
         );
     }
 }

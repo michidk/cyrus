@@ -54,7 +54,8 @@ bloom. Brightness, shadow distances, the point lights' power and the effects are
 measured matches. Flats keep their original shading.
 
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
-which moves six times farther than the world's installed clipping distance.
+which moves out to 50,000 engine units (thirteen times the island's installed 3,800), or to the world's
+installed clipping distance where that reaches farther.
 
 ## Day/night cycle
 

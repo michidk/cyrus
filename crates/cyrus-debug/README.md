@@ -55,7 +55,8 @@ player pose; it does not change the fidelity settings.
 Render distance starts at the installed game's value. Changing it selects
 Modern Fog; Original clears the override and returns Fog to Faithful. Modern Fog
 also expands terrain and water submission to the selected distance. Modern Fog
-defaults to four times the original distance with a gradual distant fade.
+defaults to 50,000 engine units, or the original distance where that is farther,
+with a gradual distant fade.
 Water, Fog, and Sky have independent Faithful/Modern buttons.
 
 F1's **Anisotropic filtering (up to 16×)** checkbox independently filters world
