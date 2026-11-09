@@ -6,6 +6,9 @@ ordinary updates run for `--seconds`, and prints every actor whose script report
 (once per distinct message). An optional `--flag WORLD:NAME=VALUE` first sets a global flag
 through the console, which starts the story scene that polls it (for example
 `CATACOMB:scene2=1`, `JAILINT:scene5=1`, `MGUILD:gremlin_scene=1`, `START:deadpirates=2`).
+With `--expect-transition` a story scene that leaves the world (the soak sees the scene name change)
+is the expected outcome: the sweep follows it into the destination world, soaks and inspects that
+world, and reports its failed actors and whether its script loop advances.
 If the script inspection endpoint is unavailable during readiness or actor
 pagination, the sweep reports a contextual inspection failure and exits 1;
 it never treats an unavailable page as a passing world. Exits 0 when no world failed to load, no script world failed or stalled and no actor failed, 1 otherwise. Needs a running native
@@ -38,6 +41,12 @@ def main():
         type=int,
         default=64,
         help="actor records requested per inspection page (bounded to keep the game loop responsive)",
+    )
+    parser.add_argument(
+        "--expect-transition",
+        action="store_true",
+        help="a story scene that leaves the world is the expected outcome: follow it into the destination world, "
+        "soak and inspect that world instead of reporting the replacement as a failure",
     )
     parser.add_argument("--flag", action="append", default=[], metavar="WORLD:NAME=VALUE")
     args = parser.parse_args()
@@ -190,10 +199,38 @@ def main():
         # Large worlds can spend many seconds servicing each actor page. Keep
         # the soak focused on loop progress, then paginate actors once at the end.
         seen, end = {}, time.time() + args.seconds
+        destination = None
         while True:
             if time.time() >= end:
                 break
             time.sleep(min(15, max(1, end - time.time())))
+            if args.expect_transition and destination is None:
+                try:
+                    scene = call({"type": "state"}).get("scene")
+                except (OSError, RuntimeError, KeyError):
+                    continue
+                if scene and scene != world:
+                    destination = scene
+                    break
+        if destination is not None:
+            print(f"{world}: scene left for {destination}")
+            if not wait_ready(destination):
+                print(f"{destination}: scene readiness failed after leaving {world}")
+                bad += 1
+                continue
+            time.sleep(10)
+            identity0, loop0 = script_loop_sample()
+            time.sleep(min(args.seconds, 30))
+            found = failures(identity0)
+            for (name, message) in found:
+                print(f"{destination}: {name}: {message[:300]}")
+            identity1, loop1 = script_loop_sample()
+            moving = None not in identity0 and identity1 == identity0 and loop0 is not None and loop1 is not None and loop1 != loop0
+            if not moving:
+                print(f"{destination}: script world did not advance after leaving {world}")
+            print(f"{destination}: {len(found)} failing actors")
+            bad += bool(found) or not moving
+            continue
         seen.update(failures(identity0))
         for (name, message) in seen:
             print(f"{world}: {name}: {message[:300]}")
