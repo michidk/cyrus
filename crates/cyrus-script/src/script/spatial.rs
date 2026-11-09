@@ -673,26 +673,6 @@ impl ActorSpatial {
         Ok(())
     }
 
-    /// Refresh the selected player, rebuilding a banked pose instead of composing Euler
-    /// deltas. Include the transition out of bank so its last matrix cannot retain tilt.
-    /// Preservation's player orientation rules give banked players a separate rebuild path.
-    pub(crate) fn refresh_player_transform(&mut self) -> Result<()> {
-        let previous_roll = self
-            .effective
-            .map_or(self.angle_history[2], |pose| pose.angles[2]);
-        if self.local.angles[2] & 2047 != 0 || previous_roll & 2047 != 0 {
-            ensure!(
-                self.parent.is_none(),
-                "player matrix refresh requires an unattached actor"
-            );
-            self.local.matrix = Matrix::orientation(self.local.wrapped_angles());
-            self.effective = Some(self.local);
-            Ok(())
-        } else {
-            self.refresh_transform()
-        }
-    }
-
     /// Refresh an ordinary unattached matrix from its last published orientation.
     /// Repeated refreshes in one update consume only new angle changes; the ordinary
     /// update's angle snapshot remains available for axis locks and family deltas.
@@ -1259,23 +1239,6 @@ pub(super) fn query_bearing(x: i32, z: i32) -> u16 {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn player_banked_turns_and_return_to_upright_do_not_accumulate_tilt() {
-        let mut actor = receiver([0; 3], vec![]);
-        for heading in [40, 100, 160, 100, 40, 0].into_iter().cycle().take(60) {
-            actor.snapshot();
-            actor.local.angles = [0, heading, 16];
-            actor.refresh_player_transform().unwrap();
-            actor.snapshot();
-            actor.local.angles[2] = 0;
-            actor.refresh_player_transform().unwrap();
-            assert_eq!(actor.local.matrix.0[1], [0.0, 1.0, 0.0]);
-            assert_eq!(actor.angle_history, [0, heading, 16]);
-            actor.refresh_player_transform().unwrap();
-            assert_eq!(actor.local.matrix.0[1], [0.0, 1.0, 0.0]);
-        }
-    }
-
     use super::*;
 
     fn receiver(position: [i32; 3], locations: Vec<[i32; 3]>) -> ActorSpatial {

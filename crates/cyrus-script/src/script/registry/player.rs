@@ -836,7 +836,7 @@ impl ScriptWorld {
         {
             spatial.local.angles[1] = i32::from(heading);
             spatial.local.angles[2] = i32::from(roll);
-            spatial.refresh_player_transform()?;
+            spatial.refresh_transform()?;
         }
         Ok(())
     }
@@ -1031,7 +1031,7 @@ impl ScriptWorld {
         let heading = i32::from(heading & 2047);
         if spatial.local.angles[1] != heading {
             spatial.local.angles[1] = heading;
-            spatial.refresh_player_transform()?;
+            spatial.refresh_transform()?;
         }
         Ok(())
     }
@@ -1832,7 +1832,7 @@ impl ScriptWorld {
         spatial.local.position = position;
         spatial.local.angles[1] = i32::from(input.motion.heading);
         let frame = result?;
-        spatial.refresh_player_transform()?;
+        spatial.refresh_transform()?;
         Ok(GroundedPresentation {
             pose: PlayerPose {
                 position: walk.position,

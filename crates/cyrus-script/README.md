@@ -25,12 +25,8 @@ unchanged.
 
 Verified: mod-claimed facing rebuilds the model orientation from its absolute angles,
 so successive yaw and running-bank changes cannot accumulate a sideways tilt. Claimed
-airborne updates relax the running bank toward zero.
-
-Verified: the base selected-player controller rebuilds banked orientations, following
-preservation's [player orientation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#upright-actor-orientation).
-The transition back to zero bank also rebuilds so the last banked matrix cannot retain
-tilt. Upright player turns and ordinary nonplayer actors retain incremental rotation.
+airborne updates relax the running bank toward zero. The original controller retains
+its incremental rotation path.
 
 The logbook reader owns its manual-entry dialog state and keyboard focus. Installed action C
 opens an empty byte editor; presentation reads `LogbookScreen::manual_entry()` and

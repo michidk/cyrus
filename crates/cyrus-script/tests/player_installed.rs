@@ -24,7 +24,6 @@ use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld, sound::
 #[derive(Clone, Copy, PartialEq)]
 enum Route {
     Keyboard,
-    BankedTurns,
     ModernJump,
     /// A mod runs the player forward, then stops and asks for the idle group; `interrupt` asks
     /// for it to replace the run at once.
@@ -42,11 +41,6 @@ enum Route {
 #[test]
 fn installed_island_keyboard_walk_and_release() -> Result<()> {
     installed_keyboard_route(Route::Keyboard).map(drop)
-}
-
-#[test]
-fn installed_base_running_turns_return_to_upright() -> Result<()> {
-    installed_keyboard_route(Route::BankedTurns).map(drop)
 }
 
 #[test]
@@ -246,52 +240,6 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
         position(&mut app)? == idle,
         "idle player moved before input"
     );
-    if route == Route::BankedTurns {
-        let key = |index: usize| -> Result<KeyCode> {
-            match cyrus_script::player::input::Input::try_from(codes[index]) {
-                Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
-                other => anyhow::bail!("installed binding {index} is not a key: {other:?}"),
-            }
-        };
-        app.world_mut().resource_mut::<PlayerToggles>().walk_mode = false;
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(key(0)?);
-        let mut banked = false;
-        for turn in [key(2)?, key(3)?].into_iter().cycle().take(8) {
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .press(turn);
-            for _ in 0..8 {
-                app.update();
-            }
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .release(turn);
-            for _ in 0..8 {
-                app.update();
-                let actors = app.world().resource::<ScriptActors>();
-                let world = actors.current.as_ref().context("world")?;
-                let spatial = world.spatial(world.selected_player().context("player")?)?;
-                banked |= spatial.local.angles[2] & 2047 != 0;
-                if spatial.local.angles[2] & 2047 == 0 {
-                    ensure!(
-                        spatial.local.matrix.0[1]
-                            .iter()
-                            .zip([0.0, 1.0, 0.0])
-                            .all(|(a, b)| (a - b).abs() < 0.0001),
-                        "base running turn retained tilt: {:?}",
-                        spatial.local
-                    );
-                }
-            }
-        }
-        ensure!(banked, "base turn route never banked");
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .release_all();
-        return Ok(None);
-    }
     if let Route::ModStop { interrupt } = route {
         return mod_stop(&mut app, interrupt).map(Some);
     }
