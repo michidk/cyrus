@@ -277,6 +277,9 @@ it does not start playback during validation. Pause and mute state are retained.
 Backend resampler and device queues remain outside this checkpoint.
 
 `RuntimeDialogue::snapshot/from_snapshot` retains the prepared RTX cache, taunts,
-request failures and ordinary-update state. `RuntimeDialogueSnapshot::required_labels`
+request failures, ordinary-update state and the shared torch sample slot.
+Restoration rebinds the remembered torch slot with the sample pool, so continuing
+a burning torch updates its retained voice instead of allocating a duplicate.
+The versioned service checkpoint rejects older documents that omitted this owner. `RuntimeDialogueSnapshot::required_labels`
 provides installed asset preparation hints before validation. The host commits this
 replacement together with logical dialogue records and the sample pool.
