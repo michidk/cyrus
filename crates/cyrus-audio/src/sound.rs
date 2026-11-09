@@ -46,8 +46,6 @@ pub mod persistence;
 mod samples;
 mod script;
 use samples::{Reservation, SampleSlots};
-#[cfg(any(target_arch = "wasm32", test))]
-use script::PendingSounds;
 pub use script::{RestoredDialogueAssets, RuntimeDialogue, RuntimeDialogueSnapshot, ScriptSounds};
 use script::{execute_ordinary, play_audio};
 
@@ -86,8 +84,6 @@ impl Plugin for SoundPlugin {
                 Update,
                 (examine_speech.before(play_audio), play_audio).in_set(PlayCues),
             );
-        #[cfg(target_arch = "wasm32")]
-        app.init_resource::<PendingSounds>();
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(
             Update,
@@ -280,6 +276,8 @@ pub(crate) struct Channels {
     /// Consumer history belongs to this pool; replacement adopts the restored world afresh.
     script_generation: script::ScriptGeneration,
     samples: SampleSlots,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pending: Vec<PendingCue>,
     playing: HashMap<u64, Channel>,
     start: usize,
     /// The last sound each animated actor started, for its EndAnimation.
@@ -614,6 +612,11 @@ impl Channels {
         owner: Option<Owner>,
         effect: Option<i32>,
     ) {
+        #[cfg(any(target_arch = "wasm32", test))]
+        self.pending.retain(|cue| {
+            !(owner.is_none_or(|owner| cue.owner() == Some(owner))
+                && effect.is_none_or(|effect| cue.effect() == Some(effect)))
+        });
         let stopped = self.samples.stop_matching(owner, effect);
         self.retire(commands, stopped);
     }
@@ -748,7 +751,6 @@ fn examine_speech(
 #[allow(clippy::too_many_arguments)]
 fn play_requests(
     mut commands: Commands,
-    #[cfg(any(target_arch = "wasm32", test))] mut pending: Option<ResMut<PendingSounds>>,
     mut requests: MessageReader<SoundRequest>,
     effects: Res<SoundEffects>,
     speech: Res<Speech>,
@@ -839,10 +841,6 @@ fn play_requests(
                 channels.start = 6;
             }
             SoundRequest::StopAll => {
-                #[cfg(any(target_arch = "wasm32", test))]
-                if let Some(pending) = pending.as_mut() {
-                    pending.0.clear();
-                }
                 channels.stop_all(&mut commands);
             }
         }
@@ -1314,28 +1312,30 @@ mod queued_teardown_tests {
         app.add_message::<SoundRequest>()
             .init_resource::<SoundEffects>()
             .init_resource::<Speech>()
-            .init_resource::<Channels>()
-            .insert_resource(PendingSounds(vec![
-                PendingCue::Flat(None, (12, 0, 0)),
-                PendingCue::Positional(
-                    owner,
-                    PositionalCue {
-                        effect: 25,
-                        volume: -40,
-                        rate_offset_hz: 0,
-                        position: [0; 3],
-                        start_index: None,
-                    },
-                ),
-            ]))
+            .insert_resource(Channels {
+                pending: vec![
+                    PendingCue::Flat(None, (12, 0, 0)),
+                    PendingCue::Positional(
+                        owner,
+                        PositionalCue {
+                            effect: 25,
+                            volume: -40,
+                            rate_offset_hz: 0,
+                            position: [0; 3],
+                            start_index: None,
+                        },
+                    ),
+                ],
+                ..Default::default()
+            })
             .add_systems(Update, play_requests);
-        let pending = &app.world().resource::<PendingSounds>().0;
+        let pending = &app.world().resource::<Channels>().pending;
         assert_eq!(pending[0].effect(), Some(12));
         assert!(pending[1].owner() == Some(owner));
         app.world_mut().write_message(SoundRequest::StopAll);
         app.update();
         assert!(
-            app.world().resource::<PendingSounds>().0.is_empty(),
+            app.world().resource::<Channels>().pending.is_empty(),
             "book teardown must cancel starts that have not reached the backend"
         );
     }

@@ -5,7 +5,10 @@ Native/browser effects, speech and CD music playback. `SoundPlugin` and
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
 in presentation. Gameplay cues drain before control requests, so a book stop
 clears starts already queued for that drain as well as live and browser-pending
-samples. This crate has no rendering or startup dependency.
+samples. Deferred browser starts belong to the channel pool, so periodic sound
+maintenance and saved-world restoration cancel them through the same stop
+operation as live samples. Owner/effect filters apply to both queues and live
+playback. This crate has no rendering or startup dependency.
 Native credits music waits for `GameInstall` before its update runs, so the
 install picker can stay open without initializing CD playback.
 

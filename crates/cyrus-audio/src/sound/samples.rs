@@ -564,6 +564,8 @@ impl ChannelOwnershipCandidate {
         Ok(super::Channels {
             script_generation: Default::default(),
             samples: self.samples,
+            #[cfg(any(target_arch = "wasm32", test))]
+            pending: Vec::new(),
             playing,
             start: self.start,
             animation: self.animation,

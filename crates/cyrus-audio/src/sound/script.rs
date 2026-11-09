@@ -26,14 +26,8 @@ struct SoundFrame<'w, 's> {
     panned: Option<ResMut<'w, Assets<Panned>>>,
     channels: ResMut<'w, Channels>,
     #[cfg(target_arch = "wasm32")]
-    pending: ResMut<'w, PendingSounds>,
-    #[cfg(target_arch = "wasm32")]
     bank_loading: Option<Res<'w, crate::sound_bank::SoundBankHandle>>,
 }
-
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Resource, Default)]
-pub(super) struct PendingSounds(pub(super) Vec<PendingCue>);
 
 impl SoundFrame<'_, '_> {
     fn prepare(&mut self, ownership: Option<Option<u64>>) {
@@ -52,8 +46,6 @@ impl SoundFrame<'_, '_> {
             #[cfg(target_arch = "wasm32")]
             panned,
             channels,
-            #[cfg(target_arch = "wasm32")]
-            pending,
             #[cfg(target_arch = "wasm32")]
             bank_loading,
             ..
@@ -74,13 +66,13 @@ impl SoundFrame<'_, '_> {
         let expired = channels.samples.stop_expired(current_owner);
         channels.retire(commands, expired);
         #[cfg(target_arch = "wasm32")]
-        pending
-            .0
+        channels
+            .pending
             .retain(|cue| cue.owner().is_none_or(current_owner));
         // Preserve authored cue order while the browser bank is loading.
         #[cfg(target_arch = "wasm32")]
         if bank_loading.is_none() {
-            for cue in pending.0.drain(..) {
+            for cue in std::mem::take(&mut channels.pending) {
                 match cue {
                     PendingCue::Flat(owner, flat) => {
                         channels.start_flat(commands, &mut mixer, effects, flat, owner)
@@ -128,8 +120,6 @@ impl SoundFrame<'_, '_> {
             sources,
             panned,
             channels,
-            #[cfg(target_arch = "wasm32")]
-            pending,
             #[cfg(target_arch = "wasm32")]
             bank_loading,
             ..
@@ -211,7 +201,7 @@ impl SoundFrame<'_, '_> {
                             };
                             #[cfg(target_arch = "wasm32")]
                             if bank_loading.is_some() {
-                                pending.0.push(PendingCue::Positional(owner, cue));
+                                channels.pending.push(PendingCue::Positional(owner, cue));
                                 continue;
                             }
                             if let (Some(settings), Some(listener)) =
@@ -239,7 +229,7 @@ impl SoundFrame<'_, '_> {
                             if let Ok(effect) = usize::try_from(*effect) {
                                 #[cfg(target_arch = "wasm32")]
                                 if bank_loading.is_some() {
-                                    pending.0.push(PendingCue::Flat(
+                                    channels.pending.push(PendingCue::Flat(
                                         Some(owner),
                                         (effect, *volume, *rate_offset_hz),
                                     ));
@@ -255,21 +245,12 @@ impl SoundFrame<'_, '_> {
                             }
                         }
                         ScriptSound::StopEffect { effect, owned } => {
-                            #[cfg(target_arch = "wasm32")]
-                            pending.0.retain(|cue| {
-                                cue.effect() != Some(*effect)
-                                    || (*owned && cue.owner() != Some(owner))
-                            });
                             channels.stop_matching(commands, owned.then_some(owner), Some(*effect));
                         }
                         ScriptSound::StopOwned => {
-                            #[cfg(target_arch = "wasm32")]
-                            pending.0.retain(|cue| cue.owner() != Some(owner));
                             channels.stop_matching(commands, Some(owner), None);
                         }
                         ScriptSound::StopAll => {
-                            #[cfg(target_arch = "wasm32")]
-                            pending.0.clear();
                             channels.stop_all(commands);
                         }
                         ScriptSound::Animation { .. } => {
@@ -285,8 +266,8 @@ impl SoundFrame<'_, '_> {
                     // Browser cues wait for the exported bank instead of being lost.
                     #[cfg(target_arch = "wasm32")]
                     if bank_loading.is_some() {
-                        pending
-                            .0
+                        channels
+                            .pending
                             .push(PendingCue::Flat(None, (*effect, *volume, *rate_offset_hz)));
                         continue;
                     }
@@ -433,8 +414,6 @@ fn play_cues(
         && previous_generation.value.is_some()
     {
         frame.channels.stop_all(&mut frame.commands);
-        #[cfg(target_arch = "wasm32")]
-        frame.pending.0.clear();
     }
     frame.channels.script_generation = ScriptGeneration {
         initialized: true,
@@ -1797,6 +1776,100 @@ mod dialogue_tests {
         );
     }
 
+    fn check_reset_cancels_deferred_starts(restoring: bool) {
+        let mut game = maintenance_world(true);
+        let owner = Owner::Script {
+            generation: 1,
+            index: 0,
+        };
+        let mut audio = World::new();
+        audio.init_resource::<SoundEffects>();
+        let pending = vec![
+            PendingCue::Flat(None, (0, 0, 0)),
+            PendingCue::Positional(
+                owner,
+                PositionalCue {
+                    effect: 1,
+                    volume: 0,
+                    rate_offset_hz: 0,
+                    position: [0; 3],
+                    start_index: None,
+                },
+            ),
+        ];
+        let mut channels = Channels {
+            pending,
+            ..Default::default()
+        };
+        channels
+            .samples
+            .start(0, Some(owner), Some(0))
+            .unwrap()
+            .unwrap();
+        audio.insert_resource(channels);
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let mut timer = cyrus_script::script::SoundMaintenance::default();
+        let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
+        {
+            let mut sounds = state.get_mut(&mut audio).unwrap();
+            if restoring {
+                timer
+                    .restore_world(
+                        &mut |stage| sounds.restore_service(stage, game.globals_mut(), &mut cache),
+                        || Ok(()),
+                    )
+                    .unwrap();
+            } else {
+                assert!(
+                    !sounds
+                        .maintain_sound(&mut timer, 1400, &mut game, &mut cache)
+                        .unwrap()
+                );
+                assert!(sounds.playing(0).unwrap());
+                assert_eq!(sounds.frame.channels.pending.len(), 2);
+                assert!(
+                    sounds
+                        .maintain_sound(&mut timer, 1, &mut game, &mut cache)
+                        .unwrap()
+                );
+            }
+            assert!(!sounds.playing(0).unwrap());
+        }
+        state.apply(&mut audio);
+        assert!(
+            audio.resource::<Channels>().pending.is_empty(),
+            "reset must cancel starts waiting for the browser bank, restoring={restoring}"
+        );
+        audio
+            .resource_mut::<Channels>()
+            .pending
+            .push(PendingCue::Flat(None, (1, 0, 0)));
+        {
+            let mut sounds = state.get_mut(&mut audio).unwrap();
+            assert!(
+                !sounds
+                    .maintain_sound(&mut timer, 0, &mut game, &mut cache)
+                    .unwrap()
+            );
+        }
+        state.apply(&mut audio);
+        assert_eq!(
+            audio.resource::<Channels>().pending.len(),
+            1,
+            "a later start must survive a non-reset update"
+        );
+    }
+
+    #[test]
+    fn periodic_reset_cancels_deferred_starts() {
+        check_reset_cancels_deferred_starts(false);
+    }
+
+    #[test]
+    fn world_restore_cancels_deferred_starts() {
+        check_reset_cancels_deferred_starts(true);
+    }
+
     #[derive(Resource, Default)]
     struct Observation {
         before: bool,
@@ -1981,6 +2054,59 @@ mod dialogue_tests {
         app.insert_resource(actors);
         app.update();
         app
+    }
+
+    #[test]
+    fn queued_script_stops_preserve_other_owners_and_effects() {
+        let mut app = world_dialogue_app();
+        let first = Owner::Script {
+            generation: 1,
+            index: 0,
+        };
+        let second = Owner::Script {
+            generation: 1,
+            index: 1,
+        };
+        app.world_mut().resource_mut::<Channels>().pending = vec![
+            PendingCue::Flat(Some(first), (0, 0, 0)),
+            PendingCue::Flat(Some(first), (1, 0, 0)),
+            PendingCue::Flat(Some(second), (0, 0, 0)),
+            PendingCue::Flat(None, (0, 0, 0)),
+        ];
+        for (sound, remaining) in [
+            (
+                ScriptSound::StopEffect {
+                    effect: 0,
+                    owned: true,
+                },
+                3,
+            ),
+            (ScriptSound::StopOwned, 2),
+            (
+                ScriptSound::StopEffect {
+                    effect: 0,
+                    owned: false,
+                },
+                0,
+            ),
+        ] {
+            app.world_mut().write_message(SoundCue::Script {
+                generation: 1,
+                index: 0,
+                sound,
+            });
+            app.update();
+            let pending = &app.world().resource::<Channels>().pending;
+            assert_eq!(pending.len(), remaining);
+            if remaining == 3 {
+                assert!(pending[0].owner() == Some(first));
+                assert_eq!(pending[0].effect(), Some(1));
+            }
+            if remaining >= 2 {
+                assert!(pending[pending.len() - 2].owner() == Some(second));
+                assert!(pending[pending.len() - 1].owner().is_none());
+            }
+        }
     }
 
     #[test]
