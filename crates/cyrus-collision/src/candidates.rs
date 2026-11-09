@@ -12,7 +12,8 @@ pub enum ModelInstance {
 /// First runtime model index used by transient records. Actor model indices are MPOB indices, which
 /// stay far below it, so a transient record shares the live-model tables without colliding with
 /// an actor. A rope's terminal model is transient record `TRANSIENT_MODEL_BASE + rope index`.
-pub const TRANSIENT_MODEL_BASE: usize = 1 << 40;
+/// It fits the 32-bit `usize` of the browser build.
+pub const TRANSIENT_MODEL_BASE: usize = 1 << 30;
 
 /// Runtime model index of rope `rope`'s terminal transient record.
 pub const fn transient_model(rope: usize) -> usize {
