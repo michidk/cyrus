@@ -594,11 +594,11 @@ impl ScriptWorld {
                     );
                     self.resolve_ordinary_actor_overlap(id, self.id(index)?, data)?
                 }
-                CandidateOwner::Transient => anyhow::bail!(
-                    "world {} instance {}: transient actor-style overlap owner unavailable",
-                    self.world,
-                    id.index
-                ),
+                // Transient records enter only the face list, never the actor-style list that
+                // the overlap pass walks.
+                CandidateOwner::Transient => {
+                    unreachable!("transient candidates are face candidates")
+                }
             };
             if response == OrdinaryOverlapMotion::Touch {
                 return Ok(OrdinaryOverlapPass::Touch);

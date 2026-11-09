@@ -208,6 +208,7 @@ fn prepare_models(
         instances: BTreeMap::from([(0, "STATIC".into()), (1, "STATIC".into())]),
         collision_flags: BTreeMap::from([(0, 6), (1, 7)]),
         unsupported: Default::default(),
+        ..Default::default()
     })
     .unwrap();
     world.prepare_spatial().unwrap();

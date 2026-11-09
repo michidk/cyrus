@@ -38,6 +38,7 @@ fn actors() -> ActorModelCollision {
         instances: BTreeMap::from([(42, "DECK".into())]),
         collision_flags: BTreeMap::from([(42, 3)]),
         unsupported: Default::default(),
+        ..Default::default()
     })
     .unwrap()
 }
@@ -551,6 +552,7 @@ fn live_cache_missing_geometry_or_material_is_an_error_not_clearance() {
         instances: BTreeMap::from([(0, "SOLID".into())]),
         collision_flags: BTreeMap::from([(0, 0)]),
         unsupported: Default::default(),
+        ..Default::default()
     };
     assert_eq!(
         ActorModelCollision::new(&solid)

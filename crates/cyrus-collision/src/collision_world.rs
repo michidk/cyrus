@@ -159,9 +159,8 @@ impl StaticCollision {
             SupportSource::Actor { actor, .. } => {
                 anyhow::bail!("actor support {actor}: runtime collision metadata owner required")
             }
-            SupportSource::Transient { model, .. } => anyhow::bail!(
-                "transient support {model}: runtime collision metadata owner required"
-            ),
+            // Transient candidates carry zero collision metadata.
+            SupportSource::Transient { .. } => Ok(0),
             SupportSource::Model { model, .. } => {
                 let placement = self
                     .placements
@@ -870,7 +869,7 @@ impl StaticCollision {
     }
 
     /// Query mixed face candidates in their retained order. Live poses come from
-    /// the host's stored model instances. Transient geometry remains unsupported.
+    /// the host's stored model instances, including rope terminal models.
     /// Candidate-type exclusion precedes geometry and pose resolution.
     #[allow(clippy::too_many_arguments)] // Explicit retained query, probe and exclusion inputs.
     pub fn runtime_ground_contacts(
@@ -952,10 +951,27 @@ impl StaticCollision {
                         )?,
                     )
                 }
-                super::candidates::CandidateOwner::Transient => anyhow::bail!(
-                    "transient candidate {:?}: geometry owner unavailable",
-                    candidate.model
-                ),
+                super::candidates::CandidateOwner::Transient => {
+                    let ModelInstance::Runtime(model) = candidate.model else {
+                        anyhow::bail!(
+                            "transient candidate {:?}: not a runtime model",
+                            candidate.model
+                        );
+                    };
+                    let pose = poses.get(&model).with_context(|| {
+                        format!("transient candidate model {model}: stored model pose unavailable")
+                    })?;
+                    (
+                        SupportSource::Transient { model, face: 0 },
+                        actors.segment_contacts(
+                            model,
+                            pose,
+                            start.map(|v| v as f32),
+                            end.map(|v| v as f32),
+                            sidedness,
+                        )?,
+                    )
+                }
             };
             for contact in hits {
                 let source = match source {
@@ -965,6 +981,10 @@ impl StaticCollision {
                     },
                     SupportSource::Actor { actor, .. } => SupportSource::Actor {
                         actor,
+                        face: contact.face,
+                    },
+                    SupportSource::Transient { model, .. } => SupportSource::Transient {
+                        model,
                         face: contact.face,
                     },
                     _ => unreachable!("segment model source"),

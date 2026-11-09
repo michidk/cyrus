@@ -6999,6 +6999,7 @@ fn static_model_fixture_session(
         instances: BTreeMap::from([(0, "STATIC".into()), (1, "STATIC".into())]),
         collision_flags: BTreeMap::from([(0, 6), (1, 7)]),
         unsupported: Default::default(),
+        ..Default::default()
     })
     .unwrap();
     let mut world = if fresh_session {
@@ -50471,6 +50472,9 @@ mod flat_texture_tests;
 
 #[path = "script_registry/jump_fall_guards.rs"]
 mod jump_fall_guards_tests;
+
+#[path = "script_registry/rope_terminal.rs"]
+mod rope_terminal_tests;
 
 #[test]
 fn ordinary_body_uses_vertex_bound_shape_instead_of_initial_spheres() {

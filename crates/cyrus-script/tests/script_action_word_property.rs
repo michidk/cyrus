@@ -395,6 +395,7 @@ fn automatic_fixture(
             instances: std::collections::BTreeMap::from([(0, "STATIC".into())]),
             collision_flags: std::collections::BTreeMap::from([(0, 6)]),
             unsupported: Default::default(),
+            ..Default::default()
         },
     )
     .unwrap();
