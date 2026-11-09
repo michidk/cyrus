@@ -408,7 +408,7 @@ impl SoundFrame<'_, '_> {
 }
 
 #[derive(Default)]
-struct ScriptGeneration {
+pub(super) struct ScriptGeneration {
     initialized: bool,
     value: Option<u64>,
 }
@@ -417,7 +417,6 @@ fn play_cues(
     mut frame: SoundFrame,
     mut cues: MessageReader<SoundCue>,
     script_actors: Option<Res<cyrus_script::script::ScriptActors>>,
-    mut previous_generation: Local<ScriptGeneration>,
 ) {
     let ownership = script_actors
         .as_ref()
@@ -428,16 +427,19 @@ fn play_cues(
     // transports at the generation boundary as well.  This is the host-side
     // equivalent of the original teardown's channel stop and prevents a voice
     // from the released world leaking into its replacement.
+    let previous_generation = &frame.channels.script_generation;
     if previous_generation.initialized
         && previous_generation.value != ownership.flatten()
-        && let Some(generation) = previous_generation.value
+        && previous_generation.value.is_some()
     {
-        frame
-            .channels
-            .stop_script_generation(&mut frame.commands, generation);
+        frame.channels.stop_all(&mut frame.commands);
+        #[cfg(target_arch = "wasm32")]
+        frame.pending.0.clear();
     }
-    previous_generation.initialized = true;
-    previous_generation.value = ownership.flatten();
+    frame.channels.script_generation = ScriptGeneration {
+        initialized: true,
+        value: ownership.flatten(),
+    };
     frame.prepare(ownership);
     for cue in cues.read() {
         frame.emit(cue, ownership);
@@ -1599,6 +1601,13 @@ mod dialogue_tests {
     use cyrus_assets::sound::DialogueSamples;
 
     fn maintenance_world(navigation: bool) -> cyrus_script::script::ScriptWorld {
+        maintenance_world_at(navigation, 1)
+    }
+
+    fn maintenance_world_at(
+        navigation: bool,
+        generation: u64,
+    ) -> cyrus_script::script::ScriptWorld {
         use cyrus_assets::{animation::Animations, script::Scripts};
         let mut scripts: Scripts = serde_json::from_value(serde_json::json!({
             "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"world":7,"content_id":"","actor_pool_capacity":32,
@@ -1633,7 +1642,7 @@ mod dialogue_tests {
             })
             .collect();
         scripts.content_id = scripts.content_identity().unwrap();
-        let mut world = cyrus_script::script::ScriptWorld::prepare(&scripts, 1).unwrap();
+        let mut world = cyrus_script::script::ScriptWorld::prepare(&scripts, generation).unwrap();
         if navigation {
             world
                 .prepare_navigation(&Animations {
@@ -1918,6 +1927,161 @@ mod dialogue_tests {
     fn refresh_line(mut sounds: ScriptSounds) {
         sounds.refresh_dialogue(0, [256, 0, 16_777_215]).unwrap();
         assert!(sounds.refresh_dialogue(16, [0; 3]).is_err());
+    }
+
+    fn world_dialogue_app() -> App {
+        use cyrus_assets::sound::{DialogueEntry, DialogueVoice};
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
+            .init_asset::<AudioSource>()
+            .init_asset::<Panned>()
+            .init_resource::<Starts>()
+            .insert_resource(SoundSettings::parse(""));
+        let audio = app
+            .world_mut()
+            .resource_mut::<Assets<AudioSource>>()
+            .add(AudioSource {
+                bytes: cyrus_assets::audio::pcm_wav(
+                    rgpre::import::sfx::AudioType::Mono16,
+                    11025,
+                    &[0, 64, 0, 64],
+                )
+                .unwrap()
+                .into(),
+            });
+        app.insert_resource(LoadedDialogue(super::super::dialogue::DialogueClip {
+            entry: DialogueEntry {
+                version: 1,
+                label: *b"TEST",
+                text: "Hi".into(),
+                text_lifetime: 30,
+                voice: Some(DialogueVoice {
+                    audio: "dialogue/54455354.wav".into(),
+                    base_volume: 113,
+                    sample_rate: 11025,
+                    channels: 1,
+                    bits_per_sample: 16,
+                    loop_flag: 0,
+                    loop_offset: 0,
+                    loop_end: 0,
+                    lifetime: 128,
+                }),
+            },
+            audio: Some(audio.clone()),
+        }));
+        app.insert_resource(SoundEffects(vec![Some(Effect {
+            audio,
+            bits_per_sample: 16,
+            repetitions: SampleRepetitions::FOREVER,
+            base_volume: 64,
+            sample_rate: 11025,
+        })]));
+        let mut actors = cyrus_script::script::ScriptActors::default();
+        actors.current = Some(maintenance_world(false));
+        app.insert_resource(actors);
+        app.update();
+        app
+    }
+
+    #[test]
+    fn world_teardown_stops_unowned_dialogue_and_presentation_samples() {
+        let mut app = world_dialogue_app();
+        app.world_mut().run_system_cached(start_line).unwrap();
+        app.world_mut().write_message(SoundCue::Flat {
+            effect: 0,
+            volume: 0,
+            rate_offset_hz: 0,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<Channels>().playing.len(), 2);
+        // RTX has no actor owner, so EndMySounds must not acquire ownership of it.
+        app.world_mut().write_message(SoundCue::Script {
+            generation: 1,
+            index: 0,
+            sound: ScriptSound::StopOwned,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<Channels>().playing.len(), 2);
+        app.world_mut()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
+            .current = None;
+        app.update();
+        assert_eq!(
+            app.world().resource::<Channels>().playing.len(),
+            0,
+            "world teardown must stop dialogue and presentation transports without actor owners"
+        );
+        assert_eq!(
+            app.world_mut()
+                .query_filtered::<Entity, With<PlayingSound>>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn restored_dialogue_pool_adopts_its_new_world_without_running_teardown() -> anyhow::Result<()>
+    {
+        use super::super::persistence::SamplePlaybackSnapshot;
+        use crate::persistence::AudioRestoreBindings;
+        use std::collections::BTreeMap;
+        let mut app = world_dialogue_app();
+        app.world_mut().run_system_cached(start_line)?;
+        let snapshot = SamplePlaybackSnapshot::capture(app.world())?;
+        let old_entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<PlayingSound>>()
+            .single(app.world())?;
+        let replacement = app.world_mut().spawn_empty().id();
+        let source = app
+            .world()
+            .resource::<Assets<AudioSource>>()
+            .get(
+                app.world()
+                    .resource::<LoadedDialogue>()
+                    .0
+                    .audio
+                    .as_ref()
+                    .unwrap(),
+            )
+            .unwrap()
+            .clone();
+        let sources = BTreeMap::from([(
+            snapshot
+                .sources()
+                .next()
+                .unwrap()
+                .source_identity
+                .to_owned(),
+            source,
+        )]);
+        let bindings = AudioRestoreBindings::new(&[], &[(old_entity.to_bits(), replacement)])?;
+        let candidate = snapshot.restore(&sources, &bindings, app.world())?;
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        app.world_mut()
+            .resource_scope(|world, mut assets: Mut<Assets<Panned>>| {
+                candidate.queue(&mut Commands::new(&mut queue, world), &mut assets);
+            });
+        app.world_mut().despawn(old_entity);
+        app.world_mut()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
+            .current = Some(maintenance_world_at(false, 2));
+        queue.apply(app.world_mut());
+        app.update();
+        assert!(
+            app.world().get::<PlayingSound>(replacement).is_some(),
+            "the old consumer generation must not stop a newly restored dialogue pool"
+        );
+        app.world_mut()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
+            .current = None;
+        app.update();
+        assert!(
+            app.world().get::<PlayingSound>(replacement).is_none(),
+            "the restored pool must still stop when its adopted world leaves"
+        );
+        Ok(())
     }
 
     #[test]

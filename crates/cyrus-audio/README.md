@@ -15,6 +15,10 @@ the sample. One-shots retain their start gains unless explicitly updated.
 The browser sound bank retains the install's speech and subtitle switches before
 saved book preferences are applied. Speech mode controls dialogue record lifetime
 maintenance; disabling it uses nominal text countdowns on both hosts.
+World teardown stops the entire sample pool, including RTX voices without actor
+ownership and presentation effects. Consumer generation history belongs to that
+pool, so coordinated session replacement adopts its restored world before later
+teardown checks. Actor-local stop commands still leave unowned dialogue alone.
 
 Original PCM width is retained through native and browser preparation. The decoder
 applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
