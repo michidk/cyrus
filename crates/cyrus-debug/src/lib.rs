@@ -16,6 +16,8 @@ use cyrus_render::camera::FlycamSettings;
 use cyrus_render::fog::RenderDistance;
 use cyrus_script::player::Player;
 
+mod day_night;
+mod effects;
 mod performance;
 
 pub struct DebugMenuPlugin;
@@ -25,6 +27,8 @@ struct DebugMenu {
     open: bool,
     inspector_open: bool,
     performance_open: bool,
+    day_night_open: bool,
+    effects_open: bool,
 }
 
 #[derive(Resource, Default)]
@@ -66,6 +70,8 @@ impl Plugin for DebugMenuPlugin {
                 world_inspector_window.run_if(|menu: Res<DebugMenu>| menu.inspector_open),
                 performance::performance_window
                     .run_if(|menu: Res<DebugMenu>| menu.performance_open),
+                day_night::day_night_window.run_if(|menu: Res<DebugMenu>| menu.day_night_open),
+                effects::effects_window.run_if(|menu: Res<DebugMenu>| menu.effects_open),
             )
                 .chain(),
         );
@@ -125,8 +131,13 @@ fn debug_menu(
 ) -> Result {
     let player_position = player.single().ok().map(|transform| transform.translation);
 
-    let window = egui::Window::new("cyrus debug").vscroll(true);
-    window.show(contexts.ctx_mut()?, |ui| {
+    let ctx = contexts.ctx_mut()?;
+    // Tall enough for every section; it scrolls only where the screen is shorter.
+    let height = (ctx.content_rect().height() - 40.0).max(200.0);
+    let window = egui::Window::new("cyrus debug")
+        .vscroll(true)
+        .default_height(height);
+    window.show(ctx, |ui| {
         let label = |name: &str| {
             world
                 .options
@@ -238,7 +249,13 @@ fn debug_menu(
             ui,
             &mut fidelity,
             Area::Lighting,
-            "Lighting (Modern uses Faithful)",
+            "Lighting (Modern: shadows, PBR)",
+        );
+        fidelity_control(
+            ui,
+            &mut fidelity,
+            Area::Textures,
+            "Textures (Modern: unfiltered pixels)",
         );
         fidelity_control(
             ui,
@@ -248,6 +265,20 @@ fn debug_menu(
         );
 
         ui.separator();
+        let mut anisotropic = fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern;
+        if ui
+            .checkbox(&mut anisotropic, "Anisotropic filtering (up to 16×)")
+            .changed()
+        {
+            fidelity.set(
+                Area::AnisotropicFiltering,
+                if anisotropic {
+                    Mode::Modern
+                } else {
+                    Mode::Faithful
+                },
+            );
+        }
         let performance_label = if menu.performance_open {
             "Close performance"
         } else {
@@ -255,6 +286,22 @@ fn debug_menu(
         };
         if ui.button(performance_label).clicked() {
             menu.performance_open = !menu.performance_open;
+        }
+        let day_night_label = if menu.day_night_open {
+            "Close day/night"
+        } else {
+            "Open day/night"
+        };
+        if ui.button(day_night_label).clicked() {
+            menu.day_night_open = !menu.day_night_open;
+        }
+        let effects_label = if menu.effects_open {
+            "Close effects"
+        } else {
+            "Open effects"
+        };
+        if ui.button(effects_label).clicked() {
+            menu.effects_open = !menu.effects_open;
         }
         let inspector_label = if menu.inspector_open {
             "Close inspector"

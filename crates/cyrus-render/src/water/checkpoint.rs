@@ -231,18 +231,7 @@ impl WaterPlayback {
                 if saved.water_attribute {
                     mesh.insert_attribute(
                         Mesh::ATTRIBUTE_UV_1,
-                        terrain
-                            .vertices
-                            .iter()
-                            .map(|&vertex| {
-                                [
-                                    f32::from(u8::from(
-                                        water.is_some_and(|water| water.animated_vertices[vertex]),
-                                    )),
-                                    0.0,
-                                ]
-                            })
-                            .collect::<Vec<_>>(),
+                        prepared.shore.channel(water, original, &terrain.vertices),
                     );
                 }
                 mesh.insert_attribute(
@@ -497,6 +486,7 @@ mod tests {
                 heights: vec![0.0; 16],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),

@@ -347,6 +347,7 @@ mod tests {
                 directional: [0.0; 3],
                 direction: [0.0; 3],
             },
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Prelighting {
                 instances: Default::default(),

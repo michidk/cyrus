@@ -38,6 +38,79 @@ Faithful music plays every installed byte. `--music modern` (browser
 sync-marked data sectors and keeps the track's length and timing.
 **Unknown:** whether the original's playback path makes the noise audible.
 
+## Modern lighting
+
+The original lights models and terrain with vertex-driven shading. The `lighting`
+fidelity area, Modern only (set by `--mode modern` or the debug menu; it has no flag of its own), switches
+the world's own materials to physically based shading through Bevy's lights: a cascaded shadow-mapped sun,
+the ambient colour as an environment light and the object lights as point lights, all read from the world's
+installed lighting data. The lights are calibrated so a fully lit surface shows its texture colour, and
+tonemapping is off so the sky, water and flats keep the original's colours. Models and terrain draw their
+full world-space meshes instead of the original's screen-space prepared geometry, and they cast and
+receive shadows (each caster through a shadow-only twin that shares one material, so
+the cascades batch their draws, and static models with equal modern material values share one
+material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
+bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
+measured matches. Flats keep their original shading.
+
+Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
+which moves out to 50,000 engine units (thirteen times the island's installed 3,800), or to the world's
+installed clipping distance where that reaches farther.
+
+## Day/night cycle
+
+**Verified:** the original has one fixed sun per world, read from its lighting data, and night is a
+separate world variant. Under Modern lighting, the debug menu's day/night panel (and the control
+port's `set_day_night`) can turn on a time of day. Noon reproduces the world's installed sun; the sun
+moves on an arc through it and sets at 6 and 18 o'clock, and its colour, the ambient light, the fog and
+the sky darken and warm with the hour, with a dim moonlight at night. The background beyond the scenery
+darkens with the fog, and moonlit clouds stay visible at night. Worlds without an installed sun,
+such as interiors, are not affected. The cycle is off by default, so the game keeps its own times of
+day; once on, it runs one in-game minute per real second, so a day lasts 24 minutes. The night sky and
+background are nearly black. While the sky is dark, the player carries a candle: a faint, flickering warm light follows
+the player, the stronger the darker it is, and is out by day. Every colour, the speed and the direction of the arc are Modern tuning
+choices.
+
+## Modern effects
+
+**Verified:** the original has none of these; they exist only under Modern lighting, are switched
+one by one in the debug menu's effects panel (and the control port's `set_modern_effect`), and
+every value is a Modern tuning choice:
+
+- tonemapping (Khronos PBR Neutral by default) with exposure, saturation and contrast grading;
+- automatic exposure, limited to one stop darker and one and a half stops brighter;
+- god rays: the sun scattering in a thin volumetric haze around the camera;
+- a lens flare and sun glare while the sun is on screen and not covered;
+- a sky glow around the sun, a warm horizon while it is low, and stars when the day/night cycle
+  darkens the sky;
+- glossy water with screen-space reflections, which reflect only what is on screen and the
+  horizon colour elsewhere;
+- swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
+  about their base, while collision keeps the installed placement;
+- depth of field focused on the player, and motion blur.
+- the map's object and baked lights (lamps and fires) shine as point lights. Map light colours are
+  signed and the original subtracts the negative channels; point lights only add, so each light
+  shines with its positive channels and darkening-only lights are left out. Each lights a facing
+  surface fully at a sixteenth of its radius, where the original's attenuation reaches one. Small
+  models that hold a light glow on their bright texels;
+- calm water: models whose texture SURFACE.INI marks as water reflect like the sea, without its
+  ripples, where they face up; a waterfall does not mirror;
+- with Modern water, the sea moves in several crossing, sharp-crested waves that calm towards the
+  shore, with ripples whose crests bend so they never line up into stripes. Foam breaks along the
+  shore, running up and back with the swash while wash lines roll in, and the beach behind is darker
+  and glossier where the swash wets it. The foam follows the waterline the terrain textures draw:
+  the beach tiles SURFACE.INI marks as water draw it across the cell, and elsewhere it is the
+  border between a water-textured cell and a land cell. The still water out to it reflects like the
+  sea. The waves, ripples, foam and wet sand are tuning choices.
+
+All of them start on.
+
+## Unfiltered textures
+
+The original renders through 3dfx Glide with bilinear texture filtering, which Faithful reproduces.
+The `textures` fidelity area, Modern only (set by `--mode modern` or the debug menu), point-samples
+world model and terrain textures instead, so the pixel art stays sharp. The sky keeps its filtering.
+
 ## Credits scroll pace
 
 **Verified:** the original scrolls the credits one pixel per buffer swap with swap interval one, and opens
@@ -158,3 +231,14 @@ per update before waiting for the next BIOS tick, so a mouse binding there reads
 successive updates; cyrus does the same. **Unknown:** the dead zone a particular original
 joystick showed, and whether the original's menus read the joystick; no joystick read was found in the menu
 code, so menu navigation by gamepad is not provided in Faithful mode.
+
+## Optional anisotropic filtering
+
+F1's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
+modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
+models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture
+footprint, which also replaces the Modern `textures` point sampling. Other colour images use linear
+samplers with a hardware anisotropy limit of sixteen. The indexed world paths integrate their
+existing source textures without mipmaps, which costs GPU time. Turning it off restores the image
+samplers.

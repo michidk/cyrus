@@ -43940,6 +43940,7 @@ fn bind_scheduler_environment(
                 terrain_lighting: None,
                 model_lighting: Default::default(),
                 prelighting: Default::default(),
+                water_textures: Vec::new(),
                 object_lights: vec![],
             },
         )

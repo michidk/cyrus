@@ -3,7 +3,7 @@
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
 camera, HUD and subtitles.
 The game camera explicitly disables MSAA. Sky materials retain encoded-color
-filtering and fog without adding a software RGB565 framebuffer dither pass.
+filtering and fog. Faithful has no RGB565 framebuffer quantization or dither: see Fog.
 The game camera keeps the original horizontal field of view when its viewport
 resizes. **Verified:** preservation's [Glide projection](https://github.com/michidk/redguard-preservation/blob/6520206/docs/engine/projection.md)
 defines its scale. The original follow camera is now the default game view; matched-view pixel
@@ -229,7 +229,7 @@ inverted triangles with a small upright flame at the original sample's location;
 the previous geometry fails the measured flame-region comparison. Constant-alpha compositing uses a framebuffer copy per admitted flat, strict
 depth testing and retained depth writes. It follows preservation's
 [integer blend rule](https://github.com/michidk/redguard-preservation/blob/abd8576/docs/engine/model-lighting.md#flat-framebuffer-blending).
-Fog precedes the blend, and RGB565 quantization follows it. Billboard-local normals
+Fog precedes the blend. Billboard-local normals
 and light coordinates follow the [generated-flat lighting contract](https://github.com/michidk/redguard-preservation/commit/999c1e73ba07f86dc2dbbd8c0a72cd754a32cdba).
 Ordinary flats use the [spatial-list and alpha-partition order](https://github.com/michidk/redguard-preservation/blob/a9e6b62/docs/engine/model-lighting.md#flat-submission-order),
 with the inspection camera selecting the region. Excluded retained draws return
@@ -268,13 +268,46 @@ integer lighting channels before scene fog, following preservation's
 Fog changes update materials referenced by live scene entities; retained assets
 from departed worlds do not trigger new GPU uploads.
 
-The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
-that reuses Faithful results. Existing Water and Fog switches remain independent.
+The Lighting fidelity area defaults to Faithful. Modern lighting compiles the same
+scene and terrain materials with a physically based branch and lights them with
+Bevy's sun, ambient and point lights (`fog/modern_lighting`); its
+day/night cycle, off unless turned on so the game keeps its own times of day, moves and tints those lights, lights the player with a candle while the sky is dark, the fog
+and the sky by the hour, and its
+optional effects (tonemapping and grading, auto exposure, god rays, sky glow and stars,
+water reflections, lens flare, swaying plants, depth of field, motion blur) are switched in
+`ModernEffects`. Under modern lighting the terrain writes its water weight into the colour
+alpha for the modern screen pass, which always restores an opaque alpha.
+Every model and terrain piece has its own material, so the sun's shadow cascades would draw
+each one alone; instead each caster gets a shadow-only twin that shares its mesh and one plain
+material on a layer only the sun lights (`fog/modern_lighting/shadows`). The camera's passes
+batch the same way: static scene models whose material values modern lighting reads are equal
+share one material (`fog/modern_lighting/sharing`) and get their own back in Faithful. While
+Water is Modern too, the terrain shader moves the modern waves on the unprojected terrain and the
+CPU no longer rewrites the terrain mesh each frame; the ground heights still follow the
+original's waves.
+The model and terrain materials are bindless where the platform supports it, so models with
+different textures share one draw batch; their values travel in one buffer per material
+(`ModelUniform`) and the shaders read the texture and the light table through Bevy's binding
+arrays. The light table stores each 32-bit float as one RGBA8 texel of its bytes, because binding
+arrays only take filterable textures; the shader reassembles the exact bits. WebGL keeps plain
+bindings.
+Under modern lighting the map's object and baked lights are point lights with their positive
+channels, and small models that hold a light glow on their bright texels
+(`fog/modern_lighting/glow`). Models whose texture SURFACE.INI marks as water write a zero alpha,
+which the screen pass reflects as calm water without ripples, on faces that face up. The terrain
+and the screen pass share the modern waves and ripples (`water_surface.wesl`); the terrain's second
+UV channel carries the water weight and, packed together, each vertex's signed distance to the
+shore in grid cells from the terrain cells whose texture SURFACE.INI marks as water and its cell's
+land borders in tile UV space (`water::preparation::Shore`). Near the shore the shader finds the
+waterline the beach tiles draw in their texels, and the land borders where it runs along a cell
+edge; that places the animated foam and the wet sand and makes the still shallows reflect.
+The Textures area point-samples world textures. Existing Water and Fog switches
+remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the
 original [inset texture range](https://github.com/michidk/redguard-preservation/blob/aa70734/docs/engine/terrain-lighting.md#texture-coordinates-and-setup)
 before clipping. U spans `1/256` to `254/256`. The export's vertically flipped
-images require V endpoints `2/256` and `255/256`. Modern lighting shares this
-terrain preparation.
+images require V endpoints `2/256` and `255/256`. Modern lighting draws the
+unprojected terrain mesh instead of this camera-space preparation.
 
 **Unknown:** full pixel parity and remaining texture-filtering and combiner precision.
 **Verified:** preservation's [dirty-normal admission rules](https://github.com/michidk/redguard-preservation/blob/ebd7d9e/docs/engine/water.md#dirty-normals-and-retained-lighting)
@@ -313,26 +346,25 @@ Scene rendering uses the installed near/far planes, including a nonzero
 editing it switches Fog to Modern. Faithful uses the original range and fog
 tables. Modern Fog expands the camera-centered terrain and water window to cover the
 selected far frustum. Faithful Fog retains the original terrain window.
-Modern Fog defaults to four times the far distance and a gradual distant
-fade. Modern Sky is camera-centered; Modern Water adds smooth crossing waves,
-fine texture ripples, and view-dependent sheen while retaining the installed
+Modern Fog defaults to 50,000 engine units and a gradual distant
+fade. Modern Sky is camera-centered; Modern Water adds crossing waves,
+ripples, shore foam and wet sand, and view-dependent sheen while retaining the installed
 textures. Water, Fog, and Sky are independently switchable and default to
 Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
-Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
-framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
-shader arithmetic checks cover the dither matrix and fog boundaries.
+Faithful fog uses the Voodoo 1 integer lookup and channel blend. The framebuffer
+keeps eight bits per channel without RGB565 quantization or ordered dither:
+**Verified:** an in-game capture of the GOG release, which presents through the
+32-bit nGlide wrapper, shows smooth dark gravel with no dither pattern and almost
+no RGB565 colour levels (1.1% of sampled pixels, chance level). Voodoo hardware
+dithered to RGB565; that is a technical limit of the card, not what GOG players see.
 Faithful sky filtering uses encoded palette bytes, four-bit subtexel fractions,
 and horizontal then vertical integer rounding, following preservation
 [sky filtering facts](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
 Sun alpha uses the same staged integer interpolation and wrapped texture loads,
 following preservation's [sun filtering](https://github.com/michidk/redguard-preservation/commit/306bdf59a3a968dcec73848f24db6c7cab7bda9d).
-With Faithful Sky and Fog, the sun reads truncated RGB565 destination channels,
-subtracts dithering and blends separately truncated source/destination terms,
-following the [sun blend contract](https://github.com/michidk/redguard-preservation/commit/421912a01adfbce8c6116fc4b1892cbdc77551ea).
 Modern Sky retains hardware alpha filtering; either Modern Sky or Modern Fog
-retains continuous blending. Modern Fog continues to bypass framebuffer
-quantization. **Verified:** original/native/browser ISLAND captures use the same
+retains continuous blending. **Verified:** original/native/browser ISLAND captures use the same
 viewpoint and 640×480 render size; the native/browser build sources match.
 The coastal comparison freezes cloud phase and follows an original book-menu
 return; native/browser use direct world entry. Sampled sun and cloud errors
@@ -625,3 +657,8 @@ The scene and effect material paths share this selection. Inspection cameras and
 pending or mismatched camera publications use the rendered view. Off-live session
 material preparation keeps the supplied destination camera and does not read the
 current world's camera publication.
+
+Optional `anisotropic_filtering` Modern mode integrates up to sixteen samples along
+the major texture footprint for terrain, models, flats and sky. Color-image
+samplers also use linear filtering and hardware anisotropy up to sixteen.
+Disabling the area restores each retained image sampler. No mipmaps are generated.

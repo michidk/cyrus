@@ -39,8 +39,9 @@ struct MaterialExtras {
 struct Inspected;
 
 #[derive(Component)]
-struct Binding {
-    key: String,
+pub(super) struct Binding {
+    /// The animation whose playback state every model with this key shares.
+    pub(super) key: String,
     frames: Vec<Handle<Image>>,
 }
 
@@ -586,10 +587,12 @@ mod tests {
                     ambient: Vec4::ZERO,
                     directional: Vec4::ZERO,
                     direction: Vec4::ZERO,
+                    lighting: Vec4::ZERO,
                 },
                 lights: Handle::default(),
                 placement: Mat4::IDENTITY,
                 lighting: Vec4::ZERO,
+                calm_water: false,
             },
         };
         let terrain_frames: Vec<_> = (0..4)

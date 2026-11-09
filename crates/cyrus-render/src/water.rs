@@ -4,7 +4,7 @@ mod heights;
 mod preparation;
 pub use checkpoint::{TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot};
 pub use heights::CameraTerrainView;
-pub use preparation::PreparedTerrainMesh;
+pub use preparation::{PreparedTerrainMesh, TerrainTarget};
 
 use crate::environment::EnvironmentRequest;
 use bevy::camera::primitives::MeshAabb;
@@ -18,7 +18,7 @@ use cyrus_game::fidelity::Mode;
 use cyrus_world::heading::wrap;
 
 // Preservation's exporter uses 20 engine units per unit and 256 per grid cell.
-const CELL_SIZE: f32 = 256.0 / 20.0;
+pub(crate) const CELL_SIZE: f32 = 256.0 / 20.0;
 const BIOS_TICKS_PER_SECOND: f64 = 1_193_182.0 / 65_536.0;
 
 struct TerrainMesh {
@@ -36,10 +36,14 @@ struct TerrainMesh {
 pub struct WaterPlayback {
     source: Option<AssetId<Environment>>,
     base: Vec<[f32; 3]>,
+    /// Where the terrain meets the water, for the terrain.s water channel.
+    shore: preparation::Shore,
     terrain: Vec<TerrainMesh>,
     tick: Option<u64>,
     window: Option<crate::terrain::Window>,
     mode: Mode,
+    /// Whether the terrain shader moves the modern waves, so the mesh keeps the base grid.
+    shader_waves: bool,
     grid: Vec<[f32; 3]>,
     engine_heights: Vec<f32>,
     normals: Vec<[f32; 3]>,
@@ -95,13 +99,29 @@ fn dirty_normals(water: &Water, window: crate::terrain::Window) -> Vec<bool> {
     dirty
 }
 
-/// Modern art-style preset: two smooth crossing waves around the original mean height.
+/// The modern waves' direction, wavelength in grid cells, speed in cells per second and share of
+/// the amplitude, as `water_surface.wesl` has them; a Modern tuning choice.
+const MODERN_WAVES: [([f32; 2], f32, f32, f32); 4] = [
+    ([0.940, 0.342], 11.0, 1.10, 0.20),
+    ([0.643, -0.766], 7.0, 0.95, 0.13),
+    ([-0.259, 0.966], 5.0, 0.80, 0.09),
+    ([0.996, -0.087], 4.0, 0.70, 0.08),
+];
+
+/// Modern art-style preset: crossing sharpened waves around the original mean height, the open-sea
+/// height of `water_surface.wesl`'s `water_wave`.
 fn modern_displacement(water: &Water, position: [f32; 3], seconds: f32) -> f32 {
-    let phase = (position[0] + position[2] * 0.35) / (CELL_SIZE * 6.0) * std::f32::consts::TAU
-        - seconds * 0.8;
-    let cross = (position[2] - position[0] * 0.6) / (CELL_SIZE * 2.5) * std::f32::consts::TAU
-        - seconds * 1.3;
-    water.parameters[0] / 20.0 * (0.5 + 0.35 * phase.sin() + 0.15 * cross.sin())
+    use std::f32::consts::TAU;
+    let height = MODERN_WAVES
+        .iter()
+        .fold(0.5, |height, &(direction, length, speed, share)| {
+            let k = TAU / (length * CELL_SIZE);
+            let phase = (position[0] * direction[0] + position[2] * direction[1]) * k
+                - seconds * speed * TAU / length;
+            let s = phase.sin();
+            height + share * s * (1.0 - 0.25 * (1.0 - s.abs()))
+        });
+    water.parameters[0] / 20.0 * height
 }
 
 /// Wave height in engine units, rounded only after the complete expression.
@@ -130,6 +150,38 @@ pub(crate) struct PlayerTerrain<'w> {
     scenes: Option<Res<'w, Assets<cyrus_script::player::data::PlayerScene>>>,
 }
 
+/// The engine heights the ground queries read: the original's waves on the window's animated
+/// vertices and the base heights elsewhere.
+fn engine_heights(
+    water: Option<&Water>,
+    window: crate::terrain::Window,
+    ticks: u64,
+    base: &[f32],
+) -> Vec<f32> {
+    base.iter()
+        .enumerate()
+        .map(|(vertex, &base)| match water {
+            Some(water) if water.animated_vertices[vertex] && window.faithful_contains(vertex) => {
+                wave_height(water, vertex, ticks, base)
+            }
+            _ => base,
+        })
+        .collect()
+}
+
+/// Hands the engine heights to the player scene's terrain; ground queries near the camera read
+/// these live vertex heights (water moves actors).
+fn publish_heights(player: &PlayerTerrain, window: crate::terrain::Window, heights: &[f32]) {
+    if heights.len() == 256 * 256
+        && let (Some(request), Some(scenes)) = (&player.request, &player.scenes)
+        && let Some(terrain) = scenes
+            .get(&request.0)
+            .and_then(|scene| scene.terrain.as_ref())
+    {
+        terrain.live().publish(window.engine_center(), heights);
+    }
+}
+
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn animate_water(
@@ -146,13 +198,14 @@ pub(crate) fn animate_water(
     hierarchy: (
         Query<&ChildOf>,
         Query<(), With<crate::persistence::StagedRenderRoot>>,
+        Query<&bevy::gltf::GltfMaterialName>,
     ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     distance: Option<Res<crate::fog::RenderDistance>>,
     (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
-    let (parents, staged) = hierarchy;
+    let (parents, staged, material_names) = hierarchy;
     if playback.source != Some(request.0.id())
         || playback
             .terrain
@@ -201,12 +254,19 @@ pub(crate) fn animate_water(
                                 .is_ok_and(|name| name.as_str() == "Terrain")
                         })
             })
-            .map(|(entity, mesh)| (entity, mesh.0.clone()))
+            .map(|(entity, mesh)| preparation::TerrainTarget {
+                entity,
+                mesh: mesh.0.clone(),
+                water_texture: crate::fog::is_water_texture(
+                    material_names.get(entity).ok(),
+                    environment,
+                ),
+            })
             .collect();
         if terrain.is_empty()
             || terrain
                 .iter()
-                .any(|(_, handle)| meshes.get(handle).is_none())
+                .any(|target| meshes.get(&target.mesh).is_none())
         {
             return;
         }
@@ -257,10 +317,29 @@ pub(crate) fn animate_water(
     let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
     let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
     let mode = fidelity.mode(Area::Water);
-    let update_grid = rebuild
-        || playback.tick.is_none()
-        || (water.is_some()
-            && (mode != Mode::Faithful || playback.mode != mode || playback.tick != Some(ticks)));
+    // Under modern lighting the terrain draws its unprojected mesh, so the terrain shader can move
+    // the modern waves; rewriting and uploading the whole terrain mesh every frame cost most of
+    // a frame. The mesh then keeps the base grid and only the ground heights follow the waves.
+    let shader_waves =
+        water.is_some() && mode == Mode::Modern && fidelity.mode(Area::Lighting) == Mode::Modern;
+    let update_grid = if shader_waves {
+        playback.tick.is_none() || playback.mode != mode || !playback.shader_waves
+    } else {
+        rebuild
+            || playback.tick.is_none()
+            || playback.shader_waves
+            || (water.is_some()
+                && (mode != Mode::Faithful
+                    || playback.mode != mode
+                    || playback.tick != Some(ticks)))
+    };
+    if let Some(water) = water.filter(|_| shader_waves && !update_grid)
+        && (rebuild || playback.tick != Some(ticks))
+    {
+        playback.tick = Some(ticks);
+        playback.engine_heights = engine_heights(Some(water), window, ticks, &heights.heights);
+        publish_heights(&player_scene, window, &playback.engine_heights);
+    }
     // A faithful wave tick inside an unchanged window moves only the window's animated vertices;
     // everything else keeps the values the last complete update gave it.
     let count = heights.heights.len();
@@ -286,16 +365,7 @@ pub(crate) fn animate_water(
                     wave_height(water, vertex, ticks, heights.heights[vertex]);
             }
         }
-        if playback.engine_heights.len() == 256 * 256
-            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
-            && let Some(terrain) = scenes
-                .get(&request.0)
-                .and_then(|scene| scene.terrain.as_ref())
-        {
-            terrain
-                .live()
-                .publish(window.engine_center(), &playback.engine_heights);
-        }
+        publish_heights(&player_scene, window, &playback.engine_heights);
         let moved: Vec<_> = window
             .vertices()
             .filter(|&vertex| water.animated_vertices[vertex])
@@ -331,31 +401,9 @@ pub(crate) fn animate_water(
         }
         playback.tick = Some(ticks);
         playback.mode = mode;
-        playback.engine_heights = heights
-            .heights
-            .iter()
-            .enumerate()
-            .map(|(vertex, &base)| {
-                if let Some(water) = water
-                    .filter(|w| w.animated_vertices[vertex] && window.faithful_contains(vertex))
-                {
-                    wave_height(water, vertex, ticks, base)
-                } else {
-                    base
-                }
-            })
-            .collect();
-        // Ground queries near the camera read these live vertex heights (water moves actors).
-        if playback.engine_heights.len() == 256 * 256
-            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
-            && let Some(terrain) = scenes
-                .get(&request.0)
-                .and_then(|scene| scene.terrain.as_ref())
-        {
-            terrain
-                .live()
-                .publish(window.engine_center(), &playback.engine_heights);
-        }
+        playback.shader_waves = shader_waves;
+        playback.engine_heights = engine_heights(water, window, ticks, &heights.heights);
+        publish_heights(&player_scene, window, &playback.engine_heights);
         let mut grid = playback.base.clone();
         for (vertex, position) in grid.iter_mut().enumerate() {
             if let Some(water) =
@@ -365,6 +413,7 @@ pub(crate) fn animate_water(
                     Mode::Faithful => {
                         -wave_height(water, vertex, ticks, heights.heights[vertex]) / 20.0
                     }
+                    Mode::Modern if shader_waves => playback.base[vertex][1],
                     Mode::Modern => {
                         playback.base[vertex][1]
                             + modern_displacement(
@@ -394,19 +443,26 @@ pub(crate) fn animate_water(
             .collect();
         playback.grid = grid;
     }
-    let view = cameras.single().ok().and_then(|(camera, transform)| {
-        let viewport = camera.physical_viewport_size()?.as_vec2();
-        let projection = camera.clip_from_view();
-        Some(crate::terrain::View {
-            camera_from_local: transform.to_matrix().inverse(),
-            scale: Vec2::new(projection.x_axis.x, -projection.y_axis.y),
-            viewport: viewport.to_array(),
-            clipping: distance
-                .as_ref()
-                .and_then(|d| d.effective(&fidelity))
-                .unwrap_or(environment.clipping),
-        })
-    });
+    // Modern lighting draws the whole unprojected terrain, which can cast shadows, instead of the
+    // original's per-frame camera-space preparation.
+    let prepare_for_camera = fidelity.mode(Area::Lighting) != Mode::Modern;
+    let view = cameras
+        .single()
+        .ok()
+        .filter(|_| prepare_for_camera)
+        .and_then(|(camera, transform)| {
+            let viewport = camera.physical_viewport_size()?.as_vec2();
+            let projection = camera.clip_from_view();
+            Some(crate::terrain::View {
+                camera_from_local: transform.to_matrix().inverse(),
+                scale: Vec2::new(projection.x_axis.x, -projection.y_axis.y),
+                viewport: viewport.to_array(),
+                clipping: distance
+                    .as_ref()
+                    .and_then(|d| d.effective(&fidelity))
+                    .unwrap_or(environment.clipping),
+            })
+        });
     let WaterPlayback {
         terrain,
         grid,
@@ -575,6 +631,7 @@ mod tests {
                 heights: vec![0.0; 1600],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -752,6 +809,7 @@ mod tests {
                 heights: heights.clone(),
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -870,6 +928,7 @@ mod tests {
                 heights: vec![0.0; 25],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -1006,6 +1065,7 @@ mod tests {
                 heights: vec![0.0; 4],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -1147,6 +1207,7 @@ mod tests {
                     heights: vec![0.0; 4],
                 }),
                 texture_scale: [1, 1],
+                water_textures: Vec::new(),
                 object_lights: Vec::new(),
                 prelighting: Default::default(),
                 model_lighting: Default::default(),
@@ -1178,6 +1239,7 @@ mod tests {
                     heights: vec![0.0; 4],
                 }),
                 texture_scale: [1, 1],
+                water_textures: Vec::new(),
                 object_lights: Vec::new(),
                 prelighting: Default::default(),
                 model_lighting: Default::default(),
@@ -1207,6 +1269,10 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, dry_mesh);
         assert_eq!(positions(&app, &first), a);
+        // Modern lighting draws the unprojected terrain; the camera preparation below is Faithful's.
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Lighting, Mode::Faithful);
         app.world_mut().despawn(entity);
         app.world_mut().despawn(other);
         let replacement = app

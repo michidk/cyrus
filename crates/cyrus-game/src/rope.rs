@@ -40,6 +40,16 @@ pub fn engine_position(world: [f32; 3]) -> [f64; 3] {
     ]
 }
 
+/// Engine map units to the exported world position; the inverse of [`engine_position`].
+pub fn world_position(engine: [f64; 3]) -> [f32; 3] {
+    let scale = f64::from(crate::ENGINE_UNIT_SCALE);
+    [
+        (-engine[0] / scale) as f32,
+        (-engine[1] / scale) as f32,
+        ((engine[2] - ENGINE_Z_OFFSET) / scale) as f32,
+    ]
+}
+
 /// An `MPRP` record as exported in the world metadata.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RopeRecord {

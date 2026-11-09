@@ -128,9 +128,11 @@ fn handle(
     inbox: Res<Inbox>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut taps: ResMut<TapRelease>,
-    (mut fidelity, mut sky_scroll): (
+    (mut fidelity, mut sky_scroll, mut day_night, mut modern_effects): (
         ResMut<Fidelity>,
         Option<ResMut<cyrus_render::environment::SkyScrollSync>>,
+        Option<ResMut<cyrus_render::fog::DayNight>>,
+        Option<ResMut<cyrus_render::fog::ModernEffects>>,
     ),
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
@@ -423,9 +425,37 @@ fn handle(
                         Ok(json!(*fidelity))
                     }
                     _ => Err(
-                        "area must be player_controller|camera|water|fog|sky|lighting, mode faithful|modern"
+                        "area must be player_controller|camera|water|fog|sky|lighting|textures|music, mode faithful|modern"
                             .into(),
                     ),
+                }
+            }
+            Command::SetDayNight { hour, running } => match (day_night.as_deref_mut(), hour) {
+                (None, _) => Err("modern lighting is unavailable".into()),
+                (Some(_), Some(hour)) if !(0.0..=24.0).contains(&hour) => {
+                    Err("hour must be within 0 to 24".into())
+                }
+                (Some(cycle), hour) => {
+                    cycle.enabled = hour.is_some();
+                    cycle.hour = hour.unwrap_or(cycle.hour);
+                    cycle.running = running;
+                    Ok(json!({"enabled": cycle.enabled, "hour": cycle.hour, "running": cycle.running}))
+                }
+            },
+            Command::SetModernEffect { effect, enabled } => {
+                match (
+                    modern_effects.as_deref_mut(),
+                    serde_json::from_value::<cyrus_render::fog::Effect>(json!(effect)),
+                ) {
+                    (None, _) => Err("modern lighting is unavailable".into()),
+                    (Some(_), Err(_)) => Err(
+                        "effect must be grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
+                            .into(),
+                    ),
+                    (Some(effects), Ok(effect)) => {
+                        *effects.switch(effect) = enabled;
+                        Ok(json!(*effects))
+                    }
                 }
             }
             Command::SetSkyScroll { direction, offset } => match sky_scroll.as_deref_mut() {

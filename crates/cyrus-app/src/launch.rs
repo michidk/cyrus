@@ -57,6 +57,13 @@ pub struct GameOptions {
     /// Enter a new game without its introduction movie, from this launch and from the menu entry.
     #[arg(long)]
     pub skip_movies: bool,
+    /// Master output volume for this launch, in percent; 0 silences all audio. Not saved.
+    #[arg(long, value_name = "PERCENT", value_parser = clap::value_parser!(u8).range(0..=100))]
+    pub volume: Option<u8>,
+    /// Sets every presentation area, including the modern lighting pipeline.
+    /// The per-area flags below override it for their area.
+    #[arg(long, value_parser = ["faithful", "modern"])]
+    pub mode: Option<String>,
     /// Water presentation mode.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub water: Option<String>,
@@ -78,6 +85,11 @@ pub struct GameOptions {
     /// Installed 3dfx splash: the GOG Windows launch's `3DfxSpl2.dll` or the DOS Glide overlay.
     #[arg(long, value_parser = ["windows", "dos"])]
     pub splash: Option<String>,
+}
+
+/// The linear output gain of a `--volume` percentage; full volume when it is absent.
+pub fn volume_gain(volume: Option<u8>) -> f32 {
+    volume.map_or(1.0, |percent| f32::from(percent) / 100.0)
 }
 
 /// Viewer selection options also accept existing browser fragment links.
@@ -189,8 +201,10 @@ mod tests {
             "--splash=dos",
             "--controls=modern",
             "--camera=modern",
+            "--mode=modern",
         ])
         .unwrap();
+        assert_eq!(game.mode.as_deref(), Some("modern"));
         assert_eq!(game.music.as_deref(), Some("modern"));
         assert_eq!(game.controls.as_deref(), Some("modern"));
         assert_eq!(game.camera.as_deref(), Some("modern"));
@@ -212,6 +226,15 @@ mod tests {
         }
         assert!(GameOptions::try_parse_from(["game", "--scene=../START"]).is_err());
         assert!(GameOptions::try_parse_from(["game", "--fog=other"]).is_err());
+        assert!(GameOptions::try_parse_from(["game", "--volume=101"]).is_err());
+        let muted = GameOptions::try_parse_from(["game", "--volume=0"]).unwrap();
+        assert_eq!(volume_gain(muted.volume), 0.0);
+        assert_eq!(volume_gain(Some(50)), 0.5);
+        assert_eq!(volume_gain(None), 1.0);
+        assert!(GameOptions::try_parse_from(["game", "--mode=other"]).is_err());
+        // Modern lighting follows `--mode` and the debug menu; it has no flag of its own.
+        assert!(GameOptions::try_parse_from(["game", "--lighting=modern"]).is_err());
+        assert!(GameOptions::try_parse_from(["game", "--ray-tracing=other"]).is_err());
         let viewer = ViewerOptions::try_parse_from([
             "viewer",
             "--asset=abc",

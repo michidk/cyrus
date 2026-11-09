@@ -114,6 +114,9 @@ fn apply_sky(
                 Vec3::from_array(sun.color.map(|v| v as f32 / 255.0))
                     .extend(sun.half_size[1] / 20.0)
             }),
+            day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
+            day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
+            modern_sky: Vec4::ZERO,
         });
         active.sky = Some(
             commands
@@ -229,6 +232,7 @@ mod tests {
             effects: None,
             terrain_heights: None,
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -258,6 +262,7 @@ mod tests {
             effects: None,
             terrain_heights: None,
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),

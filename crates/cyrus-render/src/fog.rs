@@ -2,10 +2,14 @@
 mod clipping;
 mod compositing;
 mod effects;
+pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;
 pub use observation::BoundSceneLightImage;
 mod texture;
+pub use modern_lighting::{
+    DayNight, Daylight, Effect, ModernEffects, ModernLightingPlugin, SkyLight, Tonemapper,
+};
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
@@ -29,6 +33,10 @@ use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use std::collections::{HashMap, HashSet};
 
+/// How far Modern fog lets the scene reach by default, in engine units, unless the world's own
+/// clipping reaches farther; a Modern tuning choice.
+pub const MODERN_RENDER_DISTANCE: f32 = 50_000.0;
+
 /// Original scene clipping and a debug-only Modern fog override, in engine units.
 #[derive(Resource, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RenderDistance {
@@ -45,7 +53,7 @@ impl RenderDistance {
             [
                 near,
                 if fidelity.mode(Area::Fog) == Mode::Modern {
-                    self.override_far.unwrap_or(far * 4.0)
+                    self.override_far.unwrap_or(far.max(MODERN_RENDER_DISTANCE))
                 } else {
                     far
                 },
@@ -87,10 +95,71 @@ type MaterialCache = HashMap<
 >;
 type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
+// Bindless where the platform allows, so terrain pieces with different textures share a batch.
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
+#[bind_group_data(TerrainKey)]
+#[data(50, FogExtension, binding_array(101))]
+#[bindless(index_table(range(50..51), binding(100)))]
 struct TerrainExtension {
-    #[uniform(100)]
     fog: FogExtension,
+}
+
+impl From<&TerrainExtension> for FogExtension {
+    fn from(extension: &TerrainExtension) -> Self {
+        extension.fog.clone()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct TerrainKey {
+    modern: bool,
+}
+
+impl From<&TerrainExtension> for TerrainKey {
+    fn from(extension: &TerrainExtension) -> Self {
+        Self {
+            modern: extension.fog.modern_lighting(),
+        }
+    }
+}
+
+/// Whether a pipeline being specialized is Bevy's prepass, which also draws the shadow maps. It
+/// runs Bevy's own prepass shader on the standard vertex attributes, so the original's extra
+/// attributes and depth states must stay out of it.
+fn is_prepass(descriptor: &bevy::render::render_resource::RenderPipelineDescriptor) -> bool {
+    has_def(descriptor, "PREPASS_PIPELINE")
+}
+
+/// Whether the pipeline's vertex stage sets the boolean shader define `define`.
+fn has_def(
+    descriptor: &bevy::render::render_resource::RenderPipelineDescriptor,
+    define: &str,
+) -> bool {
+    descriptor
+        .vertex
+        .shader_defs
+        .iter()
+        .any(|def| matches!(def, bevy::shader::ShaderDefVal::Bool(name, true) if name == define))
+}
+
+/// Adds the `MODERN_LIGHTING` shader define to both stages.
+fn define_modern_lighting(
+    descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
+) {
+    descriptor.vertex.shader_defs.push("MODERN_LIGHTING".into());
+    if let Some(fragment) = &mut descriptor.fragment {
+        fragment.shader_defs.push("MODERN_LIGHTING".into());
+    }
+}
+
+/// Makes a prepass pipeline write nothing. Without a fragment shader its depth would cover the whole
+/// mesh where the main pass discards keyed texels, so the mesh casts no shadow and leaves no hole in
+/// the prepass.
+fn skip_prepass(descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor) {
+    if let Some(depth) = &mut descriptor.depth_stencil {
+        depth.depth_write_enabled = Some(false);
+        depth.depth_compare = Some(bevy::render::render_resource::CompareFunction::Never);
+    }
 }
 
 impl MaterialExtension for TerrainExtension {
@@ -105,8 +174,14 @@ impl MaterialExtension for TerrainExtension {
         _pipeline: &bevy::pbr::MaterialExtensionPipeline,
         descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
         layout: &bevy::mesh::MeshVertexBufferLayoutRef,
-        _key: bevy::pbr::MaterialExtensionKey<Self>,
+        key: bevy::pbr::MaterialExtensionKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
+        if is_prepass(descriptor) {
+            return Ok(());
+        }
+        if key.bind_group_data.modern {
+            define_modern_lighting(descriptor);
+        }
         if layout.0.contains(crate::terrain::PROJECTED) {
             descriptor
                 .vertex
@@ -135,46 +210,85 @@ impl MaterialExtension for TerrainExtension {
     }
 }
 
-#[derive(Asset, TypePath, AsBindGroup, ShaderType, Clone, PartialEq)]
+#[derive(ShaderType, Clone, Debug, PartialEq)]
 struct FogExtension {
-    #[uniform(100)]
     color: Vec4,
-    #[uniform(100)]
     clipping: Vec4,
-    #[uniform(100)]
     table: [Vec4; 16],
-    #[uniform(100)]
     water: Vec4,
-    #[uniform(100)]
     ambient: Vec4,
-    #[uniform(100)]
     directional: Vec4,
-    #[uniform(100)]
     direction: Vec4,
+    /// x: 1 while `Area::Lighting` is Modern; y: 1 while `Area::Textures` is Modern, which
+    /// point-samples world textures. z enables optional anisotropic filtering.
+    lighting: Vec4,
 }
 
+impl FogExtension {
+    fn modern_lighting(&self) -> bool {
+        self.lighting.x != 0.0
+    }
+}
+
+// Bindless where the platform allows, so models with different textures share a batch; the
+// values travel in one buffer, `ModelUniform`, which also keeps WebGL within its fragment binding
+// budget.
 #[derive(Asset, TypePath, AsBindGroup, Clone, PartialEq)]
 #[bind_group_data(ModelKey)]
+#[data(50, ModelUniform, binding_array(101))]
+#[bindless(index_table(range(50..52), binding(100)))]
 struct ModelExtension {
-    #[uniform(100)]
     fog: FogExtension,
-    #[texture(101, sample_type = "float", filterable = false)]
+    /// The light table of `lighting::runtime`, RGBA8 bytes of 32-bit floats.
+    #[texture(51)]
     lights: Handle<Image>,
-    // Share one model buffer to stay within the minimum WebGL fragment binding budget.
-    #[uniform(102)]
     placement: Mat4,
-    #[uniform(102)]
     lighting: Vec4,
-    #[uniform(102)]
     solid_color: Vec4,
-    #[uniform(102)]
     compositing: Vec4,
-    #[uniform(102)]
     chroma_key: Vec4,
-    #[uniform(102)]
     texture_layout: UVec4,
-    #[uniform(102)]
     texture_scale: Vec4,
+    /// The texture is water by SURFACE.INI; the modern screen pass reflects it without ripples.
+    calm_water: bool,
+}
+
+/// `ModelExtension` as the shaders read it, `ModelMaterial` in `model_lights.wesl`.
+#[derive(ShaderType)]
+struct ModelUniform {
+    fog: FogExtension,
+    model: ModelParameters,
+}
+
+#[derive(ShaderType)]
+struct ModelParameters {
+    placement: Mat4,
+    parameters: Vec4,
+    solid_color: Vec4,
+    compositing: Vec4,
+    chroma_key: Vec4,
+    texture_layout: UVec4,
+    texture_scale: Vec4,
+    /// x: 1 on calm water.
+    surface: Vec4,
+}
+
+impl From<&ModelExtension> for ModelUniform {
+    fn from(extension: &ModelExtension) -> Self {
+        Self {
+            fog: extension.fog.clone(),
+            model: ModelParameters {
+                placement: extension.placement,
+                parameters: extension.lighting,
+                solid_color: extension.solid_color,
+                compositing: extension.compositing,
+                chroma_key: extension.chroma_key,
+                texture_layout: extension.texture_layout,
+                texture_scale: extension.texture_scale,
+                surface: Vec4::new(f32::from(u8::from(extension.calm_water)), 0.0, 0.0, 0.0),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -182,6 +296,8 @@ struct ModelKey {
     flat: bool,
     write_depth: bool,
     always_pass: bool,
+    keyed: bool,
+    modern: bool,
 }
 
 impl From<&ModelExtension> for ModelKey {
@@ -190,6 +306,9 @@ impl From<&ModelExtension> for ModelKey {
             flat: extension.compositing.x >= 0.0,
             write_depth: extension.compositing.y as u16 & 0x200 == 0,
             always_pass: extension.compositing.y as u16 & 0x100 != 0,
+            keyed: extension.chroma_key.w != 0.0,
+            // Flats are sprites and keep the original's shading.
+            modern: extension.fog.modern_lighting() && extension.compositing.x < 0.0,
         }
     }
 }
@@ -201,6 +320,20 @@ impl MaterialExtension for ModelExtension {
         layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: bevy::pbr::MaterialExtensionKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
+        if is_prepass(descriptor) {
+            // The camera prepass, which writes normals, cuts keyed texels out in
+            // `model_prepass.wesl`; the shadow pass runs no fragment shader, so keyed models
+            // still cast no shadow.
+            if key.bind_group_data.flat
+                || (key.bind_group_data.keyed && !has_def(descriptor, "NORMAL_PREPASS"))
+            {
+                skip_prepass(descriptor);
+            }
+            return Ok(());
+        }
+        if key.bind_group_data.modern {
+            define_modern_lighting(descriptor);
+        }
         if layout.0.contains(clipping::PROJECTED) {
             descriptor.vertex.shader_defs.push("PREPARED_MODEL".into());
             if let Some(fragment) = &mut descriptor.fragment {
@@ -239,6 +372,9 @@ impl MaterialExtension for ModelExtension {
     fn fragment_shader() -> ShaderRef {
         "embedded://cyrus_render/scene_fog.wesl".into()
     }
+    fn prepass_fragment_shader() -> ShaderRef {
+        "embedded://cyrus_render/model_prepass.wesl".into()
+    }
 }
 
 #[derive(Component)]
@@ -256,7 +392,9 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");
+        load_shader_library!(app, "water_surface.wesl");
         embedded_asset!(app, "scene_fog.wesl");
+        embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
             .add_plugins((
@@ -334,7 +472,7 @@ fn apply_scene_fog(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     distance: Res<RenderDistance>,
-    fidelity: Res<Fidelity>,
+    (fidelity, daylight): (Res<Fidelity>, Option<Res<Daylight>>),
     mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
         (
@@ -343,6 +481,7 @@ fn apply_scene_fog(
             &mut Mesh3d,
             Option<&bevy::gltf::GltfExtras>,
             Option<&bevy::gltf::GltfMaterialExtras>,
+            Option<&bevy::gltf::GltfMaterialName>,
         ),
         Without<RejectedLighting>,
     >,
@@ -437,7 +576,11 @@ fn apply_scene_fog(
             perspective.far = far / 20.0;
         }
     }
-    let extension = fog_extension(environment, &fidelity, [near, far]);
+    let mut extension = fog_extension(environment, &fidelity, [near, far]);
+    // The modern day/night cycle tints the fog with the sky.
+    if let Some(sky) = daylight.and_then(|daylight| daylight.0) {
+        extension.color = (extension.color.truncate() * sky.tint).extend(extension.color.w);
+    }
     if request.is_changed()
         || previous
             .as_ref()
@@ -492,7 +635,7 @@ fn apply_scene_fog(
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
-    for (entity, handle, mut mesh, extras, material_extras) in &mut entities {
+    for (entity, handle, mut mesh, extras, material_extras, material_name) in &mut entities {
         if std::iter::once(entity)
             .chain(parents.iter_ancestors(entity))
             .any(|node| staged.contains(node))
@@ -674,7 +817,7 @@ fn apply_scene_fog(
                 flats.get(entity).ok().map(|flat| flat.alpha),
             ))
             .or_insert_with(|| {
-                fog_materials.add(model_material(
+                let mut material = model_material(
                     base,
                     &extension,
                     terrain,
@@ -687,13 +830,41 @@ fn apply_scene_fog(
                     texture_layout,
                     texture_scale,
                     &light_texture,
-                ))
+                );
+                material.extension.calm_water =
+                    !terrain && is_water_texture(material_name, environment);
+                fog_materials.add(material)
             })
             .clone();
         commands
             .entity(entity)
             .remove::<MeshMaterial3d<StandardMaterial>>()
             .insert(MeshMaterial3d(material));
+    }
+}
+
+/// Whether a model mesh's texture is water by SURFACE.INI, read from the glTF material name
+/// preservation gives it, `TEXBSI.<set> / <name> (image <index>)`.
+pub fn is_water_texture(
+    name: Option<&bevy::gltf::GltfMaterialName>,
+    environment: &Environment,
+) -> bool {
+    let Some((set, rest)) = name
+        .and_then(|name| name.0.strip_prefix("TEXBSI."))
+        .and_then(|rest| rest.split_once(' '))
+    else {
+        return false;
+    };
+    let image = rest
+        .rsplit_once("(image ")
+        .and_then(|(_, image)| image.strip_suffix(')'))
+        .and_then(|image| image.parse::<u16>().ok());
+    match (set.parse::<u16>(), image) {
+        (Ok(set), Some(image)) if image < 128 => environment
+            .water_textures
+            .binary_search(&((set << 7) | image))
+            .is_ok(),
+        _ => false,
     }
 }
 
@@ -754,7 +925,25 @@ fn model_material(
                 u8::from(!terrain) as f32,
                 attributes.map_or(-1.0, f32::from),
             ),
+            calm_water: false,
         },
+    }
+}
+
+/// x: 1 while `Area::Water` is Modern. While Lighting is Modern too, the terrain shader moves the
+/// modern waves (see `water`): z is their amplitude in world units and w the grid cell size, which is
+/// 0 otherwise. y is set later, for terrain.
+fn modern_waves(environment: &Environment, fidelity: &Fidelity) -> Vec4 {
+    let modern = fidelity.mode(Area::Water) == Mode::Modern;
+    let amplitude = environment
+        .water
+        .as_ref()
+        .map_or(0.0, |water| water.parameters[0] / 20.0);
+    let shader_waves = modern && fidelity.mode(Area::Lighting) == Mode::Modern && amplitude != 0.0;
+    if shader_waves {
+        Vec4::new(1.0, 0.0, amplitude, crate::water::CELL_SIZE)
+    } else {
+        Vec4::new(u8::from(modern) as f32, 0.0, 0.0, 0.0)
     }
 }
 
@@ -774,10 +963,11 @@ fn fog_extension(
             u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
             0.0,
         ),
-        water: Vec4::new(
-            u8::from(fidelity.mode(Area::Water) == Mode::Modern) as f32,
-            0.0,
-            0.0,
+        water: modern_waves(environment, fidelity),
+        lighting: Vec4::new(
+            u8::from(fidelity.mode(Area::Lighting) == Mode::Modern) as f32,
+            u8::from(fidelity.mode(Area::Textures) == Mode::Modern) as f32,
+            u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32,
             0.0,
         ),
         table: environment
@@ -871,6 +1061,121 @@ fn prepare_model_geometry<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Modern lighting casts shadows and fills the depth prepass from these materials. The
+    // prepass runs Bevy's own shader on the standard attributes, so the original's extra
+    // attributes must stay out of it; keyed meshes and flats write nothing there.
+    #[test]
+    fn scene_materials_cast_shadows_through_the_standard_prepass() {
+        use bevy::render::render_resource::{
+            CompareFunction, DepthStencilState, RenderPipelineDescriptor,
+        };
+        assert!(<SceneMaterial as Material>::enable_prepass());
+        assert!(<TerrainMaterial as Material>::enable_shadows());
+        let mut prepass = RenderPipelineDescriptor::default();
+        prepass.vertex.shader_defs.push("PREPASS_PIPELINE".into());
+        prepass.depth_stencil = Some(DepthStencilState {
+            format: bevy::render::render_resource::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(CompareFunction::GreaterEqual),
+            stencil: default(),
+            bias: default(),
+        });
+        assert!(is_prepass(&prepass));
+        assert!(!is_prepass(&RenderPipelineDescriptor::default()));
+        skip_prepass(&mut prepass);
+        let depth = prepass.depth_stencil.unwrap();
+        assert_eq!(depth.depth_compare, Some(CompareFunction::Never));
+        assert_eq!(depth.depth_write_enabled, Some(false));
+    }
+
+    #[test]
+    fn modern_lighting_selects_the_shader_branch_only_for_lit_surfaces() {
+        let mut fidelity = Fidelity::default();
+        let environment = Environment {
+            world_palette: Vec::new(),
+            effects: None,
+            texture_scale: [1, 1],
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_heights: None,
+            water: None,
+            terrain_lighting: None,
+            model_lighting: cyrus_assets::environment::ModelLighting {
+                ambient: [64.0; 3],
+                directional: [0.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            },
+            prelighting: Default::default(),
+            water_textures: Vec::new(),
+            object_lights: Vec::new(),
+        };
+        let faithful = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        assert!(!faithful.modern_lighting());
+        fidelity.set(Area::Lighting, Mode::Modern);
+        let modern = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        assert!(modern.modern_lighting());
+        assert!(
+            TerrainKey::from(&TerrainExtension {
+                fog: modern.clone()
+            })
+            .modern
+        );
+        // Texture filtering switches separately from lighting.
+        assert_eq!(modern.lighting.y, 0.0);
+        fidelity.set(Area::Textures, Mode::Modern);
+        let unfiltered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        assert_eq!(unfiltered.lighting.y, 1.0);
+        assert_eq!(unfiltered.lighting.z, 0.0);
+        fidelity.set(Area::AnisotropicFiltering, Mode::Modern);
+        let filtered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        assert_eq!(filtered.lighting.z, 1.0);
+        assert_eq!(filtered.lighting.y, unfiltered.lighting.y);
+    }
+
+    // The terrain shader moves the modern waves only while it draws the unprojected terrain, which
+    // modern lighting does; otherwise the CPU keeps moving them in the mesh.
+    #[test]
+    fn the_terrain_shader_moves_the_waves_only_under_modern_water_and_lighting() {
+        let mut fidelity = Fidelity::default();
+        let water = cyrus_assets::environment::Water {
+            parameters: [24.0, 512.0, 0.0],
+            side: 2,
+            animated_vertices: vec![true; 4],
+        };
+        let mut environment = Environment {
+            world_palette: Vec::new(),
+            effects: None,
+            texture_scale: [1, 1],
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_heights: None,
+            water: Some(water),
+            terrain_lighting: None,
+            model_lighting: cyrus_assets::environment::ModelLighting {
+                ambient: [64.0; 3],
+                directional: [0.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            },
+            prelighting: Default::default(),
+            water_textures: Vec::new(),
+            object_lights: Vec::new(),
+        };
+        assert_eq!(modern_waves(&environment, &fidelity), Vec4::ZERO);
+        fidelity.set(Area::Water, Mode::Modern);
+        assert_eq!(modern_waves(&environment, &fidelity), Vec4::X);
+        fidelity.set(Area::Lighting, Mode::Modern);
+        assert_eq!(
+            modern_waves(&environment, &fidelity),
+            Vec4::new(1.0, 0.0, 1.2, crate::water::CELL_SIZE)
+        );
+        environment.water = None;
+        assert_eq!(modern_waves(&environment, &fidelity), Vec4::X);
+    }
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
@@ -1107,6 +1412,7 @@ mod tests {
                     },
                     prelighting: Default::default(),
                     world_palette: Vec::new(),
+                    water_textures: Vec::new(),
                     object_lights: vec![cyrus_assets::environment::LocalLight {
                         position: [9216, 0, 9728],
                         radius: 100,
@@ -1208,8 +1514,8 @@ mod tests {
         assert_eq!(first.world, scripts.world);
         assert_eq!(first.generation, 10);
         assert_eq!(first.environment, "MGUILD.environment");
-        assert_eq!(first.dimensions, [2, 257]);
-        assert_eq!(first.format, "Rgba32Float");
+        assert_eq!(first.dimensions, [8, 257]);
+        assert_eq!(first.format, "Rgba8Unorm");
         let bound_material = app
             .world()
             .get::<MeshMaterial3d<SceneMaterial>>(entity)
@@ -1354,6 +1660,7 @@ mod tests {
                 heights: vec![0.0; 4],
             }),
             texture_scale: [1, 1],
+            water_textures: Vec::new(),
             object_lights: vec![cyrus_assets::environment::LocalLight {
                 position: [512, 0, 512],
                 radius: 100,
@@ -1750,7 +2057,7 @@ mod tests {
         for (mode, override_far, expected) in [
             (Mode::Faithful, Some(8000.0), 190.0),
             (Mode::Modern, Some(8000.0), 400.0),
-            (Mode::Modern, None, 760.0),
+            (Mode::Modern, None, MODERN_RENDER_DISTANCE / 20.0),
         ] {
             app.world_mut()
                 .resource_mut::<Fidelity>()
@@ -1799,7 +2106,7 @@ mod tests {
                 .fog
                 .clipping
                 .y,
-            15200.0,
+            MODERN_RENDER_DISTANCE,
             "retained materials without scene entities must not be uploaded again"
         );
         assert_eq!(
@@ -1811,7 +2118,7 @@ mod tests {
                 .fog
                 .clipping
                 .y,
-            15200.0
+            MODERN_RENDER_DISTANCE
         );
     }
 }

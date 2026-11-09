@@ -24,13 +24,14 @@ mod water;
 use bevy::prelude::*;
 pub use water::{
     CameraTerrainView, PreparedTerrainMesh, TerrainCandidate, TerrainMeshReplacement,
-    TerrainPlaybackSnapshot, WaterPlayback,
+    TerrainPlaybackSnapshot, TerrainTarget, WaterPlayback,
 };
 /// Shared world presentation for native and browser hosts.
 pub struct WorldRenderPlugin;
 impl Plugin for WorldRenderPlugin {
     fn build(&self, app: &mut App) {
         flat::register(app);
+        app.add_systems(Update, apply_anisotropic_samplers);
         app.add_plugins(persistence::SceneIdentityPlugin);
         app.add_plugins((
             camera::CameraPlugin,
@@ -143,5 +144,104 @@ mod session_scene_tests {
         app.update();
         assert!(app.world().get::<SceneEntity>(root).is_some());
         assert!(!app.world().resource::<camera::FrameScene>().0);
+    }
+}
+
+/// Overrides color-image samplers while the optional Modern filtering area is active.
+/// Original descriptors are retained so disabling it restores each image's own policy.
+fn apply_anisotropic_samplers(
+    fidelity: Res<cyrus_game::fidelity::Fidelity>,
+    mut images: ResMut<Assets<Image>>,
+    mut originals: Local<std::collections::HashMap<AssetId<Image>, bevy::image::ImageSampler>>,
+) {
+    use bevy::image::{ImageFilterMode, ImageSampler};
+    use cyrus_game::fidelity::{Area, Mode};
+    if fidelity.mode(Area::AnisotropicFiltering) == Mode::Faithful {
+        for (id, sampler) in originals.drain() {
+            if let Some(mut image) = images.get_mut(id) {
+                image.sampler = sampler;
+            }
+        }
+        return;
+    }
+    originals.retain(|id, _| images.contains(*id));
+    let pending: Vec<_> = images
+        .iter()
+        .filter(|(id, image)| {
+            !originals.contains_key(id) && image.texture_descriptor.format.is_srgb()
+        })
+        .map(|(id, _)| id)
+        .collect();
+    for id in pending {
+        if let Some(mut image) = images.get_mut(id) {
+            originals.insert(id, image.sampler.clone());
+            let mut sampler = image.sampler.get_or_init_descriptor().clone();
+            sampler.mag_filter = ImageFilterMode::Linear;
+            sampler.min_filter = ImageFilterMode::Linear;
+            sampler.mipmap_filter = ImageFilterMode::Linear;
+            sampler.anisotropy_clamp = 16;
+            image.sampler = ImageSampler::Descriptor(sampler);
+        }
+    }
+}
+
+#[cfg(test)]
+mod filtering_tests {
+    use super::*;
+    use bevy::image::{ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
+    use cyrus_game::fidelity::{Area, Fidelity, Mode};
+
+    #[test]
+    fn filtering_covers_late_images_and_restores_distinct_samplers() {
+        let mut app = App::new();
+        app.init_resource::<Fidelity>()
+            .init_resource::<Assets<Image>>()
+            .add_systems(Update, apply_anisotropic_samplers);
+        let make = |sampler| {
+            let mut image = Image::default();
+            image.texture_descriptor.format =
+                bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb;
+            image.sampler = sampler;
+            image
+        };
+        let first = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(make(ImageSampler::nearest()));
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::AnisotropicFiltering, Mode::Modern);
+        app.update();
+        let late = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(make(ImageSampler::Default));
+        app.update();
+        let images = app.world().resource::<Assets<Image>>();
+        for handle in [&first, &late] {
+            let ImageSampler::Descriptor(sampler) = &images.get(handle).unwrap().sampler else {
+                panic!("sampler not overridden")
+            };
+            assert_eq!(sampler.anisotropy_clamp, 16);
+            assert_eq!(sampler.min_filter, ImageFilterMode::Linear);
+            assert_eq!(sampler.mipmap_filter, ImageFilterMode::Linear);
+        }
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::AnisotropicFiltering, Mode::Faithful);
+        app.update();
+        let images = app.world().resource::<Assets<Image>>();
+        let ImageSampler::Descriptor(sampler) = &images.get(&first).unwrap().sampler else {
+            panic!("nearest descriptor lost")
+        };
+        assert_eq!(
+            sampler.min_filter,
+            ImageSamplerDescriptor::nearest().min_filter
+        );
+        assert_eq!(sampler.anisotropy_clamp, 1);
+        assert!(matches!(
+            images.get(&late).unwrap().sampler,
+            ImageSampler::Default
+        ));
     }
 }

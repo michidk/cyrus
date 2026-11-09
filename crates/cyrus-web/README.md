@@ -98,9 +98,11 @@ native exporter is required.
 | `?new-game=true` | `--new-game` |
 | `?movie=2` | `--movie 2` |
 | `?skip-movies=true` | `--skip-movies` |
+| `?volume=0` | `--volume 0` |
 | `?water=modern` | `--water modern` |
 | `?fog=modern` | `--fog modern` |
 | `?sky=modern` | `--sky modern` |
+| `?mode=modern` | `--mode modern` |
 
 Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
 WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.

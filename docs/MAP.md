@@ -124,6 +124,8 @@ module where it is defined and regenerate.
 
 ## `cyrus-debug` — (undocumented)
 
+- `src/day_night.rs` — The day/night panel: the modern lighting's time of day.
+- `src/effects.rs` — The effects panel: the modern lighting's optional effects.
 - `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
 
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
@@ -157,6 +159,17 @@ module where it is defined and regenerate.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
+- `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
+- `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
+- `src/fog/modern_lighting/effects.rs` — The modern lighting's optional effects, switched from the debug menu's effects panel and the
+- `src/fog/modern_lighting/foliage.rs` — Palm trees and plants that sway in the wind.
+- `src/fog/modern_lighting/glow.rs` — Lamps and fires that glow under the modern lighting.
+- `src/fog/modern_lighting/lights.rs` — The sun, ambient light, object lights and baked lights the modern lighting shades the world with.
+- `src/fog/modern_lighting/plugin.rs` — The modern lighting plugin, its camera effects and teardown, and the light marker the light
+- `src/fog/modern_lighting/post.rs` — The modern lighting's own screen pass: screen-space reflections on water and the sun's lens
+- `src/fog/modern_lighting/shadows.rs` — Shadow-only twins of the models and terrain, so the sun's shadow cascades batch their draws.
+- `src/fog/modern_lighting/sharing.rs` — Shared materials for the models under modern lighting, so the camera's passes batch their draws.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.

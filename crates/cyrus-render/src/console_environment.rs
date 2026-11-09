@@ -294,6 +294,7 @@ mod tests {
             model_lighting: default(),
             prelighting: default(),
             world_palette: Vec::new(),
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
         }
     }

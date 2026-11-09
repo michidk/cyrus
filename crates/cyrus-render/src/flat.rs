@@ -192,8 +192,12 @@ fn face_camera(
         let Ok(parent) = parents.get(parent.parent()) else {
             continue;
         };
-        local.rotation = parent.rotation().inverse() * camera.rotation();
-        *global = parent.mul_transform(*local);
+        // Unchanged sprites stay unchanged, so propagation, bounds and extraction skip them.
+        let rotation = parent.rotation().inverse() * camera.rotation();
+        if local.rotation != rotation {
+            local.rotation = rotation;
+        }
+        global.set_if_neq(parent.mul_transform(*local));
     }
 }
 

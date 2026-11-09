@@ -57,10 +57,32 @@ struct InputParams {
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct FidelityParams {
-    #[schemars(description = "player_controller, camera, water, fog, sky, lighting or music")]
+    #[schemars(
+        description = "player_controller, camera, water, fog, sky, lighting, textures or music"
+    )]
     area: String,
     #[schemars(description = "faithful or modern")]
     mode: String,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct DayNightParams {
+    #[schemars(
+        description = "Hour of the day, 0 through 24 (12 is the world's installed sun); omit to turn the cycle off"
+    )]
+    hour: Option<f32>,
+    #[schemars(description = "Let the hour advance on its own")]
+    #[serde(default)]
+    running: bool,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ModernEffectParams {
+    #[schemars(
+        description = "grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, depth_of_field or motion_blur"
+    )]
+    effect: String,
+    enabled: bool,
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -270,6 +292,32 @@ impl Cyrus {
         text(call(Command::SetFidelity {
             area: p.area,
             mode: p.mode,
+        })?)
+    }
+
+    #[tool(
+        description = "Set the modern lighting's day/night cycle; needs the lighting fidelity area Modern."
+    )]
+    fn set_day_night(
+        &self,
+        Parameters(p): Parameters<DayNightParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::SetDayNight {
+            hour: p.hour,
+            running: p.running,
+        })?)
+    }
+
+    #[tool(
+        description = "Switch one of the modern lighting's optional effects; needs the lighting fidelity area Modern."
+    )]
+    fn set_modern_effect(
+        &self,
+        Parameters(p): Parameters<ModernEffectParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::SetModernEffect {
+            effect: p.effect,
+            enabled: p.enabled,
         })?)
     }
 

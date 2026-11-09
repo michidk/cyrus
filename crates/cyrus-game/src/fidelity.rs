@@ -22,18 +22,22 @@ pub enum Area {
     Fog,
     Sky,
     Lighting,
+    Textures,
     Music,
+    AnisotropicFiltering,
 }
 
 impl Area {
-    pub const ALL: [Area; 7] = [
+    pub const ALL: [Area; 9] = [
         Area::PlayerController,
         Area::Camera,
         Area::Water,
         Area::Fog,
         Area::Sky,
         Area::Lighting,
+        Area::Textures,
         Area::Music,
+        Area::AnisotropicFiltering,
     ];
 }
 
@@ -45,10 +49,14 @@ pub struct Fidelity {
     pub water: Mode,
     pub fog: Mode,
     pub sky: Mode,
-    /// Modern lighting currently reuses the faithful terrain implementation.
+    /// Modern lights the world with physically based shading, shadows and screen-space effects.
     pub lighting: Mode,
+    /// Modern point-samples world textures instead of the original's bilinear filtering.
+    pub textures: Mode,
     /// Modern mutes CD-ROM data-sector bytes that a disc image places inside an audio track.
     pub music: Mode,
+    /// Modern averages up to sixteen samples along world texture footprints.
+    pub anisotropic_filtering: Mode,
 }
 
 impl Fidelity {
@@ -60,7 +68,9 @@ impl Fidelity {
             Area::Fog => self.fog,
             Area::Sky => self.sky,
             Area::Lighting => self.lighting,
+            Area::Textures => self.textures,
             Area::Music => self.music,
+            Area::AnisotropicFiltering => self.anisotropic_filtering,
         }
     }
     pub fn set(&mut self, area: Area, mode: Mode) {
@@ -71,7 +81,9 @@ impl Fidelity {
             Area::Fog => self.fog = mode,
             Area::Sky => self.sky = mode,
             Area::Lighting => self.lighting = mode,
+            Area::Textures => self.textures = mode,
             Area::Music => self.music = mode,
+            Area::AnisotropicFiltering => self.anisotropic_filtering = mode,
         }
     }
 }

@@ -173,6 +173,11 @@ dev container the renderer, not the game logic, limits the frame rate: an optimi
 default size runs at about 5 to 11. Measure the frame rate (control `state`, field `frame`)
 before comparing timing-dependent behaviour such as combat pacing with the original.
 
+The window waits for the display's refresh by default, so a measured frame rate is capped at it
+(and drops to half of it when a frame just misses). `CYRUS_PRESENT_MODE=novsync` presents at
+once; use it, on a machine with no other builds running, when measuring what the game can
+render. `vsync` is the default.
+
 Unoptimized native loader threads need a larger stack. Launch such binaries
 with `RUST_MIN_STACK=8388608`; container launches also need
 `-e RUST_MIN_STACK=8388608`. The test runner sets this automatically; native
@@ -287,7 +292,7 @@ Set `CYRUS_WASM_PROFILE=wasm-release` to build with the release profile name.
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--water`, `--fog`, `--sky`, `--music`, `--controls`, and `--camera` map directly
+Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--water`, `--fog`, `--sky`, `--music`, `--controls`, `--camera` and `--mode` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
