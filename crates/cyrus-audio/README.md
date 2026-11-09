@@ -19,6 +19,9 @@ World teardown stops the entire sample pool, including RTX voices without actor
 ownership and presentation effects. Consumer generation history belongs to that
 pool, so coordinated session replacement adopts its restored world before later
 teardown checks. Actor-local stop commands still leave unowned dialogue alone.
+Shell and script-only map records retain their logical sample ownership without
+a rendered entity. `EndMySound`, `EndMySounds` and `KillMe` use that identity,
+so another script context playing the same effects keeps its samples.
 
 Original PCM width is retained through native and browser preparation. The decoder
 applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
