@@ -24,7 +24,7 @@ pub struct OrdinaryBodyQuery<'a> {
 }
 
 /// Explicit residual inputs after primary response and overlap. The update
-/// snapshot supplies the first working record's angles. No terrain is appended.
+/// snapshot supplies the first working record's spheres and angles. No terrain is appended.
 pub struct OrdinaryResidualQuery<'a> {
     pub scene: &'a crate::player::data::PlayerScene,
     pub animations: &'a cyrus_assets::animation::Animations,
@@ -36,7 +36,7 @@ pub struct OrdinaryResidualQuery<'a> {
 
 impl ScriptWorld {
     /// Query the first working shape at the current effective origin, retaining
-    /// the update's copied angles and applying state-dependent common radii.
+    /// the update's copied spheres and angles and applying state-dependent common radii.
     /// The initial actor shape remains unchanged. Reuses pre-script candidate
     /// admission, while reading each admitted model's stored presentation pose.
     pub fn query_ordinary_residual_body(
@@ -51,7 +51,7 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary residual control unavailable")?;
         let shape = self.ordinary_collision_shape(id)?;
-        let selected = self.selected_collision_spheres(id, query.animations)?;
+        let selected = &query.prepared.working_spheres;
         let initial = selected
             .first()
             .context("ordinary residual first sphere unavailable")?
@@ -303,7 +303,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let spheres = self
-            .selected_collision_spheres(id, query.animations)?
+            .selected_collision_spheres(id, query.animations, query.scene.actor_collision.as_ref())?
             .iter()
             .map(|sphere| {
                 (
@@ -351,7 +351,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let spheres = self
-            .selected_collision_spheres(id, query.animations)?
+            .selected_collision_spheres(id, query.animations, query.scene.actor_collision.as_ref())?
             .iter()
             .map(|sphere| {
                 (

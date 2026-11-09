@@ -720,3 +720,11 @@ Verified: ordinary primary, residual and destination body queries select vertex-
 spheres instead of initial MPSZ spheres when those records exist, following preservation's
 [player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).
 The routed fixture checks displaced vertices, contact restoration and ordinary-update continuation.
+
+Verified: ordinary RAVC body selection reads current animation vertices for animated
+models and scene-owned base vertices otherwise. Primary and destination body
+queries read the current selection. Residual response retains the spheres copied
+when the ordinary query was prepared, together with its copied angles, and refreshes
+only its effective origin. A new update prepares a fresh working record. Working
+spheres belong to the ephemeral query, not persisted actor bounds. This follows
+preservation's per-update collision shape preparation contract.

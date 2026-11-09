@@ -113,7 +113,7 @@ impl ModelState {
     }
 }
 
-/// One admitted actor's ordered candidate lists and copied collision angles.
+/// One admitted actor's ordered candidates and copied collision spheres and angles.
 /// Prepare before its script wrapper, then reuse through late response. Query
 /// origins and stored model poses remain owned by their respective stages.
 pub struct OrdinaryCollisionQuery {
@@ -122,6 +122,7 @@ pub struct OrdinaryCollisionQuery {
     content_id: String,
     pub(super) candidates: cyrus_collision::candidates::CollisionCandidates,
     pub(super) working_angles: [u16; 3],
+    pub(super) working_spheres: Vec<cyrus_collision::actor_shape::BodySphere>,
 }
 
 /// Independently prepared late recovery candidates, bound to one actor and world.
@@ -186,6 +187,8 @@ impl ScriptWorld {
         if self.actors[index].collision.is_none() {
             self.prepare_ordinary_collision_shape(id, data, scene)?;
         }
+        let working_spheres =
+            self.selected_collision_spheres(id, data, scene.actor_collision.as_ref())?;
         let spatial = self.spatial(id)?;
         let working_angles = spatial.angle_history;
         let model =
@@ -215,6 +218,7 @@ impl ScriptWorld {
             world: self.world,
             content_id: self.content_id.clone(),
             candidates,
+            working_spheres,
             working_angles: working_angles.map(|angle| (angle & 2047) as u16),
         })
     }
