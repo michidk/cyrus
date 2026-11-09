@@ -138,3 +138,7 @@ use it after the forced request and loop-count assignment.
 combat timing without advancing playback. It remains distinct from the wrapping
 frame-wait progress byte and displayed model frame, and follows snapshot and
 checkpoint restoration through the existing playback owner.
+
+Ambient sound requests carry an optional published camera listener in signed Q8
+map coordinates and 2048-unit heading. Playback consumes that invocation snapshot
+without depending on render-transform propagation.

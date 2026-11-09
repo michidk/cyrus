@@ -41,12 +41,22 @@ pub struct PlayerAnimationSource;
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SoundSurface(pub cyrus_assets::surface::Surface);
 
+/// Published camera inputs sampled when a positional sound is evaluated.
+/// Position uses signed Q8 map coordinates; heading uses 2048 units per turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SoundListener {
+    pub position: [i32; 3],
+    pub heading: u16,
+}
+
 /// One synchronous AmbientSound invocation, using original Q8 emitter coordinates.
 /// The remembered channel is a sample slot, not an effect or scene entity identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AmbientSoundRequest {
     pub generation: u64,
     pub actor_index: usize,
+    /// Live logical camera pose; absent only when the host has no driven camera.
+    pub listener: Option<SoundListener>,
     pub channel: Option<u8>,
     pub effect: i32,
     pub volume: i32,

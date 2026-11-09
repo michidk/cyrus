@@ -977,6 +977,7 @@ fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
         }
     }
     let alive = AmbientCall {
+        listener: None,
         driver: None,
         reset: Some(false),
         position: Some([256, 0, -512]),

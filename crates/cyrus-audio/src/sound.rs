@@ -655,29 +655,47 @@ fn positional_q8(
     listener: &crate::AudioListener,
     volume_offset: i32,
 ) -> Result<(u8, u8), String> {
-    let distance = settings
-        .sound_distance
-        .ok_or("SYSTEM.INI sound_distance unavailable")?;
     let camera = listener.0.translation();
     let camera_q8 = [
         (f64::from(camera.x) * -5120.0).floor() as i32,
         (f64::from(camera.y) * -5120.0).floor() as i32,
         (f64::from(camera.z) * 5120.0 + 16_777_215.0).floor() as i32,
     ];
-    let difference = std::array::from_fn(|axis| position[axis].wrapping_sub(camera_q8[axis]));
-    let length =
-        cyrus_script::script::rounded_distance(difference).map_err(|error| error.to_string())?;
-    let volume = distance_volume_q8(distance, i64::from(length), volume_offset)?;
     let forward = listener.0.forward();
     let yaw = heading(
         (f64::from(forward.x) * -65536.0).round() as i64,
         (f64::from(forward.z) * 65536.0).round() as i64,
     );
+    positional_listener_q8(
+        position,
+        settings,
+        cyrus_world::sound::SoundListener {
+            position: camera_q8,
+            heading: yaw as u16,
+        },
+        volume_offset,
+    )
+}
+
+fn positional_listener_q8(
+    position: [i32; 3],
+    settings: &SoundSettings,
+    listener: cyrus_world::sound::SoundListener,
+    volume_offset: i32,
+) -> Result<(u8, u8), String> {
+    let distance = settings
+        .sound_distance
+        .ok_or("SYSTEM.INI sound_distance unavailable")?;
+    let difference =
+        std::array::from_fn(|axis| position[axis].wrapping_sub(listener.position[axis]));
+    let length =
+        cyrus_script::script::rounded_distance(difference).map_err(|error| error.to_string())?;
+    let volume = distance_volume_q8(distance, i64::from(length), volume_offset)?;
     Ok((
         volume,
         pan(
             heading(i64::from(difference[0]), i64::from(difference[2])),
-            yaw,
+            i32::from(listener.heading),
         ),
     ))
 }
@@ -1199,6 +1217,7 @@ mod ambient_tests {
         let mut request = cyrus_world::sound::AmbientSoundRequest {
             generation: 1,
             actor_index: 2,
+            listener: None,
             channel: None,
             effect: 0,
             volume: 0,
@@ -1264,6 +1283,7 @@ mod ambient_tests {
         let request = cyrus_world::sound::AmbientSoundRequest {
             generation: 1,
             actor_index: 2,
+            listener: None,
             channel: None,
             effect: -1,
             volume: 0,

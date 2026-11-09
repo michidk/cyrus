@@ -6949,10 +6949,22 @@ fn positional_sound_reads_live_slave_state_before_family_refresh() {
             scripts.instances[1].map_position = [100, 0, 0];
             scripts.instances[1].actor = "MASTER".into();
             scripts.instances[1].angles = [0; 3];
+            add_standalone_receivers(&mut scripts);
+            for name in ["CYRUS", "GREMLIN", "CAMERA"] {
+                let receiver = scripts.actors.get_mut(name).unwrap();
+                receiver.attributes[Attribute::Slave] = 0;
+                receiver.attributes[Attribute::Master] = 0;
+            }
             scripts.content_id = scripts.content_identity().unwrap();
             let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
             world.prepare_spatial().unwrap();
             world.refresh_families().unwrap();
+            world
+                .initialize_camera_pose(cyrus_script::script::camera::CameraPose {
+                    position: [12345, -987, 45678],
+                    angles: [0, 777, 0],
+                })
+                .unwrap();
             let actor = world.id(0).unwrap();
             let before = world.spatial(actor).unwrap();
             assert_eq!(before.parent, Some(1));
@@ -7010,6 +7022,10 @@ fn positional_sound_reads_live_slave_state_before_family_refresh() {
                     [AmbientSoundRequest {
                         generation: 1,
                         actor_index: 0,
+                        listener: Some(cyrus_world::sound::SoundListener {
+                            position: [12345, -987, 45678],
+                            heading: 777,
+                        }),
                         channel: None,
                         effect: 7,
                         volume: -40,

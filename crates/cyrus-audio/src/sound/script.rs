@@ -498,10 +498,19 @@ impl cyrus_world::sound::AmbientSoundDriver for ScopedSounds<'_, '_, '_> {
         let settings = settings
             .as_deref()
             .ok_or("AmbientSound: SYSTEM.INI settings unavailable")?;
-        let listener = listener
-            .as_deref()
-            .ok_or("AmbientSound: listener unavailable")?;
-        let (volume, pan) = positional_q8(request.position, settings, listener, request.volume)?;
+        let (volume, pan) = match request.listener {
+            Some(listener) => {
+                positional_listener_q8(request.position, settings, listener, request.volume)?
+            }
+            None => positional_q8(
+                request.position,
+                settings,
+                listener
+                    .as_deref()
+                    .ok_or("AmbientSound: listener unavailable")?,
+                request.volume,
+            )?,
+        };
         let mut mixer = Mixer {
             master: settings.master_volume,
             sources: sources.as_deref(),
@@ -539,6 +548,7 @@ impl ScriptSounds<'_, '_> {
         let request = cyrus_world::sound::AmbientSoundRequest {
             generation: actor.generation,
             actor_index: actor.index,
+            listener: world.sound_listener(),
             channel: *channel,
             effect: 25,
             // The engine's player torch start uses the positional volume offset -40.
@@ -552,13 +562,20 @@ impl ScriptSounds<'_, '_> {
             .settings
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("torch sound: SYSTEM.INI settings unavailable"))?;
-        let listener = self
-            .frame
-            .listener
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("torch sound: listener unavailable"))?;
-        let (volume, pan) = positional_q8(request.position, settings, listener, request.volume)
-            .map_err(|error| anyhow::anyhow!("torch sound: {error}"))?;
+        let (volume, pan) = match request.listener {
+            Some(listener) => {
+                positional_listener_q8(request.position, settings, listener, request.volume)
+            }
+            None => self
+                .frame
+                .listener
+                .as_deref()
+                .ok_or_else(|| "torch sound: listener unavailable".to_owned())
+                .and_then(|listener| {
+                    positional_q8(request.position, settings, listener, request.volume)
+                }),
+        }
+        .map_err(|error| anyhow::anyhow!("torch sound: {error}"))?;
         let mut mixer = Mixer {
             master: settings.master_volume,
             sources: self.frame.sources.as_deref(),

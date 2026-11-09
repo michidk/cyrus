@@ -371,6 +371,7 @@ fn synchronous_ambient_and_immediate_commands_share_reusable_slots_and_live_gain
             let request = AmbientSoundRequest {
                 generation: 17,
                 actor_index: 7,
+                listener: None,
                 channel: None,
                 effect: 0,
                 volume: 0,
@@ -1063,4 +1064,36 @@ fn shell_sounds_keep_owners_without_rendered_entities() {
 #[test]
 fn code_object_sounds_keep_owners_without_rendered_entities() {
     check_separate_sound_owners(false);
+}
+
+#[test]
+fn ambient_uses_published_listener_before_render_transform_catches_up() {
+    use cyrus_audio::sound::ScriptSounds;
+    use cyrus_world::sound::{AmbientSoundRequest, SoundListener};
+    fn invoke(mut sounds: ScriptSounds) {
+        sounds.with_driver(Some(17), |driver, _| {
+            let result = driver
+                .update(AmbientSoundRequest {
+                    generation: 17,
+                    actor_index: 7,
+                    channel: None,
+                    listener: Some(SoundListener {
+                        position: [0; 3],
+                        heading: 0,
+                    }),
+                    effect: 0,
+                    volume: 0,
+                    rate_offset_hz: 0,
+                    position: [0; 3],
+                    object_update_excluded: false,
+                })
+                .unwrap();
+            assert!(result.active, "published listener is at the emitter");
+            assert_eq!(result.channel, Some(0));
+        });
+    }
+    let (mut app, _) = fixture();
+    // Identity rendering pose is at the far edge of the engine map.
+    app.world_mut().run_system_cached(invoke).unwrap();
+    assert_eq!(playing(&mut app), 1);
 }

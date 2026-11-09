@@ -961,6 +961,16 @@ impl ScriptWorld {
         self.gxa_overlay.as_ref()
     }
 
+    /// Published camera inputs at this exact scheduler point, before render interpolation.
+    pub fn sound_listener(&self) -> Option<cyrus_world::sound::SoundListener> {
+        self.camera
+            .as_ref()
+            .map(|camera| cyrus_world::sound::SoundListener {
+                position: camera.current.position,
+                heading: cyrus_world::heading::wrap(camera.current.angles[1]) as u16,
+            })
+    }
+
     /// Retained camera session, when the world has both a player and a CAMERA instance.
     pub fn camera(&self) -> Option<&super::camera::CameraState> {
         self.camera.as_ref()
@@ -4286,6 +4296,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             })
             .ok();
         super::tasks::AmbientCall {
+            listener: self.registry.sound_listener(),
             driver: self.inputs.ambient_sound,
             reset: self.inputs.sound_reset,
             position,

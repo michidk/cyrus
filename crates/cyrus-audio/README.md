@@ -297,3 +297,7 @@ a burning torch updates its retained voice instead of allocating a duplicate.
 The versioned service checkpoint rejects older documents that omitted this owner. `RuntimeDialogueSnapshot::required_labels`
 provides installed asset preparation hints before validation. The host commits this
 replacement together with logical dialogue records and the sample pool.
+
+Synchronous ambient requests carry the published logical camera position and yaw
+at the native invocation. The torch updater reads the same live camera state.
+Hosts without a driven camera retain their explicit AudioListener fallback.

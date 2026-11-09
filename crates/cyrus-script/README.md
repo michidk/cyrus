@@ -727,3 +727,7 @@ Verified: ordinary primary, residual and destination body queries select vertex-
 spheres instead of initial MPSZ spheres when those records exist, following preservation's
 [player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).
 The routed fixture checks displaced vertices, contact restoration and ordinary-update continuation.
+
+AmbientSound task requests sample the logical camera position and yaw at each
+invocation, so camera changes earlier in the scheduler are audible immediately.
+The optional listener remains absent in script worlds without a camera session.

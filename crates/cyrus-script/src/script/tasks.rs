@@ -147,6 +147,7 @@ pub(super) struct SpatialCall<'a> {
 
 /// Explicit playback service and receiver state for one native ambient invocation.
 pub(super) struct AmbientCall<'a> {
+    pub listener: Option<cyrus_world::sound::SoundListener>,
     pub driver: Option<&'a dyn cyrus_world::sound::AmbientSoundDriver>,
     pub reset: Option<bool>,
     pub position: Option<[i32; 3]>,
@@ -1220,6 +1221,7 @@ impl Task {
                     .update(cyrus_world::sound::AmbientSoundRequest {
                         generation: input.generation,
                         actor_index: input.actor_index,
+                        listener: input.listener,
                         channel: *channel,
                         effect: effect.integer()?,
                         volume: volume.integer()?,
