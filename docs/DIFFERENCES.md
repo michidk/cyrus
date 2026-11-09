@@ -66,7 +66,8 @@ the sky darken and warm with the hour, with a dim moonlight at night. The backgr
 darkens with the fog, and moonlit clouds stay visible at night. Worlds without an installed sun,
 such as interiors, are not affected. The cycle is off by default, so the game keeps its own times of
 day; once on, it runs one in-game minute per real second, so a day lasts 24 minutes. The night sky and
-background are nearly black. Every colour, the speed and the direction of the arc are Modern tuning
+background are nearly black. While the sky is dark, the player carries a candle: a warm light follows
+the player, the stronger the darker it is, and is out by day. Every colour, the speed and the direction of the arc are Modern tuning
 choices.
 
 ## Modern effects

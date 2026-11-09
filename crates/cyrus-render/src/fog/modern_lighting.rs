@@ -14,10 +14,12 @@
 //! flats and the sky keep the original's shading. The sun, the ambient colour and the object
 //! lights come from the world's environment.
 //!
-//! The day/night cycle (`day_night`) moves and tints these lights by the hour, and `effects`
+//! The day/night cycle (`day_night`) moves and tints these lights by the hour, `candle` lights the
+//! player at night, and `effects`
 //! holds the optional effects: tonemapping and grading, automatic exposure, god rays, the sky
 //! glow, water reflections and the lens flare (`post`), swaying plants (`foliage`), depth of
 //! field and motion blur.
+mod candle;
 mod day_night;
 mod effects;
 mod foliage;
