@@ -8,6 +8,7 @@ pub use preparation::{PreparedTerrainMesh, TerrainTarget};
 
 use crate::environment::EnvironmentRequest;
 use bevy::camera::primitives::MeshAabb;
+use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use cyrus_assets::environment::Environment;
@@ -182,6 +183,15 @@ fn publish_heights(player: &PlayerTerrain, window: crate::terrain::Window, heigh
     }
 }
 
+/// What `animate_water` reads about a terrain's place in the scene: its parents, whether it is
+/// staged, its render layers and its glTF material names.
+type WaterHierarchy<'w, 's> = (
+    Query<'w, 's, &'static ChildOf>,
+    Query<'w, 's, (), With<crate::persistence::StagedRenderRoot>>,
+    Query<'w, 's, &'static RenderLayers>,
+    Query<'w, 's, &'static bevy::gltf::GltfMaterialName>,
+);
+
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn animate_water(
@@ -191,21 +201,18 @@ pub(crate) fn animate_water(
     time: Res<Time<Real>>,
     clock: Option<Res<crate::presentation_clock::PresentationClock>>,
     fidelity: Res<Fidelity>,
+    ray_tracing: Option<Res<crate::fog::RayTracingSupport>>,
     mut playback: ResMut<WaterPlayback>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut entities: Query<(Entity, &mut Mesh3d)>,
     names: Query<&Name>,
-    hierarchy: (
-        Query<&ChildOf>,
-        Query<(), With<crate::persistence::StagedRenderRoot>>,
-        Query<&bevy::gltf::GltfMaterialName>,
-    ),
+    hierarchy: WaterHierarchy,
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     distance: Option<Res<crate::fog::RenderDistance>>,
     (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
-    let (parents, staged, material_names) = hierarchy;
+    let (parents, staged, layers, material_names) = hierarchy;
     if playback.source != Some(request.0.id())
         || playback
             .terrain
@@ -219,7 +226,8 @@ pub(crate) fn animate_water(
                 mesh.0 = terrain.original.clone();
                 commands
                     .entity(terrain.entity)
-                    .insert(Visibility::Inherited);
+                    .insert(Visibility::Inherited)
+                    .remove::<crate::animation::PrivateMesh>();
                 if let Some(bounds) = meshes.get(&terrain.original).and_then(Mesh::get_aabb) {
                     commands.entity(terrain.entity).insert(bounds);
                 }
@@ -281,6 +289,9 @@ pub(crate) fn animate_water(
             };
         for binding in bindings {
             entities.get_mut(binding.entity).unwrap().1.0 = binding.mesh;
+            commands
+                .entity(binding.entity)
+                .insert(crate::animation::PrivateMesh);
             if let Some(bounds) = binding.bounds {
                 commands.entity(binding.entity).insert(bounds);
             }
@@ -321,7 +332,7 @@ pub(crate) fn animate_water(
     // the modern waves; rewriting and uploading the whole terrain mesh every frame cost most of
     // a frame. The mesh then keeps the base grid and only the ground heights follow the waves.
     let shader_waves =
-        water.is_some() && mode == Mode::Modern && fidelity.mode(Area::Lighting) == Mode::Modern;
+        water.is_some() && crate::fog::ray_tracing::shader_waves(&fidelity, ray_tracing.as_deref());
     let update_grid = if shader_waves {
         playback.tick.is_none() || playback.mode != mode || !playback.shader_waves
     } else {
@@ -343,10 +354,9 @@ pub(crate) fn animate_water(
     // A faithful wave tick inside an unchanged window moves only the window's animated vertices;
     // everything else keeps the values the last complete update gave it.
     let count = heights.heights.len();
-    let wave_tick = update_grid
+    let incremental = update_grid
         && !rebuild
         && playback.tick.is_some()
-        && mode == Mode::Faithful
         && playback.mode == mode
         && [
             playback.grid.len(),
@@ -357,6 +367,10 @@ pub(crate) fn animate_water(
         ]
         .iter()
         .all(|&len| len == count);
+    let wave_tick = incremental && mode == Mode::Faithful;
+    // Modern waves stay in the original window too (see `Window::wave_weight`), so a modern
+    // update inside an unchanged window moves only its vertices and the normals around them.
+    let modern_tick = incremental && mode == Mode::Modern;
     if let Some(water) = water.filter(|_| wave_tick) {
         playback.tick = Some(ticks);
         for vertex in window.faithful_vertices() {
@@ -383,6 +397,51 @@ pub(crate) fn animate_water(
             ..
         } = &mut *playback;
         for vertex in window.vertices().filter(|&vertex| dirty_normals[vertex]) {
+            normals[vertex] = crate::lighting::grid_vertex_normal(grid, side, vertex);
+            rgb[vertex] = lighting.map_or([255.0; 3], |l| l.rgb(normals[vertex]));
+        }
+        if let Some((camera_from_local, scale)) = camera.view {
+            for &vertex in &moved {
+                camera.positions[vertex] = camera_point(camera_from_local, scale, grid[vertex]);
+            }
+        }
+    } else if let Some(water) = water.filter(|_| modern_tick) {
+        playback.tick = Some(ticks);
+        // Ground queries keep the original wave heights in every mode (water moves actors).
+        for vertex in window.faithful_vertices() {
+            if water.animated_vertices[vertex] {
+                playback.engine_heights[vertex] =
+                    wave_height(water, vertex, ticks, heights.heights[vertex]);
+            }
+        }
+        if playback.engine_heights.len() == 256 * 256
+            && let (Some(request), Some(scenes)) = (&player_scene.request, &player_scene.scenes)
+            && let Some(terrain) = scenes
+                .get(&request.0)
+                .and_then(|scene| scene.terrain.as_ref())
+        {
+            terrain
+                .live()
+                .publish(window.engine_center(), &playback.engine_heights);
+        }
+        let seconds = elapsed.as_secs_f32();
+        let WaterPlayback {
+            base,
+            grid,
+            normals,
+            rgb,
+            camera,
+            ..
+        } = &mut *playback;
+        let moved: Vec<_> = window
+            .faithful_vertices()
+            .filter(|&vertex| water.animated_vertices[vertex])
+            .collect();
+        for &vertex in &moved {
+            grid[vertex][1] = base[vertex][1]
+                + modern_displacement(water, base[vertex], seconds) * window.wave_weight(vertex);
+        }
+        for vertex in window.wave_vertices() {
             normals[vertex] = crate::lighting::grid_vertex_normal(grid, side, vertex);
             rgb[vertex] = lighting.map_or([255.0; 3], |l| l.rgb(normals[vertex]));
         }
@@ -420,7 +479,7 @@ pub(crate) fn animate_water(
                                 water,
                                 playback.base[vertex],
                                 elapsed.as_secs_f32(),
-                            )
+                            ) * window.wave_weight(vertex)
                     }
                 };
             }
@@ -443,9 +502,10 @@ pub(crate) fn animate_water(
             .collect();
         playback.grid = grid;
     }
-    // Modern lighting draws the whole unprojected terrain, which can cast shadows, instead of the
-    // original's per-frame camera-space preparation.
-    let prepare_for_camera = fidelity.mode(Area::Lighting) != Mode::Modern;
+    // Modern lighting and ray tracing draw the whole unprojected terrain, which can cast shadows and
+    // be traced, instead of the original's per-frame camera-space preparation.
+    let prepare_for_camera =
+        !crate::fog::ray_tracing::world_space_geometry(&fidelity, ray_tracing.as_deref());
     let view = cameras
         .single()
         .ok()
@@ -536,18 +596,89 @@ pub(crate) fn animate_water(
                 *mesh = original;
             }
         }
+        // Between full updates only the wave window changes: write just its vertices. The island
+        // terrain is one mesh of about 300k vertices, so recolouring and comparing all of them on
+        // every frame cost more than the waves.
+        if wave_tick || modern_tick {
+            let moved: Vec<_> = terrain
+                .vertices
+                .iter()
+                .enumerate()
+                .filter(|&(_, &vertex)| window.wave_contains(vertex))
+                .collect();
+            fn current(
+                mesh: &Mesh,
+                attribute: bevy::mesh::MeshVertexAttribute,
+            ) -> Option<&[[f32; 3]]> {
+                match mesh.attribute(attribute) {
+                    Some(VertexAttributeValues::Float32x3(values)) => Some(values),
+                    _ => None,
+                }
+            }
+            let still = meshes.get(&terrain.animated).is_none_or(|mesh| {
+                let (Some(positions), Some(mesh_normals)) = (
+                    current(mesh, Mesh::ATTRIBUTE_POSITION),
+                    current(mesh, Mesh::ATTRIBUTE_NORMAL),
+                ) else {
+                    return true;
+                };
+                moved.iter().all(|&(index, &vertex)| {
+                    positions.get(index) == Some(&grid[vertex])
+                        && mesh_normals.get(index) == Some(&normals[vertex])
+                })
+            });
+            if moved.is_empty() || still {
+                continue;
+            }
+            let Some(mut mesh) = meshes.get_mut(&terrain.animated) else {
+                continue;
+            };
+            mesh.asset_usage =
+                crate::animation::private_mesh_usage(layers.get(terrain.entity).ok());
+            if let Ok(VertexAttributeValues::Float32x3(positions)) =
+                mesh.try_attribute_mut(Mesh::ATTRIBUTE_POSITION)
+            {
+                for &(index, &vertex) in &moved {
+                    positions[index] = grid[vertex];
+                }
+            }
+            if let Ok(VertexAttributeValues::Float32x3(mesh_normals)) =
+                mesh.try_attribute_mut(Mesh::ATTRIBUTE_NORMAL)
+            {
+                for &(index, &vertex) in &moved {
+                    mesh_normals[index] = normals[vertex];
+                }
+            }
+            if let Some(lighting) = lighting
+                && let Ok(VertexAttributeValues::Float32x4(colors)) =
+                    mesh.try_attribute_mut(Mesh::ATTRIBUTE_COLOR)
+            {
+                for &(index, &vertex) in &moved {
+                    colors[index] = lighting.color(normals[vertex]);
+                }
+            }
+            continue;
+        }
+        let colors = lighting.map(|lighting| {
+            terrain
+                .vertices
+                .iter()
+                .map(|&vertex| lighting.color(normals[vertex]))
+                .collect::<Vec<_>>()
+        });
+        // Most chunks hold no moving water. Writing one re-uploads it, and under ray tracing
+        // rebuilds its stand-ins and acceleration structure, so unchanged chunks are left alone.
+        if meshes.get(&terrain.animated).is_some_and(|mesh| {
+            unchanged(mesh, &terrain.vertices, grid, normals, colors.as_deref())
+        }) {
+            continue;
+        }
         let Some(mut mesh) = meshes.get_mut(&terrain.animated) else {
             continue;
         };
-        if let Some(lighting) = lighting {
-            mesh.insert_attribute(
-                Mesh::ATTRIBUTE_COLOR,
-                terrain
-                    .vertices
-                    .iter()
-                    .map(|&vertex| lighting.color(normals[vertex]))
-                    .collect::<Vec<_>>(),
-            );
+        mesh.asset_usage = crate::animation::private_mesh_usage(layers.get(terrain.entity).ok());
+        if let Some(colors) = colors {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
         }
         if let Ok(VertexAttributeValues::Float32x3(positions)) =
             mesh.try_attribute_mut(Mesh::ATTRIBUTE_POSITION)
@@ -564,6 +695,33 @@ pub(crate) fn animate_water(
             }
         }
     }
+}
+
+/// Whether a world-space terrain chunk already holds these grid positions, normals and colours.
+fn unchanged(
+    mesh: &Mesh,
+    vertices: &[usize],
+    grid: &[[f32; 3]],
+    normals: &[[f32; 3]],
+    colors: Option<&[[f32; 4]]>,
+) -> bool {
+    let matches = |attribute, values: &[[f32; 3]]| match mesh.attribute(attribute) {
+        Some(VertexAttributeValues::Float32x3(current)) => current
+            .iter()
+            .zip(vertices)
+            .all(|(current, &vertex)| *current == values[vertex]),
+        // Nothing to write into.
+        _ => true,
+    };
+    let colors_match = colors.is_none_or(|colors| {
+        matches!(
+            mesh.attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(VertexAttributeValues::Float32x4(current)) if current.as_slice() == colors
+        )
+    });
+    colors_match
+        && matches(Mesh::ATTRIBUTE_POSITION, grid)
+        && matches(Mesh::ATTRIBUTE_NORMAL, normals)
 }
 
 #[cfg(test)]

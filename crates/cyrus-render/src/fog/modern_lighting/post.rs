@@ -82,6 +82,8 @@ pub(super) struct PostInputs<'w, 's> {
     effects: Res<'w, ModernEffects>,
     time: Res<'w, Time>,
     fidelity: Res<'w, cyrus_game::fidelity::Fidelity>,
+    /// Whether Solari traces the world, which keeps the waves on the CPU (`fog::modern_waves`).
+    ray_tracing: Option<Res<'w, crate::fog::RayTracingSupport>>,
     daylight: Res<'w, Daylight>,
     request: Option<Res<'w, EnvironmentRequest>>,
     environments: Res<'w, Assets<Environment>>,
@@ -139,7 +141,7 @@ impl PostInputs<'_, '_> {
             .as_ref()
             .and_then(|request| self.environments.get(&request.0));
         let waves = environment.map_or(Vec4::ZERO, |environment| {
-            crate::fog::modern_waves(environment, &self.fidelity)
+            crate::fog::modern_waves(environment, &self.fidelity, self.ray_tracing.as_deref())
         });
         let horizon = environment.map_or(Vec3::ZERO, |environment| {
             let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;

@@ -60,7 +60,7 @@ pub struct GameOptions {
     /// Master output volume for this launch, in percent; 0 silences all audio. Not saved.
     #[arg(long, value_name = "PERCENT", value_parser = clap::value_parser!(u8).range(0..=100))]
     pub volume: Option<u8>,
-    /// Sets every presentation area, including the modern lighting pipeline.
+    /// Sets every presentation area except ray tracing, including the modern lighting pipeline.
     /// The per-area flags below override it for their area.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub mode: Option<String>,
@@ -82,6 +82,10 @@ pub struct GameOptions {
     /// Follow camera; modern turns it with the mouse.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub camera: Option<String>,
+    /// Hardware ray-traced lighting through Bevy Solari; modern needs a GPU with ray queries and
+    /// otherwise falls back to the modern lighting `--mode` selects. Not part of `--mode`.
+    #[arg(long, value_parser = ["faithful", "modern"])]
+    pub ray_tracing: Option<String>,
     /// Installed 3dfx splash: the GOG Windows launch's `3DfxSpl2.dll` or the DOS Glide overlay.
     #[arg(long, value_parser = ["windows", "dos"])]
     pub splash: Option<String>,
@@ -202,9 +206,11 @@ mod tests {
             "--controls=modern",
             "--camera=modern",
             "--mode=modern",
+            "--ray-tracing=modern",
         ])
         .unwrap();
         assert_eq!(game.mode.as_deref(), Some("modern"));
+        assert_eq!(game.ray_tracing.as_deref(), Some("modern"));
         assert_eq!(game.music.as_deref(), Some("modern"));
         assert_eq!(game.controls.as_deref(), Some("modern"));
         assert_eq!(game.camera.as_deref(), Some("modern"));

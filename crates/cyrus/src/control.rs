@@ -173,9 +173,10 @@ fn handle(
         clock,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
-    (input, mut flycam): (
+    (input, mut flycam, mut reference): (
         Res<cyrus_script::player::input::PlayerInput>,
         Option<ResMut<cyrus_render::camera::FlycamSettings>>,
+        Option<ResMut<cyrus_render::fog::RayTracingReference>>,
     ),
     mut camera: Query<&mut Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
@@ -415,6 +416,13 @@ fn handle(
                 }
                 None => Err(format!("unknown key {key}")),
             },
+            Command::RayTracingReference { enabled } => match reference.as_mut() {
+                Some(reference) => {
+                    reference.0 = enabled;
+                    Ok(json!({"enabled": enabled}))
+                }
+                None => Err("no renderer is running".into()),
+            },
             Command::SetFidelity { area, mode } => {
                 match (
                     serde_json::from_value::<Area>(json!(area)),
@@ -425,7 +433,7 @@ fn handle(
                         Ok(json!(*fidelity))
                     }
                     _ => Err(
-                        "area must be player_controller|camera|water|fog|sky|lighting|textures|music, mode faithful|modern"
+                        "area must be player_controller|camera|water|fog|sky|lighting|textures|ray_tracing|music, mode faithful|modern"
                             .into(),
                     ),
                 }

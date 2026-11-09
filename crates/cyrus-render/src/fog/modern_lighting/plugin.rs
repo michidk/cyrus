@@ -31,6 +31,7 @@ pub struct ModernLightingPlugin;
 
 impl Plugin for ModernLightingPlugin {
     fn build(&self, app: &mut App) {
+        super::CameraHandover::configure(app);
         app.add_plugins((
             AutoExposurePlugin,
             PostPlugin,
@@ -59,7 +60,11 @@ impl Plugin for ModernLightingPlugin {
                         super::candle::light,
                     )
                         .chain(),
-                    (configure_camera, effects::apply_camera_effects).chain(),
+                    (
+                        configure_camera.in_set(super::CameraHandover::Setup),
+                        effects::apply_camera_effects,
+                    )
+                        .chain(),
                     effects::focus,
                     effects::sun_shafts,
                     foliage::sway,
@@ -70,12 +75,26 @@ impl Plugin for ModernLightingPlugin {
                 )
                     .chain()
                     .run_if(lit),
-                (restore, super::glow::restore).chain().run_if(not(lit)),
                 day_night::tint_sky,
                 day_night::tint_clear_color,
                 effects::sky_glow,
             )
                 .chain(),
+        )
+        .add_systems(
+            Update,
+            (restore, super::glow::restore)
+                .chain()
+                .run_if(not(lit))
+                .in_set(super::CameraHandover::Teardown)
+                .before(day_night::tint_sky),
+        )
+        .add_systems(
+            Update,
+            clear_daylight
+                .run_if(not(cycled))
+                .in_set(super::CameraHandover::Teardown)
+                .before(day_night::tint_sky),
         )
         .add_systems(
             PostUpdate,
@@ -86,8 +105,28 @@ impl Plugin for ModernLightingPlugin {
     }
 }
 
-fn lit(fidelity: Res<Fidelity>) -> bool {
+/// Ray tracing, where it runs, lights the scene in place of this module.
+fn lit(fidelity: Res<Fidelity>, ray_tracing: Option<Res<super::super::RayTracingSupport>>) -> bool {
     fidelity.mode(Area::Lighting) == Mode::Modern
+        && !ray_tracing
+            .is_some_and(|support| super::super::ray_tracing::ray_traced(&fidelity, &support))
+}
+
+/// Whether a tier runs the day/night cycle: modern lighting, or ray tracing, which shares it.
+fn cycled(
+    fidelity: Res<Fidelity>,
+    ray_tracing: Option<Res<super::super::RayTracingSupport>>,
+) -> bool {
+    fidelity.mode(Area::Lighting) == Mode::Modern
+        || ray_tracing
+            .is_some_and(|support| super::super::ray_tracing::ray_traced(&fidelity, &support))
+}
+
+/// Drops the cycle's sky tint once no tier runs the cycle. Kept apart from `restore`, which also
+/// runs while Solari traces: resetting the tint there undid the traced cycle's tint every frame.
+fn clear_daylight(mut daylight: ResMut<Daylight>, mut candle: ResMut<super::candle::Candle>) {
+    daylight.set_if_neq(Daylight(None));
+    candle.set_if_neq(super::candle::Candle(None));
 }
 
 /// A light, or the marker that lights were built, owned by this module.
@@ -156,8 +195,6 @@ struct Modernized<'w, 's> {
             With<super::candle::CandleLamp>,
         )>,
     >,
-    daylight: ResMut<'w, Daylight>,
-    candle: ResMut<'w, super::candle::Candle>,
     auto_exposure: Res<'w, AutoExposureAssets>,
     plants: foliage::Swaying<'w, 's>,
     twins: Query<'w, 's, Entity, With<shadows::ShadowTwin>>,
@@ -181,8 +218,6 @@ fn restore(mut commands: Commands, modernized: Modernized) {
     let Modernized {
         cameras,
         removed,
-        mut daylight,
-        mut candle,
         auto_exposure,
         mut plants,
         twins,
@@ -192,8 +227,6 @@ fn restore(mut commands: Commands, modernized: Modernized) {
         mut shared_models,
         kept,
     } = modernized;
-    daylight.set_if_neq(Daylight(None));
-    candle.set_if_neq(super::candle::Candle(None));
     for (camera, exposure) in &cameras {
         let mut camera = commands.entity(camera);
         if !effects::remove_camera_effects(&mut camera, exposure, &auto_exposure) {
@@ -245,6 +278,7 @@ mod tests {
         world.init_resource::<SharedMaterials>();
         schedule.add_systems((
             restore,
+            clear_daylight,
             sync_lights,
             configure_camera,
             effects::apply_camera_effects,
@@ -260,12 +294,39 @@ mod tests {
             super::super::glow::find_lamps,
             super::super::glow::restore,
             day_night::advance,
+            (super::super::candle::track, super::super::candle::light),
             day_night::apply,
             day_night::tint_sky,
-            (super::super::candle::track, super::super::candle::light),
         ));
         schedule
             .initialize(&mut world)
             .expect("systems initialize without query conflicts");
+    }
+
+    // Under ray tracing the raster teardown runs every frame; it must leave the traced cycle's
+    // sky tint alone.
+    #[test]
+    fn the_traced_cycle_keeps_its_sky_tint() {
+        let mut world = World::new();
+        let mut fidelity = Fidelity::default();
+        fidelity.set(Area::RayTracing, Mode::Modern);
+        world.insert_resource(fidelity);
+        world.insert_resource(super::super::super::RayTracingSupport::Available);
+        let tint = Daylight(Some(day_night::SkyLight {
+            tint: Vec3::splat(0.5),
+            sun_rotation: Quat::IDENTITY,
+            sun_disc: 0.0,
+        }));
+        world.insert_resource(tint);
+        world.init_resource::<super::super::candle::Candle>();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(clear_daylight.run_if(not(cycled)));
+        schedule.run(&mut world);
+        assert_eq!(*world.resource::<Daylight>(), tint);
+        world
+            .resource_mut::<Fidelity>()
+            .set(Area::RayTracing, Mode::Faithful);
+        schedule.run(&mut world);
+        assert_eq!(*world.resource::<Daylight>(), Daylight(None));
     }
 }

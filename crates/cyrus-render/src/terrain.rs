@@ -133,6 +133,30 @@ impl Window {
         Self { radius: 16, ..self }.contains(vertex)
     }
 
+    /// Grid vertices whose position or normal a wave can change: the original window and the
+    /// ring of cells around it, whose normals share its faces.
+    pub(super) fn wave_vertices(self) -> impl Iterator<Item = usize> {
+        Self { radius: 17, ..self }.vertices()
+    }
+
+    /// Whether a wave can change this vertex's position or normal; see [`Self::wave_vertices`].
+    pub(super) fn wave_contains(self, vertex: usize) -> bool {
+        Self { radius: 17, ..self }.contains(vertex)
+    }
+
+    /// How much of a modern wave a vertex carries: full inside the original sixteen-cell window,
+    /// fading to none over its outer four cells. The original animates water only in that
+    /// window; keeping modern waves there leaves the far sea that Modern Fog draws still, so its
+    /// terrain is not rewritten and uploaded every frame.
+    pub(super) fn wave_weight(self, vertex: usize) -> f32 {
+        const RADIUS: f32 = 16.0;
+        const FADE: f32 = 4.0;
+        let x = (vertex % self.side) as f32 - self.center[0] as f32 + 0.5;
+        let row = (vertex / self.side) as f32 - self.center[1] as f32 - 0.5;
+        let distance = x.abs().max(row.abs());
+        ((RADIUS - distance) / FADE).clamp(0.0, 1.0)
+    }
+
     /// Whether any grid cell in `[min_x, max_x, min_row, max_row]` lies inside the window; a
     /// triangle needs all three corners inside, so none can be admitted otherwise.
     fn overlaps(self, [min_x, max_x, min_row, max_row]: [i32; 4]) -> bool {
@@ -345,6 +369,23 @@ pub(super) fn update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modern_waves_fade_out_at_the_original_window_edge() {
+        let side = 256;
+        let window = Window {
+            center: [128, 128],
+            side,
+            radius: 64,
+        };
+        let vertex = |x: usize, row: usize| row * side + x;
+        assert_eq!(window.wave_weight(vertex(128, 128)), 1.0);
+        assert_eq!(window.wave_weight(vertex(128 + 10, 128)), 1.0);
+        let fading = window.wave_weight(vertex(128 + 14, 128));
+        assert!(fading > 0.0 && fading < 1.0, "{fading}");
+        assert_eq!(window.wave_weight(vertex(128 + 20, 128)), 0.0);
+        assert_eq!(window.wave_weight(vertex(128, 128 + 40)), 0.0);
+    }
 
     #[test]
     fn texture_admission_uses_facing_window_and_clipping_before_raster_area() {

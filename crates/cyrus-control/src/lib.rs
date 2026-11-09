@@ -151,6 +151,11 @@ pub enum Command {
         area: String,
         mode: String,
     },
+    /// Replace the ray-traced lighting with Solari's path tracer, which converges while the camera
+    /// is still; a reference for judging the real-time lighting. No effect unless ray tracing runs.
+    RayTracingReference {
+        enabled: bool,
+    },
     /// Set the modern lighting's day/night cycle: `hour` (0 to 24) turns it on at that hour and
     /// null turns it off; `running` lets the hour advance. Needs `lighting` Modern to show.
     SetDayNight {

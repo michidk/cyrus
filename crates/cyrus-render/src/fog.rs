@@ -5,6 +5,7 @@ mod effects;
 pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;
+pub(crate) mod ray_tracing;
 pub use observation::BoundSceneLightImage;
 mod texture;
 pub use modern_lighting::{
@@ -13,6 +14,9 @@ pub use modern_lighting::{
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
+#[cfg(feature = "raytracing")]
+pub use ray_tracing::RayTracingPlugin;
+pub use ray_tracing::{RayTracingReference, RayTracingSupport};
 pub use texture::{
     EffectDraw, EffectDrawView, TextureAnimations, TextureFrame, TexturePlaybackSnapshot,
     TextureSourcesSnapshot,
@@ -224,6 +228,12 @@ struct FogExtension {
     lighting: Vec4,
 }
 
+/// The fog the scene materials use for the current world, for passes that fog without them.
+#[derive(Resource, Default, Clone, PartialEq)]
+// Only the ray-traced fog pass reads it.
+#[cfg_attr(not(feature = "raytracing"), allow(dead_code))]
+struct SceneFog(Option<FogExtension>);
+
 impl FogExtension {
     fn modern_lighting(&self) -> bool {
         self.lighting.x != 0.0
@@ -397,6 +407,8 @@ impl Plugin for FogPlugin {
         embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
+            .init_resource::<RayTracingSupport>()
+            .init_resource::<SceneFog>()
             .add_plugins((
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
@@ -472,7 +484,12 @@ fn apply_scene_fog(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     distance: Res<RenderDistance>,
-    (fidelity, daylight): (Res<Fidelity>, Option<Res<Daylight>>),
+    (fidelity, daylight, ray_tracing, scene_fog): (
+        Res<Fidelity>,
+        Option<Res<Daylight>>,
+        Option<Res<RayTracingSupport>>,
+        Option<ResMut<SceneFog>>,
+    ),
     mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
         (
@@ -483,7 +500,7 @@ fn apply_scene_fog(
             Option<&bevy::gltf::GltfMaterialExtras>,
             Option<&bevy::gltf::GltfMaterialName>,
         ),
-        Without<RejectedLighting>,
+        (Without<RejectedLighting>, Without<ray_tracing::StandIn>),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
@@ -576,7 +593,7 @@ fn apply_scene_fog(
             perspective.far = far / 20.0;
         }
     }
-    let mut extension = fog_extension(environment, &fidelity, [near, far]);
+    let mut extension = fog_extension(environment, &fidelity, ray_tracing.as_deref(), [near, far]);
     // The modern day/night cycle tints the fog with the sky.
     if let Some(sky) = daylight.and_then(|daylight| daylight.0) {
         extension.color = (extension.color.truncate() * sky.tint).extend(extension.color.w);
@@ -633,6 +650,9 @@ fn apply_scene_fog(
             material.extension.fog = extension.clone();
             material.extension.fog.water.y = 1.0;
         }
+    }
+    if let Some(mut scene_fog) = scene_fog {
+        scene_fog.set_if_neq(SceneFog(Some(extension.clone())));
     }
     *previous = Some((request.0.id(), extension.clone()));
     for (entity, handle, mut mesh, extras, material_extras, material_name) in &mut entities {
@@ -930,16 +950,20 @@ fn model_material(
     }
 }
 
-/// x: 1 while `Area::Water` is Modern. While Lighting is Modern too, the terrain shader moves the
-/// modern waves (see `water`): z is their amplitude in world units and w the grid cell size, which is
-/// 0 otherwise. y is set later, for terrain.
-fn modern_waves(environment: &Environment, fidelity: &Fidelity) -> Vec4 {
+/// x: 1 while `Area::Water` is Modern. While the terrain shader moves the modern waves (see
+/// `ray_tracing::shader_waves`), z is their amplitude in world units and w the grid cell size, which
+/// is 0 otherwise. y is set later, for terrain.
+fn modern_waves(
+    environment: &Environment,
+    fidelity: &Fidelity,
+    ray_tracing: Option<&RayTracingSupport>,
+) -> Vec4 {
     let modern = fidelity.mode(Area::Water) == Mode::Modern;
     let amplitude = environment
         .water
         .as_ref()
         .map_or(0.0, |water| water.parameters[0] / 20.0);
-    let shader_waves = modern && fidelity.mode(Area::Lighting) == Mode::Modern && amplitude != 0.0;
+    let shader_waves = ray_tracing::shader_waves(fidelity, ray_tracing) && amplitude != 0.0;
     if shader_waves {
         Vec4::new(1.0, 0.0, amplitude, crate::water::CELL_SIZE)
     } else {
@@ -947,9 +971,13 @@ fn modern_waves(environment: &Environment, fidelity: &Fidelity) -> Vec4 {
     }
 }
 
+/// The fog uniform for `environment`. Its lighting flag selects the modern shader branch wherever
+/// the geometry is world space: under modern lighting, and under ray tracing, whose clipped models
+/// draw their world-space source meshes even while `Area::Lighting` is Faithful.
 fn fog_extension(
     environment: &Environment,
     fidelity: &Fidelity,
+    ray_tracing: Option<&RayTracingSupport>,
     [near, far]: [f32; 2],
 ) -> FogExtension {
     FogExtension {
@@ -963,9 +991,9 @@ fn fog_extension(
             u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
             0.0,
         ),
-        water: modern_waves(environment, fidelity),
+        water: modern_waves(environment, fidelity, ray_tracing),
         lighting: Vec4::new(
-            u8::from(fidelity.mode(Area::Lighting) == Mode::Modern) as f32,
+            u8::from(ray_tracing::world_space_geometry(fidelity, ray_tracing)) as f32,
             u8::from(fidelity.mode(Area::Textures) == Mode::Modern) as f32,
             u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32,
             0.0,
@@ -1112,10 +1140,10 @@ mod tests {
             water_textures: Vec::new(),
             object_lights: Vec::new(),
         };
-        let faithful = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        let faithful = fog_extension(&environment, &fidelity, None, [7.0, 3800.0]);
         assert!(!faithful.modern_lighting());
         fidelity.set(Area::Lighting, Mode::Modern);
-        let modern = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        let modern = fog_extension(&environment, &fidelity, None, [7.0, 3800.0]);
         assert!(modern.modern_lighting());
         assert!(
             TerrainKey::from(&TerrainExtension {
@@ -1126,13 +1154,31 @@ mod tests {
         // Texture filtering switches separately from lighting.
         assert_eq!(modern.lighting.y, 0.0);
         fidelity.set(Area::Textures, Mode::Modern);
-        let unfiltered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        let unfiltered = fog_extension(&environment, &fidelity, None, [7.0, 3800.0]);
         assert_eq!(unfiltered.lighting.y, 1.0);
         assert_eq!(unfiltered.lighting.z, 0.0);
         fidelity.set(Area::AnisotropicFiltering, Mode::Modern);
-        let filtered = fog_extension(&environment, &fidelity, [7.0, 3800.0]);
+        let filtered = fog_extension(&environment, &fidelity, None, [7.0, 3800.0]);
         assert_eq!(filtered.lighting.z, 1.0);
         assert_eq!(filtered.lighting.y, unfiltered.lighting.y);
+        // Traced clipped models draw world-space source meshes, which only the modern branch
+        // places.
+        fidelity.set(Area::Lighting, Mode::Faithful);
+        fidelity.set(Area::RayTracing, Mode::Modern);
+        let traced = fog_extension(
+            &environment,
+            &fidelity,
+            Some(&RayTracingSupport::Available),
+            [7.0, 3800.0],
+        );
+        assert!(traced.modern_lighting());
+        let unsupported = fog_extension(
+            &environment,
+            &fidelity,
+            Some(&RayTracingSupport::Unavailable),
+            [7.0, 3800.0],
+        );
+        assert!(!unsupported.modern_lighting());
     }
 
     // The terrain shader moves the modern waves only while it draws the unprojected terrain, which
@@ -1165,16 +1211,20 @@ mod tests {
             water_textures: Vec::new(),
             object_lights: Vec::new(),
         };
-        assert_eq!(modern_waves(&environment, &fidelity), Vec4::ZERO);
+        assert_eq!(modern_waves(&environment, &fidelity, None), Vec4::ZERO);
         fidelity.set(Area::Water, Mode::Modern);
-        assert_eq!(modern_waves(&environment, &fidelity), Vec4::X);
+        assert_eq!(modern_waves(&environment, &fidelity, None), Vec4::X);
         fidelity.set(Area::Lighting, Mode::Modern);
         assert_eq!(
-            modern_waves(&environment, &fidelity),
+            modern_waves(&environment, &fidelity, None),
             Vec4::new(1.0, 0.0, 1.2, crate::water::CELL_SIZE)
         );
+        // A traced scene keeps the waves in the mesh its stand-ins are built from.
+        fidelity.set(Area::RayTracing, Mode::Modern);
+        let traced = Some(&RayTracingSupport::Available);
+        assert_eq!(modern_waves(&environment, &fidelity, traced), Vec4::X);
         environment.water = None;
-        assert_eq!(modern_waves(&environment, &fidelity), Vec4::X);
+        assert_eq!(modern_waves(&environment, &fidelity, None), Vec4::X);
     }
 
     #[test]

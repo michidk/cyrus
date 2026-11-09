@@ -111,6 +111,34 @@ The original renders through 3dfx Glide with bilinear texture filtering, which F
 The `textures` fidelity area, Modern only (set by `--mode modern` or the debug menu), point-samples
 world model and terrain textures instead, so the pixel art stays sharp. The sky keeps its filtering.
 
+## Ray-traced lighting
+
+The original has no ray tracing. The debug menu's **Ray tracing** switch (the `ray_tracing` fidelity
+area, Modern only, native builds only, `--ray-tracing modern`, not part of `--mode`) lights the world
+with Bevy Solari instead of the raster shading above. Solari traces only plain PBR meshes, so each opaque
+world mesh gets a traced stand-in in that layout while the original draw stops; flats, water, sky and
+chroma-keyed meshes keep their original shading. The lights use the modern lighting's calibration, and
+object and baked lights become small emissive spheres of the same power. **Verified:** the original adds each
+face's brightness byte to its ambient light ([model
+lighting](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/model-lighting.md)); the
+drawn stand-ins give off their albedo times that brightness over 255 where they are seen. As Modern
+tuning choices, lit windows and lamps (faces with brightness at least 96) also emit light into the traced
+scene, 64 times what they are drawn with at night and eight times by day, while the walls' dimmer
+visible glow follows the day/night sky tint. The traced image receives the
+same distance fog as the meshes that keep their original shaders. It needs a GPU with ray-query support and is greyed out without one;
+where it is unavailable, the `lighting` area applies. Traced sky light is occluded by the surroundings,
+so the ambient light is raised while Solari traces it to keep shaded streets readable; the scale is a
+tuning choice. Solari's output is noisy by design, so it runs with ReSTIR and raised sample counts and a
+denoiser of our own, in the vendored `bevy_solari` under `dev/vendor`: it divides the albedo out,
+accumulates the light over time against the previous frame's depth and normals, filters it with
+edge-stopping a-trous passes and multiplies the albedo back in. It works on any ray-query GPU and needs
+no NVIDIA SDK, but it treats all light as diffuse. History is dropped on camera jumps and world changes.
+The vendored copy also fixes a compaction queue that prepared a replaced mesh twice. On an RTX 4070 at
+1600x900 in ISLAND the denoiser cuts the mean frame-to-frame luminance change from about 2.4 to 0.3. The
+debug menu's **Path-traced reference** switch (control `ray_tracing_reference`) replaces the real-time
+lighting with Solari's path tracer, which converges while the camera is still, as a reference for judging
+the real-time image; it draws over sky, water and flats.
+
 ## Credits scroll pace
 
 **Verified:** the original scrolls the credits one pixel per buffer swap with swap interval one, and opens

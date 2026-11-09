@@ -83,7 +83,7 @@ fn bind(
     ),
     mut actors: Option<ResMut<ScriptActors>>,
     mut textures: ResMut<TextureAnimations>,
-    fidelity: Res<Fidelity>,
+    (fidelity, ray_tracing): (Res<Fidelity>, Option<Res<super::RayTracingSupport>>),
     distance: Res<super::RenderDistance>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<SceneMaterial>>,
@@ -153,7 +153,7 @@ fn bind(
         }
         // Binding validates the source and preserves an already prepared logical pool.
         world.prepare_environment_effects(source)?;
-        let fog = super::fog_extension(environment, &fidelity, clipping);
+        let fog = super::fog_extension(environment, &fidelity, ray_tracing.as_deref(), clipping);
         if !source.disabled {
             for index in 0..source.capacity as usize {
                 let placeholder = EffectDraw {
@@ -296,7 +296,7 @@ fn draw(
     logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
-    fidelity: Res<Fidelity>,
+    (fidelity, ray_tracing): (Res<Fidelity>, Option<Res<super::RayTracingSupport>>),
     distance: Res<super::RenderDistance>,
     mut actors: Option<ResMut<ScriptActors>>,
     mut textures: ResMut<TextureAnimations>,
@@ -454,7 +454,7 @@ fn draw(
                 admitted: false,
             });
         }
-        let fog = super::fog_extension(environment, &fidelity, clipping);
+        let fog = super::fog_extension(environment, &fidelity, ray_tracing.as_deref(), clipping);
         let mut admitted = 0;
         for retained in &textures.effect_draws {
             let index = retained.slot;

@@ -4,6 +4,10 @@ description = "Shared scene, camera, HUD and subtitle presentation."
 version.workspace = true
 edition.workspace = true
 
+# Hardware ray-traced lighting through Bevy Solari; native builds only.
+[features]
+raytracing = ["bevy/bevy_solari"]
+
 [dependencies]
 redguard-preservation.workspace = true
 cyrus-console.workspace = true
