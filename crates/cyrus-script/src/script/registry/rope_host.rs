@@ -682,28 +682,18 @@ impl ScriptWorld {
             .context("rope release: attachment unavailable")?;
         let attachment = rope.attachments.remove(position);
         rope.down_limit = None;
-        let motion = i64::from(attachment.motion);
-        let scale = i64::from(frame_scale.max(1));
-        let speed = if rope.amplitude < 6 && motion.abs() < (scale * 0x1800) >> 8 {
-            if up {
-                settings.jump_add
-            } else if down {
-                -settings.jump_add
-            } else {
-                0
-            }
-        } else {
-            let mut direction = rope.direction;
-            if rope.kind & 1 != 0 && heading_difference(heading, rope.heading).abs() > 0x10 {
-                direction = (direction + 1) & 1;
-            }
-            let extra = i32::try_from((motion.abs() << 8) / scale).unwrap_or(i32::MAX);
-            if direction == 1 {
-                settings.jump_add.saturating_add(extra)
-            } else {
-                -settings.jump_add.saturating_sub(extra)
-            }
-        };
+        let mut direction = rope.direction;
+        if rope.kind & 1 != 0 && heading_difference(heading, rope.heading).abs() > 0x10 {
+            direction = (direction + 1) & 1;
+        }
+        let speed = detach_word(
+            settings.jump_add,
+            attachment.motion,
+            frame_scale,
+            rope.amplitude,
+            direction,
+            [up, down],
+        );
         self.spatial
             .as_mut()
             .context("rope detach spatial state unavailable")?
@@ -884,9 +874,63 @@ fn hanging_group(
     }
 }
 
+/// The detach motion word (preservation SOUP.md, "Rope attachment removal"): a quiet rope
+/// (amplitude below 6 and node speed below `frame scale * 0x1800 >> 8`) releases at zero, or at
+/// `+-jump_add` for a held Up or Down; otherwise the rope's direction byte, already flipped for
+/// a turned actor, gives `jump_add + |motion| * 256 / frame scale` when one and its negation
+/// when zero.
+fn detach_word(
+    jump_add: i32,
+    motion: i32,
+    frame_scale: i32,
+    amplitude: i32,
+    direction: u8,
+    [up, down]: [bool; 2],
+) -> i32 {
+    let motion = i64::from(motion).abs();
+    let scale = i64::from(frame_scale.max(1));
+    if amplitude < 6 && motion < (scale * 0x1800) >> 8 {
+        return if up {
+            jump_add
+        } else if down {
+            -jump_add
+        } else {
+            0
+        };
+    }
+    let extra = i32::try_from((motion << 8) / scale).unwrap_or(i32::MAX);
+    let word = jump_add.saturating_add(extra);
+    if direction == 1 { word } else { -word }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_swinging_rope_detaches_with_the_jump_add_plus_the_node_speed_in_its_direction() {
+        // Motion 512 at frame scale 256 adds 512; the jump add is 4608.
+        assert_eq!(
+            detach_word(4608, 512, 256, 8, 1, [false, false]),
+            4608 + 512
+        );
+        assert_eq!(
+            detach_word(4608, -512, 256, 8, 0, [false, false]),
+            -4608 - 512
+        );
+        // A fast node releases swinging even when the amplitude is low, and held keys do not matter.
+        assert_eq!(
+            detach_word(4608, 0x1800, 256, 0, 0, [true, false]),
+            -4608 - 0x1800
+        );
+    }
+
+    #[test]
+    fn a_quiet_rope_detaches_at_zero_or_the_jump_add_of_the_held_vertical_key() {
+        assert_eq!(detach_word(4608, 100, 256, 5, 1, [false, false]), 0);
+        assert_eq!(detach_word(4608, 100, 256, 5, 1, [true, false]), 4608);
+        assert_eq!(detach_word(4608, 100, 256, 5, 1, [false, true]), -4608);
+    }
 
     #[test]
     fn a_hanging_player_is_promoted_by_the_rope_direction_then_its_pitch() {
