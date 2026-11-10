@@ -6,11 +6,12 @@ xdotool and logs the game's loop frame at the start, at every event and at the s
 Usage: original-capture-inner.py <state-reader> <events.json> <seconds-after-start>
 events.json: [[seconds, "key"|"keydown"|"keyup", "xdotool-key-name"], ...] relative to the start.
 Prints one JSON object: {"start": {"wall": w, "frame": f}, "events": [[t, action, key, frame, wav_bytes]],
-"stop": {"wall": w, "frame": f}, "sizes": [[t, bytes]]} (the recording size every 20 ms, to interpolate emulated time between its 64 KiB steps). The recorder writes its WAV into the DOSBox-X capture directory.
+"stop": {"wall": w, "frame": f}, "sizes": [[t, bytes]], "shots": [[t_begin, t_end, file]]} (the recording size every 20 ms, to interpolate emulated time between its 64 KiB steps). The recorder writes its WAV into the DOSBox-X capture directory.
 """
 import glob
 import json
 import os
+import threading
 import subprocess
 import sys
 import time
@@ -39,10 +40,34 @@ def toggle_recorder():
     subprocess.run(["xdotool", "keydown", "F12", "key", "w", "keyup", "F12"], env=env)
 
 
+waited = time.time()
 while frame() <= 400:
+    if time.time() - waited > 150:  # the reader can lose the engine; start anyway (frames read -1)
+        break
     time.sleep(0.5)
+if os.path.exists("/tmp/hook.py"):
+    # An optional placement hook (kept outside the repository; it may use engine internals).
+    subprocess.run([sys.executable, "/tmp/hook.py", reader] + os.environ.get("CYRUS_HOOK_ARGS", "").split(), timeout=120)
 toggle_recorder()
 start = time.time()
+shots = []
+interval = float(os.environ.get("CYRUS_SHOT_INTERVAL", "0"))
+
+
+def take_shots():
+    os.makedirs("/game/capture/shots", exist_ok=True)
+    index = 0
+    while time.time() - start < seconds:
+        name = f"/game/capture/shots/s{index:04d}.png"
+        began = time.time() - start
+        subprocess.run(["scrot", "-o", name], env=env)
+        shots.append([round(began, 3), round(time.time() - start, 3), name.rsplit("/", 1)[1]])
+        index += 1
+        time.sleep(interval)
+
+
+if interval > 0:
+    threading.Thread(target=take_shots, daemon=True).start()
 time.sleep(1)
 begin = {"wall": start, "frame": frame(), "wav_bytes": recorded_bytes()}
 done, log, sizes = 0, [], []
@@ -59,4 +84,4 @@ while time.time() - start < seconds:
 end = {"wall": time.time(), "frame": frame(), "wav_bytes": recorded_bytes()}
 toggle_recorder()
 time.sleep(1)
-print(json.dumps({"start": begin, "events": log, "stop": end, "sizes": sizes}))
+print(json.dumps({"start": begin, "events": log, "stop": end, "sizes": sizes, "shots": shots}))
