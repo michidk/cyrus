@@ -4,8 +4,9 @@
 # independent of how slowly the container emulates; the inner script logs the game's loop frame
 # at the start, at each key event and at the stop so audio positions map to the state reader.
 # Usage: original-audio-capture.sh <events.json> <out-dir> [seconds]
-# Optional: CYRUS_DOSBOX_CMD, one DOSBox-X command run before the game (for example
-#           `mixer cdaudio 0` to mute the CD music channel and isolate effects and speech).
+# Optional: CYRUS_DOSBOX_AUTOEXEC, newline-separated DOSBox-X commands inserted into the
+#           container's autoexec after the drives are mounted and before the game starts (for example `mixer cdaudio 0` to mute the
+#           CD music channel, or `mixer >c:\\mixer.txt` to list the channels into the run copy).
 # Environment: CYRUS_RETRO_RUN = a private copy of the install tree (never the shared install);
 #              CYRUS_RETRO_GOG = the directory mounted read-only at /gog; the run copy's relative
 #              symlinks resolve through it, and it must hold extracted/app/game.gog.
@@ -18,8 +19,19 @@ seconds=${3:-40}
 run=${CYRUS_RETRO_RUN:?set CYRUS_RETRO_RUN to a private install copy}
 gog=${CYRUS_RETRO_GOG:?set CYRUS_RETRO_GOG to the directory holding extracted/app/game.gog}
 name=audio-capture-$$
-dosbox_args=()
-[ -z "${CYRUS_DOSBOX_CMD:-}" ] || dosbox_args=(-c "$CYRUS_DOSBOX_CMD")
+conf_mount=()
+if [ -n "${CYRUS_DOSBOX_AUTOEXEC:-}" ]; then
+    conf="$run/dosbox-x.autoexec.conf"
+    docker run --rm --entrypoint cat cyrus-retro:dev /etc/cyrus/dosbox-x.conf > "$conf"
+    python3 - "$conf" <<'PY'
+import os, sys
+path = sys.argv[1]
+text = open(path).read()
+text = text.replace("\nC:\n", "\n" + os.environ["CYRUS_DOSBOX_AUTOEXEC"] + "\nC:\n", 1)
+open(path, "w").write(text)
+PY
+    conf_mount=(-v "$conf:/etc/cyrus/dosbox-x.conf:ro")
+fi
 mkdir -p "$out"
 exec 9>/tmp/cyrus-live.lock
 flock 9
@@ -30,8 +42,12 @@ rm -f "$run"/capture/*.wav
 docker run --rm --entrypoint find -v "$run:/game" cyrus-retro:dev /game/Redguard/maps -iname '*.tsg' -delete
 docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTRACE \
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
-    cyrus-retro:dev "${dosbox_args[@]}" >/dev/null
-trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+    "${conf_mount[@]}" cyrus-retro:dev >/dev/null
+cleanup() {
+    docker rm -f "$name" >/dev/null 2>&1 || true
+    [ -z "${conf:-}" ] || rm -f "$conf"
+}
+trap cleanup EXIT
 docker cp "$repo/dev/scripts/original-capture-inner.py" "$name:/tmp/inner.py"
 docker cp "$events" "$name:/tmp/events.json"
 docker cp "${CYRUS_STATE_READER:?set CYRUS_STATE_READER to original-state.py}" "$name:/tmp/original-state.py"
