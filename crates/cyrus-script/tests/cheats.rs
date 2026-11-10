@@ -71,6 +71,21 @@ fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
 }
 
 #[test]
+fn ground_bypass_is_a_connected_effect_that_reads_raw_nonzero() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.ground_bypass().unwrap());
+    for value in [1, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("yeahbaby", Some(value)).unwrap(),
+            CheatEffect::GroundBypass
+        );
+        assert!(runtime.ground_bypass().unwrap());
+    }
+    runtime.execute("yeahbaby", Some(0)).unwrap();
+    assert!(!runtime.ground_bypass().unwrap());
+}
+
+#[test]
 fn actor_update_skip_reads_raw_nonzero_and_rejects_malformed_state() {
     let mut runtime = Cheats::new(Store::default());
     assert!(!runtime.actor_update_skipped().unwrap());
@@ -349,6 +364,9 @@ fn console_editor_preserves_commands_and_never_edits_report_lines() {
             .value("yeahbaby"),
         Some(3)
     );
+    // `oracle` prints report lines, which the editor selects but never edits.
+    key(&mut app, KeyCode::KeyO, Some("oracle"));
+    key(&mut app, KeyCode::Enter, None);
     key(&mut app, KeyCode::ArrowUp, None);
     let console = app.world().resource::<Console>();
     assert!(console.lines[console.selected].report);
@@ -855,10 +873,9 @@ fn magic_carpet_is_active_only_for_exactly_one_and_the_ground_bypass_for_any_non
         runtime.execute("yeahbaby", Some(value)).unwrap();
         assert_eq!(runtime.ground_bypass().unwrap(), value != 0, "{value}");
     }
-    // Complete host acceptance is pending, so the catalog still reports the effect unavailable.
     assert_eq!(
         runtime.execute("yeahbaby", Some(1)).unwrap(),
-        CheatEffect::Unsupported
+        CheatEffect::GroundBypass
     );
     let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
     assert!(invalid.magic_carpet().is_err());

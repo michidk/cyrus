@@ -22,6 +22,8 @@ pub enum CheatEffect {
     ActorUpdateSkip,
     MagicCarpet,
     DamageSuppression,
+    /// The selected player's vertical debug bypass: Page Up and Page Down move it through surfaces.
+    GroundBypass,
     PlayerCollisionSkip,
     /// A slot the executable never reads after startup, so its value has no gameplay effect.
     RecognizedOnly,
@@ -128,6 +130,7 @@ impl Cheats {
             "drno" => CheatEffect::ActorUpdateSkip,
             "magiccarpet" => CheatEffect::MagicCarpet,
             "drevil" => CheatEffect::DamageSuppression,
+            "yeahbaby" => CheatEffect::GroundBypass,
             "moonraker" => CheatEffect::PlayerCollisionSkip,
             "nodemarker" | "oddjob" => CheatEffect::RecognizedOnly,
             "task" => CheatEffect::TaskSystem,
@@ -145,8 +148,7 @@ impl Cheats {
     /// The yeahbaby state: the selected player's ground-support probe is skipped while a vertical
     /// debug key is held or the Home toggle is set. Active for any nonzero value. The ground
     /// bypass, the Page Up and Page Down movement and the Insert step with its camera limiter
-    /// suspension are integrated. The catalog reports the effect unsupported pending complete
-    /// native and browser acceptance.
+    /// suspension are integrated and report [`CheatEffect::GroundBypass`].
     pub fn ground_bypass(&self) -> Result<bool> {
         Ok(self
             .state()?

@@ -754,12 +754,12 @@ query; unknown key state refuses the update. In the same state the selected play
 16 map units for each of Page Up (up) and Page Down (down) held once per update, so both held cancel; Insert held suspends the camera's
 movement limiting (bit 0 of the selected camera record's flags, set on the first held update and restored on release
 or when the handler turns off, on the record selected then) and moves the actor forward by the frame scale times
-128 Q8 each update. With the camera session absent, Insert refuses the update. The catalog still reports
-`yeahbaby` unavailable pending complete native and browser acceptance. Installed START tests drive
+128 Q8 each update. With the camera session absent, Insert refuses the update. The catalog reports
+`yeahbaby` as a connected `ground_bypass` effect; the control port's Page Up and Page Down presses reach the handler and move the player 16 units per update (**Verified** in a native run). Installed START tests drive
 these keys and cheat states through ordinary Bevy app updates; they do not establish host parity. The keys are
 sampled from the keyboard once per frame, under the same input locks as the quick keys (console, logbook and
 loading read them as released), and read by that frame's ordinary update; a Home press in a frame where the
-ordinary update does not run is not retained, and the control port supplies no keys. Other gameplay
+ordinary update does not run is not retained. Other gameplay
 effects report unsupported.
 **Unknown:** the original gameplay effect of `oddjob`; its raw state still
 supports toggling, assignment and persistence. These commands do not enable
