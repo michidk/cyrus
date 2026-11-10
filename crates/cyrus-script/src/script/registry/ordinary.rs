@@ -596,7 +596,8 @@ impl ScriptWorld {
                 }
                 // Forward running, armed circling and the slide groups retain animation-owned
                 // movement: after release, and after the slope response clears the sliding byte
-                // while a slide group is still playing. The called flags prevent a second step
+                // while a slide group is still playing (preservation PR #310, player.md "Slide-group
+                // movement"). The called flags prevent a second step
                 // after controller movement.
                 let player_continuation = selected_role
                     && self.actors[id.index]

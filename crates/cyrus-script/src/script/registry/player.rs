@@ -1108,7 +1108,8 @@ impl ScriptWorld {
             self.selected_player_index() == Some(id.index),
             "walking stage requires selected player"
         );
-        // With the animation system off (the `animation` cheat at zero) the request routines do
+        // With the animation system off (the `animation` cheat at zero; preservation PR #311,
+        // cheats.md) the request routines do
         // nothing and the group stays where it is: a key-driven walk still advances by the startup
         // distance, and the group-driven continuation has no walk group to follow.
         let animated = self.updates.animation_system;
