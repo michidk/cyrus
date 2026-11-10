@@ -8,6 +8,8 @@
 #           reader when the recorder starts (arguments: reader, CYRUS_HOOK_DELAY, then CYRUS_HOOK_ARGS), for timed placement; CYRUS_HOOK_ARGS are its arguments),
 #           CYRUS_SHOT_INTERVAL (seconds between framebuffer screenshots, written to
 #           <out>/shots and listed in the timeline with the wall times they were taken at).
+# Optional: CYRUS_CLOCK_HELPER, a python script run in the container from the recorder start
+#           that logs "wall frame ..." lines to <out>/clock.log (kept outside the repository).
 # Optional: CYRUS_FRAME_WAIT, seconds to wait for the world loop before recording anyway
 #           (use a small value for captures outside a world, such as the intro movie).
 # Optional: CYRUS_DOSBOX_AUTOEXEC, newline-separated DOSBox-X commands inserted into the
@@ -56,11 +58,13 @@ cleanup() {
 trap cleanup EXIT
 docker cp "$repo/dev/scripts/original-capture-inner.py" "$name:/tmp/inner.py"
 docker cp "$events" "$name:/tmp/events.json"
+[ -z "${CYRUS_CLOCK_HELPER:-}" ] || docker cp "$CYRUS_CLOCK_HELPER" "$name:/tmp/clock.py"
 [ -z "${CYRUS_CAPTURE_HOOK:-}" ] || docker cp "$CYRUS_CAPTURE_HOOK" "$name:/tmp/hook.py"
 docker cp "${CYRUS_STATE_READER:?set CYRUS_STATE_READER to original-state.py}" "$name:/tmp/original-state.py"
 docker exec -e CYRUS_HOOK_ARGS="${CYRUS_HOOK_ARGS:-}" -e CYRUS_FRAME_WAIT="${CYRUS_FRAME_WAIT:-150}" -e CYRUS_HOOK_DELAY="${CYRUS_HOOK_DELAY:-0}" -e CYRUS_SHOT_INTERVAL="${CYRUS_SHOT_INTERVAL:-0}" "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
 wav=$(ls -t "$run"/capture/*.wav | head -1)
 cp "$wav" "$out/audio.wav"
+[ ! -f "$run/capture/clock.log" ] || cp "$run/capture/clock.log" "$out/clock.log"
 if [ -d "$run/capture/shots" ]; then rm -rf "$out/shots"; mv "$run/capture/shots" "$out/shots"; fi
 rm -f "$run"/capture/*.wav
 echo "captured $(stat -c %s "$out/audio.wav") bytes of audio into $out"

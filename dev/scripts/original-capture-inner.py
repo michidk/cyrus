@@ -6,7 +6,7 @@ xdotool and logs the game's loop frame at the start, at every event and at the s
 Usage: original-capture-inner.py <state-reader> <events.json> <seconds-after-start>
 events.json: [[seconds, "key"|"keydown"|"keyup", "xdotool-key-name"], ...] relative to the start.
 Prints one JSON object: {"start": {"wall": w, "frame": f}, "events": [[t, action, key, frame, wav_bytes]],
-"stop": {"wall": w, "frame": f}, "sizes": [[t, bytes]], "shots": [[t_begin, t_end, file]]} (the recording size every 20 ms, to interpolate emulated time between its 64 KiB steps). The recorder writes its WAV into the DOSBox-X capture directory.
+"stop": {"wall": w, "frame": f}, "sizes": [[t, bytes]], "shots": [[t_begin, t_end, file, counters]]} (the recording size every 20 ms, to interpolate emulated time between its 64 KiB steps). The recorder writes its WAV into the DOSBox-X capture directory.
 """
 import glob
 import json
@@ -19,6 +19,15 @@ import time
 reader, events_path, seconds = sys.argv[1], sys.argv[2], float(sys.argv[3])
 events = json.load(open(events_path))
 env = {**os.environ, "DISPLAY": ":1"}
+
+
+def counters():
+    """The state reader's counters (mainloop frame, ticks and frames passed), or None."""
+    try:
+        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=20).stdout
+        return json.loads(out)["counters"]
+    except (ValueError, KeyError, subprocess.TimeoutExpired):
+        return None
 
 
 def frame():
@@ -53,6 +62,11 @@ if os.path.exists("/tmp/hook.py"):
     # starts with the recorder and waits CYRUS_HOOK_DELAY seconds, so the stimulus it causes has a
     # known time on the recording's clock (script time == hook_delay).
     subprocess.Popen([sys.executable, "/tmp/hook.py", reader, str(hook_delay)] + os.environ.get("CYRUS_HOOK_ARGS", "").split())
+if os.path.exists("/tmp/clock.py"):
+    # An optional game-clock logger (kept outside the repository): one line per game frame with
+    # the wall time, so frames can be mapped to screenshots and key events.
+    os.makedirs("/game/capture", exist_ok=True)
+    subprocess.Popen([sys.executable, "/tmp/clock.py", reader, "/game/capture/clock.log", str(seconds + 5)])
 shots = []
 interval = float(os.environ.get("CYRUS_SHOT_INTERVAL", "0"))
 
@@ -64,7 +78,7 @@ def take_shots():
         name = f"/game/capture/shots/s{index:04d}.png"
         began = time.time() - start
         subprocess.run(["scrot", "-o", name], env=env)
-        shots.append([round(began, 3), round(time.time() - start, 3), name.rsplit("/", 1)[1]])
+        shots.append([round(began, 3), round(time.time() - start, 3), name.rsplit("/", 1)[1], counters()])
         index += 1
         time.sleep(interval)
 
