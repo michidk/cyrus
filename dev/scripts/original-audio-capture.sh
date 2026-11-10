@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Records the original's audio mixer output while replaying a key timeline, in one lock hold.
+# DOSBox-X's own WAV recorder (F12+W) records the mixer output in emulated time, so the file is
+# independent of how slowly the container emulates; the inner script logs the game's loop frame
+# at the start, at each key event and at the stop so audio positions map to the state reader.
+# Usage: original-audio-capture.sh <events.json> <out-dir> [seconds]
+# Optional: CYRUS_DOSBOX_CMD, one DOSBox-X command run before the game (for example
+#           `mixer cdaudio 0` to mute the CD music channel and isolate effects and speech).
+# Environment: CYRUS_RETRO_RUN = a private copy of the install tree (never the shared install);
+#              CYRUS_RETRO_GOG = the directory mounted read-only at /gog; the run copy's relative
+#              symlinks resolve through it, and it must hold extracted/app/game.gog.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../.." && pwd)
+events=$(realpath "${1:?events.json required}")
+out=$(realpath -m "${2:?output directory required}")
+seconds=${3:-40}
+run=${CYRUS_RETRO_RUN:?set CYRUS_RETRO_RUN to a private install copy}
+gog=${CYRUS_RETRO_GOG:?set CYRUS_RETRO_GOG to the directory holding extracted/app/game.gog}
+name=audio-capture-$$
+dosbox_args=()
+[ -z "${CYRUS_DOSBOX_CMD:-}" ] || dosbox_args=(-c "$CYRUS_DOSBOX_CMD")
+mkdir -p "$out"
+exec 9>/tmp/cyrus-live.lock
+flock 9
+docker image inspect cyrus-retro:dev >/dev/null 2>&1 || docker build -q -t cyrus-retro:dev "$repo/dev/docker/retro" >&2
+docker rm -f "$name" >/dev/null 2>&1 || true
+mkdir -p "$run/capture"
+rm -f "$run"/capture/*.wav
+docker run --rm --entrypoint find -v "$run:/game" cyrus-retro:dev /game/Redguard/maps -iname '*.tsg' -delete
+docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTRACE \
+    -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
+    cyrus-retro:dev "${dosbox_args[@]}" >/dev/null
+trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+docker cp "$repo/dev/scripts/original-capture-inner.py" "$name:/tmp/inner.py"
+docker cp "$events" "$name:/tmp/events.json"
+docker cp "${CYRUS_STATE_READER:?set CYRUS_STATE_READER to original-state.py}" "$name:/tmp/original-state.py"
+docker exec "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
+wav=$(ls -t "$run"/capture/*.wav | head -1)
+cp "$wav" "$out/audio.wav"
+rm -f "$run"/capture/*.wav
+echo "captured $(stat -c %s "$out/audio.wav") bytes of audio into $out"
