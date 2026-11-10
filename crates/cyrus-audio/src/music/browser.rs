@@ -1,15 +1,18 @@
 //! Retained browser CD buffers, independent of main-thread streaming callbacks.
-use super::{MusicPlayer, MusicTransport};
+use super::{
+    MusicPlayer, MusicTransport,
+    browser_owners::{self, Players},
+};
 use crate::sound::PannedSnapshot;
 use anyhow::{Context, Result, ensure};
 use bevy::{
     audio::AudioPlayer,
     prelude::{
-        App, Assets, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut, Resource,
-        Update, With, error,
+        App, Assets, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut, Update,
+        With, error,
     },
 };
-use std::{collections::HashMap, io::Cursor, sync::atomic::Ordering};
+use std::{io::Cursor, sync::atomic::Ordering};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "/src/music/browser.js")]
@@ -30,19 +33,9 @@ extern "C" {
     fn stop_music(id: u32);
 }
 
-#[derive(Resource, Default)]
-struct Players(HashMap<Entity, u32>);
-impl Drop for Players {
-    fn drop(&mut self) {
-        for id in self.0.values() {
-            stop_music(*id);
-        }
-    }
-}
-
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<Players>()
-        .add_systems(Update, sync.after(super::pause_track));
+    browser_owners::register(app, stop_music);
+    app.add_systems(Update, sync.after(super::pause_track));
 }
 
 fn sync(
@@ -50,20 +43,12 @@ fn sync(
     transports: Res<Assets<MusicTransport>>,
     query: Query<(Entity, &AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>,
 ) {
-    players.0.retain(|entity, id| {
-        if query.contains(*entity) {
-            true
-        } else {
-            stop_music(*id);
-            false
-        }
-    });
     for (entity, player, settings) in &query {
         let Some(transport) = transports.get(&player.0) else {
             continue;
         };
         let result = (|| -> Result<()> {
-            if let Some(id) = players.0.get(&entity) {
+            if let Some(id) = players.ids.get(&entity) {
                 update_music(*id, settings.volume.to_linear(), settings.paused)
                     .map_err(|e| anyhow::anyhow!("updating WebAudio CD player: {e:?}"))?;
             } else {
@@ -82,7 +67,7 @@ fn sync(
                 )
                 .map_err(|e| anyhow::anyhow!("starting WebAudio CD player: {e:?}"))?;
                 transport.browser_clock().store(id, Ordering::Relaxed);
-                players.0.insert(entity, id);
+                players.ids.insert(entity, id);
             }
             Ok(())
         })();

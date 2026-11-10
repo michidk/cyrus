@@ -82,6 +82,7 @@ module where it is defined and regenerate.
 
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/music/browser.rs` — Retained browser CD buffers, independent of main-thread streaming callbacks.
+- `src/music/browser_owners.rs` — Browser CD output ownership at the playback entity's lifetime boundary.
 - `src/music/checkpoint.rs` — CD track decoder checkpoints and off-live music replacement construction.
 - `src/persistence.rs` — Explicit host-prepared identity bindings shared by restored audio owners.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
