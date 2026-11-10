@@ -45,11 +45,14 @@ while frame() <= 400:
     if time.time() - waited > 150:  # the reader can lose the engine; start anyway (frames read -1)
         break
     time.sleep(0.5)
-if os.path.exists("/tmp/hook.py"):
-    # An optional placement hook (kept outside the repository; it may use engine internals).
-    subprocess.run([sys.executable, "/tmp/hook.py", reader] + os.environ.get("CYRUS_HOOK_ARGS", "").split(), timeout=120)
 toggle_recorder()
 start = time.time()
+hook_delay = float(os.environ.get("CYRUS_HOOK_DELAY", "0"))
+if os.path.exists("/tmp/hook.py"):
+    # An optional placement hook (kept outside the repository; it may use engine internals). It
+    # starts with the recorder and waits CYRUS_HOOK_DELAY seconds, so the stimulus it causes has a
+    # known time on the recording's clock (script time == hook_delay).
+    subprocess.Popen([sys.executable, "/tmp/hook.py", reader, str(hook_delay)] + os.environ.get("CYRUS_HOOK_ARGS", "").split())
 shots = []
 interval = float(os.environ.get("CYRUS_SHOT_INTERVAL", "0"))
 
@@ -71,6 +74,8 @@ if interval > 0:
 time.sleep(1)
 begin = {"wall": start, "frame": frame(), "wav_bytes": recorded_bytes()}
 done, log, sizes = 0, [], []
+if os.path.exists("/tmp/hook.py"):
+    log.append([hook_delay, "hook", "placement", frame(), recorded_bytes()])
 while time.time() - start < seconds:
     now = time.time() - start
     while done < len(events) and events[done][0] <= now:
