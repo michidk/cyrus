@@ -5,9 +5,10 @@ xdotool and logs the game's loop frame at the start, at every event and at the s
 
 Usage: original-capture-inner.py <state-reader> <events.json> <seconds-after-start>
 events.json: [[seconds, "key"|"keydown"|"keyup", "xdotool-key-name"], ...] relative to the start.
-Prints one JSON object: {"start": {"wall": w, "frame": f}, "events": [[t, action, key, frame]],
-"stop": {"wall": w, "frame": f}}. The recorder writes its WAV into the DOSBox-X capture directory.
+Prints one JSON object: {"start": {"wall": w, "frame": f}, "events": [[t, action, key, frame, wav_bytes]],
+"stop": {"wall": w, "frame": f}, "sizes": [[t, bytes]]} (the recording size every 20 ms, to interpolate emulated time between its 64 KiB steps). The recorder writes its WAV into the DOSBox-X capture directory.
 """
+import glob
 import json
 import os
 import subprocess
@@ -28,6 +29,12 @@ def frame():
         return -1
 
 
+def recorded_bytes():
+    """Size of the newest recording: the audio written so far, so the emulated audio clock now."""
+    files = sorted(glob.glob("/game/capture/*.wav"), key=os.path.getmtime)
+    return os.path.getsize(files[-1]) if files else 0
+
+
 def toggle_recorder():
     subprocess.run(["xdotool", "keydown", "F12", "key", "w", "keyup", "F12"], env=env)
 
@@ -36,17 +43,20 @@ while frame() <= 400:
     time.sleep(0.5)
 toggle_recorder()
 start = time.time()
-begin = {"wall": start, "frame": frame()}
-done, log = 0, []
+time.sleep(1)
+begin = {"wall": start, "frame": frame(), "wav_bytes": recorded_bytes()}
+done, log, sizes = 0, [], []
 while time.time() - start < seconds:
     now = time.time() - start
     while done < len(events) and events[done][0] <= now:
         _, action, key = events[done]
         subprocess.Popen(["xdotool", action, key], env=env)
-        log.append([round(now, 3), action, key, frame()])
+        mark = recorded_bytes()
+        log.append([round(now, 3), action, key, frame(), mark])
         done += 1
-    time.sleep(0.05)
-end = {"wall": time.time(), "frame": frame()}
+    sizes.append([round(now, 3), recorded_bytes()])
+    time.sleep(0.02)
+end = {"wall": time.time(), "frame": frame(), "wav_bytes": recorded_bytes()}
 toggle_recorder()
 time.sleep(1)
-print(json.dumps({"start": begin, "events": log, "stop": end}))
+print(json.dumps({"start": begin, "events": log, "stop": end, "sizes": sizes}))
