@@ -392,7 +392,9 @@ fn paint_progress(pixels: &mut [u8], font: &cyrus_text::Font, done: usize, total
             }
         }
     }
-    font.draw_shadowed(pixels, 640, &format!("{percent}%"), [32, 451], [255, 180]);
+    // Alphas fitted to captures of the original (mean error 2.5 levels against 10.8 for the
+    // previous 255 and 180): the label is translucent like the track.
+    font.draw_shadowed(pixels, 640, &format!("{percent}%"), [32, 451], [180, 140]);
 }
 
 fn cleanup(mut commands: Commands) {
@@ -556,7 +558,8 @@ mod tests {
         );
         update_progress(&mut game, &mut images, 1, 6);
         let pixels = images.get(&game.image).unwrap().data.as_ref().unwrap();
-        assert_eq!(&pixels[(457 * 640 + 32) * 4..][..4], &[252, 156, 4, 255]);
+        // Glyph colour (252, 156, 4) at alpha 180 over the (17, 18, 19) artwork.
+        assert_eq!(&pixels[(457 * 640 + 32) * 4..][..4], &[183, 115, 8, 255]);
         assert_eq!(&pixels[(448 * 640 + 128) * 4..][..4], &[216, 20, 16, 255]);
         assert_eq!(&pixels[(448 * 640 + 129) * 4..][..4], &[11, 12, 13, 255]);
         for y in 455..480 {
