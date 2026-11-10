@@ -460,7 +460,10 @@ impl<T: crate::script::camera::CameraTerrainHeights> CameraGeometry for SceneCam
                     position: position.map(i64::from),
                     rotation: Mat3::IDENTITY,
                     spheres: &spheres,
-                    sidedness: false,
+                    // The original's camera body routine sets the polygon-sidedness flag to one
+                    // before its sphere query, so a face more than 4 units behind a sphere centre
+                    // is rejected.
+                    sidedness: true,
                 },
                 excluded_candidate_type: None,
             },

@@ -50594,6 +50594,9 @@ mod jump_fall_guards_tests;
 #[path = "script_registry/rope_terminal.rs"]
 mod rope_terminal_tests;
 
+#[path = "script_registry/camera_contacts.rs"]
+mod camera_contacts_tests;
+
 #[test]
 fn ordinary_body_uses_vertex_bound_shape_instead_of_initial_spheres() {
     use cyrus_assets::animation::AnimationModel;
