@@ -373,13 +373,16 @@ fn paint_progress(pixels: &mut [u8], font: &cyrus_text::Font, done: usize, total
     }
     let filled = (576 * done + total / 2) / total;
     let percent = (100 * done + total / 2) / total;
-    // The original draws both rectangles with inclusive edges: a 577 by 7 track, and a fill that
-    // reaches `filled` pixels past its left edge (measured from captures of the original).
+    // The fill is the system palette block's entry 147 (54, 5, 4) scaled by four, which the
+    // original's nearest-colour lookup returns for its (63, 0, 0) request (it dithers between
+    // (214..222, 20..24, 8..16); the mean is (218, 21, 14)). Both rectangles use inclusive edges:
+    // a 577 by 7 track, and a fill reaching `filled` pixels past its left edge (measured from
+    // captures of the original).
     for y in 448..=454 {
         for x in 32..=608 {
             let at = (y * 640 + x) * 4;
             pixels[at..at + 4].copy_from_slice(if x <= 32 + filled {
-                &[252, 0, 0, 255]
+                &[216, 20, 16, 255]
             } else {
                 &[0, 0, 0, 255]
             });
@@ -550,7 +553,7 @@ mod tests {
         update_progress(&mut game, &mut images, 1, 6);
         let pixels = images.get(&game.image).unwrap().data.as_ref().unwrap();
         assert_eq!(&pixels[(457 * 640 + 32) * 4..][..4], &[252, 156, 4, 255]);
-        assert_eq!(&pixels[(448 * 640 + 128) * 4..][..4], &[252, 0, 0, 255]);
+        assert_eq!(&pixels[(448 * 640 + 128) * 4..][..4], &[216, 20, 16, 255]);
         assert_eq!(&pixels[(448 * 640 + 129) * 4..][..4], &[0, 0, 0, 255]);
         for y in 455..480 {
             assert_eq!(
@@ -578,17 +581,17 @@ mod tests {
         paint_progress(&mut pixels, &default(), 1, 2);
         assert_eq!(pixel(&pixels, 31, 448), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 32, 447), [17, 18, 19, 255]);
-        assert_eq!(pixel(&pixels, 320, 448), [252, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 320, 448), [216, 20, 16, 255]);
         assert_eq!(pixel(&pixels, 321, 448), [0, 0, 0, 255]);
         assert_eq!(pixel(&pixels, 608, 454), [0, 0, 0, 255]);
         assert_eq!(pixel(&pixels, 609, 454), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 608, 455), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 32, 455), [17, 18, 19, 255]);
         paint_progress(&mut pixels, &default(), 1, 6);
-        assert_eq!(pixel(&pixels, 128, 448), [252, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 128, 448), [216, 20, 16, 255]);
         assert_eq!(pixel(&pixels, 129, 448), [0, 0, 0, 255]);
         paint_progress(&mut pixels, &default(), 2, 2);
-        assert_eq!(pixel(&pixels, 608, 454), [252, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 608, 454), [216, 20, 16, 255]);
         assert_eq!(pixel(&pixels, 609, 454), [17, 18, 19, 255]);
     }
 }
