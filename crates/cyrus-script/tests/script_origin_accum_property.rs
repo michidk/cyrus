@@ -305,7 +305,7 @@ fn displacement_fixture(
 }
 
 #[test]
-fn real_automatic_displacement_consumes_seed_before_the_later_stage_refusal() {
+fn real_automatic_displacement_consumes_seed_and_the_update_completes() {
     for (seed, scale, after, z) in [
         (0, 256, 1024, 1024),
         (98300, 256, 98304, 4),
@@ -339,15 +339,12 @@ fn real_automatic_displacement_consumes_seed_before_the_later_stage_refusal() {
             after
         );
         assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, z]);
-        assert!(
-            world.actors()[0]
-                .failure()
-                .unwrap()
-                .contains("ordinary queued motion stage unsupported")
-        );
+        // The collision attribute has no bit 0x04, so the queued motion is never resolved and the
+        // update completes (preservation player.md, "Stable ordinary position").
+        assert!(world.actors()[0].failure().is_none());
 
         assert_eq!(world.actors()[0].control_state().unwrap().fall_timer, 0);
-        assert!(advance(&mut world, 0).is_err());
+        advance(&mut world, 0).unwrap();
         assert_eq!(world.flags(), [73]);
     }
 }

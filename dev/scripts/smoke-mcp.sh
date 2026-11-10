@@ -39,7 +39,7 @@ assert initial["cheats"]["ready"], initial["cheats"]
 original_cheats = call("cheat", {"name":"oracle"})["cheats"]
 oddjob = next(e["value"] for e in original_cheats["entries"] if e["name"] == "oddjob")
 changed = call("cheat", {"name":"oddjob", "value":7})
-assert changed["effect"] == "unsupported", changed
+assert changed["effect"] == "recognized_only", changed
 assert next(e["value"] for e in changed["cheats"]["entries"] if e["name"] == "oddjob") == 7
 call("cheat", {"name":"oddjob", "value":oddjob})
 assert call("cheat", {"name":"oracle"})["cheats"] == original_cheats

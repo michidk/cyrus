@@ -45,7 +45,7 @@ fn toggles_assigns_lists_and_restores_only_after_savecheats() {
     assert!(!restored.distance_override().unwrap());
     assert_eq!(
         restored.execute("oddjob", None).unwrap(),
-        CheatEffect::Unsupported
+        CheatEffect::RecognizedOnly
     );
     assert_eq!(
         restored.execute("magiccarpet", None).unwrap(),
@@ -60,7 +60,7 @@ fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
     for value in [1, 42, u32::MAX] {
         assert_eq!(
             runtime.execute("drevil", Some(value)).unwrap(),
-            CheatEffect::Unsupported
+            CheatEffect::DamageSuppression
         );
         assert!(runtime.death_suppressed().unwrap());
     }
@@ -68,6 +68,21 @@ fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
     assert!(!runtime.death_suppressed().unwrap());
     let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
     assert!(invalid.death_suppressed().is_err());
+}
+
+#[test]
+fn ground_bypass_is_a_connected_effect_that_reads_raw_nonzero() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.ground_bypass().unwrap());
+    for value in [1, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("yeahbaby", Some(value)).unwrap(),
+            CheatEffect::GroundBypass
+        );
+        assert!(runtime.ground_bypass().unwrap());
+    }
+    runtime.execute("yeahbaby", Some(0)).unwrap();
+    assert!(!runtime.ground_bypass().unwrap());
 }
 
 #[test]
@@ -325,19 +340,19 @@ fn console_editor_preserves_commands_and_never_edits_report_lines() {
         app.world_mut().resource_mut::<Console>().key(code, text);
         app.update();
     };
-    key(&mut app, KeyCode::KeyO, Some("oddjob = 2"));
+    key(&mut app, KeyCode::KeyO, Some("yeahbaby = 2"));
     key(&mut app, KeyCode::Enter, None);
     assert_eq!(
         app.world()
             .resource::<Cheats>()
             .state()
             .unwrap()
-            .value("oddjob"),
+            .value("yeahbaby"),
         Some(2)
     );
     key(&mut app, KeyCode::Tab, None);
     let console = app.world().resource::<Console>();
-    assert_eq!(console.lines[console.selected].text, "oddjob = 2");
+    assert_eq!(console.lines[console.selected].text, "yeahbaby = 2");
     key(&mut app, KeyCode::Backspace, None);
     key(&mut app, KeyCode::Digit3, Some("3"));
     key(&mut app, KeyCode::Enter, None);
@@ -346,9 +361,12 @@ fn console_editor_preserves_commands_and_never_edits_report_lines() {
             .resource::<Cheats>()
             .state()
             .unwrap()
-            .value("oddjob"),
+            .value("yeahbaby"),
         Some(3)
     );
+    // `oracle` prints report lines, which the editor selects but never edits.
+    key(&mut app, KeyCode::KeyO, Some("oracle"));
+    key(&mut app, KeyCode::Enter, None);
     key(&mut app, KeyCode::ArrowUp, None);
     let console = app.world().resource::<Console>();
     assert!(console.lines[console.selected].report);
@@ -857,12 +875,42 @@ fn magic_carpet_is_active_only_for_exactly_one_and_the_ground_bypass_for_any_non
         runtime.execute("yeahbaby", Some(value)).unwrap();
         assert_eq!(runtime.ground_bypass().unwrap(), value != 0, "{value}");
     }
-    // Complete host acceptance is pending, so the catalog still reports the effect unavailable.
     assert_eq!(
         runtime.execute("yeahbaby", Some(1)).unwrap(),
-        CheatEffect::Unsupported
+        CheatEffect::GroundBypass
     );
     let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
     assert!(invalid.magic_carpet().is_err());
     assert!(invalid.ground_bypass().is_err());
+}
+
+#[test]
+fn moonraker_collision_skip_reads_any_nonzero_value() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.player_collision_skipped().unwrap());
+    for value in [1, 2, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("moonraker", Some(value)).unwrap(),
+            CheatEffect::PlayerCollisionSkip
+        );
+        assert!(runtime.player_collision_skipped().unwrap(), "{value}");
+    }
+    runtime.execute("moonraker", Some(0)).unwrap();
+    assert!(!runtime.player_collision_skipped().unwrap());
+    let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
+    assert!(invalid.player_collision_skipped().is_err());
+}
+
+#[test]
+fn nodemarker_and_oddjob_are_recognized_slots_without_a_gameplay_effect() {
+    let mut runtime = Cheats::new(Store::default());
+    for name in ["nodemarker", "oddjob"] {
+        for value in [1, 2, 0] {
+            assert_eq!(
+                runtime.execute(name, Some(value)).unwrap(),
+                CheatEffect::RecognizedOnly
+            );
+            assert_eq!(runtime.state().unwrap().value(name), Some(value));
+        }
+    }
 }

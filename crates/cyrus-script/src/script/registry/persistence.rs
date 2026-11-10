@@ -29,9 +29,19 @@ struct ControlSnapshot {
     #[serde(default)]
     ai_record: Option<AiRecordSnapshot>,
     living_state: LivingState,
+    /// Saves written before the byte had one field kept it here as well as in `jump_selector`.
+    #[serde(default, skip_serializing)]
     motion_companion: u8,
     #[serde(default)]
     extra_time: u8,
+    #[serde(default)]
+    surface_time: u8,
+    #[serde(default)]
+    jump_time: u8,
+    #[serde(default)]
+    jump_height: u8,
+    #[serde(default)]
+    anchor: u8,
     sliding_state: u8,
     falling_state: JumpMotion,
     queued_motion: JumpMotion,
@@ -73,7 +83,13 @@ struct ControlSnapshot {
     object_update_excluded: bool,
     hidden: bool,
     #[serde(default)]
+    invisible: bool,
+    #[serde(default)]
     scabbard_override: [Option<i16>; 2],
+    #[serde(default)]
+    grip_override: [Option<i16>; 2],
+    #[serde(default)]
+    yangle_change: i16,
     #[serde(default)]
     killed: bool,
     #[serde(default)]
@@ -112,6 +128,12 @@ struct CombatSnapshot {
     armor: i32,
     #[serde(default)]
     decision: super::super::combat::CombatDecision,
+    #[serde(default)]
+    avoid_side: i32,
+    #[serde(default)]
+    avoid_mask: u32,
+    #[serde(default)]
+    avoid_hold: i32,
 }
 
 impl ControlSnapshot {
@@ -130,8 +152,12 @@ impl ControlSnapshot {
                 length: control.ai.length,
             }),
             living_state: control.living_state,
-            motion_companion: control.motion_companion,
+            motion_companion: 0,
             extra_time: control.extra_time,
+            surface_time: control.surface_time,
+            jump_time: control.jump_time,
+            jump_height: control.jump_height,
+            anchor: control.anchor,
             sliding_state: control.sliding_state,
             falling_state: control.falling_state,
             queued_motion: control.queued_motion,
@@ -165,7 +191,10 @@ impl ControlSnapshot {
             held_item: control.held_item,
             object_update_excluded: control.object_update_excluded,
             hidden: control.hidden,
+            invisible: control.invisible,
             scabbard_override: control.scabbard_override,
+            grip_override: control.grip_override,
+            yangle_change: control.yangle_change,
             killed: control.killed,
             creator: control.creator,
             combat_death_default: control.combat_death_default,
@@ -206,8 +235,11 @@ impl ControlSnapshot {
                 }
             },
             living_state: self.living_state,
-            motion_companion: self.motion_companion,
             extra_time: self.extra_time,
+            surface_time: self.surface_time,
+            jump_time: self.jump_time,
+            jump_height: self.jump_height,
+            anchor: self.anchor,
             sliding_state: self.sliding_state,
             falling_state: self.falling_state,
             queued_motion: self.queued_motion,
@@ -226,7 +258,11 @@ impl ControlSnapshot {
             },
             fall_origin_y: self.fall_origin_y,
             fall_timer: self.fall_timer,
-            jump_selector: self.jump_selector,
+            jump_selector: if self.jump_selector != 0 {
+                self.jump_selector
+            } else {
+                self.motion_companion
+            },
             stable_position_valid: self.stable_position_valid,
             stable_local_position: self.stable_local_position,
             sliding_distance: self.sliding_distance,
@@ -246,7 +282,10 @@ impl ControlSnapshot {
             held_item: self.held_item,
             object_update_excluded: self.object_update_excluded,
             hidden: self.hidden,
+            invisible: self.invisible,
             scabbard_override: self.scabbard_override,
+            grip_override: self.grip_override,
+            yangle_change: self.yangle_change,
             killed: self.killed,
             creator,
             combat_death_default: self.combat_death_default,
@@ -280,6 +319,9 @@ impl CombatSnapshot {
             strength: combat.strength,
             armor: combat.armor,
             decision: combat.decision,
+            avoid_side: combat.avoid_side,
+            avoid_mask: combat.avoid_mask,
+            avoid_hold: combat.avoid_hold,
         }
     }
 
@@ -314,6 +356,9 @@ impl CombatSnapshot {
             strength: self.strength,
             armor: self.armor,
             decision: self.decision,
+            avoid_side: self.avoid_side,
+            avoid_mask: self.avoid_mask,
+            avoid_hold: self.avoid_hold,
         })
     }
 }
@@ -322,8 +367,14 @@ impl CombatSnapshot {
 struct CollisionSnapshot {
     positive_extent: [i32; 3],
     negative_extent: [i32; 3],
+    /// Saves from before the totals were retained have none; restore derives the sums.
+    #[serde(default)]
+    total_extent: Option<[i32; 3]>,
     #[serde(default)]
     center_offset: [i32; 3],
+    /// Saves from before the retained bounds existed keep the live record as their primary.
+    #[serde(default)]
+    retained: Option<ground::RetainedBounds>,
     body: Vec<([i32; 3], i32)>,
     additional: Option<([i32; 3], i32)>,
 }
@@ -332,7 +383,9 @@ impl CollisionSnapshot {
         Self {
             positive_extent: shape.positive_extent,
             negative_extent: shape.negative_extent,
+            total_extent: Some(shape.total_extent),
             center_offset: shape.center_offset,
+            retained: Some(shape.retained),
             body: shape
                 .body
                 .iter()
@@ -352,7 +405,24 @@ impl CollisionSnapshot {
         Ok(ground::OrdinaryCollisionShape {
             positive_extent: self.positive_extent,
             negative_extent: self.negative_extent,
+            total_extent: self.total_extent.unwrap_or_else(|| {
+                std::array::from_fn(|axis| {
+                    self.positive_extent[axis].wrapping_add(self.negative_extent[axis])
+                })
+            }),
             center_offset: self.center_offset,
+            retained: self.retained.unwrap_or_else(|| {
+                ground::RetainedBounds::only(ground::BoundsRecord {
+                    positive_extent: self.positive_extent,
+                    negative_extent: self.negative_extent,
+                    total_extent: self.total_extent.unwrap_or_else(|| {
+                        std::array::from_fn(|axis| {
+                            self.positive_extent[axis].wrapping_add(self.negative_extent[axis])
+                        })
+                    }),
+                    center_offset: self.center_offset,
+                })
+            }),
             body: self.body.into_iter().map(sphere).collect::<Result<_>>()?,
             additional: self.additional.map(sphere).transpose()?,
         })

@@ -41,8 +41,19 @@ fn parse_window_size(text: &str) -> Option<(u32, u32)> {
     (width > 0 && height > 0).then_some((width, height))
 }
 
+/// Parse a presentation mode: `vsync` waits for the display, `novsync` presents at once.
+fn parse_present_mode(text: &str) -> Option<bevy::window::PresentMode> {
+    match text {
+        "vsync" => Some(bevy::window::PresentMode::AutoVsync),
+        "novsync" => Some(bevy::window::PresentMode::AutoNoVsync),
+        _ => None,
+    }
+}
+
 /// The shared primary window. `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default size, so a
 /// software-rendered run (for example in the dev container) can keep a playable frame rate.
+/// `CYRUS_PRESENT_MODE=novsync` stops the frame rate waiting for the display, so a measurement
+/// shows what the game can render instead of the display's refresh rate.
 pub fn window(title: &str) -> WindowPlugin {
     let mut window = Window {
         title: title.into(),
@@ -55,6 +66,13 @@ pub fn window(title: &str) -> WindowPlugin {
         .and_then(parse_window_size)
     {
         window.resolution = size.into();
+    }
+    if let Some(mode) = std::env::var("CYRUS_PRESENT_MODE")
+        .ok()
+        .as_deref()
+        .and_then(parse_present_mode)
+    {
+        window.present_mode = mode;
     }
     WindowPlugin {
         primary_window: Some(window),
@@ -101,7 +119,7 @@ pub fn browser_source(name: &str) -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_window_size;
+    use super::{parse_present_mode, parse_window_size};
 
     #[test]
     fn window_size_needs_two_positive_integers() {
@@ -109,5 +127,18 @@ mod tests {
         for bad in ["", "640", "0x480", "640x0", "axb", "640x480x1", "-1x4"] {
             assert_eq!(parse_window_size(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn present_mode_names_vsync_or_novsync() {
+        assert_eq!(
+            parse_present_mode("novsync"),
+            Some(bevy::window::PresentMode::AutoNoVsync)
+        );
+        assert_eq!(
+            parse_present_mode("vsync"),
+            Some(bevy::window::PresentMode::AutoVsync)
+        );
+        assert_eq!(parse_present_mode("fifo"), None);
     }
 }

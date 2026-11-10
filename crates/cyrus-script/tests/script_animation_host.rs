@@ -1255,11 +1255,13 @@ fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
         ActivationOverlay::Hidden
     );
     assert_eq!(world.activation().prompt(), Some("Open"));
+    assert_eq!(world.activation().shown_prompt(), None);
     assert_eq!(
         world.activation_overlay(&inputs, 0, false, 24).unwrap(),
         ActivationOverlay::Prompt("Open".into())
     );
     assert_eq!(world.activation().prompt(), None);
+    assert_eq!(world.activation().shown_prompt(), Some("Open"));
     activate_world(&mut world, &inputs);
     assert_eq!(world.flags(), [1], "the existing owner may activate again");
     // Deactivation on the caller clears holdoff but cannot release a foreign owner.
@@ -5910,6 +5912,255 @@ fn show_item_natives_leave_a_pending_viewer_request() {
             expected,
             "{name}"
         );
+    }
+}
+
+#[test]
+fn show_item_opens_the_examine_view_which_closes_on_an_exit_after_a_release() {
+    use bevy::prelude::*;
+    // Bevy's prelude also exports a `Function` trait once a dependency enables reflected functions.
+    use cyrus_assets::hud::{InventoryItem, ItemHandModel};
+    use cyrus_game::{AppState, preferences::Preferences};
+    use cyrus_script::{
+        item_viewer::ExamineScreen,
+        script::{ScriptActors, ScriptHud},
+    };
+    use cyrus_soup::program::Function;
+    for (native, values, lines) in [
+        (Native::ShowItemNoRtx, vec![4, 0, 0], false),
+        (Native::ShowItem, vec![4, 0, 0, 0], true),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Call {
+                call: Call {
+                    function_id: 3,
+                    kind: CallKind::Function,
+                    target: Object::Me,
+                    function: native,
+                    arguments: values
+                        .iter()
+                        .map(|&value| Value::Integer { value })
+                        .collect(),
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: native,
+            param_count: values.len() as u8,
+            kind: CallKind::Function,
+        });
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        let mut asset = hud_asset();
+        asset.inventory = [(
+            4,
+            InventoryItem {
+                count: 1,
+                total: 1,
+                player_max: 1,
+                inventory_model: ItemHandModel::Model("IHEALTH".into()),
+                inventory_extents: Some([100, 60, 40]),
+                description: Some("cisw".into()),
+                ..Default::default()
+            },
+        )]
+        .into();
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        let mut app = App::new();
+        app.insert_resource(State::new(AppState::InGame))
+            .insert_resource(Time::<Real>::default())
+            .insert_resource(Time::<Virtual>::default())
+            .init_resource::<ButtonInput<KeyCode>>()
+            .add_message::<cyrus_world::sound::SoundCue>()
+            .insert_resource(hud)
+            .insert_resource(actors);
+        cyrus_script::item_viewer::register(&mut app);
+        let effects = std::cell::RefCell::new(Vec::new());
+        let tick = |app: &mut App, enter: bool| {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            if enter {
+                keys.press(KeyCode::Enter);
+            }
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(std::time::Duration::from_millis(60));
+            app.update();
+            effects.borrow_mut().extend(
+                app.world_mut()
+                    .resource_mut::<Messages<cyrus_world::sound::SoundCue>>()
+                    .drain()
+                    .map(|cue| match cue {
+                        cyrus_world::sound::SoundCue::Flat { effect, .. } => effect,
+                        other => panic!("unexpected cue {other:?}"),
+                    }),
+            );
+        };
+        // Without a presentation the request stays pending and the game keeps running.
+        tick(&mut app, false);
+        assert!(!app.world().resource::<ExamineScreen>().open);
+        assert!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .globals()
+                .item_viewer_request()
+                .pending
+        );
+        app.world_mut().resource_mut::<ExamineScreen>().enabled = true;
+        tick(&mut app, false);
+        {
+            let screen = app.world().resource::<ExamineScreen>();
+            assert!(screen.open && screen.suspended());
+            assert_eq!(screen.model.as_deref(), Some("IHEALTH"));
+            assert_eq!(screen.pose.unwrap().position, [0.0, 0.0, 220.0 + 1490.0]);
+        }
+        assert!(app.world().resource::<Time<Virtual>>().is_paused());
+        let globals = |app: &App| {
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .globals()
+                .item_viewer_request()
+        };
+        assert!(!globals(&app).pending);
+        // The first line is the item's own label; the audio owner answers with its length.
+        tick(&mut app, false);
+        let screen = app.world().resource::<ExamineScreen>();
+        assert_eq!(screen.speech_request, lines.then_some(*b"cisw"));
+        if lines {
+            app.world_mut().resource_mut::<ExamineScreen>().speech_reply = Some(Some(60.0));
+        }
+        for _ in 0..8 {
+            tick(&mut app, false);
+        }
+        let screen = app.world().resource::<ExamineScreen>();
+        assert_eq!(screen.pose.unwrap().position, [0.0, 0.0, 220.0]);
+        // The view draws the playing line's text itself.
+        assert_eq!(screen.text, lines.then_some(*b"cisw"));
+        // An exit held from the start would not count; this one follows released updates.
+        tick(&mut app, true);
+        assert!(app.world().resource::<ExamineScreen>().open);
+        // The text stays while the view closes.
+        assert_eq!(
+            app.world().resource::<ExamineScreen>().text,
+            lines.then_some(*b"cisw")
+        );
+        let mut updates = 0;
+        while app.world().resource::<ExamineScreen>().open {
+            tick(&mut app, false);
+            updates += 1;
+            assert!(updates < 12);
+        }
+        assert_eq!(*effects.borrow(), [61, 60]);
+        assert!(app.world().resource::<ExamineScreen>().speech_stop);
+        let screen = app.world().resource::<ExamineScreen>();
+        assert!(screen.waiting_for_release && screen.suspended());
+        assert_eq!(screen.text, None);
+        assert!(!app.world().resource::<Time<Virtual>>().is_paused());
+        assert!(!globals(&app).no_rtx);
+        tick(&mut app, true);
+        assert!(app.world().resource::<ExamineScreen>().waiting_for_release);
+        tick(&mut app, false);
+        assert!(!app.world().resource::<ExamineScreen>().suspended());
+    }
+}
+
+#[test]
+fn the_inventory_entry_flies_from_its_cell_and_reports_whether_enter_closed_it() {
+    use bevy::prelude::*;
+    use cyrus_assets::hud::{InventoryItem, ItemHandModel};
+    use cyrus_game::{AppState, preferences::Preferences};
+    use cyrus_script::{
+        item_viewer::{ExamineScreen, InventoryCell},
+        script::ScriptHud,
+    };
+    let mut asset = hud_asset();
+    asset.inventory = [(
+        4,
+        InventoryItem {
+            count: 1,
+            total: 1,
+            player_max: 1,
+            inventory_model: ItemHandModel::Model("IHEALTH".into()),
+            inventory_extents: Some([100, 60, 40]),
+            ..Default::default()
+        },
+    )]
+    .into();
+    for confirm in [false, true] {
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let mut app = App::new();
+        app.insert_resource(State::new(AppState::InGame))
+            .insert_resource(Time::<Real>::default())
+            .insert_resource(Time::<Virtual>::default())
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(hud);
+        cyrus_script::item_viewer::register(&mut app);
+        let tick = |app: &mut App, key: Option<KeyCode>| {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            if let Some(key) = key {
+                keys.press(key);
+            }
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(std::time::Duration::from_millis(60));
+            app.update();
+        };
+        {
+            let mut screen = app.world_mut().resource_mut::<ExamineScreen>();
+            screen.enabled = true;
+            screen.inventory_request = Some(InventoryCell {
+                item: 4,
+                row: 1,
+                column: 2,
+            });
+        }
+        tick(&mut app, None);
+        let screen = app.world().resource::<ExamineScreen>();
+        assert!(screen.open && screen.inventory_request.is_none());
+        assert_eq!(
+            screen.pose.unwrap().position,
+            [2.0 * 388.0 - 582.0, 378.0 - 432.0, 1490.0]
+        );
+        for _ in 0..8 {
+            tick(&mut app, None);
+        }
+        assert_eq!(
+            app.world()
+                .resource::<ExamineScreen>()
+                .pose
+                .unwrap()
+                .position,
+            [0.0, 0.0, 220.0]
+        );
+        // Enter at the close request is the view's nonzero result; Escape alone is zero.
+        tick(
+            &mut app,
+            Some(if confirm {
+                KeyCode::Enter
+            } else {
+                KeyCode::Escape
+            }),
+        );
+        for _ in 0..8 {
+            tick(&mut app, None);
+        }
+        let screen = app.world().resource::<ExamineScreen>();
+        assert!(!screen.open);
+        assert_eq!(screen.inventory_result, Some(confirm));
     }
 }
 

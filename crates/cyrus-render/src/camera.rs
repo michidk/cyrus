@@ -209,6 +209,33 @@ fn provide_camera_terrain(
     }
 }
 
+/// Hand the loaded world's model lighting and palette to the examine view.
+fn provide_examine_look(
+    request: Option<Res<crate::environment::EnvironmentRequest>>,
+    environments: Option<Res<Assets<cyrus_assets::environment::Environment>>>,
+    screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
+    mut provided: Local<Option<AssetId<cyrus_assets::environment::Environment>>>,
+) {
+    let (Some(request), Some(environments), Some(mut screen)) = (request, environments, screen)
+    else {
+        return;
+    };
+    let id = request.0.id();
+    if *provided == Some(id) && screen.look.is_some() {
+        return;
+    }
+    if let Some(environment) = environments.get(&request.0) {
+        let [x, y, z] = environment.model_lighting.direction;
+        screen.look = Some(cyrus_script::item_viewer::ExamineLook {
+            ambient: environment.model_lighting.ambient,
+            directional: environment.model_lighting.directional,
+            direction: [-x, -y, z],
+            palette: environment.world_palette.clone(),
+        });
+        *provided = Some(id);
+    }
+}
+
 /// Draw the driven camera. Active only when the driver is switched on and has published a pose.
 fn drive_view_camera(
     drive: Res<cyrus_script::script::CameraDrive>,
@@ -276,6 +303,7 @@ impl Plugin for CameraPlugin {
                             !f.enabled && !drive.enabled && t.0.is_none()
                         }),
                     provide_camera_terrain.before(cyrus_script::script::OrdinaryUpdates),
+                    provide_examine_look,
                     drive_view_camera
                         .after(cyrus_script::script::OrdinaryUpdates)
                         .run_if(|f: Res<FlycamSettings>| !f.enabled),

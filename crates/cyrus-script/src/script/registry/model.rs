@@ -113,7 +113,7 @@ impl ModelState {
     }
 }
 
-/// One admitted actor's ordered candidate lists and copied collision angles.
+/// One admitted actor's ordered candidates and copied collision spheres and angles.
 /// Prepare before its script wrapper, then reuse through late response. Query
 /// origins and stored model poses remain owned by their respective stages.
 pub struct OrdinaryCollisionQuery {
@@ -122,6 +122,14 @@ pub struct OrdinaryCollisionQuery {
     content_id: String,
     pub(super) candidates: cyrus_collision::candidates::CollisionCandidates,
     pub(super) working_angles: [u16; 3],
+    pub(super) working_spheres: Vec<cyrus_collision::actor_shape::BodySphere>,
+}
+
+impl OrdinaryCollisionQuery {
+    /// The ordered candidates this query retained, face list and actor-style list.
+    pub fn candidates(&self) -> &cyrus_collision::candidates::CollisionCandidates {
+        &self.candidates
+    }
 }
 
 /// Independently prepared late recovery candidates, bound to one actor and world.
@@ -186,8 +194,10 @@ impl ScriptWorld {
         if self.actors[index].collision.is_none() {
             self.prepare_ordinary_collision_shape(id, data, scene)?;
         }
+        let working_spheres =
+            self.selected_collision_spheres(id, data, scene.actor_collision.as_ref())?;
         let spatial = self.spatial(id)?;
-        let working_angles = spatial.angle_history;
+        let working_angles = spatial.local.angles;
         let model =
             self.model_presentation(id)?
                 .map(|record| cyrus_collision::candidates::ModelBounds {
@@ -205,7 +215,7 @@ impl ScriptWorld {
             view,
             &query,
             &self.live_collision_inputs(actors)?,
-            &[],
+            &self.transient_collision_models(scene)?,
         )?;
         if !stable_recovery {
             self.retained_candidates = candidates.clone();
@@ -215,6 +225,7 @@ impl ScriptWorld {
             world: self.world,
             content_id: self.content_id.clone(),
             candidates,
+            working_spheres,
             working_angles: working_angles.map(|angle| (angle & 2047) as u16),
         })
     }
@@ -259,9 +270,93 @@ impl ScriptWorld {
                 if let Some(record) = self.model_presentation(self.id(index)?)? {
                     poses.insert(index, record.collision_pose()?);
                 }
+            } else if candidate.owner == cyrus_collision::candidates::CandidateOwner::Transient {
+                let cyrus_collision::candidates::ModelInstance::Runtime(model) = candidate.model
+                else {
+                    anyhow::bail!(
+                        "transient candidate {:?}: not a runtime model",
+                        candidate.model
+                    );
+                };
+                if let std::collections::btree_map::Entry::Vacant(slot) = poses.entry(model) {
+                    slot.insert(self.transient_collision_pose(model)?);
+                }
             }
         }
         Ok(poses)
+    }
+
+    /// The rope terminal models as the original's transient records, in construction order. A
+    /// record takes part in collision candidates when it has a loaded model; its radius is the
+    /// model's header radius and its position the terminal's current engine map position, with
+    /// the swing the ropes' last update left. A terminal whose geometry is absent from the scene
+    /// (an older export) or could not be prepared is an error naming the rope.
+    pub fn transient_collision_models(
+        &self,
+        scene: &crate::player::data::PlayerScene,
+    ) -> Result<Vec<cyrus_collision::candidates::TransientModel>> {
+        use cyrus_collision::candidates::{
+            ModelBounds, ModelInstance, TransientModel, transient_model,
+        };
+        let mut records = Vec::new();
+        for (rope_index, rope) in self.ropes.iter().enumerate() {
+            if rope.end_model().is_none() {
+                continue;
+            }
+            let Some((position, _)) = rope.end_collision_pose() else {
+                continue;
+            };
+            let models = scene.actor_collision.as_ref().with_context(|| {
+                format!(
+                    "world {} rope {rope_index}: terminal model collision geometry unavailable; re-export",
+                    self.world
+                )
+            })?;
+            ensure!(
+                models.transient_unsupported(rope_index).is_none(),
+                "world {} rope {rope_index}: {}",
+                self.world,
+                models.transient_unsupported(rope_index).unwrap_or_default()
+            );
+            ensure!(
+                models.has_transient(rope_index),
+                "world {} rope {rope_index}: terminal model {:?} has no collision geometry; re-export",
+                self.world,
+                rope.end_model().unwrap_or_default()
+            );
+            let key = transient_model(rope_index);
+            records.push(TransientModel {
+                active: true,
+                flags: 0x10,
+                model: Some(ModelBounds {
+                    instance: ModelInstance::Runtime(key),
+                    position,
+                    radius: models.transient_radius(key)?,
+                }),
+            });
+        }
+        Ok(records)
+    }
+
+    /// The stored collision pose of the transient record `model` (a rope's terminal).
+    pub(super) fn transient_collision_pose(
+        &self,
+        model: usize,
+    ) -> Result<cyrus_collision::collision_mesh::ModelPose> {
+        use bevy::math::{Mat3, Vec3};
+        let rope = model
+            .checked_sub(cyrus_collision::candidates::TRANSIENT_MODEL_BASE)
+            .with_context(|| format!("model {model} is not a transient record"))?;
+        let (position, rows) = self
+            .ropes
+            .get(rope)
+            .and_then(cyrus_game::rope::Rope::end_collision_pose)
+            .with_context(|| format!("world {} rope {rope}: no terminal pose", self.world))?;
+        let rows = rows.map(Vec3::from_array);
+        cyrus_collision::collision_mesh::ModelPose::new(
+            position,
+            Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
+        )
     }
 
     /// Fresh-world PVO secondary IDs, in preservation's load-time Z/X cell order.
@@ -392,6 +487,19 @@ impl ScriptWorld {
                     self.actors[id.index].model.current = None;
                     self.actors[id.index].model.animation_radius = None;
                     return Ok(());
+                }
+                // The matrix refresh stores the heading change of the update for an actor off a rope.
+                if let Some(spatial) = self.spatial.as_ref().and_then(|s| s.actor(id.index).ok()) {
+                    let change = spatial.local.angles[1].wrapping_sub(spatial.angle_history[1]);
+                    if let Some(control) = self.actors[id.index].control.as_mut()
+                        && !control.rope_attached
+                    {
+                        control.yangle_change = change as i16;
+                    }
+                }
+                // The refresh of a drawn model also keeps the rotation words it applied.
+                if let Some(animation) = self.actors[id.index].animation.as_mut() {
+                    animation.playback.refresh_rotation_history();
                 }
                 let actor = &self.actors[id.index];
                 if actor.attributes[Attribute::Weapon] == 0
@@ -1252,18 +1360,7 @@ impl ScriptWorld {
             DisplayAttachment, TRANSIENT_MODEL_CAPACITY, prepare_weapon_attachment,
         };
         self.require_model_identity(data)?;
-        let stem = name
-            .rsplit(['\\', '/', ':'])
-            .next()
-            .unwrap_or(name)
-            .split('.')
-            .next()
-            .unwrap_or_default();
-        let model: String = stem
-            .chars()
-            .take(8)
-            .collect::<String>()
-            .to_ascii_uppercase();
+        let model = resource_stem(name);
         ensure!(
             data.models.contains_key(&model),
             "display model {name:?}: installed model {model} unavailable"
@@ -1729,4 +1826,19 @@ fn float_to_model_integer(value: f64) -> i32 {
     } else {
         i32::MIN
     }
+}
+
+/// A resource name as the original's lookups key it: the base file name without directory, drive
+/// or extension, at most eight characters, upper case.
+pub(super) fn resource_stem(name: &str) -> String {
+    name.rsplit(['\\', '/', ':'])
+        .next()
+        .unwrap_or(name)
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(8)
+        .collect::<String>()
+        .to_ascii_uppercase()
 }

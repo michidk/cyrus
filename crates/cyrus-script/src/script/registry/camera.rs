@@ -373,6 +373,7 @@ pub struct SceneCameraGeometry<'a, T> {
     scene: &'a crate::player::data::PlayerScene,
     view: [i32; 2],
     live: Vec<cyrus_collision::candidates::LiveActor>,
+    transients: Vec<cyrus_collision::candidates::TransientModel>,
     poses: std::collections::BTreeMap<usize, cyrus_collision::collision_mesh::ModelPose>,
     limits: cyrus_assets::script::CameraLimits,
     terrain: Option<T>,
@@ -435,10 +436,12 @@ impl<T: crate::script::camera::CameraTerrainHeights> CameraGeometry for SceneCam
             position,
             self.owner(excluded),
         );
-        let candidates =
-            self.scene
-                .static_collision
-                .runtime_candidates(self.view, &query, &self.live, &[])?;
+        let candidates = self.scene.static_collision.runtime_candidates(
+            self.view,
+            &query,
+            &self.live,
+            &self.transients,
+        )?;
         let spheres = [
             (Vec3::ZERO, self.limits.camera_size as f32),
             (Vec3::ZERO, self.limits.camera_scape_size as f32),
@@ -457,7 +460,10 @@ impl<T: crate::script::camera::CameraTerrainHeights> CameraGeometry for SceneCam
                     position: position.map(i64::from),
                     rotation: Mat3::IDENTITY,
                     spheres: &spheres,
-                    sidedness: false,
+                    // The original's camera body routine sets the polygon-sidedness flag to one
+                    // before its sphere query, so a face more than 4 units behind a sphere centre
+                    // is rejected.
+                    sidedness: true,
                 },
                 excluded_candidate_type: None,
             },
@@ -499,10 +505,19 @@ impl ScriptWorld {
                 poses.insert(actor.actor, record.collision_pose()?);
             }
         }
+        let transients = self.transient_collision_models(scene)?;
+        for record in &transients {
+            if let Some(model) = record.model
+                && let cyrus_collision::candidates::ModelInstance::Runtime(key) = model.instance
+            {
+                poses.insert(key, self.transient_collision_pose(key)?);
+            }
+        }
         Ok(SceneCameraGeometry {
             scene,
             view,
             live,
+            transients,
             poses,
             limits,
             terrain,

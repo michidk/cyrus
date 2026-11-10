@@ -83,7 +83,9 @@ steps at 192 even when the host is slower, and game time runs slower than wall t
 `dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT` loads each named world
 through the same port, lets its scripts run and prints every actor whose script failed (exit 1 if
 any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
-scene that polls it. Run native cyrus with a real-time audio sink: ALSA's `null` device drains faster than real time, which
+scene that polls it; add `--expect-transition` when that scene ends in a world change (the usual
+outcome), and the sweep follows it into the destination world and inspects that world instead of
+reporting the replacement as a failure. Run native cyrus with a real-time audio sink: ALSA's `null` device drains faster than real time, which
 shortens every voiced line (**Verified:** the START story from the last kill to the world change took
 30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
 prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
@@ -170,6 +172,19 @@ dev container the renderer, not the game logic, limits the frame rate: an optimi
 (`CARGO_PROFILE_DEV_OPT_LEVEL=2`) at 640x480 runs above 16 frames per second, where the
 default size runs at about 5 to 11. Measure the frame rate (control `state`, field `frame`)
 before comparing timing-dependent behaviour such as combat pacing with the original.
+
+A slow native run in the container is slow, not hung. The unoptimized build under software
+rendering draws about 1 to 2 frames per second, and the game clock advances only about 0.2 to 0.4
+game seconds per wall second (older builds ran about 0.015, which looks like a frozen clock). Poll
+the control `state` clock to see progress, normalise every measurement by that game clock, and
+abort a run only when the game clock itself has not advanced for several minutes. A clock that
+stops while the state's `frame` counter keeps rising is different: the script world has stopped
+after an error, and `state.scripts.error` names it.
+
+The window waits for the display's refresh by default, so a measured frame rate is capped at it
+(and drops to half of it when a frame just misses). `CYRUS_PRESENT_MODE=novsync` presents at
+once; use it, on a machine with no other builds running, when measuring what the game can
+render. `vsync` is the default.
 
 Unoptimized native loader threads need a larger stack. Launch such binaries
 with `RUST_MIN_STACK=8388608`; container launches also need
@@ -285,7 +300,7 @@ Set `CYRUS_WASM_PROFILE=wasm-release` to build with the release profile name.
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--fog`, `--sky`, `--music`, `--controls`, and `--camera` map directly
+Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music`, `--controls`, `--camera` and `--mode` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
@@ -470,8 +485,8 @@ Local lights and complete static-prelighting behavior remain unsupported.
 ### Sky, fog, and water
 
 Re-export worlds to regenerate `.environment` sidecars. F1 provides independent
-Faithful/Modern buttons for Fog and Sky. Both default to Faithful. Water has no
-switch: the original wave runs unless a native mod replaces it (see Mods below).
+Faithful/Modern buttons for Fog and Sky, which default to Faithful. Water changes only through the
+`modern-water` native mod.
 
 **Verified:** Faithful sky uses the installed BSI/COL texture, camera-relative
 plane mapping, per-world scrolling speed, and BIOS timer documented by
@@ -487,25 +502,14 @@ cross its surface. Both retain the world's colors and horizon haze.
 range (7/3800 engine units in the shipped configuration). Modern fog defaults to
 four times that far distance and fades smoothly over the distant portion of
 the view. F1's distance control selects Modern Fog; Original resets the distance
-and returns Fog to Faithful. Water and Sky are unaffected.
+and returns Fog to Faithful. Sky is unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
-bias, spatial phase, and BIOS-rate clock. The bundled `modern-water` mod keeps
-the same selected vertices and installed texture, with smooth crossing waves,
-small texture ripples, and a subtle view-dependent sheen. These are optional
-artistic effects, not recovered engine behavior. Deactivating the mod restores
-the original wave at the current clock tick. Terrain placement, base heights,
-and lighting retain the existing export limitations.
-
-### Mods
-
-The native game loads WebAssembly mods from `mods/<id>/` in its config directory
-(above; `game-config/mods/` in a checkout); the browser build has none. `just mods`
-builds the bundled mods under `mods/` (`modern-water`, `flycam`, `movement`) and
-installs them into `game-config/mods/`. F1 opens a Mods window next
-to the debug menu; ticking a mod activates it and saves the choice in
-`mods.json` there. Active mod files are reloaded when they change on
-disk. `mods/README.md` describes the mod API and how to write one.
+bias, spatial phase, and BIOS-rate clock. The `modern-water` mod keeps the same selected
+vertices and installed texture, with crossing waves, ripples, shore foam, wet sand and
+reflections. These are optional artistic effects, not recovered engine behavior. Turning
+the mod off restores the original wave at the current clock tick. Terrain placement, base heights, and lighting
+retain the existing export limitations.
 
 ## The original game
 
@@ -734,7 +738,14 @@ response timers, for every actor except the selected player and the camera actor
 early return is **Verified**; that its skipped part is this stage is inferred from the task-system test beside it
 and the matching timer bookkeeping). It acts only where the caller supplies the cheat state: the automatic
 update and the control port do, direct stage calls without it do not. `magiccarpet` (the value exactly 1, not any
-nonzero value) makes the selected player's ground-support probe clear its falling byte and end. `yeahbaby`
+nonzero value) makes the selected player's ground-support probe clear its falling byte and end. `task` and `animation` are the
+live replacements for the `SYSTEM.INI` `task_system` and `animation_system` switches the startup restore
+already seeds: each is on only for the value exactly 1, and the ordinary update carries the state into the world,
+so the existing gates respond to a console toggle (with `task` off the ordinary main stage and the hook gates
+run no scripts; with `animation` off the animation requests, advancement and the timing checks that read the
+switch stop). `moonraker` (any nonzero value) takes the selected player out of the late collision stage's forward obstacle probes and actor overlap pass; other actors still collide. (The original also keeps the overlap-enable bit of the player's control record in step with the slot; cyrus gates the stage itself.) While `animation` is exactly zero the selected player's body is not drawn; other values leave it
+drawn. The `animation` value 2 runs the animation system (requests, advancement, timing) but skips the movement
+natives' wait for their requested group, which only the value 1 keeps, as the original's checks split. `yeahbaby`
 integrates its ground bypass and debug navigation handler. The bypass is on for a nonzero state or in developer mode (`[debug] final_version=0`,
 where missing key state leaves it inactive): while Page Up or Page Down is held, or the Home toggle (flipped once
 per Home press while it is on, and kept while it is off) is set, the selected player's probe clears the living
@@ -743,12 +754,12 @@ query; unknown key state refuses the update. In the same state the selected play
 16 map units for each of Page Up (up) and Page Down (down) held once per update, so both held cancel; Insert held suspends the camera's
 movement limiting (bit 0 of the selected camera record's flags, set on the first held update and restored on release
 or when the handler turns off, on the record selected then) and moves the actor forward by the frame scale times
-128 Q8 each update. With the camera session absent, Insert refuses the update. The catalog still reports
-`yeahbaby` unavailable pending complete native and browser acceptance. Installed START tests drive
+128 Q8 each update. With the camera session absent, Insert refuses the update. The catalog reports
+`yeahbaby` as a connected `ground_bypass` effect; the control port's Page Up and Page Down presses reach the handler and move the player 16 units per update (**Verified** in a native run). Installed START tests drive
 these keys and cheat states through ordinary Bevy app updates; they do not establish host parity. The keys are
 sampled from the keyboard once per frame, under the same input locks as the quick keys (console, logbook and
 loading read them as released), and read by that frame's ordinary update; a Home press in a frame where the
-ordinary update does not run is not retained, and the control port supplies no keys. Other gameplay
+ordinary update does not run is not retained. Other gameplay
 effects report unsupported.
 **Unknown:** the original gameplay effect of `oddjob`; its raw state still
 supports toggling, assignment and persistence. These commands do not enable

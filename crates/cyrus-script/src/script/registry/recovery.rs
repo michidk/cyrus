@@ -280,6 +280,7 @@ impl ScriptWorld {
             "world {} instance {index}: rollback snapshot belongs to another actor or generation",
             self.world
         );
+        self.rolled_back = true;
         let actor = &mut self.actors[index];
         ensure!(
             actor.animation.is_some() == snapshot.animation.is_some(),

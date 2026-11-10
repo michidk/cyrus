@@ -8,7 +8,7 @@ fn int(value: i32) -> Value {
     Value::Integer { value }
 }
 
-const REFERENCES: [Property; 11] = [
+const REFERENCES: [Property; 22] = [
     Property::AnimNext,
     Property::AnimNextSpeed,
     Property::AnimFrame,
@@ -20,6 +20,17 @@ const REFERENCES: [Property; 11] = [
     Property::AnimLoopCount,
     Property::AnimRewindFlag,
     Property::AnimRealFrame,
+    Property::AnimRepCount,
+    Property::AnimPosVx,
+    Property::AnimPosVy,
+    Property::AnimPosVz,
+    Property::AnimAngleVx,
+    Property::AnimAngleVy,
+    Property::AnimAngleVz,
+    Property::AnimCurrent,
+    Property::AnimLastAngleVx,
+    Property::Frame,
+    Property::AnimMaxGroup,
 ];
 
 fn reference(property: Property) -> u16 {
@@ -82,6 +93,7 @@ fn animation_data(scripts: &Scripts, actor: &str) -> Animations {
             "actors": [{
             "script_name": actor,
             "model_load_path": "animation_table",
+            "anim_control_prefix": 1193131,
             "raan_entries": [{"file_path": "LOGIC.3D", "frame_count": 30}],
             "animation_groups": [
                 {"group_index": 7, "anim_id": 3, "anim_type": 0, "commands": [
@@ -115,6 +127,7 @@ fn animation_data(scripts: &Scripts, actor: &str) -> Animations {
 struct Fixture {
     world: ScriptWorld,
     id: cyrus_script::script::ScriptActorId,
+    data: Animations,
 }
 
 impl Fixture {
@@ -156,7 +169,7 @@ impl Fixture {
         world
             .bind_animation(id, &data, AnimationGroup::IDLE_LEDGE)
             .unwrap();
-        let mut fixture = Self { world, id };
+        let mut fixture = Self { world, id, data };
         fixture.animate(1);
         fixture
     }
@@ -188,6 +201,7 @@ impl Fixture {
                 caller,
                 ScriptStage::Body(Thread::Main),
                 ScriptInputs {
+                    animations: Some(cyrus_script::script::AnimationData(&self.data)),
                     nominal_ticks: Some(0),
                     frame_scale: Some(256),
                     ..Default::default()
@@ -345,15 +359,21 @@ fn run_body(fixture: &mut Fixture) -> anyhow::Result<()> {
 }
 
 #[test]
-fn a_pending_requests_speed_is_its_modifier_plus_the_groups_own_byte() {
-    // Group 9's own byte is 5. Naming it as pending leaves modifier zero; writing the speed stores
-    // the modifier that leaves the written value.
-    let mut ops = vec![write(Property::AnimNext, 9)];
-    ops.extend(reads(&[Property::AnimNextSpeed]));
+fn the_pending_speed_byte_is_the_last_requests_modifier_plus_its_groups_byte_and_outlives_it() {
+    // The started group 7 has its own byte 3, so the byte reads 3 with no request pending. Naming
+    // group 9 as pending (its own byte is 5) leaves the byte alone; writing it stores the value.
+    let mut ops = reads(&[Property::AnimNextSpeed]);
     ops.extend([
-        write(Property::AnimNextSpeed, 12),
+        write(Property::AnimNext, 9),
         assign(
             Place::Local { index: 1 },
+            Value::Read {
+                place: me(Property::AnimNextSpeed),
+            },
+        ),
+        write(Property::AnimNextSpeed, 12),
+        assign(
+            Place::Local { index: 2 },
             Value::Read {
                 place: me(Property::AnimNextSpeed),
             },
@@ -362,16 +382,7 @@ fn a_pending_requests_speed_is_its_modifier_plus_the_groups_own_byte() {
     ]);
     let mut fixture = Fixture::new(ops);
     run_body(&mut fixture).unwrap();
-    assert_eq!(fixture.locals()[..2], [5, 12]);
-    // Without a pending request the byte is not modelled: an explicit error, never a zero.
-    let mut ops = reads(&[Property::AnimNextSpeed]);
-    ops.push(Operation::End { target: 0 });
-    let mut fixture = Fixture::new(ops);
-    let error = run_body(&mut fixture).unwrap_err();
-    assert!(
-        format!("{error:#}").contains("no pending request"),
-        "{error:#}"
-    );
+    assert_eq!(fixture.locals()[..3], [3, 3, 12]);
 }
 
 #[test]
@@ -484,4 +495,123 @@ fn a_cursor_outside_the_group_fails_playback_stickily_and_the_record_stops_readi
     // The failure is sticky: later reads of the record report it instead of stale values.
     let error = run_body(&mut fixture).unwrap_err();
     assert!(format!("{error:#}").contains(&failure), "{error:#}");
+}
+
+#[test]
+fn the_repeat_byte_and_the_retained_translation_and_rotation_words_are_record_fields() {
+    let read = [
+        Property::AnimRepCount,
+        Property::AnimPosVy,
+        Property::AnimAngleVz,
+    ];
+    let mut ops = vec![
+        write(Property::AnimRepCount, 0x105),
+        write(Property::AnimPosVy, -300),
+        write(Property::AnimAngleVz, 0x1_8000),
+    ];
+    ops.extend(reads(&read));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    run_body(&mut fixture).unwrap();
+    // The byte keeps eight bits, the words are signed sixteen-bit values.
+    assert_eq!(fixture.locals()[..3], [5, -300, -0x8000]);
+}
+
+#[test]
+fn writing_anim_current_switches_the_commands_a_later_step_reads() {
+    // Group 9 holds one frame and its end; group 7 four frames. With the countdown expired the
+    // step moves the kept cursor to command 1, which is group 9's end but group 7's second frame.
+    let mut ops = vec![
+        write(Property::AnimCurrent, 9),
+        write(Property::AnimSpeedCount, 0),
+        assign(
+            Place::Local { index: 0 },
+            Value::Read {
+                place: me(Property::AnimCurrent),
+            },
+        ),
+        Operation::End { target: 0 },
+    ];
+    let mut fixture = Fixture::new(std::mem::take(&mut ops));
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 9, "the written word reads back");
+    fixture.animate(1);
+    // Group 9's end keeps the prior pose; group 7 would show its frame 11 here.
+    assert_eq!(fixture.frame(), Some(10));
+    // A group without commands stops the script with an explicit error.
+    let mut fixture = Fixture::new(vec![
+        write(Property::AnimCurrent, 40),
+        Operation::End { target: 0 },
+    ]);
+    let caller = fixture.world.id(0).unwrap();
+    let error = fixture
+        .world
+        .advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("absent group"), "{error:#}");
+}
+
+#[test]
+fn the_last_angle_words_read_zero_and_keep_what_a_script_writes() {
+    let mut ops = reads(&[Property::AnimLastAngleVx]);
+    ops.push(write(Property::AnimLastAngleVx, 70000));
+    ops.extend(
+        reads(&[Property::AnimLastAngleVx])
+            .into_iter()
+            .map(|op| match op {
+                Operation::Assign { formula, .. } => {
+                    assign(Place::Local { index: 1 }, formula.first)
+                }
+                other => other,
+            }),
+    );
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    fixture.body();
+    // The word starts at zero and keeps the low sixteen bits of the stored value, read signed.
+    assert_eq!(fixture.locals()[..2], [0, 4464]);
+}
+
+#[test]
+fn the_frame_word_is_the_frame_index_inside_the_selected_model() {
+    // Group 7 starts on file frame reference 10 of the single 30-frame model. The script also
+    // expires the countdown, so one tick later playback shows reference 11.
+    let mut ops = reads(&[Property::Frame]);
+    ops.push(write(Property::AnimSpeedCount, 0));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 10);
+    fixture.animate(1);
+    assert_eq!(fixture.frame(), Some(11));
+    fixture.body();
+    assert_eq!(fixture.locals()[0], 11);
+}
+
+#[test]
+fn max_group_is_the_low_byte_of_the_exported_control_prefix_and_a_plain_byte() {
+    let mut ops = reads(&[Property::AnimMaxGroup]);
+    ops.push(write(Property::AnimMaxGroup, 70000));
+    ops.push(assign(
+        Place::Local { index: 1 },
+        Value::Read {
+            place: me(Property::AnimMaxGroup),
+        },
+    ));
+    ops.push(Operation::End { target: 0 });
+    let mut fixture = Fixture::new(ops);
+    fixture.body();
+    // 1193131 keeps its low byte 171; a write keeps the low byte of 70000, which is 112.
+    assert_eq!(fixture.locals()[..2], [171, 112]);
 }

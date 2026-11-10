@@ -59,12 +59,7 @@ impl ScriptWorld {
             return Ok(self.actors[id.index].surface.unwrap_or_default());
         }
         let surface = support
-            .map(|support| {
-                scene.support_surface(
-                    support,
-                    self.spatial(id)?.query_pose()?.position.map(i64::from),
-                )
-            })
+            .map(|support| scene.support_surface(support, self.query_position(id)?.map(i64::from)))
             .transpose()?
             .unwrap_or_default();
         if !keep_stored {
@@ -72,6 +67,29 @@ impl ScriptWorld {
             self.surface_veto = Some(matches!(surface, Surface::LAVA | Surface::GLOOP));
         }
         Ok(surface)
+    }
+
+    /// Run the transitions the selected player's probes queued, oldest first. The caller owns the
+    /// random stream and sound sink and calls this right after the probe.
+    pub fn flush_surface_transitions(
+        &mut self,
+        id: ScriptActorId,
+        ticks: u32,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        for pending in std::mem::take(&mut self.pending_surface_transitions) {
+            self.selected_surface_transition(
+                id,
+                pending.previous,
+                pending.returned,
+                ticks,
+                random,
+                pending.effect_height,
+                sounds,
+            )?;
+        }
+        Ok(())
     }
 
     /// The selected player's water and lava transition effects (preservation player.md): the
@@ -176,7 +194,7 @@ impl ScriptWorld {
 
     /// Q8 Y of a transition effect for the selected support: the support height plus standing
     /// height, plus six units (a fallback support keeps its actor origin, so its extent is added).
-    fn transition_effect_height(
+    pub(super) fn transition_effect_height(
         &self,
         id: ScriptActorId,
         support: Option<&SelectedSupport>,
@@ -226,7 +244,7 @@ impl ScriptWorld {
 
     /// Check nonplayer support at a proposed local Q8 position, restoring XYZ
     /// while retaining collision writes, including rollback and surface state.
-    /// Linked actors and selected-player feedback remain unavailable.
+    /// Attached actors and selected-player feedback remain unavailable.
     pub fn admit_ordinary_destination(
         &mut self,
         id: ScriptActorId,
@@ -243,10 +261,12 @@ impl ScriptWorld {
         );
         let spatial = self.spatial(id)?;
         ensure!(
-            spatial.parent.is_none() && spatial.linked_position.is_none(),
-            "world {} instance {index}: linked destination collision unavailable",
+            spatial.parent.is_none(),
+            "world {} instance {index}: attached destination collision unavailable",
             self.world,
         );
+        // A linked actor's probe reads its link position, so the temporary local destination
+        // changes nothing it queries, as in the original.
         let saved = spatial.local.position;
         self.spatial
             .as_mut()
@@ -379,7 +399,15 @@ impl ScriptWorld {
                 sounds,
             )?;
         } else {
-            self.begin_ordinary_jump(id, query.animations, 8, task_active, environment, sounds)?;
+            self.begin_ordinary_jump(
+                id,
+                query.animations,
+                8,
+                task_active,
+                environment,
+                None,
+                sounds,
+            )?;
         }
         if self.updates.animation_system {
             self.request_ordinary_group(
@@ -457,6 +485,7 @@ impl ScriptWorld {
                     8,
                     task_active,
                     environment,
+                    None,
                     sounds,
                 )?;
             }
@@ -986,10 +1015,9 @@ impl ScriptWorld {
                 );
                 if let Some(support) = support.as_ref() {
                     if falling {
-                        let surface = query.scene.support_surface(
-                            support,
-                            self.spatial(id)?.query_pose()?.position.map(i64::from),
-                        )?;
+                        let surface = query
+                            .scene
+                            .support_surface(support, self.query_position(id)?.map(i64::from))?;
                         self.set_actor_surface(id, surface)?;
                         let selected = (environment.selected_player == Some(id)).then(|| {
                             super::falling::SelectedLanding {
@@ -1115,17 +1143,16 @@ impl ScriptWorld {
             .as_ref()
             .context("late collision control unavailable")?;
         let special = control.living_state.is_ledge();
+        // A falling byte in a ledge state needs no rule of its own: the obstacle wrapper is skipped
+        // for the ledge states, the support query takes its falling distance, and the ledge
+        // transition replaces the ground response.
         let falling = control.falling_state != JumpMotion::NONE;
-        ensure!(
-            !falling || !special,
-            "world {} instance {}: falling in a special state is unsupported",
-            self.world,
-            id.index
-        );
-        if !special {
+        // The moonraker cheat takes the selected player out of both collision passes.
+        let uncollided = skips_collision(environment.selected_player, id, script);
+        if !special && !uncollided {
             self.resolve_ordinary_obstacle_wrapper(id, obstacle_query(), environment, sounds)?;
         }
-        if mask & 8 != 0 {
+        if mask & 8 != 0 && !uncollided {
             self.resolve_ordinary_overlap_stage(id, obstacle_query(), environment, sounds)?;
         }
         self.ground_response_stage(
@@ -1257,5 +1284,45 @@ impl ScriptWorld {
         }
         self.rollback_ordinary_water(id, environment.selected_player, rollback, sounds)?;
         Ok(())
+    }
+}
+
+/// Whether the moonraker cheat takes `id` out of the late collision passes: only the selected player
+/// is exempt, and an unknown cheat state leaves the passes on.
+fn skips_collision(
+    selected_player: Option<ScriptActorId>,
+    id: ScriptActorId,
+    script: super::ScriptInputs<'_>,
+) -> bool {
+    selected_player == Some(id) && script.player_collision_skipped == Some(true)
+}
+
+#[cfg(test)]
+mod moonraker_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_selected_player_under_a_known_active_cheat_skips_collision() {
+        let player = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let other = ScriptActorId {
+            generation: 1,
+            index: 1,
+        };
+        for (selected, id, state, expected) in [
+            (Some(player), player, Some(true), true),
+            (Some(player), player, Some(false), false),
+            (Some(player), player, None, false),
+            (Some(player), other, Some(true), false),
+            (None, player, Some(true), false),
+        ] {
+            let inputs = super::super::ScriptInputs {
+                player_collision_skipped: state,
+                ..Default::default()
+            };
+            assert_eq!(skips_collision(selected, id, inputs), expected);
+        }
     }
 }

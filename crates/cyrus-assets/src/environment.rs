@@ -28,10 +28,19 @@ pub struct Environment {
     pub terrain_lighting: Option<TerrainLighting>,
     /// Ambient and directional model inputs, including worlds without terrain.
     pub model_lighting: ModelLighting,
+    /// The world palette as the Glide upload leaves it (each channel `4 * floor(c / 4)`, entry
+    /// zero black), which textures drawn over the world resolve through. Empty in caches that
+    /// predate it.
+    #[serde(default)]
+    pub world_palette: Vec<[u8; 3]>,
     /// Authored static placements and admitted map lights for the world-entry bake.
     pub prelighting: Prelighting,
     /// Authored kind-6 runtime lights in file order, before active-region selection.
     pub object_lights: Vec<LocalLight>,
+    /// Packed `(set << 7) | image` keys of the textures SURFACE.INI marks as water. Empty in
+    /// caches that predate it.
+    #[serde(default)]
+    pub water_textures: Vec<u16>,
 }
 
 #[derive(Default, Serialize, Deserialize)]

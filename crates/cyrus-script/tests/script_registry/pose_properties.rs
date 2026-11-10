@@ -496,3 +496,253 @@ fn actor_held_ledge_point_survives_restores_and_wins_over_a_legacy_global() {
     assert_eq!(control["ledge_point"], serde_json::json!([1, 2, 3]));
     assert_eq!(control["motion_vector"][1], 700);
 }
+
+#[test]
+fn dead_and_weapon_drawn_are_the_killed_marker_and_the_drawn_byte() {
+    let world = pose_world(&[
+        Step3::Read(Property::Dead),
+        Step3::Read(Property::WeaponDrawn),
+        Step3::Write(Property::Dead, 0x100 + 1),
+        Step3::Write(Property::WeaponDrawn, 2),
+        Step3::Read(Property::Dead),
+        Step3::Read(Property::WeaponDrawn),
+    ]);
+    // Bytes read zero or one here, any nonzero low byte sets them.
+    assert_eq!(locals(&world), [0, 0, 1, 1]);
+    let control = world.actors()[0].control_state().unwrap();
+    assert!(control.killed && control.weapon_drawn);
+    let world = pose_world(&[
+        Step3::Write(Property::Dead, 1),
+        Step3::Write(Property::Dead, 0x200),
+        Step3::Read(Property::Dead),
+    ]);
+    assert_eq!(locals(&world), [0]);
+    assert!(!world.actors()[0].control_state().unwrap().killed);
+}
+
+#[test]
+fn a_script_that_marks_itself_dead_is_skipped_by_later_ordinary_updates() {
+    // Ordinary script updates skip a receiver whose killed marker is set, so the counter the
+    // script increments before marking itself dead stops at one.
+    let mut scripts = cache();
+    scripts.definition.references = vec![Property::Dead];
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.program.variables = vec![0];
+    logic.instance_variables = vec![vec![0]; 2];
+    logic.program.steps = [
+        Operation::Increment {
+            destination: Place::Local { index: 0 },
+            delta: 1,
+        },
+        Operation::Assign {
+            destination: Place::Property {
+                object: Object::Me,
+                reference: 0,
+            },
+            formula: Formula {
+                first: int(1),
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    for _ in 0..3 {
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+    }
+    assert_eq!(locals(&world), [1]);
+    assert!(world.actors()[0].control_state().unwrap().killed);
+}
+
+#[test]
+fn invisible_is_a_draw_only_flag_the_script_keeps_running_under() {
+    let world = pose_world(&[
+        Step3::Read(Property::Invisible),
+        Step3::Write(Property::Invisible, 0x103),
+        Step3::Read(Property::Invisible),
+        Step3::Write(Property::Dead, 0),
+    ]);
+    assert_eq!(locals(&world), [0, 1]);
+    // It is saved with the actor and, unlike `dead`, does not stop script updates.
+    assert!(world.actors()[0].control_state().unwrap().invisible);
+    assert!(!world.actors()[0].control_state().unwrap().killed);
+}
+
+#[test]
+fn hand_item_is_the_held_item_byte_and_four_unused_bytes_are_plain_storage() {
+    let plain = [
+        Property::SurfaceTime,
+        Property::JumpTime,
+        Property::JumpHeight,
+        Property::Anchor,
+    ];
+    let mut steps = vec![Step3::Read(Property::HandItem)];
+    steps.extend(plain.map(Step3::Read));
+    steps.push(Step3::Write(Property::HandItem, 0x1ff));
+    steps.extend(
+        plain
+            .iter()
+            .zip([0x1a5, 0x2b6, 0x3c7, 0x4d8])
+            .map(|(&property, value)| Step3::Write(property, value)),
+    );
+    steps.push(Step3::Read(Property::HandItem));
+    steps.extend(plain.map(Step3::Read));
+    let world = pose_world(&steps);
+    // Every byte starts at the allocator's zero; a write keeps its low byte, read back zero-extended.
+    assert_eq!(locals(&world), [0, 0, 0, 0, 0, 255, 0xa5, 0xb6, 0xc7, 0xd8]);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(control.held_item, Some(255));
+    assert_eq!(
+        [
+            control.surface_time,
+            control.jump_time,
+            control.jump_height,
+            control.anchor
+        ],
+        [0xa5, 0xb6, 0xc7, 0xd8]
+    );
+}
+
+#[test]
+fn id_is_the_runtime_identifier_my_id_returns_and_cannot_be_overwritten() {
+    let world = pose_world(&[Step3::Read(Property::Id), Step3::Call(Native::MyId, vec![])]);
+    let values = locals(&world);
+    assert_eq!(values[0], values[1]);
+    let error = try_pose_world(&[Step3::Write(Property::Id, 5)], |_| {}, false)
+        .err()
+        .expect("a write is refused");
+    assert!(
+        format!("{error:#}").contains("runtime identifier is installed identity"),
+        "{error:#}"
+    );
+}
+
+#[test]
+fn the_task_cheat_state_switches_the_ordinary_script_stage_off() {
+    // A counter the script bumps each ordinary update: with the task system off (the `task`
+    // cheat not equal to one) the stage runs no script, with it on or unspecified it does.
+    let mut scripts = cache();
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.program.variables = vec![0];
+    logic.instance_variables = vec![vec![0]; 2];
+    logic.program.steps = [
+        Operation::Increment {
+            destination: Place::Local { index: 0 },
+            delta: 1,
+        },
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    for (task_system, expected) in [(Some(false), 0), (None, 1), (Some(true), 1)] {
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    task_system,
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(locals(&world), [expected], "{task_system:?}");
+    }
+}
+
+#[test]
+fn the_animation_state_two_runs_the_system_without_the_movement_natives_group_wait() {
+    // `animation_system` is the value-one state and `animation_running` the nonzero state: the
+    // movement natives wait on their group only for one, the rest of the system runs for any
+    // nonzero value.
+    let mut world = ScriptWorld::prepare(&cache(), 1).unwrap();
+    let id = world.id(0).unwrap();
+    for (strict, running, waits) in [
+        (None, None, true),
+        (Some(false), Some(true), false),
+        (Some(true), Some(true), true),
+        (Some(false), Some(false), false),
+        (Some(true), None, true),
+        (None, Some(true), true),
+    ] {
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    animation_system: strict,
+                    animation_running: running,
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.animation_waits_for_test(),
+            waits,
+            "{strict:?} {running:?}"
+        );
+    }
+}
+
+#[test]
+fn yangle_change_is_a_signed_word_the_refresh_stores_and_a_script_may_write() {
+    let world = pose_world(&[
+        Step3::Read(Property::YangleChange),
+        Step3::Write(Property::YangleChange, 70000),
+        Step3::Read(Property::YangleChange),
+        Step3::Write(Property::YangleChange, 0x8000),
+        Step3::Read(Property::YangleChange),
+    ]);
+    // Zero until a refresh stores a heading change; a write keeps the low sixteen bits, read signed.
+    assert_eq!(locals(&world), [0, 4464, -32768]);
+}

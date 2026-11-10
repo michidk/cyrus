@@ -48,7 +48,7 @@ use `offset`):
   attribute 3 (`attr_health`). `mark_dead {index}` sets health zero and lifecycle selector eight, which is what `IsDead`
   reads, without the death animation.
 - `cheat {name,value}` and `console {line}` run the installed cheats and console commands, for example
-  `item add,79`; `drevil` keeps the player alive at zero health. `neversaydie` makes `PlayerDistance` return
+  `item add,79`; `drevil` stops the player taking damage from hits and direct damage and keeps it alive at zero health. `neversaydie` makes `PlayerDistance` return
   9999999, so every script gated on the player being near stays idle: leave it off for interaction runs.
 - `select_item {id}` makes inventory item `id` the active item, as confirming it in the inventory screen does.
   `set_torch {burning}` sets the selected player's burning-torch counter (zero is unlit) without the lighting

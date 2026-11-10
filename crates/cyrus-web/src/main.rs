@@ -47,6 +47,12 @@ fn main() {
     app.add_plugins(
         DefaultPlugins
             .set(cyrus_app::window("cyrus"))
+            .set(bevy::audio::AudioPlugin {
+                global_volume: bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+                    cyrus_app::launch::volume_gain(options.volume),
+                )),
+                ..default()
+            })
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
                 ..default()
@@ -56,33 +62,24 @@ fn main() {
                 ..default()
             }),
     )
-    .insert_resource(Fidelity {
-        fog: if options.fog.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        sky: if options.sky.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        music: if options.music.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        player_controller: if options.controls.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        camera: if options.camera.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
-        ..default()
+    .insert_resource({
+        // `--mode` sets every area the browser supports; the per-area options override it. Modern
+        // lighting is native only.
+        let modern = |own: &Option<String>| {
+            if own.as_ref().or(options.mode.as_ref()).map(String::as_str) == Some("modern") {
+                Mode::Modern
+            } else {
+                Mode::Faithful
+            }
+        };
+        Fidelity {
+            fog: modern(&options.fog),
+            sky: modern(&options.sky),
+            music: modern(&options.music),
+            player_controller: modern(&options.controls),
+            camera: modern(&options.camera),
+            ..default()
+        }
     })
     .add_plugins((
         GamePlugin,

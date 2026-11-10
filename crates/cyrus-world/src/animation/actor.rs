@@ -5,6 +5,7 @@ use anyhow::Context;
 use cyrus_soup::AnimationGroup;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 /// A field of the actor's animation record that script properties name. The remaining record
 /// fields (`current`, `rep_count`, `sound_handle`, `max_group`, the delta words) have other owners
@@ -29,10 +30,20 @@ pub enum PlaybackField {
     HoldFlag,
     /// Finite loop countdown byte.
     LoopCount,
+    /// Repeat byte of the `ConditionalDelay` and `LoopControl` commands.
+    RepCount,
+    /// One word of the retained translation triple (signed, by axis).
+    Position(usize),
+    /// One word of the retained rotation triple (signed, by axis).
+    Rotation(usize),
     /// Reverse playback: the byte one.
     RewindFlag,
     /// Wrapping frame-progress byte.
     RealFrame,
+    /// The record's `max_group` byte (the actor's RAHD control prefix, low byte).
+    MaxGroup,
+    /// One word of the rotation triple the last model refresh applied (signed, by axis).
+    LastRotation(usize),
 }
 
 /// One actor's current, pending and explicitly supplied default group.
@@ -40,13 +51,23 @@ pub enum PlaybackField {
 /// default selection and each advancement's original nominal-tick input.
 pub struct ActorAnimation {
     context: String,
-    groups: BTreeMap<AnimationGroup, serde_json::Value>,
+    groups: Arc<BTreeMap<AnimationGroup, serde_json::Value>>,
     default: AnimationGroup,
     current: Option<(AnimationGroup, FrameSequence)>,
     pending: Option<(AnimationGroup, u8)>,
+    /// The record's pending-speed byte: the last request's modifier plus the speed byte of the group
+    /// it selected (`anim.next_speed`). It outlives the pending request it came from.
+    next_speed: u8,
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
+    /// The rotation words the last model refresh copied from the current group (`anim.last_angle`).
+    last_rotation: [i16; 3],
+    /// The selected model frame the owner recorded at the start of the last ordinary update
+    /// (`last_frame`); the owner supplies it, as the frame itself lives beside this receiver.
+    last_frame: Option<u32>,
+    /// The `max_group` byte; `None` when the sidecar predates the exported control prefix.
+    max_group: Option<u8>,
     /// Transient mirror of the actor's falling byte (nonzero), kept by the owner. It is not
     /// saved: the owner sets it before the next advance.
     motion_active: bool,
@@ -59,6 +80,7 @@ pub struct ActorAnimationCheckpoint {
     context: String,
     current: Option<(AnimationGroup, FrameSequence)>,
     pending: Option<(AnimationGroup, u8)>,
+    next_speed: u8,
     frame_progress: u8,
     reverse: bool,
 }
@@ -74,9 +96,18 @@ pub struct ActorAnimationSnapshot {
     default: AnimationGroup,
     current: Option<(AnimationGroup, SequenceSnapshot)>,
     pending: Option<(AnimationGroup, u8)>,
+    /// Absent in saves written before the byte was kept: derived from the pending request.
+    #[serde(default)]
+    next_speed: Option<u8>,
     frame_progress: u8,
     reverse: bool,
     failure: Option<String>,
+    #[serde(default)]
+    last_rotation: [i16; 3],
+    #[serde(default)]
+    last_frame: Option<u32>,
+    #[serde(default)]
+    max_group: Option<u8>,
 }
 
 impl ActorAnimation {
@@ -86,16 +117,20 @@ impl ActorAnimation {
         ActorAnimationSnapshot {
             version: 3,
             context: self.context.clone(),
-            groups: self.groups.clone(),
+            groups: (*self.groups).clone(),
             default: self.default,
             current: self
                 .current
                 .as_ref()
                 .map(|(group, sequence)| (*group, sequence.snapshot())),
             pending: self.pending,
+            next_speed: Some(self.next_speed),
             frame_progress: self.frame_progress,
             reverse: self.reverse,
             failure: self.failure.clone(),
+            last_rotation: self.last_rotation,
+            last_frame: self.last_frame,
+            max_group: self.max_group,
         }
     }
 
@@ -120,7 +155,7 @@ impl ActorAnimation {
                 "actor context mismatch"
             );
             anyhow::ensure!(
-                animation.groups == snapshot.groups,
+                *animation.groups == snapshot.groups,
                 "installed group content mismatch"
             );
             if let Some((group, _)) = snapshot.pending {
@@ -140,13 +175,25 @@ impl ActorAnimation {
                         format!("{} group {group}", animation.context),
                         metadata,
                         state,
-                    )?,
+                    )?
+                    .with_alternates(Arc::clone(&animation.groups)),
                 ));
             }
             animation.pending = snapshot.pending;
+            animation.next_speed = match (snapshot.next_speed, snapshot.pending) {
+                (Some(byte), _) => byte,
+                (None, Some((group, modifier))) => animation
+                    .group_speed(group)
+                    .unwrap_or(0)
+                    .wrapping_add(modifier),
+                (None, None) => 0,
+            };
             animation.frame_progress = snapshot.frame_progress;
             animation.reverse = snapshot.reverse;
             animation.failure = snapshot.failure;
+            animation.last_rotation = snapshot.last_rotation;
+            animation.last_frame = snapshot.last_frame;
+            animation.max_group = snapshot.max_group;
             Ok(animation)
         };
         restore().with_context(|| context)
@@ -159,6 +206,7 @@ impl ActorAnimation {
             context: self.context.clone(),
             current: self.current.clone(),
             pending: self.pending,
+            next_speed: self.next_speed,
             frame_progress: self.frame_progress,
             reverse: self.reverse,
         })
@@ -179,6 +227,7 @@ impl ActorAnimation {
         );
         self.current = checkpoint.current.clone();
         self.pending = checkpoint.pending;
+        self.next_speed = checkpoint.next_speed;
         self.frame_progress = checkpoint.frame_progress;
         self.reverse = checkpoint.reverse;
         Ok(())
@@ -231,13 +280,17 @@ impl ActorAnimation {
         }
         Ok(ActorAnimation {
             context,
-            groups,
+            groups: Arc::new(groups),
             default,
             current: None,
             pending: None,
+            next_speed: 0,
             frame_progress: 0,
             reverse: false,
             failure: None,
+            last_rotation: [0; 3],
+            last_frame: None,
+            max_group: data.max_group(actor)?,
             motion_active: false,
         })
     }
@@ -400,7 +453,8 @@ impl ActorAnimation {
             metadata,
             0,
             modifier,
-        )?;
+        )?
+        .with_alternates(Arc::clone(&self.groups));
         self.clear_current(sounds)?;
         self.pending = None;
         self.frame_progress = 0;
@@ -491,14 +545,16 @@ impl ActorAnimation {
             PlaybackField::Next => self
                 .pending_group()
                 .map_or(-1, |group| i32::from(group.index() as i16)),
-            PlaybackField::NextSpeed => {
-                let (group, modifier) = self.pending.with_context(|| {
-                    format!("{}: no pending request holds a speed", self.context)
-                })?;
-                i32::from(self.group_speed(group)?.wrapping_add(modifier))
-            }
+            PlaybackField::NextSpeed => i32::from(self.next_speed),
             PlaybackField::RewindFlag => i32::from(self.reverse),
             PlaybackField::RealFrame => i32::from(self.frame_progress),
+            PlaybackField::LastRotation(axis) => i32::from(self.last_rotation[axis]),
+            PlaybackField::MaxGroup => i32::from(self.max_group.with_context(|| {
+                format!(
+                    "{}: animation control prefix absent; re-export the world",
+                    self.context
+                )
+            })?),
             _ => self.sequence(field)?.record(field),
         })
     }
@@ -511,24 +567,69 @@ impl ActorAnimation {
         self.check_failure()?;
         match field {
             PlaybackField::Next => {
+                // The speed byte stays; the modifier a later selection reads follows from it.
                 self.pending = (value as i16 != -1).then(|| {
-                    (
-                        AnimationGroup::from_index(value as u16),
-                        self.pending.map_or(0, |(_, modifier)| modifier),
-                    )
+                    let group = AnimationGroup::from_index(value as u16);
+                    let speed = self.group_speed(group).unwrap_or(0);
+                    (group, self.next_speed.wrapping_sub(speed))
                 });
             }
             PlaybackField::NextSpeed => {
-                let (group, _) = self.pending.with_context(|| {
-                    format!("{}: no pending request holds a speed", self.context)
-                })?;
-                let speed = self.group_speed(group)?;
-                self.pending = Some((group, (value as u8).wrapping_sub(speed)));
+                self.next_speed = value as u8;
+                if let Some((group, _)) = self.pending {
+                    let speed = self.group_speed(group).unwrap_or(0);
+                    self.pending = Some((group, self.next_speed.wrapping_sub(speed)));
+                }
             }
             PlaybackField::RewindFlag => self.reverse = value as u8 == 1,
             PlaybackField::RealFrame => self.frame_progress = value as u8,
+            PlaybackField::LastRotation(axis) => self.last_rotation[axis] = value as i16,
+            PlaybackField::MaxGroup => self.max_group = Some(value as u8),
             _ => self.sequence_mut(field)?.set_record(field, value),
         }
+        Ok(())
+    }
+
+    /// Records the selected file frame reference at the start of an ordinary update, which the
+    /// next `last_frame` read returns.
+    pub fn set_last_frame(&mut self, frame: Option<u32>) {
+        self.last_frame = frame;
+    }
+
+    /// The file frame reference recorded by [`Self::set_last_frame`].
+    pub fn last_frame(&self) -> Option<u32> {
+        self.last_frame
+    }
+
+    /// The model refresh's copy of the current group's rotation words into the history the next
+    /// `anim.last_angle` read returns. Without a current group the history stays as it was.
+    pub fn refresh_rotation_history(&mut self) {
+        if let Some((_, sequence)) = &self.current {
+            self.last_rotation = sequence.rotation_words();
+        }
+    }
+
+    /// Writes the record's current-group word (`anim.current`). A group makes that group's command
+    /// table and type flags the ones interpreted next while the cursor, countdowns, loop, repeat and
+    /// markers stay; the word -1 leaves no current group, so the next advance selects any pending
+    /// request. A group without a command table, or any group while none is current (the record's
+    /// other bytes are then stale), stops with an explicit error where the original would dereference
+    /// an empty table slot at its next advance.
+    pub fn set_current_group(&mut self, value: i32) -> anyhow::Result<()> {
+        self.check_failure()?;
+        if value as i16 == -1 {
+            self.current = None;
+            return Ok(());
+        }
+        let group = AnimationGroup::from_index(value as u16);
+        let (current, sequence) = self.current.as_mut().with_context(|| {
+            format!(
+                "{}: writing the current group {group} while none is current is unsupported",
+                self.context
+            )
+        })?;
+        sequence.switch_tables(group)?;
+        *current = group;
         Ok(())
     }
 
@@ -712,6 +813,12 @@ impl ActorAnimation {
         } else {
             None
         };
+        // The request stores its modifier first and adds the selected group's own byte when one
+        // was found, so a request that finds no group leaves just the modifier.
+        self.next_speed = match self.pending {
+            Some((group, _)) => modifier.wrapping_add(self.group_speed(group).unwrap_or(0)),
+            None => modifier,
+        };
     }
 
     fn check_failure(&self) -> anyhow::Result<()> {
@@ -803,7 +910,8 @@ impl ActorAnimation {
                         metadata,
                         0,
                         modifier,
-                    )?,
+                    )?
+                    .with_alternates(Arc::clone(&self.groups)),
                 ));
             }
             if let Some((group, sequence)) = &mut self.current {
@@ -813,13 +921,19 @@ impl ActorAnimation {
                         .is_some_and(|(pending, _)| pending == self.default),
                 );
                 sequence.set_motion_active(self.motion_active);
-                if let Some(reference) = sequence.advance_with_progress(
+                let outcome = sequence.advance_with_progress(
                     ticks,
                     exiting,
                     sounds,
                     &mut self.frame_progress,
                     self.reverse,
-                )? {
+                );
+                // A `ChangeGroup` command makes its target the current group even when playback
+                // then fails or yields.
+                if let Some(switched) = sequence.take_switch() {
+                    *group = switched;
+                }
+                if let Some(reference) = outcome? {
                     return Ok(Some(reference));
                 }
                 if !sequence.is_finished() {

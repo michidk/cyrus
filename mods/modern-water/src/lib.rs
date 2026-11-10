@@ -1,5 +1,8 @@
-//! Modern water waves: two smooth crossing sine waves around the original mean height, moving
-//! the game's "water" vertex set.
+//! Modern water: crossing sharpened waves, ripples, shore foam and wet sand on the terrain. The
+//! effects live in this mod's `water_surface.wesl`, which replaces the game's neutral one; this
+//! code turns them on through the "water-surface" shader input. Where the terrain shader cannot
+//! move the waves (Lighting is not Modern, which draws the terrain a different way), it moves the
+//! "water" vertex set itself.
 mod bindings {
     wasvy_macros::guest_bindings!({
         path: ["../../crates/cyrus-mods/wit", "wit"],
@@ -11,14 +14,24 @@ mod bindings {
     });
 }
 
-use bindings::cyrus::mods::components::{Scene, Vertices};
+use bindings::cyrus::mods::components::{Scene, Uniforms, Vertices};
 use bindings::wasvy::ecs::app::{App, Query, QueryFor, Schedule, System};
 
-/// Exported scene units per WLD grid cell (256 engine units, 20 per scene unit).
-const CELL_SIZE: f32 = 256.0 / 20.0;
-/// The vertex set and the scene value this mod uses.
+/// The vertex set, scene values and shader input this mod uses.
 const WATER: &str = "water";
 const WATER_WAVE: &str = "water-wave";
+const WATER_CELL: &str = "water-cell";
+const LIGHTING_MODERN: &str = "lighting-modern";
+const WATER_SURFACE: &str = "water-surface";
+
+/// Each wave's direction, wavelength in grid cells, speed in cells per second and share of the
+/// amplitude. The same four waves as `water_surface.wesl`.
+const WAVES: [([f32; 2], f32, f32, f32); 4] = [
+    ([0.940, 0.342], 11.0, 1.10, 0.20),
+    ([0.643, -0.766], 7.0, 0.95, 0.13),
+    ([-0.259, 0.966], 5.0, 0.80, 0.09),
+    ([0.996, -0.087], 4.0, 0.70, 0.08),
+];
 
 struct ModernWater;
 
@@ -28,6 +41,7 @@ impl bindings::Guest for ModernWater {
         waves.add_query(&[
             QueryFor::Mut(Vertices::type_path()),
             QueryFor::Ref(Scene::type_path()),
+            QueryFor::Mut(Uniforms::type_path()),
         ]);
         app.add_systems(&Schedule::Update, &[&waves]);
     }
@@ -36,13 +50,25 @@ impl bindings::Guest for ModernWater {
         while let Some(row) = query.iter() {
             let vertices = Vertices::new(row.component(0));
             let scene = Scene::new(row.component(1));
+            let uniforms = Uniforms::new(row.component(2));
+            // Without water in the world there is nothing to change.
+            let Some(&amplitude) = scene.values(WATER_WAVE).first() else {
+                continue;
+            };
+            let amplitude = amplitude / 20.0;
+            let cell = scene.values(WATER_CELL).first().copied().unwrap_or(0.0);
+            let lighting = scene.values(LIGHTING_MODERN).first().copied() == Some(1.0);
+            if lighting && amplitude != 0.0 && cell > 0.0 {
+                uniforms.set(WATER_SURFACE, &[1.0, 0.0, amplitude, cell]);
+                continue;
+            }
+            uniforms.set(WATER_SURFACE, &[1.0, 0.0, 0.0, 0.0]);
             let generation = vertices.generation(WATER);
-            let amplitude = scene.values(WATER_WAVE).first().copied().unwrap_or(0.0);
             let seconds = scene.seconds();
             let offsets: Vec<f32> = vertices
                 .positions(WATER)
                 .chunks_exact(3)
-                .flat_map(|p| [0.0, height(amplitude, p[0], p[2], seconds), 0.0])
+                .flat_map(|p| [0.0, height(amplitude, cell, p[0], p[2], seconds), 0.0])
                 .collect();
             if !offsets.is_empty() {
                 vertices.displace(WATER, generation, &offsets);
@@ -51,12 +77,20 @@ impl bindings::Guest for ModernWater {
     }
 }
 
-/// Vertical offset in scene units; `amplitude` is the world's WLD wave amplitude.
-fn height(amplitude: f32, x: f32, z: f32, seconds: f32) -> f32 {
-    let tau = std::f32::consts::TAU;
-    let phase = (x + z * 0.35) / (CELL_SIZE * 6.0) * tau - seconds * 0.8;
-    let cross = (z - x * 0.6) / (CELL_SIZE * 2.5) * tau - seconds * 1.3;
-    amplitude / 20.0 * (0.5 + 0.35 * phase.sin() + 0.15 * cross.sin())
+/// Vertical offset in scene units at an open-sea position in scene units: crossing sharpened
+/// waves around the original mean height. `amplitude` is the world's wave amplitude in scene
+/// units, `cell` the grid cell size.
+fn height(amplitude: f32, cell: f32, x: f32, z: f32, seconds: f32) -> f32 {
+    use std::f32::consts::TAU;
+    let height = WAVES
+        .iter()
+        .fold(0.5, |height, &(direction, length, speed, share)| {
+            let k = TAU / (length * cell);
+            let phase = (x * direction[0] + z * direction[1]) * k - seconds * speed * TAU / length;
+            let s = phase.sin();
+            height + share * s * (1.0 - 0.25 * (1.0 - s.abs()))
+        });
+    amplitude * height
 }
 
 bindings::export!(ModernWater with_types_in bindings);

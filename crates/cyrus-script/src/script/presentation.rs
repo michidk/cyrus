@@ -41,15 +41,30 @@ pub(super) struct RoleBindings<'w, 's> {
     roles: Query<'w, 's, (Entity, Option<&'static ScriptBinding>), With<StandaloneRole>>,
 }
 
+/// Exported map nodes named `B_<index>_<actor>` below each scene root. Only a renamed or
+/// re-parented node can change this set, so it is collected again only after such a change.
+#[derive(Default)]
+pub(super) struct SceneCandidates {
+    roots: bevy::platform::collections::HashMap<Entity, Vec<Entity>>,
+}
+
+// The scene walk, its cache and the role bindings are independent inputs.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn bind_scene(
     mut commands: Commands,
     actors: Res<ScriptActors>,
     request: Res<AnimationRequest>,
     mut roots: Query<(Entity, &mut ScriptScene)>,
     children: Query<&Children>,
+    names: Query<&Name>,
     nodes: Query<&Name, (Without<ScriptBinding>, Without<SceneActorBound>)>,
+    hierarchy_changes: HierarchyChanges,
+    mut candidates: Local<SceneCandidates>,
     role_bindings: RoleBindings,
 ) {
+    if !hierarchy_changes.is_empty() {
+        candidates.roots.clear();
+    }
     let RoleBindings { players, roles } = role_bindings;
     let Some(world) = &actors.current else {
         for (entity, _) in &roles {
@@ -112,7 +127,17 @@ pub(super) fn bind_scene(
         if generation != world.generation() {
             continue;
         }
-        for entity in children.iter_descendants(root) {
+        let candidates = candidates.roots.entry(root).or_insert_with(|| {
+            children
+                .iter_descendants(root)
+                .filter(|&entity| {
+                    names
+                        .get(entity)
+                        .is_ok_and(|name| name.as_str().starts_with("B_"))
+                })
+                .collect()
+        });
+        for &entity in candidates.iter() {
             let Ok(name) = nodes.get(entity) else {
                 continue;
             };
@@ -151,13 +176,41 @@ type PresentationNode = (
     Option<&'static mut Transform>,
 );
 
+/// Resolved frames by animation asset, actor index and frame reference. Resolution is a pure
+/// function of the asset, so entries live until that asset changes; a map actor's frame also
+/// depends on its name, which is stored with the entry. Failures are not cached.
+#[derive(Default)]
+pub(super) struct ResolvedFrames {
+    frames: bevy::platform::collections::HashMap<FrameKey, ResolvedFrame>,
+}
+
+type FrameKey = (AssetId<Animations>, usize, u32);
+type ResolvedFrame = (bool, String, cyrus_assets::animation::ModelFrame);
+
+type HierarchyChanges<'w, 's> =
+    Query<'w, 's, (), Or<(Changed<Children>, Changed<ChildOf>, Changed<Name>)>>;
+
 pub(super) fn apply(
     mut commands: Commands,
     actors: Res<ScriptActors>,
     request: Res<AnimationRequest>,
     assets: Res<Assets<Animations>>,
+    mut asset_events: Option<MessageReader<AssetEvent<Animations>>>,
+    mut resolved: Local<ResolvedFrames>,
     mut nodes: Query<PresentationNode>,
 ) {
+    // Without the stream an asset change is unobservable, so nothing is reused.
+    if asset_events.is_none() {
+        resolved.frames.clear();
+    }
+    for event in asset_events.iter_mut().flat_map(|events| events.read()) {
+        if let AssetEvent::Modified { id }
+        | AssetEvent::Removed { id }
+        | AssetEvent::Unused { id } = event
+        {
+            resolved.frames.retain(|(asset, _, _), _| asset != id);
+        }
+    }
     for (entity, binding, pose, surface, player_pose, transform) in &mut nodes {
         let world = actors.current.as_ref().filter(|world| {
             world.generation() == binding.actor.generation && binding.source == request.0
@@ -217,11 +270,34 @@ pub(super) fn apply(
                 frame
                     .map(|frame| {
                         let actor = &world.actors()[binding.actor.index];
-                        if actor.placement().is_some() {
+                        let map = actor.placement().is_some();
+                        let key = (binding.source.id(), binding.actor.index, frame);
+                        if let Some((cached_map, name, resolved)) = resolved.frames.get(&key)
+                            && *cached_map == map
+                            && (map || name == actor.name())
+                        {
+                            return Ok(cyrus_assets::animation::ModelFrame {
+                                model: resolved.model.clone(),
+                                frame: resolved.frame,
+                            });
+                        }
+                        let result = if map {
                             data.resolve_map_frame(binding.actor.index, frame)
                         } else {
                             data.resolve_frame(actor.name(), frame)
-                        }
+                        }?;
+                        resolved.frames.insert(
+                            key,
+                            (
+                                map,
+                                actor.name().to_owned(),
+                                cyrus_assets::animation::ModelFrame {
+                                    model: result.model.clone(),
+                                    frame: result.frame,
+                                },
+                            ),
+                        );
+                        Ok(result)
                     })
                     .transpose()
             }),

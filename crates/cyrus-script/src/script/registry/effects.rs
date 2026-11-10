@@ -281,10 +281,21 @@ impl EnvironmentalEffects {
         self.active().next().is_none()
     }
     fn spawn(&mut self, descriptor: u32, point: [i32; 3]) -> Result<()> {
-        self.spawn_with_speed(descriptor, point, 1)
+        self.spawn_with_speed(descriptor, point, 1, 0, None)
     }
 
-    fn spawn_with_speed(&mut self, descriptor: u32, point: [i32; 3], speed: i32) -> Result<()> {
+    /// Allocates the first free record and places it at `point` (Q8). A zero `spread` lowers the
+    /// point by half the image height; a nonzero one instead adds `rnd(spread >> 7) - (spread >> 8)`
+    /// per axis (x, y, z), drawn after the record and image are found, and lowers nothing. A spread
+    /// below 128 gives a nonpositive bound, which the original's reduction never leaves.
+    fn spawn_with_speed(
+        &mut self,
+        descriptor: u32,
+        point: [i32; 3],
+        speed: i32,
+        spread: i32,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
+    ) -> Result<()> {
         if self.disabled {
             return Ok(());
         }
@@ -301,11 +312,28 @@ impl EnvironmentalEffects {
                 descriptor as u16
             )
         })?;
-        let mut position = point;
-        position[1] = position[1].wrapping_sub((height as i32).wrapping_mul(128));
+        let position = if spread == 0 {
+            let mut position = point.map(|v| v >> 8);
+            position[1] = point[1].wrapping_sub((height as i32).wrapping_mul(128)) >> 8;
+            position
+        } else {
+            let random =
+                random.context("AddFlatEffect: shared engine random stream unavailable")?;
+            let bound = spread >> 7;
+            ensure!(
+                bound > 0,
+                "AddFlatEffect: spread {spread} gives a nonpositive random bound, which the original never leaves"
+            );
+            let mut position = [0; 3];
+            for (axis, value) in position.iter_mut().enumerate() {
+                *value =
+                    (point[axis] >> 8).wrapping_add(random.rnd(bound)?.wrapping_sub(spread >> 8));
+            }
+            position
+        };
         *slot = Some(EnvironmentalEffect {
             descriptor,
-            position: position.map(|v| v >> 8),
+            position,
             frame: 0,
             target,
             speed,
@@ -620,7 +648,7 @@ impl ScriptWorld {
         descriptor: u32,
         point: [i32; 3],
     ) -> Result<()> {
-        self.spawn_environment_effect_with_speed(descriptor, point, 1)
+        self.spawn_environment_effect_with_speed(descriptor, point, 1, 0, None)
     }
 
     pub(super) fn spawn_environment_effect_with_speed(
@@ -628,11 +656,13 @@ impl ScriptWorld {
         descriptor: u32,
         point: [i32; 3],
         speed: i32,
+        spread: i32,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
     ) -> Result<()> {
         self.effects
             .as_mut()
             .context("environmental effect spawning unavailable")?
-            .spawn_with_speed(descriptor, point, speed)
+            .spawn_with_speed(descriptor, point, speed, spread, random)
     }
     /// Apply explicitly supplied inspection events in order. Automatic animation
     /// dispatch uses the borrowed command handler and never queues these records.
@@ -847,7 +877,7 @@ mod tests {
     fn effect_speed_scales_frame_advance_and_survives_snapshot() -> Result<()> {
         let source = source(12);
         let mut effects = EnvironmentalEffects::prepare(&source)?;
-        effects.spawn_with_speed(0x2500, [0; 3], 3)?;
+        effects.spawn_with_speed(0x2500, [0; 3], 3, 0, None)?;
         effects.advance(2);
         assert_eq!(effects.active().next().unwrap().1.frame, 6);
         let saved = effects.snapshot(&source)?;
@@ -866,7 +896,7 @@ mod tests {
         source.images.insert(0, image);
         for descriptor in [0, EnvironmentalEffect::ALTERNATE_DRAW] {
             let mut effects = EnvironmentalEffects::prepare(&source)?;
-            effects.spawn_with_speed(descriptor, [0; 3], 3)?;
+            effects.spawn_with_speed(descriptor, [0; 3], 3, 0, None)?;
             effects.advance(2);
             let effect = effects.active().next().unwrap().1;
             assert_eq!(effect.frame, 0);

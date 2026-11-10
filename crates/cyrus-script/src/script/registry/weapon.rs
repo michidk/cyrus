@@ -819,7 +819,7 @@ mod tests {
                     .unwrap();
                 let control = actor.control.as_mut().unwrap();
                 control.living_state = state;
-                control.motion_companion = 7;
+                control.jump_selector = 7;
                 control.weapon_drawn = state == LivingState::SHEATHING_SWORD;
                 let mut globals = Default::default();
                 CombatReceiver::new(&mut actor, &mut globals, 7, id, None)
@@ -852,7 +852,7 @@ mod tests {
                         state == LivingState::SHEATHING_SWORD
                     }
                 );
-                assert_eq!(control.motion_companion, 7);
+                assert_eq!(control.jump_selector, 7);
                 let playback = &actor.animation.as_ref().unwrap().playback;
                 assert_eq!(
                     playback.current_group(),
@@ -884,7 +884,7 @@ mod tests {
         let control = actor.control.as_mut().unwrap();
         control.living_state = LivingState::SHEATHING_SWORD;
         control.weapon_drawn = true;
-        control.motion_companion = 7;
+        control.jump_selector = 7;
         let mut globals = Default::default();
         let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
         let inputs = WeaponInputs {
@@ -900,7 +900,7 @@ mod tests {
             (
                 control.living_state,
                 control.weapon_drawn,
-                control.motion_companion
+                control.jump_selector
             ),
             (LivingState::SHEATHING_SWORD, true, 7)
         );
@@ -922,7 +922,7 @@ mod tests {
             (
                 control.living_state,
                 control.weapon_drawn,
-                control.motion_companion
+                control.jump_selector
             ),
             (LivingState::ORDINARY, false, 7)
         );
@@ -1115,7 +1115,7 @@ mod tests {
             control.sliding_state = sliding;
             control.queued_motion = queued;
             control.motion_direction = MotionDirection::BACKWARD;
-            control.motion_companion = 9;
+            control.jump_selector = 9;
             let mut globals = Default::default();
             let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
             receiver
@@ -1136,7 +1136,7 @@ mod tests {
             receiver.cleanup(id, 0, &mut |_, _| Ok(())).unwrap();
             let control = receiver.actor.control.as_ref().unwrap();
             assert_eq!(control.motion_direction, MotionDirection::BACKWARD);
-            assert_eq!(control.motion_companion, 9);
+            assert_eq!(control.jump_selector, 9);
         }
     }
 }

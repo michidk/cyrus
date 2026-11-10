@@ -111,6 +111,7 @@ impl Plugin for ModsPlugin {
             .insert_resource(settings)
             .init_resource::<cyrus_render::hooks::VertexSets>()
             .init_resource::<cyrus_render::hooks::SceneValues>()
+            .init_resource::<cyrus_render::hooks::ShaderInputs>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
             .init_resource::<cyrus_script::player::input::MovementWish>()
             .init_resource::<cyrus_script::player::input::LocomotionClaimed>()

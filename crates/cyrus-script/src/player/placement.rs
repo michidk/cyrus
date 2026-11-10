@@ -12,7 +12,7 @@ use cyrus_world::animation::{ActorAnimation, AnimationRequest, AnimationSound, A
 pub use persistence::{PlayerPlacementCandidate, PlayerPlacementSnapshot};
 use serde::Deserialize;
 
-/// Explicit marker entry for scene inspection. Scripted world transitions are not implemented.
+/// Marker and heading for initial entry or a requested world replacement.
 #[derive(
     Resource, Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]

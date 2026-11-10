@@ -237,9 +237,13 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             .sounds
             .as_mut()
             .context("lineup step requires synchronous sounds")?;
-        self.host
-            .registry
-            .step_player(self.player, function, inputs, &mut **sounds)
+        self.host.registry.step_player(
+            self.player,
+            function,
+            inputs,
+            &mut **sounds,
+            self.host.random.as_deref_mut(),
+        )
     }
 }
 

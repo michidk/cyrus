@@ -21,39 +21,22 @@ use cyrus_script::{
 };
 use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld, sound::SoundCue};
 
-#[derive(Clone, Copy, PartialEq)]
-enum Route {
-    Keyboard,
-    ModernJump,
-    /// A mod runs the player forward, then stops and asks for the idle group; `interrupt` asks
-    /// for it to replace the run at once.
-    ModStop {
-        interrupt: bool,
-    },
-    /// A mod claims the player's movement from standing, forward and then to the left.
-    Claim,
-    /// A mod jumps from standing at this animation tempo.
-    Jump {
-        tempo: Option<u32>,
-    },
-}
-
 #[test]
 fn installed_island_keyboard_walk_and_release() -> Result<()> {
-    installed_keyboard_route(Route::Keyboard).map(drop)
+    installed_keyboard_route(false, false)
 }
 
 #[test]
 fn installed_modern_jump_returns_to_ground_after_release() -> Result<()> {
-    installed_keyboard_route(Route::ModernJump).map(drop)
+    installed_keyboard_route(true, false)
 }
 
 #[test]
 fn installed_mod_animation_request_interrupts_or_waits_for_the_run() -> Result<()> {
-    let Some(interrupted) = installed_keyboard_route(Route::ModStop { interrupt: true })? else {
+    let Some(interrupted) = installed_mod_route(ModRoute::Stop { interrupt: true })? else {
         return Ok(());
     };
-    let queued = installed_keyboard_route(Route::ModStop { interrupt: false })?
+    let queued = installed_mod_route(ModRoute::Stop { interrupt: false })?
         .context("install vanished between routes")?;
     eprintln!("idle replaces the run after {interrupted} update(s) interrupting, {queued} queued");
     ensure!(
@@ -69,10 +52,10 @@ fn installed_mod_animation_request_interrupts_or_waits_for_the_run() -> Result<(
 
 #[test]
 fn installed_animation_tempo_brings_the_jump_take_off_forward() -> Result<()> {
-    let Some(original) = installed_keyboard_route(Route::Jump { tempo: None })? else {
+    let Some(original) = installed_mod_route(ModRoute::Jump { tempo: None })? else {
         return Ok(());
     };
-    let doubled = installed_keyboard_route(Route::Jump { tempo: Some(2) })?
+    let doubled = installed_mod_route(ModRoute::Jump { tempo: Some(2) })?
         .context("install vanished between routes")?;
     eprintln!("take-off after {original} updates at the original pace, {doubled} at double");
     ensure!(
@@ -84,21 +67,140 @@ fn installed_animation_tempo_brings_the_jump_take_off_forward() -> Result<()> {
 
 #[test]
 fn installed_claim_moves_from_the_first_update_and_sideways_without_turning() -> Result<()> {
-    installed_keyboard_route(Route::Claim).map(drop)
+    installed_mod_route(ModRoute::Claim).map(drop)
 }
 
-/// Runs `route` on the installed island; a [`Route::ModStop`] returns the updates the run took
-/// to give way to idle after the mod stopped, `None` without an install.
-fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
-    let modern_jump = route == Route::ModernJump;
+/// What a mod does on the installed island once the player stands idle.
+#[derive(Clone, Copy)]
+enum ModRoute {
+    /// A mod runs the player forward, then stops and asks for the idle group; `interrupt` asks
+    /// for it to replace the run at once.
+    Stop { interrupt: bool },
+    /// A mod claims the player's movement from standing, forward and then to the left.
+    Claim,
+    /// A mod jumps from standing at this animation tempo.
+    Jump { tempo: Option<u32> },
+}
+
+/// Runs `route`; a stop or jump returns the updates it took, `None` without an install.
+fn installed_mod_route(route: ModRoute) -> Result<Option<u32>> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (installed mod route)");
+        return Ok(None);
+    };
+    let (mut app, _codes, _assets) = prepare_player_app(&install, false)?;
+    for _ in 0..4 {
+        app.update();
+    }
+    match route {
+        ModRoute::Stop { interrupt } => mod_stop(&mut app, interrupt).map(Some),
+        ModRoute::Claim => claim(&mut app).map(|()| None),
+        ModRoute::Jump { tempo } => jump(&mut app, tempo.map(|tempo| tempo as f32)).map(Some),
+    }
+}
+
+#[test]
+fn installed_base_running_turns_return_to_upright() -> Result<()> {
+    installed_keyboard_route(false, true)
+}
+
+fn installed_keyboard_route(modern_jump: bool, banked_turns: bool) -> Result<()> {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
     let Ok(install) = GameInstall::locate(Some(&root)) else {
         eprintln!("skipped: no install (installed keyboard walking)");
-        return Ok(None);
+        return Ok(());
     };
-    let files = cyrus_assets::native::Files::open(&install)?;
+    let (mut app, codes, _assets) = prepare_player_app(&install, modern_jump)?;
+    for _ in 0..4 {
+        app.update();
+    }
+    let idle = position(&mut app)?;
+    app.update();
+    ensure!(
+        position(&mut app)? == idle,
+        "idle player moved before input"
+    );
+    if banked_turns {
+        banked_turn_route(&mut app, &codes)
+    } else if modern_jump {
+        standing_jump_route(&mut app)?;
+        moving_jump_route(&mut app)
+    } else {
+        walk_route(&mut app, &codes)
+    }
+}
+
+/// Matched with the original on ISLAND: a player placed on the steep terrain above the
+/// CCGRATE slab slides, lands on the slab, and the backward slide group keeps moving it across
+/// the slab after the slope response has cleared the sliding byte.
+#[test]
+fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (installed slide continuation)");
+        return Ok(());
+    };
+    let (mut app, _codes, _assets) = prepare_player_app(&install, false)?;
+    for _ in 0..4 {
+        app.update();
+    }
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors
+            .current
+            .as_mut()
+            .context("logical world unavailable")?;
+        world.place_selected_player([40832 * 256, -616 * 256, 40400 * 256], 0)?;
+    }
+    let mut moving_after_slide = 0;
+    let mut previous: Option<[i32; 3]> = None;
+    for _ in 0..80 {
+        app.update();
+        let current = position(&mut app)?;
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors
+            .current
+            .as_ref()
+            .context("logical world unavailable")?;
+        let id = world
+            .selected_player()
+            .context("selected player unavailable")?;
+        let control = world.actors()[id.index]
+            .control_state()
+            .context("control")?;
+        let group = world.inspect(id.index, 1)["actors"][0]["animation"]["current_group"].as_u64();
+        if let Some(before) = previous
+            && control.sliding_state == 0
+            && group
+                == Some(u64::from(
+                    cyrus_soup::AnimationGroup::SLIDE_BACKWARD.index(),
+                ))
+            && current[2] < before[2]
+            && current[1] == before[1]
+        {
+            moving_after_slide += 1;
+        }
+        previous = Some(current);
+    }
+    ensure!(
+        moving_after_slide >= 3,
+        "the slide group moved the player only {moving_after_slide} updates after the slide ended"
+    );
+    Ok(())
+}
+
+fn prepare_player_app(
+    install: &GameInstall,
+    modern_jump: bool,
+) -> Result<(App, [u8; 15], PlayerAssetHandles)> {
+    let files = cyrus_assets::native::Files::open(install)?;
     let prepared = cyrus_assets::game::prepare(&files, "ISLAND.player")?;
     let hud_assets = cyrus_assets::game::prepare(&files, "hud/overlay.hud")?;
     let hud_data: cyrus_assets::hud::HudAsset =
@@ -118,7 +220,13 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
     let codes = scene
         .control_codes
         .context("installed keyboard bindings unavailable")?;
-    let world = scene.world;
+    let mut app = controller_app(codes, modern_jump)?;
+    app.insert_resource(hud);
+    let source = register_player_assets(&mut app, scene, scripts, animations, &prepared, view)?;
+    Ok((app, codes, source))
+}
+
+fn controller_app(codes: [u8; 15], modern_jump: bool) -> Result<App> {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, StatesPlugin, AssetPlugin::default()))
         .init_state::<AppState>()
@@ -134,7 +242,6 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
             .resource_mut::<cyrus_game::fidelity::Fidelity>()
             .player_controller = cyrus_game::fidelity::Mode::Modern;
     }
-    app.insert_resource(hud);
     app.insert_resource(PlayerBindings::from_codes(codes).map_err(anyhow::Error::msg)?);
     app.insert_resource(PlayerToggles {
         walk_mode: true,
@@ -143,6 +250,23 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
     app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
         std::time::Duration::from_millis(55),
     ));
+    Ok(app)
+}
+
+// Keep manually supplied assets alive throughout the controller route.
+struct PlayerAssetHandles {
+    _scene: bevy::asset::Handle<PlayerScene>,
+    _environment: bevy::asset::Handle<cyrus_assets::environment::Environment>,
+}
+
+fn register_player_assets(
+    app: &mut App,
+    scene: PlayerScene,
+    scripts: Scripts,
+    animations: Animations,
+    prepared: &std::collections::BTreeMap<String, Vec<u8>>,
+    view: [i32; 3],
+) -> Result<PlayerAssetHandles> {
     let scripts = app
         .world_mut()
         .resource_mut::<Assets<Scripts>>()
@@ -155,12 +279,13 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
         .world()
         .resource::<AssetServer>()
         .load::<PlayerScene>("installed-island.player");
+    let scene_world = scene.world;
     app.world_mut()
         .resource_mut::<Assets<PlayerScene>>()
         .insert(source.id(), scene)?;
     app.insert_resource(PreparedWorld {
         requested_name: "ISLAND".into(),
-        world: Some(world),
+        world: Some(scene_world),
         scripts,
         animations: animations.clone(),
         player_path: "installed-island.player".into(),
@@ -190,150 +315,103 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
-    let position = |app: &mut App| -> Result<[i32; 3]> {
-        let actors = app.world().resource::<ScriptActors>();
-        ensure!(
-            !matches!(
-                app.world().resource::<cyrus_script::script::ScriptStatus>(),
-                cyrus_script::script::ScriptStatus::Failed { .. }
-            ),
-            "registry: {:?}",
-            app.world().resource::<cyrus_script::script::ScriptStatus>()
-        );
-        let world = actors
-            .current
-            .as_ref()
-            .context("logical world unavailable")?;
-        let index = world
-            .actors()
-            .iter()
-            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
-            .context("selected player unavailable")?;
-        let actor = &world.actors()[index];
-        ensure!(
-            actor.failure().is_none(),
-            "selected player: {:?}, control: {:?}",
-            actor.failure(),
-            actor.control_state()
-        );
-        let position = world.spatial(world.id(index)?)?.local.position;
-        let entity = app
-            .world_mut()
-            .query_filtered::<Entity, With<Player>>()
-            .single(app.world())?;
-        ensure!(
-            app.world()
-                .get::<PlayerPose>(entity)
-                .context("presentation pose unavailable")?
-                .position
-                == position.map(i64::from),
-            "presentation differs from logical player"
-        );
-        Ok(position)
-    };
+    Ok(PlayerAssetHandles {
+        _scene: source,
+        _environment: environment,
+    })
+}
+
+fn standing_jump_route(app: &mut App) -> Result<()> {
+    let ground = position(app)?;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Space);
     for _ in 0..4 {
         app.update();
+        position(app)?;
     }
-    let idle = position(&mut app)?;
-    app.update();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::Space);
+    let mut highest = ground[1];
+    for _ in 0..120 {
+        app.update();
+        let current = position(app)?;
+        highest = highest.min(current[1]);
+    }
+    ensure!(highest < ground[1], "Space did not start a jump");
     ensure!(
-        position(&mut app)? == idle,
-        "idle player moved before input"
+        position(app)?[1] == ground[1],
+        "released jump did not return to ground"
     );
-    if let Route::ModStop { interrupt } = route {
-        return mod_stop(&mut app, interrupt).map(Some);
-    }
-    if route == Route::Claim {
-        return claim(&mut app).map(|()| None);
-    }
-    if let Route::Jump { tempo } = route {
-        return jump(&mut app, tempo.map(|tempo| tempo as f32)).map(Some);
-    }
-    if modern_jump {
-        let ground = position(&mut app)?;
+    Ok(())
+}
+
+fn moving_jump_route(app: &mut App) -> Result<()> {
+    for running in [false, true] {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        if running {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::ShiftLeft);
+        }
+        for _ in 0..12 {
+            app.update();
+            position(app)?;
+        }
+        // Modern walks unless Shift is held.
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors.current.as_ref().unwrap();
+        let index = world.selected_player().unwrap().index;
+        let group = world.inspect(index, 1)["actors"][0]["animation"]["current_group"].as_u64();
+        let expected = if running {
+            cyrus_soup::AnimationGroup::RUN
+        } else {
+            cyrus_soup::AnimationGroup::WALK
+        };
+        ensure!(
+            group == Some(u64::from(expected.index())),
+            "held forward played group {group:?}, expected {expected:?}"
+        );
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Space);
-        for _ in 0..4 {
+        let mut entered_airborne = false;
+        for _ in 0..12 {
             app.update();
-            position(&mut app)?;
-        }
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .release(KeyCode::Space);
-        let mut highest = ground[1];
-        for _ in 0..120 {
-            app.update();
-            let current = position(&mut app)?;
-            highest = highest.min(current[1]);
-        }
-        ensure!(highest < ground[1], "Space did not start a jump");
-        ensure!(
-            position(&mut app)?[1] == ground[1],
-            "released jump did not return to ground"
-        );
-        for running in [false, true] {
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .press(KeyCode::KeyW);
-            if running {
-                app.world_mut()
-                    .resource_mut::<ButtonInput<KeyCode>>()
-                    .press(KeyCode::ShiftLeft);
-            }
-            for _ in 0..12 {
-                app.update();
-                position(&mut app)?;
-            }
-            // Modern walks unless Shift is held.
-            let actors = app.world().resource::<ScriptActors>();
-            let world = actors.current.as_ref().unwrap();
-            let index = world.selected_player().unwrap().index;
-            let group = world.inspect(index, 1)["actors"][0]["animation"]["current_group"].as_u64();
-            let expected = if running {
-                cyrus_soup::AnimationGroup::RUN
-            } else {
-                cyrus_soup::AnimationGroup::WALK
-            };
-            ensure!(
-                group == Some(u64::from(expected.index())),
-                "held forward played group {group:?}, expected {expected:?}"
-            );
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .press(KeyCode::Space);
-            let mut entered_airborne = false;
-            for _ in 0..12 {
-                app.update();
-                position(&mut app)?;
-                let actors = app.world().resource::<ScriptActors>();
-                let world = actors.current.as_ref().unwrap();
-                let id = world.selected_player().unwrap();
-                let control = world.actors()[id.index].control_state().unwrap();
-                entered_airborne |= control.queued_motion != cyrus_script::script::JumpMotion::NONE
-                    || control.falling_state != cyrus_script::script::JumpMotion::NONE;
-            }
-            ensure!(entered_airborne, "moving Space input did not start a jump");
-            app.world_mut()
-                .resource_mut::<ButtonInput<KeyCode>>()
-                .release_all();
-            for _ in 0..120 {
-                app.update();
-                position(&mut app)?;
-            }
+            position(app)?;
             let actors = app.world().resource::<ScriptActors>();
             let world = actors.current.as_ref().unwrap();
             let id = world.selected_player().unwrap();
             let control = world.actors()[id.index].control_state().unwrap();
-            ensure!(
-                control.queued_motion == cyrus_script::script::JumpMotion::NONE
-                    && control.falling_state == cyrus_script::script::JumpMotion::NONE,
-                "moving jump did not land"
-            );
+            entered_airborne |= control.queued_motion != cyrus_script::script::JumpMotion::NONE
+                || control.falling_state != cyrus_script::script::JumpMotion::NONE;
         }
-        return Ok(None);
+        ensure!(entered_airborne, "moving Space input did not start a jump");
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release_all();
+        for _ in 0..120 {
+            app.update();
+            position(app)?;
+        }
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors.current.as_ref().unwrap();
+        let id = world.selected_player().unwrap();
+        let control = world.actors()[id.index].control_state().unwrap();
+        ensure!(
+            control.queued_motion == cyrus_script::script::JumpMotion::NONE
+                && control.falling_state == cyrus_script::script::JumpMotion::NONE,
+            "moving jump did not land"
+        );
     }
-    let initial = position(&mut app)?;
+    Ok(())
+}
+
+fn walk_route(app: &mut App, codes: &[u8]) -> Result<()> {
+    let initial = position(app)?;
     let key = match cyrus_script::player::input::Input::try_from(codes[0]) {
         Ok(cyrus_script::player::input::Input::Key(scan)) => scan.key(),
         other => anyhow::bail!("installed forward binding is not a key: {other:?}"),
@@ -343,26 +421,126 @@ fn installed_keyboard_route(route: Route) -> Result<Option<u32>> {
         .press(key);
     for _ in 0..16 {
         app.update();
-        position(&mut app)?;
+        position(app)?;
     }
-    let moved = position(&mut app)?;
+    let moved = position(app)?;
     ensure!(moved != initial, "held forward did not move: {initial:?}");
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .release(key);
     for _ in 0..40 {
         app.update();
-        position(&mut app)?;
+        position(app)?;
     }
-    let stopped = position(&mut app)?;
+    let stopped = position(app)?;
     for _ in 0..4 {
         app.update();
-        ensure!(
-            position(&mut app)? == stopped,
-            "released player did not settle"
-        );
+        ensure!(position(app)? == stopped, "released player did not settle");
     }
-    Ok(None)
+    Ok(())
+}
+
+struct EmptyPreferences;
+impl cyrus_game::preferences::PreferenceStore for EmptyPreferences {
+    fn load(&self, _: cyrus_game::preferences::PreferenceKey) -> Result<Option<String>> {
+        Ok(None)
+    }
+    fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> Result<()> {
+        anyhow::bail!("headless controller test must not write preferences")
+    }
+}
+
+/// Exercise base running turns while checking script health and presentation each update.
+fn banked_turn_route(app: &mut App, codes: &[u8]) -> Result<()> {
+    let key = |index: usize| -> Result<KeyCode> {
+        match cyrus_script::player::input::Input::try_from(codes[index]) {
+            Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
+            other => anyhow::bail!("installed binding {index} is not a key: {other:?}"),
+        }
+    };
+    app.world_mut().resource_mut::<PlayerToggles>().walk_mode = false;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key(0)?);
+    let mut banked = false;
+    for turn in [key(2)?, key(3)?].into_iter().cycle().take(8) {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(turn);
+        for _ in 0..8 {
+            app.update();
+            position(app)?;
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(turn);
+        for _ in 0..8 {
+            app.update();
+            position(app)?;
+            let actors = app.world().resource::<ScriptActors>();
+            let world = actors.current.as_ref().context("world")?;
+            let spatial = world.spatial(world.selected_player().context("player")?)?;
+            banked |= spatial.local.angles[2] & 2047 != 0;
+            if spatial.local.angles[2] & 2047 == 0 {
+                ensure!(
+                    spatial.local.matrix.0[1]
+                        .iter()
+                        .zip([0.0, 1.0, 0.0])
+                        .all(|(a, b)| (a - b).abs() < 0.0001),
+                    "base running turn retained tilt: {:?}",
+                    spatial.local
+                );
+            }
+        }
+    }
+    ensure!(banked, "base turn route never banked");
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release_all();
+    Ok(())
+}
+
+/// Validate script health and agreement between logical and presented player positions.
+fn position(app: &mut App) -> Result<[i32; 3]> {
+    let actors = app.world().resource::<ScriptActors>();
+    ensure!(
+        !matches!(
+            app.world().resource::<cyrus_script::script::ScriptStatus>(),
+            cyrus_script::script::ScriptStatus::Failed { .. }
+        ),
+        "registry: {:?}",
+        app.world().resource::<cyrus_script::script::ScriptStatus>()
+    );
+    let world = actors
+        .current
+        .as_ref()
+        .context("logical world unavailable")?;
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .context("selected player unavailable")?;
+    let actor = &world.actors()[index];
+    ensure!(
+        actor.failure().is_none(),
+        "selected player: {:?}, control: {:?}",
+        actor.failure(),
+        actor.control_state()
+    );
+    let position = world.spatial(world.id(index)?)?.local.position;
+    let entity = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())?;
+    ensure!(
+        app.world()
+            .get::<PlayerPose>(entity)
+            .context("presentation pose unavailable")?
+            .position
+            == position.map(i64::from),
+        "presentation differs from logical player"
+    );
+    Ok(position)
 }
 
 /// A mod runs the player forward, then stops steering and asks every update for the idle group
@@ -422,16 +600,6 @@ fn mod_stop(app: &mut App, interrupt: bool) -> Result<u32> {
         }
     }
     anyhow::bail!("the run never gave way after the mod stopped")
-}
-
-struct EmptyPreferences;
-impl cyrus_game::preferences::PreferenceStore for EmptyPreferences {
-    fn load(&self, _: cyrus_game::preferences::PreferenceKey) -> Result<Option<String>> {
-        Ok(None)
-    }
-    fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> Result<()> {
-        anyhow::bail!("headless controller test must not write preferences")
-    }
 }
 
 /// A mod claims the standing player's movement: a run covers ground on the first update, and a

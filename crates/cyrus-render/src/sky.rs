@@ -79,7 +79,7 @@ pub(crate) struct SkyMaterial {
     /// Engine level, UV half-span in texels, image width, image height.
     #[uniform(2)]
     pub plane: Vec4,
-    /// Encoded Glide fog color shared with the scene background.
+    /// Encoded Glide fog color; w enables the optional anisotropic texture filter.
     #[uniform(2)]
     pub fog_rgb: Vec4,
     /// U/V scroll in texels, Modern sky flag, Modern fog flag.
@@ -94,6 +94,22 @@ pub(crate) struct SkyMaterial {
     /// Encoded tint and half-height in Bevy units.
     #[uniform(2)]
     pub sun_color: Vec4,
+    /// The modern day/night cycle's factor on the encoded sky colour, and the sun disc's
+    /// visibility; `Vec4::ONE` leaves the sky as installed.
+    #[uniform(2)]
+    pub day_night: Vec4,
+    /// The cycle's rotation of the sun disc as a quaternion; identity (`Vec4::W`) leaves it.
+    #[uniform(2)]
+    pub day_night_sun: Vec4,
+    /// The modern sky effect: the direction towards the sun light, and 1 while the glow and
+    /// stars are on; zero leaves the sky as installed.
+    #[uniform(2)]
+    pub modern_sky: Vec4,
+}
+
+impl SkyMaterial {
+    /// `day_night` and `day_night_sun` while the day/night cycle changes nothing.
+    pub(crate) const NEUTRAL_DAY_NIGHT: [Vec4; 2] = [Vec4::ONE, Vec4::W];
 }
 
 impl Material for SkyMaterial {
@@ -173,15 +189,21 @@ fn animate_sky(
             }
         }
         if tick == sky.tick
-            && materials
-                .get(&handle.0)
-                .is_some_and(|m| m.scroll.z == modern && m.scroll.w == modern_fog)
+            && materials.get(&handle.0).is_some_and(|m| {
+                m.scroll.z == modern
+                    && m.scroll.w == modern_fog
+                    && m.fog_rgb.w
+                        == u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern)
+                            as f32
+            })
         {
             continue;
         }
         let Some(mut material) = materials.get_mut(&handle.0) else {
             continue;
         };
+        material.fog_rgb.w =
+            u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32;
         material.scroll.z = modern;
         material.scroll.w = modern_fog;
         for _ in 0..tick.saturating_sub(sky.tick).min(36) {
@@ -223,6 +245,9 @@ mod tests {
                 plane: Vec4::ZERO,
                 fog_rgb: Vec4::ZERO,
                 scroll: Vec4::new(255.0, -255.0, 0.0, 0.0),
+                day_night: SkyMaterial::NEUTRAL_DAY_NIGHT[0],
+                day_night_sun: SkyMaterial::NEUTRAL_DAY_NIGHT[1],
+                modern_sky: Vec4::ZERO,
             });
         app.world_mut().spawn((
             Sky {

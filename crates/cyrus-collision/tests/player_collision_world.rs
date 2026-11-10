@@ -527,3 +527,121 @@ fn asymmetric_static_placement_uses_authored_row_major_rotation() {
         assert_eq!(!contacts.is_empty(), expected);
     }
 }
+
+#[test]
+fn a_rope_terminal_transient_is_a_face_candidate_with_its_own_geometry_and_zero_metadata() {
+    use bevy::math::Mat3;
+    use cyrus_assets::collision::ActorCollisionModels;
+    use cyrus_collision::{
+        actor_models::ActorModelCollision,
+        candidates::{
+            CandidateOwner, CandidateQuery, CollisionCandidates, ModelBounds, ModelInstance,
+            TransientModel, transient_model,
+        },
+        collision_mesh::ModelPose,
+    };
+    use std::collections::BTreeMap;
+
+    let world = StaticCollision::new(&CollisionScene::default()).unwrap();
+    let key = transient_model(3);
+    let source = ActorCollisionModels {
+        models: BTreeMap::from([("TERMINAL".into(), model(0).geometry)]),
+        transients: BTreeMap::from([(3, "TERMINAL".into())]),
+        ..Default::default()
+    };
+    let actors = ActorModelCollision::new(&source).unwrap();
+    assert!(actors.has_transient(3) && !actors.has_transient(0));
+    assert_eq!(actors.transient_radius(key).unwrap(), 100.0);
+    assert_eq!(actors.collision_flags(key).unwrap(), 0);
+
+    // An active record with a loaded model and flag 0x10 is a type 0x80 face candidate with no
+    // owner of its own; one without the flag, or without a model, is not a candidate.
+    let bounds = ModelBounds {
+        instance: ModelInstance::Runtime(key),
+        position: [600.0, 0.0, 600.0],
+        radius: 100.0,
+    };
+    let records = [
+        TransientModel {
+            active: true,
+            flags: 0,
+            model: Some(bounds),
+        },
+        TransientModel {
+            active: true,
+            flags: 0x10,
+            model: None,
+        },
+        TransientModel {
+            active: true,
+            flags: 0x10,
+            model: Some(bounds),
+        },
+    ];
+    let query = CandidateQuery::at([600 * 256, 0, 600 * 256], 1000.0, None);
+    let candidates = CollisionCandidates::build(&query, &[], &[], &records).unwrap();
+    assert_eq!(candidates.faces.len(), 1);
+    let face = candidates.faces[0];
+    assert_eq!(
+        (
+            face.owner,
+            face.candidate_type,
+            face.collision_flags,
+            face.model
+        ),
+        (
+            CandidateOwner::Transient,
+            0x80,
+            0,
+            ModelInstance::Runtime(key)
+        )
+    );
+
+    // The terminal's own geometry is queried at its stored pose; its contacts name the transient
+    // source and its support metadata is zero.
+    let poses = BTreeMap::from([(
+        key,
+        ModelPose::new([600.0, 0.0, 600.0], Mat3::IDENTITY).unwrap(),
+    )]);
+    let (start, end) = ([600, -10, 600], [600, 10, 600]);
+    let contacts = world
+        .runtime_segment_contacts(&candidates, &actors, &poses, start, end, false, None)
+        .unwrap();
+    assert_eq!(contacts.len(), 1);
+    assert_eq!(
+        contacts[0].0,
+        SupportSource::Transient {
+            model: key,
+            face: 0
+        }
+    );
+    assert_eq!(world.support_metadata(contacts[0].0).unwrap(), 0);
+    // Candidate-type exclusion precedes geometry resolution.
+    assert!(
+        world
+            .runtime_segment_contacts(&candidates, &actors, &poses, start, end, false, Some(0x80))
+            .unwrap()
+            .is_empty()
+    );
+    // Wrong sources fail with context: no stored pose, no terminal geometry in the export.
+    let error = world
+        .runtime_segment_contacts(
+            &candidates,
+            &actors,
+            &BTreeMap::new(),
+            start,
+            end,
+            false,
+            None,
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("stored model pose unavailable"),
+        "{error:#}"
+    );
+    let bare = ActorModelCollision::new(&ActorCollisionModels::default()).unwrap();
+    let error = world
+        .runtime_segment_contacts(&candidates, &bare, &poses, start, end, false, None)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("re-export"), "{error:#}");
+}

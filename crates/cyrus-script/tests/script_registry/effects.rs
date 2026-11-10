@@ -1205,3 +1205,196 @@ fn add_light_effect_shares_the_pool_capacity_and_keeps_snapshots() {
     );
     assert_eq!(restored.object_lights().len(), 2);
 }
+
+/// Runs `queries` (`CountAiShells` or `FindAiShell` over a name) as one script on actor 0 after
+/// starting the named shells in order, and returns the locals the results landed in.
+fn shell_list_world(shells: &[&str], queries: &[(Native, &str)]) -> anyhow::Result<Vec<i32>> {
+    let mut scripts = cache();
+    let first_function = scripts.definition.functions.len() as u16;
+    for native in [Native::CountAiShells, Native::FindAiShell] {
+        scripts.definition.functions.push(Function {
+            name: native,
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+    }
+    for name in shells
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        let mut shell = scripts.actors["LOGIC"].clone();
+        shell.code_origin += 1000 + 100 * scripts.actors.len() as u32;
+        shell.header_index += 100 + scripts.actors.len();
+        scripts.actors.insert(name.into(), shell);
+    }
+    let logic = scripts.actors.get_mut("LOGIC").unwrap();
+    logic.program.strings = queries.iter().map(|(_, name)| (*name).into()).collect();
+    logic.program.variables = vec![0; 8];
+    logic.instance_variables = vec![vec![0; 8]; logic.instance_variables.len()];
+    let mut steps: Vec<Operation> = queries
+        .iter()
+        .enumerate()
+        .map(|(index, (native, _))| Operation::Assign {
+            destination: Place::Local { index: index as u8 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: first_function + u16::from(*native == Native::FindAiShell),
+                        function: *native,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: vec![Value::String {
+                            index: index as u32,
+                        }],
+                    }),
+                },
+                rest: vec![],
+            },
+        })
+        .collect();
+    steps.push(Operation::End { target: 0 });
+    logic.program.steps = steps
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    for shell in shells {
+        world.spawn_shell(shell)?;
+    }
+    let id = world.id(0)?;
+    world.advance(
+        id,
+        ScriptStage::OrdinaryMain,
+        ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    world.actors()[0]
+        .runtime()
+        .unwrap()
+        .variables()
+        .iter()
+        .take(queries.len())
+        .map(|value| value.integer())
+        .collect()
+}
+
+#[test]
+fn count_and_find_ai_shells_walk_the_running_shell_list_by_filename_stem() {
+    let results = shell_list_world(
+        &["ALPHA", "BETA", "ALPHA"],
+        &[
+            (Native::CountAiShells, "alpha"),
+            (Native::CountAiShells, "system\\Alpha.dat"),
+            (Native::CountAiShells, "beta"),
+            (Native::CountAiShells, "gamma"),
+            (Native::FindAiShell, "ALPHA"),
+            (Native::FindAiShell, "gamma"),
+        ],
+    )
+    .unwrap();
+    // Duplicates all count; the directory and extension are not part of the stem; presence is
+    // a flag, not a count.
+    assert_eq!(results, [2, 2, 1, 0, 1, 0]);
+    // With no shell running the list head is null.
+    assert_eq!(
+        shell_list_world(
+            &[],
+            &[
+                (Native::CountAiShells, "alpha"),
+                (Native::FindAiShell, "alpha")
+            ]
+        )
+        .unwrap(),
+        [0, 0]
+    );
+}
+
+#[test]
+fn an_eight_character_shell_name_depends_on_its_next_link() {
+    // The nine-byte entry copy reads the low byte of the next link: the list tail (null link)
+    // equals the query's terminator, any other entry depends on a heap address.
+    assert_eq!(
+        shell_list_world(&["EIGHTCHR"], &[(Native::CountAiShells, "eightchrx")]).unwrap(),
+        [1]
+    );
+    let error = shell_list_world(
+        &["EIGHTCHR", "EIGHTCHR"],
+        &[(Native::CountAiShells, "eightchr")],
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("next link"), "{error:#}");
+    // A shorter name never reaches the ninth byte.
+    assert_eq!(
+        shell_list_world(
+            &["SEVENCH", "SEVENCH"],
+            &[(Native::CountAiShells, "sevench")]
+        )
+        .unwrap(),
+        [2]
+    );
+}
+
+#[test]
+fn test_task_through_the_scheduler_keeps_its_slot_while_the_player_is_near() {
+    let (_, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+        let id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: Native::TestTask,
+            param_count: 1,
+            kind: CallKind::Task,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: wait(
+                        id,
+                        Native::TestTask,
+                        CallKind::Task,
+                        vec![Value::Integer { value: 0 }],
+                    ),
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+    });
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let player = world.selected_player().unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    let before = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    for round in 0..4 {
+        scheduler_round_with(&mut world, &data, &scene, round, false, true)
+            .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+        // Within 131072 of the player the task asks for no movement and is never released.
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    }
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.position,
+        before
+    );
+}

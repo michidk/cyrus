@@ -152,6 +152,7 @@ fn startup_settling_does_not_trust_water_terrain_while_actor_models_exist() {
         instances: [(0, "DECK".to_string())].into(),
         collision_flags: [(0, 1)].into(),
         unsupported: Default::default(),
+        ..Default::default()
     };
     let mut kept = pose();
     let error = settle_static(&scene_with(Some(actors)), &mut kept).unwrap_err();

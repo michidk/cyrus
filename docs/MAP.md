@@ -7,6 +7,8 @@ module where it is defined and regenerate.
 ## `cyrus-app` — Shared window, cache source, egui and progress presentation for Cyrus applications.
 
 - `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
+- `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
+- `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
 - `src/loading.rs` — Progress overlays driven by the host, without application transitions.
 - `src/logging.rs` — Console and rotating-file logging for the native applications.
 - `src/native_install.rs` — Shared native install selection, remembered location and desktop folder picker.
@@ -30,6 +32,7 @@ module where it is defined and regenerate.
 - `src/effects.rs` — Installed environmental effect textures and map-owned drawing attributes.
 - `src/environment.rs` — Validated world environment records.
 - `src/environment_export.rs` — Per-world environment preparation from original bytes on either target.
+- `src/examine.rs` — Inventory models for the examine view, exported once and shaded at view time with the loaded
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
 - `src/hud.rs` — Installed HUD layout, item and font records.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
@@ -123,9 +126,15 @@ module where it is defined and regenerate.
 
 ## `cyrus-debug` — (undocumented)
 
+- `src/day_night.rs` — The day/night panel: the modern lighting's time of day.
+- `src/effects.rs` — The effects panel: the modern lighting's optional effects.
+- `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
+
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
 
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
+- `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
+- `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
 - `src/random.rs` — Shared engine random arithmetic, following preservation's SOUP random functions.
@@ -154,11 +163,24 @@ module where it is defined and regenerate.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/flat.rs` — Camera-facing MPSF geometry from preservation's placed-flat export contract.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
+- `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
+- `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/fog/clipping.rs` — Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
+- `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
+- `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
+- `src/fog/modern_lighting/effects.rs` — The modern lighting's optional effects, switched from the debug menu's effects panel and the
+- `src/fog/modern_lighting/foliage.rs` — Palm trees and plants that sway in the wind.
+- `src/fog/modern_lighting/glow.rs` — Lamps and fires that glow under the modern lighting.
+- `src/fog/modern_lighting/lights.rs` — The sun, ambient light, object lights and baked lights the modern lighting shades the world with.
+- `src/fog/modern_lighting/plugin.rs` — The modern lighting plugin, its camera effects and teardown, and the light marker the light
+- `src/fog/modern_lighting/post.rs` — The modern lighting's own screen pass: screen-space reflections on water and the sun's lens
+- `src/fog/modern_lighting/shadows.rs` — Shadow-only twins of the models and terrain, so the sun's shadow cascades batch their draws.
+- `src/fog/modern_lighting/sharing.rs` — Shared materials for the models under modern lighting, so the camera's passes batch their draws.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
@@ -186,6 +208,8 @@ module where it is defined and regenerate.
 - `src/terrain.rs` — Private terrain mesh preparation after camera projection and wave updates.
 - `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
+- `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
+- `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 - `src/water/checkpoint.rs` — Off-live replacement of terrain history and its projected mesh presentation.
 - `src/water/heights.rs` — Read-only binding of exact engine heights to logical camera terrain sampling.
 - `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
@@ -199,6 +223,7 @@ module where it is defined and regenerate.
 - `src/console/markers.rs` — The user marker file of `setmarker` and `getmarker` and the host storage seam for it. The layout
 - `src/inventory_screen.rs` — Inventory screen list, cursor, layout and lifecycle, independent of screen presentation.
 - `src/island_map.rs` — The island map screen: the marker position rules and the screen lifecycle.
+- `src/item_viewer.rs` — Item viewer rules: the pose, fade and exit of the modal that `ShowItem` opens, and the
 - `src/logbook.rs` — Explicit logbook text layout and scrolling, independent of screen presentation.
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
@@ -253,7 +278,8 @@ module where it is defined and regenerate.
 - `src/script/registry/ai_progress.rs` — AI direct-destination progress composes facing, movement and retained clearance.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
 - `src/script/registry/attack_input.rs` — The selected player's armed attack input: per-key tap latches and the combo move start.
-- `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
+- `src/script/registry/avoid.rs` — Armed nonplayer actors steer away from walls: four stacked-sphere probes around the body set a
+- `src/script/registry/body.rs` — Ordinary body queries use the selected vertex-bound or initial shape and current pose.
 - `src/script/registry/bounce.rs` — The receiver's side of `BounceObject`: live actor state behind [`BouncePort`]. The rules are
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/camera.rs` — Live session camera services: first pose establishment and one atomic update.
@@ -349,6 +375,7 @@ module where it is defined and regenerate.
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/confirmation.rs` — Mini-confirmation input and pixels, following preservation's book-menu rules.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
+- `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.

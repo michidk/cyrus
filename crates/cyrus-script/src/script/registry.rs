@@ -27,6 +27,7 @@ mod health;
 pub use death_exit::WorldLoopOutcome;
 pub use effects::{ActorEvent, EnvironmentalEffect, EnvironmentalEffects};
 pub use health::{SelectedDeathState, SelectedHealthState};
+pub(super) mod avoid;
 pub(super) mod body;
 mod bounce;
 pub(super) mod bounds;
@@ -50,6 +51,7 @@ mod late;
 mod leap;
 mod ledge;
 mod ledge_states;
+pub use ledge_states::LedgeTiming;
 mod light;
 mod map_marker;
 pub use map_marker::SavedPlacement;
@@ -253,12 +255,24 @@ pub struct ScriptInputs<'a> {
     /// Shared drno state: the ordinary main stage is skipped for every actor except the selected
     /// player and the camera actor. Absence is the cheat being off.
     pub actor_update_skipped: Option<bool>,
+    /// Shared `task` state: whether the task scheduling system runs. Absence keeps the installed
+    /// `SYSTEM.INI` switch.
+    pub task_system: Option<bool>,
+    /// Shared `animation` state tested for the value one: the movement natives wait for their
+    /// requested group. Absence keeps the installed `SYSTEM.INI` switch.
+    pub animation_system: Option<bool>,
+    /// Shared `animation` state tested for nonzero: whether the animation system runs. Absence
+    /// follows `animation_system`.
+    pub animation_running: Option<bool>,
     /// Shared yeahbaby state: the selected player's ground-support probe is bypassed while a
     /// vertical debug key is held or the Home toggle is set. Absence is the cheat being off.
     pub ground_bypass: Option<bool>,
     /// Shared magiccarpet state (the value 1): the selected player's probe clears its falling
     /// byte and ends. Absence is the cheat being off.
     pub magic_carpet: Option<bool>,
+    /// Shared moonraker state: the selected player skips the forward obstacle probes and the actor
+    /// overlap pass of the late collision stage. Absence is the cheat being off.
+    pub player_collision_skipped: Option<bool>,
     pub activation: Option<&'a super::ActivationInputs>,
     /// Held installed Activate binding for live logical-actor activation.
     pub activation_use_held: Option<bool>,
@@ -408,10 +422,14 @@ pub struct ActorControlState {
     pub ai: AiRecord,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: LivingState,
-    /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
-    pub motion_companion: u8,
     /// Receiver-owned ordinary countdown; zero and 255 do not decrement.
     pub extra_time: u8,
+    /// The `surface_time`, `jump_time`, `jump_height` and `anchor` bytes: no engine routine reads
+    /// or writes them, so each only retains what a script stores (allocator zero otherwise).
+    pub surface_time: u8,
+    pub jump_time: u8,
+    pub jump_height: u8,
+    pub anchor: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
     pub sliding_state: u8,
     pub falling_state: JumpMotion,
@@ -444,7 +462,9 @@ pub struct ActorControlState {
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
-    /// Allocator-zero runtime jump selector, separate from living and torch state.
+    /// The `rope_wait` byte (+0x1b0), allocator-zero: a rope release sets it to 24, ordinary updates
+    /// count it down and the rope grab skips the released rope while it is nonzero. The weapon
+    /// routines retain it.
     pub jump_selector: u8,
     /// Validity of the separately retained stable local position.
     pub stable_position_valid: bool,
@@ -472,9 +492,16 @@ pub struct ActorControlState {
     pub object_update_excluded: bool,
     /// Presentation hidden state; this does not exclude script or animation updates.
     pub hidden: bool,
+    /// The `invisible` byte: the body is not drawn while scripts, animation and collision go on.
+    pub invisible: bool,
     /// The signed RAEX `scabbard0`/`scabbard1` words a script rewrote through `scabbard[0]` and
     /// `scabbard[1]`; None keeps the installed value the loader copied into the actor.
     pub scabbard_override: [Option<i16>; 2],
+    /// The signed RAEX `grip0`/`grip1` words a script rewrote through `grip[0]` and `grip[1]`.
+    pub grip_override: [Option<i16>; 2],
+    /// The `yangle_change` word the model refresh stores: the heading change over the last
+    /// ordinary update (the angle minus the update-start history, as a signed word).
+    pub yangle_change: i16,
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
     /// Actor index of the object that created this one (`shoot`, `shootPlayer`, `DragonBreath`),
@@ -687,6 +714,9 @@ pub struct ScriptWorld {
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
     updates: cyrus_assets::script::UpdateSettings,
+    /// The `animation` state's value-one test, which the movement natives' wait on the requested
+    /// group uses; `None` follows `updates.animation_system` (the nonzero test).
+    animation_strict: Option<bool>,
     player_distance_override: bool,
     actors: Vec<ScriptActor>,
     /// Installed script definitions a shell can be started from after preparation.
@@ -742,6 +772,13 @@ pub struct ScriptWorld {
     map_updates: super::map_updates::MapUpdates,
     /// Shared surface-query veto; absent until an assigning query establishes it.
     surface_veto: Option<bool>,
+    /// Water and lava transitions the selected player's forward probes noticed, in query order;
+    /// the caller that owns the random stream and sound sink runs them right after the probe.
+    pending_surface_transitions: Vec<PendingSurfaceTransition>,
+    /// Whether the actor now updating was rolled back this update (the original's shared changed
+    /// flag): the stable-position or water rollback restored its pose. Cleared as each ordinary
+    /// update starts; never saved.
+    rolled_back: bool,
     /// The session flag the Home key toggles for the yeahbaby ground bypass; it is read by the
     /// ground probe only while the cheat is on and is not reset by turning the cheat off.
     ground_bypass_toggle: bool,
@@ -835,6 +872,47 @@ impl ScriptWorld {
             .as_mut()
             .expect("test actor has control state")
             .queued_motion = motion;
+    }
+
+    /// Test hook: set a logical actor's pending and accepted directional action words.
+    #[doc(hidden)]
+    pub fn set_action_words_for_test(&mut self, id: ScriptActorId, pending: u32, accepted: u32) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .actions = ActionWords { pending, accepted };
+    }
+
+    /// Test hook: give a logical actor a cached link position, as an `Offset` link does.
+    #[doc(hidden)]
+    pub fn set_link_position_for_test(&mut self, id: ScriptActorId, position: [i32; 3]) {
+        self.spatial
+            .as_mut()
+            .expect("test spatial state")
+            .actor_mut(id.index)
+            .expect("test actor spatial state")
+            .set_link_cache(position);
+    }
+
+    /// Test hook: give a logical actor a default combat record.
+    #[doc(hidden)]
+    pub fn set_combat_record_for_test(&mut self, id: ScriptActorId) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .combat = Some(CombatControlState::default());
+    }
+
+    /// Test hook: set a logical actor's collision-response word.
+    #[doc(hidden)]
+    pub fn set_last_collide_for_test(&mut self, id: ScriptActorId, bits: u32) {
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .expect("test actor has control state")
+            .last_collide = crate::script::CollisionFlags::from_bits(bits);
     }
 
     /// Test hook: set a logical actor's living state.
@@ -1619,6 +1697,7 @@ impl ScriptWorld {
         Ok(Self {
             map_updates: Default::default(),
             updates: scripts.updates,
+            animation_strict: None,
             player_distance_override: scripts.player_distance_override,
             world: scripts.world,
             content_id: scripts.content_id.clone(),
@@ -1663,6 +1742,8 @@ impl ScriptWorld {
             retained_candidates: Default::default(),
             display_attachments: Vec::new(),
             surface_veto: None,
+            pending_surface_transitions: Vec::new(),
+            rolled_back: false,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera,
@@ -2300,7 +2381,27 @@ impl ScriptWorld {
         Ok(())
     }
 
-    fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
+    /// The previous-position counterpart of [`Self::query_position`]: the previous attached
+    /// position with `attr_slave`, else the link record's previous cached position, else the
+    /// previous local position.
+    pub(super) fn query_previous_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
+        let index = self.resolve(id)?;
+        let actor = self.spatial(id)?;
+        if self.actors[index].attributes[Attribute::Slave] != 0 {
+            actor
+                .previous_effective_position
+                .context("attached query previous effective position unavailable")
+        } else if actor.linked_position.is_some() {
+            Ok(actor.link_previous)
+        } else {
+            Ok(actor.previous_local_position)
+        }
+    }
+
+    /// The position the ground and support probes read, as the original's query-position selector
+    /// picks it: the composed attached position with `attr_slave`, else the linked record's cached
+    /// position, else the local position.
+    pub(super) fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
         let index = self.resolve(id)?;
         let actor = self.spatial(id)?;
         if self.actors[index].attributes[Attribute::Slave] != 0 {
@@ -2518,11 +2619,17 @@ impl ScriptWorld {
     /// Refresh an unattached actor matrix without consuming its angle snapshot.
     pub fn refresh_transform(&mut self, id: ScriptActorId) -> Result<()> {
         let index = self.resolve(id)?;
-        self.spatial
+        let selected = self.selected_player_index() == Some(index);
+        let spatial = self
+            .spatial
             .as_mut()
             .context("spatial state not prepared")?
-            .actor_mut(index)?
-            .refresh_transform()
+            .actor_mut(index)?;
+        if selected {
+            spatial.refresh_player_transform()
+        } else {
+            spatial.refresh_transform()
+        }
     }
 
     /// Explicit family pass, publishing attached model transforms even without geometry.
@@ -2617,24 +2724,35 @@ impl ScriptWorld {
             "world {} instance {index}: actor does not use an animation model table",
             self.world
         );
-        let result = cyrus_world::animation::ActorAnimation::initialize(
-            data,
-            actor.name(),
-            ticks,
-            &mut |sound| {
-                if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
-                    return events.dispatch(flags, camera.as_mut(), effects);
-                }
-                sounds(
-                    id,
-                    super::ScriptSound::Animation {
-                        sound,
-                        surface: actor.surface,
-                        position,
-                    },
-                )
-            },
-        );
+        // With the animation system off the request routine returns before touching the record,
+        // so the two initial panic requests leave it with no current or pending group and no frame.
+        let result = if self.updates.animation_system {
+            cyrus_world::animation::ActorAnimation::initialize(
+                data,
+                actor.name(),
+                ticks,
+                &mut |sound| {
+                    if let cyrus_world::animation::AnimationSound::Event { flags } = sound {
+                        return events.dispatch(flags, camera.as_mut(), effects);
+                    }
+                    sounds(
+                        id,
+                        super::ScriptSound::Animation {
+                            sound,
+                            surface: actor.surface,
+                            position,
+                        },
+                    )
+                },
+            )
+        } else {
+            cyrus_world::animation::ActorAnimation::from_asset(
+                data,
+                actor.name(),
+                AnimationGroup::PANIC,
+            )
+            .map(|playback| (playback, None))
+        };
         match result {
             Ok((playback, frame)) => {
                 actor
@@ -2978,6 +3096,47 @@ impl ScriptWorld {
     /// Random functions require the caller's shared engine stream; they never seed actor state.
     /// Standalone ordinary stages skip killed records, including retained world records.
     /// Explicit body and routed calls keep their own invocation semantics.
+    /// The live `task` and `animation` cheat states replace the installed `SYSTEM.INI` switches the
+    /// update gates read; absent inputs leave the installed values.
+    pub(super) fn apply_system_switches(&mut self, inputs: &ScriptInputs<'_>) {
+        if let Some(task) = inputs.task_system {
+            self.updates.task_system = task;
+        }
+        // `animation_system` is the value-one state and `animation_running` the nonzero state;
+        // a host supplying only one gives both the same answer.
+        if let Some(running) = inputs.animation_running.or(inputs.animation_system) {
+            self.updates.animation_system = running;
+        }
+        if let Some(strict) = inputs.animation_system {
+            self.animation_strict = Some(strict);
+        }
+    }
+
+    /// Test hook: replace an actor's local angles without refreshing its pose.
+    #[doc(hidden)]
+    pub fn set_local_angles_for_test(&mut self, id: ScriptActorId, angles: [i32; 3]) {
+        self.spatial
+            .as_mut()
+            .expect("spatial state prepared")
+            .actor_mut(id.index)
+            .expect("actor spatial state")
+            .local
+            .angles = angles;
+    }
+
+    /// Test hook: [`Self::animation_waits`].
+    #[doc(hidden)]
+    pub fn animation_waits_for_test(&self) -> bool {
+        self.animation_waits()
+    }
+
+    /// Whether the movement natives wait for their requested group to become current: the
+    /// original tests the `animation` state for exactly one there, but for nonzero elsewhere.
+    fn animation_waits(&self) -> bool {
+        self.animation_strict
+            .unwrap_or(self.updates.animation_system)
+    }
+
     pub fn advance(
         &mut self,
         id: ScriptActorId,
@@ -2987,6 +3146,7 @@ impl ScriptWorld {
         random: Option<&mut cyrus_game::random::EngineRandom>,
         budget: usize,
     ) -> Result<()> {
+        self.apply_system_switches(&inputs);
         let index = self.resolve(id)?;
         // Killed map records survive revisits, but never re-enter ordinary script stages.
         if matches!(stage, ScriptStage::OrdinaryMain | ScriptStage::OrdinaryHook)
@@ -3277,14 +3437,16 @@ impl ScriptWorld {
         override_ticks: u32,
     ) -> Result<super::ActivationOverlay> {
         self.validate_activation(inputs)?;
-        self.activation.overlay(
+        let overlay = self.activation.overlay(
             inputs,
             &self.actors[inputs.player.index],
             ticks,
             cycle_held,
             override_ticks,
             self.globals.lockout(),
-        )
+        )?;
+        self.activation.record_shown(&overlay);
+        Ok(overlay)
     }
 
     fn resolve(&self, actor: ScriptActorId) -> Result<usize> {
@@ -3765,6 +3927,31 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    /// The selected player's step check, then the water and lava transitions its support query
+    /// returned (the original's surface handler runs inside that query).
+    fn player_step_clear_with_transition(
+        &mut self,
+        id: ScriptActorId,
+        ground: ground::OrdinaryGroundQuery<'_>,
+        direction: StepDirection,
+    ) -> Result<bool> {
+        let clear = self.registry.player_step_clear(id, ground, direction);
+        if !self.registry.pending_surface_transitions.is_empty() {
+            let ticks = self.inputs.nominal_ticks.unwrap_or(0);
+            let random = self
+                .random
+                .as_deref_mut()
+                .context("surface transition random owner unavailable")?;
+            let sounds = self
+                .sounds
+                .as_deref_mut()
+                .context("surface transition sound handler unavailable")?;
+            self.registry
+                .flush_surface_transitions(id, ticks, random, sounds)?;
+        }
+        clear
+    }
+
     /// The shared native-command source: the actor whose ordinary interpreter entry ran last. It is
     /// the original's shared source actor reference, read by `MoveAboveMe` and `PointAt`
     /// independently of their receiver. Unknown before any such entry, and a source retained from
@@ -3872,6 +4059,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 self.registry.actors[player.index].surface,
             )
         });
+        let animation_waits = self.registry.animation_waits();
         let actor_events = effects::ActorEventContext::capture(self.registry, id);
         let player_events =
             player_slot.map(|player| effects::ActorEventContext::capture(self.registry, player));
@@ -4034,7 +4222,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             locomotion: Some(super::tasks::LocomotionCall {
                 state: locomotion_state,
                 admission: locomotion_admission,
-                animation_system: self.animation_system,
+                animation_system: animation_waits,
                 motion: actor
                     .control
                     .as_mut()
@@ -4673,7 +4861,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         |_, _| anyhow::bail!("WalkBackward collision sound handler unavailable");
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                     admission.backward_step_clear = Some(if player_backward {
-                        self.registry.player_step_clear(
+                        self.player_step_clear_with_transition(
                             id,
                             geometry.ground,
                             crate::script::locomotion::StepDirection::Backward,
@@ -4748,8 +4936,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                     // The selected player's step check is its support query, as for its walks.
                     admission.lateral_step_clear = Some(if selected {
-                        self.registry
-                            .player_step_clear(id, geometry.ground, direction)?
+                        self.player_step_clear_with_transition(id, geometry.ground, direction)?
                     } else {
                         self.registry.ordinary_step_clear(
                             id,
@@ -4785,7 +4972,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                             |_, _| anyhow::bail!("WalkForward collision sound handler unavailable");
                         let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                         admission.forward_step_clear = Some(if player_forward {
-                            self.registry.player_step_clear(
+                            self.player_step_clear_with_transition(
                                 id,
                                 geometry.ground,
                                 crate::script::locomotion::StepDirection::Forward,
@@ -5034,8 +5221,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .sounds
                 .as_mut()
                 .context("selected-player mask-8 transition: animation sound handler absent")?;
-            self.registry
-                .step_player(id, function, self.inputs, &mut **sounds)?;
+            self.registry.step_player(
+                id,
+                function,
+                self.inputs,
+                &mut **sounds,
+                self.random.as_deref_mut(),
+            )?;
         }
         Ok(())
     }
@@ -5193,6 +5385,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .with_context(|| format!("object target {target:?}"))
     }
 }
+/// A surface change a selected-player support query returned: the saved previous surface, the
+/// returned one, and the splash effect's Q8 height from that query's support.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct PendingSurfaceTransition {
+    pub previous: Surface,
+    pub returned: Surface,
+    pub effect_height: Option<i32>,
+}
+
 /// The actor-record triples a position or angle property names: the local pose, the previous
 /// position, the saved start position (location zero) and the angle history.
 enum PoseProperty {
@@ -5209,21 +5410,24 @@ enum PoseProperty {
 }
 
 /// A signed RAEX attachment word (`grip0`, `grip1`, `scabbard0`, `scabbard1`) of the actor: the
-/// installed value the loader copied, unless a script rewrote a scabbard word through the property.
+/// installed value the loader copied, unless a script rewrote the word through its property.
 pub(super) fn raex_word(
     control: Option<&ActorControlState>,
     metadata: &serde_json::Value,
     field: &str,
 ) -> Option<i16> {
-    let word = ["scabbard0", "scabbard1"]
-        .iter()
-        .position(|name| *name == field);
-    word.and_then(|word| control?.scabbard_override[word])
-        .or_else(|| {
-            metadata["raex"][field]
-                .as_i64()
-                .and_then(|value| i16::try_from(value).ok())
-        })
+    let overridden = |control: &ActorControlState| match field {
+        "scabbard0" => control.scabbard_override[0],
+        "scabbard1" => control.scabbard_override[1],
+        "grip0" => control.grip_override[0],
+        "grip1" => control.grip_override[1],
+        _ => None,
+    };
+    control.and_then(overridden).or_else(|| {
+        metadata["raex"][field]
+            .as_i64()
+            .and_then(|value| i16::try_from(value).ok())
+    })
 }
 
 /// Script properties that name actor motion bytes. The engine's property descriptors (preservation
@@ -5234,8 +5438,12 @@ pub(super) fn raex_word(
 /// `last_direction` shares the retained movement classification written by motion producers.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
-        Property::RopeWait => &mut control.motion_companion,
+        Property::RopeWait => &mut control.jump_selector,
         Property::ExtraTime => &mut control.extra_time,
+        Property::SurfaceTime => &mut control.surface_time,
+        Property::JumpTime => &mut control.jump_time,
+        Property::JumpHeight => &mut control.jump_height,
+        Property::Anchor => &mut control.anchor,
         Property::SlideFlag => &mut control.sliding_state,
         Property::MoveCounter => &mut control.move_counter,
         Property::OriginTime => &mut control.fall_timer,
@@ -5265,11 +5473,16 @@ fn control_record_property(
         Property::AiVar1 => ControlField::Word(&mut control.ai.var1),
         Property::AiVar2 => ControlField::Word(&mut control.ai.var2),
         Property::AiLength => ControlField::Dword(&mut control.ai.length),
+        Property::YangleChange => ControlField::Word(&mut control.yangle_change),
         // The node fields are the walk-map owner's held nodes: current, next and final destination.
         Property::Node => ControlField::Dword(&mut control.navigation.current),
         Property::Dnode => ControlField::Dword(&mut control.navigation.next),
         Property::Fdnode => ControlField::Dword(&mut control.navigation.destination),
         // The stable-position record the fall and recovery code restores from.
+        // KillMe's finished marker and the weapon-drawn byte of the equipped-weapon routines.
+        Property::Dead => ControlField::Flag(&mut control.killed),
+        Property::WeaponDrawn => ControlField::Flag(&mut control.weapon_drawn),
+        Property::Invisible => ControlField::Flag(&mut control.invisible),
         Property::MoveVx => ControlField::Dword(&mut control.motion_vector[0]),
         Property::MoveVy => ControlField::Dword(&mut control.motion_vector[1]),
         Property::MoveVz => ControlField::Dword(&mut control.motion_vector[2]),
@@ -5295,18 +5508,20 @@ enum CollisionField {
     Positive(usize),
     Negative(usize),
     Center(usize),
+    Total(usize),
 }
 
 fn collision_extent_property(name: Property) -> Option<CollisionField> {
     use Property::{
         SizeMsizeVx, SizeMsizeVy, SizeMsizeVz, SizePosVx, SizePosVy, SizePosVz, SizePsizeVx,
-        SizePsizeVy, SizePsizeVz,
+        SizePsizeVy, SizePsizeVz, SizeSizeVx, SizeSizeVy, SizeSizeVz,
     };
     let find = |names: [Property; 3]| names.iter().position(|&n| n == name);
     find([SizePsizeVx, SizePsizeVy, SizePsizeVz])
         .map(CollisionField::Positive)
         .or_else(|| find([SizeMsizeVx, SizeMsizeVy, SizeMsizeVz]).map(CollisionField::Negative))
         .or_else(|| find([SizePosVx, SizePosVy, SizePosVz]).map(CollisionField::Center))
+        .or_else(|| find([SizeSizeVx, SizeSizeVy, SizeSizeVz]).map(CollisionField::Total))
 }
 
 fn pose_property(name: Property) -> Option<PoseProperty> {
@@ -5351,8 +5566,19 @@ fn playback_field(name: Property) -> Option<cyrus_world::animation::PlaybackFiel
         Property::AnimHaltFlag => PlaybackField::HaltFlag,
         Property::AnimHoldFlag => PlaybackField::HoldFlag,
         Property::AnimLoopCount => PlaybackField::LoopCount,
+        Property::AnimRepCount => PlaybackField::RepCount,
+        Property::AnimPosVx => PlaybackField::Position(0),
+        Property::AnimPosVy => PlaybackField::Position(1),
+        Property::AnimPosVz => PlaybackField::Position(2),
+        Property::AnimAngleVx => PlaybackField::Rotation(0),
+        Property::AnimAngleVy => PlaybackField::Rotation(1),
+        Property::AnimAngleVz => PlaybackField::Rotation(2),
         Property::AnimRewindFlag => PlaybackField::RewindFlag,
         Property::AnimRealFrame => PlaybackField::RealFrame,
+        Property::AnimMaxGroup => PlaybackField::MaxGroup,
+        Property::AnimLastAngleVx => PlaybackField::LastRotation(0),
+        Property::AnimLastAngleVy => PlaybackField::LastRotation(1),
+        Property::AnimLastAngleVz => PlaybackField::LastRotation(2),
         _ => return None,
     })
 }
@@ -5451,6 +5677,115 @@ fn task_slot_name(name: Property) -> Option<(usize, cyrus_soup::TaskSlotField)> 
             .position(|&candidate| candidate == name)
             .map(|slot| (slot, field))
     })
+}
+
+impl GameHost<'_, '_, '_, '_> {
+    /// The nonplayer health services `ZapObject`, `ZapObjectNoKill`, `SetHealth` and `AdjustHealth`
+    /// share, after their receiver gates: the health byte takes the wrapped sum clamped to 0..255
+    /// and, for the death-owning variant, a result at or below zero ends the receiver with the
+    /// recovered death dispatch.
+    fn adjust_nonplayer_health(
+        &mut self,
+        function: Native,
+        amount: i32,
+        kills: bool,
+    ) -> Result<()> {
+        let attributes = &mut self.registry.actors[self.index].attributes;
+        let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
+        attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
+        if kills && sum <= 0 {
+            let holding = self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0;
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .with_context(|| format!("{function}: death nominal ticks unavailable"))?;
+            let id = self.registry.id(self.index)?;
+            let sounds = &mut self.sounds;
+            self.registry
+                .dispatch_zap_object_death(id, holding, ticks, &mut |actor, sound| {
+                    sounds
+                        .as_deref_mut()
+                        .context("health death sound executor unavailable")?(
+                        actor, sound
+                    )
+                })?;
+        }
+        Ok(())
+    }
+
+    /// `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill`: health adjustments over
+    /// the selected-player services `AdjustHealth` also uses. The player natives take the selected
+    /// player whatever their receiver; the object natives gate on the receiver first and use the
+    /// player services only for a selected receiver, adjusting any other receiver's health byte
+    /// directly. The original's pointer-valued results are not reproduced, so none is returned.
+    fn zap(&mut self, function: Native, arguments: &[Argument]) -> Result<CallResult> {
+        let [amount] = arguments else {
+            anyhow::bail!("{function} requires one argument");
+        };
+        let amount = amount.integer()?;
+        let player = self.selected_player();
+        let kills = matches!(function, Native::ZapObject | Native::ZapPlayer);
+        let objects = matches!(function, Native::ZapObject | Native::ZapObjectNoKill);
+        let receiver_is_player = player.is_some_and(|player| player.index == self.index);
+        if objects {
+            let attributes = &self.registry.actors[self.index].attributes;
+            if attributes[Attribute::Invulnerable] != 0 {
+                return Ok(CallResult::CompleteWithoutValue);
+            }
+            if attributes[Attribute::Npc] != 0
+                && !self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0
+                && self.registry.actors[self.index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .is_none_or(|combat| !combat.flags.contains(CombatFlags::STANCE))
+            {
+                return Ok(CallResult::CompleteWithoutValue);
+            }
+            if !receiver_is_player {
+                self.adjust_nonplayer_health(function, amount, kills)?;
+                return Ok(CallResult::CompleteWithoutValue);
+            }
+        }
+        let player = player.with_context(|| format!("{function}: selected player unavailable"))?;
+        let id = self.registry.id(player.index)?;
+        // The player service takes the native's receiver as the damage source; ZapObject's
+        // selected-receiver branch passes none.
+        let source = if function == Native::ZapPlayer {
+            let receiver = self.registry.id(self.index)?;
+            Some(super::activation::NativeSource::Actor {
+                generation: receiver.generation,
+                index: receiver.index,
+            })
+        } else {
+            None
+        };
+        let sounds = &mut self.sounds;
+        let mut play = |actor, sound| {
+            sounds
+                .as_deref_mut()
+                .context("selected health sound executor unavailable")?(actor, sound)
+        };
+        if kills {
+            self.registry.apply_selected_death_health(
+                id,
+                amount,
+                source,
+                self.inputs,
+                self.random.as_deref_mut(),
+                &mut play,
+            )?;
+        } else {
+            self.registry.apply_selected_additive_health(
+                id,
+                amount,
+                self.inputs,
+                self.random.as_deref_mut(),
+                &mut play,
+            )?;
+        }
+        Ok(CallResult::CompleteWithoutValue)
+    }
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
@@ -5565,6 +5900,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .map_or(Ok(0), |animation| animation.playback.record_field(field))
                 .with_context(|| format!("property {name}"));
         }
+        if name == Property::Frame || name == Property::LastFrame {
+            // The word is the frame index inside the model the selected ShowFrame names, -1 when
+            // no frame was selected.
+            let index = self.property_receiver(target)?;
+            let animation = self.registry.actors[index]
+                .animation
+                .as_ref()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?;
+            let Some(reference) = (if name == Property::Frame {
+                animation.frame
+            } else {
+                animation.playback.last_frame()
+            }) else {
+                return Ok(-1);
+            };
+            let data = self
+                .inputs
+                .animations
+                .with_context(|| format!("property {name}: animation data unavailable"))?
+                .0;
+            let actor = &self.registry.actors[index];
+            let resolved = if actor.placement().is_some() {
+                data.resolve_map_frame(index, reference)
+            } else {
+                data.resolve_frame(actor.name(), reference)
+            }
+            .with_context(|| format!("property {name}"))?;
+            return i32::try_from(resolved.frame).with_context(|| format!("property {name}"));
+        }
         if name == Property::AnimCurrent {
             let index = self.property_receiver(target)?;
             return Ok(self.registry.actors[index]
@@ -5587,14 +5951,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .control
                 .as_ref()
                 .with_context(|| format!("{name} control owner unavailable"))?;
-            let data = self
-                .inputs
-                .animations
-                .with_context(|| format!("{name} animation data unavailable"))?
-                .0;
-            let field = ["grip0", "grip1"][word];
-            let value = raex_word(Some(control), data.actor(actor.name())?, field)
-                .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
+            let value = if let Some(value) = control.grip_override[word] {
+                value
+            } else {
+                let data = self
+                    .inputs
+                    .animations
+                    .with_context(|| format!("{name} animation data unavailable"))?
+                    .0;
+                let field = ["grip0", "grip1"][word];
+                raex_word(Some(control), data.actor(actor.name())?, field)
+                    .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?
+            };
             return Ok(i32::from(value));
         }
         if let Some(word) = [Property::Scabbard0, Property::Scabbard1]
@@ -5674,6 +6042,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 | Property::FallFlag
                 | Property::JumpFlag
                 | Property::LastDirection
+                | Property::HandItem
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5682,6 +6051,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             return Ok(i32::from(match name {
                 Property::AiType => control.ai_type.byte(),
+                // An unestablished held item reads as the allocator's zero.
+                Property::HandItem => control.held_item.unwrap_or(0),
                 Property::ExtraFlag => control.living_state.byte(),
                 Property::FallFlag => control.falling_state.byte(),
                 Property::LastDirection => control.motion_classification.byte(),
@@ -5707,6 +6078,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
             } else {
                 actor.broadcast_index
             }));
+        }
+        if name == Property::Id {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .runtime_identifier
+                .map(i32::from)
+                .with_context(|| format!("property {name}: runtime identifier unavailable"));
         }
         if let Some((slot, field)) = task_slot_name(name) {
             let index = self.property_receiver(target)?;
@@ -5748,6 +6126,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 CollisionField::Positive(axis) => shape.positive_extent[axis],
                 CollisionField::Negative(axis) => shape.negative_extent[axis],
                 CollisionField::Center(axis) => shape.center_offset[axis],
+                CollisionField::Total(axis) => shape.total_extent[axis],
             });
         }
         let pose = pose_property(name)
@@ -5814,6 +6193,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .set_record_field(field, value)
                 .with_context(|| format!("property {name}"));
         }
+        if name == Property::AnimCurrent {
+            let index = self.property_receiver(target)?;
+            return self.registry.actors[index]
+                .animation
+                .as_mut()
+                .with_context(|| format!("property {name}: actor {index} has no animation"))?
+                .playback
+                .set_current_group(value)
+                .with_context(|| format!("property {name}"));
+        }
         if name == Property::PanicGroup {
             let index = self.property_receiver(target)?;
             let actor = &mut self.registry.actors[index];
@@ -5867,6 +6256,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 | Property::FallFlag
                 | Property::JumpFlag
                 | Property::LastDirection
+                | Property::HandItem
         ) {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
@@ -5875,6 +6265,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("property {name} control owner unavailable"))?;
             let byte = value as u8;
             match name {
+                Property::HandItem => control.held_item = Some(byte),
                 Property::AiType => control.ai_type = super::AiType::from_byte(byte),
                 Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
                 Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),
@@ -5904,6 +6295,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(());
         }
+        anyhow::ensure!(
+            name != Property::Id,
+            "property {name} write unsupported: the runtime identifier is installed identity that name lookup, route ownership and restore validation key on"
+        );
         if let Some((slot, field)) = task_slot_name(name) {
             let index = self.property_receiver(target)?;
             self.registry.actors[index]
@@ -5936,15 +6331,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let scabbard = [Property::Scabbard0, Property::Scabbard1]
             .iter()
             .position(|&word| word == name);
-        if name == Property::Hide || scabbard.is_some() {
+        let grip = [Property::Grip0, Property::Grip1]
+            .iter()
+            .position(|&word| word == name);
+        if name == Property::Hide || scabbard.is_some() || grip.is_some() {
             let index = self.property_receiver(target)?;
             let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .with_context(|| format!("property {name} control owner unavailable"))?;
-            match scabbard {
-                Some(word) => control.scabbard_override[word] = Some(value as i16),
-                None => control.hidden = value as u8 != 0,
+            match (scabbard, grip) {
+                (Some(word), _) => control.scabbard_override[word] = Some(value as i16),
+                (_, Some(word)) => control.grip_override[word] = Some(value as i16),
+                _ => control.hidden = value as u8 != 0,
             }
             return Ok(());
         }
@@ -5960,6 +6359,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 CollisionField::Positive(axis) => shape.positive_extent[axis] = value,
                 CollisionField::Negative(axis) => shape.negative_extent[axis] = value,
                 CollisionField::Center(axis) => shape.center_offset[axis] = value,
+                CollisionField::Total(axis) => shape.total_extent[axis] = value,
             }
             return Ok(());
         }
@@ -6742,19 +7142,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(self.breathe()?)));
         }
         // AddFlatEffect(x, y, z, spread, descriptor, speed) builds a type-one environmental effect
-        // at a Q8 point. The installed spread is zero; the animation speed is retained.
+        // at a Q8 point, scattered by the spread when it is nonzero; the animation speed is retained.
         if kind == CallKind::Function && function == Native::AddFlatEffect {
             let [x, y, z, spread, descriptor, speed] = arguments else {
                 anyhow::bail!("AddFlatEffect requires six arguments")
             };
-            anyhow::ensure!(
-                spread.integer()? == 0,
-                "AddFlatEffect: nonzero spread unsupported"
-            );
             self.registry.spawn_environment_effect_with_speed(
                 descriptor.integer()? as u32,
                 [x.integer()?, y.integer()?, z.integer()?],
                 speed.integer()?,
+                spread.integer()?,
+                self.random.as_deref_mut(),
             )?;
             return Ok(CallResult::Complete(0));
         }
@@ -6770,6 +7168,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .map_err(|_| anyhow::anyhow!("AddLightEffect requires eight arguments"))?;
             return Ok(CallResult::Complete(
                 self.registry.add_light_effect(values)?,
+            ));
+        }
+        // CountAiShells(name) counts the running shells of that name; FindAiShell(name) reports
+        // whether one runs. Both walk the shell list; the receiver is not read.
+        if kind == CallKind::Function
+            && (function == Native::CountAiShells || function == Native::FindAiShell)
+        {
+            let [Argument::String(name)] = arguments else {
+                anyhow::bail!("{function} requires one script name")
+            };
+            let first = function == Native::FindAiShell;
+            return Ok(CallResult::Complete(
+                self.registry.count_shell_matches(name, first)?,
             ));
         }
         // OpenShell(name) starts the named shell script; it runs from the next update.
@@ -7657,6 +8068,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        if [
+            Native::ZapObject,
+            Native::ZapObjectNoKill,
+            Native::ZapPlayer,
+            Native::ZapPlayerNoKill,
+        ]
+        .contains(&function)
+        {
+            return self.zap(function, arguments);
+        }
         if function == Native::SetHealth || function == Native::AdjustHealth {
             let set = function == Native::SetHealth;
             anyhow::ensure!(
@@ -7728,20 +8149,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 )?;
                 return Ok(CallResult::Complete(0));
             }
-            let attributes = &mut self.registry.actors[self.index].attributes;
             let value = arguments[0].integer()?;
+            let health = i32::from(self.registry.actors[self.index].attributes[Attribute::Health]);
             let delta = if set {
-                value.wrapping_sub(i32::from(attributes[Attribute::Health]))
+                value.wrapping_sub(health)
             } else {
                 value
             };
-            let health = i32::from(attributes[Attribute::Health]).wrapping_add(delta);
-            let damage = set || arguments[1].integer()? == 1;
-            anyhow::ensure!(
-                health > 0 || !damage,
-                "{function}: death sequence unavailable"
-            );
-            attributes[Attribute::Health] = health.clamp(0, 255) as u8;
+            let kills = set || arguments[1].integer()? == 1;
+            self.adjust_nonplayer_health(function, delta, kills)?;
             return Ok(CallResult::Complete(0));
         }
         // PlayerMoved compares the selected player's position with its snapshot taken at the
@@ -7904,8 +8320,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             ) as i32));
         }
-        // The dialogue and topic-menu mode words. DialogBegin also clears one retained byte whose
-        // owner is not yet identified; that write is not modelled.
+        // The dialogue and topic-menu mode words. DialogBegin also empties the remembered topic
+        // text, the first byte of the buffer the menu compares new entries against.
         if let Some((dialogue, begin)) = match function {
             Native::DialogBegin => Some((true, true)),
             Native::DialogEnd => Some((true, false)),
@@ -7915,7 +8331,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
         } {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             match (dialogue, begin) {
-                (true, begin) => self.registry.globals.set_dialogue_state(begin),
+                (true, begin) => {
+                    if begin {
+                        self.registry.globals.forget_choice();
+                    }
+                    self.registry.globals.set_dialogue_state(begin)
+                }
                 (false, true) => self.registry.globals.begin_topic_menu(),
                 (false, false) => self.registry.globals.end_topic_menu(),
             }
@@ -8693,6 +9114,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 Native::MoveMarker,
                 Native::MoveLocation,
                 Native::MovePosition,
+                Native::TestTask,
                 Native::MoveNodeMarker,
                 Native::MoveNodeLocation,
                 Native::MoveNodePosition,
@@ -9362,6 +9784,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.registry.actors[player.index].surface,
             )
         });
+        let animation_waits = self.registry.animation_waits();
         let actor_events = effects::ActorEventContext::capture(self.registry, id);
         let player_events =
             player_slot.map(|player| effects::ActorEventContext::capture(self.registry, player));
@@ -9530,7 +9953,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
                     admission: locomotion_admission,
-                    animation_system: self.animation_system,
+                    animation_system: animation_waits,
                     motion: actor
                         .control
                         .as_mut()
@@ -9821,6 +10244,7 @@ mod fighting_tests {
             walk_nodes: None,
             next_combat_index: 0,
             ordinary_prepared: false,
+            animation_strict: None,
             ordinary_updates: 0,
             actor_prelighting: None,
             retained_candidates: Default::default(),
@@ -9828,6 +10252,8 @@ mod fighting_tests {
             model_admission: None,
             map_updates: Default::default(),
             surface_veto: None,
+            pending_surface_transitions: Vec::new(),
+            rolled_back: false,
             ground_bypass_toggle: false,
             insert_camera_flag: false,
             camera: None,

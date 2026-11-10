@@ -16,6 +16,7 @@ use bevy::{
     prelude::*,
     render::render_resource::VertexFormat,
 };
+use cyrus_game::fidelity::{Area, Fidelity, Mode};
 use std::collections::HashSet;
 
 pub(super) const PROJECTED: MeshVertexAttribute =
@@ -27,10 +28,13 @@ struct Source {
     polygons: Model,
     pixels: Option<Vec<[f32; 2]>>,
     previous: Option<(Mat4, Mat4, Vec2, AssetId<Mesh>, ModelExtension, Vec2)>,
+    /// The last preparation attempt stopped before recording `previous` for its inputs, so the
+    /// next frame must retry even if no input reports a change.
+    pending: bool,
 }
 
 #[derive(Component)]
-struct Draw;
+pub(super) struct Draw;
 
 #[derive(Component)]
 struct Inspected;
@@ -45,6 +49,7 @@ pub(super) fn register(app: &mut App) {
                 .after(crate::animation::apply_poses)
                 .before(bevy::asset::AssetEventSystems),
         )
+        .add_systems(PostUpdate, swap_for_modern_lighting.before(prepare))
         .add_systems(
             PostUpdate,
             sync_draw_transforms
@@ -52,6 +57,47 @@ pub(super) fn register(app: &mut App) {
                 .after(crate::script_transform::apply)
                 .before(prepare),
         );
+}
+
+/// The render layers a clipped model's draw had before modern lighting took over its drawing.
+#[derive(Component)]
+struct ModernDrawn(RenderLayers);
+
+/// While `Area::Lighting` is Modern, a clipped model draws its full world-space source mesh,
+/// which can cast shadows and fill the depth prepass, and its camera-space draw stops drawing.
+/// Back in Faithful the draw returns and rebuilds its geometry on the next preparation.
+fn swap_for_modern_lighting(
+    mut commands: Commands,
+    fidelity: Res<Fidelity>,
+    mut sources: Query<(Entity, &mut Source, Option<&ModernDrawn>), Without<Draw>>,
+    draws: Query<Option<&RenderLayers>, With<Draw>>,
+) {
+    let modern = fidelity.mode(Area::Lighting) == Mode::Modern;
+    for (entity, mut source, drawn) in &mut sources {
+        match (modern, drawn) {
+            (true, None) => {
+                let layers = draws
+                    .get(source.draw)
+                    .ok()
+                    .flatten()
+                    .cloned()
+                    .unwrap_or_default();
+                commands.entity(source.draw).insert(RenderLayers::none());
+                commands
+                    .entity(entity)
+                    .insert((layers.clone(), ModernDrawn(layers)));
+            }
+            (false, Some(ModernDrawn(layers))) => {
+                commands.entity(source.draw).insert(layers.clone());
+                commands
+                    .entity(entity)
+                    .insert(RenderLayers::none())
+                    .remove::<ModernDrawn>();
+                source.previous = None;
+            }
+            _ => {}
+        }
+    }
 }
 
 /// A draw child has an identity local transform, so its world transform is its source's. Script pose
@@ -152,6 +198,7 @@ fn bind(
                 polygons,
                 pixels,
                 previous: None,
+                pending: true,
             },
         ));
     }
@@ -162,22 +209,25 @@ fn bind(
 fn prepare(
     mut sources: Query<
         (
-            &Mesh3d,
-            &GlobalTransform,
-            &MeshMaterial3d<SceneMaterial>,
+            Ref<Mesh3d>,
+            Ref<GlobalTransform>,
+            Ref<MeshMaterial3d<SceneMaterial>>,
             &mut Source,
             Option<Ref<crate::animation::BoundFrameMesh>>,
         ),
         Without<Draw>,
     >,
-    mut draws: Query<(&Mesh3d, &mut MeshMaterial3d<SceneMaterial>), With<Draw>>,
+    mut draws: Query<(&mut Mesh3d, &mut MeshMaterial3d<SceneMaterial>), With<Draw>>,
     cameras: Query<(&GlobalTransform, &Projection, &Camera), With<ViewCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<SceneMaterial>>,
     images: Res<Assets<Image>>,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
     mut image_events: MessageReader<AssetEvent<Image>>,
+    material_events: Option<MessageReader<AssetEvent<SceneMaterial>>>,
     mut clip: Local<Preparation>,
+    mut previous_view: Local<Option<(Mat4, Vec2, Vec2)>>,
+    fidelity: Res<Fidelity>,
 ) {
     let changed_meshes: HashSet<_> = mesh_events
         .read()
@@ -193,6 +243,22 @@ fn prepare(
             _ => None,
         })
         .collect();
+    // Without the stream nothing reports material changes, so every source is re-checked.
+    let changed_materials: Option<HashSet<_>> = material_events.map(|mut events| {
+        events
+            .read()
+            .filter_map(|event| match event {
+                AssetEvent::Modified { id } | AssetEvent::Added { id } => Some(*id),
+                _ => None,
+            })
+            .collect()
+    });
+    // Modern lighting draws the sources themselves; see `swap_for_modern_lighting`. Changes made
+    // meanwhile are not tracked, so the first faithful view afterwards re-checks every source.
+    if fidelity.mode(Area::Lighting) == Mode::Modern {
+        *previous_view = None;
+        return;
+    }
     let Ok((camera, projection, viewport_camera)) = cameras.single() else {
         return;
     };
@@ -206,7 +272,31 @@ fn prepare(
     let camera = camera.to_matrix();
     let projection = projection.get_clip_from_view();
     let scale = Vec2::new(projection.x_axis.x, projection.y_axis.y);
+    // Every input of a source's key is either this view or reports its own change, so a source
+    // whose inputs are all unchanged keeps the draw it prepared last.
+    let view_unchanged =
+        previous_view.replace((camera, scale, viewport)) == Some((camera, scale, viewport));
     for (mesh, transform, material, mut source, animated) in &mut sources {
+        if view_unchanged
+            && !source.pending
+            && !source.is_added()
+            && !mesh.is_changed()
+            && !transform.is_changed()
+            && !material.is_changed()
+            && !animated.as_ref().is_some_and(|pose| pose.is_changed())
+            && !changed_meshes.contains(&mesh.0.id())
+            && changed_materials
+                .as_ref()
+                .is_some_and(|changed| !changed.contains(&material.0.id()))
+            && (changed_images.is_empty()
+                || source
+                    .previous
+                    .as_ref()
+                    .is_some_and(|previous| !changed_images.contains(&previous.4.lights.id())))
+        {
+            continue;
+        }
+        source.pending = true;
         let Some(material_asset) = materials.get(&material.0) else {
             continue;
         };
@@ -219,7 +309,7 @@ fn prepare(
             extension.clone(),
             viewport,
         );
-        let Ok((draw, mut draw_material)) = draws.get_mut(source.draw) else {
+        let Ok((mut draw, mut draw_material)) = draws.get_mut(source.draw) else {
             continue;
         };
         if draw_material.0 != material.0 {
@@ -230,6 +320,7 @@ fn prepare(
             && !changed_meshes.contains(&mesh.0.id())
             && !changed_images.contains(&extension.lights.id())
         {
+            source.pending = false;
             continue;
         }
         let Some(original) = meshes.get(&mesh.0) else {
@@ -256,11 +347,17 @@ fn prepare(
                 if let Some(mut target) = meshes.get_mut(&draw.0) {
                     *target = prepared;
                 }
+                // Bevy re-reads a mesh's place in its vertex buffers only for entities whose `Mesh3d` or
+                // bounds changed; this draw has no bounds, so a rewritten mesh that moved would
+                // otherwise be drawn from its old place, with other meshes' vertices.
+                draw.set_changed();
                 source.previous = Some(key);
+                source.pending = false;
             }
             Err(error) => {
                 error!("model {:?}: camera clipping failed: {error}", mesh.0.id());
                 source.previous = Some(key);
+                source.pending = false;
             }
         }
     }
@@ -601,6 +698,7 @@ mod tests {
                 ambient: Vec4::ZERO,
                 directional: Vec4::ZERO,
                 direction: Vec4::ZERO,
+                lighting: Vec4::ZERO,
                 color: Vec4::ZERO,
                 clipping: Vec4::new(1.0, 100.0, 0.0, 0.0),
                 water: Vec4::ZERO,
@@ -610,6 +708,7 @@ mod tests {
             placement: Mat4::IDENTITY,
             lighting: Vec4::ZERO,
             compositing: Vec4::splat(-1.0),
+            calm_water: false,
         }
     }
 
@@ -848,7 +947,8 @@ mod tests {
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), TransformPlugin))
             .init_asset::<Mesh>()
             .init_asset::<Image>()
-            .init_asset::<SceneMaterial>();
+            .init_asset::<SceneMaterial>()
+            .init_resource::<Fidelity>();
         register(&mut app);
         let source_mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh());
         let light = app

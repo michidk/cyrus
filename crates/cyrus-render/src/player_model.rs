@@ -49,6 +49,67 @@ type ModelOwners<'w, 's> = Query<
     Or<(With<Player>, With<ScriptBinding>)>,
 >;
 
+/// Per-frame lookups that only change with their inputs: each actor's texture set by animation
+/// asset (with the actor name it was read for) and each frame-source path for the current scene.
+#[derive(Default)]
+struct BindCache {
+    texture_sets:
+        bevy::platform::collections::HashMap<(AssetId<Animations>, usize), (String, Option<u16>)>,
+    scene: Option<AssetPath<'static>>,
+    sources: bevy::platform::collections::HashMap<String, Vec<(Option<u16>, AssetPath<'static>)>>,
+}
+
+impl BindCache {
+    fn texture_set(
+        &mut self,
+        binding: &ScriptBinding,
+        actors: Option<&ScriptActors>,
+        animations: Option<&Assets<Animations>>,
+    ) -> anyhow::Result<Option<Option<u16>>> {
+        let Some(name) = actors
+            .and_then(|actors| actors.current.as_ref())
+            .filter(|world| world.generation() == binding.actor.generation)
+            .and_then(|world| world.actors().get(binding.actor.index))
+            .map(|actor| actor.name())
+        else {
+            return texture_set(binding, actors, animations);
+        };
+        let key = (binding.source.id(), binding.actor.index);
+        if let Some((cached, set)) = self.texture_sets.get(&key)
+            && cached == name
+            && animations.is_some_and(|animations| animations.contains(key.0))
+        {
+            return Ok(Some(*set));
+        }
+        let set = texture_set(binding, actors, animations)?;
+        if let Some(set) = set {
+            self.texture_sets.insert(key, (name.to_owned(), set));
+        }
+        Ok(set)
+    }
+
+    fn source(
+        &mut self,
+        prepared: &PreparedWorld,
+        model: &str,
+        texture_set: Option<u16>,
+    ) -> &AssetPath<'static> {
+        if self.scene.as_ref() != Some(&prepared.scene_path) {
+            self.scene = Some(prepared.scene_path.clone());
+            self.sources.clear();
+        }
+        let sources = self.sources.entry_ref(model).or_default();
+        let index = match sources.iter().position(|(set, _)| *set == texture_set) {
+            Some(index) => index,
+            None => {
+                sources.push((texture_set, model_source(prepared, model, texture_set)));
+                sources.len() - 1
+            }
+        };
+        &sources[index].1
+    }
+}
+
 // Bevy supplies independent scene, actor and asset inputs.
 #[allow(clippy::too_many_arguments)]
 fn bind(
@@ -63,7 +124,17 @@ fn bind(
     visibilities: Query<&Visibility>,
     children: Query<&Children>,
     nodes: Query<(&Name, Option<&AnimationPose>)>,
+    mut animation_events: Option<MessageReader<AssetEvent<Animations>>>,
+    mut cache: Local<BindCache>,
 ) {
+    for event in animation_events.iter_mut().flat_map(|events| events.read()) {
+        if let AssetEvent::Modified { id }
+        | AssetEvent::Removed { id }
+        | AssetEvent::Unused { id } = event
+        {
+            cache.texture_sets.retain(|(asset, _), _| asset != id);
+        }
+    }
     let Some(prepared) = prepared else {
         for root in roots
             .iter()
@@ -98,6 +169,13 @@ fn bind(
             commands.entity(root).despawn();
         }
     }
+    // The first root of a player owns it, as a linear search would find.
+    let mut roots_by_player = bevy::platform::collections::HashMap::new();
+    for (root, binding) in &roots {
+        roots_by_player
+            .entry(binding.player)
+            .or_insert((root, binding));
+    }
     for (player, pose, name, binding) in &players {
         if !replaces_base(name, &pose) {
             continue;
@@ -112,13 +190,13 @@ fn bind(
             if pose.is_changed() {
                 error!("player model: invalid frame-source key {:?}", pose.model);
             }
-            if let Some((root, _)) = roots.iter().find(|(_, binding)| binding.player == player) {
-                commands.entity(root).despawn();
+            if let Some((root, _)) = roots_by_player.get(&player) {
+                commands.entity(*root).despawn();
             }
             continue;
         }
         let texture_set = match binding
-            .map(|binding| texture_set(binding, actors.as_deref(), animations.as_deref()))
+            .map(|binding| cache.texture_set(binding, actors.as_deref(), animations.as_deref()))
         {
             None => None,
             Some(Ok(Some(set))) => set,
@@ -131,9 +209,9 @@ fn bind(
                 continue;
             }
         };
-        let source = model_source(&prepared, &pose.model, texture_set);
-        if let Some((root, binding)) = roots.iter().find(|(_, binding)| binding.player == player) {
-            if binding.source == source && binding.model == pose.model {
+        let source = cache.source(&prepared, &pose.model, texture_set);
+        if let Some(&(root, binding)) = roots_by_player.get(&player) {
+            if binding.source == *source && binding.model == pose.model {
                 for child in children.iter_descendants(root) {
                     if let Ok((name, current)) = nodes.get(child)
                         && name.as_str() == pose.model
@@ -147,6 +225,7 @@ fn bind(
             }
             retire(&mut commands, root, player);
         }
+        let source = source.clone();
         commands.entity(player).insert_if_new(Visibility::Inherited);
         commands.spawn((
             ModelRoot {

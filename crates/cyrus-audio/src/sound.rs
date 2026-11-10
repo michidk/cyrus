@@ -82,7 +82,10 @@ impl Plugin for SoundPlugin {
             .insert_resource(cyrus_script::script::OrdinarySoundExecutor(
                 execute_ordinary,
             ))
-            .add_systems(Update, play_audio.in_set(PlayCues));
+            .add_systems(
+                Update,
+                (examine_speech.before(play_audio), play_audio).in_set(PlayCues),
+            );
         #[cfg(target_arch = "wasm32")]
         app.init_resource::<PendingSounds>();
         #[cfg(not(target_arch = "wasm32"))]
@@ -162,7 +165,10 @@ pub enum SoundRequest {
         effect: usize,
         position: Option<Vec3>,
     },
+    /// A voice clip by RTX label, shown as a dialogue subtitle.
     Speech(String),
+    /// A voice clip without a dialogue subtitle: the examine view draws its own text.
+    Voice(String),
     StopAll,
 }
 
@@ -281,6 +287,9 @@ pub(crate) struct Channels {
     animation: HashMap<Entity, u8>,
     /// One post-advancement animation slot snapshot per bound actor, including None.
     animation_checkpoint: HashMap<Entity, Option<u8>>,
+    /// The slot of the last speech clip a [`SoundRequest::Speech`] or [`SoundRequest::Voice`] started, which the examine
+    /// view stops when it begins to close.
+    speech: Option<u8>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -706,6 +715,42 @@ fn positional(
     Ok((volume, pan))
 }
 
+/// Start the examine view's next description line as speech and report the clip length, or report
+/// that the label has no speech clip. The view draws the text itself, so no dialogue subtitle is
+/// created, and shows a line without a clip as text only.
+fn examine_speech(
+    screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
+    speech: Res<Speech>,
+    mut requests: MessageWriter<SoundRequest>,
+    mut commands: Commands,
+    mut channels: ResMut<Channels>,
+) {
+    let Some(mut screen) = screen else {
+        return;
+    };
+    if screen.speech_stop {
+        screen.speech_stop = false;
+        if let Some(slot) = channels.speech.take() {
+            channels.stop_slot(&mut commands, slot);
+        }
+    }
+    if screen.speech_request.is_none() {
+        return;
+    }
+    let label = screen.speech_request.take().expect("request checked above");
+    let name = String::from_utf8_lossy(&label);
+    screen.speech_reply = Some(
+        speech
+            .0
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(&name))
+            .map(|(key, clip)| {
+                requests.write(SoundRequest::Voice(key.clone()));
+                clip.seconds as f32
+            }),
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 fn play_requests(
     mut commands: Commands,
@@ -773,7 +818,7 @@ fn play_requests(
                     },
                 );
             }
-            SoundRequest::Speech(label) => {
+            SoundRequest::Speech(label) | SoundRequest::Voice(label) => {
                 if !settings.as_ref().is_some_and(|s| s.speech) {
                     continue;
                 }
@@ -781,7 +826,7 @@ fn play_requests(
                     warn_once!("sound: voice clip {label} is not loaded");
                     continue;
                 };
-                channels.start(
+                channels.speech = channels.start(
                     &mut commands,
                     &mut mixer,
                     Start {
@@ -1069,6 +1114,60 @@ pub use transport::{Panned, PannedDecoder, PannedSnapshot};
 pub struct ApplyPreferences;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayCues;
+
+#[cfg(test)]
+mod examine_speech_tests {
+    use super::*;
+    use cyrus_script::item_viewer::ExamineScreen;
+
+    #[test]
+    fn a_requested_label_starts_its_clip_and_reports_the_length_or_its_absence() {
+        let mut app = App::new();
+        app.add_message::<SoundRequest>()
+            .init_resource::<Speech>()
+            .init_resource::<ExamineScreen>()
+            .init_resource::<Channels>()
+            .add_systems(Update, examine_speech);
+        app.world_mut().resource_mut::<Speech>().0.insert(
+            "cisw".into(),
+            VoiceClip {
+                bits_per_sample: 8,
+                text: "A sword.".into(),
+                seconds: 2.5,
+                audio: Handle::default(),
+                base_volume: 127,
+            },
+        );
+        app.world_mut()
+            .resource_mut::<ExamineScreen>()
+            .speech_request = Some(*b"CISW");
+        app.update();
+        let screen = app.world().resource::<ExamineScreen>();
+        assert_eq!(screen.speech_request, None);
+        assert_eq!(screen.speech_reply, Some(Some(2.5)));
+        let requests: Vec<_> = app
+            .world_mut()
+            .resource_mut::<Messages<SoundRequest>>()
+            .drain()
+            .collect();
+        assert!(matches!(requests.as_slice(), [SoundRequest::Voice(label)] if label == "cisw"));
+        app.world_mut()
+            .resource_mut::<ExamineScreen>()
+            .speech_request = Some(*b"nope");
+        app.update();
+        assert_eq!(
+            app.world().resource::<ExamineScreen>().speech_reply,
+            Some(None)
+        );
+        assert!(
+            app.world_mut()
+                .resource_mut::<Messages<SoundRequest>>()
+                .drain()
+                .next()
+                .is_none()
+        );
+    }
+}
 
 #[cfg(test)]
 mod ambient_tests {

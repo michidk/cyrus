@@ -244,6 +244,8 @@ pub struct GameplayGlobals {
     pub(super) printed: Vec<String>,
     /// The latest `ShowItem`/`ShowItemNoRtx` request, retained for the viewer.
     pub(super) item_viewer: ItemViewerRequest,
+    /// A host asked for the camera reset `XResetCamera` performs; the next driven ordinary update runs it.
+    pub(super) camera_reset_request: bool,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
     /// Using item 83 asks the island map screen to open; transient like the host requests.
@@ -391,6 +393,44 @@ impl GameplayGlobals {
     /// The retained item viewer request; consuming it is the host viewer's job.
     pub fn item_viewer_request(&self) -> ItemViewerRequest {
         self.item_viewer
+    }
+
+    /// Leave a viewer request as the `ShowItem` natives do; for hosts that drive acceptance runs.
+    pub fn request_item_viewer(&mut self, item: i32, words: [i32; 2], no_rtx: bool) {
+        self.item_viewer = ItemViewerRequest {
+            pending: true,
+            no_rtx: self.item_viewer.no_rtx | no_rtx,
+            item,
+            words,
+        };
+    }
+
+    /// Ask for the selected player's camera reset (the original's camera force reset); for hosts
+    /// that place the player far from the camera and acceptance runs. The next ordinary update
+    /// that has the camera update service runs it through the `XResetCamera` path.
+    pub fn request_camera_reset(&mut self) {
+        self.camera_reset_request = true;
+    }
+
+    /// Whether a camera reset is waiting for the next ordinary update.
+    pub fn camera_reset_requested(&self) -> bool {
+        self.camera_reset_request
+    }
+
+    /// The host viewer takes the pending request: the pending flag clears, the request words and
+    /// the no-text flag stay until [`Self::finish_item_viewer`].
+    pub fn take_item_viewer_request(&mut self) -> Option<ItemViewerRequest> {
+        std::mem::take(&mut self.item_viewer.pending).then_some(self.item_viewer)
+    }
+
+    /// The viewer ended; its no-text flag clears.
+    pub fn finish_item_viewer(&mut self) {
+        self.item_viewer.no_rtx = false;
+    }
+
+    /// A script potion counter (`GetPotion`); `None` outside the four counters.
+    pub fn potion(&self, index: usize) -> Option<i32> {
+        self.potions.get(index).copied()
     }
 
     pub(super) fn print_line(&mut self, text: String) {
@@ -615,6 +655,10 @@ impl GameplayGlobals {
     pub fn highlighted_choice(&self) -> Option<&str> {
         self.highlighted_choice.as_deref()
     }
+    /// `DialogBegin` empties the remembered text, so the next menu highlights its first item.
+    pub(super) fn forget_choice(&mut self) {
+        self.highlighted_choice = Some(String::new());
+    }
     /// The topic-menu owner supplies the text selected from its installed entries.
     pub fn remember_choice(&mut self, text: String) {
         self.highlighted_choice = Some(text);
@@ -685,8 +729,21 @@ pub struct ActivationState {
     prompt: Option<String>,
     holdoff: u32,
     prompt_override: u32,
+    /// Prompt text returned by the most recent overlay update, for acceptance probes; the
+    /// pending `prompt` is consumed when the overlay is drawn.
+    shown_prompt: Option<String>,
 }
 impl ActivationState {
+    /// The prompt the last overlay update displayed, or `None` when it displayed none.
+    pub fn shown_prompt(&self) -> Option<&str> {
+        self.shown_prompt.as_deref()
+    }
+    pub(super) fn record_shown(&mut self, overlay: &ActivationOverlay) {
+        self.shown_prompt = match overlay {
+            ActivationOverlay::Prompt(text) => Some(text.clone()),
+            _ => None,
+        };
+    }
     pub fn owner(&self) -> Option<ScriptActorId> {
         self.owner
     }
@@ -1536,6 +1593,7 @@ impl GameplayGlobals {
             turn: Default::default(),
             printed: Vec::new(),
             item_viewer: ItemViewerRequest::default(),
+            camera_reset_request: false,
             host_requests: HostRequests::default(),
             island_map_request: false,
         })
@@ -1571,6 +1629,7 @@ impl ActivationState {
             prompt: saved.prompt,
             holdoff: saved.holdoff,
             prompt_override: saved.prompt_override,
+            shown_prompt: None,
         })
     }
 }

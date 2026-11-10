@@ -187,13 +187,13 @@ fn decode(image: &Image) -> Result<Vec<[f32; 8]>> {
     let descriptor = &image.texture_descriptor;
     ensure!(
         descriptor.dimension == TextureDimension::D2
-            && descriptor.format == TextureFormat::Rgba32Float
-            && descriptor.size.width == 2
+            && descriptor.format == TextureFormat::Rgba8Unorm
+            && descriptor.size.width == crate::lighting::runtime::LIGHT_TABLE_WIDTH
             && descriptor.size.height >= 256
             && descriptor.size.depth_or_array_layers == 1
             && descriptor.mip_level_count == 1
             && descriptor.sample_count == 1,
-        "expected single-layer, single-mip 2-by-(256+lights) Rgba32Float image",
+        "expected single-layer, single-mip 8-by-(256+lights) Rgba8Unorm image of float bytes",
     );
     let data = image
         .data
@@ -238,19 +238,19 @@ mod tests {
         data.extend(row.into_iter().flat_map(f32::to_le_bytes));
         let mut image = Image::new(
             Extent3d {
-                width: 2,
+                width: 8,
                 height: 257,
                 depth_or_array_layers: 1,
             },
             TextureDimension::D2,
             data,
-            TextureFormat::Rgba32Float,
+            TextureFormat::Rgba8Unorm,
             RenderAssetUsages::default(),
         );
         assert_eq!(decode(&image)?, vec![row]);
-        image.texture_descriptor.format = TextureFormat::Rgba8Unorm;
-        assert!(decode(&image).is_err());
         image.texture_descriptor.format = TextureFormat::Rgba32Float;
+        assert!(decode(&image).is_err());
+        image.texture_descriptor.format = TextureFormat::Rgba8Unorm;
         image.data.as_mut().unwrap()[256 * 32..256 * 32 + 4]
             .copy_from_slice(&f32::NAN.to_le_bytes());
         assert!(decode(&image).is_err());

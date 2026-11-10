@@ -1,5 +1,4 @@
-import constants::MATERIAL_BIND_GROUP;
-import package::glide_fog::{fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565};
+import package::glide_fog::{fog_table_position, table_density, blend_fog, blend_fog_integer};
 
 struct SceneFog {
     color: vec4<f32>,
@@ -9,22 +8,33 @@ struct SceneFog {
     ambient: vec4<f32>,
     directional: vec4<f32>,
     direction: vec4<f32>,
+    lighting: vec4<f32>,
 };
-@group(MATERIAL_BIND_GROUP) @binding(100) var<uniform> fog: SceneFog;
 
-fn scene_color(color: vec3<f32>, depth: f32, pixel: vec2<f32>) -> vec3<f32> {
-    return scene_color_at_fog_position(color, depth, pixel, fog_table_position(depth));
+// World textures are point sampled while `Area::Textures` is Modern.
+fn point_sampled() -> bool {
+    return fog.lighting.y != 0.0;
+}
+// The drawn material's fog, which the entry point loads first: `model_lights::load_model_material`
+// for models, `load_terrain_material` for terrain.
+var<private> fog: SceneFog;
+// The drawn mesh's slot in the bindless material tables; unused without bindless materials.
+var<private> material_slot: u32;
+
+fn scene_color(color: vec3<f32>, depth: f32) -> vec3<f32> {
+    return scene_fog_at_position(color, depth, fog_table_position(depth));
 }
 
-fn scene_color_at_fog_position(color: vec3<f32>, depth: f32, pixel: vec2<f32>, position: vec2<u32>) -> vec3<f32> {
-    let result = scene_fog_at_position(color, depth, position);
-    if fog.clipping.z != 0.0 { return result; }
-    return framebuffer_rgb565(result, pixel);
-}
+// Higher values keep the near scene clearer and thicken the haze closer to the far clip; a Modern
+// tuning choice.
+const MODERN_FOG_STEEPNESS: f32 = 4.0;
 
 fn scene_fog_at_position(color: vec3<f32>, depth: f32, position: vec2<u32>) -> vec3<f32> {
     if fog.clipping.z != 0.0 {
-        let density = 255.0 * smoothstep(fog.clipping.y * 0.45, fog.clipping.y, depth);
+        // Modern fog: an exponential-squared haze normalised to be opaque at the far clip, so distant
+        // scenery fades into the sky colour instead of being cut off.
+        let t = clamp(depth / fog.clipping.y, 0.0, 1.0);
+        let density = 255.0 * (1.0 - exp(-MODERN_FOG_STEEPNESS * t * t)) / (1.0 - exp(-MODERN_FOG_STEEPNESS));
         return blend_fog(color, fog.color.rgb, density);
     }
     let next = min(position.x + 1u, 63u);

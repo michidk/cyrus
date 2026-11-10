@@ -573,6 +573,7 @@ impl ChannelOwnershipCandidate {
             start: self.start,
             animation: self.animation,
             animation_checkpoint: self.checkpoints,
+            speech: None,
         })
     }
 }

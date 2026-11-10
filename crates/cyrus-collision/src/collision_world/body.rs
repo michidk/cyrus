@@ -203,10 +203,23 @@ impl StaticCollision {
                         CandidateOwner::Actor(index),
                     )
                 }
-                CandidateOwner::Transient => anyhow::bail!(
-                    "transient body candidate {:?}: geometry owner unavailable",
-                    candidate.model
-                ),
+                CandidateOwner::Transient => {
+                    let ModelInstance::Runtime(model) = candidate.model else {
+                        anyhow::bail!(
+                            "transient body candidate {:?}: not a runtime model",
+                            candidate.model
+                        );
+                    };
+                    let pose = poses.get(&model).with_context(|| {
+                        format!(
+                            "transient body candidate model {model}: stored model pose unavailable"
+                        )
+                    })?;
+                    (
+                        actors.body_contacts(model, pose, probe)?,
+                        CandidateOwner::Transient,
+                    )
+                }
             };
             for contact in contacts {
                 let source = match owner {
@@ -219,7 +232,13 @@ impl StaticCollision {
                         face: contact.face,
                     },
                     CandidateOwner::Transient => {
-                        unreachable!("transient body geometry is rejected")
+                        let ModelInstance::Runtime(model) = candidate.model else {
+                            unreachable!("transient body candidates are runtime models")
+                        };
+                        SupportSource::Transient {
+                            model,
+                            face: contact.face,
+                        }
                     }
                 };
                 result.push(RuntimeBodyContact::from_model(source, contact)?);

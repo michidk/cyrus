@@ -26,10 +26,10 @@ reloads an active mod's files when they change (polled every half second).
 `register_source` must run before the asset plugin is added.
 
 The API lives on one host entity with one component per hook (`src/api.rs`). The
-hooks are generic: named vertex sets and scene values (cyrus-render's `hooks`, which
-lists the published names), the camera, the player's movement, animation and status,
+hooks are generic: named vertex sets, scene values and four-value shader inputs
+(cyrus-render's `hooks`, which lists the published and read names), the camera, the player's movement, animation and status,
 collision probes, script native calls, settings, memory, a text overlay and input.
-`PreUpdate` hands last frame's mod answers to cyrus-render's `VertexSets`,
+`PreUpdate` hands last frame's mod answers to cyrus-render's `VertexSets`, `ShaderInputs`,
 `CameraTakeover` and cyrus-script's `CameraOrbit`, `MovementWish`,
 `LocomotionClaimed` and `PlayerRequests`, and publishes this frame's state (including the
 selected player's `Player` status), so answers apply one frame

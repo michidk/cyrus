@@ -9,9 +9,11 @@ use serde_json::json;
 #[test]
 fn script_visibility_and_stored_position_follow_binding_lifetime() {
     use cyrus_script::script::{ScriptInputs, ScriptStage};
-    for (function, expected) in [
-        ("HideMe", Visibility::Hidden),
-        ("ShowMe", Visibility::Inherited),
+    // The third case shows the actor but marks its `invisible` byte, which hides only the body.
+    for (function, expected, invisible) in [
+        ("HideMe", Visibility::Hidden, false),
+        ("ShowMe", Visibility::Inherited, false),
+        ("ShowMe", Visibility::Hidden, true),
     ] {
         let mut scripts: Scripts = serde_json::from_value(json!({
             "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
@@ -87,6 +89,7 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
                 json!([40.0_f32.to_bits(), 900.0_f32.to_bits(), 80.0_f32.to_bits()]);
             saved["actors"][0]["model"]["position"] =
                 saved["actors"][0]["model"]["current"]["position"].clone();
+            saved["actors"][0]["control"]["invisible"] = invisible.into();
             world = ScriptWorld::from_snapshot(
                 serde_json::from_value(saved).unwrap(),
                 &sources,
@@ -198,6 +201,46 @@ fn scene_conversion_preserves_nonorthogonal_matrix_and_integer_position_shift() 
 }
 
 #[test]
+fn bound_nodes_in_a_parent_cycle_are_skipped_not_looped_on() {
+    let mut scripts: Scripts = serde_json::from_value(json!({
+        "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+        "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
+        "actors":{},
+        "instances":[{"object_id":0,"actor":"STATIC","object_type":0,"active":0,"model_name":"","model_mode":0,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[40,-60,80],"angles":[0,0,0]}],
+        "unsupported":{}
+    })).unwrap();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let mut actors = ScriptActors::default();
+    actors.current = Some(world);
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, TransformPlugin, ScriptTransformPlugin));
+    app.insert_resource(actors);
+    let binding = || ScriptBinding {
+        actor: id,
+        source: Handle::<Animations>::default(),
+    };
+    let a = app
+        .world_mut()
+        .spawn((Transform::default(), binding()))
+        .id();
+    let b = app
+        .world_mut()
+        .spawn((Transform::default(), ChildOf(a), binding()))
+        .id();
+    app.world_mut().entity_mut(a).insert(ChildOf(b));
+    let healthy = app
+        .world_mut()
+        .spawn((Transform::from_xyz(1.0, 2.0, 3.0), binding()))
+        .id();
+    // Must return; before the guard the depth walk never ended.
+    app.update();
+    assert!(app.world().get::<GlobalTransform>(healthy).is_some());
+}
+
+#[test]
 fn binding_updates_descendants_and_removal_restores_authored_transforms() {
     let mut scripts: Scripts = serde_json::from_value(json!({
         "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
@@ -301,6 +344,65 @@ fn script_pose_stays_at_the_exported_world_marker() {
         assert!(
             rendered.distance(Vec3::from_array(exported)) < 0.00001,
             "marker {index}: exported {exported:?}, script rendered {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn the_animation_cheat_at_zero_hides_only_the_selected_players_body() {
+    use cyrus_game::cheats::{CheatStore, Cheats};
+    struct Memory;
+    impl CheatStore for Memory {
+        fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let mut scripts: Scripts = serde_json::from_value(json!({
+        "version":30,"weapons":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
+        "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
+        "actor_pool_capacity":10,"content_id":"","world":17,
+        "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
+        "actors":{"CYRUS":{"header_index":0,"code_origin":0,"instances":1,"instance_variables":[[]],"location_offsets":[],"attributes":vec![0u8; 256],
+            "program":{"version":4,"entry":0,"steps":{"0":{"next":1,"operation":{"type":"end","target":0}}}}}},
+        "instances":[],"unsupported":{}
+    })).unwrap();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let player = world
+        .selected_player()
+        .expect("CYRUS is the selected player");
+    for (animation, expected) in [
+        (0, Visibility::Hidden),
+        (1, Visibility::Inherited),
+        (2, Visibility::Inherited),
+    ] {
+        let mut cheats = Cheats::new(Memory);
+        cheats.execute("animation", Some(animation)).unwrap();
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TransformPlugin, ScriptTransformPlugin));
+        let mut actors = ScriptActors::default();
+        actors.current = Some(ScriptWorld::prepare(&scripts, 1).unwrap());
+        app.insert_resource(actors);
+        app.insert_resource(cheats);
+        let node = app
+            .world_mut()
+            .spawn((
+                Transform::default(),
+                Visibility::Inherited,
+                ScriptBinding {
+                    actor: player,
+                    source: Handle::<Animations>::default(),
+                },
+            ))
+            .id();
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(node).unwrap(),
+            expected,
+            "animation {animation}"
         );
     }
 }

@@ -253,6 +253,11 @@ impl ScriptHud {
         state.data.is_some() && state.inventory_error.is_none()
     }
 
+    /// Installed RTX text for `label`, including entries without speech.
+    pub(crate) fn rtx_text(&self, label: &str) -> Result<Option<String>> {
+        self.activation_label(label)
+    }
+
     /// Resolve installed RTX prompt text independently of journal storage errors.
     pub(super) fn activation_label(&self, label: &str) -> Result<Option<String>> {
         let state = self.0.lock().expect("script HUD lock poisoned");
@@ -533,6 +538,18 @@ impl ScriptHud {
             anyhow::bail!("inventory initialization: {error}");
         }
         Ok(state.inventory.is_some())
+    }
+
+    /// The examine view's data for item `id`; `None` is the original's absent item.
+    pub fn examine_item(&self, id: u32) -> Result<Option<crate::item_viewer::ExamineItem>> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .and_then(|items| items.examine_item(id)))
     }
 
     /// The hand model of installed item `id` for the display natives. `None` is the original's

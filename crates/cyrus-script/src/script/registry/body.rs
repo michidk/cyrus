@@ -1,4 +1,4 @@
-//! Ordinary primary body queries use the actor's initial shape and current pose.
+//! Ordinary body queries use the selected vertex-bound or initial shape and current pose.
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -24,7 +24,7 @@ pub struct OrdinaryBodyQuery<'a> {
 }
 
 /// Explicit residual inputs after primary response and overlap. The update
-/// snapshot supplies the first working record's angles. No terrain is appended.
+/// snapshot supplies the first working record's spheres and angles. No terrain is appended.
 pub struct OrdinaryResidualQuery<'a> {
     pub scene: &'a crate::player::data::PlayerScene,
     pub animations: &'a cyrus_assets::animation::Animations,
@@ -36,7 +36,7 @@ pub struct OrdinaryResidualQuery<'a> {
 
 impl ScriptWorld {
     /// Query the first working shape at the current effective origin, retaining
-    /// the update's copied angles and applying state-dependent common radii.
+    /// the update's copied spheres and angles and applying state-dependent common radii.
     /// The initial actor shape remains unchanged. Reuses pre-script candidate
     /// admission, while reading each admitted model's stored presentation pose.
     pub fn query_ordinary_residual_body(
@@ -51,8 +51,8 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary residual control unavailable")?;
         let shape = self.ordinary_collision_shape(id)?;
-        let initial = shape
-            .body
+        let selected = &query.prepared.working_spheres;
+        let initial = selected
             .first()
             .context("ordinary residual first sphere unavailable")?
             .radius;
@@ -67,8 +67,8 @@ impl ScriptWorld {
         } else {
             initial
         };
-        let spheres = shape
-            .body
+        let center_offset = shape.center_offset;
+        let spheres = selected
             .iter()
             .map(|sphere| {
                 (
@@ -77,6 +77,7 @@ impl ScriptWorld {
                 )
             })
             .collect::<Vec<_>>();
+        let origin = self.query_position(id)?;
         let angles = query.prepared.working_angles;
         let rows = cyrus_world::transform::Matrix::collision_orientation(angles)
             .0
@@ -91,7 +92,11 @@ impl ScriptWorld {
             &poses,
             cyrus_collision::collision_world::ResidualBodyQuery {
                 probe: BodyProbe {
-                    position: self.spatial(id)?.query_pose()?.position.map(i64::from),
+                    // The residual response refreshes the first working record's origin to the
+                    // selector's position plus the bounds record's center offset, unrotated.
+                    position: std::array::from_fn(|axis| {
+                        i64::from(origin[axis]) + (i64::from(center_offset[axis]) << 8)
+                    }),
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,
@@ -288,7 +293,7 @@ impl ScriptWorld {
 
     /// Test a nonplayer destination against retained model candidates, stopping
     /// at the first blocker. The receiver keeps its current collision orientation
-    /// and original sphere shape; stored position and support state are untouched.
+    /// and selected sphere shape; stored position and support state are untouched.
     pub fn ordinary_destination_body_clear(
         &self,
         id: ScriptActorId,
@@ -298,8 +303,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let spheres = self
-            .ordinary_collision_shape(id)?
-            .body
+            .selected_collision_spheres(id, query.animations, query.scene.actor_collision.as_ref())?
             .iter()
             .map(|sphere| {
                 (
@@ -337,7 +341,7 @@ impl ScriptWorld {
 
     /// Collect primary contacts in retained model order with original integer
     /// normals and owners. Rebuilds collision orientation from current local
-    /// angles and initial body spheres; other models retain presentation poses.
+    /// angles and selected body spheres; other models retain presentation poses.
     /// Does not change support owners, surface state, or logical motion.
     pub fn query_ordinary_body(
         &mut self,
@@ -347,8 +351,7 @@ impl ScriptWorld {
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let poses = self.ordinary_collision_poses(query.prepared)?;
         let spheres = self
-            .ordinary_collision_shape(id)?
-            .body
+            .selected_collision_spheres(id, query.animations, query.scene.actor_collision.as_ref())?
             .iter()
             .map(|sphere| {
                 (
@@ -358,7 +361,9 @@ impl ScriptWorld {
             })
             .collect::<Vec<_>>();
         let pose = self.spatial(id)?.local;
-        let center_offset = self.ordinary_collision_shape(id)?.center_offset;
+        // The primary query reads the selected shape record, whose origin the shape preparation
+        // sets to the local position (not the query-position selector's).
+        let origin = pose.position;
         let rows = cyrus_world::transform::Matrix::collision_orientation(pose.wrapped_angles())
             .0
             .map(Vec3::from_array);
@@ -372,10 +377,7 @@ impl ScriptWorld {
             &poses,
             PrimaryBodyQuery {
                 probe: BodyProbe {
-                    // The primary query's origin is the position plus the center offset.
-                    position: std::array::from_fn(|axis| {
-                        i64::from(pose.position[axis]) + (i64::from(center_offset[axis]) << 8)
-                    }),
+                    position: origin.map(i64::from),
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,

@@ -4,14 +4,14 @@
 //! so a mod's answer takes effect one frame after it was written.
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
-//! and panics on a mismatch, so `Vertices`, `Camera`, `Movement`, `Memory` and `Hud` (queried `Mut`) take
+//! and panics on a mismatch, so `Vertices`, `Camera`, `Movement`, `Memory`, `Uniforms` and `Hud` (queried `Mut`) take
 //! `&mut self` throughout and `Input`, `Settings`, `Player` and `Scene` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use crate::settings::{ModSettings, Value};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
-use cyrus_render::hooks::{SceneValues, VertexSets};
+use cyrus_render::hooks::{SceneValues, ShaderInputs, VertexSets};
 use cyrus_script::player::input::{
     CameraOrbit, CollisionProbes, Gait, Inputs, LocomotionClaim, LocomotionClaimed, ModernLook,
     MovementWish, PlayAnimation, PlayerInput, PlayerRequests, PlayerTuning, Probe, Wish,
@@ -290,6 +290,20 @@ impl Memory {
     }
 }
 
+/// Shader inputs mods wrote this frame; the engine takes them every frame (see [`ShaderInputs`]).
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Uniforms {
+    values: HashMap<String, Vec<f32>>,
+}
+
+#[wasvy::methods]
+impl Uniforms {
+    pub fn set(&mut self, key: String, values: Vec<f32>) {
+        self.values.insert(key, values);
+    }
+}
+
 /// Text lines mods wrote this frame; drawn over the game and then cleared.
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
@@ -352,6 +366,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Collision::default(),
         Natives::default(),
         Memory::default(),
+        Uniforms::default(),
         Hud::default(),
         Input::default(),
     ));
@@ -367,6 +382,7 @@ type Host = (
     &'static mut Player,
     &'static mut Collision,
     &'static mut Natives,
+    &'static mut Uniforms,
     &'static mut Input,
 );
 
@@ -379,7 +395,7 @@ pub(crate) fn exchange(
     camera_frame: Option<Res<CameraFrameState>>,
     mut claimed: ResMut<LocomotionClaimed>,
     values: Res<ModSettings>,
-    (mut sets, published): (ResMut<VertexSets>, Res<SceneValues>),
+    (mut sets, published, mut inputs): (ResMut<VertexSets>, Res<SceneValues>, ResMut<ShaderInputs>),
     mut movement: ResMut<MovementWish>,
     mut takeover: ResMut<CameraTakeover>,
     mut requests: ResMut<PlayerRequests>,
@@ -399,6 +415,7 @@ pub(crate) fn exchange(
         mut player,
         mut collision,
         mut natives,
+        mut uniforms,
         mut input,
     )) = host.single_mut()
     else {
@@ -445,6 +462,19 @@ pub(crate) fn exchange(
         scene.values = published.values.clone();
     }
     scene.seconds = published.seconds;
+    // Shader inputs last only for the frame after they were written.
+    inputs.0 = std::mem::take(&mut uniforms.values)
+        .into_iter()
+        .filter_map(
+            |(key, values)| match <[f32; 4]>::try_from(values.as_slice()) {
+                Ok(values) => Some((key, values)),
+                Err(_) => {
+                    warn_once!("mods: uniforms: {key} needs 4 values, got {}", values.len());
+                    None
+                }
+            },
+        )
+        .collect();
 
     takeover.0 = camera.takeover.take().and_then(|pose| match pose[..] {
         [x, y, z, qx, qy, qz, qw] => Some(

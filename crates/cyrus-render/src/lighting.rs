@@ -81,6 +81,30 @@ pub(crate) fn grid_normals(grid: &[[f32; 3]], side: usize) -> Vec<[f32; 3]> {
         .collect()
 }
 
+/// One vertex of [`grid_normals`]: the same faces added in the same order, so the result is
+/// bit-identical while touching only the up to four cells around the vertex.
+pub(crate) fn grid_vertex_normal(grid: &[[f32; 3]], side: usize, vertex: usize) -> [f32; 3] {
+    if side < 2 {
+        return [0.0; 3];
+    }
+    let (x, row) = (vertex % side, vertex / side);
+    let mut normal = Vec3::ZERO;
+    for cell_row in row.saturating_sub(1)..=row.min(side - 2) {
+        for cell_x in x.saturating_sub(1)..=x.min(side - 2) {
+            let tl = cell_x + cell_row * side;
+            let tr = tl + 1;
+            let bl = tl + side;
+            let br = bl + 1;
+            for triangle in [[tl, br, tr], [br, tl, bl]] {
+                if triangle.contains(&vertex) {
+                    normal += grid_face_normal(grid, side, triangle);
+                }
+            }
+        }
+    }
+    normalize(normal).to_array()
+}
+
 /// Stored terrain face normal in export axes, with original normalization precision.
 pub(crate) fn grid_face_normal(grid: &[[f32; 3]], side: usize, [a, b, c]: [usize; 3]) -> Vec3 {
     let position = |vertex: usize| {
@@ -278,12 +302,37 @@ pub(crate) fn model_mesh_at(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn single_vertex_normals_match_the_whole_grid_bit_for_bit() {
+        let side = 9;
+        let grid: Vec<[f32; 3]> = (0..side * side)
+            .map(|i| {
+                let height = ((i * 7919) % 101) as f32 * 0.37 - 17.0;
+                [
+                    -((i % side) as f32) * 12.8,
+                    height,
+                    -((i / side) as f32) * 12.8,
+                ]
+            })
+            .collect();
+        let whole = super::grid_normals(&grid, side);
+        for (vertex, normal) in whole.iter().enumerate() {
+            let single = super::grid_vertex_normal(&grid, side, vertex);
+            assert_eq!(
+                single.map(f32::to_bits),
+                normal.map(f32::to_bits),
+                "vertex {vertex}"
+            );
+        }
+    }
+
     use super::*;
 
     #[test]
     fn static_instances_bake_private_colors_from_authored_engine_coordinates() {
         use cyrus_assets::environment::{LocalLight, ModelLighting, Prelighting};
         let environment = Environment {
+            world_palette: Vec::new(),
             effects: None,
             terrain_heights: None,
             texture_scale: [1, 1],
@@ -298,6 +347,7 @@ mod tests {
                 directional: [0.0; 3],
                 direction: [0.0; 3],
             },
+            water_textures: Vec::new(),
             object_lights: Vec::new(),
             prelighting: Prelighting {
                 instances: Default::default(),

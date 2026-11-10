@@ -7,7 +7,7 @@ the Mods window that opens with F1. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
-| `modern-water` | vertices, scene, shader replacement | Smooth crossing waves, texture ripples, sky sheen |
+| `modern-water` | vertices, scene, uniforms, shader replacement | Crossing waves, ripples, shore foam, wet sand and sea reflections |
 | `flycam` | camera, input, hud | F11 toggles a free camera (F2 to F6 are the original book shortcuts): WASD, Space/Left Shift, mouse look; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
 
@@ -72,7 +72,15 @@ fn setup(app: App) {
   the original). Published today: `"water"`, the animated water vertices near
   the camera.
 - `scene`: `values(key)` reads a value the game publishes by name, `seconds()`
-  its clock. Published today: `"water-wave"` (amplitude, speed, frequency).
+  its clock. Published today: `"water-wave"` (amplitude, speed, frequency),
+  `"water-cell"` (terrain grid cell size in scene units) and `"lighting-modern"`
+  (1 while the Lighting area is Modern).
+- `uniforms`: `set(key, values)` writes a four-value input the game's shaders read
+  (call it every frame; stopping restores the original). Read today:
+  `"water-surface"` = `[effects, 0, amplitude, cell]`, which turns on the
+  shore foam, wet sand and ripples and, with a positive `amplitude`, moves the
+  waves in the terrain shader.
+
 - `camera`: `pose()` is the current view; `drive(pose)` moves it this frame
   and suppresses player input. Stop calling it to hand control back.
   `orbit()` each frame lets the mouse and right stick turn the follow camera
@@ -158,8 +166,8 @@ file = "water_surface.wesl"                                # in the mod folder
 ```
 
 The replacement must keep the original's exported functions and signatures (see
-the file under `crates/cyrus-render/src/`; the water library has a texture
-coordinate offset and the final colour of water fragments). It replaces the
+the file under `crates/cyrus-render/src/`; the water library has the
+waves, ripples, shore foam and wet sand, all zero in the built-in version). It replaces the
 built-in source, so a compile error shows up in the log and can hide what the
 shader draws until it is fixed. Each shader is one slot: the first active mod in
 id order wins and a warning is logged. Turning the mod off restores the original.

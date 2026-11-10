@@ -119,6 +119,17 @@ pub enum Command {
     SelectItem {
         id: u16,
     },
+    /// Leave the viewer request that `ShowItem` (or `ShowItemNoRtx` with `no_text`) leaves for
+    /// item `item`, with both request words zero; for acceptance runs of the examine view.
+    ShowItem {
+        item: i32,
+        #[serde(default)]
+        no_text: bool,
+    },
+    /// Reset the camera at the selected player, as the original's camera force reset does after a
+    /// far placement; the next ordinary update runs the `XResetCamera` path, which refreshes the
+    /// update window around the player. For acceptance runs that place the player far away.
+    ResetCamera,
     /// Set the selected player's burning-torch counter (zero is unlit), without the lighting
     /// animation; for acceptance runs of `TorchActivate` and other burning-torch gates.
     SetTorch {
@@ -139,6 +150,20 @@ pub enum Command {
     SetFidelity {
         area: String,
         mode: String,
+    },
+    /// Set the modern lighting's day/night cycle: `hour` (0 to 24) turns it on at that hour and
+    /// null turns it off; `running` lets the hour advance. Needs `lighting` Modern to show.
+    SetDayNight {
+        hour: Option<f32>,
+        #[serde(default)]
+        running: bool,
+    },
+    /// Switch one of the modern lighting's optional effects: `grading`, `auto_exposure`, `god_rays`,
+    /// `lens_flare`, `sky`, `water_reflections`, `foliage`, `depth_of_field` or `motion_blur`.
+    /// Needs `lighting` Modern to show.
+    SetModernEffect {
+        effect: String,
+        enabled: bool,
     },
     /// Match a captured original sky direction and texture offsets for comparison.
     SetSkyScroll {

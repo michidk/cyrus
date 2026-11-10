@@ -10,7 +10,29 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(!worlds.entries.is_empty(), "WORLD.INI contains no worlds");
     let mut reports = Vec::new();
     let mut failures = 0;
-    for world in worlds.entries {
+    // Maps no WORLD.INI entry names (HIDEOUT) are inventoried too, under the index of their stem
+    // when WORLD.INI has none; the census must cover every installed map file.
+    let named: std::collections::BTreeSet<String> = worlds
+        .entries
+        .iter()
+        .filter_map(|world| world.map.rsplit(['\\', '/']).next())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let mut entries = worlds.entries;
+    if let Ok(listing) = std::fs::read_dir(install.maps()) {
+        for file in listing.flatten() {
+            let name = file.file_name().to_string_lossy().to_string();
+            if name.to_ascii_lowercase().ends_with(".rgm")
+                && !named.contains(&name.to_ascii_lowercase())
+            {
+                let mut extra = entries[0].clone();
+                extra.map = name;
+                extra.index = 0;
+                entries.push(extra);
+            }
+        }
+    }
+    for world in entries {
         let result = (|| -> anyhow::Result<_> {
             let filename = world
                 .map

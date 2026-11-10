@@ -16,6 +16,10 @@ use cyrus_render::camera::FlycamSettings;
 use cyrus_render::fog::RenderDistance;
 use cyrus_script::player::Player;
 
+mod day_night;
+mod effects;
+mod performance;
+
 pub struct DebugMenuPlugin;
 
 /// The F1 menu's visibility; other native panels open alongside it.
@@ -23,6 +27,9 @@ pub struct DebugMenuPlugin;
 pub struct DebugMenu {
     pub open: bool,
     inspector_open: bool,
+    performance_open: bool,
+    day_night_open: bool,
+    effects_open: bool,
 }
 
 #[derive(Resource, Default)]
@@ -36,31 +43,39 @@ pub struct WorldPicker {
 
 impl Plugin for DebugMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((cyrus_app::EguiPlugin, DefaultInspectorConfigPlugin))
-            .init_resource::<DebugMenu>()
-            .init_resource::<cyrus_game::cheats::CheatTransfer>()
-            .configure_sets(
-                PreUpdate,
-                cyrus_console::ConsoleInput
-                    .after(toggle_menu)
-                    .before(EguiPreUpdateSet::ProcessInput),
+        app.add_plugins((
+            cyrus_app::EguiPlugin,
+            DefaultInspectorConfigPlugin,
+            performance::PerformancePlugin,
+        ))
+        .init_resource::<DebugMenu>()
+        .init_resource::<cyrus_game::cheats::CheatTransfer>()
+        .configure_sets(
+            PreUpdate,
+            cyrus_console::ConsoleInput
+                .after(toggle_menu)
+                .before(EguiPreUpdateSet::ProcessInput),
+        )
+        .init_resource::<WorldPicker>()
+        .add_systems(PreStartup, setup_debug_camera)
+        .add_systems(
+            PreUpdate,
+            toggle_menu
+                .after(InputSystems)
+                .before(EguiPreUpdateSet::ProcessInput),
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            (
+                debug_menu.run_if(|menu: Res<DebugMenu>| menu.open),
+                world_inspector_window.run_if(|menu: Res<DebugMenu>| menu.inspector_open),
+                performance::performance_window
+                    .run_if(|menu: Res<DebugMenu>| menu.performance_open),
+                day_night::day_night_window.run_if(|menu: Res<DebugMenu>| menu.day_night_open),
+                effects::effects_window.run_if(|menu: Res<DebugMenu>| menu.effects_open),
             )
-            .init_resource::<WorldPicker>()
-            .add_systems(PreStartup, setup_debug_camera)
-            .add_systems(
-                PreUpdate,
-                toggle_menu
-                    .after(InputSystems)
-                    .before(EguiPreUpdateSet::ProcessInput),
-            )
-            .add_systems(
-                EguiPrimaryContextPass,
-                (
-                    debug_menu.run_if(|menu: Res<DebugMenu>| menu.open),
-                    world_inspector_window.run_if(|menu: Res<DebugMenu>| menu.inspector_open),
-                )
-                    .chain(),
-            );
+                .chain(),
+        );
         app.world_mut()
             .resource_mut::<EguiGlobalSettings>()
             .auto_create_primary_context = false;
@@ -117,8 +132,13 @@ fn debug_menu(
 ) -> Result {
     let player_position = player.single().ok().map(|transform| transform.translation);
 
-    let window = egui::Window::new("cyrus debug").vscroll(true);
-    window.show(contexts.ctx_mut()?, |ui| {
+    let ctx = contexts.ctx_mut()?;
+    // Tall enough for every section; it scrolls only where the screen is shorter.
+    let height = (ctx.content_rect().height() - 40.0).max(200.0);
+    let window = egui::Window::new("cyrus debug")
+        .vscroll(true)
+        .default_height(height);
+    window.show(ctx, |ui| {
         let label = |name: &str| {
             world
                 .options
@@ -229,7 +249,13 @@ fn debug_menu(
             ui,
             &mut fidelity,
             Area::Lighting,
-            "Lighting (Modern uses Faithful)",
+            "Lighting (Modern: shadows, PBR)",
+        );
+        fidelity_control(
+            ui,
+            &mut fidelity,
+            Area::Textures,
+            "Textures (Modern: unfiltered pixels)",
         );
         fidelity_control(
             ui,
@@ -239,6 +265,44 @@ fn debug_menu(
         );
 
         ui.separator();
+        let mut anisotropic = fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern;
+        if ui
+            .checkbox(&mut anisotropic, "Anisotropic filtering (up to 16×)")
+            .changed()
+        {
+            fidelity.set(
+                Area::AnisotropicFiltering,
+                if anisotropic {
+                    Mode::Modern
+                } else {
+                    Mode::Faithful
+                },
+            );
+        }
+        let performance_label = if menu.performance_open {
+            "Close performance"
+        } else {
+            "Open performance"
+        };
+        if ui.button(performance_label).clicked() {
+            menu.performance_open = !menu.performance_open;
+        }
+        let day_night_label = if menu.day_night_open {
+            "Close day/night"
+        } else {
+            "Open day/night"
+        };
+        if ui.button(day_night_label).clicked() {
+            menu.day_night_open = !menu.day_night_open;
+        }
+        let effects_label = if menu.effects_open {
+            "Close effects"
+        } else {
+            "Open effects"
+        };
+        if ui.button(effects_label).clicked() {
+            menu.effects_open = !menu.effects_open;
+        }
         let inspector_label = if menu.inspector_open {
             "Close inspector"
         } else {
@@ -370,6 +434,72 @@ mod tests {
     }
 
     #[test]
+    fn performance_window_plots_frames_and_lists_render_stats() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::input::InputPlugin,
+            bevy::window::WindowPlugin::default(),
+            bevy::asset::AssetPlugin::default(),
+            bevy::image::ImagePlugin::default(),
+        ))
+        .init_asset::<bevy::shader::Shader>()
+        .add_plugins(DebugMenuPlugin)
+        .init_resource::<FlycamSettings>()
+        .init_resource::<Fidelity>()
+        .init_resource::<RenderDistance>()
+        .init_resource::<WorldPicker>();
+        app.finish();
+        app.cleanup();
+        app.world_mut().resource_mut::<DebugMenu>().performance_open = true;
+        app.world_mut().spawn(Name::new("Counted entity"));
+        // Frames are recorded in `Last`; the first update also pays startup costs.
+        for _ in 0..3 {
+            app.update();
+        }
+        let context_entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<PrimaryEguiContext>>()
+            .single(app.world())
+            .expect("debug overlay has a primary context");
+        let mut context = app
+            .world()
+            .get::<EguiContext>(context_entity)
+            .unwrap()
+            .clone();
+        let mut output = egui::FullOutput::default();
+        for _ in 0..2 {
+            output = context.get_mut().run_ui(egui::RawInput::default(), |_| {
+                app.world_mut().run_schedule(EguiPrimaryContextPass);
+            });
+            output.textures_delta.clear();
+        }
+        let labels = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for label in [
+            "Performance",
+            "Frame rate (FPS)",
+            "Frame time (ms)",
+            "Entities",
+        ] {
+            assert!(labels.contains(&label), "missing {label}: {labels:?}");
+        }
+        assert!(
+            output
+                .shapes
+                .iter()
+                .any(|shape| matches!(&shape.shape, egui::epaint::Shape::Path(_))),
+            "no plotted line"
+        );
+    }
+
+    #[test]
     fn world_inspector_renders_the_full_world_tree() {
         let mut app = App::new();
         app.add_plugins(DefaultInspectorConfigPlugin)
@@ -378,6 +508,7 @@ mod tests {
             .insert_resource(DebugMenu {
                 open: false,
                 inspector_open: true,
+                ..default()
             })
             .init_resource::<EguiGlobalSettings>();
         let mut context = EguiContext::default();
@@ -429,6 +560,7 @@ mod tests {
             .insert_resource(DebugMenu {
                 open: false,
                 inspector_open: true,
+                ..default()
             })
             .init_resource::<EguiGlobalSettings>();
         let mut context = EguiContext::default();
@@ -521,6 +653,7 @@ mod tests {
             .insert_resource(DebugMenu {
                 open: true,
                 inspector_open: true,
+                ..default()
             })
             .init_resource::<EguiGlobalSettings>()
             .add_systems(Update, toggle_menu);

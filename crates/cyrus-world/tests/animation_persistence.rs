@@ -483,3 +483,27 @@ fn the_playback_record_fields_are_saved_and_restored_raw() {
     assert_eq!(actor.record_field(Next).unwrap(), -1);
     assert_eq!(actor.pending_group(), None);
 }
+
+#[test]
+fn the_pending_speed_byte_outlives_its_request_and_follows_the_written_pending_group() {
+    use PlaybackField::*;
+    let data = sound_asset();
+    let mut actor =
+        ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::from_index(0)).unwrap();
+    // No request yet: the allocator's zero.
+    assert_eq!(actor.record_field(NextSpeed).unwrap(), 0);
+    actor.request(AnimationGroup::from_index(8), 2, 1).unwrap();
+    let byte = actor.record_field(NextSpeed).unwrap();
+    // The request's modifier plus group 8's own byte, still readable once the request has been
+    // consumed by the selection.
+    assert!(byte >= 2, "{byte}");
+    assert_eq!(actor.pending_group(), None);
+    assert_eq!(actor.record_field(NextSpeed).unwrap(), byte);
+    // It is saved with the receiver.
+    assert_eq!(resume(&data, &actor).record_field(NextSpeed).unwrap(), byte);
+    // Naming a pending group leaves the byte; the modifier a selection would read follows from it.
+    actor.set_record_field(Next, 7).unwrap();
+    assert_eq!(actor.record_field(NextSpeed).unwrap(), byte);
+    actor.set_record_field(NextSpeed, 200).unwrap();
+    assert_eq!(actor.record_field(NextSpeed).unwrap(), 200);
+}

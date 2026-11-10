@@ -135,6 +135,19 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     if args.export_startup || args.export_all_worlds {
         cyrus_assets::music::export(install.as_ref().unwrap(), cyrus_config::cache_dir())?;
     }
+    let mode = |value: &str| {
+        if value == "modern" {
+            cyrus_game::fidelity::Mode::Modern
+        } else {
+            cyrus_game::fidelity::Mode::Faithful
+        }
+    };
+    // `--mode` sets every area; the per-area flags below override it.
+    if let Some(value) = &args.launch.mode {
+        for area in cyrus_game::fidelity::Area::ALL {
+            settings.fidelity.set(area, mode(value));
+        }
+    }
     for (area, value) in [
         (cyrus_game::fidelity::Area::Fog, args.launch.fog),
         (cyrus_game::fidelity::Area::Sky, args.launch.sky),
@@ -146,14 +159,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         (cyrus_game::fidelity::Area::Camera, args.launch.camera),
     ] {
         if let Some(value) = value {
-            settings.fidelity.set(
-                area,
-                if value == "modern" {
-                    cyrus_game::fidelity::Mode::Modern
-                } else {
-                    cyrus_game::fidelity::Mode::Faithful
-                },
-            );
+            settings.fidelity.set(area, mode(&value));
         }
     }
     if args.export_scene {
@@ -216,6 +222,12 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins(
             DefaultPlugins
                 .set(cyrus_app::window("cyrus"))
+                .set(bevy::audio::AudioPlugin {
+                    global_volume: bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+                        cyrus_app::launch::volume_gain(args.launch.volume),
+                    )),
+                    ..default()
+                })
                 .add_before::<bevy::pbr::PbrPlugin>(rendering::SoftwareRenderingPlugin)
                 .disable::<bevy::log::LogPlugin>(),
         );
@@ -228,6 +240,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins((
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
+            cyrus_render::fog::ModernLightingPlugin,
             cyrus_debug::DebugMenuPlugin,
             cyrus_mods::ModsPlugin,
         ));
@@ -340,7 +353,7 @@ fn prepare_install(
     }
     *attempted = true;
     progress.visible = true;
-    progress.label = "Preparing game files…".into();
+    progress.label = "Preparing game files...".into();
     progress.fraction = None;
     let install = install.clone();
     let startup = startup.is_some();

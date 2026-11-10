@@ -416,7 +416,20 @@ pub(crate) fn prepare(
             texture_scale,
             prelighting,
             object_lights,
+            water_textures: water_textures(source)?,
             model_lighting,
+            world_palette: palette
+                .colors
+                .iter()
+                .enumerate()
+                .map(|(index, color)| {
+                    if index == 0 {
+                        [0; 3]
+                    } else {
+                        color.map(|c| c & !3)
+                    }
+                })
+                .collect(),
             terrain_lighting,
             sky,
             background,
@@ -430,6 +443,18 @@ pub(crate) fn prepare(
         &serde_json::to_vec(&environment)?,
     )?;
     Ok(())
+}
+
+/// Packed `(set << 7) | image` keys of every texture SURFACE.INI marks as a water class.
+fn water_textures(source: &dyn crate::source::ReadAssets) -> anyhow::Result<Vec<u16>> {
+    let surfaces = rgpre::import::surface_ini::SurfaceAssignments::parse(
+        &crate::preparation::text(source, "SURFACE.INI")?,
+    )
+    .map_err(anyhow::Error::msg)
+    .context("parse SURFACE.INI")?;
+    Ok((0..=u16::MAX)
+        .filter(|key| crate::surface::Surface::from_byte(surfaces.surface(*key)).is_water())
+        .collect())
 }
 
 #[cfg(test)]

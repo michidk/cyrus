@@ -4,6 +4,7 @@ use crate::script::AiType;
 use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
+use crate::script::JumpMotion;
 use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
@@ -182,66 +183,80 @@ impl ScriptWorld {
         if !damage_admitted {
             return Ok(());
         }
-        let (strength, damage) = {
-            let combat = self.actors[sender_index]
+        // The suppressed selected player takes no damage, no death taunts and no death response
+        // from a combat hit; the sender's charged weapon is still restored below.
+        let damage_suppressed = selected
+            && inputs
+                .death_suppressed
+                .context("combat hit damage-suppression state unavailable")?;
+        if !damage_suppressed {
+            let (strength, damage) = {
+                let combat = self.actors[sender_index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .context("hit sender combat unavailable")?;
+                // A negative attack slot reads damage zero, as the original's damage reader does.
+                let damage = if combat.retained_action_indices[1] < 0 {
+                    0
+                } else {
+                    self.current_combat_motion(sender)?
+                        .damage
+                        .context("hit motion damage unavailable")?
+                };
+                (combat.strength, damage)
+            };
+            let armor = self.actors[receiver_index]
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .context("hit sender combat unavailable")?;
-            // A negative attack slot reads damage zero, as the original's damage reader does.
-            let damage = if combat.retained_action_indices[1] < 0 {
-                0
+                .context("hit receiver combat unavailable")?
+                .armor;
+            let product = (strength.wrapping_add(100)).wrapping_mul(damage);
+            let scaled = product.wrapping_div(100);
+            let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
+            let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
+            if selected {
+                self.apply_selected_additive_health(
+                    receiver,
+                    change,
+                    inputs,
+                    Some(random),
+                    sounds,
+                )?;
             } else {
-                self.current_combat_motion(sender)?
-                    .damage
-                    .context("hit motion damage unavailable")?
-            };
-            (combat.strength, damage)
-        };
-        let armor = self.actors[receiver_index]
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .context("hit receiver combat unavailable")?
-            .armor;
-        let product = (strength.wrapping_add(100)).wrapping_mul(damage);
-        let scaled = product.wrapping_div(100);
-        let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
-        let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
-        if selected {
-            self.apply_selected_additive_health(receiver, change, inputs, Some(random), sounds)?;
-        } else {
-            let environment = super::transition::ObstacleEnvironment {
-                selected_player,
-                auto_grab: false,
-                item_system_ready: inputs
-                    .hud
-                    .map(|hud| hud.inventory_ready())
-                    .transpose()?
-                    .unwrap_or(false),
-                shell_execution: inputs.shell_execution.unwrap_or(false),
-                ticks,
-            };
-            self.apply_nonplayer_contact_health(receiver, change, environment)?;
-        }
-        if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
-            self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
-            self.request_timed_combat_taunt(
-                sender,
-                TauntType::KILLED_OPPONENT,
-                0,
-                inputs,
-                random,
-                sounds,
-            )?;
-            let motion_kind = self.current_combat_motion(sender)?.kind;
-            self.dispatch_combat_death(
-                receiver,
-                if motion_kind == 0 { 0 } else { 1 },
-                inputs,
-                random,
-                sounds,
-            )?;
+                let environment = super::transition::ObstacleEnvironment {
+                    selected_player,
+                    auto_grab: false,
+                    item_system_ready: inputs
+                        .hud
+                        .map(|hud| hud.inventory_ready())
+                        .transpose()?
+                        .unwrap_or(false),
+                    shell_execution: inputs.shell_execution.unwrap_or(false),
+                    ticks,
+                };
+                self.apply_nonplayer_contact_health(receiver, change, environment)?;
+            }
+            if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
+                self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
+                self.request_timed_combat_taunt(
+                    sender,
+                    TauntType::KILLED_OPPONENT,
+                    0,
+                    inputs,
+                    random,
+                    sounds,
+                )?;
+                let motion_kind = self.current_combat_motion(sender)?.kind;
+                self.dispatch_combat_death(
+                    receiver,
+                    if motion_kind == 0 { 0 } else { 1 },
+                    inputs,
+                    random,
+                    sounds,
+                )?;
+            }
         }
         // The original restores a charged (flaming sabre) sender through the ordinary
         // chargeWeapon(0) swap after the damage response. Keep this after health
@@ -614,13 +629,9 @@ impl ScriptWorld {
                 .actor_collision
                 .as_ref()
                 .context("attack live geometry unavailable; re-export world")?;
-            let mut poses = std::collections::BTreeMap::new();
-            if let CandidateOwner::Actor(index) = candidate.owner {
-                let record = self.model_presentation(self.id(index)?)?.with_context(|| {
-                    format!("face candidate actor {index}: stored model pose unavailable")
-                })?;
-                poses.insert(index, record.collision_pose()?);
-            }
+            // Actor-owned faces use their stored model pose and a rope's terminal transient its
+            // swung pose; unowned static models need none.
+            let poses = self.candidate_poses(&single)?;
             let contacts = ground.scene.static_collision.runtime_segment_contacts(
                 &single,
                 models,
@@ -872,6 +883,79 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("contact death control unavailable")?
+            .ai_type = AiType::DEAD;
+        Ok(())
+    }
+
+    /// The death of a nonplayer receiver that `ZapObject` drove to zero health. A receiver holding
+    /// a weapon force-starts `anim_death_fight_hard` when it has the group and
+    /// `anim_death_fight_stab` otherwise, releases its walk nodes, stores death default 124 or 123
+    /// and resets its combat action selector. Any other receiver force-starts `anim_land_death`
+    /// when it is in a fight-landing group or falling and `anim_death_explore` otherwise, leaving
+    /// its death default alone. Both take death selector eight. Follows preservation's Zap natives.
+    pub(super) fn dispatch_zap_object_death(
+        &mut self,
+        id: ScriptActorId,
+        holding_weapon: bool,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let animation = self.actors[index].animation.as_ref();
+        let group = if holding_weapon {
+            if animation.is_some_and(|a| a.playback.has_group(AnimationGroup::DEATH_FIGHT_HARD)) {
+                AnimationGroup::DEATH_FIGHT_HARD
+            } else {
+                AnimationGroup::DEATH_FIGHT_STAB
+            }
+        } else {
+            let falling = self.actors[index]
+                .control
+                .as_ref()
+                .context("zap death control unavailable")?
+                .falling_state
+                != JumpMotion::NONE;
+            let landing = matches!(
+                animation.and_then(|a| a.playback.current_group()),
+                Some(
+                    AnimationGroup::FIGHT_LAND
+                        | AnimationGroup::FIGHT_LAND_ATTACK
+                        | AnimationGroup::FIGHT_LAND_RIGHT
+                        | AnimationGroup::FIGHT_LAND_LEFT
+                )
+            );
+            if landing || falling {
+                AnimationGroup::LAND_DEATH
+            } else {
+                AnimationGroup::DEATH_EXPLORE
+            }
+        };
+        if animation.is_some() {
+            self.force_death_group(id, index, group, ticks, sounds)?;
+        }
+        if holding_weapon {
+            self.release_held_walk_nodes(id)?;
+            let combat = self.actors[index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .context("zap death combat record unavailable")?;
+            combat.action = CombatControlState::NO_ACTION;
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("validated zap death control")
+                .combat_death_default =
+                Some(i32::from(if group == AnimationGroup::DEATH_FIGHT_HARD {
+                    AnimationGroup::DEATH_FIGHT_HARD_END
+                } else {
+                    AnimationGroup::DEATH_FIGHT_STAB_END
+                }));
+        }
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("zap death control unavailable")?
             .ai_type = AiType::DEAD;
         Ok(())
     }

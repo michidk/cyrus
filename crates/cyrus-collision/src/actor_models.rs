@@ -21,6 +21,9 @@ pub struct ActorModelCollision {
     instances: BTreeMap<usize, String>,
     unsupported: BTreeMap<usize, String>,
     collision_flags: BTreeMap<usize, u8>,
+    /// Rope terminal models by transient model index (see `candidates::transient_model`).
+    transients: BTreeMap<usize, String>,
+    transient_unsupported: BTreeMap<usize, String>,
 }
 
 impl ActorModelCollision {
@@ -49,10 +52,55 @@ impl ActorModelCollision {
             instances: source.instances.clone(),
             unsupported: source.unsupported.clone(),
             collision_flags: source.collision_flags.clone(),
+            transients: source
+                .transients
+                .iter()
+                .map(|(&rope, name)| (crate::candidates::transient_model(rope), name.clone()))
+                .collect(),
+            transient_unsupported: source
+                .transient_unsupported
+                .iter()
+                .map(|(&rope, reason)| (crate::candidates::transient_model(rope), reason.clone()))
+                .collect(),
         })
     }
 
+    /// Whether this model index is a transient record's rather than an MPOB's.
+    fn is_transient(actor: usize) -> bool {
+        actor >= crate::candidates::TRANSIENT_MODEL_BASE
+    }
+
+    /// Whether rope `rope`'s terminal model has prepared geometry.
+    pub fn has_transient(&self, rope: usize) -> bool {
+        self.transients
+            .contains_key(&crate::candidates::transient_model(rope))
+    }
+
+    /// Why rope `rope`'s terminal model could not be prepared, if it could not.
+    pub fn transient_unsupported(&self, rope: usize) -> Option<&str> {
+        self.transient_unsupported
+            .get(&crate::candidates::transient_model(rope))
+            .map(String::as_str)
+    }
+
+    /// Header radius of a transient model index (a rope's terminal), in map units.
+    pub fn transient_radius(&self, model: usize) -> Result<f32> {
+        anyhow::ensure!(Self::is_transient(model), "model {model} is not transient");
+        Ok(self.model(model)?.radius)
+    }
+
     fn model(&self, actor: usize) -> Result<&Model> {
+        if Self::is_transient(actor) {
+            if let Some(reason) = self.transient_unsupported.get(&actor) {
+                anyhow::bail!("transient model {actor}: {reason}");
+            }
+            let name = self.transients.get(&actor).with_context(|| {
+                format!("transient model {actor}: no prepared terminal model; re-export")
+            })?;
+            return self.models.get(name).with_context(|| {
+                format!("transient model {actor} model {name}: prepared geometry absent")
+            });
+        }
         if let Some(reason) = self.unsupported.get(&actor) {
             anyhow::bail!("MPOB {actor}: {reason}");
         }
@@ -128,6 +176,10 @@ impl ActorModelCollision {
 
     /// Initial ordinary actor metadata; animation/model-less actors also have a known byte.
     pub fn collision_flags(&self, actor: usize) -> Result<u8> {
+        if Self::is_transient(actor) {
+            // Transient candidates carry zero collision metadata.
+            return self.model(actor).map(|_| 0);
+        }
         if let Some(reason) = self.unsupported.get(&actor) {
             anyhow::bail!("MPOB {actor}: {reason}");
         }

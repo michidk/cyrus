@@ -33,7 +33,17 @@ impl CheatStore for Store {
             .unwrap()
             .as_deref()
             .map(cheats::decode)
-            .unwrap_or_else(|| Ok(cheats::empty()))
+            .unwrap_or_else(|| {
+                // SYSTEM.INI seeds the task and animation switches at startup in every host.
+                let mut state = cheats::empty();
+                cheats::CheatDefaults {
+                    task: true,
+                    animation: true,
+                    nodemarker: false,
+                }
+                .apply(&mut state)?;
+                Ok(state)
+            })
     }
     fn save(&self, state: &CheatFile) -> anyhow::Result<()> {
         *self.0.lock().unwrap() = Some(cheats::encode(state));
@@ -439,5 +449,42 @@ fn the_magic_carpet_ends_the_selected_players_probe_only_for_the_value_one() {
         fixture.position(),
         standing,
         "zero does not enable the carpet"
+    );
+}
+
+#[test]
+fn ordinary_update_clears_a_weapon_after_shared_inventory_ownership_is_removed() {
+    let Some(mut fixture) = installed_start() else {
+        return;
+    };
+    fixture.settle();
+    let player = fixture.world().selected_player().unwrap();
+    let weapon = fixture.world().actors()[player.index].attributes()[cyrus_soup::Attribute::Weapon];
+    assert_ne!(weapon, 0, "installed selected player starts with a weapon");
+    let hud = fixture.app.world().resource::<ScriptHud>();
+    assert!(hud.item_owned(u16::from(weapon)));
+    hud.remove_item(u16::from(weapon)).unwrap();
+    assert!(!hud.item_owned(u16::from(weapon)));
+    assert_eq!(
+        fixture.world().actors()[player.index].attributes()[cyrus_soup::Attribute::Weapon],
+        weapon,
+        "inventory removal does not directly mutate the actor"
+    );
+    fixture.frame(&[], &[]);
+    let world = fixture.world();
+    assert_eq!(
+        world.actors()[player.index].attributes()[cyrus_soup::Attribute::Weapon],
+        0
+    );
+    assert!(
+        !world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .weapon_drawn
+    );
+    fixture.frame(&[], &[]);
+    assert_eq!(
+        fixture.world().actors()[player.index].attributes()[cyrus_soup::Attribute::Weapon],
+        0
     );
 }

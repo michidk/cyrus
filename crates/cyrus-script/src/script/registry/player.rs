@@ -319,7 +319,7 @@ impl ScriptWorld {
                 .living_state
                 == LivingState::HANGING
             {
-                return world.control_ledge_player(id, query, inputs, timing, sounds);
+                return world.control_ledge_player(id, query, inputs, timing, sounds, random);
             }
             // The drawing group and the scabbard-grip idle group return before turning.
             let group = world.actors[id.index]
@@ -374,27 +374,28 @@ impl ScriptWorld {
                         super::super::locomotion::Strafe::Left => Native::MoveLeft,
                         super::super::locomotion::Strafe::Right => Native::MoveRight,
                     };
-                    world.step_player(id, function, inputs, sounds)
+                    world.step_player(id, function, inputs, sounds, Some(&mut *random))
                 }
                 // Deep water delegates WalkForward to MoveForward and an armed stance walks in
                 // `anim_fight_run` (preservation SOUP.md); only the unarmed dry walk is the walking stage.
                 SheathedAction::WalkForward
                     if walk_forward_is_scripted(armed, world.actor_surface(id)?) =>
                 {
-                    world.step_player(id, Native::WalkForward, inputs, sounds)
+                    world.step_player(id, Native::WalkForward, inputs, sounds, Some(&mut *random))
                 }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
+                    world.flush_surface_transitions(id, timing.nominal_ticks, random, sounds)?;
                     Ok(())
                 }
                 SheathedAction::RunForward => {
-                    world.step_player(id, Native::MoveForward, inputs, sounds)
+                    world.step_player(id, Native::MoveForward, inputs, sounds, Some(&mut *random))
                 }
                 SheathedAction::RunBackward => {
-                    world.step_player(id, Native::MoveBackward, inputs, sounds)
+                    world.step_player(id, Native::MoveBackward, inputs, sounds, Some(&mut *random))
                 }
                 SheathedAction::WalkBackward => {
-                    world.step_player(id, Native::WalkBackward, inputs, sounds)
+                    world.step_player(id, Native::WalkBackward, inputs, sounds, Some(&mut *random))
                 }
             };
             moved?;
@@ -532,6 +533,7 @@ impl ScriptWorld {
         inputs: super::ScriptInputs<'_>,
         timing: crate::clock::ClockStep,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+        random: &mut cyrus_game::random::EngineRandom,
     ) -> Result<()> {
         let held = inputs
             .player_controller
@@ -553,7 +555,7 @@ impl ScriptWorld {
                 None
             };
             if let Some(function) = function {
-                self.step_player(id, function, inputs, sounds)?;
+                self.step_player(id, function, inputs, sounds, Some(random))?;
             }
         }
         let environment = super::transition::ObstacleEnvironment {
@@ -655,10 +657,11 @@ impl ScriptWorld {
         function: Native,
         inputs: super::ScriptInputs<'_>,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
     ) -> Result<()> {
         let operation = super::super::tasks::LocomotionOperation::named(function)
             .with_context(|| format!("player step: {function} is not a movement native"))?;
-        self.step_player_operation(id, operation, inputs, sounds)
+        self.step_player_operation(id, operation, inputs, sounds, random)
     }
 
     /// [`Self::step_player`] for a movement operation, including the attack lunge.
@@ -668,6 +671,7 @@ impl ScriptWorld {
         operation: super::super::tasks::LocomotionOperation,
         inputs: super::ScriptInputs<'_>,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+        random: Option<&mut cyrus_game::random::EngineRandom>,
     ) -> Result<()> {
         let function = operation.native();
         let index = self.resolve(id)?;
@@ -687,7 +691,7 @@ impl ScriptWorld {
             walk_map_count: self.walk_nodes.as_ref().map(|nodes| nodes.map_count()),
             registry: self,
             sounds: Some(sounds),
-            random: None,
+            random,
             inputs,
         };
         host.native_task_call(
@@ -836,7 +840,7 @@ impl ScriptWorld {
         {
             spatial.local.angles[1] = i32::from(heading);
             spatial.local.angles[2] = i32::from(roll);
-            spatial.refresh_transform()?;
+            spatial.refresh_player_transform()?;
         }
         Ok(())
     }
@@ -1408,9 +1412,6 @@ impl ScriptWorld {
             .collect::<Vec<_>>();
         let position = proposed.map(i64::from);
         let ground = GroundProbe::new(position, shape.positive_extent[1], query.distance)?;
-        let body_position: [i64; 3] = std::array::from_fn(|axis| {
-            position[axis] + (i64::from(shape.center_offset[axis]) << 8)
-        });
         let fallback = FallbackProbe::new(
             position,
             shape.center_offset,
@@ -1455,7 +1456,7 @@ impl ScriptWorld {
             &self.ordinary_collision_poses(query.prepared)?,
             RuntimeForwardQuery {
                 body: BodyProbe {
-                    position: body_position,
+                    position,
                     rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
                     spheres: &spheres,
                     sidedness: query.sidedness,
@@ -1495,12 +1496,19 @@ impl ScriptWorld {
                 .unwrap_or_default();
             self.set_actor_surface(id, surface)?;
             self.surface_veto = Some(matches!(surface, Surface::LAVA | Surface::GLOOP));
-            ensure!(
-                previous == surface
-                    || (!(previous.is_water() || previous == Surface::LAVA)
-                        && !(surface.is_water() || surface == Surface::LAVA)),
-                "player forward query: water/lava transition effects unsupported"
-            );
+            if previous != surface {
+                let effect_height = self.transition_effect_height(
+                    id,
+                    support.as_ref(),
+                    query.scene.settings.standing_height,
+                )?;
+                self.pending_surface_transitions
+                    .push(super::PendingSurfaceTransition {
+                        previous,
+                        returned: surface,
+                        effect_height,
+                    });
+            }
         }
         match support {
             None => Ok(false),
@@ -1832,7 +1840,7 @@ impl ScriptWorld {
         spatial.local.position = position;
         spatial.local.angles[1] = i32::from(input.motion.heading);
         let frame = result?;
-        spatial.refresh_transform()?;
+        spatial.refresh_player_transform()?;
         Ok(GroundedPresentation {
             pose: PlayerPose {
                 position: walk.position,
@@ -1959,7 +1967,7 @@ fn steer_airborne(
         // shortcut: the two retained rope-release flags are not modelled (ropes #21);
         // upgrade when the rope owner retains them.
         if control.falling_state != JumpMotion::NONE {
-            control.motion_companion = 0;
+            control.jump_selector = 0;
         }
         if control
             .actions
@@ -2035,13 +2043,13 @@ mod airborne_tests {
         };
         let mut control = super::super::ActorControlState {
             falling_state: JumpMotion::STANDING,
-            motion_companion: 5,
+            jump_selector: 5,
             actions: [6, 0x82].into(),
             ..Default::default()
         };
         steer_airborne(&mut control, None, &held);
         assert_eq!(
-            (control.motion_companion, <[u32; 2]>::from(control.actions)),
+            (control.jump_selector, <[u32; 2]>::from(control.actions)),
             (0, [4, 0x80])
         );
         control.actions = [1, 0].into();

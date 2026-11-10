@@ -21,6 +21,14 @@ pub enum CheatEffect {
     TorchRetention,
     ActorUpdateSkip,
     MagicCarpet,
+    DamageSuppression,
+    /// The selected player's vertical debug bypass: Page Up and Page Down move it through surfaces.
+    GroundBypass,
+    PlayerCollisionSkip,
+    /// A slot the executable never reads after startup, so its value has no gameplay effect.
+    RecognizedOnly,
+    TaskSystem,
+    AnimationSystem,
     Unsupported,
 }
 
@@ -121,6 +129,12 @@ impl Cheats {
             "goldfinger" => CheatEffect::TorchRetention,
             "drno" => CheatEffect::ActorUpdateSkip,
             "magiccarpet" => CheatEffect::MagicCarpet,
+            "drevil" => CheatEffect::DamageSuppression,
+            "yeahbaby" => CheatEffect::GroundBypass,
+            "moonraker" => CheatEffect::PlayerCollisionSkip,
+            "nodemarker" | "oddjob" => CheatEffect::RecognizedOnly,
+            "task" => CheatEffect::TaskSystem,
+            "animation" => CheatEffect::AnimationSystem,
             _ => CheatEffect::Unsupported,
         }
     }
@@ -134,8 +148,7 @@ impl Cheats {
     /// The yeahbaby state: the selected player's ground-support probe is skipped while a vertical
     /// debug key is held or the Home toggle is set. Active for any nonzero value. The ground
     /// bypass, the Page Up and Page Down movement and the Insert step with its camera limiter
-    /// suspension are integrated. The catalog reports the effect unsupported pending complete
-    /// native and browser acceptance.
+    /// suspension are integrated and report [`CheatEffect::GroundBypass`].
     pub fn ground_bypass(&self) -> Result<bool> {
         Ok(self
             .state()?
@@ -152,6 +165,51 @@ impl Cheats {
             .value("magiccarpet")
             .context("missing magiccarpet state")?
             == 1)
+    }
+
+    /// The moonraker state: the selected player skips the forward obstacle probes and the actor
+    /// overlap pass of the late collision stage. Active for any nonzero value.
+    pub fn player_collision_skipped(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("moonraker")
+            .context("missing moonraker state")?
+            != 0)
+    }
+
+    /// The `task` state: the task scheduling system runs only for the value 1.
+    pub fn task_system(&self) -> Result<bool> {
+        Ok(self.state()?.value("task").context("missing task state")? == 1)
+    }
+
+    /// The `animation` state tested for exactly one, as the movement natives' wait on their
+    /// requested group does. The animation system's other checks use [`Self::animation_running`].
+    pub fn animation_system(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("animation")
+            .context("missing animation state")?
+            == 1)
+    }
+
+    /// The `animation` state tested for nonzero, as the animation requests, advancement and timing
+    /// checks do: the value 2 runs the system but not the movement natives' wait.
+    pub fn animation_running(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("animation")
+            .context("missing animation state")?
+            != 0)
+    }
+
+    /// The ordinary animated-player draw is suppressed while the `animation` state is zero; it does
+    /// not keep a frozen pose. Other values leave it drawn.
+    pub fn animated_player_hidden(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("animation")
+            .context("missing animation state")?
+            == 0)
     }
 
     /// The goldfinger state for the selected player's burning torch, active for any nonzero value.
@@ -172,8 +230,9 @@ impl Cheats {
             != 0)
     }
 
-    /// Raw nonzero drevil state for selected death-owning health. Other drevil
-    /// damage paths are not integrated, so the catalog still reports Unsupported.
+    /// Raw nonzero drevil state: the selected player takes no health change and starts no death
+    /// response from a combat hit or a direct-damage message, and its death-owning health does not
+    /// start death at zero.
     pub fn death_suppressed(&self) -> Result<bool> {
         Ok(self
             .state()?
@@ -265,4 +324,41 @@ pub struct CheatTransfer {
 pub enum CheatFileAction {
     Import,
     Export,
+}
+
+#[cfg(test)]
+mod system_switch_tests {
+    use super::*;
+
+    struct Memory;
+    impl CheatStore for Memory {
+        fn load(&self) -> Result<CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &CheatFile) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn task_and_animation_are_on_only_for_the_value_one() {
+        let mut cheats = Cheats::new(Memory);
+        for name in ["task", "animation"] {
+            assert!(matches!(
+                Cheats::effect(name),
+                CheatEffect::TaskSystem | CheatEffect::AnimationSystem
+            ));
+        }
+        for (value, on) in [(0, false), (1, true), (2, false), (7, false)] {
+            cheats.execute("task", Some(value)).unwrap();
+            cheats.execute("animation", Some(value)).unwrap();
+            assert_eq!(cheats.task_system().unwrap(), on, "task {value}");
+            assert_eq!(cheats.animation_system().unwrap(), on, "animation {value}");
+            assert_eq!(
+                cheats.animation_running().unwrap(),
+                value != 0,
+                "animation {value}"
+            );
+        }
+    }
 }

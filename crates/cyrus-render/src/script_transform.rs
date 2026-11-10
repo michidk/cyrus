@@ -1,5 +1,8 @@
 //! Bound script actors retain their original affine matrices through scene presentation.
-use bevy::{camera::visibility::VisibilitySystems, math::Affine3A, prelude::*};
+use bevy::{
+    camera::visibility::VisibilitySystems, math::Affine3A, platform::collections::HashSet,
+    prelude::*,
+};
 use cyrus_script::script::{Pose, ScriptActors, ScriptBinding};
 
 /// Applies explicit script poses after ordinary scene transform propagation.
@@ -28,6 +31,7 @@ struct AppliedScriptVisibility(Visibility);
 fn visibility(
     mut commands: Commands,
     actors: Option<Res<ScriptActors>>,
+    cheats: Option<Res<cyrus_game::cheats::Cheats>>,
     mut nodes: Query<
         (
             Entity,
@@ -46,6 +50,18 @@ fn visibility(
             }
             world.actors().get(binding.actor.index)?.control_state()
         });
+        // With the animation cheat at zero the selected player's animated body is not drawn.
+        let player_hidden = binding
+            .and_then(|binding| {
+                let world = actors.as_ref()?.current.as_ref()?;
+                (binding.actor.generation == world.generation()
+                    && world.selected_player() == Some(binding.actor))
+                .then_some(())
+            })
+            .is_some()
+            && cheats
+                .as_ref()
+                .is_some_and(|cheats| cheats.animated_player_hidden().unwrap_or(false));
         let Some(control) = control else {
             if let Some(applied) = applied {
                 *visibility = applied.0;
@@ -58,7 +74,7 @@ fn visibility(
                 .entity(entity)
                 .insert(AppliedScriptVisibility(*visibility));
         }
-        let next = if control.hidden {
+        let next = if control.hidden || control.invisible || player_hidden {
             Visibility::Hidden
         } else {
             Visibility::Inherited
@@ -92,6 +108,19 @@ pub(crate) fn scene_transform_at(pose: Pose, model_position: [f32; 3]) -> Affine
     Affine3A::from_mat3_translation(matrix, position)
 }
 
+/// The number of ancestors of `entity`, or `None` when the parent chain loops back on itself.
+fn hierarchy_depth(hierarchy: &Hierarchy, entity: Entity) -> Option<usize> {
+    let mut seen = HashSet::new();
+    let mut current = entity;
+    while let Ok((Some(parent), _, _)) = hierarchy.get(current) {
+        if !seen.insert(current) {
+            return None;
+        }
+        current = parent.parent();
+    }
+    Some(seen.len())
+}
+
 type Hierarchy<'w, 's> = Query<
     'w,
     's,
@@ -117,17 +146,30 @@ pub(crate) fn apply(
     >,
     hierarchy: Hierarchy,
     mut globals: Query<&mut GlobalTransform>,
+    names: Query<&Name>,
+    mut reported: Local<HashSet<Entity>>,
 ) {
-    let mut roots: Vec<_> = nodes.iter().collect();
-    roots.sort_by_key(|(entity, _, _)| {
-        let mut depth = 0;
-        let mut current = *entity;
-        while let Ok((Some(parent), _, _)) = hierarchy.get(current) {
-            depth += 1;
-            current = parent.parent();
-        }
-        depth
-    });
+    // Parents come before children. A node whose parent chain returns to itself has no root, so
+    // transform propagation never reaches it either; it is skipped and reported once instead of
+    // walking the chain forever.
+    let mut roots: Vec<_> = nodes
+        .iter()
+        .filter_map(|node| match hierarchy_depth(&hierarchy, node.0) {
+            Some(depth) => Some((depth, node)),
+            None => {
+                if reported.insert(node.0) {
+                    error!(
+                        "script transform: {:?} {:?} is its own ancestor; its pose is not applied",
+                        node.0,
+                        names.get(node.0).ok()
+                    );
+                }
+                None
+            }
+        })
+        .collect();
+    roots.sort_by_key(|(depth, _)| *depth);
+    let roots = roots.into_iter().map(|(_, node)| node);
     for (entity, binding, applied) in roots {
         let pose = binding.and_then(|binding| {
             let world = actors.as_ref()?.current.as_ref()?;
@@ -155,7 +197,9 @@ pub(crate) fn apply(
             .copied()
             .unwrap_or_default();
         let global = if let Some(pose) = pose {
-            commands.entity(entity).insert(AppliedScriptTransform);
+            if applied.is_none() {
+                commands.entity(entity).insert(AppliedScriptTransform);
+            }
             parent * GlobalTransform::from(Mat4::from(pose))
         } else {
             commands.entity(entity).remove::<AppliedScriptTransform>();
@@ -163,8 +207,10 @@ pub(crate) fn apply(
         };
         let mut pending = vec![(entity, global)];
         while let Some((entity, global)) = pending.pop() {
+            // An unchanged pose must not mark its subtree changed: visibility, bounds,
+            // extraction and camera clipping redo their work for changed transforms.
             if let Ok(mut target) = globals.get_mut(entity) {
-                *target = global;
+                target.set_if_neq(global);
             }
             let Ok((_, Some(children), _)) = hierarchy.get(entity) else {
                 continue;

@@ -8,6 +8,11 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: the base selected-player controller rebuilds banked orientations, following
+preservation's [player orientation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#upright-actor-orientation).
+The transition back to zero bank also rebuilds so the last banked matrix cannot retain
+tilt. Upright player turns and ordinary nonplayer actors retain incremental rotation.
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
@@ -17,6 +22,8 @@ persistence precedes runtime application. Fidelity areas default to Faithful.
 Player transforms remain independent of camera transforms. Inspection adapters
 set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
+Marker placement waits from the replacement request through host preparation, so
+the destination marker never changes the retiring player's pose or support state.
 
 Mods can request orbit-camera yaw through `CameraOrbit`; manual mouse/right-stick
 look takes priority over its relative turn. The request does not take over the camera
@@ -697,5 +704,50 @@ write the playback record fields of the receiver's `ActorAnimation` (own or anot
 changes the next production advance (an expired countdown steps the cursor, a wait byte holds playback, the
 progress byte completes `WaitAnimFrame`) and is saved with the animation. See preservation's
 [animation record properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#animation-record-properties).
-`anim.rep_count`, `anim.sound_handle`, `anim.max_group`, the `anim.pos`/`anim.angle` words and `anim.address`
-stay unsupported; writing `anim.current` too.
+`anim.rep_count` (the repeat byte of the ConditionalDelay/LoopControl commands) and the `anim.pos`/`anim.angle` words
+(the translation/rotation commands' retained words, cleared at the next cursor step) read and write like the others.
+Writing `anim.current` switches the command table and type flags the next advance interprets and keeps
+the cursor, countdowns and markers; -1 leaves no current group, and a group without a table or a write
+while none is current stops with an explicit error.
+`anim.last_angle` is the rotation history the automatic model refresh copies from `anim.angle`.
+`anim.max_group` is the low byte of the exported RAHD control prefix (preservation 0.12; sidecars exported earlier
+read as an explicit re-export error). `anim.sound_handle`, `anim.address` (and `anim`), `handle`, `last_handle` and `rope_id` stay unsupported on purpose:
+a static census of every installed map file (27 maps, the 29 WORLD.INI entries plus the one map no entry names;
+`cargo run -p cyrus-assets --example soup_inventory --features native`) finds no script that reads or writes any of them,
+and no call of a `Pipe*` native. `rope` is read 8 times, only to test it against zero, which is supported.
+
+
+Verified: `ZapObject`, `ZapObjectNoKill`, `ZapPlayer` and `ZapPlayerNoKill` adjust health through the same selected-player
+additive and death-owning services `AdjustHealth` uses (`ZapPlayer` names its receiver as the damage source, the
+object natives gate on attributes 120 and 97 first) and clamp a non-selected receiver's health byte to 0..255; a
+non-selected receiver killed by `ZapObject` takes the recovered death dispatch (the armed branch needs a combat record). See
+preservation's [Zap natives](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#zap-natives-and-the-selected-player-health-services).
+They return no value (the original's results are pointer residuals), so consuming one is an explicit error.
+
+Verified: `dead` (the killed marker `KillMe` sets; a script that writes it is skipped by later ordinary updates) and
+`weapon_drawn` read and write the receiver's killed marker and drawn byte, and `invisible` the draw-only byte the renderer
+honours for the body (scripts, animation and collision continue); all read as 0 or 1 here and a nonzero low byte sets them. See preservation's
+[killed and weapon-drawn properties](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#killed-weapon-drawn-and-invisible-properties).
+
+Verified: `id` reads the receiver's signed runtime identifier word (what `MyId` returns); a write is refused because the
+identifier is installed identity that name lookup and restore validation key on. See preservation's
+[runtime identifier property](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#runtime-identifier-property).
+
+Verified: ordinary primary, residual and destination body queries select vertex-bound RAVC
+spheres instead of initial MPSZ spheres when those records exist, following preservation's
+[player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).
+The routed fixture checks displaced vertices, contact restoration and ordinary-update continuation.
+
+Verified: ordinary RAVC body selection reads current animation vertices for animated
+models and scene-owned base vertices otherwise. Primary and destination body
+queries read the current selection. Residual response retains the spheres copied
+when the ordinary query was prepared, together with its copied angles, and refreshes
+only its effective origin. A new update prepares a fresh working record. Working
+spheres belong to the ephemeral query, not persisted actor bounds. This follows
+preservation's per-update collision shape preparation contract.
+
+Verified: ordinary working collision orientation is copied from the current local
+angles when the query is prepared. Previous angle history belongs to movement and
+rollback and does not supply this copy. Later script rotation changes primary
+collision while residual collision retains the prepared orientation until the next
+query preparation, following preservation's per-update shape contract.
