@@ -1299,3 +1299,54 @@ fn render_step_reproduces_the_original_glide_and_cut() {
         );
     }
 }
+
+/// **Verified** against the original (ISLAND start, camera angle slots sampled per frame in guest
+/// memory): with the published target at pitch 210 and yaw 107 and the installed glide factors
+/// (angles 0.7, 0.1, 0.7), the render angles stepped pitch 244, 241, 238, 236, 234, 232, 230 and
+/// yaw 109, 108, 108, ... Each step truncates toward zero, so a gap of nine or less in pitch (and
+/// one in yaw) never closes: the glide has fixed points at pitch 219 and yaw 108.
+#[test]
+fn render_angles_follow_the_originals_measured_glide_and_stop_at_its_fixed_point() {
+    let step = |render: [i32; 3]| -> [i32; 3] {
+        let mut state =
+            CameraState::new(&CameraSettings::default(), actor(2), actor(3), 0).unwrap();
+        state.records[state.selected.index()].flags = CameraFlags::COLLISION;
+        state.current = CameraPose {
+            position: [40798 << 8, -841 << 8, 40971 << 8],
+            angles: [210, 107, 0],
+        };
+        state.render = RenderPose {
+            position: [40798.0, -841.0, 40971.0],
+            angles: render,
+        };
+        state.marks = CameraMarks::default();
+        state
+            .present(
+                &GlideSettings {
+                    position: [0.9, 0.2, 0.9],
+                    angles: [0.7, 0.1, 0.7],
+                },
+                &GlidePlayer {
+                    holding_weapon: false,
+                    rope_attached: false,
+                },
+                true,
+                &mut |_| Ok(()),
+            )
+            .unwrap();
+        state.render.angles
+    };
+    let mut angles = [244, 109, 0];
+    let pitch: Vec<i32> = (0..6)
+        .map(|_| {
+            angles = step(angles);
+            angles[0]
+        })
+        .collect();
+    assert_eq!(pitch, [241, 238, 236, 234, 232, 230]);
+    assert_eq!(angles[1], 108);
+    // Fixed points: a pitch gap of nine (219 against 210) and a yaw gap of one (108 against 107)
+    // do not move, while a larger pitch gap does.
+    assert_eq!(step([219, 108, 0]), [219, 108, 0]);
+    assert_ne!(step([225, 108, 0])[0], 225);
+}
