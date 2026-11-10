@@ -42,7 +42,7 @@ def toggle_recorder():
 
 waited = time.time()
 while frame() <= 400:
-    if time.time() - waited > 150:  # the reader can lose the engine; start anyway (frames read -1)
+    if time.time() - waited > float(os.environ.get("CYRUS_FRAME_WAIT", "150")):  # the reader can lose the engine; start anyway (frames read -1)
         break
     time.sleep(0.5)
 toggle_recorder()
