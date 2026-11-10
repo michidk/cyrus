@@ -10,8 +10,8 @@ and living-state bytes. Output goes to --out (keep it under the workspace, never
     native-trace.py --out run.jsonl --place 23847,-304,55082 --key Space:2:3 --seconds 10
 
 --drop H places the player H units above --origin and traces --seconds of game time after each;
---place X,Y,Z does one placement; --key NAME:START:END holds a Bevy key code between those game
-seconds after the last placement. A line's "ev" is "placed" for the sample taken at placement.
+--place X,Y,Z does one placement; --key NAME:START:END (repeatable) holds a Bevy key code between those game
+seconds after each placement. A line's "ev" is "placed" for the sample taken at placement.
 """
 import argparse
 import json
@@ -94,7 +94,7 @@ def main():
     p.add_argument("--drop", type=int, action="append", default=[])
     p.add_argument("--place", action="append", default=[])
     p.add_argument("--heading", type=int, default=0)
-    p.add_argument("--key")
+    p.add_argument("--key", action="append", default=[])
     p.add_argument("--seconds", type=float, default=8.0)
     p.add_argument("--patience", type=float, default=420)
     a = p.parse_args()
@@ -103,10 +103,10 @@ def main():
     origin = [int(v) for v in a.origin.split(",")]
     targets = [[origin[0], origin[1] - h, origin[2]] for h in a.drop]
     targets += [[int(v) for v in t.split(",")] for t in a.place]
-    key = None
-    if a.key:
-        name, start, end = a.key.split(":")
-        key = (name, float(start), float(end))
+    keys = []
+    for spec in a.key:
+        name, start, end = spec.split(":")
+        keys.append([name, float(start), float(end), False, False])
     with open(a.out, "w") as out:
         for target in targets:
             call(a.addr, {"type": "place_player", "x": target[0], "y": target[1], "z": target[2], "heading": a.heading})
@@ -114,7 +114,9 @@ def main():
             first = sample(a.addr, index, "placed")
             first["target"] = target
             out.write(json.dumps(first) + "\n")
-            t0, last, pressed, released = first["g"], first["g"], False, False
+            t0, last = first["g"], first["g"]
+            for k in keys:
+                k[3] = k[4] = False
             stall = time.time()
             while last < t0 + a.seconds:
                 row = sample(a.addr, index, "s")
@@ -125,12 +127,13 @@ def main():
                     out.flush()
                 elif time.time() - stall > 180:
                     sys.exit("native-trace: game clock stalled 180 s")
-                if key and not pressed and last >= t0 + key[1]:
-                    call(a.addr, {"type": "input", "key": key[0], "action": "press"})
-                    pressed = True
-                if key and pressed and not released and last >= t0 + key[2]:
-                    call(a.addr, {"type": "input", "key": key[0], "action": "release"})
-                    released = True
+                for k in keys:
+                    if not k[3] and last >= t0 + k[1]:
+                        call(a.addr, {"type": "input", "key": k[0], "action": "press"})
+                        k[3] = True
+                    if k[3] and not k[4] and last >= t0 + k[2]:
+                        call(a.addr, {"type": "input", "key": k[0], "action": "release"})
+                        k[4] = True
                 time.sleep(0.02)
 
 
