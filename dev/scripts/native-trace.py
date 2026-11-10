@@ -12,6 +12,14 @@ and living-state bytes. Output goes to --out (keep it under the workspace, never
 --drop H places the player H units above --origin and traces --seconds of game time after each;
 --place X,Y,Z does one placement; --key NAME:START:END (repeatable) holds a Bevy key code between those game
 seconds after each placement. A line's "ev" is "placed" for the sample taken at placement.
+
+Cheats persist in the config directory (CYRUS_CONFIG_DIR) between runs, so a cheat left on by one
+run, such as `drevil`, silently changes the next one. This script therefore sets every cheat the
+catalog reports non-zero back to 0 before it starts (except task, animation and nodemarker, which
+SYSTEM.INI seeds at startup and which must stay as they are) (it prints what it reset to stderr), then applies
+each `--cheat NAME=VALUE` you give; pass --keep-cheats to leave the stored values alone.
+
+    native-trace.py --out run.jsonl --cheat magiccarpet=1 --place 40816,-1744,41024 --seconds 6
 """
 import argparse
 import json
@@ -95,11 +103,23 @@ def main():
     p.add_argument("--place", action="append", default=[])
     p.add_argument("--heading", type=int, default=0)
     p.add_argument("--key", action="append", default=[])
+    p.add_argument("--cheat", action="append", default=[], metavar="NAME=VALUE")
+    p.add_argument("--keep-cheats", action="store_true")
     p.add_argument("--seconds", type=float, default=8.0)
     p.add_argument("--patience", type=float, default=420)
     a = p.parse_args()
     wait_live(a.addr, a.patience)
     index = player_index(a.addr)
+    if not a.keep_cheats:
+        for entry in call(a.addr, {"type": "state"}).get("cheats", {}).get("entries", []):
+            # task, animation and nodemarker are seeded from SYSTEM.INI at startup (task and
+            # animation are 1 by design; zeroing them stops the animation system), so they stay.
+            if entry.get("value") and entry.get("effect") not in ("list", "save") and entry.get("name") not in ("task", "animation", "nodemarker"):
+                print(f"native-trace: reset persisted cheat {entry['name']}={entry['value']}", file=sys.stderr)
+                call(a.addr, {"type": "cheat", "name": entry["name"], "value": 0})
+    for spec in a.cheat:
+        name, value = spec.split("=")
+        call(a.addr, {"type": "cheat", "name": name, "value": int(value)})
     origin = [int(v) for v in a.origin.split(",")]
     targets = [[origin[0], origin[1] - h, origin[2]] for h in a.drop]
     targets += [[int(v) for v in t.split(",")] for t in a.place]
