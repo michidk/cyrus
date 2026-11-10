@@ -250,6 +250,7 @@ fn lunge(world: &mut ScriptWorld, clear: bool, ticks: Option<u32>) -> anyhow::Re
             ..Default::default()
         },
         &mut |_, _: ScriptSound| panic!("lunge requested animation sound"),
+        None,
     )
 }
 

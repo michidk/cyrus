@@ -5125,8 +5125,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .sounds
                 .as_mut()
                 .context("selected-player mask-8 transition: animation sound handler absent")?;
-            self.registry
-                .step_player(id, function, self.inputs, &mut **sounds)?;
+            self.registry.step_player(
+                id,
+                function,
+                self.inputs,
+                &mut **sounds,
+                self.random.as_deref_mut(),
+            )?;
         }
         Ok(())
     }

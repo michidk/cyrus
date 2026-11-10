@@ -624,6 +624,7 @@ impl ScriptWorld {
                     super::super::tasks::LocomotionOperation::Lunge,
                     inputs,
                     &mut |_, _| bail!("selected-player lunge sound unsupported"),
+                    None,
                 )
             },
             sounds,

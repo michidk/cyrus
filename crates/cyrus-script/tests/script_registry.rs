@@ -17090,7 +17090,7 @@ fn scripted_walk_steps_move_the_selected_player_through_the_support_check() {
         };
         world
             .run_player_native_hook(player, &mut |world| {
-                world.step_player(player, function, inputs, &mut |_, _| Ok(()))
+                world.step_player(player, function, inputs, &mut |_, _| Ok(()), None)
             })
             .unwrap();
         let after = world.spatial(player).unwrap().local.position;
