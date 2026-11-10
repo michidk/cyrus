@@ -58,7 +58,7 @@ pub(crate) fn prepare_startup(
         None
     };
     let mut fingerprint = DefaultHasher::new();
-    (6u32, &dll_bytes, &title_bytes, &font_bytes, &overlay_bytes).hash(&mut fingerprint);
+    (7u32, &dll_bytes, &title_bytes, &font_bytes, &overlay_bytes).hash(&mut fingerprint);
     let dos_frames = if overlay_bytes.is_some() {
         crate::DOS_SPLASH_FRAMES
     } else {
@@ -137,7 +137,20 @@ pub(crate) fn prepare_startup(
     }
     let mut background = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
         .context("startup: title pixel count is invalid")?;
-    draw_text(&mut background, &font, "Version 1.0.1.0", 10, [32, 32, 32]);
+    let palette = rgpre::import::palette::Palette {
+        colors: title_frame
+            .palette
+            .map(|rgb| rgb.map(|component| component >> 2)),
+    };
+    let version_colour = title_colour(&title_frame.palette, palette.match_vga([32; 3]));
+    let status_colour = title_colour(&title_frame.palette, palette.match_vga([50, 0, 0]));
+    draw_text(
+        &mut background,
+        &font,
+        "Version 1.0.1.0",
+        10,
+        version_colour,
+    );
     for (name, text) in [
         ("title.png", "Loading..."),
         ("title-preparing.png", "Preparing menu and HUD..."),
@@ -145,7 +158,13 @@ pub(crate) fn prepare_startup(
         ("title-sound.png", "Loading sound..."),
     ] {
         let mut image = background.clone();
-        draw_text(&mut image, &font, text, 630 - font.width(text), [50, 0, 0]);
+        draw_text(
+            &mut image,
+            &font,
+            text,
+            630 - font.width(text),
+            status_colour,
+        );
         let path = directory.join(name);
         output
             .image(&path, &image)
@@ -153,6 +172,15 @@ pub(crate) fn prepare_startup(
     }
     output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
+}
+
+/// The low font's indexed texture and palette-selected tint multiply in Glide.
+/// See preservation's startup title-label rules.
+fn title_colour(palette: &[[u8; 3]; 256], tint: u8) -> [u8; 3] {
+    std::array::from_fn(|channel| {
+        (u16::from(palette[161][channel]) * u16::from(palette[usize::from(tint)][channel]) / 255)
+            as u8
+    })
 }
 
 /// Draws one flat-colour line with its pen at (`x`, 467).
@@ -172,4 +200,16 @@ fn draw_text(
             );
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn title_tint_is_modulated_by_the_low_font_texture_colour() {
+        let palette = [[255; 3]; 256];
+        let mut palette = palette;
+        palette[7] = [128, 64, 32];
+        palette[161] = [200, 100, 50];
+        assert_eq!(super::title_colour(&palette, 7), [100, 25, 6]);
+    }
 }

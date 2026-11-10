@@ -58,6 +58,8 @@ Native menu/HUD export begins after the title becomes visible. The full
 parser-coverage scan remains in headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.
 The title uses the configured FNT font and documented bottom-label positions.
+Label colours follow the installed title palette: the VGA-selected tint multiplies
+the low font texture colour at palette index 161, following [preservation PR #313](https://github.com/michidk/redguard-preservation/pull/313).
 The bottom-right red title label reports menu/HUD preparation, menu asset loading,
 and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
