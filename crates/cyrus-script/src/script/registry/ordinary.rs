@@ -594,8 +594,10 @@ impl ScriptWorld {
                         sounds,
                     )?;
                 }
-                // Forward running and armed circling retain animation-owned movement after
-                // release. The called flags prevent a second step after controller movement.
+                // Forward running, armed circling and the slide groups retain animation-owned
+                // movement: after release, and after the slope response clears the sliding byte
+                // while a slide group is still playing. The called flags prevent a second step
+                // after controller movement.
                 let player_continuation = selected_role
                     && self.actors[id.index]
                         .animation
@@ -607,6 +609,10 @@ impl ScriptWorld {
                                 AnimationGroup::RUN
                                     | AnimationGroup::FIGHT_CIRCLE_LEFT
                                     | AnimationGroup::FIGHT_CIRCLE_RIGHT
+                                    | AnimationGroup::SLIDE
+                                    | AnimationGroup::SLIDE_FORWARD_TORCH
+                                    | AnimationGroup::SLIDE_BACKWARD
+                                    | AnimationGroup::SLIDE_BACKWARD_TORCH
                             )
                         });
                 if !selected_role || player_continuation {

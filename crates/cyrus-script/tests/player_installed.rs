@@ -64,6 +64,67 @@ fn installed_keyboard_route(modern_jump: bool, banked_turns: bool) -> Result<()>
     }
 }
 
+/// Matched with the original on ISLAND: a player placed on the steep terrain above the
+/// CCGRATE slab slides, lands on the slab, and the backward slide group keeps moving it across
+/// the slab after the slope response has cleared the sliding byte.
+#[test]
+fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (installed slide continuation)");
+        return Ok(());
+    };
+    let (mut app, _codes, _assets) = prepare_player_app(&install, false)?;
+    for _ in 0..4 {
+        app.update();
+    }
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors
+            .current
+            .as_mut()
+            .context("logical world unavailable")?;
+        world.place_selected_player([40832 * 256, -616 * 256, 40400 * 256], 0)?;
+    }
+    let mut moving_after_slide = 0;
+    let mut previous: Option<[i32; 3]> = None;
+    for _ in 0..80 {
+        app.update();
+        let current = position(&mut app)?;
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors
+            .current
+            .as_ref()
+            .context("logical world unavailable")?;
+        let id = world
+            .selected_player()
+            .context("selected player unavailable")?;
+        let control = world.actors()[id.index]
+            .control_state()
+            .context("control")?;
+        let group = world.inspect(id.index, 1)["actors"][0]["animation"]["current_group"].as_u64();
+        if let Some(before) = previous
+            && control.sliding_state == 0
+            && group
+                == Some(u64::from(
+                    cyrus_soup::AnimationGroup::SLIDE_BACKWARD.index(),
+                ))
+            && current[2] < before[2]
+            && current[1] == before[1]
+        {
+            moving_after_slide += 1;
+        }
+        previous = Some(current);
+    }
+    ensure!(
+        moving_after_slide >= 3,
+        "the slide group moved the player only {moving_after_slide} updates after the slide ended"
+    );
+    Ok(())
+}
+
 fn prepare_player_app(
     install: &GameInstall,
     modern_jump: bool,
