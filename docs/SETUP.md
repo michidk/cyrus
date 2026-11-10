@@ -173,6 +173,13 @@ dev container the renderer, not the game logic, limits the frame rate: an optimi
 default size runs at about 5 to 11. Measure the frame rate (control `state`, field `frame`)
 before comparing timing-dependent behaviour such as combat pacing with the original.
 
+A slow native run in the container is slow, not hung. After a world loads, the render world's
+prepare systems keep two Compute Task Pool workers at 100 % while the main thread idles, and the
+game clock advances only about 0.2 to 0.4 game seconds per wall second on ISLAND (older builds
+before the modern-renderer change ran about 0.015, which looks like a frozen clock). Poll the
+control `state` clock to see progress, normalise every measurement by that game clock, and
+abort a run only when the game clock itself has not advanced for several minutes.
+
 The window waits for the display's refresh by default, so a measured frame rate is capped at it
 (and drops to half of it when a frame just misses). `CYRUS_PRESENT_MODE=novsync` presents at
 once; use it, on a machine with no other builds running, when measuring what the game can
