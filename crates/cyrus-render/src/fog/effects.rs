@@ -77,6 +77,7 @@ fn bind(
     environments: Res<Assets<Environment>>,
     prepared: Option<Res<PreparedWorld>>,
     ready: Option<Res<crate::ReadyScene>>,
+    active: Option<Res<crate::environment::ActiveEnvironment>>,
     animation_sources: (
         Option<Res<cyrus_world::animation::AnimationRequest>>,
         Option<Res<Assets<cyrus_assets::animation::Animations>>>,
@@ -98,6 +99,7 @@ fn bind(
                 world,
                 prepared,
                 &request,
+                active.as_deref(),
                 animation_sources.0.as_deref(),
                 animation_sources.1.as_deref(),
             ) && ready

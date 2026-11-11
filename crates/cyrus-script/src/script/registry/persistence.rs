@@ -597,6 +597,16 @@ impl ActorSnapshot {
             "saved actor {}: collision shape on unsupported role",
             self.name
         );
+        if let Some(map_light) = self.map_light {
+            ensure!(
+                map_light
+                    == actor.placement().is_some_and(|placement| {
+                        placement.object_type == PlacementType::COLOURED_LIGHT
+                    }),
+                "saved actor {}: map-light eligibility differs from installed placement",
+                self.name
+            );
+        }
         if let Some(light) = &self.light {
             if let Some(base) = light.starting_rgb {
                 let placement = actor

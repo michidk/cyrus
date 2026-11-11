@@ -43,6 +43,7 @@ pub(super) struct Built {
 #[derive(SystemParam)]
 pub(super) struct RetainedLights<'w> {
     actors: Option<Res<'w, cyrus_script::script::ScriptActors>>,
+    active: Option<Res<'w, crate::environment::ActiveEnvironment>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animation: Option<Res<'w, cyrus_world::animation::AnimationRequest>>,
     animations: Option<Res<'w, Assets<cyrus_assets::animation::Animations>>>,
@@ -63,6 +64,7 @@ impl RetainedLights<'_> {
                     current,
                     prepared,
                     request,
+                    self.active.as_deref(),
                     self.animation.as_deref(),
                     self.animations.as_deref(),
                 )

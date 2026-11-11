@@ -182,3 +182,10 @@ confirmation. Its Yes choice restores that slot through the shared atomic sessio
 boundary; missing or malformed saves report errors without starting a fresh world.
 The authored Save page uses the same slot host for description editing, creation
 and revision-checked overwrite. Slot metadata includes the captured gameplay thumbnail.
+
+Native acceptance tools can use the control protocol's `schedule_input` command
+to deliver balanced input at ordinary update boundaries. Admission reuses the
+production world/model service gates. Delivery runs after model preparation and
+before player input sampling and ordinary simulation; returned actor snapshots
+observe that same boundary. See `cyrus-control` for the wire contract and failure
+cleanup. Normal gameplay continues to use the same keyboard bindings.

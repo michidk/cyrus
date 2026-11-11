@@ -427,6 +427,7 @@ module where it is defined and regenerate.
 - `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
+- `src/control/input_schedule.rs` — Diagnostic input delivery at admitted ordinary simulation boundaries.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
 - `src/debug.rs` — Platform world-picker sources and navigation.

@@ -668,3 +668,8 @@ including when a restored actor receives a new entity binding. The public
 `inspect_actor_model` diagnostic correlates the retained model frame and
 attachment geometry with actual rendered owners and validated frame sources;
 it does not repair missing bindings while observing them.
+
+Restored private environments retain their validated installed source path alongside
+the published asset identity. Light and transient-effect ownership accepts that
+pair while still requiring matching prepared animation content. Retirement or a
+source mismatch cannot reuse the restored environment's logical light owner.

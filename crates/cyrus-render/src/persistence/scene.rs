@@ -41,6 +41,7 @@ pub struct SceneCandidate {
     animations: Handle<Animations>,
     scripts: Handle<Scripts>,
     environment_identity: [u8; 32],
+    environment_path: bevy::asset::AssetPath<'static>,
 }
 impl SceneReplacement {
     /// Staged roots must survive retirement of the old scene and stay hidden until commit.
@@ -137,6 +138,7 @@ impl SceneReplacement {
         let environment_identity = environment_identity(replacement)?;
         let candidate = SceneCandidate {
             environment_identity,
+            environment_path: prepared.environment_path.clone(),
             replacement: self,
             world_asset: expected,
             animations: prepared.animations.clone(),
@@ -289,6 +291,7 @@ impl SceneCandidate {
             world.insert_resource(crate::environment::ActiveEnvironment {
                 source: Some(target.environment.id()),
                 sky: Some(target.sky),
+                restored_path: Some(self.environment_path),
             });
             world.resource_mut::<crate::fog::RenderDistance>().original = Some(clipping);
             world.insert_resource(bevy::prelude::ClearColor(bevy::prelude::Color::srgb_u8(
@@ -452,6 +455,14 @@ mod tests {
                 .0,
             private
         );
+        let active = app
+            .world()
+            .resource::<crate::environment::ActiveEnvironment>();
+        assert_eq!(active.source, Some(private.id()));
+        assert_eq!(
+            active.restored_path.as_ref(),
+            Some(&"test.environment".into())
+        );
         assert!(app.world().get::<crate::SceneEntity>(root).is_some());
         assert!(!app.world().resource::<crate::camera::FrameScene>().0);
         assert_eq!(
@@ -492,6 +503,7 @@ mod tests {
         let candidate = SceneCandidate {
             replacement,
             environment_identity: [0; 32],
+            environment_path: "test.environment".into(),
             world_asset: Handle::default(),
             animations: Handle::default(),
             scripts: Handle::default(),

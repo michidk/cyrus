@@ -46,6 +46,24 @@ def compare_interval(original, native, tolerance):
         raise ValueError(f'timing mismatch: original {a, b}, native {c, d}, budget {tolerance}')
 
 
+def planned_updates(expected, step_seconds, tolerance=0):
+    """Refuse an unreachable exact interval before sending gameplay input."""
+    target = sum(expected['duration']) / 2
+    count = max(1, round(target / step_seconds))
+    try:
+        compare_interval(expected, dict(duration=[count * step_seconds] * 2), tolerance)
+    except ValueError as error:
+        from fractions import Fraction
+        import math
+        original = Fraction(target).limit_denominator(1_000_000)
+        native = Fraction(step_seconds).limit_denominator(1_000_000)
+        denominator = math.lcm(original.denominator, native.denominator)
+        common = Fraction(math.lcm(int(original * denominator), int(native * denominator)), denominator)
+        raise ValueError(f'interval unavailable at measured ordinary step; reacquire original for '
+                         f'candidate common interval {float(common)} seconds; actual clocks still required') from error
+    return count
+
+
 def accepted_schedule(path):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     phases = {}
@@ -248,45 +266,50 @@ class Driver:
         if response != dict(key=key, action=action):
             raise RuntimeError('native input acknowledgement does not match request')
 
-    def boundary(self, phase, edge, key=None):
-        before = self.sample(phase)
-        if key:
-            pressed = edge == 'start'
-            self.key(key, pressed)
-            action = {'ArrowUp': 'forward', 'ControlLeft': 'action'}[key]
-            deadline = time.monotonic() + self.timeout
-            while True:
-                after = self.sample(phase)
-                if after['input_state'].get(action) is pressed:
-                    break
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('native input was not observed by player update')
-        else:
-            after = before
-        row = dict(phase=phase, boundary=edge, input_ack=True,
-                   clock=[before['game_seconds'], after['clock_end']], player=after['player'])
-        self.output.write(json.dumps(row) + '\n')
-        self.output.flush()
-        return row
-
     def timed_segment(self, phase, expected, key):
-        start = self.boundary(phase, 'start', key)
-        target = sum(expected['duration']) / 2
-        deadline = time.monotonic() + self.timeout
-        try:
-            while True:
-                row = self.sample(phase)
-                player = row['player']
-                if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
-                    raise RuntimeError('native contact baseline was rejected')
-                if row['game_seconds'] - start['clock'][1] >= target:
-                    break
-                if row['game_seconds'] < start['clock'][0]:
-                    raise RuntimeError('native game clock restarted')
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('native game clock stalled')
-        finally:
-            end = self.boundary(phase, 'end', key)
+        # Measured render FPS can differ from the clamped simulation step.
+        # Observe one actual ordinary interval to choose an attempt, never to admit it.
+        probe = self.call('schedule_input', events=[dict(after_updates=0), dict(after_updates=1)])['boundaries']
+        if (len(probe) != 2 or probe[0]['after_updates'] != 0 or probe[1]['after_updates'] != 1
+                or probe[1]['update'] != probe[0]['update'] + 1
+                or probe[0]['generation'] != probe[1]['generation']
+                or any(row.get('key') is not None or row.get('action') is not None for row in probe)):
+            raise RuntimeError('native timing probe crossed unavailable ordinary boundaries')
+        step_seconds = probe[1]['game_seconds'] - probe[0]['game_seconds']
+        if not 0 < step_seconds < float('inf'):
+            raise RuntimeError('native ordinary timing probe did not advance')
+        updates = planned_updates(expected, step_seconds, self.clock_tolerance)
+        events = [dict(after_updates=offset, **(
+            dict(key=key, action=action) if key else {}))
+            for offset, action in [(0, 'press'), (updates, 'release')]]
+        response = self.call('schedule_input', events=events)
+        rows = response['boundaries']
+        if len(rows) != 2:
+            raise RuntimeError('native schedule did not report both boundaries')
+        boundaries = []
+        for row, event, edge in zip(rows, events, ['start', 'end']):
+            if (row['after_updates'] != event['after_updates']
+                    or row.get('key') != event.get('key')
+                    or row.get('action') != event.get('action')):
+                raise RuntimeError('native boundary acknowledgement differs from schedule')
+            actor, = row['player']['actors']
+            control = actor['control']
+            player = dict(drawn=control['weapon_drawn'], falling=control['falling_state'],
+                living=control['living_state'], health=actor['attributes'][3],
+                rope_attached=control['rope_attached'],
+                position=[v / 256 for v in actor['spatial']['effective']['position']])
+            boundary = dict(phase=phase, boundary=edge, input_ack=True,
+                frame=row['update'], generation=row['generation'],
+                clock=[row['game_seconds'], row['game_seconds']], player=player)
+            self.output.write(json.dumps(boundary) + '\n')
+            self.output.flush()
+            if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+                raise RuntimeError('native contact baseline was rejected')
+            boundaries.append(boundary)
+        start, end = boundaries
+        if (start['generation'] != end['generation']
+                or end['frame'] - start['frame'] != updates):
+            raise RuntimeError('native schedule crossed unavailable ordinary boundaries')
         observed = interval(start, end)
         try:
             compare_interval(expected, observed, self.clock_tolerance)

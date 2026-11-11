@@ -215,7 +215,7 @@ class Driver:
 
 class ContinuationDriver(Driver):
     """Restore an existing two-world seed, then observe real attachment continuation."""
-    def load(self, name, runtime_path):
+    def load(self, name, runtime_path, *, prepare_seconds=None):
         self.phase(name)
         try:
             self.request('session_load_result', acknowledge=True)
@@ -223,7 +223,8 @@ class ContinuationDriver(Driver):
             if 'has no terminal result' not in str(error):
                 raise
         self.request('session_load', path=runtime_path)
-        result = self.wait(lambda: self.terminal('session_load_result'), self.args.seconds)
+        result = self.wait(lambda: self.terminal('session_load_result'),
+                           self.args.seconds if prepare_seconds is None else prepare_seconds)
         if result.get('committed') is not True:
             raise ValueError('continuation publication did not commit')
         self.request('session_load_result', acknowledge=True)

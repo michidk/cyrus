@@ -1062,9 +1062,15 @@ The native driver pulses the sword toggle for one update, so asynchronous reads
 do not hold it through animation completion and request sheathing again. It
 prepares the gravity cheat through public controls,
 places the player at the observed original baseline and records attachment state.
-It validates each input response and waits for the player action to reflect the
-requested state. State reads bracket actor reads so sample uncertainty remains
-visible. Holds use elapsed game seconds. `--clock-tolerance SECONDS` declares the
+It submits each walk, attack and continuation interval through `schedule_input`.
+Transitions apply before ordinary input sampling at offsets from the next admitted
+update; continuation uses observation-only boundaries. An observation-only ordinary interval
+chooses an attempted update count, but acceptance uses only the actual clocks
+returned with the boundary acknowledgements. Each acknowledgement also identifies
+the world generation, ordinary update and selected actor state before that update.
+Its timestamp excludes the forthcoming update, even when frame scales vary.
+Skipped boundaries or a changed generation reject the attempt. Setup state reads
+still bracket actor reads so their uncertainty remains visible. `--clock-tolerance SECONDS` declares the
 maximum timing error, including both runs' boundary uncertainty; the default is
 exact. A mismatch fails before any displacement/contact comparison is emitted.
 A `comparison: "matched"` row establishes timing within that budget, not gameplay
@@ -1122,3 +1128,62 @@ Saved frames may advance; a changed frame alone is not a failed continuation.
 The dormant logical document must remain unchanged before revisit, apart from
 generation rebinding. First-update observations and the revisit screenshot remain
 local. This fixture does not establish original-game pixel or timing parity.
+
+For installed light restoration, `native-light-session.py` uses the public native
+session boundary and material-bound light-image observation. It visits both worlds
+to build a fixture on the current executable. Supply an enabled locked steady light
+actor index, a uniquely named scene mesh and a view containing active map lights:
+
+```sh
+python3 -m pip install blake3==1.0.11
+python3 dev/scripts/native-light-session.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --scene ACTIVE_WORLD --dormant OTHER_WORLD --light-actor INDEX \
+  --node UNIQUE_MESH --position X Y Z
+python3 dev/scripts/test-native-light-session.py
+```
+
+An optional `--runtime-seed RUNTIME_SEED` reuses a compatible captured session.
+The driver verifies its requested inspection view and suspends gameplay through the
+public console during asynchronous session preparation, then closes it and requires
+game-clock progress. It saves its public fixture and requires publication with matching
+bound light rows, saved scripted-light state and fresh scene ownership, then submits
+an integrity-valid negative document with inconsistent installed light eligibility. Rejection must
+preserve the live generation, mesh/material/image bindings and light rows. Leaving
+the world must remove its named binding; revisiting must restore matching light
+rows and saved logical state under a new owner. The final screenshot remains local.
+CPU material rows establish binding continuity, not GPU readback or original
+visual/timing parity.
+
+For original timing acquisition, `original-rope-contact.py --schedule-command PATH`
+uses a local executable specific to the original build. It receives one JSON
+request on stdin with `phase`, `frames` and `key` (`null` for observation only).
+It returns `phase`, `key`, the installed `normal_frame_rate`, two `boundaries`,
+and exactly `frames` consumed `steps`. Each boundary contains `frame`, integer
+`clock_scale` in 1/256 nominal tick, `input_state` and the selected `player`.
+Each step contains its contiguous `frame`, consumed integer `frame_scale` and
+`input_state`. The end clock must equal the start plus all consumed scales;
+held input must be acknowledged through every step and released at the end.
+The driver retains the backend evidence before validating it and emits exact
+boundary clocks only after the complete schedule and baseline pass. Backend
+identity is included in the readiness journal. Build-specific instrumentation
+stays local, outside the tracked tree. Record its method in `instrumentation`;
+debugger stops can change measured FPS, so exact boundary timing alone does not
+establish ordinary playback cadence or gameplay parity. Without this option,
+original host-input acquisition retains its conservative clock ranges.
+
+`original-rope-contact.py --schedule-frame-scale N` requires every consumed
+instrumented update to use that measured Q8 scale; the backend must wait for an
+admissible start and the driver rejects a changed scale. `--attack-frames` and
+`--continuation-frames` select bounded reacquisition lengths alongside `--frames`.
+These constrain observations and never set the original simulation clock.
+Native planning rejects an exact interval that is not a whole number of the
+measured ordinary interval before sending gameplay input. A reported common
+interval is a reacquisition candidate, not accepted timing evidence.
+
+For an ephemeral original image, set `CYRUS_RETRO_IMAGE_ARCHIVE` to a local Docker
+archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
+the live-run lock, serializes concurrent restores and verifies the requested
+image exists. An existing image requires no archive load. The helper
+`dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
+Archives remain local; recovery never removes peer images or containers.
