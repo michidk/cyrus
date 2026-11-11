@@ -276,41 +276,8 @@ fn apply(
     if !catalog.is_changed() && !*shader_pending {
         return;
     }
-    for entry in &mut catalog.entries {
-        match (entry.active && entry.has_wasm, entry.instance) {
-            (true, None) => {
-                let instance = mods.spawn(
-                    format!("mods://{}/mod.wasm", entry.id),
-                    Some(entry.manifest.name.clone()),
-                );
-                mods.enable_access(instance, ModAccess::World);
-                entry.instance = Some(instance);
-            }
-            (false, Some(instance)) => {
-                mods.despawn(instance);
-                entry.instance = None;
-            }
-            _ => {}
-        }
-    }
-    // Each shader is one slot: the first active mod in id order supplies it.
-    let mut suppliers: BTreeMap<String, (String, String)> = BTreeMap::new();
-    for entry in catalog.entries.iter().filter(|entry| entry.active) {
-        for shader in &entry.manifest.shaders {
-            match suppliers.get(&shader.replaces) {
-                Some((first, _)) => warn!(
-                    "mods: {first} and {} both replace {}; using {first}",
-                    entry.id, shader.replaces
-                ),
-                None => {
-                    suppliers.insert(
-                        shader.replaces.clone(),
-                        (entry.id.clone(), shader.file.clone()),
-                    );
-                }
-            }
-        }
-    }
+    start_and_stop_instances(&mut catalog, &mut mods);
+    let suppliers = shader_suppliers(&catalog);
     let targets: BTreeSet<String> = suppliers
         .keys()
         .chain(&catalog.replaced_shaders)
@@ -365,6 +332,49 @@ fn apply(
     if status.is_some() {
         catalog.status = status;
     }
+}
+
+/// Spawns the wasm instance of each newly active mod and despawns those switched off.
+fn start_and_stop_instances(catalog: &mut Catalog, mods: &mut Mods) {
+    for entry in &mut catalog.entries {
+        match (entry.active && entry.has_wasm, entry.instance) {
+            (true, None) => {
+                let instance = mods.spawn(
+                    format!("mods://{}/mod.wasm", entry.id),
+                    Some(entry.manifest.name.clone()),
+                );
+                mods.enable_access(instance, ModAccess::World);
+                entry.instance = Some(instance);
+            }
+            (false, Some(instance)) => {
+                mods.despawn(instance);
+                entry.instance = None;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Each shader is one slot: the first active mod in id order supplies it.
+fn shader_suppliers(catalog: &Catalog) -> BTreeMap<String, (String, String)> {
+    let mut suppliers: BTreeMap<String, (String, String)> = BTreeMap::new();
+    for entry in catalog.entries.iter().filter(|entry| entry.active) {
+        for shader in &entry.manifest.shaders {
+            match suppliers.get(&shader.replaces) {
+                Some((first, _)) => warn!(
+                    "mods: {first} and {} both replace {}; using {first}",
+                    entry.id, shader.replaces
+                ),
+                None => {
+                    suppliers.insert(
+                        shader.replaces.clone(),
+                        (entry.id.clone(), shader.file.clone()),
+                    );
+                }
+            }
+        }
+    }
+    suppliers
 }
 
 /// Reloads active mods whose files changed on disk.

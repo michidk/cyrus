@@ -8,6 +8,7 @@
 //! `&mut self` throughout and `Input`, `Settings`, `Player` and `Scene` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use crate::settings::{ModSettings, Value};
+use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
@@ -385,26 +386,38 @@ type Host = (
     &'static mut Uniforms,
     &'static mut Input,
 );
+/// Engine-side resources the mod answers are handed to.
+#[derive(SystemParam)]
+pub(crate) struct Outputs<'w> {
+    probes: ResMut<'w, CollisionProbes>,
+    claimed: ResMut<'w, LocomotionClaimed>,
+    movement: ResMut<'w, MovementWish>,
+    takeover: ResMut<'w, CameraTakeover>,
+    requests: ResMut<'w, PlayerRequests>,
+    orbit: ResMut<'w, CameraOrbit>,
+}
+
+/// Engine state published to mods each frame.
+#[derive(SystemParam)]
+pub(crate) struct Sources<'w, 's> {
+    actors: Option<ResMut<'w, ScriptActors>>,
+    camera_frame: Option<Res<'w, CameraFrameState>>,
+    values: Res<'w, ModSettings>,
+    published: Res<'w, SceneValues>,
+    look: Option<Res<'w, ModernLook>>,
+    view: Query<'w, 's, &'static Transform, With<ViewCamera>>,
+    keys: Res<'w, ButtonInput<KeyCode>>,
+    bindings: Inputs<'w>,
+    mouse: Res<'w, AccumulatedMouseMotion>,
+    time: Res<'w, Time>,
+}
 
 /// Hands last frame's mod answers to the engine and publishes this frame's state.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn exchange(
     mut host: Query<Host>,
-    mut probes: ResMut<CollisionProbes>,
-    mut actors: Option<ResMut<ScriptActors>>,
-    camera_frame: Option<Res<CameraFrameState>>,
-    mut claimed: ResMut<LocomotionClaimed>,
-    values: Res<ModSettings>,
-    (mut sets, published, mut inputs): (ResMut<VertexSets>, Res<SceneValues>, ResMut<ShaderInputs>),
-    mut movement: ResMut<MovementWish>,
-    mut takeover: ResMut<CameraTakeover>,
-    mut requests: ResMut<PlayerRequests>,
-    (mut orbit, look): (ResMut<CameraOrbit>, Option<Res<ModernLook>>),
-    view: Query<&Transform, With<ViewCamera>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    bindings: Inputs,
-    mouse: Res<AccumulatedMouseMotion>,
-    time: Res<Time>,
+    (mut sets, mut inputs): (ResMut<VertexSets>, ResMut<ShaderInputs>),
+    mut out: Outputs,
+    mut src: Sources,
 ) {
     let Ok((
         mut vertices,
@@ -421,26 +434,109 @@ pub(crate) fn exchange(
     else {
         return;
     };
-    if values.is_changed() {
-        *settings = Settings::default();
-        for (id, entries) in &values.values {
-            for (key, value) in entries {
-                let name = format!("{id}/{key}");
-                match value {
-                    Value::Bool(value) => {
-                        settings.flags.insert(name, *value);
-                    }
-                    Value::Number(value) => {
-                        settings.numbers.insert(name, *value);
-                    }
-                    Value::Choice(value) => {
-                        settings.choices.insert(name, value.clone());
-                    }
+    if src.values.is_changed() {
+        publish_settings(&mut settings, &src.values);
+    }
+    exchange_vertices(&mut vertices, &mut sets);
+    if src.published.is_changed() {
+        scene.values = src.published.values.clone();
+    }
+    scene.seconds = src.published.seconds;
+    // Shader inputs last only for the frame after they were written.
+    inputs.0 = take_shader_inputs(&mut uniforms);
+
+    out.takeover.0 = camera.takeover.take().and_then(|pose| match pose[..] {
+        [x, y, z, qx, qy, qz, qw] => Some(
+            Transform::from_xyz(x, y, z).with_rotation(Quat::from_xyzw(qx, qy, qz, qw).normalize()),
+        ),
+        _ => {
+            warn_once!("mod camera pose needs 7 values, got {}", pose.len());
+            None
+        }
+    });
+    out.movement.0 = steering.wish.take().map(|(x, y, jump, wasd)| {
+        let direction = Vec2::new(x, y);
+        Wish {
+            // A mod's NaN or infinity must not become a heading.
+            direction: if direction.is_finite() {
+                direction.clamp_length_max(1.0)
+            } else {
+                Vec2::ZERO
+            },
+            jump,
+            wasd,
+        }
+    });
+    out.orbit.enabled = std::mem::take(&mut camera.orbit);
+    out.orbit.turn = std::mem::take(&mut camera.turn);
+    camera.manual =
+        src.mouse.delta != Vec2::ZERO || src.look.as_deref().is_some_and(|look| look.manual);
+    *out.requests = take_player_requests(&mut steering);
+    out.claimed.0 = take_claim(&mut steering);
+    exchange_collision(&mut out.probes, &mut collision);
+    natives.calls = exchange_natives(&mut natives, src.actors.as_deref_mut());
+    publish_player(&mut player, src.actors.as_deref());
+    camera.pose = src.view.single().map_or_else(
+        |_| Vec::new(),
+        |t| {
+            t.translation
+                .to_array()
+                .into_iter()
+                .chain(t.rotation.to_array())
+                .collect()
+        },
+    );
+    // The same heading the game derives for camera-relative movement: the view yaw, mirrored.
+    player.view = src
+        .camera_frame
+        .as_deref()
+        .and_then(|frame| frame.published.as_ref())
+        .map_or(player.heading, |camera| {
+            u32::from(camera.view_angles[1].wrapping_neg() & 2047)
+        });
+
+    input.held = held_actions(
+        &src.bindings
+            .bindings()
+            .sample_devices(src.bindings.devices()),
+    );
+    input.pressed = src
+        .keys
+        .get_pressed()
+        .map(|key| format!("{key:?}"))
+        .collect();
+    input.just_pressed = src
+        .keys
+        .get_just_pressed()
+        .map(|key| format!("{key:?}"))
+        .collect();
+    input.mouse_delta = src.mouse.delta.to_array().to_vec();
+    input.delta_seconds = src.time.delta_secs();
+}
+
+/// Rebuilds the settings a mod reads from the configured values, keyed `mod/key`.
+fn publish_settings(settings: &mut Settings, values: &ModSettings) {
+    *settings = Settings::default();
+    for (id, entries) in &values.values {
+        for (key, value) in entries {
+            let name = format!("{id}/{key}");
+            match value {
+                Value::Bool(value) => {
+                    settings.flags.insert(name, *value);
+                }
+                Value::Number(value) => {
+                    settings.numbers.insert(name, *value);
+                }
+                Value::Choice(value) => {
+                    settings.choices.insert(name, value.clone());
                 }
             }
         }
     }
-    // Hand last frame's offsets to each published set and republish changed positions.
+}
+
+/// Hands last frame's offsets to each published set and republishes changed positions.
+fn exchange_vertices(vertices: &mut Vertices, sets: &mut VertexSets) {
     let mut answered = std::mem::take(&mut vertices.offsets);
     for (name, set) in &mut sets.0 {
         if let Some((generation, offsets)) = answered.remove(name) {
@@ -458,12 +554,11 @@ pub(crate) fn exchange(
     for name in answered.keys() {
         warn_once!("mods: displace: no vertex set named {name}");
     }
-    if published.is_changed() {
-        scene.values = published.values.clone();
-    }
-    scene.seconds = published.seconds;
-    // Shader inputs last only for the frame after they were written.
-    inputs.0 = std::mem::take(&mut uniforms.values)
+}
+
+/// The four-value shader inputs mods wrote; any other length is dropped with a warning.
+fn take_shader_inputs(uniforms: &mut Uniforms) -> HashMap<String, [f32; 4]> {
+    std::mem::take(&mut uniforms.values)
         .into_iter()
         .filter_map(
             |(key, values)| match <[f32; 4]>::try_from(values.as_slice()) {
@@ -474,34 +569,12 @@ pub(crate) fn exchange(
                 }
             },
         )
-        .collect();
+        .collect()
+}
 
-    takeover.0 = camera.takeover.take().and_then(|pose| match pose[..] {
-        [x, y, z, qx, qy, qz, qw] => Some(
-            Transform::from_xyz(x, y, z).with_rotation(Quat::from_xyzw(qx, qy, qz, qw).normalize()),
-        ),
-        _ => {
-            warn_once!("mod camera pose needs 7 values, got {}", pose.len());
-            None
-        }
-    });
-    movement.0 = steering.wish.take().map(|(x, y, jump, wasd)| {
-        let direction = Vec2::new(x, y);
-        Wish {
-            // A mod's NaN or infinity must not become a heading.
-            direction: if direction.is_finite() {
-                direction.clamp_length_max(1.0)
-            } else {
-                Vec2::ZERO
-            },
-            jump,
-            wasd,
-        }
-    });
-    orbit.enabled = std::mem::take(&mut camera.orbit);
-    orbit.turn = std::mem::take(&mut camera.turn);
-    camera.manual = mouse.delta != Vec2::ZERO || look.is_some_and(|look| look.manual);
-    *requests = PlayerRequests {
+/// The animation, heading and tempo requests a mod queued this frame.
+fn take_player_requests(steering: &mut Movement) -> PlayerRequests {
+    PlayerRequests {
         animation: steering.play.take().and_then(|(group, interrupt)| {
             let group = u16::try_from(group).ok();
             if group.is_none() {
@@ -514,49 +587,11 @@ pub(crate) fn exchange(
         }),
         heading: steering.face.take().map(|heading| (heading & 2047) as u16),
         tempo: steering.tempo.take(),
-    };
-    probes.requests = std::mem::take(&mut collision.queued)
-        .as_chunks::<6>()
-        .0
-        .iter()
-        .map(|&[sx, sy, sz, ex, ey, ez]| Probe {
-            start: [sx, sy, sz],
-            end: [ex, ey, ez],
-        })
-        .collect();
-    if let Some(answers) = probes.take_answers() {
-        collision.hits = answers
-            .into_iter()
-            .map(|hit| hit.map_or_else(Vec::new, |hit| [hit.point, hit.normal].concat()))
-            .collect();
     }
-    // Watch the natives mods named this frame and hand over the calls made to last frame's.
-    let watched = std::mem::take(&mut natives.watched);
-    let known: BTreeSet<Native> = watched
-        .iter()
-        .filter_map(|name| {
-            let native = Native::from_name(name);
-            if native.is_none() {
-                warn_once!("mods: watch: no script native named {name}");
-            }
-            native
-        })
-        .collect();
-    natives.calls = actors
-        .as_deref_mut()
-        .and_then(|actors| actors.current.as_mut())
-        .map(|world| {
-            let calls = world.take_native_calls();
-            world.watch_natives(known);
-            calls
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(|call| {
-            let integers: Vec<String> = call.integers.iter().map(i32::to_string).collect();
-            format!("{}|{}|{}", call.function, call.actor, integers.join(","))
-        })
-        .collect();
+}
+
+/// The locomotion claim a mod made this frame, with its jump tuning.
+fn take_claim(steering: &mut Movement) -> Option<LocomotionClaim> {
     let tuning = steering
         .tuning
         .take()
@@ -573,7 +608,7 @@ pub(crate) fn exchange(
                 1.0
             },
         });
-    claimed.0 = steering
+    steering
         .claim
         .take()
         .map(|(heading, travel, speed, run, jump)| LocomotionClaim {
@@ -583,61 +618,85 @@ pub(crate) fn exchange(
             gait: if run { Gait::Run } else { Gait::Walk },
             jump,
             tuning,
-        });
-    if let Some(status) = actors
-        .as_deref()
-        .and_then(|actors| actors.current.as_ref()?.locomotion_status())
-    {
-        player.position = status.position.map(|q8| q8 as f32 / 256.0).to_vec();
-        player.heading = u32::from(status.heading);
-        player.airborne = status.airborne;
-        player.armed = status.armed;
-        let group = |group: Option<cyrus_soup::AnimationGroup>| {
-            group
-                .map(|group| u32::from(group.index()))
-                .into_iter()
-                .collect()
-        };
-        player.animation = group(status.animation);
-        player.pending = group(status.pending_animation);
-        player.idle = group(status.idle_animation);
-        (player.walk_speed, player.run_speed) = if status.armed {
-            (
-                f32::from(status.fight_walk_speed),
-                f32::from(status.fight_run_speed),
-            )
-        } else {
-            (f32::from(status.walk_speed), f32::from(status.run_speed))
-        };
-    } else {
-        *player = Player::default();
-    }
-    // The same heading the game derives for camera-relative movement: the view yaw, mirrored.
-    player.view = camera_frame
-        .as_deref()
-        .and_then(|frame| frame.published.as_ref())
-        .map_or(player.heading, |camera| {
-            u32::from(camera.view_angles[1].wrapping_neg() & 2047)
-        });
-    camera.pose = view.single().map_or_else(
-        |_| Vec::new(),
-        |t| {
-            t.translation
-                .to_array()
-                .into_iter()
-                .chain(t.rotation.to_array())
-                .collect()
-        },
-    );
+        })
+}
 
-    input.held = held_actions(&bindings.bindings().sample_devices(bindings.devices()));
-    input.pressed = keys.get_pressed().map(|key| format!("{key:?}")).collect();
-    input.just_pressed = keys
-        .get_just_pressed()
-        .map(|key| format!("{key:?}"))
+/// Queues the segment probes mods asked for and hands back last frame's answers.
+fn exchange_collision(probes: &mut CollisionProbes, collision: &mut Collision) {
+    probes.requests = std::mem::take(&mut collision.queued)
+        .as_chunks::<6>()
+        .0
+        .iter()
+        .map(|&[sx, sy, sz, ex, ey, ez]| Probe {
+            start: [sx, sy, sz],
+            end: [ex, ey, ez],
+        })
         .collect();
-    input.mouse_delta = mouse.delta.to_array().to_vec();
-    input.delta_seconds = time.delta_secs();
+    if let Some(answers) = probes.take_answers() {
+        collision.hits = answers
+            .into_iter()
+            .map(|hit| hit.map_or_else(Vec::new, |hit| [hit.point, hit.normal].concat()))
+            .collect();
+    }
+}
+
+/// Watches the natives mods named this frame and returns the calls made to last frame's.
+fn exchange_natives(natives: &mut Natives, actors: Option<&mut ScriptActors>) -> Vec<String> {
+    let watched = std::mem::take(&mut natives.watched);
+    let known: BTreeSet<Native> = watched
+        .iter()
+        .filter_map(|name| {
+            let native = Native::from_name(name);
+            if native.is_none() {
+                warn_once!("mods: watch: no script native named {name}");
+            }
+            native
+        })
+        .collect();
+    actors
+        .and_then(|actors| actors.current.as_mut())
+        .map(|world| {
+            let calls = world.take_native_calls();
+            world.watch_natives(known);
+            calls
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .map(|call| {
+            let integers: Vec<String> = call.integers.iter().map(i32::to_string).collect();
+            format!("{}|{}|{}", call.function, call.actor, integers.join(","))
+        })
+        .collect()
+}
+
+/// Publishes the player's locomotion state, or the empty default outside a script world.
+fn publish_player(player: &mut Player, actors: Option<&ScriptActors>) {
+    let Some(status) = actors.and_then(|actors| actors.current.as_ref()?.locomotion_status())
+    else {
+        *player = Player::default();
+        return;
+    };
+    player.position = status.position.map(|q8| q8 as f32 / 256.0).to_vec();
+    player.heading = u32::from(status.heading);
+    player.airborne = status.airborne;
+    player.armed = status.armed;
+    let group = |group: Option<cyrus_soup::AnimationGroup>| {
+        group
+            .map(|group| u32::from(group.index()))
+            .into_iter()
+            .collect()
+    };
+    player.animation = group(status.animation);
+    player.pending = group(status.pending_animation);
+    player.idle = group(status.idle_animation);
+    (player.walk_speed, player.run_speed) = if status.armed {
+        (
+            f32::from(status.fight_walk_speed),
+            f32::from(status.fight_run_speed),
+        )
+    } else {
+        (f32::from(status.walk_speed), f32::from(status.run_speed))
+    };
 }
 
 /// The movement actions held under the installed key bindings, by the names `input.held` takes.

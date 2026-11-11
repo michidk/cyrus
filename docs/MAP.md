@@ -7,8 +7,6 @@ module where it is defined and regenerate.
 ## `cyrus-app` — Shared window, cache source, egui and progress presentation for Cyrus applications.
 
 - `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
-- `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
-- `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
 - `src/loading.rs` — Progress overlays driven by the host, without application transitions.
 - `src/logging.rs` — Console and rotating-file logging for the native applications.
 - `src/native_install.rs` — Shared native install selection, remembered location and desktop folder picker.
@@ -135,8 +133,6 @@ module where it is defined and regenerate.
 
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
-- `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
-- `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
 - `src/random.rs` — Shared engine random arithmetic, following preservation's SOUP random functions.
 - `src/rope.rs` — Retained ropes from the installed `MPRP` records: construction, swing, chain placement and the
@@ -163,8 +159,6 @@ module where it is defined and regenerate.
 - `src/console_environment.rs` — Original sky-plane and wave console controls, owned by world presentation.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/flat.rs` — Camera-facing MPSF geometry from preservation's placed-flat export contract.
-- `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
-- `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/fog/clipping.rs` — Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
@@ -208,8 +202,6 @@ module where it is defined and regenerate.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/terrain.rs` — Private terrain mesh preparation after camera projection and wave updates.
 - `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
-- `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
-- `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 - `src/water/checkpoint.rs` — Off-live replacement of terrain history and its projected mesh presentation.
 - `src/water/heights.rs` — Read-only binding of exact engine heights to logical camera terrain sampling.

@@ -51,62 +51,8 @@ impl Files {
                 paths.insert(relative, item.into_path());
             }
         }
-        if let Some(parent) = install.root.parent() {
-            for name in ["game.gog", "game.ins"] {
-                let path = parent.join(name);
-                if path.is_file() {
-                    paths.insert(format!("disc/{name}"), path);
-                }
-            }
-            if let Some(path) = [
-                install.root.join("glide2x_emu.ovl"),
-                parent.join("DOSBOX/glide2x_emu.ovl"),
-            ]
-            .into_iter()
-            .find(|path| path.is_file())
-            {
-                paths.insert("splash/glide2x_emu.ovl".into(), path);
-            }
-            if let Some(path) = std::fs::read_dir(parent.join("DOSBOX"))
-                .into_iter()
-                .flatten()
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .find(|path| {
-                    path.is_file()
-                        && path
-                            .file_name()
-                            .is_some_and(|name| name.eq_ignore_ascii_case("3DfxSpl2.dll"))
-                })
-            {
-                paths.insert("splash/3DfxSpl2.dll".into(), path);
-            }
-        }
-        let by_lowercase: BTreeMap<String, String> = paths
-            .keys()
-            .map(|key| (key.to_lowercase(), key.clone()))
-            .collect();
-        let mut overlaid = std::collections::BTreeSet::new();
-        for folder in overlays {
-            for item in walkdir::WalkDir::new(folder).follow_links(false) {
-                let item = item.with_context(|| folder.display().to_string())?;
-                if !item.file_type().is_file() {
-                    continue;
-                }
-                let relative = item
-                    .path()
-                    .strip_prefix(folder)?
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let key = by_lowercase
-                    .get(&relative.to_lowercase())
-                    .cloned()
-                    .unwrap_or(relative);
-                if overlaid.insert(key.clone()) {
-                    paths.insert(key, item.into_path());
-                }
-            }
-        }
+        add_disc_images(&install.root, &mut paths);
+        overlay_folders(&mut paths, overlays)?;
         let mut files = Vec::new();
         for (relative, path) in &paths {
             let mut hash = blake3::Hasher::new();
@@ -131,6 +77,71 @@ impl Files {
         })
     }
 }
+/// Adds the disc images and the splash files that sit beside the install folder.
+fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) {
+    if let Some(parent) = root.parent() {
+        for name in ["game.gog", "game.ins"] {
+            let path = parent.join(name);
+            if path.is_file() {
+                paths.insert(format!("disc/{name}"), path);
+            }
+        }
+        if let Some(path) = [
+            root.join("glide2x_emu.ovl"),
+            parent.join("DOSBOX/glide2x_emu.ovl"),
+        ]
+        .into_iter()
+        .find(|path| path.is_file())
+        {
+            paths.insert("splash/glide2x_emu.ovl".into(), path);
+        }
+        if let Some(path) = std::fs::read_dir(parent.join("DOSBOX"))
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.is_file()
+                    && path
+                        .file_name()
+                        .is_some_and(|name| name.eq_ignore_ascii_case("3DfxSpl2.dll"))
+            })
+        {
+            paths.insert("splash/3DfxSpl2.dll".into(), path);
+        }
+    }
+}
+
+/// Replaces or adds the files of each overlay folder; the first folder holding a path wins.
+fn overlay_folders(paths: &mut BTreeMap<String, PathBuf>, overlays: &[PathBuf]) -> Result<()> {
+    let by_lowercase: BTreeMap<String, String> = paths
+        .keys()
+        .map(|key| (key.to_lowercase(), key.clone()))
+        .collect();
+    let mut overlaid = std::collections::BTreeSet::new();
+    for folder in overlays {
+        for item in walkdir::WalkDir::new(folder).follow_links(false) {
+            let item = item.with_context(|| folder.display().to_string())?;
+            if !item.file_type().is_file() {
+                continue;
+            }
+            let relative = item
+                .path()
+                .strip_prefix(folder)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let key = by_lowercase
+                .get(&relative.to_lowercase())
+                .cloned()
+                .unwrap_or(relative);
+            if overlaid.insert(key.clone()) {
+                paths.insert(key, item.into_path());
+            }
+        }
+    }
+    Ok(())
+}
+
 impl ReadAssets for Files {
     fn manifest(&self) -> &Manifest {
         &self.manifest

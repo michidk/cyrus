@@ -136,9 +136,8 @@ fn modern_sticks_move_and_turn_the_camera_beyond_the_installed_dead_zone() {
     assert_eq!(app.world().resource::<ModernLook>().stick, None);
 }
 
-#[test]
-fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
-    use cyrus_script::player::input::{ModernLook, MovementWish, Wish};
+/// A player app that no mod answers yet, one update in.
+fn mod_driven_app() -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
@@ -147,6 +146,13 @@ fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
         .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
         .add_plugins(PlayerPlugin);
     app.update();
+    app
+}
+
+#[test]
+fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
+    use cyrus_script::player::input::{ModernLook, MovementWish, Wish};
+    let mut app = mod_driven_app();
     let look = |app: &App| {
         let look = app.world().resource::<ModernLook>();
         (look.driven, look.stick)
@@ -181,7 +187,12 @@ fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
         (false, None),
         "a mod that stops answering hands control back"
     );
-    // A mod's orbit request turns the camera whatever moves the player.
+}
+
+#[test]
+fn a_mod_orbit_request_turns_the_camera_whatever_moves_the_player() {
+    use cyrus_script::player::input::ModernLook;
+    let mut app = mod_driven_app();
     assert!(!app.world().resource::<ModernLook>().orbit);
     app.insert_resource(cyrus_script::player::input::CameraOrbit {
         enabled: true,

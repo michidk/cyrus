@@ -900,47 +900,14 @@ impl ScriptWorld {
                 best = Some((distance(point), hit));
             }
         }
-        if let Some(terrain) = &query.scene.terrain {
-            // The surface is crossed where the segment's height passes the terrain's: find the
-            // sign change between the ends, then bisect to a tenth of a map unit.
-            let at = |t: f32| -> Option<(f32, [f32; 3])> {
-                let p: [f32; 3] = std::array::from_fn(|axis| {
-                    probe.start[axis] + (probe.end[axis] - probe.start[axis]) * t
-                });
-                let runtime = p.map(|v| (f64::from(v) * 256.0) as i64);
-                Some((p[1] - terrain.sample(runtime)?.height as f32, p))
-            };
-            if let (Some((first, _)), Some((last, _))) = (at(0.0), at(1.0))
-                && (first <= 0.0) != (last <= 0.0)
-            {
-                let (mut near, mut far) = (0.0f32, 1.0f32);
-                for _ in 0..24 {
-                    let middle = (near + far) / 2.0;
-                    match at(middle) {
-                        Some((above, _)) if (above <= 0.0) == (first <= 0.0) => near = middle,
-                        _ => far = middle,
-                    }
-                }
-                if let Some((_, point)) = at(far) {
-                    let runtime = point.map(|v| (f64::from(v) * 256.0) as i64);
-                    if let Some(support) = terrain.sample(runtime) {
-                        let length = support
-                            .normal
-                            .iter()
-                            .map(|&v| f64::from(v).powi(2))
-                            .sum::<f64>()
-                            .sqrt()
-                            .max(1.0);
-                        let hit = ProbeHit {
-                            point,
-                            normal: support.normal.map(|v| (f64::from(v) / length) as f32),
-                        };
-                        if best.is_none_or(|(nearest, _)| distance(point) < nearest) {
-                            best = Some((distance(point), hit));
-                        }
-                    }
-                }
-            }
+        if let Some(hit) = query
+            .scene
+            .terrain
+            .as_ref()
+            .and_then(|terrain| terrain_crossing(terrain, probe))
+            && best.is_none_or(|(nearest, _)| distance(hit.point) < nearest)
+        {
+            best = Some((distance(hit.point), hit));
         }
         Ok(best.map(|(_, hit)| hit))
     }
@@ -1136,22 +1103,7 @@ impl ScriptWorld {
         let walk = claim.gait == Gait::Walk;
         // An armed player walks in the fight-run group and runs in the fight-forward group, as
         // the ordinary movement natives choose them; it backs off and circles in the fight groups.
-        let (group, motion) = match (quarter, armed) {
-            (0, false) if walk => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
-            (0, false) => (AnimationGroup::RUN, MotionDirection::FORWARD),
-            (0, true) if walk => (AnimationGroup::FIGHT_RUN, MotionDirection::WALK_FORWARD),
-            (0, true) => (AnimationGroup::FIGHT_FORW, MotionDirection::FORWARD),
-            (2, false) if walk => (
-                AnimationGroup::WALK_BACKWARD,
-                MotionDirection::WALK_BACKWARD,
-            ),
-            (2, false) => (AnimationGroup::RUN_BACKWARD, MotionDirection::BACKWARD),
-            (2, true) => (AnimationGroup::FIGHT_BACK, MotionDirection::BACKWARD),
-            (1, false) => (AnimationGroup::STEP_LEFT, MotionDirection::LEFT),
-            (1, true) => (AnimationGroup::FIGHT_CIRCLE_LEFT, MotionDirection::LEFT),
-            (_, false) => (AnimationGroup::STEP_RIGHT, MotionDirection::RIGHT),
-            (_, true) => (AnimationGroup::FIGHT_CIRCLE_RIGHT, MotionDirection::RIGHT),
-        };
+        let (group, motion) = claimed_animation(quarter, armed, walk);
         let position = self.spatial(id)?.local.position;
         let surface = self.actor_surface(id)?;
         let event_context = super::effects::ActorEventContext::capture(self, id);
@@ -1997,6 +1949,71 @@ fn steer_airborne(
             }
         }
     }
+}
+
+/// The animation group and motion classification of a claimed travel: the quarter turn of the
+/// travel heading relative to the facing (0 forward, 1 left, 2 backward, 3 right), the stance
+/// and the gait.
+fn claimed_animation(quarter: u16, armed: bool, walk: bool) -> (AnimationGroup, MotionDirection) {
+    match (quarter, armed) {
+        (0, false) if walk => (AnimationGroup::WALK, MotionDirection::WALK_FORWARD),
+        (0, false) => (AnimationGroup::RUN, MotionDirection::FORWARD),
+        (0, true) if walk => (AnimationGroup::FIGHT_RUN, MotionDirection::WALK_FORWARD),
+        (0, true) => (AnimationGroup::FIGHT_FORW, MotionDirection::FORWARD),
+        (2, false) if walk => (
+            AnimationGroup::WALK_BACKWARD,
+            MotionDirection::WALK_BACKWARD,
+        ),
+        (2, false) => (AnimationGroup::RUN_BACKWARD, MotionDirection::BACKWARD),
+        (2, true) => (AnimationGroup::FIGHT_BACK, MotionDirection::BACKWARD),
+        (1, false) => (AnimationGroup::STEP_LEFT, MotionDirection::LEFT),
+        (1, true) => (AnimationGroup::FIGHT_CIRCLE_LEFT, MotionDirection::LEFT),
+        (_, false) => (AnimationGroup::STEP_RIGHT, MotionDirection::RIGHT),
+        (_, true) => (AnimationGroup::FIGHT_CIRCLE_RIGHT, MotionDirection::RIGHT),
+    }
+}
+
+/// The first point where the segment crosses the terrain surface, with the surface normal:
+/// the sign change of the segment's height over the terrain's between the ends, then a
+/// bisection to a tenth of a map unit.
+fn terrain_crossing(
+    terrain: &cyrus_collision::ground::TerrainGround,
+    probe: crate::player::input::Probe,
+) -> Option<crate::player::input::ProbeHit> {
+    let at = |t: f32| -> Option<(f32, [f32; 3])> {
+        let p: [f32; 3] = std::array::from_fn(|axis| {
+            probe.start[axis] + (probe.end[axis] - probe.start[axis]) * t
+        });
+        let runtime = p.map(|v| (f64::from(v) * 256.0) as i64);
+        Some((p[1] - terrain.sample(runtime)?.height as f32, p))
+    };
+    let (Some((first, _)), Some((last, _))) = (at(0.0), at(1.0)) else {
+        return None;
+    };
+    if (first <= 0.0) == (last <= 0.0) {
+        return None;
+    }
+    let (mut near, mut far) = (0.0f32, 1.0f32);
+    for _ in 0..24 {
+        let middle = (near + far) / 2.0;
+        match at(middle) {
+            Some((above, _)) if (above <= 0.0) == (first <= 0.0) => near = middle,
+            _ => far = middle,
+        }
+    }
+    let (_, point) = at(far)?;
+    let support = terrain.sample(point.map(|v| (f64::from(v) * 256.0) as i64))?;
+    let length = support
+        .normal
+        .iter()
+        .map(|&v| f64::from(v).powi(2))
+        .sum::<f64>()
+        .sqrt()
+        .max(1.0);
+    Some(crate::player::input::ProbeHit {
+        point,
+        normal: support.normal.map(|v| (f64::from(v) / length) as f32),
+    })
 }
 
 #[cfg(test)]

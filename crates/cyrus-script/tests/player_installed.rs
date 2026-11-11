@@ -602,129 +602,141 @@ fn mod_stop(app: &mut App, interrupt: bool) -> Result<u32> {
     anyhow::bail!("the run never gave way after the mod stopped")
 }
 
+/// The player's locomotion status.
+fn player_status(app: &App) -> Result<cyrus_script::script::LocomotionStatus> {
+    app.world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .and_then(|world| world.locomotion_status())
+        .context("player status")
+}
+
+/// The player's bank angle (roll), wrapped to one turn.
+fn player_roll(app: &App) -> Result<i32> {
+    let world = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .context("world")?;
+    let id = world.selected_player().context("player")?;
+    Ok(world.spatial(id)?.local.angles[2] & 2047)
+}
+
+/// The player's model matrix must equal the orientation of its absolute angles.
+fn ensure_orientation(app: &App) -> Result<()> {
+    let world = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .context("world")?;
+    let spatial = world.spatial(world.selected_player().context("player")?)?;
+    let expected = cyrus_world::transform::Matrix::orientation(spatial.local.wrapped_angles());
+    for (actual, expected) in spatial
+        .local
+        .matrix
+        .0
+        .iter()
+        .flatten()
+        .zip(expected.0.iter().flatten())
+    {
+        ensure!(
+            (actual - expected).abs() < 0.0001,
+            "claimed orientation accumulated tilt: {:?}, angles {:?}",
+            spatial.local.matrix,
+            spatial.local.angles
+        );
+    }
+    Ok(())
+}
+
+/// A running claim facing `heading`, travelling along `travel` at `speed`.
+fn run_claim(
+    heading: u16,
+    travel: u16,
+    speed: f32,
+) -> cyrus_script::player::input::LocomotionClaimed {
+    use cyrus_script::player::input::{Gait, LocomotionClaim, LocomotionClaimed};
+    LocomotionClaimed(Some(LocomotionClaim {
+        heading,
+        travel,
+        speed,
+        gait: Gait::Run,
+        jump: false,
+        tuning: Default::default(),
+    }))
+}
+
+/// Map units covered on the ground plane between two Q8 positions.
+fn horizontal(a: [i32; 3], b: [i32; 3]) -> f64 {
+    let (dx, dz) = (f64::from(b[0] - a[0]), f64::from(b[2] - a[2]));
+    (dx * dx + dz * dz).sqrt() / 256.0
+}
+
 /// A mod claims the standing player's movement: a run covers ground on the first update, and a
 /// travel heading a quarter turn to the left moves the player that way without turning it.
 fn claim(app: &mut App) -> Result<()> {
-    use cyrus_script::player::input::{Gait, LocomotionClaim, LocomotionClaimed};
-    let status = |app: &App| {
-        app.world()
-            .resource::<ScriptActors>()
-            .current
-            .as_ref()
-            .and_then(|world| world.locomotion_status())
-            .context("player status")
-    };
-    let start = status(app)?;
+    let start = player_status(app)?;
     let heading = start.heading;
     let speed = f32::from(start.run_speed);
-    let claimed = |travel: u16| {
-        LocomotionClaimed(Some(LocomotionClaim {
-            heading,
-            travel,
-            speed,
-            gait: Gait::Run,
-            jump: false,
-            tuning: Default::default(),
-        }))
-    };
-    let horizontal = |a: [i32; 3], b: [i32; 3]| {
-        let (dx, dz) = (f64::from(b[0] - a[0]), f64::from(b[2] - a[2]));
-        (dx * dx + dz * dz).sqrt() / 256.0
-    };
-    app.insert_resource(claimed(heading));
+    app.insert_resource(run_claim(heading, heading, speed));
     app.update();
-    let first = status(app)?;
+    let first = player_status(app)?;
     let moved = horizontal(start.position, first.position);
     eprintln!("first claimed update covered {moved:.2} map units at run speed {speed}");
     ensure!(
         moved > 0.0,
         "a claimed run did not move on its first update"
     );
-    // Turning while running banks the player; standing straightens it again.
-    let roll = |app: &App| -> Result<i32> {
-        let world = app
-            .world()
-            .resource::<ScriptActors>()
-            .current
-            .as_ref()
-            .context("world")?;
-        let id = world.selected_player().context("player")?;
-        Ok(world.spatial(id)?.local.angles[2] & 2047)
-    };
-    let mut banked = 0;
-    let orientation = |app: &App| -> Result<()> {
-        let world = app
-            .world()
-            .resource::<ScriptActors>()
-            .current
-            .as_ref()
-            .context("world")?;
-        let spatial = world.spatial(world.selected_player().context("player")?)?;
-        let expected = cyrus_world::transform::Matrix::orientation(spatial.local.wrapped_angles());
-        for (actual, expected) in spatial
-            .local
-            .matrix
-            .0
-            .iter()
-            .flatten()
-            .zip(expected.0.iter().flatten())
-        {
-            ensure!(
-                (actual - expected).abs() < 0.0001,
-                "claimed orientation accumulated tilt: {:?}, angles {:?}",
-                spatial.local.matrix,
-                spatial.local.angles
-            );
-        }
-        Ok(())
-    };
-    for turn in 1..=12u16 {
-        let facing = cyrus_world::heading::wrap(heading.wrapping_add(turn * 40));
-        app.insert_resource(LocomotionClaimed(Some(LocomotionClaim {
-            heading: facing,
-            travel: facing,
-            speed: 0.0,
-            gait: Gait::Run,
-            jump: false,
-            tuning: Default::default(),
-        })));
-        app.update();
-        banked = banked.max(roll(app)?);
-        orientation(app)?;
-    }
-    ensure!(banked != 0, "a running turn did not bank the player");
+    claimed_turns_bank_the_player(app, heading)?;
     // Jump directly out of a banked running turn. The airborne controller must relax the
     // bank as well as keep the model matrix consistent with its absolute facing.
     jump(app, None)?;
     for _ in 0..20 {
         app.update();
-        orientation(app)?;
+        ensure_orientation(app)?;
     }
-    ensure!(roll(app)? == 0, "jump retained the running bank");
+    ensure!(player_roll(app)? == 0, "jump retained the running bank");
     // Stand, then travel to the left of the facing.
-    app.insert_resource(LocomotionClaimed(Some(LocomotionClaim {
-        heading,
-        travel: heading,
-        speed: 0.0,
-        gait: Gait::Run,
-        jump: false,
-        tuning: Default::default(),
-    })));
+    app.insert_resource(run_claim(heading, heading, 0.0));
     for _ in 0..20 {
         app.update();
     }
     ensure!(
-        roll(app)? == 0,
+        player_roll(app)? == 0,
         "a standing player stayed banked at {}",
-        roll(app)?
+        player_roll(app)?
     );
-    let before = status(app)?;
+    claimed_sidestep(app, heading, speed)?;
+    claimed_obstacle_route(app, f32::from(start.walk_speed))
+}
+
+/// Turning while running banks the player, every update keeps the matrix consistent.
+fn claimed_turns_bank_the_player(app: &mut App, heading: u16) -> Result<()> {
+    let mut banked = 0;
+    for turn in 1..=12u16 {
+        let facing = cyrus_world::heading::wrap(heading.wrapping_add(turn * 40));
+        app.insert_resource(run_claim(facing, facing, 0.0));
+        app.update();
+        banked = banked.max(player_roll(app)?);
+        ensure_orientation(app)?;
+    }
+    ensure!(banked != 0, "a running turn did not bank the player");
+    Ok(())
+}
+
+/// A claim travelling a quarter turn left of the facing moves along the travel heading and
+/// leaves the facing alone.
+fn claimed_sidestep(app: &mut App, heading: u16, speed: f32) -> Result<()> {
+    let before = player_status(app)?;
     let left = cyrus_world::heading::wrap(heading.wrapping_add(512));
-    app.insert_resource(claimed(left));
+    app.insert_resource(run_claim(heading, left, speed));
     for _ in 0..4 {
         app.update();
     }
-    let after = status(app)?;
+    let after = player_status(app)?;
     ensure!(after.heading == heading, "a sidestep turned the player");
     let moved = horizontal(before.position, after.position);
     ensure!(moved > 0.0, "a sideways claim did not move");
@@ -736,8 +748,13 @@ fn claim(app: &mut App) -> Result<()> {
         toward < away,
         "the sidestep did not move toward the travel heading"
     );
-    // Runtime reproduction: this route crosses nearby obstacle contacts, whose wall response
-    // adjusts the original controller's heading. A mod owns facing separately from displacement.
+    Ok(())
+}
+
+/// Runtime reproduction: this route crosses nearby obstacle contacts, whose wall response
+/// adjusts the original controller's heading. A mod owns facing separately from displacement.
+fn claimed_obstacle_route(app: &mut App, walk_speed: f32) -> Result<()> {
+    use cyrus_script::player::input::{Gait, LocomotionClaim, LocomotionClaimed};
     app.world_mut()
         .resource_mut::<ScriptActors>()
         .current
@@ -749,13 +766,13 @@ fn claim(app: &mut App) -> Result<()> {
         app.insert_resource(LocomotionClaimed(Some(LocomotionClaim {
             heading: 883,
             travel: 883,
-            speed: f32::from(start.walk_speed),
+            speed: walk_speed,
             gait: Gait::Walk,
             jump: false,
             tuning: Default::default(),
         })));
         app.update();
-        let current = status(app)?;
+        let current = player_status(app)?;
         if !current.airborne {
             ensure!(
                 current.heading == 883,

@@ -452,32 +452,9 @@ mod tests {
     use bevy::{asset::RenderAssetUsages, mesh::PrimitiveTopology};
     use std::time::Duration;
 
-    fn fixture(surface: Surface, projected: bool) -> (App, Entity, Entity) {
-        let mut app = App::new();
-        app.world_mut().spawn_empty();
-        let mut camera = Camera::default();
-        if projected {
-            camera.computed.clip_from_view = bevy::camera::CameraProjection::get_clip_from_view(
-                &PerspectiveProjection::default(),
-            );
-            camera.computed.target_info = Some(bevy::camera::RenderTargetInfo {
-                physical_size: UVec2::new(640, 480),
-                scale_factor: 1.0,
-            });
-        }
-        let camera = app
-            .world_mut()
-            .spawn((
-                camera,
-                crate::camera::ViewCamera,
-                GlobalTransform::from(
-                    Transform::from_xyz(-CELL_SIZE, 25.0, 25.0)
-                        .looking_at(Vec3::new(-CELL_SIZE, 0.0, -CELL_SIZE), Vec3::Y),
-                ),
-            ))
-            .id();
-        let mut environments = Assets::default();
-        let env = environments.add(Environment {
+    /// A four by four environment with level ground and one animated water vertex.
+    fn flat_environment() -> Environment {
+        Environment {
             world_palette: Vec::new(),
             effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
@@ -505,22 +482,11 @@ mod tests {
                 parameters: [24.0, 512.0, 0.0],
                 animated_vertices: (0..16).map(|i| i == 10).collect(),
             }),
-        });
-        app.insert_resource(environments)
-            .insert_resource(EnvironmentRequest(env))
-            .init_resource::<Fidelity>()
-            .init_resource::<Assets<Mesh>>()
-            .init_resource::<WaterPlayback>()
-            .init_resource::<Time<Real>>()
-            .add_systems(Update, animate_water);
-        if surface == Surface::Shader {
-            let mut inputs = crate::hooks::ShaderInputs::default();
-            inputs.0.insert(
-                crate::hooks::WATER_SURFACE.into(),
-                [1.0, 0.0, 1.2, CELL_SIZE],
-            );
-            app.insert_resource(inputs);
         }
+    }
+
+    /// The terrain mesh of that environment: sixteen vertices in a grid, two triangles a cell.
+    fn flat_terrain_mesh() -> Mesh {
         let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),
@@ -554,6 +520,51 @@ mod tests {
                 })
                 .collect(),
         ));
+        mesh
+    }
+
+    fn fixture(surface: Surface, projected: bool) -> (App, Entity, Entity) {
+        let mut app = App::new();
+        app.world_mut().spawn_empty();
+        let mut camera = Camera::default();
+        if projected {
+            camera.computed.clip_from_view = bevy::camera::CameraProjection::get_clip_from_view(
+                &PerspectiveProjection::default(),
+            );
+            camera.computed.target_info = Some(bevy::camera::RenderTargetInfo {
+                physical_size: UVec2::new(640, 480),
+                scale_factor: 1.0,
+            });
+        }
+        let camera = app
+            .world_mut()
+            .spawn((
+                camera,
+                crate::camera::ViewCamera,
+                GlobalTransform::from(
+                    Transform::from_xyz(-CELL_SIZE, 25.0, 25.0)
+                        .looking_at(Vec3::new(-CELL_SIZE, 0.0, -CELL_SIZE), Vec3::Y),
+                ),
+            ))
+            .id();
+        let mut environments = Assets::default();
+        let env = environments.add(flat_environment());
+        app.insert_resource(environments)
+            .insert_resource(EnvironmentRequest(env))
+            .init_resource::<Fidelity>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<WaterPlayback>()
+            .init_resource::<Time<Real>>()
+            .add_systems(Update, animate_water);
+        if surface == Surface::Shader {
+            let mut inputs = crate::hooks::ShaderInputs::default();
+            inputs.0.insert(
+                crate::hooks::WATER_SURFACE.into(),
+                [1.0, 0.0, 1.2, CELL_SIZE],
+            );
+            app.insert_resource(inputs);
+        }
+        let mesh = flat_terrain_mesh();
         let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let entity = app
             .world_mut()

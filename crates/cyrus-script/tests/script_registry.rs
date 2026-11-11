@@ -17621,6 +17621,8 @@ fn walking_with_the_animation_system_off_still_advances_and_keeps_the_group() {
                         walk_mode: true,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
+                        probes: None,
                     }),
                     ..Default::default()
                 },
