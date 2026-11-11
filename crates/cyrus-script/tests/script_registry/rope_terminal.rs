@@ -369,3 +369,70 @@ fn a_weapon_tip_through_a_rope_terminal_clanks_once_like_any_unowned_model() {
         );
     }
 }
+
+#[test]
+fn rope_swing_suspends_outside_the_retained_window_and_resumes_on_reentry() {
+    use cyrus_script::script::{OrdinaryInputs, ScriptInputs, camera::CameraPose};
+    let (world, data, scene) = rope_world(rope("TERMINAL"), true);
+    let mut scripts = cache();
+    scripts.updates.ropes_load = Some(true);
+    add_standalone_receivers(&mut scripts);
+    // The fixture rewrites placement identity. Rebuild its matching source for restoration.
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 65535];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    // A controlled nonzero state exposes updates even with the installed zero-swing maximum.
+    saved["ropes"][0]["amplitude"] = 1024.into();
+    saved["ropes"][0]["step"] = 200.into();
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    world
+        .initialize_player_spatial(
+            world.selected_player().unwrap(),
+            [0, 0, 65535 * 256],
+            [0; 3],
+        )
+        .unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [5120 * 256, 0, 65535 * 256],
+            angles: [0; 3],
+        })
+        .unwrap();
+    world.ordinary_actors([5120, 65535]).unwrap();
+    let frozen = world.ropes()[0].state();
+    let advance = |world: &mut ScriptWorld, view| {
+        world
+            .update_ordinary(
+                &data,
+                view,
+                OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+    };
+    advance(&mut world, [5120, 65535]);
+    assert_eq!(world.ropes()[0].state(), frozen);
+    // Move the camera near the base without changing the retained cell.
+    let mut placement = world.selected_player_placement().unwrap();
+    placement.camera_position = [0, 0, 65535 * 256];
+    world.restore_selected_player_placement(&placement).unwrap();
+    advance(&mut world, [5120, 65535]);
+    assert_eq!(world.ropes()[0].state(), frozen);
+    // The first update in the rebuilt near window must resume the rope immediately.
+    advance(&mut world, [0, 65535]);
+    assert_eq!(world.ropes()[0].amplitude, 0);
+    assert_eq!(world.ropes()[0].step, 0);
+    assert_ne!(world.ropes()[0].state(), frozen);
+}

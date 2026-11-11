@@ -1755,8 +1755,15 @@ impl ScriptWorld {
         ticks: i32,
         sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        let view = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.rope_view());
         for rope_index in 0..self.ropes.len() {
             let rope = &mut self.ropes[rope_index];
+            if !Self::rope_in_retained_window(rope, view) {
+                continue;
+            }
             rope.clamp_nodes();
             let sum = rope.step_sum();
             let owner = rope.attachments.first().map(|attachment| attachment.actor);
@@ -1777,6 +1784,9 @@ impl ScriptWorld {
         }
         let actors = &self.actors;
         for rope in &mut self.ropes {
+            if !Self::rope_in_retained_window(rope, view) {
+                continue;
+            }
             rope.update(
                 frame_scale,
                 ticks,

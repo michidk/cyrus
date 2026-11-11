@@ -306,19 +306,8 @@ impl ScriptWorld {
             if rope.end_model().is_none() {
                 continue;
             }
-            if let Some(view) = view {
-                // MPRP bases are authored in whole map units. Undo the export transform
-                // and round before comparing against the published Q8 view.
-                let base = cyrus_game::rope::engine_position(rope.position)
-                    .map(|value| i64::from(value.round() as i32) * 256);
-                let distance: u64 = base
-                    .into_iter()
-                    .zip(view)
-                    .map(|(base, view)| base.abs_diff(i64::from(view)))
-                    .sum();
-                if distance >= 4096 * 256 {
-                    continue;
-                }
+            if !Self::rope_in_retained_window(rope, view) {
+                continue;
             }
             let Some((position, _)) = rope.end_collision_pose() else {
                 continue;
@@ -353,6 +342,23 @@ impl ScriptWorld {
             });
         }
         Ok(records)
+    }
+
+    pub(super) fn rope_in_retained_window(
+        rope: &cyrus_game::rope::Rope,
+        view: Option<[i32; 3]>,
+    ) -> bool {
+        let Some(view) = view else {
+            return true;
+        };
+        // MPRP bases are authored in whole map units; admission uses signed Q8.
+        let base = cyrus_game::rope::engine_position(rope.position)
+            .map(|value| i64::from(value.round() as i32) * 256);
+        base.into_iter()
+            .zip(view)
+            .map(|(base, view)| base.abs_diff(i64::from(view)))
+            .sum::<u64>()
+            < 4096 * 256
     }
 
     /// The stored collision pose of the transient record `model` (a rope's terminal).

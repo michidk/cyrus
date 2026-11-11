@@ -114,6 +114,60 @@ fn installed_rope_terminals_are_transient_collision_candidates() -> Result<()> {
             "{world}: next cell drops the terminal"
         );
 
+        // Restore a controlled nonzero swing outside the window, then advance through
+        // the public world loop. This checks simulation lifetime, not only candidates.
+        let mut saved = serde_json::to_value(restored.snapshot(&sources)?)?;
+        saved["ropes"][rope]["amplitude"] = 1024.into();
+        saved["ropes"][rope]["step"] = 200.into();
+        let mut resumed = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved)?,
+            &sources,
+            WorldRestoreContext {
+                generation: 3,
+                globals: Default::default(),
+                samples: &Default::default(),
+            },
+        )?;
+        let frozen = resumed.ropes()[rope].state();
+        let advance = |world: &mut ScriptWorld, view| -> Result<()> {
+            world.update_ordinary(
+                &data,
+                view,
+                cyrus_script::script::OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: cyrus_script::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+        };
+        advance(&mut resumed, [view[0] + 512, view[1]])?;
+        ensure!(
+            resumed.ropes()[rope].state() == frozen,
+            "{world}: excluded swing frozen"
+        );
+        placement.camera_position = base;
+        resumed.restore_selected_player_placement(&placement)?;
+        advance(&mut resumed, [view[0] + 512, view[1]])?;
+        ensure!(
+            resumed.ropes()[rope].state() == frozen,
+            "{world}: same-cell swing frozen"
+        );
+        advance(&mut resumed, view)?;
+        ensure!(
+            resumed.ropes()[rope].state() != frozen,
+            "{world}: rebuilt window resumes swing"
+        );
+        ensure!(
+            resumed.ropes()[rope].amplitude <= resumed.ropes()[rope].maximum,
+            "{world}: resumed amplitude clamped to installed maximum"
+        );
+
         let models = scene
             .actor_collision
             .as_ref()

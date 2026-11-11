@@ -175,6 +175,8 @@ impl ScriptWorld {
         }
         self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
         super::reassert_player_update_exclusion(&mut self.actors, &self.globals);
+        // Build the retained window before servicing ropes, including direct public callers.
+        self.ordinary_actors(view)?;
         // The render lists and the rope system run before the shells and the ordinary actors.
         self.update_ropes(
             i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),

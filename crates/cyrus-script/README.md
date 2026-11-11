@@ -62,6 +62,8 @@ Verified: ordinary collision admits a rope terminal from the published camera po
 sampled when the map window rebuilds. It uses the rope base in all three axes and excludes
 a Manhattan distance of 4096 map units or more. Preload keeps all terminals available.
 World snapshots retain the sampled position so a same-cell restore keeps the same candidates.
+The same retained membership gates rope amplitude service, swing and attachment climbs.
+Excluded ropes preserve their dynamic state and resume on the first admitted update.
 This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
 
 ## Module guide
