@@ -25,9 +25,9 @@ try {
   provenance = await observeBrowserBuild(cdp,build,url);
   await cdp.call('Page.enable');
   await cdp.call('Emulation.setDeviceMetricsOverride',{width:640,height:480,deviceScaleFactor:1,mobile:false});
-  // Stop only this disposable test page after the first completed world update.
+  // Stop only this disposable test page after matched ordinary world update four.
   // Readback must not run another simulation callback while the GPU returns pixels.
-  await cdp.call('Page.addScriptToEvaluateOnNewDocument',{source:`(${stopAtWorldEndpoint.toString()})()`});
+  await cdp.call('Page.addScriptToEvaluateOnNewDocument',{source:`(${stopAtWorldEndpoint.toString()})(4)`});
   await cdp.call('Page.navigate',{url:url.href});
   while(performance.now() < deadline && performance.now() - start < 300000) {
     const state = await evaluate(`(() => {const p=document.getElementById('install-picker');if(p&&!p.dataset.submitted){p.dataset.submitted='1';p.requestSubmit();}window.__cyrusInspectScripts=true;return {startup:window.__cyrusStartup,menu:window.__cyrusStartup?.state==='Menu'?window.__cyrusMenu:null,world:window.__cyrusCapture?{ready:window.__cyrusCapture.ready,world:window.__cyrusCapture.world,frame:window.__cyrusCapture.scripts?.globals?.world_loop_frame}:null,error:document.getElementById('failure')?.textContent};})()`);
@@ -39,12 +39,17 @@ try {
     if(state.startup?.state==='InGame'&&state.world?.ready) {
       assert(movieSeen&&exited,'world bypassed movie exit');
       if(!await evaluate('window.__cyrusEndpointStopped===true')){await delay(20);continue;}
-      const capture = await captureStoppedFrame(cdp, `({startup:window.__cyrusStartup,world:window.__cyrusCapture.world,frame:window.__cyrusCapture.scripts.globals.world_loop_frame})`);
+      const capture = await captureStoppedFrame(cdp, `({startup:window.__cyrusStartup,world:window.__cyrusCapture.world,frame:window.__cyrusCapture.scripts.globals.world_loop_frame,player:window.__cyrusCapture.scripts.actors.filter(a=>a.source==='player').map(a=>({position:a.spatial?.effective?.position,angles:a.spatial?.effective?.angles}))})`);
       frozenEndpoint=capture.observation;
       assert.equal(frozenEndpoint.world,String(destination.world),'wrong installed startup destination');
       assert.equal(frozenEndpoint.startup.state,'InGame','startup presentation did not hand off to gameplay');
       assert(frozenEndpoint.startup.clock.game_seconds>0,'world clock did not start');
-      assert(frozenEndpoint.frame>0&&frozenEndpoint.frame<=4,'first rendered frame capture overshot its update cutoff');
+      assert.equal(frozenEndpoint.frame,4,'matched world update cutoff');
+      assert.equal(frozenEndpoint.player.length,1,'selected player unavailable');
+      assert.equal(frozenEndpoint.player[0].angles[1],1024,'Introduction entry heading');
+      const player=frozenEndpoint.player[0].position, camera=frozenEndpoint.startup.camera_pose.position;
+      assert.equal(camera[0],player[0],'entry camera X offset');
+      assert.equal(camera[2]-player[2],250*256,'entry camera must follow behind the Introduction heading');
       writeFileSync(`${output}/first-rendered-world.png`,Buffer.from(capture.data,'base64'));shots.push('first-rendered-world');
       done=true;break;
     }

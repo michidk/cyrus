@@ -264,7 +264,7 @@ node dev/scripts/test-browser-movie-handoff.mjs CDP_URL PAGE_URL INSTALL_URL OUT
 
 The driver verifies the installed destination, movie exit, clock start and the
 first rendered world endpoint. Inspect that frame for title/loading teardown.
-After the first completed world update, it stops animation callbacks in its
+At ordinary update four, it checks the Introduction player heading and following camera offset, then stops animation callbacks in its
 isolated page before screenshot readback, then rejects any change in the observed endpoint during readback. Closing the
 context disposes that stopped page. Each seek has a 90-second bound and the whole
 run has a five-minute bound; decoding progress is distinct from a stall. This

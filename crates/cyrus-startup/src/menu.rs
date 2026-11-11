@@ -137,7 +137,7 @@ pub struct MenuState {
     /// Cinematic loading/playback; menu input is suspended while present.
     pub movie: Option<MovieStatus>,
     #[serde(skip)]
-    pub(super) enter_world: bool,
+    pub(super) enter_world: Option<i32>,
     /// A script movie ended: the paused world resumes without the book.
     #[serde(skip)]
     pub(super) resume_game: bool,
@@ -470,7 +470,7 @@ pub(super) fn launch(
         }
         Some(LaunchAction::NewGameWithoutMovie) => {
             reset_for_new_game(&mut commands);
-            menu.enter_world = true;
+            menu.enter_world = Some(0);
             menu.ready = false;
         }
         Some(LaunchAction::Movie(index)) => {
@@ -715,13 +715,13 @@ pub(super) fn drive(
         next.set(AppState::InGame);
         return;
     }
-    if menu.enter_world {
-        menu.enter_world = false;
+    if let Some(heading) = menu.enter_world.take() {
         begin_world_entry(
             &mut commands,
             &mut images,
             &mut next,
             book,
+            heading,
             input.0.elapsed_secs_f64(),
         );
         menu.ready = false;
@@ -1214,6 +1214,7 @@ fn begin_world_entry(
     images: &mut Assets<Image>,
     next: &mut NextState<AppState>,
     book: &MenuAsset,
+    heading: i32,
     elapsed: f64,
 ) {
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
@@ -1221,7 +1222,7 @@ fn begin_world_entry(
     ));
     commands.insert_resource(cyrus_script::player::placement::MarkerEntry {
         marker: book.new_game.marker as usize,
-        heading: 0,
+        heading,
     });
     begin_world_loading(commands, images, next, book, elapsed);
 }
@@ -1383,7 +1384,7 @@ mod tests {
         request.action = Some(LaunchAction::NewGameWithoutMovie);
         world.insert_resource(request);
         world.run_system_once(launch).unwrap();
-        assert!(world.resource::<MenuState>().enter_world);
+        assert_eq!(world.resource::<MenuState>().enter_world, Some(0));
         assert!(!world.resource::<LaunchRequest>().skip_movies);
         assert!(
             world

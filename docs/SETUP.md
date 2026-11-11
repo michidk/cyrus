@@ -1019,7 +1019,8 @@ Installed browser movie-to-world acceptance is available through
 Use a secure browser origin, such as HTTPS or browser-local loopback, and a server
 started with the explicit read-only install. The isolated context follows the
 installed movie skip controls and checks the final exit. It stops animation
-callbacks after the first completed world update, before screenshot readback.
+callbacks at ordinary update four, before screenshot readback, and checks the
+Introduction entry heading and following camera offset.
 It does not rerun fresh/autosave policy cases or claim natural full-movie timing parity.
 
 The original rope driver retains readiness diagnostics separately from gameplay

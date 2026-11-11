@@ -181,3 +181,5 @@ core. No enters the short death book; Yes submits the retained selection to the
 host's `LastGameLoader`. Missing capture or load support produces an explicit
 error. Native/browser rendered parity and successful restored-session acceptance
 remain unverified; image resizing still requires comparison.
+
+Introduction completion retains its documented entry heading through the loading request. Direct world entry and the no-movie shortcut retain heading zero.
