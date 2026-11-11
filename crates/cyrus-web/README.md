@@ -254,3 +254,18 @@ The observer reads state without advancing the clock.
 Each run has a three-minute endpoint bound; autosave reload has a separate
 90-second bound. Full movie completion is separate acceptance. Wall duration
 is not a game timing measurement. The result records installed movie metadata.
+
+Movie exit has separate installed acceptance through the authored public Escape
+skip points and the final exit, without replacing movie bytes or changing time:
+
+```sh
+node dev/scripts/test-browser-movie-handoff.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT
+```
+
+The driver verifies the installed destination, movie exit, clock start and the
+first rendered world endpoint. Inspect that frame for title/loading teardown.
+After the first completed world update, it stops animation callbacks in its
+isolated page before screenshot readback, then rejects any change in the observed endpoint during readback. Closing the
+context disposes that stopped page. Each seek has a 90-second bound and the whole
+run has a five-minute bound; decoding progress is distinct from a stall. This
+checks public skip exit, not natural playback of every movie frame.

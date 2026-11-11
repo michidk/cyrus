@@ -1006,3 +1006,11 @@ It does **not** establish attachment, animation, dormant-world or pixel parity:
 compare the before/after documents and rendered capture separately. The driver
 intentionally leaves that comparison unverified rather than treating a successful
 load as full #46 acceptance.
+
+Installed browser movie-to-world acceptance is available through
+`node dev/scripts/test-browser-movie-handoff.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`.
+Use a secure browser origin, such as HTTPS or browser-local loopback, and a server
+started with the explicit read-only install. The isolated context follows the
+installed movie skip controls and checks the final exit. It stops animation
+callbacks after the first completed world update, before screenshot readback.
+It does not rerun fresh/autosave policy cases or claim natural full-movie timing parity.
