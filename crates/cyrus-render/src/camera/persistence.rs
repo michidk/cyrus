@@ -1,5 +1,5 @@
 //! Camera replacement preserves view state without framing or player movement.
-use super::{FlycamSettings, FrameScene, InitialView, ViewCamera, projection::GameProjection};
+use super::{DetachedView, FrameScene, InitialView, ViewCamera, projection::GameProjection};
 use anyhow::{Context, Result, ensure};
 use bevy::prelude::{
     Commands, Entity, GlobalTransform, PerspectiveProjection, Projection, Quat, Transform, Vec3,
@@ -56,7 +56,6 @@ pub struct CameraSnapshot {
     projection: [f32; 4],
     near_clip_plane: [f32; 4],
     flycam: bool,
-    speed: f32,
     frame_scene: bool,
     initial: Option<Pose>,
 }
@@ -66,7 +65,7 @@ pub struct CameraCandidate {
     active: Option<bool>,
     transform: Transform,
     projection: Projection,
-    flycam: FlycamSettings,
+    flycam: DetachedView,
     frame_scene: FrameScene,
     initial: Option<InitialView>,
 }
@@ -97,7 +96,7 @@ impl CameraSnapshot {
             .get()
             .context("camera projection implementation unsupported")?;
         let flycam = world
-            .get_resource::<FlycamSettings>()
+            .get_resource::<DetachedView>()
             .context("camera controls absent")?;
         let frame = world
             .get_resource::<FrameScene>()
@@ -120,7 +119,6 @@ impl CameraSnapshot {
             ],
             near_clip_plane: projection.near_clip_plane.to_array(),
             flycam: flycam.enabled,
-            speed: flycam.speed,
             frame_scene: frame.0,
             initial: world
                 .get_resource::<InitialView>()
@@ -142,10 +140,6 @@ impl CameraSnapshot {
                 && far > near,
             "camera projection outside supported range"
         );
-        ensure!(
-            self.speed.is_finite() && self.speed >= 0.0,
-            "camera inspection speed outside supported range"
-        );
         let near_clip_plane = Vec4::from_array(self.near_clip_plane);
         ensure!(
             near_clip_plane.is_finite() && near_clip_plane.truncate().is_normalized(),
@@ -161,9 +155,8 @@ impl CameraSnapshot {
                 far,
                 near_clip_plane,
             })),
-            flycam: FlycamSettings {
+            flycam: DetachedView {
                 enabled: self.flycam,
-                speed: self.speed,
             },
             frame_scene: FrameScene(self.frame_scene),
             initial: self
@@ -211,10 +204,7 @@ mod tests {
     #[test]
     fn camera_replacement_retains_pose_projection_and_pending_framing() {
         let mut original = World::new();
-        original.insert_resource(FlycamSettings {
-            enabled: true,
-            speed: 72.0,
-        });
+        original.insert_resource(DetachedView { enabled: true });
         original.insert_resource(FrameScene(true));
         original.insert_resource(InitialView(Transform::from_xyz(11.0, 22.0, 33.0)));
         original.spawn((

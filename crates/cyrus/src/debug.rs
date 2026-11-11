@@ -13,7 +13,7 @@ fn initialize_native_worlds(
 #[cfg(not(target_arch = "wasm32"))]
 fn update_native_world(
     mut picker: ResMut<WorldPicker>,
-    mut flycam: Option<ResMut<cyrus_render::camera::FlycamSettings>>,
+    mut flycam: Option<ResMut<cyrus_render::camera::DetachedView>>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
     request: Res<cyrus_world::lifecycle::SceneRequest>,
     mut commands: Commands,

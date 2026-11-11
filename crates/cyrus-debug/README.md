@@ -1,8 +1,7 @@
 # cyrus-debug
 
 The F1 debug menu shared by the native and browser game. It changes
-runtime fidelity individually or all at once, an independent flycam toggle and
-speed, loads an installed world from a dropdown, and launches a separate
+runtime fidelity individually or all at once, loads an installed world from a dropdown, and launches a separate
 `bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
 Resources to edit reflected resources, and Assets to inspect loaded assets.
 The inspector scrolls within its resized window. World choices show their installed
@@ -48,9 +47,9 @@ not read the install or browser DOM. A world selection enters through the game's
 loading screen and player-entry lifecycle on native and browser hosts. It clears
 the inspection camera and enters the selected world at marker zero.
 
-Flycam starts disabled unless an explicit inspection view is supplied.
-Flycam leaves the player in place. Turning it off returns the camera to the
-player pose; it does not change the fidelity settings.
+The menu has no camera controls: the view is detached only by an explicit inspection view
+or the control protocol, and free flight is the `flycam` mod (F11). Neither moves the
+player nor changes the fidelity settings.
 
 Render distance starts at the installed game's value. Changing it selects
 Modern Fog; Original clears the override and returns Fog to Faithful. Modern Fog

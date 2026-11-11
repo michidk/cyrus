@@ -12,7 +12,8 @@ use cyrus_assets::environment::{Environment, LocalLight};
 pub(crate) struct LightView<'w> {
     drive: Option<Res<'w, cyrus_script::script::CameraDrive>>,
     frame: Option<Res<'w, cyrus_script::script::CameraFrameState>>,
-    flycam: Option<Res<'w, crate::camera::FlycamSettings>>,
+    flycam: Option<Res<'w, crate::camera::DetachedView>>,
+    takeover: Option<Res<'w, crate::camera::CameraTakeover>>,
     view: Option<Res<'w, cyrus_script::script::ScriptView>>,
     request: Option<Res<'w, cyrus_world::animation::AnimationRequest>>,
 }
@@ -25,6 +26,10 @@ impl LightView<'_> {
     ) -> [i32; 2] {
         if self.drive.as_ref().is_some_and(|drive| drive.enabled)
             && !self.flycam.as_ref().is_some_and(|flycam| flycam.enabled)
+            && self
+                .takeover
+                .as_ref()
+                .is_none_or(|takeover| takeover.0.is_none())
             && let Some(published) = self
                 .frame
                 .as_ref()

@@ -16,7 +16,7 @@ fn update_web_world(
         Option<Res<cyrus_startup::StartGame>>,
     ),
     mut picker: ResMut<WorldPicker>,
-    mut flycam: Option<ResMut<cyrus_render::camera::FlycamSettings>>,
+    mut flycam: Option<ResMut<cyrus_render::camera::DetachedView>>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
     authored: Option<(
         Res<cyrus_world::lifecycle::ReloadScene>,
@@ -222,10 +222,7 @@ mod tests {
         })
         .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()))
         .insert_resource(cyrus_render::camera::InitialView(Transform::IDENTITY))
-        .insert_resource(cyrus_render::camera::FlycamSettings {
-            enabled: true,
-            ..default()
-        })
+        .insert_resource(cyrus_render::camera::DetachedView { enabled: true })
         .insert_resource(WorldPicker {
             pending: requested.map(str::to_owned),
             ..default()
@@ -252,7 +249,7 @@ mod tests {
         );
         assert!(
             !app.world()
-                .resource::<cyrus_render::camera::FlycamSettings>()
+                .resource::<cyrus_render::camera::DetachedView>()
                 .enabled
         );
         assert!(!app.world().contains_resource::<StagedWorld>());

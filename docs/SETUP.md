@@ -190,8 +190,8 @@ compass, power-ups and flags are identical; only timing-driven values differ (fr
 mid-fight, the retained death position, the script choice highlight).
 
 Headless mode creates no camera or audio backend. Control state reports a null
-flycam position; player input, preload, world export and protocol commands remain
-available. Use a windowed run for flycam and screenshot checks.
+camera position; player input, preload, world export and protocol commands remain
+available. Use a windowed run for camera and screenshot checks.
 
 Both native executables can be opened without arguments, including by double-clicking
 on Windows. If no usable install is found, the same window shows the Redguard
@@ -244,7 +244,7 @@ Entry waits for both sidecars and settles against dry terrain and static models.
 Unavailable markers, unsupported terrain, and missing player definitions report a
 player-entry error. Bounded sheathed forward walking uses the ordinary player
 update. Complete installed traversal, dynamic ground support and the original
-follow camera remain unverified; use the independent debug flycam for inspection.
+follow camera remain unverified; use the fly camera mod (F11) for inspection.
 The game camera uses the original Glide horizontal field of view, including on
 viewport resize. Its inspection position is independent of the original follow
 camera; matching the projection alone does not establish a matched view.
@@ -661,13 +661,13 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F1 and use **Flycam** to switch between inspection
-and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
-an inspection pose. WASD moves it, right mouse looks,
-and Space/Shift moves up/down; its speed is adjustable in the same menu.
+The view is detached from the player when `--view` or `?view=` supplies an inspection
+pose, or when the control protocol's `flycam` command asks for it; it then stays where it
+was put. Free flight is the bundled `flycam` mod: activate it under F1, then F11 flies
+(WASD, mouse, Space/Left Shift; the speed is a setting of the mod). Neither moves the player.
 F1 world selections show the installed loading screen while the destination assets
 load, then recreate the player at marker zero and return to the gameplay camera.
-Changing fidelity does not toggle flycam. Turning it off preserves the player
+Changing fidelity does not detach the view. Detaching preserves the player
 position. Initial placement uses the installed player marker. The ordinary player
 update supports bounded sheathed forward, backward and lateral movement; complete installed traversal
 and the original follow camera remain unfinished.

@@ -3209,6 +3209,7 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "cyrus-config",
+ "cyrus-console",
  "cyrus-debug",
  "cyrus-render",
  "cyrus-script",

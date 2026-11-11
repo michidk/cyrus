@@ -2,7 +2,8 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_game::AppState;
 use cyrus_game::fidelity::Fidelity;
-use cyrus_render::camera::FlycamSettings;
+use cyrus_render::camera::CameraTakeover;
+use cyrus_render::camera::DetachedView;
 use cyrus_render::camera::ViewCamera;
 use cyrus_script::player::Player;
 use cyrus_script::player::PlayerPlugin;
@@ -10,7 +11,7 @@ use cyrus_script::player::input::PlayerBindings;
 use cyrus_script::player::input::PlayerInput;
 
 #[test]
-fn flycam_moves_only_the_camera_and_returns_to_the_player() {
+fn a_flown_camera_moves_only_the_camera_and_returns_to_the_player() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
@@ -27,7 +28,7 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
     app.update();
-    assert!(!app.world().resource::<FlycamSettings>().enabled);
+    assert!(!app.world().resource::<DetachedView>().enabled);
     let entity = app
         .world_mut()
         .query_filtered::<Entity, With<Player>>()
@@ -40,10 +41,9 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
     app.update();
     assert!(app.world().resource::<PlayerInput>().forward);
     assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
-    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-        std::time::Duration::from_millis(100),
-    ));
-    app.world_mut().resource_mut::<FlycamSettings>().enabled = true;
+    // A mod flies the camera by writing a pose every frame.
+    let flown = Transform::from_xyz(300.0, 40.0, -200.0);
+    app.insert_resource(CameraTakeover(Some(flown)));
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::KeyW);
@@ -57,9 +57,9 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
         .query_filtered::<Entity, With<ViewCamera>>()
         .single(app.world())
         .unwrap();
-    assert_ne!(*app.world().get::<Transform>(camera).unwrap(), before);
+    assert_eq!(*app.world().get::<Transform>(camera).unwrap(), flown);
     assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
-    app.world_mut().resource_mut::<FlycamSettings>().enabled = false;
+    app.insert_resource(CameraTakeover(None));
     app.update();
     assert_eq!(*app.world().get::<Transform>(camera).unwrap(), before);
     assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
@@ -86,7 +86,7 @@ fn explicit_inspection_pose_enables_flycam() {
         .set(AppState::InGame);
     app.update();
     app.update();
-    assert!(app.world().resource::<FlycamSettings>().enabled);
+    assert!(app.world().resource::<DetachedView>().enabled);
     assert!(!app.world().contains_resource::<InitialView>());
     let camera = app
         .world_mut()

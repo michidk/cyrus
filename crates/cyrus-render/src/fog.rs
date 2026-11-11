@@ -1578,14 +1578,11 @@ mod tests {
         app.update();
         assert!(observe(&app)?.rows_after_lookup_256.is_empty());
         app.world_mut().resource_mut::<ScriptView>().source = source;
-        app.insert_resource(crate::camera::FlycamSettings {
-            enabled: true,
-            ..default()
-        });
+        app.insert_resource(crate::camera::DetachedView { enabled: true });
         app.update();
         assert!(observe(&app)?.rows_after_lookup_256.is_empty());
         app.world_mut()
-            .resource_mut::<crate::camera::FlycamSettings>()
+            .resource_mut::<crate::camera::DetachedView>()
             .enabled = false;
         app.update();
         assert_eq!(

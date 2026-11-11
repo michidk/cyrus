@@ -44,7 +44,7 @@ Settings come from `settings.toml` in the config directory (see `docs/SETUP.md`)
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
 from a writable directory. On Windows the executable is `cyrus.exe`.
 The Linux archive uses Ubuntu 24.04 system libraries.
-In any windowed launch, press F1 to choose a world, set flycam speed, and
+In any windowed launch, press F1 to choose a world, and
 change runtime fidelity. The menu remains available across startup and world entry.
 
 This crate owns native settings and preference storage, binding initialization,

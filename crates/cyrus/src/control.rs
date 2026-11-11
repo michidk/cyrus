@@ -182,7 +182,7 @@ fn handle(
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam): (
         Res<cyrus_script::player::input::PlayerInput>,
-        Option<ResMut<cyrus_render::camera::FlycamSettings>>,
+        Option<ResMut<cyrus_render::camera::DetachedView>>,
     ),
     mut camera: Query<&mut Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
@@ -825,7 +825,7 @@ mod tests {
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
         .init_resource::<cyrus_script::player::input::PlayerInput>()
-        .init_resource::<cyrus_render::camera::FlycamSettings>()
+        .init_resource::<cyrus_render::camera::DetachedView>()
         .insert_resource(SceneRequest(String::new()))
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);

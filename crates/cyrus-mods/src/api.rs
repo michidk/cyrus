@@ -405,6 +405,8 @@ pub(crate) struct Sources<'w, 's> {
     values: Res<'w, ModSettings>,
     published: Res<'w, SceneValues>,
     look: Option<Res<'w, ModernLook>>,
+    console: Option<Res<'w, cyrus_console::Console>>,
+    logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
     view: Query<'w, 's, &'static Transform, With<ViewCamera>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     bindings: Inputs<'w>,
@@ -495,22 +497,35 @@ pub(crate) fn exchange(
             u32::from(camera.view_angles[1].wrapping_neg() & 2047)
         });
 
-    input.held = held_actions(
-        &src.bindings
-            .bindings()
-            .sample_devices(src.bindings.devices()),
-    );
-    input.pressed = src
-        .keys
-        .get_pressed()
-        .map(|key| format!("{key:?}"))
-        .collect();
-    input.just_pressed = src
-        .keys
-        .get_just_pressed()
-        .map(|key| format!("{key:?}"))
-        .collect();
-    input.mouse_delta = src.mouse.delta.to_array().to_vec();
+    // Keys typed into the console or read in the logbook are not the mods'.
+    let typing = src.console.as_deref().is_some_and(|console| console.open)
+        || src
+            .logbook
+            .as_deref()
+            .is_some_and(|screen| screen.suspended());
+    if typing {
+        input.held.clear();
+        input.pressed.clear();
+        input.just_pressed.clear();
+        input.mouse_delta = vec![0.0, 0.0];
+    } else {
+        input.held = held_actions(
+            &src.bindings
+                .bindings()
+                .sample_devices(src.bindings.devices()),
+        );
+        input.pressed = src
+            .keys
+            .get_pressed()
+            .map(|key| format!("{key:?}"))
+            .collect();
+        input.just_pressed = src
+            .keys
+            .get_just_pressed()
+            .map(|key| format!("{key:?}"))
+            .collect();
+        input.mouse_delta = src.mouse.delta.to_array().to_vec();
+    }
     input.delta_seconds = src.time.delta_secs();
 }
 

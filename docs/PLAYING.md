@@ -72,9 +72,10 @@ book entries is not implemented. Key rebinding starts when you activate a
 Controls entry; Escape cancels capture. Browser or desktop shortcuts may
 intercept function keys before the game receives them.
 
-F1's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
-right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
-player control. Its camera movement does not move Cyrus through the world.
+The fly camera is the bundled `flycam` mod (see `mods/README.md`): activate it in the
+Mods window under F1, then F11 toggles it. WASD flies, the mouse looks and
+Space/Left Shift moves vertically; the speed is a setting of the mod. The flight does
+not move Cyrus through the world, and keys typed into the console are ignored.
 
 Faithful controls are the default. `--controls modern` (browser
 `?controls=modern`, or F1's Player controller setting) moves Cyrus with W, A, S
