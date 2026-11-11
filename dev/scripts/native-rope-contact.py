@@ -46,6 +46,24 @@ def compare_interval(original, native, tolerance):
         raise ValueError(f'timing mismatch: original {a, b}, native {c, d}, budget {tolerance}')
 
 
+def planned_updates(expected, step_seconds, tolerance=0):
+    """Refuse an unreachable exact interval before sending gameplay input."""
+    target = sum(expected['duration']) / 2
+    count = max(1, round(target / step_seconds))
+    try:
+        compare_interval(expected, dict(duration=[count * step_seconds] * 2), tolerance)
+    except ValueError as error:
+        from fractions import Fraction
+        import math
+        original = Fraction(target).limit_denominator(1_000_000)
+        native = Fraction(step_seconds).limit_denominator(1_000_000)
+        denominator = math.lcm(original.denominator, native.denominator)
+        common = Fraction(math.lcm(int(original * denominator), int(native * denominator)), denominator)
+        raise ValueError(f'interval unavailable at measured ordinary step; reacquire original for '
+                         f'candidate common interval {float(common)} seconds; actual clocks still required') from error
+    return count
+
+
 def accepted_schedule(path):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     phases = {}
@@ -260,8 +278,7 @@ class Driver:
         step_seconds = probe[1]['game_seconds'] - probe[0]['game_seconds']
         if not 0 < step_seconds < float('inf'):
             raise RuntimeError('native ordinary timing probe did not advance')
-        target = sum(expected['duration']) / 2
-        updates = max(1, round(target / step_seconds))
+        updates = planned_updates(expected, step_seconds, self.clock_tolerance)
         events = [dict(after_updates=offset, **(
             dict(key=key, action=action) if key else {}))
             for offset, action in [(0, 'press'), (updates, 'release')]]

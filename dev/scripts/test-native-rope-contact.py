@@ -142,6 +142,25 @@ class Comparison(unittest.TestCase):
         driver.call = call
         return calls
 
+    def test_one_eighth_second_cannot_be_rounded_to_one_sixth(self):
+        with self.assertRaisesRegex(ValueError, 'candidate common interval 0.5 seconds'):
+            contact.planned_updates({'duration': [.125, .125]}, 1 / 6)
+        self.assertEqual(contact.planned_updates({'duration': [.5, .5]}, 1 / 6), 3)
+        self.assertEqual(contact.planned_updates({'duration': [.125, .125]}, 1 / 16), 2)
+
+    def test_unreachable_interval_never_sends_gameplay_schedule(self):
+        driver = contact.Driver('unused', 1, io.StringIO())
+        calls = []
+        def call(kind, **args):
+            calls.append(args)
+            return {'boundaries': [dict(after_updates=0, update=10, generation=8, game_seconds=0),
+                dict(after_updates=1, update=11, generation=8, game_seconds=1 / 6)]}
+        driver.call = call
+        with self.assertRaisesRegex(ValueError, 'interval unavailable'):
+            driver.timed_segment('walk-in', {'duration': [.125, .125]}, 'ArrowUp')
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(all('key' not in event for event in calls[0]['events']))
+
     def test_unavailable_timing_probe_never_sends_gameplay_schedule(self):
         output = io.StringIO()
         driver = contact.Driver('unused', 1, output)

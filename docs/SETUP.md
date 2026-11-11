@@ -1173,3 +1173,19 @@ stays local, outside the tracked tree. Record its method in `instrumentation`;
 debugger stops can change measured FPS, so exact boundary timing alone does not
 establish ordinary playback cadence or gameplay parity. Without this option,
 original host-input acquisition retains its conservative clock ranges.
+
+`original-rope-contact.py --schedule-frame-scale N` requires every consumed
+instrumented update to use that measured Q8 scale; the backend must wait for an
+admissible start and the driver rejects a changed scale. `--attack-frames` and
+`--continuation-frames` select bounded reacquisition lengths alongside `--frames`.
+These constrain observations and never set the original simulation clock.
+Native planning rejects an exact interval that is not a whole number of the
+measured ordinary interval before sending gameplay input. A reported common
+interval is a reacquisition candidate, not accepted timing evidence.
+
+For an ephemeral original image, set `CYRUS_RETRO_IMAGE_ARCHIVE` to a local Docker
+archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
+the live-run lock, serializes concurrent restores and verifies the requested
+image exists. An existing image requires no archive load. The helper
+`dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
+Archives remain local; recovery never removes peer images or containers.

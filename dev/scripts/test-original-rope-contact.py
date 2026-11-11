@@ -219,6 +219,17 @@ class ExactSchedule(unittest.TestCase):
             with self.subTest(wrong=wrong), self.assertRaises((ValueError, RuntimeError)):
                 module.validate_schedule(wrong, request)
 
+    def test_required_consumed_scale_cannot_be_replaced_by_same_sum(self):
+        module = Readiness().module()
+        player = dict(drawn=True, falling=0, living=0, health=100)
+        result = dict(phase='walk-in', key=None, normal_frame_rate=12, boundaries=[
+            dict(frame=10, clock_scale=0, input_state={}, player=player),
+            dict(frame=12, clock_scale=1024, input_state={}, player=player)], steps=[
+            dict(frame=10, frame_scale=256, input_state={}),
+            dict(frame=11, frame_scale=768, input_state={})])
+        with self.assertRaisesRegex(ValueError, 'consumed scale differs'):
+            module.validate_schedule(result, dict(phase='walk-in', frames=2, key=None, frame_scale=512))
+
     def test_backend_identity_change_prevents_readiness_resume(self):
         module = Readiness().module()
         with tempfile.TemporaryDirectory() as directory:
@@ -241,7 +252,8 @@ class ExactSchedule(unittest.TestCase):
                 patch.object(driver, 'input') as cleanup, patch('builtins.print') as output:
             with self.assertRaises(subprocess.CalledProcessError):
                 driver.exact_segment('backend', 2, 'walk-in', 'Up')
-            output.assert_not_called()
+            self.assertEqual(json.loads(output.call_args.args[0])['phase'], 'schedule-failure')
+            self.assertNotIn('boundary', json.loads(output.call_args.args[0]))
             cleanup.assert_called_once_with('keyup', 'Up')
 
 
