@@ -1035,13 +1035,35 @@ python3 dev/scripts/native-rope-contact.py --addr 127.0.0.1:7117 \
 ```
 
 The driver rejects incomplete or contaminated original schedules before sending
-input, prepares the sword and gravity cheat through public controls, places the
-player at the observed original baseline and records attachment state. It holds
-walk and attack for the original's observed update counts and bounds stalled
-progress. This is a comparison of input per update, not equal elapsed game time
-or automatic contact/clank equivalence. Use matched mixer recordings to assess
-sound. All held input is released on failure. Driver controls run with
-`python3 dev/scripts/test-native-rope-contact.py`.
+input. An accepted schedule must contain `start` and `end` boundary rows for each
+walk, attack and continuation phase, with `input_ack: true` and cumulative
+`clock: [before_seconds, after_seconds]` ranges. Older update-count traces need
+new bounded timing samples; FPS or a single update's tick increment cannot
+reconstruct their elapsed game time. The original reader supplies cumulative
+`game_seconds`, `clock_end`, and observed `input_state` for `Up` and the attack key.
+The original driver brackets key delivery and waits for the observed key state.
+
+The native driver prepares the sword and gravity cheat through public controls,
+places the player at the observed original baseline and records attachment state.
+It validates each input response and waits for the player action to reflect the
+requested state. State reads bracket actor reads so sample uncertainty remains
+visible. Holds use elapsed game seconds. `--clock-tolerance SECONDS` declares the
+maximum timing error, including both runs' boundary uncertainty; the default is
+exact. A mismatch fails before any displacement/contact comparison is emitted.
+A `comparison: "matched"` row establishes timing within that budget, not gameplay
+or sound equivalence. All held input is released on failure, and host deadlines
+bound stalled game clocks.
+
+For native sound evidence, run the driver in the same PulseAudio environment as
+cyrus under `dev/docker/dev/paced-audio.sh`, adding `--record-mixer OUTPUT.wav`.
+This records the paced sink's actual `cyrus.monitor` mixer output through `parec`,
+finalizes it on success or failure, and rejects empty, failed or unexpected-format
+recordings. The runtime needs `pulseaudio-utils` and `libasound2-plugins`, supplied
+by the dev image. ALSA `type null` is unsuitable. A recording alone does not
+identify a clank; compare it against the retained original WAV over accepted
+clock intervals. Driver controls run with
+`python3 dev/scripts/test-native-rope-contact.py` and
+`python3 dev/scripts/test-original-rope-contact.py`.
 
 Native rope readiness writes an atomic `OUTPUT.progress.json` before any input.
 After a readiness timeout or process restart, rerun the same command with

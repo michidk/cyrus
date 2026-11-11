@@ -12,7 +12,7 @@ DRIVER = Path(__file__).with_name('original-rope-contact.py')
 
 
 class ContactDriver(unittest.TestCase):
-    def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True, overlay=False, record=False):
+    def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True, overlay=False, record=False, clock=True, acknowledge=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'keys').touch()
@@ -27,7 +27,7 @@ class ContactDriver(unittest.TestCase):
                 'p=pathlib.Path(__file__).with_name("frame")\n'
                 'f=int(p.read_text()) if p.exists() else 3\n'
                 f'p.write_text(str(f + (0 if console else {0 if stalled else 1})))\n'
-                f'print(json.dumps({{"console_mode": ("overlay" if {overlay!r} else "interactive") if console else "closed", "counters": {{"mainloop_frame": f}}, "actors": '
+                f'print(json.dumps({{"game_seconds": f / 12 if {clock!r} else None, "clock_end": f / 12 if {clock!r} else None, "input_state": {{k: {acknowledge!r} and keys.rfind("keydown " + k + "\\n") > keys.rfind("keyup " + k + "\\n") for k in ["Up", "Control_L"]}}, "console_mode": ("overlay" if {overlay!r} else "interactive") if console else "closed", "counters": {{"mainloop_frame": f}}, "actors": '
                 f'[{{"selected": True, "drawn": {drawn!r}, "falling": int(walking) if {fall_on_walk!r} else {falling}, '
                 '"living": 0, "health": 100, "group": 0}]}))\n'
             )
@@ -99,6 +99,17 @@ class ContactDriver(unittest.TestCase):
         self.assertNotIn('keydown m\n', keys)
         self.assertNotIn('keydown s\n', keys)
         self.assertTrue(keys.endswith('keyup Escape\n'))
+
+    def test_missing_clock_and_unacknowledged_input_never_become_accepted_boundaries(self):
+        result, keys = self.run_driver(clock=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('lacks cumulative game clock', result.stderr)
+        self.assertNotIn('keydown Up', keys)
+        result, keys = self.run_driver(acknowledge=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('input was not acknowledged', result.stderr)
+        self.assertIn('keyup Up', keys)
+        self.assertNotIn('keydown Control_L', keys)
 
     def test_stalled_game_clock_fails_before_console(self):
         result, keys = self.run_driver(stalled=True)

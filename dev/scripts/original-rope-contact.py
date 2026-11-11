@@ -78,9 +78,39 @@ class Driver:
         player, = [a for a in state['actors'] if a['selected']]
         row = dict(phase=phase, frame=state['counters']['mainloop_frame'],
                    counters=state['counters'], player=player,
-                   console_mode=state.get('console_mode'))
+                   console_mode=state.get('console_mode'),
+                   game_seconds=state.get('game_seconds'), clock_end=state.get('clock_end'),
+                   input_state=state.get('input_state', {}))
         print(json.dumps(row), flush=True)
         return row
+
+    def boundary(self, phase, edge, key=None):
+        before = self.sample(phase)
+        if before['game_seconds'] is None or before['clock_end'] is None:
+            raise RuntimeError('reader lacks cumulative game clock; refusing timed gameplay')
+        if key:
+            pressed = edge == 'start'
+            self.input('keydown' if pressed else 'keyup', key)
+            deadline = time.monotonic() + self.timeout
+            while True:
+                after = self.sample(phase)
+                if after['input_state'].get(key) is pressed:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('original input was not acknowledged')
+        else:
+            after = before
+        row = dict(phase=phase, boundary=edge, input_ack=True,
+                   clock=[before['game_seconds'], after['clock_end']], player=after['player'])
+        print(json.dumps(row), flush=True)
+        return row
+
+    def segment(self, frames, phase, key=None):
+        self.boundary(phase, 'start', key)
+        try:
+            self.progress(frames, phase, validate=True)
+        finally:
+            self.boundary(phase, 'end', key)
 
     def ready(self, timeout):
         deadline = time.monotonic() + timeout
@@ -166,17 +196,9 @@ def main():
         if args.record:
             driver.recorder()
             recording = True
-        driver.input('keydown', 'Up')
-        try:
-            driver.progress(args.frames, 'walk-in', validate=True)
-        finally:
-            driver.input('keyup', 'Up')
-        driver.input('keydown', args.attack_key)
-        try:
-            driver.progress(2, 'attack', validate=True)
-        finally:
-            driver.input('keyup', args.attack_key)
-        driver.progress(12, 'continuation', validate=True)
+        driver.segment(args.frames, 'walk-in', 'Up')
+        driver.segment(2, 'attack', args.attack_key)
+        driver.segment(12, 'continuation')
     finally:
         driver.release()
         if recording:
