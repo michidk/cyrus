@@ -95,6 +95,7 @@ jobs:
           python3 dev/scripts/test-build-provenance.py
           python3 dev/scripts/test-cargo-wrapper.py
           python3 dev/scripts/test-original-startup-capture.py
+          python3 dev/scripts/test-native-startup-capture.py
           node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
 
       - name: Check surface audio

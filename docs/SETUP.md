@@ -778,6 +778,35 @@ effects report unsupported.
 supports toggling, assignment and persistence. These commands do not enable
 unsupported gameplay systems.
 
+## Native startup capture
+
+Attach `python3 dev/scripts/native-startup-capture.py <control-port>
+<host-timeline.json> --expect movie` to a native production launch. Choose
+`--expect menu` for a book-menu launch or `--expect world` for world entry.
+Run the game with a host-mounted `CYRUS_CONFIG_DIR` and hold the shared
+`/tmp/cyrus-live.lock` for its lifetime. The observer does not launch the game,
+change its startup options, or acquire a second lock.
+
+Preparation has its own `--prepare-seconds` deadline, default 180 seconds.
+The presentation deadline, `--seconds`, defaults to 45 seconds and starts
+when the title becomes visible. These are capture limits, not fidelity timing
+constants. A preparation screenshot alone cannot complete the capture.
+Success requires the title and the requested endpoint: a ready book, a movie
+with a presented frame, or positive game-clock progress in `InGame`. World
+progress always stops observation, including when a different endpoint was
+expected. A ready book fails immediately when a movie was expected.
+
+The JSON timeline retains complete control samples, transition screenshot
+requests, the stop reason and success status, including on timeout. Screenshot
+paths are resolved by the game's process; `--screenshot-dir` defaults to
+`/out` for a container with the capture directory mounted there. A screenshot
+request acknowledgement is not proof that its asynchronous PNG write finished.
+Keep the process alive until the requested files exist before collecting them.
+The observer exits nonzero on an incomplete or unexpected startup sequence.
+Keep timelines and images under ignored `magic/` and compare the same install,
+splash variant, autosave state and launch options in the original and native.
+Wall times alone do not establish game-clock transition parity.
+
 ## World audit and matched captures
 
 `cargo run -p cyrus -- --audit-worlds` scans every installed WORLD.INI entry
