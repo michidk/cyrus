@@ -269,3 +269,11 @@ isolated page before screenshot readback, then rejects any change in the observe
 context disposes that stopped page. Each seek has a 90-second bound and the whole
 run has a five-minute bound; decoding progress is distinct from a stall. This
 checks public skip exit, not natural playback of every movie frame.
+
+For a matched first-world presentation check without replaying Introduction, use
+`node dev/scripts/test-browser-world-entry.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`.
+This documented New Game entry uses public `new-game` and `skip-movies` launch
+options and stops its disposable page at ordinary update four. It checks the
+installed destination, camera publication, active world-entry fade and prepared
+player, then retains a stable screenshot for comparison at that same update.
+It does not inspect attachments or establish camera/pixel parity by itself.

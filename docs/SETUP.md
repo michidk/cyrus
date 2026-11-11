@@ -1073,3 +1073,10 @@ sending input again. An interrupted input attempt is never automatically replaye
 keep its partial JSONL and use a new output path for a fresh comparison. The output
 lock rejects concurrent drivers for the same attempt. `--ready-timeout` bounds
 startup separately from each world-progress interval.
+
+`node dev/scripts/test-browser-world-entry.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`
+uses the public New Game/movie-skip launch path to compare the first-world
+presentation at ordinary update four. It checks destination, camera, fade and
+player preparation, retains the image, and closes its isolated page within a
+90-second endpoint bound. Compare its image with the original at the same
+ordinary update; host wall duration does not establish fade timing parity.

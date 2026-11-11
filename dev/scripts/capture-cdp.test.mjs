@@ -41,3 +41,23 @@ test('the disposable page renders its first world update and drops later animati
     assert.equal(window.__cyrusEndpointStopped, true);
   } finally { delete globalThis.window; }
 });
+
+test('a matched ordinary-update cutoff permits all four updates before stopping', () => {
+  const callbacks = [];
+  globalThis.window = {
+    requestAnimationFrame: callback => callbacks.push(callback),
+    __cyrusStartup: {state:'InGame'},
+    __cyrusCapture: {ready:true,scripts:{globals:{world_loop_frame:0}}},
+  };
+  try {
+    stopAtWorldEndpoint(4);
+    const update = () => {
+      window.__cyrusCapture.scripts.globals.world_loop_frame++;
+      window.requestAnimationFrame(update);
+    };
+    window.requestAnimationFrame(update);
+    for(let frame=0;frame<5;frame++) callbacks.shift()(frame);
+    assert.equal(window.__cyrusCapture.scripts.globals.world_loop_frame,4);
+    assert.equal(window.__cyrusEndpointStopped,true);
+  } finally { delete globalThis.window; }
+});

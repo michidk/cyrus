@@ -37,6 +37,9 @@ World timing remains game-owned; this does not enable automatic actor updates.
 New Game applies the game-owned lockout reset before requesting its world. Loading a save does not apply that New Game reset.
 World entry from the book discards the paused player before recreating it at the
 requested marker, including when New Game selects the same world and marker.
+The first-world fade waits for a published gameplay camera and consumes timing
+from completed ordinary world updates. Host updates spent preparing assets do
+not consume that fade. Loading-screen fades retain their presentation timing.
 Startup, book, movie and loading presentation clear their borders to black
 independently of the last world's background colour.
 

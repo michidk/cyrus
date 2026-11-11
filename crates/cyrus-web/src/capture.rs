@@ -92,6 +92,8 @@ fn publish_startup(
     state: Res<State<cyrus_game::AppState>>,
     presentation: Res<cyrus_startup::StartupPresentation>,
     clock: Option<Res<cyrus_script::clock::SimulationClock>>,
+    fades: Query<&BackgroundColor, With<cyrus_startup::WorldEntryFade>>,
+    camera: Res<cyrus_script::script::CameraFrameState>,
 ) {
     let Some(window) = web_sys::window() else {
         return;
@@ -99,6 +101,14 @@ fn publish_startup(
     let record = serde_json::json!({
         "state": format!("{:?}", state.get()),
         "presentation": &*presentation,
+        "world_fades": fades.iter().map(|color| color.0.alpha()).collect::<Vec<_>>(),
+        "camera_published": camera.published.is_some(),
+        "camera_pose": camera.published.as_ref().map(|camera| serde_json::json!({
+            "position": camera.pose.position,
+            "angles": camera.pose.angles,
+            "render_position": camera.render.position,
+            "view_angles": camera.view_angles,
+        })),
         "clock": clock.as_ref().map(|clock| serde_json::json!({"game_seconds": clock.game_seconds()})),
     });
     let result = js_sys::JSON::parse(&record.to_string())

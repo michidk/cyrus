@@ -36,7 +36,10 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
         .add_systems(OnExit(AppState::Loading), resume_world_cameras)
         .add_systems(Update, poll.run_if(in_state(AppState::Loading)))
-        .add_systems(Update, super::fade::advance)
+        .add_systems(
+            Update,
+            super::fade::advance.after(cyrus_script::script::OrdinaryUpdates),
+        )
         .add_systems(OnEnter(AppState::InGame), fade_in_world)
         .add_systems(OnExit(AppState::Loading), cleanup);
 }

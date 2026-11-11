@@ -5,6 +5,8 @@ mod credits;
 mod examine;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
+/// Marker for installed loading and first-world black-overlay transitions.
+pub use fade::Fade as WorldEntryFade;
 mod last_game;
 mod loading;
 mod logbook;

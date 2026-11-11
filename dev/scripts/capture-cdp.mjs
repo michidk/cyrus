@@ -74,11 +74,11 @@ export async function captureStoppedFrame(cdp, expression) {
 }
 
 // Installed only in a disposable acceptance page, before the application starts.
-export function stopAtWorldEndpoint() {
+export function stopAtWorldEndpoint(minimumUpdate = 1) {
   const schedule = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = callback => schedule(time => {
     if (window.__cyrusStartup?.state === 'InGame' && window.__cyrusCapture?.ready
-        && window.__cyrusCapture?.scripts?.globals?.world_loop_frame > 0) {
+        && window.__cyrusCapture?.scripts?.globals?.world_loop_frame >= minimumUpdate) {
       window.__cyrusEndpointStopped = true;
       return;
     }
