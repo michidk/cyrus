@@ -375,6 +375,19 @@ entry's key press would; `--skip-movies` makes New Game, from the book too, ente
 introduction movie. `--scene` loads a world directly and excludes all three. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.
 
+For original startup captures, set `CYRUS_CAPTURE_STARTUP=1` when running
+`dev/scripts/original-audio-capture.sh <events.json> <out-dir> <seconds>`.
+Keep the existing `CYRUS_RETRO_RUN`, `CYRUS_RETRO_GOG` and
+`CYRUS_STATE_READER` inputs and set `CYRUS_SHOT_INTERVAL` to capture images.
+This mode waits at the DOS prompt, arms the audio recorder, takes a baseline
+image, then launches the installed executable. The timeline records that
+launch boundary and stops at the first positive world-loop frame or the
+requested duration. The default mode still waits for an already running world.
+Use an unmodified final-version run and inspect its autosave state when comparing
+startup paths; a development-mode run can select a different entry path.
+Run `python3 dev/scripts/test-original-startup-capture.py` for the recording
+order and game-clock cutoff regression without game data.
+
 The book menu reads `MENU.INI` through rgpre, using original geometry, page
 textures, indexed FNT glyphs, and GXA widgets. Up/Down navigates eligible
 entries; Enter or the configured B key activates them. Options opens Display,
