@@ -247,12 +247,12 @@ fn bind(
             .chain(parents.iter_ancestors(entity))
             .any(|node| names.get(node).is_ok_and(|name| name.as_str() == "Terrain"));
         let result = images.bind_mesh(mesh, extras, geometry, frames, flat, terrain);
-        commands.entity(entity).insert(Inspected);
+        commands.entity(entity).try_insert(Inspected);
         match result {
             Ok(Some((binding, admission))) => {
-                commands.entity(entity).insert(binding);
+                commands.entity(entity).try_insert(binding);
                 if let Some(admission) = admission {
-                    commands.entity(entity).insert(admission);
+                    commands.entity(entity).try_insert(admission);
                 }
             }
             Ok(None) => {}

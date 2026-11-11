@@ -167,14 +167,14 @@ fn bind(
             };
             Ok((model, pixels))
         })();
-        commands.entity(entity).insert(Inspected);
+        commands.entity(entity).try_insert(Inspected);
         let (polygons, pixels) = match parsed {
             Ok(model) => model,
             Err(error) => {
                 error!(
                     "model {entity:?}: camera clipping unavailable: {error}; re-export the world"
                 );
-                commands.entity(entity).insert(Visibility::Hidden);
+                commands.entity(entity).try_insert(Visibility::Hidden);
                 continue;
             }
         };
@@ -191,7 +191,7 @@ fn bind(
                 ChildOf(entity),
             ))
             .id();
-        commands.entity(entity).insert((
+        commands.entity(entity).try_insert((
             RenderLayers::none(),
             Source {
                 draw,
