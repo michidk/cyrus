@@ -12,7 +12,7 @@ DRIVER = Path(__file__).with_name('original-rope-contact.py')
 
 
 class ContactDriver(unittest.TestCase):
-    def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True):
+    def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True, overlay=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'keys').touch()
@@ -27,7 +27,7 @@ class ContactDriver(unittest.TestCase):
                 'p=pathlib.Path(__file__).with_name("frame")\n'
                 'f=int(p.read_text()) if p.exists() else 3\n'
                 f'p.write_text(str(f + (0 if console else {0 if stalled else 1})))\n'
-                f'print(json.dumps({{"counters": {{"mainloop_frame": f}}, "actors": '
+                f'print(json.dumps({{"console_mode": ("overlay" if {overlay!r} else "interactive") if console else "closed", "counters": {{"mainloop_frame": f}}, "actors": '
                 f'[{{"selected": True, "drawn": {drawn!r}, "falling": int(walking) if {fall_on_walk!r} else {falling}, '
                 '"living": 0, "health": 100, "group": 0}]}))\n'
             )
@@ -82,6 +82,14 @@ class ContactDriver(unittest.TestCase):
         self.assertNotIn('keydown s\n', keys)
         self.assertTrue(keys.endswith('keyup Escape\n'))
 
+    def test_paused_nonmodal_overlay_never_receives_text(self):
+        result, keys = self.run_driver(overlay=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('not interactive', result.stderr)
+        self.assertNotIn('keydown m\n', keys)
+        self.assertNotIn('keydown s\n', keys)
+        self.assertTrue(keys.endswith('keyup Escape\n'))
+
     def test_stalled_game_clock_fails_before_console(self):
         result, keys = self.run_driver(stalled=True)
         self.assertNotEqual(result.returncode, 0)
@@ -98,6 +106,10 @@ class ContactLauncher(unittest.TestCase):
             (run / 'Redguard').mkdir(parents=True)
             world = run / 'Redguard/WORLD.INI'
             world.write_text('[world]\nstart_world=9\n')
+            system = run / 'Redguard/SYSTEM.INI'
+            system.write_text('[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
+            installed_system = root / 'installed-system.ini'
+            installed_system.write_text('[system]\ndisable_text=yes\ndisable_debug_text=yes\n[debug]\nfinal_version=1\n')
             (run / 'game.ins').touch()
             reader = root / 'reader.py'
             reader.touch()
@@ -108,17 +120,24 @@ class ContactLauncher(unittest.TestCase):
             (tools / 'flock').write_text('#!/bin/sh\nexit 0\n')
             (tools / 'docker').write_text(
                 '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CONTACT_LOG"\n'
-                'if [ "$1" = exec ]; then echo rejected >&2; exit 7; fi\n')
+                'if [ "$1" = exec ]; then\n'
+                'grep -q "disable_debug_text=yes" "$CONTACT_SYSTEM" || exit 19\n'
+                'grep -q "disable_text=yes" "$CONTACT_SYSTEM" || exit 19\n'
+                'grep -q "final_version=0" "$CONTACT_SYSTEM" || exit 19\n'
+                'echo rejected >&2; exit 7; fi\n')
             for tool in tools.iterdir():
                 tool.chmod(0o755)
             result = subprocess.run(
                 ['bash', str(DRIVER.with_suffix('.sh')), str(run), str(reader),
                  str(placement), str(root / 'output')],
                 env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
-                         CONTACT_LOG=str(root / 'calls')),
+                         CONTACT_LOG=str(root / 'calls'),
+                         CYRUS_RETRO_SYSTEM_INI=str(installed_system), CONTACT_SYSTEM=str(system)),
                 capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 7, result.stderr)
             self.assertEqual(world.read_text(), '[world]\nstart_world=9\n')
+            self.assertEqual(system.read_text(), '[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
+            self.assertEqual((root / 'output/SYSTEM.before').read_text(), system.read_text())
             calls = (root / 'calls').read_text().splitlines()
             self.assertIn('cyrus-retro-contact:dev', calls[0])
             self.assertIn('-set dosbox hostkey=ctrlalt', calls[0])

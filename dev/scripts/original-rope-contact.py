@@ -46,9 +46,13 @@ class Driver:
     def command(self, text):
         self.key('F12')
         try:
-            before = self.sample('console-open')['frame']
+            opened = self.sample('console-open')
+            require_interactive_console(opened)
+            before = opened['frame']
             time.sleep(2 * self.pulse)
-            after = self.sample('console-open')['frame']
+            settled = self.sample('console-open')
+            require_interactive_console(settled)
+            after = settled['frame']
             if before != after:
                 raise RuntimeError('console did not pause world updates; refusing gameplay text')
             for char in text:
@@ -64,7 +68,8 @@ class Driver:
         state = json.loads(result.stdout)
         player, = [a for a in state['actors'] if a['selected']]
         row = dict(phase=phase, frame=state['counters']['mainloop_frame'],
-                   counters=state['counters'], player=player)
+                   counters=state['counters'], player=player,
+                   console_mode=state.get('console_mode'))
         print(json.dumps(row), flush=True)
         return row
 
@@ -97,6 +102,11 @@ class Driver:
             if time.monotonic() >= deadline:
                 raise RuntimeError('original world clock stalled')
             time.sleep(.05)
+
+
+def require_interactive_console(row):
+    if row['console_mode'] != 'interactive':
+        raise RuntimeError('console is not interactive; refusing gameplay text')
 
 
 def baseline(row):

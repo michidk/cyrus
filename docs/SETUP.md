@@ -151,7 +151,7 @@ bash dev/scripts/original-rope-contact.sh RUN READER.py PLACE.py OUTPUT
 ```
 
 The launcher holds the host live-run lock for one run, mounts the host config
-and local diagnostics, restores `WORLD.INI` afterwards and stops its own
+and local diagnostics, restores `WORLD.INI` and `SYSTEM.INI` afterwards and stops its own
 container on success or failure. It rejects the canonical install as a writable
 run. It uses `cyrus-retro-contact:dev`, which runs the same guest configuration on
 Xvfb without the interactive preview services. Build it with the command above;
@@ -164,7 +164,14 @@ use Ctrl+Alt+W for the emulator recorder.
 The reader and placement adapter are local diagnostics kept outside tracked
 files. The reader follows the `original-state.py` JSON contract; the placement
 adapter runs as `python3 /tmp/place.py`, with that reader at `/tmp/state.py`.
-Neither adapter may modify installed assets. The public driver focuses DOSBox,
+Neither adapter may modify installed assets. The launcher reads installed text-suppression settings from
+`SYSTEM.INI` and applies them in the writable run to avoid inherited developer
+diagnostics while preserving direct-world admission and other run settings;
+`CYRUS_RETRO_SYSTEM_INI` can select an explicit baseline file.
+The reader must report top-level `console_mode` as `closed`, `overlay` or
+`interactive`, derived from active console state and its modal/nonmodal mode.
+The public driver requires `interactive` as well as a paused world clock;
+a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
 checks that console entry paused world updates before sending commands, grants
 and draws the sword through console/input, then invokes placement. Escape closes
 each command entry. The JSONL record includes selected-player state and world
