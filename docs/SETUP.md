@@ -1341,3 +1341,27 @@ python3 dev/scripts/test-paced-mixer-capture.py
 python3 dev/scripts/test-original-book-audio.py
 python3 dev/scripts/test-ensure-runtime-image.py
 ```
+
+## Global sample stop
+
+For global sample-stop acceptance, `dev/docker/dev/Dockerfile.sound-acceptance`
+adds the project's paced Pulse sink to the minimal rendered runtime. Mount an
+explicit read-only install, host config/cache and output, then run
+`python3 dev/scripts/native-sound-reset.py PORT HOST_OUTPUT --container NAME`.
+It uses public play/stop requests, keeps ordinary gameplay paused briefly through
+the console to isolate the selected installed looping effect, and records real
+Pulse monitor PCM before/after cancellation and subsequent playback. It checks
+bounded game-clock progress before and after the isolated windows. PCM remains
+local. `browser-sound-reset.js`, evaluated after `session-sample-graph.js` in a
+capture-enabled installed browser, exposes `__cyrusSoundReset.sample(name,
+present)`. Drive the real book/menu input between active, stopped and continued
+observations. The probe waits past buffers already submitted at the boundary,
+then checks 8192 frames of actual WebAudio output. Active windows wait for a new
+nonzero submitted buffer, so a slow host is not mistaken for failed continuation.
+The complete installed driver runs with
+`node dev/scripts/test-browser-sound-reset-live.mjs CDP_URL PAGE_URL INSTALL_URL VOICE_LABEL [LOOP_EFFECT] [SCENE]`.
+It uses real Escape input, records book readiness and game-clock continuation,
+and verifies the executed browser artifacts against the sealed build record.
+Use a secure origin or a loopback origin for AudioWorklet support. Its negative controls run with
+`node dev/scripts/test-browser-sound-reset.mjs`. These checks do not establish
+original output latency or physical-device parity.

@@ -3,7 +3,10 @@
 Native/browser effects, speech and CD music playback. `SoundPlugin` and
 `MusicPlugin` retain the shared request, cue and playback-state interfaces.
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
-in presentation. This crate has no rendering or startup dependency.
+in presentation. Deferred browser starts belong to the channel pool, so public
+sample stops, periodic maintenance and saved-world restoration cancel them
+through the same operation as live samples. Owner/effect filters apply to both
+pending and live playback. This crate has no rendering or startup dependency.
 Native credits music waits for `GameInstall` before its update runs, so the
 install picker can stay open without initializing CD playback.
 
@@ -303,3 +306,12 @@ RTX label hints independently of the script dialogue cache. Hosts prepare those
 labels before validating the exact saved source identities. Old documents without
 these optional hints remain readable; an unavailable source still rejects the
 replacement. The existing mixed-buffer drain policy is unchanged.
+
+Global control/book stops drain after gameplay cues already waiting at that audio
+boundary. A later update may start new samples. `native-sound-reset.py` checks
+public cancellation and continuation against a paced Pulse monitor;
+`browser-sound-reset.js`, evaluated after `session-sample-graph.js`, checks real
+WebAudio quanta around the book's production input. The installed
+`test-browser-sound-reset-live.mjs` driver records cancellation, later starts
+and executed artifact hashes through CDP. Already mixed output buffers
+may drain before the silent browser observation window.

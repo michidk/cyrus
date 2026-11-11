@@ -768,3 +768,65 @@ fn scalar_pan_rounds_the_coefficient_before_multiplying_each_sample() {
     assert_eq!(output_gain(PcmWidth::Eight, 112, 256), 113.0 / 128.0);
     assert!(PcmWidth::try_from(24).is_err());
 }
+
+#[test]
+fn public_global_stop_cancels_waiting_gameplay_cues_and_allows_later_starts() {
+    use bevy::prelude::*;
+    use cyrus_audio::sound::{
+        Effect, PlayingSound, SampleRepetitions, SoundEffects, SoundPlugin, SoundRequest,
+    };
+    use cyrus_world::sound::{ScriptSound, SoundCue};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin));
+    app.insert_resource(SoundEffects(vec![Some(Effect {
+        audio: Handle::default(),
+        bits_per_sample: 8,
+        repetitions: SampleRepetitions::FOREVER,
+        base_volume: 64,
+        sample_rate: 22050,
+    })]));
+    app.update();
+    for index in [0, 1] {
+        app.world_mut().write_message(SoundCue::Script {
+            generation: 17,
+            index,
+            sound: ScriptSound::Flat {
+                effect: 0,
+                volume: 0,
+                rate_offset_hz: 0,
+            },
+        });
+    }
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.world_mut().write_message(SoundRequest::StopAll);
+    app.update();
+    let count = |app: &mut App| {
+        app.world_mut()
+            .query_filtered::<Entity, With<PlayingSound>>()
+            .iter(app.world())
+            .count()
+    };
+    assert_eq!(
+        count(&mut app),
+        0,
+        "global stop must dominate cues already waiting at the public drain"
+    );
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(
+        count(&mut app),
+        1,
+        "a subsequent start must remain admitted"
+    );
+    app.world_mut().write_message(SoundRequest::StopAll);
+    app.update();
+    assert_eq!(count(&mut app), 0);
+}
