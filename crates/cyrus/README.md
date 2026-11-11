@@ -189,3 +189,10 @@ production world/model service gates. Delivery runs after model preparation and
 before player input sampling and ordinary simulation; returned actor snapshots
 observe that same boundary. See `cyrus-control` for the wire contract and failure
 cleanup. Normal gameplay continues to use the same keyboard bindings.
+
+The native `effect_geometry` diagnostic samples transient geometry after effect
+PostUpdate. `after_generation` arms a bounded first admitted-update observation before
+a public session replacement or dormant-world revisit. Scene/model services and
+the generation-matching world clock sample must be ready. It preserves command order
+and reports a missing binding as an error rather than waiting for it to repair.
+`dev/scripts/native-transient-session.py` drives the installed public acceptance.

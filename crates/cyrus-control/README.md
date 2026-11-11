@@ -167,3 +167,12 @@ update or 35-second execution deadline rejects the attempt and releases its held
 keys. Unrelated held keys are preserved. Ordinary gameplay input sampling is
 unchanged when no schedule is pending. This diagnostic facility does not pause,
 step or change the simulation clock.
+
+`effect_geometry {after_generation?}` observes transient billboard bindings after
+PostUpdate. Without a generation it replies once; with one it waits up to 180
+seconds for a different ready generation, completed dormant-world restoration
+and its model-ready admitted clock sample, then observes that update without retrying missing geometry. Other commands remain
+available while armed. `state.effect_geometry_pending` acknowledges admission, so
+a driver can submit a load after the probe is armed. The result includes its
+acquisition frame and CPU geometry/material/image observations. This does not
+establish GPU submission or original pixel parity.

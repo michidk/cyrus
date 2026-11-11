@@ -1189,3 +1189,77 @@ the live-run lock, serializes concurrent restores and verifies the requested
 image exists. An existing image requires no archive load. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
 Archives remain local; recovery never removes peer images or containers.
+
+For separate transient-geometry restoration, run the native diagnostic driver with
+an explicit installed game, the host config directory mounted into the runtime,
+and the same per-run locking used above:
+
+```sh
+python3 dev/scripts/native-transient-session.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --scene ISLAND --dormant START --game-seconds 0.4
+python3 dev/scripts/test-native-transient-session.py
+```
+
+The driver selects a retained effect record when available. Otherwise it selects an
+expiring image from the installed effect catalog. Its position is derived from
+the camera pose in the actual public capture, so deferred entry framing cannot
+leave the fixture outside the view. Its local diagnostic fixture activates that
+installed descriptor at speed zero and
+holds its image frame to isolate publication from lifetime and animation. It uses
+the public inspection camera and session capture/load, without modifying the
+install. This fixture does not establish the producer's original timing.
+The `effect_geometry` control observes actual billboard mesh/material/texture
+bindings after PostUpdate. Optional `after_generation` arms one bounded request
+before replacement and samples the first ready presentation update under the new
+generation. It waits for dormant-world service restoration and an admitted
+model-ready world clock sample for that generation, but does not retry
+missing geometry or repair bindings. Responses include acquisition frame, actual
+vertices, transforms, image-byte hashes, logical and retained slots, and all live
+billboard entity identities. These are CPU observations, not GPU readback.
+
+The driver requires matching geometry under fresh ownership, removal of old
+entities/assets from the selected slots, preservation after an integrity-valid
+invalid effect-source load, and dormant-world revisit continuation. It then
+resumes the installed lifetime rule and requires the expired effect to stop
+submitting. Captures, negative documents, first-update observations and the final
+PNG stay local. Preparation and game-clock progress have separate bounded
+cutoffs; slow decoding alone is not treated as a stalled game clock. Original
+pixel and timing parity remain unverified.
+
+`native-transient-runtime.py` recovers the minimal software-render runtime after
+Docker images disappear, without invoking Cargo. Supply the retained executable
+and its independently recorded digest:
+
+```sh
+python3 dev/scripts/native-transient-runtime.py \
+  --runtime /absolute/host/runtime --binary /absolute/host/runtime/cyrus \
+  --sha256 EXECUTABLE_SHA256 --install /absolute/path/to/Redguard \
+  --cache /absolute/host/cache
+python3 dev/scripts/test-native-transient-runtime.py
+```
+
+Bind-mount sources must live under `/home/vibepod/workspaces`. The launcher checks
+the executable digest, reuses its minimal image when present and reloads its host
+archive when the
+Docker image disappears. When both are absent it builds only that image. Image
+tags and archive names include the runtime recipe digest; completed image saves
+replace the archive atomically. A host lock prevents overlapping runs of this runtime.
+Each attempt retains image provenance, image-build output, runtime output and
+driver output in `evidence/transients-current/attempts/`. Each attempt also
+retains the prior observation/session/image files before the driver replaces them.
+The host config directory
+survives container retirement; its cache link resolves to the explicit cache mount.
+Only the container created by that invocation is stopped.
+
+The transient driver atomically checkpoints preparation, successful publication,
+rejection, revisit and expiration, including a public session and evidence hashes.
+After interruption, the same invocation validates executable, driver, options and
+retained evidence, publicly loads the last completed stage and resumes outstanding
+assertions. Incomplete stages rerun. Changed inputs require a fresh output directory;
+a stale result file cannot satisfy a new run. Package gates remain reusable when
+their source and gate inputs have not changed.
+
+`--seed-session PATH` can reuse a retained installed diagnostic fixture for
+bootstrap recovery. The application still validates and publishes it through
+public session load. Completed checkpoints take precedence over a bootstrap seed.
