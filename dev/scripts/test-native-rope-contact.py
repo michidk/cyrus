@@ -42,6 +42,8 @@ class Comparison(unittest.TestCase):
             contact.compare_interval({'duration': [1, 1]}, {'duration': [2, 2]}, .01)
         with self.assertRaisesRegex(ValueError, 'timing mismatch'):
             contact.compare_interval({'duration': [1, 2]}, {'duration': [1, 2]}, .01)
+        with self.assertRaisesRegex(ValueError, 'timing mismatch'):
+            contact.compare_interval({'duration': [1, 2]}, {'duration': [1.5, 1.5]}, 0)
         contact.compare_interval({'duration': [1, 1.001]}, {'duration': [1, 1.001]}, .002)
 
     def test_invalid_or_incomplete_original_never_drives_native(self):
@@ -115,16 +117,42 @@ class Comparison(unittest.TestCase):
                     with contact.MixerCapture(output):
                         time.sleep(.1)
 
+    def scheduled(self, driver, player, clocks, end=None, mutate=None):
+        def call(kind, **args):
+            if kind == 'state':
+                return {'clock': {'fps': 12}}
+            self.assertEqual(kind, 'schedule_input')
+            self.assertEqual(args['events'][0]['after_updates'], 0)
+            rows = []
+            for event, clock, value in zip(args['events'], clocks, [player, end or player]):
+                actor = dict(control=dict(weapon_drawn=value['drawn'], falling_state=value['falling'],
+                    living_state=value['living'], rope_attached=value.get('rope_attached')),
+                    attributes=[0, 0, 0, value['health']],
+                    spatial={'effective': {'position': [v * 256 for v in value['position']]}})
+                rows.append(dict(event, update=20 + event['after_updates'], generation=8,
+                    game_seconds=clock, player={'actors': [actor]}))
+            if mutate:
+                mutate(rows)
+            return {'boundaries': rows}
+        driver.call = call
+
+    def test_wrong_update_acknowledgement_rejects_before_comparison(self):
+        output = io.StringIO()
+        driver = contact.Driver('unused', 1, output)
+        player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0])
+        self.scheduled(driver, player, [0, 1], mutate=lambda rows: rows[1].update(update=99))
+        with self.assertRaisesRegex(RuntimeError, 'unavailable ordinary boundaries'):
+            driver.timed_segment('walk-in', {'duration': [1, 1]}, 'ArrowUp')
+        self.assertNotIn('displacement', output.getvalue())
+
     def test_overshot_input_interval_never_emits_comparison(self):
         output = io.StringIO()
         driver = contact.Driver('unused', 1, output, .01)
         player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0])
-        boundaries = iter([dict(clock=[0, 0], player=player), dict(clock=[2, 2], player=player)])
-        driver.boundary = lambda *args: next(boundaries)
-        driver.sample = lambda phase: dict(game_seconds=2, player=player)
+        self.scheduled(driver, player, [0, 2])
         with self.assertRaisesRegex(ValueError, 'timing mismatch'):
             driver.timed_segment('walk-in', {'duration': [1, 1]}, 'ArrowUp')
-        self.assertEqual(json.loads(output.getvalue())['comparison'], 'rejected')
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['comparison'], 'rejected')
         self.assertNotIn('displacement', output.getvalue())
 
     def test_matched_interval_reports_displacement_and_contact_only_after_gate(self):
@@ -133,28 +161,21 @@ class Comparison(unittest.TestCase):
         player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0], rope_attached=False)
         start = dict(clock=[0, 0], player=player)
         end = dict(clock=[1, 1], player=dict(player, position=[2, 0, 0], rope_attached=True))
-        boundaries = iter([start, end])
-        driver.boundary = lambda *args: next(boundaries)
-        driver.sample = lambda phase: dict(game_seconds=1, player=player)
+        self.scheduled(driver, player, [0, 1], end['player'])
         driver.timed_segment('walk-in', contact.interval(start, end), 'ArrowUp')
-        result = json.loads(output.getvalue())
+        result = json.loads(output.getvalue().splitlines()[-1])
         self.assertEqual(result['comparison'], 'matched')
         self.assertEqual(result['displacement'], [2, 0, 0])
         self.assertTrue(result['rope_attached'])
 
-    def test_input_boundary_waits_for_player_acknowledgement(self):
-        driver = contact.Driver('unused', 1, io.StringIO())
-        samples = iter([dict(game_seconds=1, clock_end=1, input_state={'forward': False}, player={}),
-                        dict(game_seconds=1.1, clock_end=1.1, input_state={'forward': False}, player={}),
-                        dict(game_seconds=1.2, clock_end=1.2, input_state={'forward': True}, player={})])
-        driver.sample = lambda phase: next(samples)
-        driver.call = lambda kind, **args: args
-        row = driver.boundary('walk-in', 'start', 'ArrowUp')
-        self.assertEqual(row['clock'], [1, 1.2])
-        self.assertTrue(row['input_ack'])
-        driver.call = lambda *args, **kwargs: {}
-        with self.assertRaisesRegex(RuntimeError, 'acknowledgement'):
-            driver.key('ArrowUp', False)
+    def test_scheduled_observation_interval_uses_no_gameplay_key(self):
+        output = io.StringIO()
+        driver = contact.Driver('unused', 1, output)
+        player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0])
+        self.scheduled(driver, player, [0, 1])
+        driver.timed_segment('continuation', {'duration': [1, 1],
+            'start': {'player': player}, 'end': {'player': player}}, None)
+        self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['comparison'], 'matched')
 
     def test_readiness_timeout_resumes_without_discarding_source(self):
         with tempfile.TemporaryDirectory() as directory:

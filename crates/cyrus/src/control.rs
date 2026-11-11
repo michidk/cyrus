@@ -1,6 +1,7 @@
 //! TCP control server (see `cyrus-control`). A thread accepts connections and
 //! forwards each request into the ECS; one system answers them in frame order.
 
+mod input_schedule;
 mod light_image;
 mod rendered_actor;
 
@@ -58,6 +59,14 @@ impl Plugin for ControlPlugin {
         app.insert_resource(Inbox(Mutex::new(rx)))
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
+            .init_resource::<input_schedule::InputScheduler>()
+            .add_systems(
+                Update,
+                input_schedule::apply
+                    .after(cyrus_script::script::ModelPreparation)
+                    .before(cyrus_script::player::input::InputSample)
+                    .before(cyrus_script::script::OrdinaryUpdates),
+            )
             .init_resource::<crate::session::NativeSessionLoad>()
             .init_resource::<crate::session::slots::SlotStore>()
             .init_resource::<cyrus_startup::LastGameLoader>()
@@ -125,6 +134,7 @@ struct Inspection<'w, 's> {
     marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
     clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
     rendered_actor_pending: Option<Res<'w, rendered_actor::PendingRenderedActor>>,
+    input_scheduler: ResMut<'w, input_schedule::InputScheduler>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -178,6 +188,7 @@ fn handle(
         mut marker,
         clock,
         rendered_actor_pending,
+        mut input_scheduler,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam): (
@@ -419,6 +430,14 @@ fn handle(
                 }
                 None => Err("no flycam".into()),
             },
+            Command::ScheduleInput { events } => {
+                let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
+                match input_scheduler.arm(id, reply.clone(), generation, events, &keys) {
+                    Ok(()) => continue,
+                    Err(error) => Err(error),
+                }
+            }
+            Command::Input { .. } if input_scheduler.pending() => Err("input schedule owns control input until completion".into()),
             Command::Input { key, action } => match parse_key(&key) {
                 Some(code) => {
                     match action {
@@ -1011,6 +1030,31 @@ mod tests {
         assert_eq!(response.id, 43);
         assert_eq!(response.result.unwrap(), json!("pong"));
         assert!(responses.try_recv().is_err());
+    }
+
+    #[test]
+    fn public_schedule_input_rejects_unavailable_world_without_pressing() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        let request =
+            serde_json::from_value(json!({"id":91,"cmd":{"type":"schedule_input","events":[
+                {"after_updates":0,"key":"ArrowUp","action":"press"},
+                {"after_updates":2,"key":"ArrowUp","action":"release"}
+            ]}}))
+            .unwrap();
+        tx.send(Pending { request, reply }).unwrap();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 91);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("no world"));
+        assert!(
+            !app.world()
+                .resource::<ButtonInput<KeyCode>>()
+                .pressed(KeyCode::ArrowUp)
+        );
     }
 
     #[test]

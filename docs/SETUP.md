@@ -1064,9 +1064,15 @@ The native driver pulses the sword toggle for one update, so asynchronous reads
 do not hold it through animation completion and request sheathing again. It
 prepares the gravity cheat through public controls,
 places the player at the observed original baseline and records attachment state.
-It validates each input response and waits for the player action to reflect the
-requested state. State reads bracket actor reads so sample uncertainty remains
-visible. Holds use elapsed game seconds. `--clock-tolerance SECONDS` declares the
+It submits each walk, attack and continuation interval through `schedule_input`.
+Transitions apply before ordinary input sampling at offsets from the next admitted
+update; continuation uses observation-only boundaries. The last measured FPS
+chooses an attempted update count, but acceptance uses only the actual clocks
+returned with the boundary acknowledgements. Each acknowledgement also identifies
+the world generation, ordinary update and selected actor state before that update.
+Its timestamp excludes the forthcoming update, even when frame scales vary.
+Skipped boundaries or a changed generation reject the attempt. Setup state reads
+still bracket actor reads so their uncertainty remains visible. `--clock-tolerance SECONDS` declares the
 maximum timing error, including both runs' boundary uncertainty; the default is
 exact. A mismatch fails before any displacement/contact comparison is emitted.
 A `comparison: "matched"` row establishes timing within that budget, not gameplay
