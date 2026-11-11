@@ -193,7 +193,15 @@ impl RuntimeSessionCandidate {
             let handle = world
                 .resource_mut::<Assets<MusicTransport>>()
                 .add(transport);
-            Commands::new(&mut queue, world).spawn((MusicPlayer, AudioPlayer(handle), settings));
+            let entity = Commands::new(&mut queue, world)
+                .spawn((MusicPlayer, AudioPlayer(handle.clone()), settings))
+                .id();
+            world.resource_scope(|world, assets: Mut<Assets<MusicTransport>>| {
+                assets
+                    .get(&handle)
+                    .context("prepared CD transport absent")?
+                    .publish_output(world, entity, &settings)
+            })?;
         }
         queue.apply(world);
         if entering {

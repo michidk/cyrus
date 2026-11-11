@@ -904,6 +904,8 @@ then loads the intact save. It compares both channels of the rendered graph
 with the original source across the rejection and the restored loop seam,
 and checks that the old source was stopped and disconnected. It emits
 measurements and browser artifact hashes, without exporting audio or saves.
-It records the silence between retirement and replacement; passing this check
-does not establish gapless diagnostic publication. This checks the WebAudio
+It records PCM preparation separately from publication and requires channel
+copies to finish before retirement. Prepared replacement and old-source stop
+must share one scheduled render-clock boundary. This does not establish
+physical or original-game gaplessness. This checks the WebAudio
 graph, not speakers or original-game audio timing.

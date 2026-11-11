@@ -120,7 +120,7 @@ try {
     source: readFileSync(new URL('./session-cd-graph.js', import.meta.url), 'utf8'),
   });
   await cdp.call('Page.navigate', { url: url.href });
-  await until('secure browser page', () => evaluate('document.readyState === "complete" && !!document.body'), 30000, false);
+  await until('secure browser page', () => evaluate(`location.origin === ${JSON.stringify(url.origin)} && document.readyState === "complete" && !!document.body`), 30000, false);
   assert(await evaluate('isSecureContext && !!AudioWorkletNode'), 'use a secure origin for WebAudio and install access');
   await until('installed gameplay', () => evaluate(`(() => {
     const picker = document.getElementById('install-picker');
@@ -192,6 +192,7 @@ sys.stdout.buffer.write(b'\\n'.join((header, blake3.blake3(data).hexdigest().enc
   const rejectedPcm = await match(0, floor(before) - 4096, ceil(rejected.sources[0].now) + 8192, first.frame, 0);
   console.log(JSON.stringify({ rejection: rejection.error, rejectedPcm }));
 
+  const loadRequested = (await graph()).sources[0].now;
   const committed = await operation('load', { key: 'cd-valid' });
   assert.equal(committed.committed, true, committed.error);
   const after = await until('replacement CD graph', async () => {
@@ -202,12 +203,14 @@ sys.stdout.buffer.write(b'\\n'.join((header, blake3.blake3(data).hexdigest().enc
   assert(after.sameClock, 'CD sources cannot be compared on different render clocks');
   const [old, restored] = after.sources;
   assert(old.stopped !== null && old.disconnected !== null, 'published session retained the old source');
-  assert(old.stopped <= restored.frame && old.disconnected <= restored.frame, 'old and replacement CD sources overlapped');
   assert.equal(restored.length, old.length);
   assert.equal(restored.rate, old.rate);
   assert.equal(restored.bufferRate, old.bufferRate);
   assert.equal(restored.offset, 0);
-  const restoredStart = ceil(restored.frame) + 4096;
+  assert(restored.preparationCopied !== null && restored.preparationCopied <= old.stopped,
+    'replacement PCM must be copied before retiring live audio');
+  assert.equal(old.stopped, restored.frame, 'prepared switch must share one render-clock boundary');
+  const restoredStart = ceil(restored.frame) + 128;
   const restoredEnd = ceil(restored.frame + toSeam + restored.rate);
   const restoredPcm = await match(1, restoredStart, restoredEnd, restored.frame, cursor);
   await assert.rejects(match(1, restoredStart, restoredEnd, restored.frame, cursor + 512),
@@ -215,11 +218,13 @@ sys.stdout.buffer.write(b'\\n'.join((header, blake3.blake3(data).hexdigest().enc
   const oldEnd = floor(old.stopped) - 128;
   const beforeRetirement = await match(0, oldEnd - 44160, oldEnd, first.frame, 0);
   const transition = await evaluate(`window.__sessionCd.transition(${oldEnd}, ${ceil(restored.frame) + 4096},
-    ${ceil(old.stopped) + 128}, ${floor(restored.frame) - 128})`);
+    ${restored.frame - restoredPcm.skew}, ${first.frame}, ${beforeRetirement.skew}, ${cursor})`);
   assert.equal((await graph()).sources.length, 2, 'CD source was replaced again after publication');
   const { observed } = await provenance.verify();
   console.log(JSON.stringify({ savedCursor: cursor, toSeam, retiredAt: old.stopped, disconnectedAt: old.disconnected,
-    restoredAt: restored.frame, beforeRetirement, transition, restoredPcm,
+    restoredAt: restored.frame, loadRequested,
+    preparationBegan: restored.preparationBegan, preparationCopied: restored.preparationCopied,
+    preparationBeforeRetirementFrames: old.stopped - restored.preparationCopied, beforeRetirement, transition, restoredPcm,
     revision: build.source.revision, sourceHash: build.source.sha256, observed }));
 } catch (error) {
   console.error(await evaluate(`({ graph: window.__sessionCd?.status(), page: document.body?.innerText.slice(-1500),

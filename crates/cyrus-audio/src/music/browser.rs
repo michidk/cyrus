@@ -9,7 +9,7 @@ use bevy::{
     audio::AudioPlayer,
     prelude::{
         App, Assets, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut, Update,
-        With, error,
+        With, World, error,
     },
 };
 use std::{io::Cursor, sync::atomic::Ordering};
@@ -25,6 +25,10 @@ extern "C" {
         gain: f32,
         paused: bool,
     ) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = prepareMusic)]
+    fn prepare_music(left: &[f32], right: &[f32], rate: u32, gain: f32) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = publishMusic)]
+    fn publish_music(id: u32, retiring: &[u32], paused: bool) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = updateMusic)]
     fn update_music(id: u32, gain: f32, paused: bool) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = musicFrames)]
@@ -101,4 +105,41 @@ pub(super) fn snapshot(
     Ok(initial
         .clone()
         .at_stereo_input_sample((initial.input_samples() + frames as u64 * 2) % samples))
+}
+
+pub(super) fn prepare(transport: &MusicTransport, settings: &PlaybackSettings) -> Result<u32> {
+    let initial = transport.initial_snapshot()?;
+    let buffer = super::checkpoint::cd_buffer(transport.source(), &initial)?;
+    prepare_music(
+        &buffer.left,
+        &buffer.right,
+        buffer.rate,
+        settings.volume.to_linear(),
+    )
+    .map_err(|error| anyhow::anyhow!("preparing WebAudio CD output: {error:?}"))
+}
+
+pub(super) fn discard(id: u32) {
+    stop_music(id);
+}
+
+pub(super) fn publish(
+    transport: &MusicTransport,
+    world: &mut World,
+    entity: Entity,
+    settings: &PlaybackSettings,
+) -> Result<()> {
+    let id = transport.prepared.load(Ordering::Relaxed);
+    ensure!(id != 0, "session CD output was not prepared");
+    let mut players = world
+        .get_resource_mut::<Players>()
+        .context("session CD browser owners absent")?;
+    let retiring: Vec<_> = players.ids.values().copied().collect();
+    publish_music(id, &retiring, settings.paused)
+        .map_err(|error| anyhow::anyhow!("publishing WebAudio CD output: {error:?}"))?;
+    players.ids.clear();
+    players.ids.insert(entity, id);
+    transport.prepared.store(0, Ordering::Relaxed);
+    transport.browser_clock().store(id, Ordering::Relaxed);
+    Ok(())
 }

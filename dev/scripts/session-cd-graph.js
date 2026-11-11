@@ -2,6 +2,21 @@
 // destination gain in parallel; the tap's silent output never feeds back.
 (() => {
   const probe = globalThis.__sessionCd = { sources: [], blocks: [], error: null };
+  const createBuffer = AudioContext.prototype.createBuffer;
+  const copy = AudioBuffer.prototype.copyToChannel;
+  const buffers = new WeakMap();
+  AudioContext.prototype.createBuffer = function (...args) {
+    const began = Math.round(this.currentTime * this.sampleRate);
+    const buffer = createBuffer.apply(this, args);
+    buffers.set(buffer, {context: this, began, copied: null});
+    return buffer;
+  };
+  AudioBuffer.prototype.copyToChannel = function (...args) {
+    const result = copy.apply(this, args);
+    const buffer = buffers.get(this);
+    if (buffer) buffer.copied = Math.round(buffer.context.currentTime * buffer.context.sampleRate);
+    return result;
+  };
   const start = AudioBufferSourceNode.prototype.start;
   const stop = AudioBufferSourceNode.prototype.stop;
   const disconnect = AudioBufferSourceNode.prototype.disconnect;
@@ -34,7 +49,7 @@
     if (!this.loop || this.buffer?.numberOfChannels !== 2 || !destinations.has(gain)) return result;
     const context = this.context;
     const source = {
-      frame: clock(context), rate: context.sampleRate, offset: args[1] ?? 0,
+      prepared: buffers.get(this.buffer), frame: args[0] > 0 ? Math.round(args[0] * context.sampleRate) : clock(context), rate: context.sampleRate, offset: args[1] ?? 0,
       buffer: this.buffer, gain, stopped: null, disconnected: null,
     };
     owners.set(this, source);
@@ -65,7 +80,7 @@
   AudioBufferSourceNode.prototype.stop = function (...args) {
     const result = stop.apply(this, args);
     const source = owners.get(this);
-    if (source?.buffer) source.stopped = clock(this.context);
+    if (source?.buffer) source.stopped = args[0] > 0 ? Math.round(args[0] * this.context.sampleRate) : clock(this.context);
     return result;
   };
   AudioBufferSourceNode.prototype.disconnect = function (...args) {
@@ -79,6 +94,7 @@
     ready: probe.ready,
     sameClock: probe.sources.every(s => s.gain.context === probe.sources[0].gain.context),
     sources: probe.sources.map(s => ({
+      preparationBegan: s.prepared?.began, preparationCopied: s.prepared?.copied,
       frame: s.frame, now: clock(s.gain.context), rate: s.rate, bufferRate: s.buffer.sampleRate,
       length: s.buffer.length, offset: s.offset, stopped: s.stopped, disconnected: s.disconnected,
     })),
@@ -96,17 +112,25 @@
     if (next !== end) throw Error('missing last rendered quantum');
     return blocks;
   }
-  probe.transition = (start, end, silentStart, silentEnd) => {
+  // Check the complete switch against the two independently calibrated phases.
+  probe.transition = (start, end, cut, oldStart, oldSkew, savedCursor) => {
     const blocks = rendered(start, end);
-    let silentFrames = 0;
-    for (const block of blocks) {
-      if (block.frame < silentStart || block.frame >= silentEnd) continue;
-      if (block.left.some(x => x !== 0) || block.right.some(x => x !== 0)) {
-        throw Error('retired CD still audible before replacement');
+    const reference = probe.sources[0].buffer;
+    const channels = [reference.getChannelData(0), reference.getChannelData(1)];
+    let error = 0, energy = 0;
+    for (const {frame, left, right} of blocks) {
+      for (let i = 0; i < 128; i++) {
+        const current = frame + i;
+        const phase = current < cut ? current - oldStart + oldSkew : savedCursor + current - cut;
+        const cursor = ((phase % reference.length) + reference.length) % reference.length;
+        const gain = probe.sources[current < cut ? 0 : 1].gain.gain.value;
+        const l = channels[0][cursor] * gain, r = channels[1][cursor] * gain;
+        error += (left[i] - l) ** 2 + (right[i] - r) ** 2;
+        energy += left[i] ** 2 + right[i] ** 2;
       }
-      silentFrames += 128;
     }
-    return { frames: end - start, silentFrames };
+    if (!(energy > 0.01 && error / energy < 1e-6)) throw Error(`CD switch mismatch: ${error}/${energy}`);
+    return {frames: end - start, cut, error, energy};
   };
   // Compare both rendered channels against the original retained source, not
   // the replacement buffer. Allow WebAudio a render quantum of start skew.

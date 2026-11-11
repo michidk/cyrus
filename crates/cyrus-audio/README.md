@@ -54,9 +54,12 @@ still pause while the main thread is busy. The vendored CPAL change and its
 removal condition are documented in `dev/vendor/cpal/README.md`.
 
 A successful diagnostic session replacement retires the old browser CD source
-when its playback entity is removed. The next audio update starts the new
-source from the validated saved cursor. A rejected replacement leaves the
-playing source alone. Original-style saved-game loads keep live CD playback
+at the validated publication boundary. Candidate construction prepares the
+rotated PCM, WebAudio buffer and silent source before publication. Publication
+starts the prepared source at its saved cursor and schedules retirement of the
+old source on the same audio clock, without waiting for another audio update.
+Rejected candidates discard their silent output and leave the playing source
+alone. Original-style saved-game loads keep live CD playback
 until ordinary world selection changes the track.
 
 The CD node stops and disconnects at retirement. Already rendered device frames

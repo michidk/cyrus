@@ -15,6 +15,8 @@ pub struct MusicTransport {
     transport: Panned,
     #[cfg(target_arch = "wasm32")]
     clock: std::sync::atomic::AtomicU32,
+    #[cfg(target_arch = "wasm32")]
+    pub(super) prepared: std::sync::atomic::AtomicU32,
 }
 impl Clone for MusicTransport {
     fn clone(&self) -> Self {
@@ -27,8 +29,39 @@ impl MusicTransport {
             transport,
             #[cfg(target_arch = "wasm32")]
             clock: std::sync::atomic::AtomicU32::new(0),
+            #[cfg(target_arch = "wasm32")]
+            prepared: std::sync::atomic::AtomicU32::new(0),
         }
     }
+    /// Prepare browser device buffers without starting or replacing live audio.
+    /// Native playback retains its normal backend preparation.
+    fn prepare_output(&self, settings: &PlaybackSettings) -> Result<()> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let id = super::browser::prepare(self, settings)?;
+            self.prepared
+                .store(id, std::sync::atomic::Ordering::Relaxed);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = settings;
+        Ok(())
+    }
+
+    /// Switch prepared browser output at a validated exclusive publication boundary.
+    /// Call immediately before applying the infallible entity replacement queue.
+    pub fn publish_output(
+        &self,
+        world: &mut bevy::prelude::World,
+        entity: bevy::prelude::Entity,
+        settings: &PlaybackSettings,
+    ) -> Result<()> {
+        #[cfg(target_arch = "wasm32")]
+        super::browser::publish(self, world, entity, settings)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = (world, entity, settings);
+        Ok(())
+    }
+
     /// Validate a host-prepared stereo16 CD WAV without starting playback.
     pub fn new(source: AudioSource) -> Result<Self> {
         Ok(Self::wrap(Panned::with_playback(
@@ -167,8 +200,9 @@ impl Music {
         })
     }
 
-    /// Reconstruct from the host's installed track bytes. No request, I/O, asset
-    /// allocation, sink start or live resource replacement occurs here.
+    /// Reconstruct from the host's installed track bytes. No request, I/O,
+    /// sink start or live resource replacement occurs here. Browser output buffers
+    /// are prepared silently and owned by the candidate until publication.
     pub fn from_snapshot(
         snapshot: MusicSnapshot,
         source: Option<AudioSource>,
@@ -187,6 +221,7 @@ impl Music {
                     .playback_settings()
                     .with_volume(Volume::Linear(snapshot.gain));
                 settings.paused = saved.paused;
+                transport.prepare_output(&settings)?;
                 Some((transport, settings))
             }
             _ => anyhow::bail!("CD music snapshot track/source ownership differs"),
@@ -285,6 +320,16 @@ mod buffer_tests {
                     .take(8)
                     .collect::<Vec<_>>()
             );
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for MusicTransport {
+    fn drop(&mut self) {
+        let id = *self.prepared.get_mut();
+        if id != 0 {
+            super::browser::discard(id);
         }
     }
 }
