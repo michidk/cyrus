@@ -186,3 +186,20 @@ uses diagnostic placement and inventory setup, not a natural route to the puzzle
 It does not assert frame timing, artwork, audio or puzzle completion.
 `python3 dev/scripts/test-dial-acceptance.py` checks the rejection controls,
 including a failure followed by otherwise successful continuation.
+
+### Native torch retention
+
+Start a fresh native `START` world on dry ground, then run
+`python3 dev/scripts/torch-acceptance.py --addr 127.0.0.1:7167` and redirect stdout
+into an ignored artifact directory. The driver uses the public `set_torch`
+command to seed a burning counter at 73. Ordinary production updates must count
+it down with `goldfinger=0`, then refresh it to 100 and retain it with
+`goldfinger=1`. It requires four observations in each case after two game
+seconds of warmup, rejects script failures, and restores the prior cheat and
+torch values even on failure. Use an isolated process so other input cannot
+change the selected player or surface during the check.
+
+`python3 dev/scripts/test-torch-acceptance.py` checks rejection of missing
+continuation, a frozen counter, an unrefreshed counter, extinguishing, and a
+counter that increases with the cheat off. This verifies the counter service;
+lighting input, held artwork, audio and water branches require separate checks.

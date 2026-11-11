@@ -205,11 +205,14 @@ pub(super) fn begin<'a>(
     let actors = world.ordinary_actors(view)?.to_vec();
     let mut hits = state.hits.take().unwrap_or_else(empty_hits);
     let established = if state.world != Some(world.generation()) {
-        let result = world.establish_camera(scene, &actors, &mut hits, frame_scale);
-        if result.is_ok() {
-            state.world = Some(world.generation());
-        }
-        result.map(|_| ())
+        world
+            .establish_camera(scene, &actors, &mut hits, frame_scale)
+            .and_then(|_| {
+                // Setup uses the preload list; the first ordinary camera update uses the live one.
+                world.ordinary_actors(view)?;
+                state.world = Some(world.generation());
+                Ok(())
+            })
     } else {
         Ok(())
     };

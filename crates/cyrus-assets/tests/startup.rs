@@ -31,6 +31,13 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
     std::fs::write(output.join("source.txt"), "legacy shield cache").unwrap();
     std::fs::write(output.join("splash-01.png"), "legacy shield frame").unwrap();
     export_startup(&install, &cache).unwrap();
+    let title = image::open(output.join("title.png")).unwrap().to_rgba8();
+    assert_eq!(title.get_pixel(10, 469).0, [105, 66, 30, 255]);
+    let version_pixels = (469..=474)
+        .flat_map(|y| (10..=86).map(move |x| (x, y)))
+        .filter(|&(x, y)| title.get_pixel(x, y).0 == [105, 66, 30, 255])
+        .count();
+    assert_eq!(version_pixels, 187);
     assert!((0..150).all(|frame| output.join(format!("splash-{frame:02}.png")).is_file()));
     let first = image::open(output.join("splash-00.png"))
         .unwrap()

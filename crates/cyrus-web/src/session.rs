@@ -16,6 +16,7 @@ mod session_storage;
 #[path = "session/storage.rs"]
 mod storage;
 use storage::SlotRequest;
+pub(crate) use storage::has_valid_autosave;
 #[path = "session/selection.rs"]
 mod selection;
 use selection::retain_selection;

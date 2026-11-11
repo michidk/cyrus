@@ -1,6 +1,6 @@
 # cyrus-web
 
-The browser game runs startup through the book menu by default. It uses the same
+The browser game selects its default startup destination from installed startup flags and its validated IndexedDB autosave. Fresh final-version launches play Introduction before entering the world; valid autosaves open the book. Explicit `?skip-startup` retains book inspection. It uses the same
 world, game and presentation plugins as the native game. This host owns URL
 selection and localStorage preferences; it has no native control port.
 
@@ -225,3 +225,54 @@ copy images when no request is pending. Acquisition after Update is not GPU
 readback or visual acceptance. Record matched camera, source/package, capture
 and retired-owner evidence separately. The request/result globals are diagnostic
 and do not persist game state.
+
+With `?capture`, `__cyrusAudioRequest` accepts JSON text containing `id`, current
+`generation`, actor `index`, a four-byte RTX `label`, and optional `effect` index.
+It prepares the installed voice and starts the ordinary control voice and optional
+generation-owned script effect. The effect must have an installed unbounded repeat
+count. `__cyrusAudioResult` reports pending, started or an error. Set
+`__cyrusVoiceStopRequest` to a request ID to exercise the examine view's speech-stop
+path; `__cyrusVoiceStopResult` acknowledges that ID. These diagnostic adapters do
+not alter installed repetition counts, source cursors or the audio drain policy.
+
+Installed startup acceptance uses the public browser entry point with an explicit
+install URL, isolated storage and presented-frame screenshots. Separate bounded
+runs stop at Introduction, publish an autosave from the first ready world update
+and reload default startup, or inspect explicit startup skip:
+
+```sh
+node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT introduction
+node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT autosave
+node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT menu
+```
+
+With `?capture`, `window.__cyrusStartup` publishes the application state, startup
+presentation and simulation game seconds across the movie-to-world boundary.
+The observer reads state without advancing the clock.
+
+Each run has a three-minute endpoint bound; autosave reload has a separate
+90-second bound. Full movie completion is separate acceptance. Wall duration
+is not a game timing measurement. The result records installed movie metadata.
+
+Movie exit has separate installed acceptance through the authored public Escape
+skip points and the final exit, without replacing movie bytes or changing time:
+
+```sh
+node dev/scripts/test-browser-movie-handoff.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT
+```
+
+The driver verifies the installed destination, movie exit, clock start and the
+first rendered world endpoint. Inspect that frame for title/loading teardown.
+At ordinary update four, it checks the Introduction player heading and following camera offset, then stops animation callbacks in its
+isolated page before screenshot readback, then rejects any change in the observed endpoint during readback. Closing the
+context disposes that stopped page. Each seek has a 90-second bound and the whole
+run has a five-minute bound; decoding progress is distinct from a stall. This
+checks public skip exit, not natural playback of every movie frame.
+
+For a matched first-world presentation check without replaying Introduction, use
+`node dev/scripts/test-browser-world-entry.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`.
+This documented New Game entry uses public `new-game` and `skip-movies` launch
+options and stops its disposable page at ordinary update four. It checks the
+installed destination, camera publication, active world-entry fade and prepared
+player, then retains a stable screenshot for comparison at that same update.
+It does not inspect attachments or establish camera/pixel parity by itself.

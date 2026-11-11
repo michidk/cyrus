@@ -6,7 +6,7 @@ exclude = ["dev/vendor/smk", "dev/vendor/rodio", "dev/vendor/cpal"]
 default-members = ["crates/cyrus-assets", "crates/cyrus-mods", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-soup", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-script", "crates/cyrus-console", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-config", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 repository = "https://github.com/michidk/cyrus"
 
@@ -20,7 +20,7 @@ toml = "1.0"
 clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
 smk = { version = "0.1", path = "dev/vendor/smk" }
-redguard-preservation = "0.12.0"
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "81366e8fe76d3cad0237f9cd0c02054412c9dd63" }
 cyrus-console = { path = "crates/cyrus-console" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }

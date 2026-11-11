@@ -107,3 +107,11 @@ pub async fn write(database: &str, key: &str, document: &str) -> Result<()> {
         .with_context(|| format!("writing session {database}/{key}"))?;
     Ok(())
 }
+
+/// Startup reads the reserved slot atomically; invalid session bytes are a fresh start.
+pub async fn has_valid_autosave() -> Result<bool> {
+    let saved = operate(serde_json::json!({"type": "startup_auto_save"}), "").await?;
+    Ok(saved["document"].as_str().is_some_and(|document| {
+        cyrus_session::RuntimeSessionSnapshot::decode_document(document.as_bytes()).is_ok()
+    }))
+}

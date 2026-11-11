@@ -68,6 +68,18 @@ start at zero; session snapshots preserve the word. Legacy snapshots without use
 history retain an unavailable counter instead of inventing past uses. This follows
 preservation's [ItemUsed contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#itemused).
 
+Verified: ordinary collision admits a rope terminal from the published camera position
+sampled when the map window rebuilds. It uses the rope base in all three axes and excludes
+a Manhattan distance of 4096 map units or more. Preload keeps all terminals available.
+World snapshots retain the sampled position so a same-cell restore keeps the same candidates.
+The same retained membership gates rope amplitude service, swing and attachment climbs.
+Excluded ropes preserve their dynamic state and resume on the first admitted update.
+Verified: link and terminal geometry retains the incoming swing inputs published before
+amplitude service and oscillator advancement. Collision bounds, face transforms, attachment
+placement and rendering read that publication. Snapshots retain it independently of the
+advanced oscillator, following preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#rope-update-order).
+This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
+
 ## Module guide
 
 | Module | Responsibility |

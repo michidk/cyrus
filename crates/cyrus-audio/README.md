@@ -53,6 +53,30 @@ expired timestamps do not make successive buffers overlap. Audio production can
 still pause while the main thread is busy. The vendored CPAL change and its
 removal condition are documented in `dev/vendor/cpal/README.md`.
 
+A successful diagnostic session replacement retires the old browser CD source
+at the validated publication boundary. Candidate construction prepares the
+rotated PCM, WebAudio buffer and silent source before publication. Publication
+starts the prepared source at its saved cursor and schedules retirement of the
+old source on the same audio clock, without waiting for another audio update.
+Rejected candidates discard their silent output and leave the playing source
+alone. Original-style saved-game loads keep live CD playback
+until ordinary world selection changes the track.
+
+The CD node stops and disconnects at retirement. Already rendered device frames
+cannot be recalled. Effects and speech share the backend's mixed output queue:
+submitted mixed frames can drain. Removing the old sinks requests a stop on
+the mixer's normal source poll. Restore starts at each saved source cursor,
+without saving or replaying mixed output buffers or clearing the shared device
+stream. This does not promise
+a gapless device-level splice.
+
+`node dev/scripts/test-browser-music-output.mjs http://127.0.0.1:9227` uses an
+existing Chromium DevTools endpoint to render synthetic stereo audio through
+the production CD JavaScript. It compares output before retirement, during one
+render quantum before the replacement starts, and through the restored buffer's
+wrap. The delayed retirement control emits old audio during that quantum. The
+check does not require the install or a physical output device.
+
 Hosts supply an optional `AudioListener` in Bevy world space. Native and browser
 game hosts schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`;
 the audio crate does not import the rendering camera marker. Positional starts
@@ -272,3 +296,10 @@ Backend resampler and device queues remain outside this checkpoint.
 request failures and ordinary-update state. `RuntimeDialogueSnapshot::required_labels`
 provides installed asset preparation hints before validation. The host commits this
 replacement together with logical dialogue records and the sample pool.
+
+Sample checkpoints retain the control/examine voice stop slot as well as the
+shared allocator and decoder owners. Active control voices contribute installed
+RTX label hints independently of the script dialogue cache. Hosts prepare those
+labels before validating the exact saved source identities. Old documents without
+these optional hints remain readable; an unavailable source still rejects the
+replacement. The existing mixed-buffer drain policy is unchanged.

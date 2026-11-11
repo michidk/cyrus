@@ -662,3 +662,9 @@ Optional `anisotropic_filtering` Modern mode integrates up to sixteen samples al
 the major texture footprint for terrain, models, flats and sky. Color-image
 samplers also use linear filtering and hardware anisotropy up to sixteen.
 Disabling the area restores each retained image sampler. No mipmaps are generated.
+
+Attachment roots adopt their logical owner's visibility on their first update,
+including when a restored actor receives a new entity binding. The public
+`inspect_actor_model` diagnostic correlates the retained model frame and
+attachment geometry with actual rendered owners and validated frame sources;
+it does not repair missing bindings while observing them.

@@ -95,7 +95,7 @@ impl SessionLoad {
             }
         }
         let mut clips = BTreeMap::new();
-        for label in self.snapshot.dialogue().required_labels() {
+        for label in self.snapshot.required_dialogue_labels() {
             let handle = self.assets.dialogue.get(&label).with_context(|| {
                 format!("session load dialogue {label:?}: installed source absent")
             })?;

@@ -52,12 +52,12 @@ export async function operateSlots(name, encodedRequest, document) {
   const reservedSlot = type === 'quick_save' ? 0 : 1;
   const reservedDescription = type === 'quick_save' ? 'Quick Save Game' : 'Redguard AutoSave';
   const check = (condition, message) => { if (!condition) throw new Error(`${context}: ${message}`); };
-  check(['list', 'quick_save', 'auto_save', 'discard_auto_save', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
+  check(['startup_auto_save', 'list', 'quick_save', 'auto_save', 'discard_auto_save', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
   check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'quick_save' || type === 'auto_save' || type === 'overwrite'), 'invalid slot preparation');
   check(expected_slot === undefined || ((type === 'create' && Number.isInteger(expected_slot)
     && expected_slot >= 2 && expected_slot <= 299) || ((type === 'quick_save' && expected_slot === 0) || (type === 'auto_save' && expected_slot === 1))), 'invalid planned slot');
   check(expected_revision === undefined || (reserved && (expected_revision === null || (typeof expected_revision === 'string' && expected_revision.length > 0))), 'invalid planned revision');
-  if (type !== 'list' && type !== 'create' && type !== 'quick_save' && type !== 'auto_save' && type !== 'discard_auto_save') {
+  if (type !== 'startup_auto_save' && type !== 'list' && type !== 'create' && type !== 'quick_save' && type !== 'auto_save' && type !== 'discard_auto_save') {
     check(Number.isInteger(slot) && slot >= 0 && slot <= 299, 'invalid slot');
     check(typeof revision === 'string' && revision.length > 0, 'missing slot revision');
   }
@@ -84,7 +84,7 @@ export async function operateSlots(name, encodedRequest, document) {
   const db = await open(name);
   try {
     return await new Promise((resolve, reject) => {
-      const mode = prepare || type === 'list' || type === 'load' ? 'readonly' : 'readwrite';
+      const mode = prepare || type === 'startup_auto_save' || type === 'list' || type === 'load' ? 'readonly' : 'readwrite';
       const transaction = mode === 'readwrite'
         ? db.transaction('documents', mode, { durability: 'strict' })
         : db.transaction('documents', mode);
@@ -106,7 +106,15 @@ export async function operateSlots(name, encodedRequest, document) {
         store.put(metadata, metadataKey(number));
         result = { stored: true, slot: metadata };
       };
-      if (type === 'list') {
+      if (type === 'startup_auto_save') {
+        consume(store.get(metadataKey(1)), value => {
+          try { check(validateMetadata(value).slot === 1, 'slot metadata key mismatch'); }
+          catch { result = { document: null }; return; }
+          consume(store.get(payloadKey(1)), value => {
+            result = { document: typeof value === 'string' ? value : null };
+          });
+        });
+      } else if (type === 'list') {
         const entries = [];
         consume(store.openCursor(range('metadata')), function next(cursor) {
           if (cursor) {

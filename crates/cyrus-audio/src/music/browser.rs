@@ -1,15 +1,18 @@
 //! Retained browser CD buffers, independent of main-thread streaming callbacks.
-use super::{MusicPlayer, MusicTransport};
+use super::{
+    MusicPlayer, MusicTransport,
+    browser_owners::{self, Players},
+};
 use crate::sound::PannedSnapshot;
 use anyhow::{Context, Result, ensure};
 use bevy::{
     audio::AudioPlayer,
     prelude::{
-        App, Assets, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut, Resource,
-        Update, With, error,
+        App, Assets, Entity, IntoScheduleConfigs, PlaybackSettings, Query, Res, ResMut, Update,
+        With, World, error,
     },
 };
-use std::{collections::HashMap, io::Cursor, sync::atomic::Ordering};
+use std::{io::Cursor, sync::atomic::Ordering};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(module = "/src/music/browser.js")]
@@ -22,6 +25,10 @@ extern "C" {
         gain: f32,
         paused: bool,
     ) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = prepareMusic)]
+    fn prepare_music(left: &[f32], right: &[f32], rate: u32, gain: f32) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = publishMusic)]
+    fn publish_music(id: u32, retiring: &[u32], paused: bool) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = updateMusic)]
     fn update_music(id: u32, gain: f32, paused: bool) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = musicFrames)]
@@ -30,19 +37,9 @@ extern "C" {
     fn stop_music(id: u32);
 }
 
-#[derive(Resource, Default)]
-struct Players(HashMap<Entity, u32>);
-impl Drop for Players {
-    fn drop(&mut self) {
-        for id in self.0.values() {
-            stop_music(*id);
-        }
-    }
-}
-
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<Players>()
-        .add_systems(Update, sync.after(super::pause_track));
+    browser_owners::register(app, stop_music);
+    app.add_systems(Update, sync.after(super::pause_track));
 }
 
 fn sync(
@@ -50,20 +47,12 @@ fn sync(
     transports: Res<Assets<MusicTransport>>,
     query: Query<(Entity, &AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>,
 ) {
-    players.0.retain(|entity, id| {
-        if query.contains(*entity) {
-            true
-        } else {
-            stop_music(*id);
-            false
-        }
-    });
     for (entity, player, settings) in &query {
         let Some(transport) = transports.get(&player.0) else {
             continue;
         };
         let result = (|| -> Result<()> {
-            if let Some(id) = players.0.get(&entity) {
+            if let Some(id) = players.ids.get(&entity) {
                 update_music(*id, settings.volume.to_linear(), settings.paused)
                     .map_err(|e| anyhow::anyhow!("updating WebAudio CD player: {e:?}"))?;
             } else {
@@ -82,7 +71,7 @@ fn sync(
                 )
                 .map_err(|e| anyhow::anyhow!("starting WebAudio CD player: {e:?}"))?;
                 transport.browser_clock().store(id, Ordering::Relaxed);
-                players.0.insert(entity, id);
+                players.ids.insert(entity, id);
             }
             Ok(())
         })();
@@ -116,4 +105,41 @@ pub(super) fn snapshot(
     Ok(initial
         .clone()
         .at_stereo_input_sample((initial.input_samples() + frames as u64 * 2) % samples))
+}
+
+pub(super) fn prepare(transport: &MusicTransport, settings: &PlaybackSettings) -> Result<u32> {
+    let initial = transport.initial_snapshot()?;
+    let buffer = super::checkpoint::cd_buffer(transport.source(), &initial)?;
+    prepare_music(
+        &buffer.left,
+        &buffer.right,
+        buffer.rate,
+        settings.volume.to_linear(),
+    )
+    .map_err(|error| anyhow::anyhow!("preparing WebAudio CD output: {error:?}"))
+}
+
+pub(super) fn discard(id: u32) {
+    stop_music(id);
+}
+
+pub(super) fn publish(
+    transport: &MusicTransport,
+    world: &mut World,
+    entity: Entity,
+    settings: &PlaybackSettings,
+) -> Result<()> {
+    let id = transport.prepared.load(Ordering::Relaxed);
+    ensure!(id != 0, "session CD output was not prepared");
+    let mut players = world
+        .get_resource_mut::<Players>()
+        .context("session CD browser owners absent")?;
+    let retiring: Vec<_> = players.ids.values().copied().collect();
+    publish_music(id, &retiring, settings.paused)
+        .map_err(|error| anyhow::anyhow!("publishing WebAudio CD output: {error:?}"))?;
+    players.ids.clear();
+    players.ids.insert(entity, id);
+    transport.prepared.store(0, Ordering::Relaxed);
+    transport.browser_clock().store(id, Ordering::Relaxed);
+    Ok(())
 }

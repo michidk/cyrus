@@ -17555,6 +17555,90 @@ fn selected_directional_refusal_marks_response_without_moving_the_player() {
     assert!(control.last_collide.is_empty());
 }
 
+/// The `animation` cheat at zero turns the animation system off. The original's selected player
+/// still walks with the walk key (the startup distance per update, the group frozen); native
+/// used to stop the whole script world with "walking stage requires enabled animation system".
+#[test]
+fn walking_with_the_animation_system_off_still_advances_and_keeps_the_group() {
+    use cyrus_script::script::{OrdinaryGroundQuery, ScriptActorSource};
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    let query = || OrdinaryGroundQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        distance: 4,
+        sidedness: false,
+    };
+    let timing = cyrus_script::clock::ClockStep {
+        frame_scale: 256,
+        nominal_ticks: 0,
+        fine_ticks: 0,
+    };
+    // Apply the cheat's switch state the way the ordinary update carries it into the world.
+    world
+        .advance(
+            player,
+            cyrus_script::script::ScriptStage::Body(Thread::Main),
+            cyrus_script::script::ScriptInputs {
+                frame_scale: Some(timing.frame_scale),
+                nominal_ticks: Some(timing.nominal_ticks),
+                animation_running: Some(false),
+                animation_system: Some(false),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    let frame = world.animation_frame(player).unwrap();
+    let start = world.spatial(player).unwrap().local.position;
+    let held = cyrus_script::player::input::PlayerInput {
+        forward: true,
+        ..Default::default()
+    };
+    let mut positions = Vec::new();
+    for _ in 0..3 {
+        world.begin_player_movement_update(player, 0).unwrap();
+        world
+            .advance_player_controller(
+                player,
+                query(),
+                timing,
+                cyrus_script::script::ScriptInputs {
+                    player_controller: Some(cyrus_script::script::PlayerControllerInput {
+                        held: &held,
+                        walk_mode: true,
+                        auto_defend: false,
+                        steer: None,
+                    }),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        positions.push(world.spatial(player).unwrap().local.position[2]);
+        world.finish_player_movement_update(player).unwrap();
+    }
+    assert!(positions[0] > start[2], "{positions:?} from {start:?}");
+    assert!(
+        positions.windows(2).all(|pair| pair[1] > pair[0]),
+        "{positions:?}"
+    );
+    assert_eq!(world.animation_frame(player).unwrap(), frame);
+}
+
 #[test]
 fn selected_player_collision_uses_logical_pose_and_live_map_support() {
     use cyrus_collision::ground::SupportSource;

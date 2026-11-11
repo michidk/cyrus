@@ -263,3 +263,179 @@ fn finished_playback_releases_its_channel_before_capture() -> Result<()> {
     assert!(after["players"].as_array().is_some_and(Vec::is_empty));
     Ok(())
 }
+
+#[test]
+fn restored_control_voice_retains_source_hint_and_stop_slot_with_looping_effect() -> Result<()> {
+    use cyrus_assets::sound::VoiceClip;
+    use cyrus_audio::sound::Speech;
+    let (mut app, effect_source) = fixture()?;
+    let voice_source = AudioSource {
+        bytes: pcm_wav(
+            AudioType::Mono8,
+            22050,
+            &(0..128).map(|i| 64 + i).collect::<Vec<u8>>(),
+        )
+        .map_err(anyhow::Error::msg)?
+        .into(),
+    };
+    let audio = app
+        .world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .add(voice_source.clone());
+    app.world_mut().resource_mut::<Speech>().0.insert(
+        "test".into(),
+        VoiceClip {
+            audio,
+            bits_per_sample: 8,
+            base_volume: 100,
+            seconds: 1.0,
+            text: String::new(),
+        },
+    );
+    app.world_mut()
+        .write_message(SoundRequest::Voice("test".into()));
+    app.update();
+    let voice_handle = app
+        .world_mut()
+        .query::<&AudioPlayer<Panned>>()
+        .iter(app.world())
+        .find(|player| {
+            std::sync::Arc::ptr_eq(
+                &app.world()
+                    .resource::<Assets<Panned>>()
+                    .get(&player.0)
+                    .unwrap()
+                    .source()
+                    .bytes,
+                &voice_source.bytes,
+            )
+        })
+        .unwrap()
+        .0
+        .clone();
+    let mut old_voice = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&voice_handle)
+        .unwrap()
+        .decoder();
+    for _ in 0..17 {
+        old_voice.next();
+    }
+    let saved = SamplePlaybackSnapshot::capture(app.world())?;
+    let value = serde_json::to_value(&saved)?;
+    assert_eq!(
+        value["ownership"]["speech"], 1,
+        "the voice stop owner must be checkpointed"
+    );
+    assert!(
+        value["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|player| player["dialogue_label"] == serde_json::json!(b"test"))
+    );
+    let mut entities = Vec::new();
+    for hint in saved.sources() {
+        entities.push((hint.saved_entity, app.world_mut().spawn_empty().id()));
+    }
+    let sources = BTreeMap::from([
+        (
+            blake3::hash(&effect_source.bytes).to_hex().to_string(),
+            effect_source,
+        ),
+        (
+            blake3::hash(&voice_source.bytes).to_hex().to_string(),
+            voice_source,
+        ),
+    ]);
+    let voice_saved_entity = value["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|player| player["dialogue_label"] == serde_json::json!(b"test"))
+        .unwrap()["entity"]
+        .as_u64()
+        .unwrap();
+    let voice_replacement = entities
+        .iter()
+        .find(|(old, _)| *old == voice_saved_entity)
+        .unwrap()
+        .1;
+    let candidate = saved.clone().restore(
+        &sources,
+        &AudioRestoreBindings::new(&[], &entities)?,
+        app.world(),
+    )?;
+    candidate.validate_publication(app.world())?;
+    let old: Vec<_> = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>()
+        .iter(app.world())
+        .collect();
+    let mut queue = CommandQueue::default();
+    app.world_mut()
+        .resource_scope(|world, mut assets: Mut<Assets<Panned>>| {
+            let mut commands = Commands::new(&mut queue, world);
+            candidate.queue(&mut commands, &mut assets);
+            for entity in old {
+                commands.entity(entity).despawn();
+            }
+        });
+    queue.apply(app.world_mut());
+    let restored_handle = app
+        .world()
+        .get::<AudioPlayer<Panned>>(voice_replacement)
+        .unwrap()
+        .0
+        .clone();
+    let mut restored_decoder = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&restored_handle)
+        .unwrap()
+        .decoder();
+    for _ in 0..33 {
+        assert_eq!(
+            old_voice.next(),
+            restored_decoder.next(),
+            "voice decoder must resume at the saved cursor"
+        );
+    }
+    app.world_mut().resource_mut::<Speech>().0.clear();
+    let restored = serde_json::to_value(SamplePlaybackSnapshot::capture(app.world())?)?;
+    assert_eq!(restored["ownership"]["speech"], 1);
+    assert!(
+        restored["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|player| player["dialogue_label"] == serde_json::json!(b"test"))
+    );
+    assert_eq!(restored["players"].as_array().unwrap().len(), 2);
+    let mut invalid = value;
+    invalid["ownership"]["speech"] = 16.into();
+    let invalid: SamplePlaybackSnapshot = serde_json::from_value(invalid)?;
+    assert!(
+        invalid
+            .restore(
+                &sources,
+                &AudioRestoreBindings::new(&[], &entities)?,
+                app.world()
+            )
+            .is_err()
+    );
+    app.init_resource::<cyrus_script::item_viewer::ExamineScreen>();
+    app.world_mut()
+        .resource_mut::<cyrus_script::item_viewer::ExamineScreen>()
+        .speech_stop = true;
+    app.update();
+    let stopped = serde_json::to_value(SamplePlaybackSnapshot::capture(app.world())?)?;
+    assert!(stopped["ownership"]["speech"].is_null());
+    assert_eq!(
+        stopped["players"].as_array().unwrap().len(),
+        1,
+        "closing speech must retain the looping effect"
+    );
+    Ok(())
+}

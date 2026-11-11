@@ -44,6 +44,8 @@ pub(super) enum MovieRequest {
 pub enum LaunchAction {
     /// The New Game entry.
     NewGame,
+    /// Enter the starting world without changing the session's movie-skip preference.
+    NewGameWithoutMovie,
     /// The Movies-page cinematic with this zero-based MENU.INI index; hidden entries play too.
     Movie(usize),
 }
@@ -52,6 +54,7 @@ pub enum LaunchAction {
 #[derive(Resource, Default, Debug)]
 pub struct LaunchRequest {
     pub action: Option<LaunchAction>,
+    automatic: bool,
     /// New Game enters its world without the introduction movie.
     pub skip_movies: bool,
 }
@@ -66,6 +69,15 @@ impl LaunchRequest {
                 movie.map(LaunchAction::Movie)
             },
             skip_movies,
+            automatic: false,
+        }
+    }
+
+    /// Default fresh-game entry. An explicit startup-to-menu command may cancel it.
+    pub fn automatic_new_game(skip_movies: bool) -> Self {
+        Self {
+            automatic: true,
+            ..Self::new(true, None, skip_movies)
         }
     }
 }
@@ -125,7 +137,7 @@ pub struct MenuState {
     /// Cinematic loading/playback; menu input is suspended while present.
     pub movie: Option<MovieStatus>,
     #[serde(skip)]
-    pub(super) enter_world: bool,
+    pub(super) enter_world: Option<i32>,
     /// A script movie ended: the paused world resumes without the book.
     #[serde(skip)]
     pub(super) resume_game: bool,
@@ -433,12 +445,16 @@ fn reset_for_new_game(commands: &mut Commands) {
 }
 
 /// Runs the launch request once the book has its opening motion, as a key press on the entry would.
-fn launch(
+pub(super) fn launch(
+    startup: Option<Res<super::StartupPresentation>>,
     mut request: ResMut<LaunchRequest>,
-    menu: Res<MenuState>,
+    mut menu: ResMut<MenuState>,
     mut commands: Commands,
     mut movies: MessageWriter<MovieRequest>,
 ) {
+    if request.automatic && startup.is_some_and(|startup| startup.skip) {
+        request.action = None;
+    }
     if request.action.is_none()
         || menu.motion.is_none()
         || menu.movie.is_some()
@@ -451,6 +467,11 @@ fn launch(
         Some(LaunchAction::NewGame) => {
             reset_for_new_game(&mut commands);
             movies.write(MovieRequest::NewGame);
+        }
+        Some(LaunchAction::NewGameWithoutMovie) => {
+            reset_for_new_game(&mut commands);
+            menu.enter_world = Some(0);
+            menu.ready = false;
         }
         Some(LaunchAction::Movie(index)) => {
             movies.write(MovieRequest::Menu(index));
@@ -555,7 +576,7 @@ fn description_text(
 
 pub(super) fn drive(
     assets: (Res<AssetServer>, Res<Assets<MenuAsset>>),
-    clock: Option<ResMut<SimulationClock>>,
+    (launch, clock): (Res<LaunchRequest>, Option<ResMut<SimulationClock>>),
     input: Inputs,
     mut menu: ResMut<MenuState>,
     rendering: (
@@ -694,19 +715,21 @@ pub(super) fn drive(
         next.set(AppState::InGame);
         return;
     }
-    if menu.enter_world {
-        menu.enter_world = false;
+    if let Some(heading) = menu.enter_world.take() {
         begin_world_entry(
             &mut commands,
             &mut images,
             &mut next,
             book,
+            heading,
             input.0.elapsed_secs_f64(),
         );
         menu.ready = false;
         return;
     }
-    if menu.movie.is_some() {
+    // Keep the title visible until the launch action has handed off to its movie/world.
+    if menu.movie.is_some() || (menu.context == MenuContext::Startup && launch.action.is_some()) {
+        menu.ready = false;
         return;
     }
     let mut moving = menu.motion.as_ref().is_some_and(BookMotion::busy);
@@ -1191,6 +1214,7 @@ fn begin_world_entry(
     images: &mut Assets<Image>,
     next: &mut NextState<AppState>,
     book: &MenuAsset,
+    heading: i32,
     elapsed: f64,
 ) {
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
@@ -1198,7 +1222,7 @@ fn begin_world_entry(
     ));
     commands.insert_resource(cyrus_script::player::placement::MarkerEntry {
         marker: book.new_game.marker as usize,
-        heading: 0,
+        heading,
     });
     begin_world_loading(commands, images, next, book, elapsed);
 }
@@ -1309,6 +1333,65 @@ mod tests {
             !app.world()
                 .resource::<ButtonInput<KeyCode>>()
                 .pressed(KeyCode::Enter)
+        );
+    }
+
+    #[test]
+    fn explicit_menu_skip_cancels_automatic_introduction_but_not_new_game_shortcut() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.init_resource::<Messages<MovieRequest>>();
+        world.init_resource::<cyrus_script::script::ScriptActors>();
+        world.init_resource::<Messages<cyrus_audio::sound::SoundRequest>>();
+        world.insert_resource(super::super::StartupPresentation::without_splash());
+        world.insert_resource(MenuState {
+            motion: Some(BookMotion::opening([1; 5])),
+            ..default()
+        });
+        world.insert_resource(LaunchRequest::automatic_new_game(false));
+        world.run_system_once(launch).unwrap();
+        assert_eq!(world.resource::<LaunchRequest>().action, None);
+        assert!(
+            world
+                .resource_mut::<Messages<MovieRequest>>()
+                .drain()
+                .next()
+                .is_none()
+        );
+        world.insert_resource(LaunchRequest::new(true, None, false));
+        world.run_system_once(launch).unwrap();
+        assert!(matches!(
+            world
+                .resource_mut::<Messages<MovieRequest>>()
+                .drain()
+                .next(),
+            Some(MovieRequest::NewGame)
+        ));
+    }
+
+    #[test]
+    fn installed_direct_world_entry_does_not_disable_later_new_game_movies() {
+        use bevy::ecs::system::RunSystemOnce;
+        let mut world = World::new();
+        world.init_resource::<Messages<MovieRequest>>();
+        world.init_resource::<cyrus_script::script::ScriptActors>();
+        world.init_resource::<Messages<cyrus_audio::sound::SoundRequest>>();
+        world.insert_resource(MenuState {
+            motion: Some(BookMotion::opening([1; 5])),
+            ..default()
+        });
+        let mut request = LaunchRequest::automatic_new_game(false);
+        request.action = Some(LaunchAction::NewGameWithoutMovie);
+        world.insert_resource(request);
+        world.run_system_once(launch).unwrap();
+        assert_eq!(world.resource::<MenuState>().enter_world, Some(0));
+        assert!(!world.resource::<LaunchRequest>().skip_movies);
+        assert!(
+            world
+                .resource_mut::<Messages<MovieRequest>>()
+                .drain()
+                .next()
+                .is_none()
         );
     }
 
@@ -1442,6 +1525,7 @@ mod tests {
         .add_message::<AppExit>()
         .add_message::<SoundCue>()
         .init_resource::<crate::SaveLoadHost>()
+        .init_resource::<LaunchRequest>()
         .insert_resource(clock)
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(60),

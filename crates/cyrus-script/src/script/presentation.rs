@@ -387,6 +387,7 @@ pub(super) struct RopeNodes {
     entities: std::collections::BTreeMap<(usize, usize), Entity>,
     searches: u32,
     placed: bool,
+    was_moving: bool,
 }
 
 /// `R<rope>_<link>_...` as `(rope, link)`.
@@ -438,10 +439,9 @@ pub(super) fn apply_ropes(
             }
         }
     }
-    let moving = ropes
-        .iter()
-        .any(|rope| rope.step != 0 || rope.amplitude != 0);
-    if !moving && state.placed && state.entities.len() >= expected {
+    let moving = ropes.iter().any(cyrus_game::rope::Rope::has_swing);
+    let was_moving = std::mem::replace(&mut state.was_moving, moving);
+    if !moving && !was_moving && state.placed && state.entities.len() >= expected {
         return;
     }
     let place = |pose: &cyrus_game::rope::LinkPose, transform: &mut Transform| {

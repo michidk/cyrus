@@ -302,3 +302,7 @@ operation, private entity/render-root/camera counts, active live camera count, a
 existing staged asset paths/load states. Calling `snapshot(false)` performs no
 census. Hidden render roots identify source-ready render staging before logical
 planning, not a publishable replacement. Inspection never consumes a result.
+
+`RuntimeSessionSnapshot::required_dialogue_labels` combines retained script-cache
+labels with active control/examine voice sources. Native and browser preparation
+use this complete hint set; installed source identity validation remains mandatory.

@@ -102,6 +102,7 @@ pub(super) fn register(app: &mut App) {
             Update,
             drive
                 .after(super::menu::drive)
+                .after(super::menu::launch)
                 .run_if(in_state(AppState::Menu)),
         )
         .add_systems(
@@ -285,7 +286,7 @@ pub(super) fn drive(
             continue;
         }
         if launch.skip_movies && matches!(request, MovieRequest::NewGame) {
-            menu.enter_world = true;
+            menu.enter_world = Some(0);
             menu.ready = false;
             continue;
         }
@@ -571,7 +572,8 @@ pub(super) fn drive(
         for entity in &audio_players {
             commands.entity(entity).despawn();
         }
-        menu.enter_world = failure.is_none() && playback.new_game;
+        // Preservation engine/startup.md: Introduction completion enters at a half turn.
+        menu.enter_world = (failure.is_none() && playback.new_game).then_some(1024);
         playback.new_game = false;
         playback.playing = None;
         menu.movie = None;
@@ -795,7 +797,8 @@ mod tests {
             .write(MovieRequest::NewGame);
         world.run_system_cached(drive).unwrap();
         let menu = world.resource::<MenuState>();
-        assert!(menu.enter_world && menu.movie.is_none());
+        assert_eq!(menu.enter_world, Some(0));
+        assert!(menu.movie.is_none());
         assert!(world.resource::<MoviePlayback>().load.is_none());
     }
 
@@ -915,7 +918,10 @@ mod tests {
             });
             world.run_system_cached(drive).unwrap();
             let menu = world.resource::<MenuState>();
-            assert_eq!(menu.enter_world, new_game && complete && !fail);
+            assert_eq!(
+                menu.enter_world,
+                (new_game && complete && !fail).then_some(1024)
+            );
             // A script movie resumes its world whether it ended or failed, never before.
             assert_eq!(menu.resume_game, script.is_some() && (complete || fail));
             assert_eq!(

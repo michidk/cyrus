@@ -36,7 +36,10 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
         .add_systems(OnExit(AppState::Loading), resume_world_cameras)
         .add_systems(Update, poll.run_if(in_state(AppState::Loading)))
-        .add_systems(Update, super::fade::advance)
+        .add_systems(
+            Update,
+            super::fade::advance.after(cyrus_script::script::OrdinaryUpdates),
+        )
         .add_systems(OnEnter(AppState::InGame), fade_in_world)
         .add_systems(OnExit(AppState::Loading), cleanup);
 }
@@ -381,14 +384,20 @@ fn paint_progress(pixels: &mut [u8], font: &cyrus_text::Font, done: usize, total
     for y in 448..=454 {
         for x in 32..=608 {
             let at = (y * 640 + x) * 4;
-            pixels[at..at + 4].copy_from_slice(if x <= 32 + filled {
-                &[216, 20, 16, 255]
+            if x <= 32 + filled {
+                pixels[at..at + 4].copy_from_slice(&[216, 20, 16, 255]);
             } else {
-                &[0, 0, 0, 255]
-            });
+                // The unfilled track darkens the picture: a 180/255 blend toward (9, 9, 10),
+                // fitted to captures of the original (mean error 2.5 levels per channel).
+                for (value, dark) in pixels[at..at + 3].iter_mut().zip([9u32, 9, 10]) {
+                    *value = ((u32::from(*value) * 75 + dark * 180 + 127) / 255) as u8;
+                }
+            }
         }
     }
-    font.draw_shadowed(pixels, 640, &format!("{percent}%"), [32, 451], [255, 180]);
+    // Alphas fitted to captures of the original (mean error 2.5 levels against 10.8 for the
+    // previous 255 and 180): the label is translucent like the track.
+    font.draw_shadowed(pixels, 640, &format!("{percent}%"), [32, 451], [180, 140]);
 }
 
 fn cleanup(mut commands: Commands) {
@@ -552,9 +561,10 @@ mod tests {
         );
         update_progress(&mut game, &mut images, 1, 6);
         let pixels = images.get(&game.image).unwrap().data.as_ref().unwrap();
-        assert_eq!(&pixels[(457 * 640 + 32) * 4..][..4], &[252, 156, 4, 255]);
+        // Glyph colour (252, 156, 4) at alpha 180 over the (17, 18, 19) artwork.
+        assert_eq!(&pixels[(457 * 640 + 32) * 4..][..4], &[183, 115, 8, 255]);
         assert_eq!(&pixels[(448 * 640 + 128) * 4..][..4], &[216, 20, 16, 255]);
-        assert_eq!(&pixels[(448 * 640 + 129) * 4..][..4], &[0, 0, 0, 255]);
+        assert_eq!(&pixels[(448 * 640 + 129) * 4..][..4], &[11, 12, 13, 255]);
         for y in 455..480 {
             assert_eq!(
                 &pixels[(y * 640 + 320) * 4..(y * 640 + 640) * 4],
@@ -582,14 +592,17 @@ mod tests {
         assert_eq!(pixel(&pixels, 31, 448), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 32, 447), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 320, 448), [216, 20, 16, 255]);
-        assert_eq!(pixel(&pixels, 321, 448), [0, 0, 0, 255]);
-        assert_eq!(pixel(&pixels, 608, 454), [0, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 321, 448), [11, 12, 13, 255]);
+        assert_eq!(pixel(&pixels, 608, 454), [11, 12, 13, 255]);
         assert_eq!(pixel(&pixels, 609, 454), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 608, 455), [17, 18, 19, 255]);
         assert_eq!(pixel(&pixels, 32, 455), [17, 18, 19, 255]);
+        // Each update paints onto a fresh copy of the artwork, as `update_progress` does.
+        let mut pixels = [17, 18, 19, 255].repeat(640 * 480);
         paint_progress(&mut pixels, &default(), 1, 6);
         assert_eq!(pixel(&pixels, 128, 448), [216, 20, 16, 255]);
-        assert_eq!(pixel(&pixels, 129, 448), [0, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 129, 448), [11, 12, 13, 255]);
+        let mut pixels = [17, 18, 19, 255].repeat(640 * 480);
         paint_progress(&mut pixels, &default(), 2, 2);
         assert_eq!(pixel(&pixels, 608, 454), [216, 20, 16, 255]);
         assert_eq!(pixel(&pixels, 609, 454), [17, 18, 19, 255]);

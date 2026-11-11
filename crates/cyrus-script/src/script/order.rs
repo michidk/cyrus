@@ -11,6 +11,7 @@ pub(super) struct ActorLists {
     separate_selected: Vec<ScriptActorId>,
     membership: BTreeMap<usize, [i32; 2]>,
     first: Option<[i32; 2]>,
+    rope_view: Option<[i32; 3]>,
     traversal_prepared: bool,
     selected: Vec<ScriptActorId>,
 }
@@ -62,6 +63,7 @@ impl ActorLists {
             separate_selected: Vec::new(),
             membership,
             first: None,
+            rope_view: None,
             traversal_prepared: false,
             selected: Vec::new(),
         })
@@ -73,6 +75,10 @@ impl ActorLists {
 
     pub(super) fn separate_selected(&self) -> &[ScriptActorId] {
         &self.separate_selected
+    }
+
+    pub(super) fn rope_view(&self) -> Option<[i32; 3]> {
+        self.rope_view
     }
 
     /// Complete load-time cell scan for the PVO secondary actor table.
@@ -130,6 +136,7 @@ impl ActorLists {
         actors: &[ScriptActor],
         generation: u64,
         view: [i32; 2],
+        published_camera: Option<[i32; 3]>,
     ) -> Result<&[ScriptActorId]> {
         anyhow::ensure!(
             view.iter().all(|v| (0..=65535).contains(v)),
@@ -145,6 +152,8 @@ impl ActorLists {
             }) / 512
         });
         if self.first == Some(first) {
+            // The preload has no published camera; sample the first live view even in this cell.
+            self.rope_view = self.rope_view.or(published_camera);
             return Ok(&self.selected);
         }
         self.selected.clear();
@@ -179,6 +188,7 @@ impl ActorLists {
                 .map(|&index| ScriptActorId { generation, index }),
         );
         self.first = Some(first);
+        self.rope_view = published_camera;
         self.traversal_prepared = true;
         Ok(&self.selected)
     }
@@ -192,6 +202,8 @@ pub(super) struct ActorListsSnapshot {
     separate_cells: Vec<([i32; 2], Vec<usize>)>,
     membership: Vec<(usize, [i32; 2])>,
     first: Option<[i32; 2]>,
+    #[serde(default)]
+    rope_view: Option<[i32; 3]>,
     traversal_prepared: bool,
     selected: Vec<(u64, usize)>,
     separate_selected: Vec<(u64, usize)>,
@@ -217,6 +229,7 @@ impl ActorLists {
                 .map(|(&index, &cell)| (index, cell))
                 .collect(),
             first: self.first,
+            rope_view: self.rope_view,
             traversal_prepared: self.traversal_prepared,
             selected: self
                 .selected
@@ -302,6 +315,7 @@ impl ActorLists {
         ensure!(
             saved.traversal_prepared
                 || (saved.first.is_none()
+                    && saved.rope_view.is_none()
                     && saved.selected.is_empty()
                     && saved.separate_selected.is_empty()),
             "unprepared saved traversal contains cached state"
@@ -344,6 +358,7 @@ impl ActorLists {
             separate_selected,
             membership,
             first: saved.first,
+            rope_view: saved.rope_view,
             traversal_prepared: saved.traversal_prepared,
             selected,
         })

@@ -84,6 +84,7 @@ module where it is defined and regenerate.
 
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/music/browser.rs` — Retained browser CD buffers, independent of main-thread streaming callbacks.
+- `src/music/browser_owners.rs` — Browser CD output ownership at the playback entity's lifetime boundary.
 - `src/music/checkpoint.rs` — CD track decoder checkpoints and off-live music replacement construction.
 - `src/persistence.rs` — Explicit host-prepared identity bindings shared by restored audio owners.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
@@ -214,6 +215,7 @@ module where it is defined and regenerate.
 - `src/water/heights.rs` — Read-only binding of exact engine heights to logical camera terrain sampling.
 - `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
 - `src/weapon_model.rs` — Equipped weapon models, placed from the retained logical attachment pose.
+- `src/weapon_model/inspection.rs` — Read-only correlation of logical attachment poses with rendered owners.
 
 ## `cyrus-script` — Game scripting host, player controller, simulation clock and in-game screens, built on the portable SOUP runtime.
 
@@ -408,6 +410,7 @@ module where it is defined and regenerate.
 - `src/assets.rs` — Cache asset reads await original-file preparation in the browser worker.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/capture.rs` — Opt-in world/camera observation and captured sky phase for matched browser captures.
+- `src/capture/audio.rs` — Opt-in installed audio starts through the ordinary shared sample adapters.
 - `src/capture/light_image.rs` — One-shot browser acquisition of the actual material-bound CPU light image.
 - `src/cheats.rs` — Browser CHT storage uses the same codec and startup rules as the native host.
 - `src/console.rs` — Browser console preferences retain CPF bytes in local storage; logs download as text.
@@ -418,6 +421,7 @@ module where it is defined and regenerate.
 - `src/session/load_assets.rs` — Browser cache preparation without publishing a world or starting gameplay.
 - `src/session/selection.rs` — Retained browser slot selection, separate from captured gameplay state.
 - `src/session/storage.rs` — Asynchronous browser session publication; callers own document validation.
+- `src/startup.rs` — Default browser entry uses installed policy after validating its reserved session slot.
 - `src/storage.rs` — Shared browser document storage for preferences, cheats and future save records.
 
 ## `cyrus-world` — World lifetime, explicit animation execution and actor transforms.
@@ -440,6 +444,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
+- `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.

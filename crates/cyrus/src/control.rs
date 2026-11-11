@@ -2,6 +2,7 @@
 //! forwards each request into the ECS; one system answers them in frame order.
 
 mod light_image;
+mod rendered_actor;
 
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
@@ -50,6 +51,10 @@ impl Plugin for ControlPlugin {
             }
         };
         app.add_systems(PostUpdate, light_image::respond);
+        app.add_systems(
+            PostUpdate,
+            rendered_actor::respond.after(bevy::asset::AssetEventSystems),
+        );
         app.insert_resource(Inbox(Mutex::new(rx)))
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
@@ -119,6 +124,7 @@ struct Inspection<'w, 's> {
     player_poses: Query<'w, 's, &'static cyrus_script::player::placement::PlayerPose, With<Player>>,
     marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
     clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
+    rendered_actor_pending: Option<Res<'w, rendered_actor::PendingRenderedActor>>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -171,6 +177,7 @@ fn handle(
         player_poses,
         mut marker,
         clock,
+        rendered_actor_pending,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam): (
@@ -274,6 +281,17 @@ fn handle(
                     Some(Ok(cyrus_session::SessionBoundaryResult::Committed)) => Ok(json!({"pending":false,"committed":true})),
                 }
             })().map_err(|error| format!("{error:#}")),
+            Command::RenderedActor { index, after_generation } => {
+                if rendered_actor_pending.is_some() {
+                    Err("rendered actor observation already pending".into())
+                } else {
+                    commands.insert_resource(rendered_actor::PendingRenderedActor {
+                        id, index, after_generation, reply,
+                        deadline: std::time::Instant::now() + std::time::Duration::from_secs(180),
+                    });
+                    break;
+                }
+            }
             Command::BoundLightImage { name, primitive } => {
                 commands.insert_resource(light_image::PendingLightImage { id, name, primitive, reply });
                 // Stop dispatch so later commands cannot change the selected world before capture.
@@ -291,7 +309,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                 });
                 Ok(
-                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -812,6 +830,139 @@ mod tests {
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);
         app
+    }
+
+    #[test]
+    fn rendered_actor_generation_wait_survives_unready_replacement_scene() {
+        let mut app = script_app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 83,
+                cmd: Command::RenderedActor {
+                    index: 0,
+                    after_generation: Some(0),
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(
+            responses.try_recv().is_err(),
+            "logical replacement must wait for rendered readiness"
+        );
+        let animations = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations
+            .clone();
+        let actor = app
+            .world()
+            .resource::<cyrus_script::script::ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .id(0)
+            .unwrap();
+        let owner = app
+            .world_mut()
+            .spawn((
+                Name::new("ACTOR"),
+                cyrus_script::script::ScriptBinding {
+                    actor,
+                    source: Handle::default(),
+                },
+            ))
+            .id();
+        let loading_model = app
+            .world_mut()
+            .spawn((WorldAssetRoot(Handle::default()), ChildOf(owner)))
+            .id();
+        app.insert_resource(cyrus_render::ReadyScene(animations));
+        app.update();
+        assert!(
+            responses.try_recv().is_err(),
+            "selected model instance must settle before observation"
+        );
+        app.world_mut().despawn(loading_model);
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 83);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("rendered actor observation: game clock absent")
+        );
+    }
+
+    #[test]
+    fn rendered_actor_generation_wait_survives_the_empty_world_handoff() {
+        let mut app = app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 82,
+                cmd: Command::RenderedActor {
+                    index: 0,
+                    after_generation: Some(1),
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(responses.try_recv().is_err());
+        app.world_mut()
+            .resource_mut::<rendered_actor::PendingRenderedActor>()
+            .deadline = std::time::Instant::now();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 82);
+        assert!(response.error.unwrap().contains("generation wait expired"));
+    }
+
+    #[test]
+    fn rendered_actor_observation_replies_after_update_and_rejects_absent_owners() {
+        let mut app = app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 81,
+                cmd: Command::RenderedActor {
+                    index: 0,
+                    after_generation: None,
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.add_systems(
+            Update,
+            |pending: Option<Res<rendered_actor::PendingRenderedActor>>| {
+                assert!(
+                    pending.is_some(),
+                    "request must wait until presentation updates complete"
+                );
+            },
+        );
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 81);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("current world absent"));
+        assert!(
+            !app.world()
+                .contains_resource::<rendered_actor::PendingRenderedActor>()
+        );
     }
 
     #[test]

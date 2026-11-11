@@ -363,3 +363,12 @@ are independent source members. Mesh previews preserve object-space positions,
 normals and triangles; original material flags and UVs remain in metadata. Generic
 geometry inspection does not apply the splash renderer's material effects or
 generate animation frames.
+
+Native `startup::startup_entry` reads final-version and ignore-autosave flags
+through preservation and combines them with the host's validated autosave state.
+It selects book, Introduction, or direct world entry without modifying the install
+or reading original save contents as native sessions.
+
+The worker's `startup/entry.json` contains parsed startup policy only. It does
+not prepare splash images or menu artwork. `StartupPolicy::entry` shares the
+fresh/autosave and installed bypass rules between native and browser hosts.

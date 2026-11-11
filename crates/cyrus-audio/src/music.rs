@@ -46,6 +46,8 @@ use cyrus_world::lifecycle::{CurrentScene, SceneRequest};
 
 #[cfg(target_arch = "wasm32")]
 mod browser;
+#[cfg(any(target_arch = "wasm32", test))]
+mod browser_owners;
 mod checkpoint;
 pub use checkpoint::{MusicCandidate, MusicSnapshot, MusicTransport};
 
@@ -111,6 +113,7 @@ impl Default for Music {
 
 /// The entity playing the current CD track.
 #[derive(Component)]
+#[cfg_attr(any(target_arch = "wasm32", test), component(on_remove = browser_owners::retire))]
 pub struct MusicPlayer;
 
 /// The CD track the startup book menu plays.

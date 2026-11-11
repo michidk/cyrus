@@ -16,7 +16,8 @@ fn rope_world(
     use cyrus_assets::collision::{ActorCollisionModels, CollisionGeometry, CollisionSubobject};
     let mut scripts = cache();
     scripts.updates.ropes_load = Some(true);
-    let (mut world, mut data, _) = static_model_fixture(scripts);
+    add_standalone_receivers(&mut scripts);
+    let (mut world, mut data, _) = static_model_fixture_at(scripts, None, [10, 20, 65535]);
     data.metadata["ropes"] = ropes;
     world.prepare_ropes(&data).unwrap();
     let geometry = CollisionGeometry {
@@ -56,7 +57,8 @@ fn clone_geometry(
 
 fn rope(static_model: &str) -> serde_json::Value {
     serde_json::json!([{
-        "position": [0.0, 0.0, 0.0], "angle_y": 0, "rope_type": 0, "swing": 0, "speed": 0,
+        "position": cyrus_game::rope::world_position([0.0, 0.0, 65535.0]),
+        "angle_y": 0, "rope_type": 0, "swing": 0, "speed": 0,
         "length": 3, "static_model": static_model, "rope_model": "ROPELINK",
         "unknown1": [0, 0, 0],
     }])
@@ -83,7 +85,7 @@ fn a_rope_terminal_is_a_transient_candidate_one_link_below_the_last_link() {
     // The ordinary collision query of an actor near it retains that candidate in its face list.
     let id = world.id(0).unwrap();
     let query = world
-        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[])
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 65535], &[])
         .unwrap();
     let terminals: Vec<_> = query
         .candidates()
@@ -96,6 +98,80 @@ fn a_rope_terminal_is_a_transient_candidate_one_link_below_the_last_link() {
         (terminals[0].candidate_type, terminals[0].collision_flags),
         (0x80, 0)
     );
+}
+
+#[test]
+fn ordinary_rope_collision_uses_the_published_camera_and_the_strict_base_distance() {
+    use cyrus_script::script::camera::CameraPose;
+
+    for (distance, loaded, expected) in [(4096 * 256 - 1, true, true), (4096 * 256, false, false)] {
+        let (mut world, data, scene) = rope_world(rope("TERMINAL"), loaded);
+        let view = [0, 65535];
+        // A load-time selection must not prevent the first live selection in this cell.
+        world.ordinary_actors(view).unwrap();
+        world
+            .initialize_camera_pose(CameraPose {
+                position: [0, -distance, 65535 * 256],
+                angles: [0; 3],
+            })
+            .unwrap();
+        world.ordinary_actors(view).unwrap();
+
+        let query = world
+            .prepare_ordinary_collision_query(world.id(0).unwrap(), &scene, &data, view, &[])
+            .unwrap();
+        assert_eq!(
+            query
+                .candidates()
+                .faces
+                .iter()
+                .any(|face| face.owner == CandidateOwner::Transient),
+            expected,
+            "camera-to-base distance {distance} Q8"
+        );
+    }
+}
+
+#[test]
+fn rope_admission_is_retained_within_a_window_and_rebuilt_on_exit_and_return() {
+    use cyrus_script::script::camera::CameraPose;
+
+    let (mut world, data, scene) = rope_world(rope("TERMINAL"), true);
+    let base = [0, 0, 65535 * 256];
+    world
+        .initialize_player_spatial(world.selected_player().unwrap(), base, [0; 3])
+        .unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: base,
+            angles: [0; 3],
+        })
+        .unwrap();
+    let mut placement = world.selected_player_placement().unwrap();
+
+    for (x, y, expected) in [
+        (0, 0, true),
+        (0, -4096, true),
+        (5120, 0, false),
+        (0, 0, true),
+    ] {
+        let view = [x, 65535];
+        placement.camera_position = [x * 256, y * 256, base[2]];
+        world.restore_selected_player_placement(&placement).unwrap();
+        world.ordinary_actors(view).unwrap();
+        let query = world
+            .prepare_ordinary_collision_query(world.id(0).unwrap(), &scene, &data, view, &[])
+            .unwrap();
+        assert_eq!(
+            query
+                .candidates()
+                .faces
+                .iter()
+                .any(|face| face.owner == CandidateOwner::Transient),
+            expected,
+            "camera at ({x}, {y})"
+        );
+    }
 }
 
 #[test]
@@ -292,4 +368,133 @@ fn a_weapon_tip_through_a_rope_terminal_clanks_once_like_any_unowned_model() {
             "attack intent stays set"
         );
     }
+}
+
+#[test]
+fn rope_swing_suspends_outside_the_retained_window_and_resumes_on_reentry() {
+    use cyrus_script::script::{OrdinaryInputs, ScriptInputs, camera::CameraPose};
+    let (world, data, scene) = rope_world(rope("TERMINAL"), true);
+    let mut scripts = cache();
+    scripts.updates.ropes_load = Some(true);
+    add_standalone_receivers(&mut scripts);
+    // The fixture rewrites placement identity. Rebuild its matching source for restoration.
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 65535];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    // A controlled nonzero state exposes updates even with the installed zero-swing maximum.
+    saved["ropes"][0]["amplitude"] = 1024.into();
+    saved["ropes"][0]["step"] = 200.into();
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    world
+        .initialize_player_spatial(
+            world.selected_player().unwrap(),
+            [0, 0, 65535 * 256],
+            [0; 3],
+        )
+        .unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [5120 * 256, 0, 65535 * 256],
+            angles: [0; 3],
+        })
+        .unwrap();
+    world.ordinary_actors([5120, 65535]).unwrap();
+    let frozen = world.ropes()[0].state();
+    let advance = |world: &mut ScriptWorld, view| {
+        world
+            .update_ordinary(
+                &data,
+                view,
+                OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+    };
+    advance(&mut world, [5120, 65535]);
+    assert_eq!(world.ropes()[0].state(), frozen);
+    // Move the camera near the base without changing the retained cell.
+    let mut placement = world.selected_player_placement().unwrap();
+    placement.camera_position = [0, 0, 65535 * 256];
+    world.restore_selected_player_placement(&placement).unwrap();
+    advance(&mut world, [5120, 65535]);
+    assert_eq!(world.ropes()[0].state(), frozen);
+    // The first update in the rebuilt near window must resume the rope immediately.
+    advance(&mut world, [0, 65535]);
+    assert_eq!(world.ropes()[0].amplitude, 0);
+    assert_eq!(world.ropes()[0].step, 0);
+    assert_ne!(world.ropes()[0].state(), frozen);
+}
+
+#[test]
+fn terminal_collision_keeps_the_geometry_published_before_the_oscillator() {
+    use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
+    let mut records = rope("TERMINAL");
+    records[0]["swing"] = 18.into();
+    records[0]["length"] = 30.into();
+    let (world, data, scene) = rope_world(records, true);
+    let mut scripts = cache();
+    scripts.updates.ropes_load = Some(true);
+    add_standalone_receivers(&mut scripts);
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 65535];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["ropes"][0]["amplitude"] = 12.into();
+    saved["ropes"][0]["step"] = 200.into();
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let expected = world.ropes()[0].end_collision_pose().unwrap();
+    assert_eq!(world.ropes()[0].end_pose().unwrap().pitch, 2026);
+    world
+        .update_ordinary(
+            &data,
+            [0, 65535],
+            OrdinaryInputs {
+                scene: Some(&scene),
+                scripts: ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    assert_ne!(
+        world.ropes()[0].step,
+        200,
+        "the oscillator must actually advance"
+    );
+    assert_eq!(
+        world.ropes()[0].end_collision_pose().unwrap(),
+        expected,
+        "later collision reads the model published before the oscillator"
+    );
+    let bounds = world.transient_collision_models(&scene).unwrap()[0]
+        .model
+        .unwrap();
+    assert_eq!(bounds.position, expected.0);
+    let restored =
+        restore_navigation_owner(movement_snapshot(&world, &scripts, &data), &scripts, &data)
+            .unwrap();
+    assert_eq!(
+        restored.ropes()[0].end_collision_pose().unwrap(),
+        expected,
+        "restore must not replace the published pose with the advanced oscillator"
+    );
 }

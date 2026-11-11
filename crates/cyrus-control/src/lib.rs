@@ -62,6 +62,13 @@ pub enum Command {
         name: String,
         primitive: usize,
     },
+    /// Read one actor's model and attachment ownership after presentation updates.
+    RenderedActor {
+        index: usize,
+        /// Wait for a replacement generation, then sample its first completed update.
+        #[serde(default)]
+        after_generation: Option<u64>,
+    },
     /// Request settled session capture; poll SessionCaptureResult on a later frame.
     SessionCapture,
     /// Take the pending capture result as one UTF-8 document without writing storage.

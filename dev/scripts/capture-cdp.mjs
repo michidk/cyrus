@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 // Each automated replay owns an isolated browser context and closes it afterward.
 export async function connectCdp(endpoint) {
   const version = await (await fetch(`${endpoint}/json/version`)).json();
@@ -54,4 +55,33 @@ export async function connectCdp(endpoint) {
       finally { socket.close(); }
     },
   };
+}
+
+// The caller stops animation scheduling before readback and closes its isolated context.
+export async function captureStoppedFrame(cdp, expression) {
+  const observe = async () => {
+    const { result, exceptionDetails } = await cdp.call('Runtime.evaluate', {
+      expression, returnByValue: true,
+    });
+    assert(!exceptionDetails, result.description ?? exceptionDetails?.text);
+    return result.value;
+  };
+  const before = await observe();
+  const { data } = await cdp.call('Page.captureScreenshot', { format: 'png' });
+  const after = await observe();
+  assert.deepEqual(after, before, 'endpoint advanced during stopped screenshot readback');
+  return { data, observation: before };
+}
+
+// Installed only in a disposable acceptance page, before the application starts.
+export function stopAtWorldEndpoint(minimumUpdate = 1) {
+  const schedule = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = callback => schedule(time => {
+    if (window.__cyrusStartup?.state === 'InGame' && window.__cyrusCapture?.ready
+        && window.__cyrusCapture?.scripts?.globals?.world_loop_frame >= minimumUpdate) {
+      window.__cyrusEndpointStopped = true;
+      return;
+    }
+    callback(time);
+  });
 }

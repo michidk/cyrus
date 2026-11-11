@@ -28,6 +28,8 @@ struct SavedPlayback {
     transport: PannedSnapshot,
     paused: bool,
     muted: bool,
+    #[serde(default)]
+    dialogue_label: Option<[u8; 4]>,
 }
 
 /// One installed source and presentation identity the host must prepare.
@@ -150,6 +152,17 @@ impl SamplePlaybackSnapshot {
                 transport: transport
                     .snapshot()
                     .with_context(|| format!("sample snapshot token {token}"))?,
+                dialogue_label: channel.dialogue_label.or_else(|| {
+                    world.get_resource::<super::Speech>().and_then(|speech| {
+                        let sources = world.get_resource::<Assets<AudioSource>>()?;
+                        speech.0.iter().find_map(|(label, clip)| {
+                            let source = sources.get(&clip.audio)?;
+                            std::sync::Arc::ptr_eq(&source.bytes, &transport.source().bytes)
+                                .then(|| label.to_ascii_lowercase().as_bytes().try_into().ok())
+                                .flatten()
+                        })
+                    })
+                }),
                 paused,
                 muted,
             });
@@ -169,6 +182,15 @@ impl SamplePlaybackSnapshot {
             source_identity: player.transport.source_identity(),
             bits_per_sample: player.width,
         })
+    }
+
+    /// Installed control/examine voice labels required independently of the RTX cache.
+    /// These untrusted preparation hints do not replace source identity validation.
+    pub fn required_dialogue_labels(&self) -> std::collections::BTreeSet<[u8; 4]> {
+        self.players
+            .iter()
+            .filter_map(|player| player.dialogue_label)
+            .collect()
     }
 
     /// Saved presentation owners needed by the binding plan, including remembered
@@ -228,6 +250,7 @@ impl SamplePlaybackSnapshot {
                     .insert(
                         reservation.token,
                         Channel {
+                            dialogue_label: saved.dialogue_label,
                             sound: entity,
                             reservation,
                             gains: Some(transport.gains().clone()),

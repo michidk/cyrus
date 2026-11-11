@@ -54,7 +54,7 @@ The link is gitignored. cyrus only reads from it.
 ## Run
 
 ```sh
-just run                 # splash, title, then the book menu
+just run                 # splash/title, then Introduction for a fresh native launch
 just run --skip-startup   # skip splash, prepare menu assets behind the title
 just run --new-game       # New Game from the book, with its introduction movie
 just run --new-game --skip-movies   # ... entering the world straight away
@@ -140,6 +140,48 @@ camera and audio are not compared.
 `dev/scripts/original-idle.py --world N` starts the original in world N with no input and logs the
 player's health and the nearby combat actors; the same world run natively (`load_scene`) shows
 whether the idle player dies in both. In the catacomb (world 2) both die to the same two guards.
+
+For a bounded original rope contact probe, use a prepared writable run directory
+with its shared assets linked as described above:
+
+```sh
+docker build -f dev/docker/retro/Dockerfile.contact \
+    -t cyrus-retro-contact:dev dev/docker/retro
+bash dev/scripts/original-rope-contact.sh RUN READER.py PLACE.py OUTPUT
+```
+
+The launcher holds the host live-run lock for one run, mounts the host config
+and local diagnostics, restores `WORLD.INI` and `SYSTEM.INI` afterwards and stops its own
+container on success or failure. It rejects the canonical install as a writable
+run. It uses `cyrus-retro-contact:dev`, which runs the same guest configuration on
+Xvfb without the interactive preview services. Build it with the command above;
+`CYRUS_RETRO_IMAGE` can select an existing compatible image. The launcher passes
+`-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
+F12 for the guest console.
+Other original capture workflows keep their existing modifier. For these runs,
+use Ctrl+Alt+W for the emulator recorder.
+
+The reader and placement adapter are local diagnostics kept outside tracked
+files. The reader follows the `original-state.py` JSON contract; the placement
+adapter runs as `python3 /tmp/place.py`, with that reader at `/tmp/state.py`.
+Neither adapter may modify installed assets. The launcher reads installed text-suppression settings from
+`SYSTEM.INI` and applies them in the writable run to avoid inherited developer
+diagnostics while preserving direct-world admission and other run settings;
+`CYRUS_RETRO_SYSTEM_INI` can select an explicit baseline file.
+The reader must report top-level `console_mode` as `closed`, `overlay` or
+`interactive`, derived from active console state and its modal/nonmodal mode.
+The public driver requires `interactive` as well as a paused world clock;
+a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
+checks that console entry paused world updates before sending commands, grants
+and draws the sword through console/input, then invokes placement. Escape closes
+each command entry. The JSONL record includes selected-player state and world
+clock through walking, attack and continuation. A sheathed, falling or
+nonordinary living state fails before movement. Held inputs are released on
+failure, and stalled world progress has a wall-clock cutoff. Capture mixer audio
+separately to assess clank: a successful exit alone does not prove contact,
+attachment or sound equivalence. Match placement, heading and observed game-time
+input duration in the native comparison. Run the driver and launcher controls
+with `python3 dev/scripts/test-original-rope-contact.py`.
 
 `dev/scripts/new-game-compare.py` loads START, waits for the idle player to die, chooses NEW in the
 death book (INTRO.SMK plays first and is skipped with Enter; the install's parent must hold the CD
@@ -369,11 +411,29 @@ the Windows Glide splash; the full DOS overlay contains the older shield logo.
 caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents both paths. Enter, Space, or Escape advances startup.
-`--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--new-game`,
+Default startup selects its entry from installed final-version and
+ignore-autosave flags and a validated host autosave, native storage or browser IndexedDB. A final-version launch
+without an autosave plays Introduction before the starting world. A valid
+autosave opens the book. Non-final or ignore-autosave configurations enter the
+starting world directly. This follows [preservation startup entry](https://github.com/michidk/redguard-preservation/pull/314).
+`--skip-startup` explicitly opens the book while required menu preparation remains behind the title. `--new-game`,
 `--movie INDEX` and `--load-slot SLOT` (native) skip the splash and drive the book once it is open, as the
 entry's key press would; `--skip-movies` makes New Game, from the book too, enter its world without the
 introduction movie. `--scene` loads a world directly and excludes all three. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.
+
+For original startup captures, set `CYRUS_CAPTURE_STARTUP=1` when running
+`dev/scripts/original-audio-capture.sh <events.json> <out-dir> <seconds>`.
+Keep the existing `CYRUS_RETRO_RUN`, `CYRUS_RETRO_GOG` and
+`CYRUS_STATE_READER` inputs and set `CYRUS_SHOT_INTERVAL` to capture images.
+This mode waits at the DOS prompt, arms the audio recorder, takes a baseline
+image, then launches the installed executable. The timeline records that
+launch boundary and stops at the first positive world-loop frame or the
+requested duration. The default mode still waits for an already running world.
+Use an unmodified final-version run and inspect its autosave state when comparing
+startup paths; a development-mode run can select a different entry path.
+Run `python3 dev/scripts/test-original-startup-capture.py` for the recording
+order and game-clock cutoff regression without game data.
 
 The book menu reads `MENU.INI` through rgpre, using original geometry, page
 textures, indexed FNT glyphs, and GXA widgets. Up/Down navigates eligible
@@ -765,6 +825,35 @@ effects report unsupported.
 supports toggling, assignment and persistence. These commands do not enable
 unsupported gameplay systems.
 
+## Native startup capture
+
+Attach `python3 dev/scripts/native-startup-capture.py <control-port>
+<host-timeline.json> --expect movie` to a native production launch. Choose
+`--expect menu` for a book-menu launch or `--expect world` for world entry.
+Run the game with a host-mounted `CYRUS_CONFIG_DIR` and hold the shared
+`/tmp/cyrus-live.lock` for its lifetime. The observer does not launch the game,
+change its startup options, or acquire a second lock.
+
+Preparation has its own `--prepare-seconds` deadline, default 180 seconds.
+The presentation deadline, `--seconds`, defaults to 45 seconds and starts
+when the title becomes visible. These are capture limits, not fidelity timing
+constants. A preparation screenshot alone cannot complete the capture.
+Success requires the title and the requested endpoint: a ready book, a movie
+with a presented frame, or positive game-clock progress in `InGame`. World
+progress always stops observation, including when a different endpoint was
+expected. A ready book fails immediately when a movie was expected.
+
+The JSON timeline retains complete control samples, transition screenshot
+requests, the stop reason and success status, including on timeout. Screenshot
+paths are resolved by the game's process; `--screenshot-dir` defaults to
+`/out` for a container with the capture directory mounted there. A screenshot
+request acknowledgement is not proof that its asynchronous PNG write finished.
+Keep the process alive until the requested files exist before collecting them.
+The observer exits nonzero on an incomplete or unexpected startup sequence.
+Keep timelines and images under ignored `magic/` and compare the same install,
+splash variant, autosave state and launch options in the original and native.
+Wall times alone do not establish game-clock transition parity.
+
 ## World audit and matched captures
 
 `cargo run -p cyrus -- --audit-worlds` scans every installed WORLD.INI entry
@@ -832,3 +921,206 @@ just retro --fixture dev/fixtures/island.json island-original-check
 
 After inspecting that original-only result, follow the fixture README to build and
 run native/browser and produce a new full triplet. Existing labels are rejected.
+
+### Installed browser session CD check
+
+For the diagnostic session audio check, put the `wasm-bindgen` CLI version
+listed in `Cargo.lock` on your path before building. Build the game with
+`dev/scripts/build-web.sh cyrus-web` and serve that output with an explicit,
+read-only install using `just run-web --install /absolute/path/to/Redguard`
+(or `dev/scripts/viewer-server.py --page index.html --port PORT --install …`
+when running a dedicated local acceptance server).
+
+Use Chromium with a DevTools endpoint and a secure page origin. With Chromium
+in a container, forward the server port to Chromium's loopback so AudioWorklet,
+IndexedDB, and install access work there. Run from the checkout root with Node
+26 and Python 3 with the `blake3` module installed:
+
+```sh
+python3 dev/scripts/build-provenance.py verify target/web/build-provenance.json
+SESSION_CD_PYTHON=/path/to/python node dev/scripts/test-browser-session-cd.mjs \
+  http://127.0.0.1:9222 http://localhost:8080/ http://localhost:8080/original/
+```
+
+The driver owns and disposes an isolated browser context. It defaults to
+scene 20, which must have active installed CD music and a HUD. It waits for the
+real track to approach its seam before saving; the wait is bounded by the
+track duration, a deadline, and a game-frame progress check. It checks a late
+publication rejection with a separately framed copy of the named save and
+then loads the intact save. It compares both channels of the rendered graph
+with the original source across the rejection and the restored loop seam,
+and checks that the old source was stopped and disconnected. It emits
+measurements and browser artifact hashes, without exporting audio or saves.
+It records PCM preparation separately from publication and requires channel
+copies to finish before retirement. Prepared replacement and old-source stop
+must share one scheduled render-clock boundary. This does not establish
+physical or original-game gaplessness. This checks the WebAudio
+graph, not speakers or original-game audio timing.
+
+### Installed browser speech/effect session check
+
+Build and serve a sealed browser with an explicit install as above. Select a
+voiced installed RTX label long enough to remain active through preparation and
+an installed unbounded effect. Run the driver with its DevTools endpoint and
+secure install origin:
+
+```sh
+SESSION_CD_PYTHON=/path/to/python node dev/scripts/test-browser-session-samples.mjs \
+  http://127.0.0.1:9222 http://localhost:8080/ http://localhost:8080/original/ LABEL 25
+```
+
+The opt-in audio adapter uses the ordinary control voice and generation-owned
+script sound paths. The driver saves during both sounds, rejects a missing voice
+source hint and a late HUD publication mismatch, then loads the intact document.
+It checks source-decoder checkpoints, fresh transport tokens, sample slots and
+script generation bindings. The examine voice-stop path must remove only the
+restored voice. A parallel AudioWorklet compares actual stereo graph output with
+the submitted production mixed buffers before and after publication and beyond
+the queued-buffer drain watermark. Already mixed buffers retain their documented
+drain policy. This checks the browser graph, not physical speakers or original
+game audio parity. Runs own an isolated browser context and use game-clock
+progress cutoffs; a caller should also hold a per-run lock and wall-clock limit.
+
+### Resumable native rendered session capture
+
+With a rendered native process exposing its public control port, capture a
+START/ISLAND diagnostic session round trip without rebuilding the executable:
+
+```sh
+python3 dev/scripts/native-session-capture.py 7126 /absolute/host/evidence \
+  --binary /absolute/path/to/cyrus --runtime-output /run/evidence
+python3 dev/scripts/test-native-session-capture.py
+```
+
+The host output and runtime output must designate the same mounted directory.
+Keep `CYRUS_CONFIG_DIR` host-mounted and the install read-only. Use a separate
+output directory for each executable/fixture. A nonblocking per-directory lock
+excludes simultaneous drivers. Preparation (including movie export) has a
+separate `--prepare-seconds` deadline; `--seconds` bounds operations and gameplay
+progress waits (180 seconds by default). `--game-seconds` specifies the required game-clock advance.
+
+Rerun the identical command after a runtime restart. Before a durable checkpoint,
+the driver visits both worlds again. Afterward it validates executable and saved
+document hashes and republishes the saved capture without repeating visits.
+Rejected publication, missing screenshots and absent game-clock progress fail the
+run. Checkpoint files survive failures; a prior result is removed before retry.
+The timeline, session documents and screenshot stay local and must not be tracked.
+
+A successful `result.json` verifies publication, subsequent gameplay progress,
+retained world source identities and references from rendered bindings to saved
+world generations and actor indices.
+It does **not** establish attachment, animation, dormant-world or pixel parity:
+compare the before/after documents and rendered capture separately. The driver
+intentionally leaves that comparison unverified rather than treating a successful
+load as full #46 acceptance.
+
+Installed browser movie-to-world acceptance is available through
+`node dev/scripts/test-browser-movie-handoff.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`.
+Use a secure browser origin, such as HTTPS or browser-local loopback, and a server
+started with the explicit read-only install. The isolated context follows the
+installed movie skip controls and checks the final exit. It stops animation
+callbacks at ordinary update four, before screenshot readback, and checks the
+Introduction entry heading and following camera offset.
+It does not rerun fresh/autosave policy cases or claim natural full-movie timing parity.
+
+The original rope driver retains readiness diagnostics separately from gameplay
+samples. `reader_failed` and `reader_invalid` preserve reader errors; `actor_absent`,
+`selection_absent` and `selection_ambiguous` distinguish actor lifecycle from a
+reader failure. Optional reader `readiness` metadata records binding diagnostics.
+A readiness budget expiring does not establish that loading stalled.
+
+The original launcher stores atomic progress in `OUTPUT/config/rope-readiness.json`
+and appends observations to `contact.jsonl`. After a timeout before input, rerun
+with the same paths and `--resume`. Reader and placement identities must match.
+Waiting can reconnect to a new runtime because no input has begun; once console
+or gameplay preparation starts, an interrupted attempt cannot be replayed
+through resume. Completed attempts also refuse replay. A per-journal lock excludes
+concurrent drivers. Direct driver invocations opt in with `--progress PATH`.
+Observations retain host timestamps, elapsed readiness time and engine counters;
+the journal records the latest observation and last progress poll.
+
+The original rope driver accepts `--record` to capture DOSBox-X mixer audio
+only after a valid placed baseline. It stops the recorder on completion or
+failure; the launcher mounts the run output's `audio/` as the capture directory.
+A recording alone does not establish which sound occurred.
+
+Replay an accepted original rope schedule through a running native control port:
+
+```sh
+python3 dev/scripts/native-rope-contact.py --addr 127.0.0.1:7117 \
+    --original ORIGINAL/contact.jsonl --output NATIVE/contact.jsonl
+```
+
+The driver rejects incomplete or contaminated original schedules before sending
+input. An accepted schedule must contain `start` and `end` boundary rows for each
+walk, attack and continuation phase, with `input_ack: true` and cumulative
+`clock: [before_seconds, after_seconds]` ranges. Older update-count traces need
+new bounded timing samples; FPS or a single update's tick increment cannot
+reconstruct their elapsed game time. The original reader supplies cumulative
+`game_seconds`, `clock_end`, and observed `input_state` for `Up` and the attack key.
+The original driver brackets key delivery and waits for the observed key state.
+
+The native driver pulses the sword toggle for one update, so asynchronous reads
+do not hold it through animation completion and request sheathing again. It
+prepares the gravity cheat through public controls,
+places the player at the observed original baseline and records attachment state.
+It validates each input response and waits for the player action to reflect the
+requested state. State reads bracket actor reads so sample uncertainty remains
+visible. Holds use elapsed game seconds. `--clock-tolerance SECONDS` declares the
+maximum timing error, including both runs' boundary uncertainty; the default is
+exact. A mismatch fails before any displacement/contact comparison is emitted.
+A `comparison: "matched"` row establishes timing within that budget, not gameplay
+or sound equivalence. All held input is released on failure, and host deadlines
+bound stalled game clocks.
+
+For native sound evidence, run the driver in the same PulseAudio environment as
+cyrus under `dev/docker/dev/paced-audio.sh`, adding `--record-mixer OUTPUT.wav`.
+This records the paced sink's actual `cyrus.monitor` mixer output through `parec`,
+finalizes it on success or failure, and rejects empty, failed or unexpected-format
+recordings. The runtime needs `pulseaudio-utils` and `libasound2-plugins`, supplied
+by the dev image. ALSA `type null` is unsuitable. A recording alone does not
+identify a clank; compare it against the retained original WAV over accepted
+clock intervals. Driver controls run with
+`python3 dev/scripts/test-native-rope-contact.py` and
+`python3 dev/scripts/test-original-rope-contact.py`.
+
+Native rope readiness writes an atomic `OUTPUT.progress.json` before any input.
+After a readiness timeout or process restart, rerun the same command with
+`--resume`. It verifies the accepted original schedule hash and preserves loading
+observations. A completed run validates its output hash and returns without
+sending input again. An interrupted input attempt is never automatically replayed;
+keep its partial JSONL and use a new output path for a fresh comparison. The output
+lock rejects concurrent drivers for the same attempt. `--ready-timeout` bounds
+startup separately from each world-progress interval.
+
+`node dev/scripts/test-browser-world-entry.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`
+uses the public New Game/movie-skip launch path to compare the first-world
+presentation at ordinary update four. It checks destination, camera, fade and
+player preparation, retains the image, and closes its isolated page within a
+90-second endpoint bound. Compare its image with the original at the same
+ordinary update; host wall duration does not establish fade timing parity.
+
+For animation/attachment continuation, reuse a captured two-world seed and select
+an installed animated actor with an equipped attachment in each world. Actor
+indices come from `scripts` and the seed's retained actor census:
+
+```sh
+python3 dev/scripts/native-session-capture.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --continuation-seed HOST_SEED --runtime-seed RUNTIME_SEED \
+  --attachment-actor ACTIVE_INDEX --revisit SCENE --revisit-actor DORMANT_INDEX
+python3 dev/scripts/test-native-session-assertions.py
+```
+
+This mode restores the seed instead of repeating world visits. It captures a new
+durable fixture with a precise pre-capture observation, then arms the public
+`rendered_actor` generation wait before publication and before revisiting the
+dormant world. Each reply records the first settled presentation update's frame
+and game time after rendered readiness and retained revisit restoration. Assertions
+require the displayed frame to match that update's
+logical model, a validated rendered model source, fresh actor ownership, and
+matching attachment sources, visibility, local transforms and world matrices.
+Saved frames may advance; a changed frame alone is not a failed continuation.
+The dormant logical document must remain unchanged before revisit, apart from
+generation rebinding. First-update observations and the revisit screenshot remain
+local. This fixture does not establish original-game pixel or timing parity.

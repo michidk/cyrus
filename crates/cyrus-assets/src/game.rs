@@ -105,6 +105,10 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
             Path::new("cheats/startup.json"),
             &serde_json::to_vec(&crate::cheats::prepare(source)?)?,
         )?,
+        "startup" if path == "startup/entry.json" => output.publish(
+            Path::new(path),
+            &serde_json::to_vec(&crate::startup::startup_policy(source)?)?,
+        )?,
         "startup" => crate::startup::prepare_startup(source, output)?,
         "menu" => crate::startup::prepare_menu(source, output)?,
         "logbook" => crate::logbook::prepare(source, output)?,

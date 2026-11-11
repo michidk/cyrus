@@ -1,4 +1,5 @@
 //! Opt-in world/camera observation and captured sky phase for matched browser captures.
+mod audio;
 mod light_image;
 
 use bevy::prelude::*;
@@ -11,7 +12,8 @@ pub fn register(app: &mut App) {
         .is_some_and(|query| query.has("capture"));
     super::session::register(app, enabled);
     if enabled {
-        app.add_systems(PostUpdate, light_image::respond);
+        audio::register(app);
+        app.add_systems(PostUpdate, (light_image::respond, publish_startup));
         app.add_systems(
             Update,
             (sync_sky, sync_texture, sync_acceptance)
@@ -82,6 +84,37 @@ fn sync_sky(
     })();
     if let Err(error) = result {
         error!("browser sky capture request: {error:?}");
+    }
+}
+
+/// Observe each startup phase, including movie-to-world handoff, without advancing its clock.
+fn publish_startup(
+    state: Res<State<cyrus_game::AppState>>,
+    presentation: Res<cyrus_startup::StartupPresentation>,
+    clock: Option<Res<cyrus_script::clock::SimulationClock>>,
+    fades: Query<&BackgroundColor, With<cyrus_startup::WorldEntryFade>>,
+    camera: Res<cyrus_script::script::CameraFrameState>,
+) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let record = serde_json::json!({
+        "state": format!("{:?}", state.get()),
+        "presentation": &*presentation,
+        "world_fades": fades.iter().map(|color| color.0.alpha()).collect::<Vec<_>>(),
+        "camera_published": camera.published.is_some(),
+        "camera_pose": camera.published.as_ref().map(|camera| serde_json::json!({
+            "position": camera.pose.position,
+            "angles": camera.pose.angles,
+            "render_position": camera.render.position,
+            "view_angles": camera.view_angles,
+        })),
+        "clock": clock.as_ref().map(|clock| serde_json::json!({"game_seconds": clock.game_seconds()})),
+    });
+    let result = js_sys::JSON::parse(&record.to_string())
+        .and_then(|value| js_sys::Reflect::set(&window, &"__cyrusStartup".into(), &value));
+    if let Err(error) = result {
+        error!("browser startup observation: {error:?}");
     }
 }
 

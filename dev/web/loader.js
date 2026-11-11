@@ -70,6 +70,7 @@ try {
         fill.classList.toggle('indeterminate', !total);
         fill.style.width = total ? (100 * done / total) + '%' : '0%';
       } });
+      globalThis.cyrusStartupPolicy = new TextDecoder().decode(await globalThis.cyrusGameAssets.read('startup/entry.json'));
       globalThis.cyrusConsoleSeed = new TextDecoder().decode(await globalThis.cyrusGameAssets.read('console/startup.json'));
       globalThis.cyrusCheatSeed = new TextDecoder().decode(await globalThis.cyrusGameAssets.read('cheats/startup.json'));
       document.querySelector('meta[name=cyrus-worlds]').content = JSON.stringify(globalThis.cyrusGameAssets.worlds);

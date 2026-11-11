@@ -140,7 +140,9 @@ export async function testSessionSlots(operate = operateSlots) {
     assert(JSON.stringify((await operation({ type: 'list' })).slots.find(entry => entry.slot === thumbSave.slot.slot).thumbnail) === JSON.stringify(thumb), 'thumbnail metadata did not round trip');
     const quick = await operation({ type: 'quick_save' }, 'quick payload');
     assert(quick.slot.slot === 0 && quick.slot.description === 'Quick Save Game', 'quick-save slot contract failed');
+    assert((await operation({ type: 'startup_auto_save' })).document === null, 'absent startup autosave was valid');
     const auto = await operation({ type: 'auto_save' }, 'auto payload');
+    assert((await operation({ type: 'startup_auto_save' })).document === 'auto payload', 'startup read lost the reserved payload');
     assert(auto.slot.slot === 1 && auto.slot.description === 'Redguard AutoSave', 'autosave slot contract failed');
     for (const [type, slot, description] of [
       ['quick_save', 0, 'Quick Save Game'], ['auto_save', 1, 'Redguard AutoSave'],
@@ -157,6 +159,7 @@ export async function testSessionSlots(operate = operateSlots) {
     }
     await rejected({ type: 'overwrite', slot: 1, revision: auto.slot.revision, description: 'MANUAL' }, 'forbidden');
     await operation({ type: 'discard_auto_save' });
+    assert((await operation({ type: 'startup_auto_save' })).document === null, 'discarded startup autosave was valid');
     await operation({ type: 'discard_auto_save' });
     const kept = (await operation({ type: 'list' })).slots.map(entry => entry.slot);
     assert(!kept.includes(1) && kept.includes(0), 'discarding the autosave removed only slot 1');

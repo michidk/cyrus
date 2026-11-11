@@ -37,6 +37,9 @@ World timing remains game-owned; this does not enable automatic actor updates.
 New Game applies the game-owned lockout reset before requesting its world. Loading a save does not apply that New Game reset.
 World entry from the book discards the paused player before recreating it at the
 requested marker, including when New Game selects the same world and marker.
+The first-world fade waits for a published gameplay camera and consumes timing
+from completed ordinary world updates. Host updates spent preparing assets do
+not consume that fade. Loading-screen fades retain their presentation timing.
 Startup, book, movie and loading presentation clear their borders to black
 independently of the last world's background colour.
 
@@ -53,11 +56,18 @@ persistence and world-entry playtests with an explicit install. See
 [SETUP](../../docs/SETUP.md) for commands and controls.
 
 Default windowed startup plays the installed Windows Glide swoosh animation and decoded
-640×480 title image, then opens the book menu once required assets are ready.
+640×480 title image. Native default launches then use installed startup policy
+and validated native autosave state to select Introduction, book, or direct world
+entry. The title remains visible while a pending launch action initializes;
+book motion and drawing do not briefly appear before its cinematic. Explicit
+`--skip-startup` retains book inspection. The browser uses the same installed
+policy with its validated IndexedDB autosave before constructing the application.
 Native menu/HUD export begins after the title becomes visible. The full
 parser-coverage scan remains in headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.
 The title uses the configured FNT font and documented bottom-label positions.
+Label colours follow the installed title palette: the VGA-selected tint multiplies
+the low font texture colour at palette index 161, following [preservation PR #313](https://github.com/michidk/redguard-preservation/pull/313).
 The bottom-right red title label reports menu/HUD preparation, menu asset loading,
 and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
@@ -171,3 +181,5 @@ core. No enters the short death book; Yes submits the retained selection to the
 host's `LastGameLoader`. Missing capture or load support produces an explicit
 error. Native/browser rendered parity and successful restored-session acceptance
 remain unverified; image resizing still requires comparison.
+
+Introduction completion retains its documented entry heading through the loading request. Direct world entry and the no-movie shortcut retain heading zero.

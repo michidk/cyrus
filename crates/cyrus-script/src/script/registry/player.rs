@@ -1541,10 +1541,14 @@ impl ScriptWorld {
             self.selected_player_index() == Some(id.index),
             "walking stage requires selected player"
         );
-        ensure!(
-            self.updates.animation_system,
-            "walking stage requires enabled animation system"
-        );
+        // With the animation system off (the `animation` cheat at zero; preservation PR #311,
+        // cheats.md) the request routines do
+        // nothing and the group stays where it is: a key-driven walk still advances by the startup
+        // distance, and the group-driven continuation has no walk group to follow.
+        let animated = self.updates.animation_system;
+        if !animated && continuation {
+            return Ok(false);
+        }
         let control = self.actors[id.index]
             .control
             .as_ref()
@@ -1582,12 +1586,15 @@ impl ScriptWorld {
             .take()
             .expect("prepared movement");
         let result = (|| -> Result<bool> {
-            let animation = self.actors[id.index]
-                .animation
-                .as_ref()
-                .context("walking animation unavailable")?;
-            if continuation && animation.playback.current_group() != Some(AnimationGroup::WALK) {
-                return Ok(false);
+            if animated {
+                let animation = self.actors[id.index]
+                    .animation
+                    .as_ref()
+                    .context("walking animation unavailable")?;
+                if continuation && animation.playback.current_group() != Some(AnimationGroup::WALK)
+                {
+                    return Ok(false);
+                }
             }
             let pose = self.spatial(id)?.local;
             let rows = pose.matrix.0.map(Vec3::from_array);
@@ -1620,11 +1627,18 @@ impl ScriptWorld {
             let event_context = super::effects::ActorEventContext::capture(self, id);
             let event_camera = &mut self.camera;
             let event_effects = &mut self.effects;
-            let animation = self.actors[id.index]
-                .animation
-                .as_mut()
-                .expect("validated animation");
-            let distance = if continuation {
+            let distance = if !animated {
+                movement.startup.advance(
+                    definition.forward_walk,
+                    definition.forward_speed,
+                    timing.frame_scale,
+                    true,
+                )
+            } else if continuation {
+                let animation = self.actors[id.index]
+                    .animation
+                    .as_mut()
+                    .expect("validated animation");
                 movement.startup.advance(
                     definition.forward_walk,
                     definition.forward_speed,
@@ -1632,6 +1646,10 @@ impl ScriptWorld {
                     !animation.playback.translation_suppressed(),
                 )
             } else {
+                let animation = self.actors[id.index]
+                    .animation
+                    .as_mut()
+                    .expect("validated animation");
                 let Some(step) = movement.startup.request(
                     &mut animation.playback,
                     &definition,
