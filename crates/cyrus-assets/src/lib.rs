@@ -484,6 +484,7 @@ pub mod hud;
 pub mod hud_export;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod loading;
+pub mod loading_artwork;
 pub mod menu;
 pub mod movie;
 pub mod player;

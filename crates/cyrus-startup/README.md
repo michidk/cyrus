@@ -23,7 +23,8 @@ without startup presentation it retains headless parser-coverage preload.
 Preparation results remain cyrus-assets types.
 
 Native and browser debug world selections submit `WorldLoadRequest`. They use the
-same installed loading artwork, progress and asset-readiness checks as New Game,
+destination's installed `WORLD.INI` loading artwork, prepared on demand, with the
+same progress and asset-readiness checks as New Game,
 then recreate the player and enter at marker zero with heading zero. The world
 camera pauses while the loading screen is visible. Selecting a world clears the
 inspection camera and returns to the gameplay camera. Native direct-scene launches

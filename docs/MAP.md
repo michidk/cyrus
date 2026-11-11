@@ -36,6 +36,7 @@ module where it is defined and regenerate.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
 - `src/loading.rs` — Native preload scan and parser coverage results.
+- `src/loading_artwork.rs` — Destination-specific loading pictures, prepared on demand from WORLD.INI.
 - `src/logbook.rs` — Installed logbook paper, fonts and scroll geometry for native and browser readers.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.

@@ -1224,7 +1224,15 @@ fn begin_world_entry(
         marker: book.new_game.marker as usize,
         heading,
     });
-    begin_world_loading(commands, images, next, book, elapsed);
+    begin_world_loading(
+        commands,
+        images,
+        next,
+        book,
+        book.new_game.world,
+        &book.new_game.loading,
+        elapsed,
+    );
 }
 
 pub(super) fn begin_world_loading(
@@ -1232,6 +1240,8 @@ pub(super) fn begin_world_loading(
     images: &mut Assets<Image>,
     next: &mut NextState<AppState>,
     book: &MenuAsset,
+    artwork_world: u32,
+    pictures: &[cyrus_assets::menu::MenuPicture],
     elapsed: f64,
 ) {
     // The book retains the paused player for Continue and Save. A fresh world entry must
@@ -1252,8 +1262,8 @@ pub(super) fn begin_world_loading(
     commands.remove_resource::<cyrus_world::lifecycle::PreparationProgress>();
     let variation = std::collections::hash_map::RandomState::new().hash_one(elapsed.to_bits())
         as usize
-        % book.new_game.loading.len();
-    let picture = &book.new_game.loading[variation];
+        % pictures.len();
+    let picture = &pictures[variation];
     let image = images.add(Image::new(
         bevy::render::render_resource::Extent3d {
             width: picture.width.into(),
@@ -1267,6 +1277,7 @@ pub(super) fn begin_world_loading(
     ));
     commands.insert_resource(super::StartGame {
         image,
+        artwork_world: Some(artwork_world),
         background: picture.rgba.clone(),
         font: book.new_game.font.clone(),
         progress: (0, 1),
