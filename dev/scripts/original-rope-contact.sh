@@ -75,15 +75,15 @@ for key in ('disable_text', 'disable_debug_text'):
 path.write_text(text)
 PYCONFIG
 sed -i 's/^start_world=.*/start_world=2/' "$world"
-mkdir -p "$output/config"
+mkdir -p "$output/config" "$output/audio"
 docker run -d --name "$name" --cap-add SYS_PTRACE -e DISPLAY=:1 \
     -e CYRUS_CONFIG_DIR=/config \
     -v "$run:/game" -v "$root/magic/gog:/gog:ro" \
     -v "$root/magic/gog/extracted/app/game.gog:/game/game.gog:ro" \
-    -v "$output/config:/config" \
+    -v "$output/config:/config" -v "$output/audio:/capture" \
     -v "$reader:/tmp/state.py:ro" -v "$placement:/tmp/place.py:ro" \
     -v "$root/dev/scripts/original-rope-contact.py:/tmp/driver.py:ro" \
-    "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" -set "dosbox hostkey=ctrlalt" >/dev/null
+    "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" -set "dosbox hostkey=ctrlalt" -set "dosbox captures=/capture" >/dev/null
 created=1
 docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py \
     "$@" --place python3 /tmp/place.py > "$output/contact.jsonl" 2> "$output/contact.stderr"

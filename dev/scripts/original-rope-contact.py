@@ -43,6 +43,15 @@ class Driver:
             self.input('keyup', key)
         time.sleep(self.pulse)
 
+    def recorder(self):
+        try:
+            self.input('keydown', 'ctrl')
+            self.input('keydown', 'alt')
+            subprocess.run(['xdotool', 'key', 'w'], check=True, timeout=5)
+        finally:
+            self.input('keyup', 'alt')
+            self.input('keyup', 'ctrl')
+
     def command(self, text):
         self.key('F12')
         try:
@@ -126,11 +135,14 @@ def main():
     parser.add_argument('--timeout', type=float, default=35)
     parser.add_argument('--ready-timeout', type=float, default=100)
     parser.add_argument('--pulse', type=float, default=.2)
+    parser.add_argument('--record', action='store_true',
+                        help='record the DOSBox-X mixer with the Ctrl+Alt host modifier')
     parser.add_argument('--attack-key', default='Control_L')
     args = parser.parse_args()
     if args.frames <= 0 or args.timeout <= 0 or args.ready_timeout <= 0 or args.pulse <= 0:
         parser.error('frames, timeouts and pulse must be positive')
     driver = Driver(args.reader, args.timeout, args.pulse)
+    recording = False
     try:
         ready = driver.ready(args.ready_timeout)
         window = subprocess.check_output(['xdotool', 'search', '--name', 'DOSBox'], text=True).splitlines()[-1]
@@ -151,6 +163,9 @@ def main():
         subprocess.run(args.place, check=True, timeout=args.timeout)
         row = driver.progress(2, 'placed')
         baseline(row)
+        if args.record:
+            driver.recorder()
+            recording = True
         driver.input('keydown', 'Up')
         try:
             driver.progress(args.frames, 'walk-in', validate=True)
@@ -164,6 +179,8 @@ def main():
         driver.progress(12, 'continuation', validate=True)
     finally:
         driver.release()
+        if recording:
+            driver.recorder()
 
 
 if __name__ == '__main__':

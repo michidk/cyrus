@@ -12,7 +12,7 @@ DRIVER = Path(__file__).with_name('original-rope-contact.py')
 
 
 class ContactDriver(unittest.TestCase):
-    def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True, overlay=False):
+    def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True, overlay=False, record=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'keys').touch()
@@ -40,6 +40,7 @@ class ContactDriver(unittest.TestCase):
             result = subprocess.run(
                 [sys.executable, str(DRIVER), '--reader', str(reader),
                  '--frames', '2', '--timeout', '5', '--pulse', '.001',
+                 *(['--record'] if record else []),
                  '--place', sys.executable, str(placement)],
                 env=env, capture_output=True, text=True, timeout=20)
             return result, (root / 'keys').read_text()
@@ -55,6 +56,15 @@ class ContactDriver(unittest.TestCase):
         self.assertTrue(keys.endswith('keyup Control_L\n'))
         self.assertNotIn('type ', keys)
         self.assertIn('keydown equal\nkeyup equal\n', keys)
+
+    def test_recording_starts_only_after_valid_placement_and_stops(self):
+        result, keys = self.run_driver(record=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(keys.count('key w\n'), 2)
+        self.assertLess(keys.index('key w\n'), keys.index('keydown Up\n'))
+        result, keys = self.run_driver(falling=1, record=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('key w\n', keys)
 
     def test_sheathed_or_falling_baseline_never_walks(self):
         for drawn, falling in [(False, 0), (True, 1)]:

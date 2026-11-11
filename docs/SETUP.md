@@ -1021,3 +1021,24 @@ started with the explicit read-only install. The isolated context follows the
 installed movie skip controls and checks the final exit. It stops animation
 callbacks after the first completed world update, before screenshot readback.
 It does not rerun fresh/autosave policy cases or claim natural full-movie timing parity.
+
+The original rope driver accepts `--record` to capture DOSBox-X mixer audio
+only after a valid placed baseline. It stops the recorder on completion or
+failure; the launcher mounts the run output's `audio/` as the capture directory.
+A recording alone does not establish which sound occurred.
+
+Replay an accepted original rope schedule through a running native control port:
+
+```sh
+python3 dev/scripts/native-rope-contact.py --addr 127.0.0.1:7117 \
+    --original ORIGINAL/contact.jsonl --output NATIVE/contact.jsonl
+```
+
+The driver rejects incomplete or contaminated original schedules before sending
+input, prepares the sword and gravity cheat through public controls, places the
+player at the observed original baseline and records attachment state. It holds
+walk and attack for the original's observed update counts and bounds stalled
+progress. This is a comparison of input per update, not equal elapsed game time
+or automatic contact/clank equivalence. Use matched mixer recordings to assess
+sound. All held input is released on failure. Driver controls run with
+`python3 dev/scripts/test-native-rope-contact.py`.
