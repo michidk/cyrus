@@ -141,6 +141,37 @@ camera and audio are not compared.
 player's health and the nearby combat actors; the same world run natively (`load_scene`) shows
 whether the idle player dies in both. In the catacomb (world 2) both die to the same two guards.
 
+For a bounded original rope contact probe, use a prepared writable run directory
+with its shared assets linked as described above:
+
+```sh
+bash dev/scripts/original-rope-contact.sh RUN READER.py PLACE.py OUTPUT
+```
+
+The launcher holds the host live-run lock for one run, mounts the host config
+and local diagnostics, restores `WORLD.INI` afterwards and stops its own
+container on success or failure. It rejects the canonical install as a writable
+run. It uses the existing `cyrus-retro:dev` image and passes
+`-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
+F12 for the guest console.
+Other original capture workflows keep their existing modifier. For these runs,
+use Ctrl+Alt+W for the emulator recorder.
+
+The reader and placement adapter are local diagnostics kept outside tracked
+files. The reader follows the `original-state.py` JSON contract; the placement
+adapter runs as `python3 /tmp/place.py`, with that reader at `/tmp/state.py`.
+Neither adapter may modify installed assets. The public driver focuses DOSBox,
+checks that console entry paused world updates before sending commands, grants
+and draws the sword through console/input, then invokes placement. Escape closes
+each command entry. The JSONL record includes selected-player state and world
+clock through walking, attack and continuation. A sheathed, falling or
+nonordinary living state fails before movement. Held inputs are released on
+failure, and stalled world progress has a wall-clock cutoff. Capture mixer audio
+separately to assess clank: a successful exit alone does not prove contact,
+attachment or sound equivalence. Match placement, heading and observed game-time
+input duration in the native comparison. Run the driver and launcher controls
+with `python3 dev/scripts/test-original-rope-contact.py`.
+
 `dev/scripts/new-game-compare.py` loads START, waits for the idle player to die, chooses NEW in the
 death book (INTRO.SMK plays first and is skipped with Enter; the install's parent must hold the CD
 image) and compares the script globals, HUD and inventory with the first start. Measured: inventory,
