@@ -32,6 +32,7 @@ class Driver:
         self.progress_record = {}
         self.schedule_command = None
         self.schedule_frame_scale = None
+        self.attachment = False
 
     def input(self, action, key):
         subprocess.run(['xdotool', action, key], check=True, timeout=5)
@@ -65,6 +66,14 @@ class Driver:
         self.key('F12')
         try:
             opened = self.sample('console-open')
+            deadline = time.monotonic() + self.timeout
+            while (opened['console_mode'] == 'closed'
+                   and opened.get('counters', {}).get('console_request') == 1
+                   and opened.get('counters', {}).get('console_requested_mode') == 0):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('interactive console request was not admitted')
+                time.sleep(.05)
+                opened = self.sample('console-open')
             require_interactive_console(opened)
             before = opened['frame']
             time.sleep(2 * self.pulse)
@@ -84,6 +93,7 @@ class Driver:
         identity = dict(reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
                         schedule_command=self.schedule_command,
                         schedule_frame_scale=self.schedule_frame_scale,
+                        attachment=self.attachment,
                         schedule_sha256=(hashlib.sha256(Path(self.schedule_command).read_bytes()).hexdigest()
                             if self.schedule_command else None),
                         placement=placement, placement_files={item: hashlib.sha256(Path(item).read_bytes()).hexdigest()
@@ -177,6 +187,8 @@ class Driver:
 
     def exact_segment(self, command, frames, phase, key=None):
         request = dict(phase=phase, frames=frames, key=key)
+        if self.attachment:
+            request['scenario'] = 'attachment'
         if self.schedule_frame_scale is not None:
             request['frame_scale'] = self.schedule_frame_scale
         # Backend failure/timeout must not leave its scheduled gameplay key held.
@@ -277,14 +289,22 @@ def validate_schedule(result, request):
         raise ValueError('boundary clock differs from consumed frame scales')
     rows = []
     for edge, row, pressed in [('start', start, True), ('end', end, False)]:
-        baseline(row)
+        baseline(row, attachment=request.get('scenario') == 'attachment')
         if key and row['input_state'].get(key) is not pressed:
             raise ValueError('boundary input acknowledgement differs from schedule')
         seconds = row['clock_scale'] / 256 / rate
         rows.append(dict(phase=request['phase'], boundary=edge, input_ack=True,
             frame=row['frame'], clock=[seconds, seconds], player=row['player'],
             timing_source='ordinary_boundary', instrumentation=result.get('instrumentation')))
+    if request.get('scenario') == 'attachment':
+        attachment_outcome(request['phase'], rows[0]['player'], rows[1]['player'])
     return rows
+
+
+def attachment_outcome(phase, start, end):
+    expected = {'approach': (False, True), 'hang': (True, True), 'detach': (True, False)}
+    if phase not in expected or (start.get('rope_attached'), end.get('rope_attached')) != expected[phase]:
+        raise RuntimeError(f'positive rope {phase} attachment outcome was rejected')
 
 
 def require_interactive_console(row):
@@ -292,9 +312,10 @@ def require_interactive_console(row):
         raise RuntimeError('console is not interactive; refusing gameplay text')
 
 
-def baseline(row):
+def baseline(row, attachment=False):
     player = row['player']
-    if not player['drawn'] or player['falling'] or player['living'] != 0:
+    if (bool(player['drawn']) != (not attachment)
+            or (not attachment and player['falling']) or player['living'] != 0):
         raise RuntimeError(f"invalid contact baseline: {row}")
     if player['health'] <= 0:
         raise RuntimeError('selected player is dead')
@@ -308,6 +329,8 @@ def main():
     parser.add_argument('--progress', type=Path, help='durable readiness journal')
     parser.add_argument('--resume', action='store_true', help='resume waiting only; never replay input')
     parser.add_argument('--frames', type=int, default=16)
+    parser.add_argument('--attachment', action='store_true',
+                        help='require an unarmed positive grab, held attachment and jump detach')
     parser.add_argument('--attack-frames', type=int, default=2)
     parser.add_argument('--continuation-frames', type=int, default=12)
     parser.add_argument('--schedule-frame-scale', type=int, help='require this measured consumed scale at every instrumented update')
@@ -327,6 +350,9 @@ def main():
             lock = stack.enter_context(args.progress.with_suffix('.lock').open('a'))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         driver = Driver(args.reader, args.timeout, args.pulse)
+        driver.attachment = args.attachment
+        if args.attachment and not args.schedule_command:
+            parser.error('--attachment requires acknowledged --schedule-command boundaries')
         driver.schedule_command = args.schedule_command
         driver.schedule_frame_scale = args.schedule_frame_scale
         if args.resume and args.progress is None:
@@ -344,8 +370,9 @@ def main():
                 driver.pulse = max(driver.pulse, 2 / fps)
             driver.progress(2, 'ready')
             driver.command('magiccarpet = 1')
-            driver.command('item add,1')
-            if not driver.sample('inventory')['player']['drawn']:
+            if not args.attachment:
+                driver.command('item add,1')
+            if not args.attachment and not driver.sample('inventory')['player']['drawn']:
                 driver.input('keydown', 's')
                 try:
                     driver.progress(2, 'draw')
@@ -354,13 +381,18 @@ def main():
             driver.progress(12, 'settle')
             subprocess.run(args.place, check=True, timeout=args.timeout)
             row = driver.progress(2, 'placed')
-            baseline(row)
+            baseline(row, attachment=args.attachment)
             if args.record:
                 driver.recorder()
                 recording = True
-            driver.segment(args.frames, 'walk-in', 'Up')
-            driver.segment(args.attack_frames, 'attack', args.attack_key)
-            driver.segment(args.continuation_frames, 'continuation')
+            if args.attachment:
+                driver.segment(args.frames, 'approach', 'space')
+                driver.segment(args.continuation_frames, 'hang')
+                driver.segment(args.attack_frames, 'detach', 'space')
+            else:
+                driver.segment(args.frames, 'walk-in', 'Up')
+                driver.segment(args.attack_frames, 'attack', args.attack_key)
+                driver.segment(args.continuation_frames, 'continuation')
             driver.progress_record['status'] = 'completed'
             driver.save()
         finally:

@@ -45395,7 +45395,7 @@ fn rope_regrab_fixture() -> (
 fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let (mut world, data, scene) = rope_regrab_fixture();
     let player = world.selected_player().unwrap();
-    // The countdown refuses regrab before the later collision stages cancel queued motion.
+    // The countdown refuses regrab while the detached player retains airborne motion.
     tick_rope_classification_with_timing(
         &mut world,
         &data,
@@ -45419,9 +45419,9 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
             control.falling_state.byte(),
             control.motion_classification
         ),
-        (1, 0, 0, MotionDirection::FORWARD)
+        (1, 24, 0, MotionDirection::FORWARD)
     );
-    // Re-enter airborne motion through the same controller while one exclusion tick remains.
+    // Repeat the jump request while one exclusion tick remains.
     sample_rope_jump_controller(
         &mut world,
         &data,
@@ -51336,3 +51336,6 @@ fn ordinary_working_orientation_copies_current_angles_before_script_rotation() {
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
     }
 }
+
+#[path = "script_registry/rope_attachment.rs"]
+mod rope_attachment_tests;

@@ -181,7 +181,7 @@ impl ScriptWorld {
             return Ok(false);
         };
         let link = self.rope_hand_link(id, rope, link, data, probe)?;
-        self.attach_player(id, data, rope, link, held, frame_scale, ticks, sounds)?;
+        self.attach_player(id, rope, link, held, ticks, sounds)?;
         Ok(true)
     }
 
@@ -274,11 +274,9 @@ impl ScriptWorld {
     fn attach_player(
         &mut self,
         id: ScriptActorId,
-        data: &Animations,
         rope_index: usize,
         link: i32,
         held: Option<&PlayerInput>,
-        frame_scale: i32,
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
@@ -348,8 +346,7 @@ impl ScriptWorld {
             turn_total: 0,
             previous_node: None,
         };
-        let _ = frame_scale;
-        self.place_player_on_rope(id, rope_index, data)
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)] // The controls read the keys, clock, sound sink and installed values.
@@ -825,6 +822,23 @@ impl ScriptWorld {
             for axis in 0..3 {
                 position[axis] = position[axis].wrapping_add(offset[axis]);
             }
+        }
+        let preserve_height = self.actors[index]
+            .animation
+            .as_ref()
+            .map(|animation| {
+                animation
+                    .playback
+                    .frame_wait_state()
+                    .map(|(_, _, progress)| {
+                        animation.playback.current_group() == Some(AnimationGroup::ROPE_GRAB)
+                            && progress < 3
+                    })
+            })
+            .transpose()?
+            .unwrap_or(false);
+        if preserve_height {
+            position[1] = self.spatial(id)?.local.position[1];
         }
         let spatial = self
             .spatial

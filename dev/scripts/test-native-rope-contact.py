@@ -32,6 +32,27 @@ class Comparison(unittest.TestCase):
         self.assertEqual(player['yaw'], 512)
         self.assertAlmostEqual(schedule['walk-in']['duration'][0], 2 / 12)
 
+    def test_positive_original_requires_observed_grab_hold_and_detach(self):
+        rows = [dict(phase='placed', player=dict(drawn=False, falling=0, living=0, health=100,
+                                               position=[1, 2, 3], yaw=512, rope_attached=False))]
+        for phase, flags in [('approach', [False, True]), ('hang', [True, True]), ('detach', [True, False])]:
+            for i, flag in enumerate(flags):
+                rows.append(dict(phase=phase, boundary=['start','end'][i], clock=[i/2]*2,
+                    input_ack=True, player=dict(drawn=False, falling=0 if flag else 2,
+                        living=0, health=100, rope_attached=flag, position=[1,2,3])))
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'original.jsonl'
+            def acquire():
+                path.write_text(''.join(json.dumps(row)+'\n' for row in rows))
+                return contact.accepted_schedule(path, attachment=True)
+            _, schedule=acquire()
+            self.assertEqual(set(schedule), {'approach','hang','detach'})
+            rows[2]['player']['rope_attached']=False
+            with self.assertRaisesRegex(ValueError, 'attachment outcome'): acquire()
+            rows[2]['player']['rope_attached']=True
+            rows[2]['player']['drawn']=True
+            with self.assertRaisesRegex(ValueError, 'baseline'): acquire()
+
     def test_timing_mismatch_and_missing_clock_are_rejected(self):
         for mutation in [lambda rows: rows[2].pop('boundary'),
                          lambda rows: rows[3].update(clock=[0, 0]),
@@ -160,6 +181,23 @@ class Comparison(unittest.TestCase):
             driver.timed_segment('walk-in', {'duration': [.125, .125]}, 'ArrowUp')
         self.assertEqual(len(calls), 1)
         self.assertTrue(all('key' not in event for event in calls[0]['events']))
+
+    def test_native_positive_schedule_requires_attachment_at_exact_boundary(self):
+        for attached in [True, False]:
+            output=io.StringIO()
+            driver=contact.Driver('unused', 1, output)
+            driver.attachment=True
+            start=dict(drawn=False, falling=2, living=0, health=100, position=[0,0,0], rope_attached=False)
+            end=dict(start, falling=0, rope_attached=attached)
+            self.scheduled(driver, start, [0,.5], end=end, step=1/6)
+            expected=dict(duration=[.5,.5], start={'player': start}, end={'player': dict(end, rope_attached=True)})
+            if attached:
+                driver.timed_segment('approach', expected, 'Space')
+                self.assertTrue(json.loads(output.getvalue().splitlines()[-1])['rope_attached'])
+            else:
+                with self.assertRaisesRegex(ValueError, 'attachment outcome'):
+                    driver.timed_segment('approach', expected, 'Space')
+                self.assertNotIn('"comparison": "matched"', output.getvalue())
 
     def test_unavailable_timing_probe_never_sends_gameplay_schedule(self):
         output = io.StringIO()

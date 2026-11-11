@@ -1286,6 +1286,17 @@ precondition for the next incomplete stage through public loading. Modified
 inputs or readbacks fail explicitly. Completed pixel evidence remains separate
 from the logical/binding driver's checkpoints.
 
+For positive rope attachment, use `--attachment` on both rope drivers with a
+placement derived from an installed rope and a backend supporting the original
+`space` key. This is a separate unarmed scenario: Jump approaches the rope,
+released input must retain attachment, and a second Jump must detach. `--frames`,
+`--continuation-frames` and `--attack-frames` bound those three phases respectively.
+Original acquisition requires acknowledged ordinary boundaries. Both drivers
+reject absent or wrong attachment outcomes; airborne state is admitted only in
+this explicit unarmed scenario. The default armed/nonfalling contact guard stays
+in force. A positive diagnostic fixture does not establish natural cadence,
+weapon contact or clank parity.
+
 
 ## Paced original book audio
 

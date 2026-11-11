@@ -230,6 +230,54 @@ class ExactSchedule(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'consumed scale differs'):
             module.validate_schedule(result, dict(phase='walk-in', frames=2, key=None, frame_scale=512))
 
+    def test_pending_interactive_request_waits_without_typing_into_closed_console(self):
+        module=Readiness().module()
+        from unittest.mock import patch
+        driver=module.Driver('unused', 1, .01)
+        pending=dict(console_mode='closed', frame=3,
+                     counters=dict(console_request=1, console_requested_mode=0))
+        admitted=dict(console_mode='interactive', frame=4)
+        for first, accepted in [(pending, True), (dict(console_mode='overlay', frame=3), False)]:
+            keys=[]
+            with patch.object(driver, 'key', side_effect=keys.append), patch.object(driver, 'sample',
+                    side_effect=[first, admitted, admitted]), patch.object(module.time, 'sleep'):
+                if accepted: driver.command('x')
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'not interactive'): driver.command('x')
+            self.assertEqual('x' in keys, accepted)
+            self.assertEqual(keys[-1], 'Escape')
+
+    def test_pending_console_deadline_never_types_gameplay_text(self):
+        module=Readiness().module()
+        from unittest.mock import patch
+        driver=module.Driver('unused', 1, .01)
+        pending=dict(console_mode='closed', frame=3,
+                     counters=dict(console_request=1, console_requested_mode=0))
+        keys=[]
+        with patch.object(driver, 'key', side_effect=keys.append), patch.object(driver, 'sample',
+                return_value=pending), patch.object(module.time, 'monotonic', side_effect=[0,2]):
+            with self.assertRaisesRegex(RuntimeError, 'not admitted'): driver.command('x')
+        self.assertEqual(keys, ['F12','Escape'])
+
+    def test_positive_attachment_requires_unarmed_grab_hold_and_detach(self):
+        import copy
+        module = Readiness().module()
+        for phase, flags in [('approach', [False, True]), ('hang', [True, True]), ('detach', [True, False])]:
+            request = dict(phase=phase, frames=1, key=None, scenario='attachment')
+            result = dict(phase=phase, key=None, normal_frame_rate=12, boundaries=[
+                dict(frame=10+i, clock_scale=512*i, input_state={},
+                    player=dict(drawn=False, falling=0 if flag else 2, living=0,
+                                health=100, rope_attached=flag)) for i, flag in enumerate(flags)],
+                steps=[dict(frame=10, frame_scale=512, input_state={})])
+            self.assertEqual(len(module.validate_schedule(result, request)), 2)
+            for mutation in ['weapon', 'attachment', 'missing']:
+                wrong=copy.deepcopy(result)
+                if mutation == 'weapon': wrong['boundaries'][0]['player']['drawn']=True
+                elif mutation == 'missing': wrong['boundaries'][1]['player'].pop('rope_attached')
+                else: wrong['boundaries'][1]['player']['rope_attached']=not flags[1]
+                with self.subTest(phase=phase, mutation=mutation), self.assertRaises((ValueError, RuntimeError)):
+                    module.validate_schedule(wrong, request)
+
     def test_backend_identity_change_prevents_readiness_resume(self):
         module = Readiness().module()
         with tempfile.TemporaryDirectory() as directory:

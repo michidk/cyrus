@@ -64,25 +64,40 @@ def planned_updates(expected, step_seconds, tolerance=0):
     return count
 
 
-def accepted_schedule(path):
+def valid_baseline(player, attachment):
+    weapon_matches = not player['drawn'] if attachment else bool(player['drawn'])
+    motion_matches = attachment or not player['falling']
+    return weapon_matches and motion_matches and not player['living'] and player['health'] > 0
+
+
+def attachment_outcome(phase, start, end):
+    expected = {'approach': (False, True), 'hang': (True, True), 'detach': (True, False)}
+    if phase not in expected or (start.get('rope_attached'), end.get('rope_attached')) != expected[phase]:
+        raise ValueError(f'positive rope {phase} attachment outcome was rejected')
+
+
+def accepted_schedule(path, attachment=False):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
+    names = ('approach', 'hang', 'detach') if attachment else ('walk-in', 'attack', 'continuation')
     phases = {}
     for row in rows:
-        if row['phase'] in ('placed', 'walk-in', 'attack', 'continuation'):
+        if row['phase'] in ('placed', *names):
             player = row['player']
-            if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+            if not valid_baseline(player, attachment):
                 raise ValueError('original contact baseline was rejected')
             phases.setdefault(row['phase'], []).append(row)
-    if set(phases) != {'placed', 'walk-in', 'attack', 'continuation'}:
+    if set(phases) != {'placed', *names}:
         raise ValueError('original contact run is incomplete')
     schedule = {}
-    for phase in ('walk-in', 'attack', 'continuation'):
+    for phase in names:
         edges = [row for row in phases[phase] if row.get('boundary')]
         boundaries = {row['boundary']: row for row in edges}
         if len(edges) != 2 or set(boundaries) != {'start', 'end'}:
             raise ValueError(f'original {phase} lacks acknowledged game-clock boundaries; acquire timing samples')
         if not all(row.get('input_ack') is True for row in boundaries.values()):
             raise ValueError(f'original {phase} input was not acknowledged')
+        if attachment:
+            attachment_outcome(phase, boundaries['start']['player'], boundaries['end']['player'])
         schedule[phase] = interval(boundaries['start'], boundaries['end'])
     return phases['placed'][-1]['player'], schedule
 
@@ -202,6 +217,7 @@ class Driver:
         self.clock_tolerance = clock_tolerance
         self.index = None
         self.held = set()
+        self.attachment = False
 
     def call(self, kind, _timeout=None, **args):
         timeout = self.timeout if _timeout is None else min(self.timeout, _timeout)
@@ -248,7 +264,7 @@ class Driver:
             previous = row['frame']
             if validate:
                 player = row['player']
-                if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+                if not valid_baseline(player, self.attachment):
                     raise RuntimeError('native contact baseline was rejected')
             if row['frame'] - start >= frames:
                 return row
@@ -297,13 +313,14 @@ class Driver:
             player = dict(drawn=control['weapon_drawn'], falling=control['falling_state'],
                 living=control['living_state'], health=actor['attributes'][3],
                 rope_attached=control['rope_attached'],
+                group=actor.get('animation', {}).get('current_group'),
                 position=[v / 256 for v in actor['spatial']['effective']['position']])
             boundary = dict(phase=phase, boundary=edge, input_ack=True,
                 frame=row['update'], generation=row['generation'],
                 clock=[row['game_seconds'], row['game_seconds']], player=player)
             self.output.write(json.dumps(boundary) + '\n')
             self.output.flush()
-            if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+            if not valid_baseline(player, self.attachment):
                 raise RuntimeError('native contact baseline was rejected')
             boundaries.append(boundary)
         start, end = boundaries
@@ -319,6 +336,8 @@ class Driver:
                 clock_tolerance=self.clock_tolerance, error=str(error))) + '\n')
             self.output.flush()
             raise
+        if self.attachment:
+            attachment_outcome(phase, start['player'], end['player'])
         result = dict(phase=phase, comparison='matched', duration=observed['duration'],
                       clock_tolerance=self.clock_tolerance,
                       displacement=[b - a for a, b in zip(start['player']['position'], end['player']['position'])],
@@ -332,8 +351,9 @@ class Driver:
         try:
             self.progress(1, 'ready')
             self.call('cheat', name='magiccarpet', value=1)
-            self.call('console', line='item add,1')
-            if not self.sample('inventory')['player']['drawn']:
+            if not self.attachment:
+                self.call('console', line='item add,1')
+            if not self.attachment and not self.sample('inventory')['player']['drawn']:
                 response = self.call('input', key='KeyS', action='tap')
                 if response != dict(key='KeyS', action='tap'):
                     raise RuntimeError('native sword input acknowledgement does not match request')
@@ -344,7 +364,9 @@ class Driver:
             self.progress(2, 'placed', validate=True)
             capture = MixerCapture(self.mixer_path) if self.mixer_path else nullcontext()
             with capture:
-                for phase, key in [('walk-in', 'ArrowUp'), ('attack', 'ControlLeft'), ('continuation', None)]:
+                phases = [('approach', 'Space'), ('hang', None), ('detach', 'Space')] if self.attachment else [
+                    ('walk-in', 'ArrowUp'), ('attack', 'ControlLeft'), ('continuation', None)]
+                for phase, key in phases:
                     self.timed_segment(phase, schedule[phase], key)
         finally:
             for key in tuple(self.held):
@@ -352,7 +374,7 @@ class Driver:
 
 
 def execute(args):
-    original, schedule = accepted_schedule(args.original)
+    original, schedule = accepted_schedule(args.original, attachment=args.attachment)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.with_suffix(args.output.suffix + '.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -367,6 +389,7 @@ def execute_locked(args, original, schedule):
             raise ValueError('completed output is missing or changed')
         return
     driver = Driver(args.addr, args.timeout, None, args.clock_tolerance, args.record_mixer)
+    driver.attachment = args.attachment
     wait_ready(driver, args.ready_timeout, progress_path, progress)
     progress['status'] = 'running'
     save_progress(progress_path, progress)
@@ -389,6 +412,8 @@ def main():
                         help='capture WAV from paced-audio.sh cyrus.monitor in this environment')
     parser.add_argument('--clock-tolerance', type=float, default=0,
                         help='maximum elapsed-game-seconds error including boundary uncertainty; default exact')
+    parser.add_argument('--attachment', action='store_true',
+                        help='replay and require positive unarmed grab, hold and jump detach')
     parser.add_argument('--resume', action='store_true',
                         help='resume readiness or acknowledge completed output; never replay interrupted input')
     parser.add_argument('--ready-timeout', type=float, default=180)

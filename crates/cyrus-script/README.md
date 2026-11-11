@@ -70,6 +70,13 @@ placement and rendering read that publication. Snapshots retain it independently
 advanced oscillator, following preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#rope-update-order).
 This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
 
+Verified: admission records the attachment without placing a pending grab.
+Subsequent attached updates place the player. A player retains the approach height while the rope grab
+animation's wrapping frame progress is below three. Horizontal hand placement
+continues. Later placement uses the rope node and grip height. The public rope
+drivers have an explicit unarmed positive scenario requiring grab, held attachment
+and jump detach; diagnostic timing does not establish contact/clank parity.
+
 ## Module guide
 
 | Module | Responsibility |
