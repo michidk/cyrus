@@ -254,6 +254,14 @@ for evidence. Put raw decompilation, traces, screenshots, and working notes in
 `magic/`. Put durable format and engine facts in redguard-preservation. Keep
 implementation status in issues, task artifacts, and crate documentation.
 
+The original renders through 3dfx Glide 2. `just reference` also clones the
+Glide 2.x/3.x source ([sezero/glide](https://github.com/sezero/glide)) into
+`magic/reference/glide`. Use it to recognise the library code linked into the
+executable and to read Glide's exact rules for fog tables, edge antialiasing,
+texture filtering and depth. The linked Glide release is unknown, so confirm
+each rule against the original executable before publishing it to preservation.
+Never copy Glide code; it is under 3dfx's own license.
+
 For browser checks, pass the install explicitly with
 `just run-web --install /absolute/path/to/Redguard` or
 `just run-viewer-web --install /absolute/path/to/Redguard`. Do not rely on a
