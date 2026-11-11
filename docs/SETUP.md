@@ -969,3 +969,36 @@ the queued-buffer drain watermark. Already mixed buffers retain their documented
 drain policy. This checks the browser graph, not physical speakers or original
 game audio parity. Runs own an isolated browser context and use game-clock
 progress cutoffs; a caller should also hold a per-run lock and wall-clock limit.
+
+### Resumable native rendered session capture
+
+With a rendered native process exposing its public control port, capture a
+START/ISLAND diagnostic session round trip without rebuilding the executable:
+
+```sh
+python3 dev/scripts/native-session-capture.py 7126 /absolute/host/evidence \
+  --binary /absolute/path/to/cyrus --runtime-output /run/evidence
+python3 dev/scripts/test-native-session-capture.py
+```
+
+The host output and runtime output must designate the same mounted directory.
+Keep `CYRUS_CONFIG_DIR` host-mounted and the install read-only. Use a separate
+output directory for each executable/fixture. A nonblocking per-directory lock
+excludes simultaneous drivers. Preparation (including movie export) has a
+separate `--prepare-seconds` deadline; `--seconds` bounds operations and gameplay
+progress waits (180 seconds by default). `--game-seconds` specifies the required game-clock advance.
+
+Rerun the identical command after a runtime restart. Before a durable checkpoint,
+the driver visits both worlds again. Afterward it validates executable and saved
+document hashes and republishes the saved capture without repeating visits.
+Rejected publication, missing screenshots and absent game-clock progress fail the
+run. Checkpoint files survive failures; a prior result is removed before retry.
+The timeline, session documents and screenshot stay local and must not be tracked.
+
+A successful `result.json` verifies publication, subsequent gameplay progress,
+retained world source identities and references from rendered bindings to saved
+world generations and actor indices.
+It does **not** establish attachment, animation, dormant-world or pixel parity:
+compare the before/after documents and rendered capture separately. The driver
+intentionally leaves that comparison unverified rather than treating a successful
+load as full #46 acceptance.
