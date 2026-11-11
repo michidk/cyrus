@@ -30,6 +30,7 @@ class Driver:
         self.held = set()
         self.progress_path = None
         self.progress_record = {}
+        self.schedule_command = None
 
     def input(self, action, key):
         subprocess.run(['xdotool', action, key], check=True, timeout=5)
@@ -80,6 +81,9 @@ class Driver:
 
     def journal(self, path, resume, placement):
         identity = dict(reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
+                        schedule_command=self.schedule_command,
+                        schedule_sha256=(hashlib.sha256(Path(self.schedule_command).read_bytes()).hexdigest()
+                            if self.schedule_command else None),
                         placement=placement, placement_files={item: hashlib.sha256(Path(item).read_bytes()).hexdigest()
                             for item in placement if Path(item).is_file()})
         self.progress_path = path
@@ -169,7 +173,26 @@ class Driver:
         print(json.dumps(row), flush=True)
         return row
 
+    def exact_segment(self, command, frames, phase, key=None):
+        request = dict(phase=phase, frames=frames, key=key)
+        # Backend failure/timeout must not leave its scheduled gameplay key held.
+        if key:
+            self.held.add(key)
+        try:
+            result = subprocess.run([command], input=json.dumps(request), capture_output=True,
+                                    text=True, check=True, timeout=self.timeout)
+        finally:
+            if key:
+                self.input('keyup', key)
+        response = json.loads(result.stdout)
+        print(json.dumps(dict(phase='schedule-evidence', request=request, result=response)), flush=True)
+        rows = validate_schedule(response, request)
+        for row in rows:
+            print(json.dumps(row), flush=True)
+
     def segment(self, frames, phase, key=None):
+        if self.schedule_command:
+            return self.exact_segment(self.schedule_command, frames, phase, key)
         self.boundary(phase, 'start', key)
         try:
             self.progress(frames, phase, validate=True)
@@ -214,6 +237,44 @@ class Driver:
             time.sleep(.05)
 
 
+def validate_schedule(result, request):
+    """Accept exact clocks only with a contiguous consumed-step acknowledgement."""
+    frames, key = request['frames'], request['key']
+    rate = result['normal_frame_rate']
+    if type(rate) is not int or rate <= 0:
+        raise ValueError('invalid installed nominal frame rate')
+    edges, steps = result['boundaries'], result['steps']
+    if len(edges) != 2 or len(steps) != frames:
+        raise ValueError('boundary schedule is incomplete')
+    start, end = edges
+    if (type(start['frame']) is not int or type(end['frame']) is not int
+            or end['frame'] - start['frame'] != frames):
+        raise ValueError('boundary update count differs from schedule')
+    if result.get('phase') != request['phase'] or result.get('key') != key:
+        raise ValueError('boundary schedule identity changed')
+    elapsed = 0
+    for offset, step in enumerate(steps):
+        if (type(step['frame']) is not int or step['frame'] != start['frame'] + offset
+                or type(step['frame_scale']) is not int or step['frame_scale'] < 0):
+            raise ValueError('consumed ordinary boundary skipped or invalid')
+        if key and step['input_state'].get(key) is not True:
+            raise ValueError('scheduled input was not consumed at every ordinary boundary')
+        elapsed += step['frame_scale']
+    if (type(start['clock_scale']) is not int or type(end['clock_scale']) is not int
+            or end['clock_scale'] - start['clock_scale'] != elapsed or elapsed <= 0):
+        raise ValueError('boundary clock differs from consumed frame scales')
+    rows = []
+    for edge, row, pressed in [('start', start, True), ('end', end, False)]:
+        baseline(row)
+        if key and row['input_state'].get(key) is not pressed:
+            raise ValueError('boundary input acknowledgement differs from schedule')
+        seconds = row['clock_scale'] / 256 / rate
+        rows.append(dict(phase=request['phase'], boundary=edge, input_ack=True,
+            frame=row['frame'], clock=[seconds, seconds], player=row['player'],
+            timing_source='ordinary_boundary', instrumentation=result.get('instrumentation')))
+    return rows
+
+
 def require_interactive_console(row):
     if row['console_mode'] != 'interactive':
         raise RuntimeError('console is not interactive; refusing gameplay text')
@@ -238,6 +299,7 @@ def main():
     parser.add_argument('--timeout', type=float, default=35)
     parser.add_argument('--ready-timeout', type=float, default=100)
     parser.add_argument('--pulse', type=float, default=.2)
+    parser.add_argument('--schedule-command', help='local executable accepting a JSON schedule on stdin; returns boundary and consumed-step acknowledgements')
     parser.add_argument('--record', action='store_true',
                         help='record the DOSBox-X mixer with the Ctrl+Alt host modifier')
     parser.add_argument('--attack-key', default='Control_L')
@@ -250,6 +312,7 @@ def main():
             lock = stack.enter_context(args.progress.with_suffix('.lock').open('a'))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         driver = Driver(args.reader, args.timeout, args.pulse)
+        driver.schedule_command = args.schedule_command
         if args.resume and args.progress is None:
             parser.error('--resume requires --progress')
         if args.progress:

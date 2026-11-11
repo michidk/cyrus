@@ -1066,7 +1066,7 @@ prepares the gravity cheat through public controls,
 places the player at the observed original baseline and records attachment state.
 It submits each walk, attack and continuation interval through `schedule_input`.
 Transitions apply before ordinary input sampling at offsets from the next admitted
-update; continuation uses observation-only boundaries. The last measured FPS
+update; continuation uses observation-only boundaries. An observation-only ordinary interval
 chooses an attempted update count, but acceptance uses only the actual clocks
 returned with the boundary acknowledgements. Each acknowledgement also identifies
 the world generation, ordinary update and selected actor state before that update.
@@ -1156,3 +1156,20 @@ the world must remove its named binding; revisiting must restore matching light
 rows and saved logical state under a new owner. The final screenshot remains local.
 CPU material rows establish binding continuity, not GPU readback or original
 visual/timing parity.
+
+For original timing acquisition, `original-rope-contact.py --schedule-command PATH`
+uses a local executable specific to the original build. It receives one JSON
+request on stdin with `phase`, `frames` and `key` (`null` for observation only).
+It returns `phase`, `key`, the installed `normal_frame_rate`, two `boundaries`,
+and exactly `frames` consumed `steps`. Each boundary contains `frame`, integer
+`clock_scale` in 1/256 nominal tick, `input_state` and the selected `player`.
+Each step contains its contiguous `frame`, consumed integer `frame_scale` and
+`input_state`. The end clock must equal the start plus all consumed scales;
+held input must be acknowledged through every step and released at the end.
+The driver retains the backend evidence before validating it and emits exact
+boundary clocks only after the complete schedule and baseline pass. Backend
+identity is included in the readiness journal. Build-specific instrumentation
+stays local, outside the tracked tree. Record its method in `instrumentation`;
+debugger stops can change measured FPS, so exact boundary timing alone does not
+establish ordinary playback cadence or gameplay parity. Without this option,
+original host-input acquisition retains its conservative clock ranges.

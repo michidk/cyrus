@@ -191,6 +191,60 @@ class Readiness(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'interrupted'):
                 driver.journal(journal, True, ['place'])
 
+class ExactSchedule(unittest.TestCase):
+    def test_exact_boundary_requires_contiguous_consumed_scales_and_input(self):
+        import copy
+        module = Readiness().module()
+        request = dict(phase='walk-in', frames=2, key='Up')
+        player = dict(drawn=True, falling=0, living=0, health=100)
+        result = dict(phase='walk-in', key='Up', normal_frame_rate=12, boundaries=[
+            dict(frame=10, clock_scale=1000, input_state={'Up': True}, player=player),
+            dict(frame=12, clock_scale=1768, input_state={'Up': False}, player=player)], steps=[
+            dict(frame=10, frame_scale=256, input_state={'Up': True}),
+            dict(frame=11, frame_scale=512, input_state={'Up': True})])
+        rows = module.validate_schedule(result, request)
+        self.assertEqual(rows[0]['clock'], [1000 / 3072] * 2)
+        self.assertEqual(rows[1]['clock'], [1768 / 3072] * 2)
+        mutations = [lambda r: r['steps'].pop(),
+            lambda r: r['steps'][1].update(frame=13),
+            lambda r: r['steps'][1].update(frame_scale=-1),
+            lambda r: r['steps'][1]['input_state'].update(Up=False),
+            lambda r: r['boundaries'][1].update(clock_scale=1800),
+            lambda r: r['boundaries'][1]['input_state'].update(Up=True),
+            lambda r: r.update(key='Control_L'),
+            lambda r: r.update(normal_frame_rate=0),
+            lambda r: r['boundaries'][1]['player'].update(falling=1)]
+        for mutate in mutations:
+            wrong = copy.deepcopy(result); mutate(wrong)
+            with self.subTest(wrong=wrong), self.assertRaises((ValueError, RuntimeError)):
+                module.validate_schedule(wrong, request)
+
+    def test_backend_identity_change_prevents_readiness_resume(self):
+        module = Readiness().module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reader = root / 'reader'; reader.write_text('reader')
+            backend = root / 'backend'; backend.write_text('first')
+            journal = root / 'progress.json'
+            driver = module.Driver(str(reader), 1, .01)
+            driver.schedule_command = str(backend)
+            driver.journal(journal, False, ['place'])
+            backend.write_text('second')
+            with self.assertRaisesRegex(ValueError, 'source changed'):
+                driver.journal(journal, True, ['place'])
+
+    def test_failed_backend_never_publishes_exact_boundaries(self):
+        from unittest.mock import patch
+        module = Readiness().module()
+        driver = module.Driver('reader', 1, .01)
+        with patch.object(module.subprocess, 'run', side_effect=subprocess.CalledProcessError(7, [])), \
+                patch.object(driver, 'input') as cleanup, patch('builtins.print') as output:
+            with self.assertRaises(subprocess.CalledProcessError):
+                driver.exact_segment('backend', 2, 'walk-in', 'Up')
+            output.assert_not_called()
+            cleanup.assert_called_once_with('keyup', 'Up')
+
+
 class ContactLauncher(unittest.TestCase):
     def test_failed_runtime_restores_world_and_stops_only_owned_container(self):
         workspace = DRIVER.parents[2] / 'magic'

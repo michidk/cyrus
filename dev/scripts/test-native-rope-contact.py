@@ -117,11 +117,16 @@ class Comparison(unittest.TestCase):
                     with contact.MixerCapture(output):
                         time.sleep(.1)
 
-    def scheduled(self, driver, player, clocks, end=None, mutate=None):
+    def scheduled(self, driver, player, clocks, end=None, mutate=None, step=1 / 12):
+        calls = []
         def call(kind, **args):
             if kind == 'state':
-                return {'clock': {'fps': 12}}
+                raise AssertionError('render FPS is not a simulation interval')
             self.assertEqual(kind, 'schedule_input')
+            calls.append(args['events'])
+            if len(calls) == 1:
+                return {'boundaries': [dict(after_updates=i, update=10+i, generation=8,
+                    game_seconds=i*step) for i in range(2)]}
             self.assertEqual(args['events'][0]['after_updates'], 0)
             rows = []
             for event, clock, value in zip(args['events'], clocks, [player, end or player]):
@@ -135,6 +140,33 @@ class Comparison(unittest.TestCase):
                 mutate(rows)
             return {'boundaries': rows}
         driver.call = call
+        return calls
+
+    def test_unavailable_timing_probe_never_sends_gameplay_schedule(self):
+        output = io.StringIO()
+        driver = contact.Driver('unused', 1, output)
+        for end in [dict(after_updates=1, update=12, generation=8, game_seconds=1),
+                    dict(after_updates=1, update=11, generation=9, game_seconds=1),
+                    dict(after_updates=1, update=11, generation=8, game_seconds=0)]:
+            calls = []
+            def call(kind, **args):
+                calls.append(args)
+                return {'boundaries': [dict(after_updates=0, update=10, generation=8, game_seconds=0), end]}
+            driver.call = call
+            with self.assertRaises(RuntimeError):
+                driver.timed_segment('walk-in', {'duration': [1, 1]}, 'ArrowUp')
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(all('key' not in event for event in calls[0]['events']))
+            self.assertEqual(output.getvalue(), '')
+
+    def test_attempt_length_uses_actual_simulation_step_instead_of_render_fps(self):
+        output = io.StringIO()
+        driver = contact.Driver('unused', 1, output)
+        player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0])
+        calls = self.scheduled(driver, player, [0, 1], step=1 / 6)
+        driver.timed_segment('walk-in', {'duration': [1, 1], 'start': {'player': player},
+            'end': {'player': player}}, 'ArrowUp')
+        self.assertEqual(calls[1][1]['after_updates'], 6)
 
     def test_wrong_update_acknowledgement_rejects_before_comparison(self):
         output = io.StringIO()

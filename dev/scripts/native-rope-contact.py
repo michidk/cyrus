@@ -249,11 +249,19 @@ class Driver:
             raise RuntimeError('native input acknowledgement does not match request')
 
     def timed_segment(self, phase, expected, key):
-        # FPS chooses an attempt length only. Acceptance uses the returned clocks.
-        state = self.call('state')
-        fps = state['clock']['fps']
+        # Measured render FPS can differ from the clamped simulation step.
+        # Observe one actual ordinary interval to choose an attempt, never to admit it.
+        probe = self.call('schedule_input', events=[dict(after_updates=0), dict(after_updates=1)])['boundaries']
+        if (len(probe) != 2 or probe[0]['after_updates'] != 0 or probe[1]['after_updates'] != 1
+                or probe[1]['update'] != probe[0]['update'] + 1
+                or probe[0]['generation'] != probe[1]['generation']
+                or any(row.get('key') is not None or row.get('action') is not None for row in probe)):
+            raise RuntimeError('native timing probe crossed unavailable ordinary boundaries')
+        step_seconds = probe[1]['game_seconds'] - probe[0]['game_seconds']
+        if not 0 < step_seconds < float('inf'):
+            raise RuntimeError('native ordinary timing probe did not advance')
         target = sum(expected['duration']) / 2
-        updates = max(1, round(target * fps))
+        updates = max(1, round(target / step_seconds))
         events = [dict(after_updates=offset, **(
             dict(key=key, action=action) if key else {}))
             for offset, action in [(0, 'press'), (updates, 'release')]]
