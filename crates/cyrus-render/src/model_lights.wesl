@@ -77,7 +77,10 @@ fn light_byte_texel(pixel: vec2<i32>) -> vec4<f32> {
 fn light_texel(column: i32, row: i32) -> vec4<f32> {
     var value: vec4<f32>;
     for (var component = 0; component < 4; component += 1) {
-        value[component] = bitcast<f32>(pack4x8unorm(light_byte_texel(vec2(column * 4 + component, row))));
+        // These are RGBA8 bytes, so rounding recovers each original integer.
+        // Explicit shifts also work on WebGL, which lacks packUnorm4x8.
+        let bytes = vec4<u32>(round(light_byte_texel(vec2(column * 4 + component, row)) * 255.0));
+        value[component] = bitcast<f32>(bytes.x | (bytes.y << 8u) | (bytes.z << 16u) | (bytes.w << 24u));
     }
     return value;
 }

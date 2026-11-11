@@ -845,3 +845,36 @@ just retro --fixture dev/fixtures/island.json island-original-check
 
 After inspecting that original-only result, follow the fixture README to build and
 run native/browser and produce a new full triplet. Existing labels are rejected.
+
+### Installed browser session CD check
+
+For the diagnostic session audio check, put the `wasm-bindgen` CLI version
+listed in `Cargo.lock` on your path before building. Build the game with
+`dev/scripts/build-web.sh cyrus-web` and serve that output with an explicit,
+read-only install using `just run-web --install /absolute/path/to/Redguard`
+(or `dev/scripts/viewer-server.py --page index.html --port PORT --install …`
+when running a dedicated local acceptance server).
+
+Use Chromium with a DevTools endpoint and a secure page origin. With Chromium
+in a container, forward the server port to Chromium's loopback so AudioWorklet,
+IndexedDB, and install access work there. Run from the checkout root with Node
+26 and Python 3 with the `blake3` module installed:
+
+```sh
+python3 dev/scripts/build-provenance.py verify target/web/build-provenance.json
+SESSION_CD_PYTHON=/path/to/python node dev/scripts/test-browser-session-cd.mjs \
+  http://127.0.0.1:9222 http://localhost:8080/ http://localhost:8080/original/
+```
+
+The driver owns and disposes an isolated browser context. It defaults to
+scene 20, which must have active installed CD music and a HUD. It waits for the
+real track to approach its seam before saving; the wait is bounded by the
+track duration, a deadline, and a game-frame progress check. It checks a late
+publication rejection with a separately framed copy of the named save and
+then loads the intact save. It compares both channels of the rendered graph
+with the original source across the rejection and the restored loop seam,
+and checks that the old source was stopped and disconnected. It emits
+measurements and browser artifact hashes, without exporting audio or saves.
+It records the silence between retirement and replacement; passing this check
+does not establish gapless diagnostic publication. This checks the WebAudio
+graph, not speakers or original-game audio timing.
