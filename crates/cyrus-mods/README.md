@@ -20,9 +20,11 @@ A mod is a folder `game-config/mods/<id>/` with `mod.toml` (`name`,
   `file_overlays()` by the `cyrus` binary before anything scans the install).
   Case-insensitive match, first active mod by id wins, applied at startup only.
 
-`ModsPlugin` discovers the folders at startup, lists them in a Mods window
-while the F1 menu is open, saves activation to `game-config/mods.json`, and
-reloads an active mod's files when they change (polled every half second).
+`ModsPlugin` lists the folders in a Mods window while the F1 menu is open and saves
+activation to `game-config/mods.json`. Every half second it looks again: a folder
+dropped into the mods folder appears in the list, a deleted one is stopped and
+dropped, an edited `mod.toml` is reread, and an active mod whose `mod.wasm` or shaders
+changed is reloaded. A mod is just its folder; copy it in or out while the game runs.
 `register_source` must run before the asset plugin is added.
 
 The API lives on one host entity with one component per hook (`src/api.rs`). The

@@ -162,6 +162,72 @@ struct Entry {
     /// The running wasvy instance while active.
     instance: Option<Entity>,
     modified: Option<SystemTime>,
+    /// When mod.toml was last read.
+    manifest_modified: Option<SystemTime>,
+    /// The folder was deleted; the instance is stopped, then the entry dropped.
+    gone: bool,
+}
+
+impl Entry {
+    /// Reads a mod folder: its manifest, validated, and which parts it has.
+    fn read(dir: &Path, active: bool) -> anyhow::Result<Self> {
+        let id = folder_id(dir)?;
+        let path = dir.join("mod.toml");
+        let manifest: Manifest = toml::from_str(
+            &std::fs::read_to_string(&path).with_context(|| path.display().to_string())?,
+        )
+        .with_context(|| path.display().to_string())?;
+        for setting in &manifest.settings {
+            setting.validate().with_context(|| format!("mod {id}"))?;
+        }
+        for shader in &manifest.shaders {
+            ensure!(
+                Path::new(&shader.file).file_name() == Some(shader.file.as_ref()),
+                "mod {id}: shader file {:?} must be a plain file name",
+                shader.file
+            );
+        }
+        Ok(Self {
+            active,
+            has_wasm: dir.join("mod.wasm").is_file(),
+            has_files: dir.join(FILES_DIR).is_dir(),
+            manifest_modified: std::fs::metadata(&path)
+                .and_then(|meta| meta.modified())
+                .ok(),
+            id,
+            manifest,
+            instance: None,
+            modified: None,
+            gone: false,
+        })
+    }
+}
+
+/// The folders of the mods folder that hold a mod.toml; none when the folder does not exist.
+fn mod_folders() -> anyhow::Result<Vec<PathBuf>> {
+    let dirs = match std::fs::read_dir(mods_dir()) {
+        Ok(dirs) => dirs,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).with_context(|| mods_dir().display().to_string()),
+    };
+    let mut folders = Vec::new();
+    for dir in dirs {
+        let dir = dir
+            .with_context(|| mods_dir().display().to_string())?
+            .path();
+        if dir.join("mod.toml").is_file() {
+            folders.push(dir);
+        }
+    }
+    Ok(folders)
+}
+
+/// A mod's id: its folder name.
+fn folder_id(dir: &Path) -> anyhow::Result<String> {
+    dir.file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .with_context(|| format!("{}: mod folder name is not UTF-8", dir.display()))
 }
 
 #[derive(Resource, Default)]
@@ -188,56 +254,88 @@ impl Catalog {
             Err(error) => return Err(error).with_context(|| active_file().display().to_string()),
         };
         let mut entries = Vec::new();
-        let dirs = match std::fs::read_dir(mods_dir()) {
-            Ok(dirs) => dirs,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Self::default());
-            }
-            Err(error) => return Err(error).with_context(|| mods_dir().display().to_string()),
-        };
-        for dir in dirs {
-            let dir = dir
-                .with_context(|| mods_dir().display().to_string())?
-                .path();
-            let manifest = dir.join("mod.toml");
-            if !manifest.is_file() {
-                continue;
-            }
-            let id = dir
-                .file_name()
-                .and_then(|name| name.to_str())
-                .with_context(|| format!("{}: mod folder name is not UTF-8", dir.display()))?
-                .to_owned();
-            let manifest: Manifest = toml::from_str(
-                &std::fs::read_to_string(&manifest)
-                    .with_context(|| manifest.display().to_string())?,
-            )
-            .with_context(|| manifest.display().to_string())?;
-            for setting in &manifest.settings {
-                setting.validate().with_context(|| format!("mod {id}"))?;
-            }
-            for shader in &manifest.shaders {
-                ensure!(
-                    Path::new(&shader.file).file_name() == Some(shader.file.as_ref()),
-                    "mod {id}: shader file {:?} must be a plain file name",
-                    shader.file
-                );
-            }
-            entries.push(Entry {
-                active: saved.active.contains(&id),
-                has_wasm: dir.join("mod.wasm").is_file(),
-                has_files: dir.join(FILES_DIR).is_dir(),
-                id,
-                manifest,
-                instance: None,
-                modified: None,
-            });
+        for dir in mod_folders()? {
+            entries.push(Entry::read(&dir, saved.active.contains(&folder_id(&dir)?))?);
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
         Ok(Self {
             entries,
             ..default()
         })
+    }
+
+    /// Picks up folders added to or removed from the mods folder and manifests edited since the
+    /// last look. A folder that cannot be read is reported in the status and left out; an
+    /// installed mod whose manifest becomes unreadable keeps its last good one.
+    fn rescan(&mut self, settings: &mut ModSettings) -> bool {
+        let folders = match mod_folders() {
+            Ok(folders) => folders,
+            Err(error) => {
+                self.status = Some(format!("{error:#}"));
+                return false;
+            }
+        };
+        let saved = std::fs::read(active_file())
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Saved>(&bytes).ok())
+            .unwrap_or_default();
+        let mut changed = false;
+        for entry in &mut self.entries {
+            let present = folders
+                .iter()
+                .any(|dir| folder_id(dir).is_ok_and(|id| id == entry.id));
+            if !present && !entry.gone {
+                info!("mods: {} was removed", entry.id);
+                entry.gone = true;
+                entry.active = false;
+                changed = true;
+            }
+        }
+        for dir in &folders {
+            let Ok(id) = folder_id(dir) else { continue };
+            match self.entries.iter_mut().find(|entry| entry.id == id) {
+                Some(entry) if !entry.gone => {
+                    let modified = std::fs::metadata(dir.join("mod.toml"))
+                        .and_then(|meta| meta.modified())
+                        .ok();
+                    if modified != entry.manifest_modified {
+                        entry.manifest_modified = modified;
+                        match Entry::read(dir, entry.active) {
+                            Ok(fresh) => {
+                                info!("mods: reread the manifest of {id}");
+                                entry.manifest = fresh.manifest;
+                                entry.has_files = fresh.has_files;
+                                changed = true;
+                            }
+                            Err(error) => self.status = Some(format!("{error:#}")),
+                        }
+                    }
+                    entry.has_wasm = dir.join("mod.wasm").is_file();
+                }
+                _ => match Entry::read(dir, saved.active.contains(&id)) {
+                    Ok(fresh) => {
+                        info!("mods: found {id}");
+                        self.entries.retain(|entry| entry.id != id);
+                        self.entries.push(fresh);
+                        changed = true;
+                    }
+                    Err(error) => {
+                        let message = format!("{error:#}");
+                        if self.status.as_deref() != Some(message.as_str()) {
+                            error!("mods: {message}");
+                        }
+                        self.status = Some(message);
+                    }
+                },
+            }
+        }
+        if changed {
+            self.entries.sort_by(|a, b| a.id.cmp(&b.id));
+            for entry in &self.entries {
+                settings.declare(&entry.id, &entry.manifest.settings);
+            }
+        }
+        changed
     }
 
     fn save(&self) -> anyhow::Result<()> {
@@ -277,6 +375,10 @@ fn apply(
         return;
     }
     start_and_stop_instances(&mut catalog, &mut mods);
+    catalog
+        .bypass_change_detection()
+        .entries
+        .retain(|entry| !entry.gone);
     let suppliers = shader_suppliers(&catalog);
     let targets: BTreeSet<String> = suppliers
         .keys()
@@ -380,6 +482,7 @@ fn shader_suppliers(catalog: &Catalog) -> BTreeMap<String, (String, String)> {
 /// Reloads active mods whose files changed on disk.
 fn watch(
     mut catalog: ResMut<Catalog>,
+    mut settings: ResMut<ModSettings>,
     asset_server: Res<AssetServer>,
     time: Res<Time<Real>>,
     mut next: Local<f32>,
@@ -388,6 +491,13 @@ fn watch(
         return;
     }
     *next = time.elapsed_secs() + 0.5;
+    if catalog
+        .bypass_change_detection()
+        .rescan(settings.bypass_change_detection())
+    {
+        catalog.set_changed();
+        settings.set_changed();
+    }
     let mut shader_changed = false;
     for entry in catalog.bypass_change_detection().entries.iter_mut() {
         if !entry.active {

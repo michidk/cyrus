@@ -21,7 +21,8 @@ The Mods window offers camera follow, delay (default 0.75 seconds) and follow sp
 
 ## Writing a mod
 
-A mod folder holds `mod.toml` plus any of `mod.wasm`, shader files and a `files/` folder.
+A mod is a self-contained folder: drop it into `game-config/mods/` while the game runs and it
+appears in the Mods window; delete it and it goes. A mod folder holds `mod.toml` plus any of `mod.wasm`, shader files and a `files/` folder.
 Copy one of these crates as a start.
 
 **Manifest** (`mod.toml`). `name` is required; `description`, `version` and

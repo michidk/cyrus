@@ -102,26 +102,32 @@ impl ModSettings {
     pub fn load<'a>(
         mods: impl IntoIterator<Item = (&'a str, &'a [Setting])>,
     ) -> anyhow::Result<Self> {
-        let mut values: BTreeMap<String, BTreeMap<String, Value>> =
-            match std::fs::read(settings_file()) {
-                Ok(bytes) => serde_json::from_slice(&bytes)
-                    .with_context(|| settings_file().display().to_string())?,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
-                Err(error) => {
-                    return Err(error).with_context(|| settings_file().display().to_string());
-                }
-            };
-        for (id, declared) in mods {
-            let saved = values.entry(id.to_owned()).or_default();
-            for setting in declared {
-                let value = setting.accept(saved.get(&setting.key));
-                saved.insert(setting.key.clone(), value);
+        let values: BTreeMap<String, BTreeMap<String, Value>> = match std::fs::read(settings_file())
+        {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .with_context(|| settings_file().display().to_string())?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
+            Err(error) => {
+                return Err(error).with_context(|| settings_file().display().to_string());
             }
-        }
-        Ok(Self {
+        };
+        let mut settings = Self {
             values,
             dirty: false,
-        })
+        };
+        for (id, declared) in mods {
+            settings.declare(id, declared);
+        }
+        Ok(settings)
+    }
+
+    /// Fits the values of mod `id` to its declarations: kept when they still fit, else the default.
+    pub fn declare(&mut self, id: &str, declared: &[Setting]) {
+        let saved = self.values.entry(id.to_owned()).or_default();
+        for setting in declared {
+            let value = setting.accept(saved.get(&setting.key));
+            saved.insert(setting.key.clone(), value);
+        }
     }
 
     pub fn save(&mut self) -> anyhow::Result<()> {
