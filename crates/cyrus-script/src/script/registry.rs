@@ -2207,10 +2207,14 @@ impl ScriptWorld {
                     .with_context(|| format!("world {} ordinary actor lists", self.world))?,
             );
         }
+        let published_camera = self.camera.as_ref().and_then(|camera| {
+            self.spatial(camera.camera_actor).ok()?;
+            Some(camera.current.position)
+        });
         self.actor_lists
             .as_mut()
             .expect("actor lists prepared")
-            .select(&self.actors, self.generation, view)
+            .select(&self.actors, self.generation, view, published_camera)
             .with_context(|| format!("world {} ordinary actor list", self.world))
     }
 

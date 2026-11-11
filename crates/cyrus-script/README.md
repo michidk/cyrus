@@ -58,6 +58,12 @@ start at zero; session snapshots preserve the word. Legacy snapshots without use
 history retain an unavailable counter instead of inventing past uses. This follows
 preservation's [ItemUsed contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#itemused).
 
+Verified: ordinary collision admits a rope terminal from the published camera position
+sampled when the map window rebuilds. It uses the rope base in all three axes and excludes
+a Manhattan distance of 4096 map units or more. Preload keeps all terminals available.
+World snapshots retain the sampled position so a same-cell restore keeps the same candidates.
+This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
+
 ## Module guide
 
 | Module | Responsibility |

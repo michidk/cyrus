@@ -16,7 +16,8 @@ fn rope_world(
     use cyrus_assets::collision::{ActorCollisionModels, CollisionGeometry, CollisionSubobject};
     let mut scripts = cache();
     scripts.updates.ropes_load = Some(true);
-    let (mut world, mut data, _) = static_model_fixture(scripts);
+    add_standalone_receivers(&mut scripts);
+    let (mut world, mut data, _) = static_model_fixture_at(scripts, None, [10, 20, 65535]);
     data.metadata["ropes"] = ropes;
     world.prepare_ropes(&data).unwrap();
     let geometry = CollisionGeometry {
@@ -56,7 +57,8 @@ fn clone_geometry(
 
 fn rope(static_model: &str) -> serde_json::Value {
     serde_json::json!([{
-        "position": [0.0, 0.0, 0.0], "angle_y": 0, "rope_type": 0, "swing": 0, "speed": 0,
+        "position": cyrus_game::rope::world_position([0.0, 0.0, 65535.0]),
+        "angle_y": 0, "rope_type": 0, "swing": 0, "speed": 0,
         "length": 3, "static_model": static_model, "rope_model": "ROPELINK",
         "unknown1": [0, 0, 0],
     }])
@@ -83,7 +85,7 @@ fn a_rope_terminal_is_a_transient_candidate_one_link_below_the_last_link() {
     // The ordinary collision query of an actor near it retains that candidate in its face list.
     let id = world.id(0).unwrap();
     let query = world
-        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[])
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 65535], &[])
         .unwrap();
     let terminals: Vec<_> = query
         .candidates()
@@ -96,6 +98,80 @@ fn a_rope_terminal_is_a_transient_candidate_one_link_below_the_last_link() {
         (terminals[0].candidate_type, terminals[0].collision_flags),
         (0x80, 0)
     );
+}
+
+#[test]
+fn ordinary_rope_collision_uses_the_published_camera_and_the_strict_base_distance() {
+    use cyrus_script::script::camera::CameraPose;
+
+    for (distance, loaded, expected) in [(4096 * 256 - 1, true, true), (4096 * 256, false, false)] {
+        let (mut world, data, scene) = rope_world(rope("TERMINAL"), loaded);
+        let view = [0, 65535];
+        // A load-time selection must not prevent the first live selection in this cell.
+        world.ordinary_actors(view).unwrap();
+        world
+            .initialize_camera_pose(CameraPose {
+                position: [0, -distance, 65535 * 256],
+                angles: [0; 3],
+            })
+            .unwrap();
+        world.ordinary_actors(view).unwrap();
+
+        let query = world
+            .prepare_ordinary_collision_query(world.id(0).unwrap(), &scene, &data, view, &[])
+            .unwrap();
+        assert_eq!(
+            query
+                .candidates()
+                .faces
+                .iter()
+                .any(|face| face.owner == CandidateOwner::Transient),
+            expected,
+            "camera-to-base distance {distance} Q8"
+        );
+    }
+}
+
+#[test]
+fn rope_admission_is_retained_within_a_window_and_rebuilt_on_exit_and_return() {
+    use cyrus_script::script::camera::CameraPose;
+
+    let (mut world, data, scene) = rope_world(rope("TERMINAL"), true);
+    let base = [0, 0, 65535 * 256];
+    world
+        .initialize_player_spatial(world.selected_player().unwrap(), base, [0; 3])
+        .unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: base,
+            angles: [0; 3],
+        })
+        .unwrap();
+    let mut placement = world.selected_player_placement().unwrap();
+
+    for (x, y, expected) in [
+        (0, 0, true),
+        (0, -4096, true),
+        (5120, 0, false),
+        (0, 0, true),
+    ] {
+        let view = [x, 65535];
+        placement.camera_position = [x * 256, y * 256, base[2]];
+        world.restore_selected_player_placement(&placement).unwrap();
+        world.ordinary_actors(view).unwrap();
+        let query = world
+            .prepare_ordinary_collision_query(world.id(0).unwrap(), &scene, &data, view, &[])
+            .unwrap();
+        assert_eq!(
+            query
+                .candidates()
+                .faces
+                .iter()
+                .any(|face| face.owner == CandidateOwner::Transient),
+            expected,
+            "camera at ({x}, {y})"
+        );
+    }
 }
 
 #[test]

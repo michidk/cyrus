@@ -286,11 +286,10 @@ impl ScriptWorld {
         Ok(poses)
     }
 
-    /// The rope terminal models as the original's transient records, in construction order. A
-    /// record takes part in collision candidates when it has a loaded model; its radius is the
-    /// model's header radius and its position the terminal's current engine map position, with
-    /// the swing the ropes' last update left. A terminal whose geometry is absent from the scene
-    /// (an older export) or could not be prepared is an error naming the rope.
+    /// Rope terminals admitted by the retained map window, in construction order.
+    /// Each candidate uses the model's header radius and the terminal's current swung pose in
+    /// engine map units. An admitted terminal without prepared scene geometry is an error naming
+    /// the rope.
     pub fn transient_collision_models(
         &self,
         scene: &crate::player::data::PlayerScene,
@@ -298,10 +297,28 @@ impl ScriptWorld {
         use cyrus_collision::candidates::{
             ModelBounds, ModelInstance, TransientModel, transient_model,
         };
+        let view = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.rope_view());
         let mut records = Vec::new();
         for (rope_index, rope) in self.ropes.iter().enumerate() {
             if rope.end_model().is_none() {
                 continue;
+            }
+            if let Some(view) = view {
+                // MPRP bases are authored in whole map units. Undo the export transform
+                // and round before comparing against the published Q8 view.
+                let base = cyrus_game::rope::engine_position(rope.position)
+                    .map(|value| i64::from(value.round() as i32) * 256);
+                let distance: u64 = base
+                    .into_iter()
+                    .zip(view)
+                    .map(|(base, view)| base.abs_diff(i64::from(view)))
+                    .sum();
+                if distance >= 4096 * 256 {
+                    continue;
+                }
             }
             let Some((position, _)) = rope.end_collision_pose() else {
                 continue;
