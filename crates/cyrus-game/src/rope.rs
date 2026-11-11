@@ -118,8 +118,20 @@ pub struct RopeState {
     pub push: i32,
     pub direction: u8,
     pub previous_sum: i32,
+    /// Published geometry inputs; absent in older snapshots and before the first publication.
+    #[serde(default)]
+    pub geometry: Option<RopeGeometryState>,
     /// Actor index, node and measured speed of each attachment, in list order.
     pub attachments: Vec<(usize, i32, i32)>,
+}
+
+/// Swing inputs retained by the geometry pass, before the oscillator advances.
+/// The base and link dimensions remain the installed construction data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RopeGeometryState {
+    amplitude: i32,
+    step: i32,
+    heading: i32,
 }
 
 /// One actor hanging on a rope.
@@ -185,6 +197,7 @@ pub struct Rope {
     pub down_limit: Option<(usize, i32)>,
     has_end_model: bool,
     end_model: Option<String>,
+    geometry: Option<RopeGeometryState>,
 }
 
 impl Rope {
@@ -197,6 +210,7 @@ impl Rope {
             push: self.push,
             direction: self.direction,
             previous_sum: self.previous_sum,
+            geometry: self.geometry,
             attachments: self
                 .attachments
                 .iter()
@@ -213,6 +227,7 @@ impl Rope {
         self.push = state.push;
         self.direction = state.direction;
         self.previous_sum = state.previous_sum;
+        self.geometry = state.geometry;
         self.attachments = state
             .attachments
             .iter()
@@ -253,6 +268,7 @@ impl Rope {
             down_limit: None,
             has_end_model: record.has_end_model,
             end_model: record.end_model.clone(),
+            geometry: None,
         }
     }
 
@@ -321,19 +337,45 @@ impl Rope {
         }
     }
 
-    /// Link poses from the base: link 0 sits at the rope position; each later link adds the
+    /// Publish link and terminal geometry before amplitude service and oscillator advancement.
+    /// Collision, attachment placement and rendering retain these inputs until the next publication.
+    pub fn publish_geometry(&mut self) {
+        self.geometry = Some(self.current_geometry());
+    }
+
+    /// Whether either the oscillator or its published geometry still carries swing.
+    /// Presentation must submit the final resting publication after the oscillator stops.
+    pub fn has_swing(&self) -> bool {
+        let geometry = self.geometry();
+        self.amplitude != 0 || self.step != 0 || geometry.amplitude != 0 || geometry.step != 0
+    }
+
+    fn current_geometry(&self) -> RopeGeometryState {
+        RopeGeometryState {
+            amplitude: self.amplitude,
+            step: self.step,
+            heading: self.heading,
+        }
+    }
+
+    fn geometry(&self) -> RopeGeometryState {
+        self.geometry.unwrap_or_else(|| self.current_geometry())
+    }
+
+    /// Published link poses from the base: link 0 sits at the rope position; each later link adds the
     /// previous link's matrix applied to one link length, and pitches by the accumulated step.
     pub fn chain(&self) -> Vec<LinkPose> {
-        let yaw = (-self.heading).rem_euclid(TURN);
+        let geometry = self.geometry();
+        let yaw = (-geometry.heading).rem_euclid(TURN);
         let mut poses = Vec::with_capacity(self.links);
         let mut position = self.position.map(f64::from);
         let mut accumulated = 0i32;
         for link in 0..self.links {
             let pitch = if link == 0 {
-                (-(self.amplitude >> 8)).rem_euclid(TURN)
+                (-(geometry.amplitude >> 8)).rem_euclid(TURN)
             } else {
                 let value = (-(accumulated >> 8)).rem_euclid(TURN);
-                accumulated += self.step;
+                accumulated += geometry.step;
                 value
             };
             poses.push(LinkPose {
@@ -362,7 +404,8 @@ impl Rope {
             f64::from(last.position[1]) - f64::from(m[1][1]) * length,
             f64::from(last.position[2]) + f64::from(m[2][1]) * length,
         ];
-        let accumulated = self.step * i32::try_from(self.links.saturating_sub(1)).unwrap_or(0);
+        let accumulated =
+            self.geometry().step * i32::try_from(self.links.saturating_sub(1)).unwrap_or(0);
         Some(LinkPose {
             position: position.map(|v| v as f32),
             yaw: last.yaw,
@@ -533,6 +576,30 @@ mod tests {
             },
             0.8,
         )
+    }
+
+    #[test]
+    fn published_geometry_survives_swing_advancement_restore_and_the_final_rest() {
+        let mut rope = rope(30, 18);
+        rope.amplitude = 12;
+        rope.step = 200;
+        rope.publish_geometry();
+        let published = rope.end_collision_pose();
+        rope.update(256, 1, |_| 0, |_, _, _| 0);
+        assert_ne!(rope.step, 200);
+        assert_eq!(rope.end_collision_pose(), published);
+        let mut restored = self::rope(30, 18);
+        restored.restore_state(&rope.state());
+        assert_eq!(restored.end_collision_pose(), published);
+        restored.amplitude = 0;
+        restored.step = 0;
+        assert!(
+            restored.has_swing(),
+            "the final swung publication still needs submission"
+        );
+        restored.publish_geometry();
+        assert!(!restored.has_swing());
+        assert_ne!(restored.end_collision_pose(), published);
     }
 
     #[test]

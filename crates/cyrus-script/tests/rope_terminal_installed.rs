@@ -168,6 +168,56 @@ fn installed_rope_terminals_are_transient_collision_candidates() -> Result<()> {
             "{world}: resumed amplitude clamped to installed maximum"
         );
 
+        // Installed terminals publish their incoming swing pose before oscillator advancement.
+        let mut saved = serde_json::to_value(resumed.snapshot(&sources)?)?;
+        saved["ropes"][rope]["amplitude"] = 12.into();
+        saved["ropes"][rope]["step"] = 200.into();
+        saved["ropes"][rope]["phase"] = 0.into();
+        saved["ropes"][rope]["geometry"] = serde_json::Value::Null;
+        let mut published = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved)?,
+            &sources,
+            WorldRestoreContext {
+                generation: 4,
+                globals: Default::default(),
+                samples: &Default::default(),
+            },
+        )?;
+        let expected = published.ropes()[rope].end_collision_pose();
+        advance(&mut published, view)?;
+        ensure!(
+            published.ropes()[rope].step != 200,
+            "{world}: oscillator advanced"
+        );
+        ensure!(
+            published.ropes()[rope].end_collision_pose() == expected,
+            "{world}: terminal collision retains incoming geometry"
+        );
+        let record = published
+            .transient_collision_models(&scene)?
+            .into_iter()
+            .find(|record| record.model.is_some_and(|model| model.instance == key))
+            .context("published terminal missing")?;
+        ensure!(
+            Some(record.model.context("terminal bounds missing")?.position)
+                == expected.map(|pose| pose.0),
+            "{world}: production candidate uses published bounds"
+        );
+        let snapshot = published.snapshot(&sources)?;
+        let rebound = ScriptWorld::from_snapshot(
+            snapshot,
+            &sources,
+            WorldRestoreContext {
+                generation: 5,
+                globals: Default::default(),
+                samples: &Default::default(),
+            },
+        )?;
+        ensure!(
+            rebound.ropes()[rope].end_collision_pose() == expected,
+            "{world}: restored geometry must not advance to the saved oscillator"
+        );
+
         let models = scene
             .actor_collision
             .as_ref()

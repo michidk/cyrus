@@ -64,6 +64,10 @@ a Manhattan distance of 4096 map units or more. Preload keeps all terminals avai
 World snapshots retain the sampled position so a same-cell restore keeps the same candidates.
 The same retained membership gates rope amplitude service, swing and attachment climbs.
 Excluded ropes preserve their dynamic state and resume on the first admitted update.
+Verified: link and terminal geometry retains the incoming swing inputs published before
+amplitude service and oscillator advancement. Collision bounds, face transforms, attachment
+placement and rendering read that publication. Snapshots retain it independently of the
+advanced oscillator, following preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#rope-update-order).
 This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
 
 ## Module guide

@@ -1746,9 +1746,8 @@ impl ScriptWorld {
         &self.ropes
     }
 
-    /// One rope-system step at its place in the world loop: each rope's amplitude service (which
-    /// plays the swing sound at the rope's base, owned by its first attached actor), then its swing
-    /// step and attachment climbs.
+    /// One rope-system step: publish incoming geometry, service amplitude (playing swing sounds
+    /// at the base, owned by the first attached actor), then advance swing and attachment climbs.
     pub(super) fn update_ropes(
         &mut self,
         frame_scale: i32,
@@ -1765,6 +1764,7 @@ impl ScriptWorld {
                 continue;
             }
             rope.clamp_nodes();
+            rope.publish_geometry();
             let sum = rope.step_sum();
             let owner = rope.attachments.first().map(|attachment| attachment.actor);
             let base = rope.position;
