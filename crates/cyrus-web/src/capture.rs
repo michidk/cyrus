@@ -1,4 +1,5 @@
 //! Opt-in world/camera observation and captured sky phase for matched browser captures.
+mod audio;
 mod light_image;
 
 use bevy::prelude::*;
@@ -11,6 +12,7 @@ pub fn register(app: &mut App) {
         .is_some_and(|query| query.has("capture"));
     super::session::register(app, enabled);
     if enabled {
+        audio::register(app);
         app.add_systems(PostUpdate, light_image::respond);
         app.add_systems(
             Update,

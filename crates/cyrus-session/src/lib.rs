@@ -624,6 +624,16 @@ impl RuntimeSessionSnapshot {
         self.hud.is_some()
     }
 
+    /// Installed dialogue preparation hints, including active control/examine voices
+    /// which need not occupy the retained script dialogue cache.
+    pub fn required_dialogue_labels(&self) -> std::collections::BTreeSet<[u8; 4]> {
+        self.dialogue
+            .required_labels()
+            .union(&self.samples.required_dialogue_labels())
+            .copied()
+            .collect()
+    }
+
     pub fn dialogue(&self) -> &RuntimeDialogueSnapshot {
         &self.dialogue
     }

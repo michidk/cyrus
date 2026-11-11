@@ -296,3 +296,10 @@ Backend resampler and device queues remain outside this checkpoint.
 request failures and ordinary-update state. `RuntimeDialogueSnapshot::required_labels`
 provides installed asset preparation hints before validation. The host commits this
 replacement together with logical dialogue records and the sample pool.
+
+Sample checkpoints retain the control/examine voice stop slot as well as the
+shared allocator and decoder owners. Active control voices contribute installed
+RTX label hints independently of the script dialogue cache. Hosts prepare those
+labels before validating the exact saved source identities. Old documents without
+these optional hints remain readable; an unavailable source still rejects the
+replacement. The existing mixed-buffer drain policy is unchanged.

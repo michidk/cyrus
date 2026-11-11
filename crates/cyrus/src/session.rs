@@ -493,7 +493,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
         audio_paths.push(format!("sounds/{index:03}.wav"));
     }
     let dialogue_exporter = cyrus_assets::sound::dialogue::export::Exporter::open(install, cache)?;
-    for label in snapshot.dialogue().required_labels() {
+    for label in snapshot.required_dialogue_labels() {
         dialogue_exporter.export(label)?;
         let key = label
             .iter()
@@ -566,8 +566,7 @@ fn submit(prepared: PreparedLoad, world: &mut World, saved_game: bool) -> Result
             .collect(),
         dialogue: prepared
             .snapshot
-            .dialogue()
-            .required_labels()
+            .required_dialogue_labels()
             .into_iter()
             .map(|label| {
                 let key = label

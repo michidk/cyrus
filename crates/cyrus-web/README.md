@@ -226,3 +226,12 @@ copy images when no request is pending. Acquisition after Update is not GPU
 readback or visual acceptance. Record matched camera, source/package, capture
 and retired-owner evidence separately. The request/result globals are diagnostic
 and do not persist game state.
+
+With `?capture`, `__cyrusAudioRequest` accepts JSON text containing `id`, current
+`generation`, actor `index`, a four-byte RTX `label`, and optional `effect` index.
+It prepares the installed voice and starts the ordinary control voice and optional
+generation-owned script effect. The effect must have an installed unbounded repeat
+count. `__cyrusAudioResult` reports pending, started or an error. Set
+`__cyrusVoiceStopRequest` to a request ID to exercise the examine view's speech-stop
+path; `__cyrusVoiceStopResult` acknowledges that ID. These diagnostic adapters do
+not alter installed repetition counts, source cursors or the audio drain policy.

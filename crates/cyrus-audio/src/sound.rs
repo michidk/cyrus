@@ -299,6 +299,7 @@ enum Owner {
 }
 
 struct Channel {
+    dialogue_label: Option<[u8; 4]>,
     sound: Entity,
     reservation: Reservation,
     gains: Option<PannedGains>,
@@ -560,6 +561,7 @@ impl Channels {
         self.playing.insert(
             reservation.token,
             Channel {
+                dialogue_label: None,
                 sound,
                 reservation,
                 gains,

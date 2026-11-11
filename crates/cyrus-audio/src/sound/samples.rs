@@ -397,6 +397,8 @@ pub(super) struct ChannelOwnershipSnapshot {
     start: usize,
     animation: Vec<(u64, u8)>,
     checkpoints: Vec<(u64, Option<u8>)>,
+    #[serde(default)]
+    speech: Option<u8>,
 }
 
 /// Remains off-live until every reserved start has a prepared replacement transport.
@@ -406,6 +408,7 @@ pub(super) struct ChannelOwnershipCandidate {
     start: usize,
     animation: std::collections::HashMap<bevy::prelude::Entity, u8>,
     checkpoints: std::collections::HashMap<bevy::prelude::Entity, Option<u8>>,
+    speech: Option<u8>,
 }
 
 impl super::Channels {
@@ -446,6 +449,7 @@ impl super::Channels {
             start: self.start,
             animation,
             checkpoints,
+            speech: self.speech,
         })
     }
 }
@@ -478,6 +482,10 @@ impl ChannelOwnershipSnapshot {
         ensure!(
             self.start < 16,
             "channel ownership: start index outside pool"
+        );
+        ensure!(
+            self.speech.is_none_or(|slot| slot < 16),
+            "speech stop sample outside pool"
         );
         let bind = |old: SavedOwner| -> anyhow::Result<Owner> {
             match old {
@@ -537,6 +545,7 @@ impl ChannelOwnershipSnapshot {
             start: self.start,
             animation,
             checkpoints,
+            speech: self.speech,
         })
     }
 }
@@ -573,7 +582,7 @@ impl ChannelOwnershipCandidate {
             start: self.start,
             animation: self.animation,
             animation_checkpoint: self.checkpoints,
-            speech: None,
+            speech: self.speech,
         })
     }
 }
@@ -603,6 +612,7 @@ mod channel_persistence_tests {
         live.playing.insert(
             old.token,
             super::super::Channel {
+                dialogue_label: None,
                 sound,
                 reservation: old,
                 gains: None,
@@ -621,6 +631,7 @@ mod channel_persistence_tests {
             [(
                 new.token,
                 super::super::Channel {
+                    dialogue_label: None,
                     sound: restored_sound,
                     reservation: new,
                     gains: None,
@@ -675,6 +686,7 @@ mod channel_persistence_tests {
             live.playing.insert(
                 reservation.token,
                 super::super::Channel {
+                    dialogue_label: None,
                     sound: entity,
                     reservation,
                     gains: None,
@@ -692,6 +704,7 @@ mod channel_persistence_tests {
                 (
                     reservation.token,
                     super::super::Channel {
+                        dialogue_label: None,
                         sound,
                         reservation,
                         gains: None,

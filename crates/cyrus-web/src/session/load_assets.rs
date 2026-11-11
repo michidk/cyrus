@@ -35,8 +35,7 @@ impl LoadAssets {
             })
             .collect();
         let dialogue = snapshot
-            .dialogue()
-            .required_labels()
+            .required_dialogue_labels()
             .into_iter()
             .map(|label| {
                 let key = label

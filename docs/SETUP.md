@@ -914,3 +914,27 @@ copies to finish before retirement. Prepared replacement and old-source stop
 must share one scheduled render-clock boundary. This does not establish
 physical or original-game gaplessness. This checks the WebAudio
 graph, not speakers or original-game audio timing.
+
+### Installed browser speech/effect session check
+
+Build and serve a sealed browser with an explicit install as above. Select a
+voiced installed RTX label long enough to remain active through preparation and
+an installed unbounded effect. Run the driver with its DevTools endpoint and
+secure install origin:
+
+```sh
+SESSION_CD_PYTHON=/path/to/python node dev/scripts/test-browser-session-samples.mjs \
+  http://127.0.0.1:9222 http://localhost:8080/ http://localhost:8080/original/ LABEL 25
+```
+
+The opt-in audio adapter uses the ordinary control voice and generation-owned
+script sound paths. The driver saves during both sounds, rejects a missing voice
+source hint and a late HUD publication mismatch, then loads the intact document.
+It checks source-decoder checkpoints, fresh transport tokens, sample slots and
+script generation bindings. The examine voice-stop path must remove only the
+restored voice. A parallel AudioWorklet compares actual stereo graph output with
+the submitted production mixed buffers before and after publication and beyond
+the queued-buffer drain watermark. Already mixed buffers retain their documented
+drain policy. This checks the browser graph, not physical speakers or original
+game audio parity. Runs own an isolated browser context and use game-clock
+progress cutoffs; a caller should also hold a per-run lock and wall-clock limit.
