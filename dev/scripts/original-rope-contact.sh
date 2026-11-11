@@ -85,5 +85,5 @@ docker run -d --name "$name" --cap-add SYS_PTRACE -e DISPLAY=:1 \
     -v "$root/dev/scripts/original-rope-contact.py:/tmp/driver.py:ro" \
     "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" -set "dosbox hostkey=ctrlalt" -set "dosbox captures=/capture" >/dev/null
 created=1
-docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py \
-    "$@" --place python3 /tmp/place.py > "$output/contact.jsonl" 2> "$output/contact.stderr"
+docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py --progress /config/rope-readiness.json \
+    "$@" --place python3 /tmp/place.py >> "$output/contact.jsonl" 2>> "$output/contact.stderr"

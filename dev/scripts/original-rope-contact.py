@@ -15,6 +15,11 @@ import json
 import subprocess
 import sys
 import time
+import hashlib
+import fcntl
+from contextlib import ExitStack
+import os
+from pathlib import Path
 
 
 class Driver:
@@ -23,6 +28,8 @@ class Driver:
         self.timeout = timeout
         self.pulse = pulse
         self.held = set()
+        self.progress_path = None
+        self.progress_record = {}
 
     def input(self, action, key):
         subprocess.run(['xdotool', action, key], check=True, timeout=5)
@@ -71,17 +78,74 @@ class Driver:
             # Escape leaves the console without reopening it or requesting a load.
             self.key('Escape')
 
+    def journal(self, path, resume, placement):
+        identity = dict(reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
+                        placement=placement, placement_files={item: hashlib.sha256(Path(item).read_bytes()).hexdigest()
+                            for item in placement if Path(item).is_file()})
+        self.progress_path = path
+        if path.exists():
+            if not resume:
+                raise ValueError('readiness progress exists; use --resume or a new output')
+            record = json.loads(path.read_text())
+            if record.get('version') != 1 or record.get('identity') != identity:
+                raise ValueError('readiness source changed')
+            if record['status'] != 'waiting':
+                raise ValueError('input attempt completed or was interrupted; never replay it automatically')
+            self.progress_record = record
+        else:
+            if resume:
+                raise ValueError('no readiness progress to resume')
+            self.progress_record = dict(version=1, identity=identity, status='waiting', polls=0)
+            self.save()
+
+    def save(self):
+        if self.progress_path is None:
+            return
+        self.progress_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.progress_path.with_suffix('.tmp')
+        with temporary.open('w') as stream:
+            json.dump(self.progress_record, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(self.progress_path)
+        descriptor = os.open(self.progress_path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def mark_running(self):
+        self.progress_record['status'] = 'running'
+        self.save()
+
+    def observe(self):
+        try:
+            result = subprocess.run([sys.executable, self.reader], check=True,
+                                    capture_output=True, text=True, timeout=self.timeout)
+            state = json.loads(result.stdout)
+            actors = state['actors']
+            selected = [a for a in actors if a['selected']]
+            readiness = ('actor_absent' if not actors else 'selection_absent' if not selected
+                         else 'selection_ambiguous' if len(selected) != 1 else 'selected')
+            return dict(readiness=readiness, actor_count=len(actors), selected_count=len(selected),
+                        reader=state.get('readiness'), frame=state['counters']['mainloop_frame'],
+                        counters=state['counters'], player=selected[0] if len(selected) == 1 else None,
+                        console_mode=state.get('console_mode'),
+                        game_seconds=state.get('game_seconds'), clock_end=state.get('clock_end'),
+                        input_state=state.get('input_state', {}))
+        except subprocess.CalledProcessError as error:
+            return dict(readiness='reader_failed', returncode=error.returncode,
+                        stderr=error.stderr, stdout=error.stdout)
+        except subprocess.TimeoutExpired as error:
+            return dict(readiness='reader_timeout', error=str(error))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            return dict(readiness='reader_invalid', error=str(error))
+
     def sample(self, phase):
-        result = subprocess.run([sys.executable, self.reader], check=True,
-                                capture_output=True, text=True, timeout=self.timeout)
-        state = json.loads(result.stdout)
-        player, = [a for a in state['actors'] if a['selected']]
-        row = dict(phase=phase, frame=state['counters']['mainloop_frame'],
-                   counters=state['counters'], player=player,
-                   console_mode=state.get('console_mode'),
-                   game_seconds=state.get('game_seconds'), clock_end=state.get('clock_end'),
-                   input_state=state.get('input_state', {}))
+        row = dict(self.observe(), phase=phase)
         print(json.dumps(row), flush=True)
+        if row['readiness'] != 'selected':
+            raise RuntimeError(f'original player unavailable: {row}')
         return row
 
     def boundary(self, phase, edge, key=None):
@@ -113,16 +177,23 @@ class Driver:
             self.boundary(phase, 'end', key)
 
     def ready(self, timeout):
-        deadline = time.monotonic() + timeout
+        started = time.monotonic()
+        deadline = started + timeout
         while True:
-            try:
-                row = self.sample('ready')
-                if row['frame'] > 2:
-                    return row
-            except (subprocess.CalledProcessError, ValueError):
-                pass
+            row = dict(self.observe(), phase='ready', observed_unix_ns=time.time_ns(),
+                       readiness_elapsed_seconds=time.monotonic() - started)
+            print(json.dumps(row), flush=True)
+            self.progress_record['polls'] = self.progress_record.get('polls', 0) + 1
+            previous = self.progress_record.get('last_observation', {})
+            if any(row.get(key) != previous.get(key) for key in
+                   ('readiness', 'frame', 'actor_count', 'selected_count', 'game_seconds')):
+                self.progress_record['last_progress_poll'] = self.progress_record['polls']
+            self.progress_record['last_observation'] = row
+            self.save()
+            if row['readiness'] == 'selected' and row['frame'] > 2:
+                return row
             if time.monotonic() >= deadline:
-                raise RuntimeError('original selected player did not become ready')
+                raise RuntimeError(f'original readiness timed out: {row}')
             time.sleep(.1)
 
     def progress(self, frames, phase, validate=False):
@@ -161,6 +232,8 @@ def main():
     parser.add_argument('--reader', required=True)
     parser.add_argument('--place', nargs='+', required=True,
                         help='local placement command, run after sword preparation')
+    parser.add_argument('--progress', type=Path, help='durable readiness journal')
+    parser.add_argument('--resume', action='store_true', help='resume waiting only; never replay input')
     parser.add_argument('--frames', type=int, default=16)
     parser.add_argument('--timeout', type=float, default=35)
     parser.add_argument('--ready-timeout', type=float, default=100)
@@ -171,38 +244,50 @@ def main():
     args = parser.parse_args()
     if args.frames <= 0 or args.timeout <= 0 or args.ready_timeout <= 0 or args.pulse <= 0:
         parser.error('frames, timeouts and pulse must be positive')
-    driver = Driver(args.reader, args.timeout, args.pulse)
-    recording = False
-    try:
-        ready = driver.ready(args.ready_timeout)
-        window = subprocess.check_output(['xdotool', 'search', '--name', 'DOSBox'], text=True).splitlines()[-1]
-        subprocess.run(['xdotool', 'windowfocus', '--sync', window], check=True, timeout=5)
-        fps = ready['counters'].get('fps', 0)
-        if fps > 0:
-            driver.pulse = max(driver.pulse, 2 / fps)
-        driver.progress(2, 'ready')
-        driver.command('magiccarpet = 1')
-        driver.command('item add,1')
-        if not driver.sample('inventory')['player']['drawn']:
-            driver.input('keydown', 's')
-            try:
-                driver.progress(2, 'draw')
-            finally:
-                driver.input('keyup', 's')
-        driver.progress(12, 'settle')
-        subprocess.run(args.place, check=True, timeout=args.timeout)
-        row = driver.progress(2, 'placed')
-        baseline(row)
-        if args.record:
-            driver.recorder()
-            recording = True
-        driver.segment(args.frames, 'walk-in', 'Up')
-        driver.segment(2, 'attack', args.attack_key)
-        driver.segment(12, 'continuation')
-    finally:
-        driver.release()
-        if recording:
-            driver.recorder()
+    with ExitStack() as stack:
+        if args.progress:
+            args.progress.parent.mkdir(parents=True, exist_ok=True)
+            lock = stack.enter_context(args.progress.with_suffix('.lock').open('a'))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        driver = Driver(args.reader, args.timeout, args.pulse)
+        if args.resume and args.progress is None:
+            parser.error('--resume requires --progress')
+        if args.progress:
+            driver.journal(args.progress, args.resume, args.place)
+        recording = False
+        try:
+            ready = driver.ready(args.ready_timeout)
+            driver.mark_running()
+            window = subprocess.check_output(['xdotool', 'search', '--name', 'DOSBox'], text=True).splitlines()[-1]
+            subprocess.run(['xdotool', 'windowfocus', '--sync', window], check=True, timeout=5)
+            fps = ready['counters'].get('fps', 0)
+            if fps > 0:
+                driver.pulse = max(driver.pulse, 2 / fps)
+            driver.progress(2, 'ready')
+            driver.command('magiccarpet = 1')
+            driver.command('item add,1')
+            if not driver.sample('inventory')['player']['drawn']:
+                driver.input('keydown', 's')
+                try:
+                    driver.progress(2, 'draw')
+                finally:
+                    driver.input('keyup', 's')
+            driver.progress(12, 'settle')
+            subprocess.run(args.place, check=True, timeout=args.timeout)
+            row = driver.progress(2, 'placed')
+            baseline(row)
+            if args.record:
+                driver.recorder()
+                recording = True
+            driver.segment(args.frames, 'walk-in', 'Up')
+            driver.segment(2, 'attack', args.attack_key)
+            driver.segment(12, 'continuation')
+            driver.progress_record['status'] = 'completed'
+            driver.save()
+        finally:
+            driver.release()
+            if recording:
+                driver.recorder()
 
 
 if __name__ == '__main__':

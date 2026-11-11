@@ -311,9 +311,10 @@ class Driver:
             self.call('cheat', name='magiccarpet', value=1)
             self.call('console', line='item add,1')
             if not self.sample('inventory')['player']['drawn']:
-                self.key('KeyS', True)
+                response = self.call('input', key='KeyS', action='tap')
+                if response != dict(key='KeyS', action='tap'):
+                    raise RuntimeError('native sword input acknowledgement does not match request')
                 self.progress(2, 'draw')
-                self.key('KeyS', False)
             self.progress(12, 'settle')
             x, y, z = original['position']
             self.call('place_player', x=x, y=y, z=z, heading=original['yaw'])

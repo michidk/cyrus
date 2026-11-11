@@ -1022,6 +1022,22 @@ installed movie skip controls and checks the final exit. It stops animation
 callbacks after the first completed world update, before screenshot readback.
 It does not rerun fresh/autosave policy cases or claim natural full-movie timing parity.
 
+The original rope driver retains readiness diagnostics separately from gameplay
+samples. `reader_failed` and `reader_invalid` preserve reader errors; `actor_absent`,
+`selection_absent` and `selection_ambiguous` distinguish actor lifecycle from a
+reader failure. Optional reader `readiness` metadata records binding diagnostics.
+A readiness budget expiring does not establish that loading stalled.
+
+The original launcher stores atomic progress in `OUTPUT/config/rope-readiness.json`
+and appends observations to `contact.jsonl`. After a timeout before input, rerun
+with the same paths and `--resume`. Reader and placement identities must match.
+Waiting can reconnect to a new runtime because no input has begun; once console
+or gameplay preparation starts, an interrupted attempt cannot be replayed
+through resume. Completed attempts also refuse replay. A per-journal lock excludes
+concurrent drivers. Direct driver invocations opt in with `--progress PATH`.
+Observations retain host timestamps, elapsed readiness time and engine counters;
+the journal records the latest observation and last progress poll.
+
 The original rope driver accepts `--record` to capture DOSBox-X mixer audio
 only after a valid placed baseline. It stops the recorder on completion or
 failure; the launcher mounts the run output's `audio/` as the capture directory.
@@ -1043,7 +1059,9 @@ reconstruct their elapsed game time. The original reader supplies cumulative
 `game_seconds`, `clock_end`, and observed `input_state` for `Up` and the attack key.
 The original driver brackets key delivery and waits for the observed key state.
 
-The native driver prepares the sword and gravity cheat through public controls,
+The native driver pulses the sword toggle for one update, so asynchronous reads
+do not hold it through animation completion and request sheathing again. It
+prepares the gravity cheat through public controls,
 places the player at the observed original baseline and records attachment state.
 It validates each input response and waits for the player action to reflect the
 requested state. State reads bracket actor reads so sample uncertainty remains

@@ -221,6 +221,21 @@ class Comparison(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'input attempt was interrupted'):
                 contact.prepare_progress(journal, source, output, True)
 
+    def test_sword_preparation_pulses_once_instead_of_holding_across_completion(self):
+        driver = contact.Driver('unused', 1, io.StringIO())
+        calls = []
+        def call(kind, **args):
+            calls.append((kind, args))
+            return args
+        driver.call = call
+        driver.sample = lambda phase: {'player': {'drawn': False}}
+        driver.progress = lambda *args, **kwargs: None
+        driver.timed_segment = lambda *args: None
+        driver.run({'position': [1, 2, 3], 'yaw': 512},
+                   dict.fromkeys(['walk-in', 'attack', 'continuation']))
+        self.assertEqual([args for kind, args in calls if kind == 'input'],
+                         [{'key': 'KeyS', 'action': 'tap'}])
+
     def test_rejected_native_walk_releases_held_input(self):
         driver = contact.Driver('unused', 1, io.StringIO())
         calls = []

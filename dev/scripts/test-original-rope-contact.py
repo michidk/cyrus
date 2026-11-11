@@ -118,6 +118,79 @@ class ContactDriver(unittest.TestCase):
         self.assertNotIn('keydown F12', keys)
 
 
+class Readiness(unittest.TestCase):
+    def module(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('original_contact', DRIVER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_absent_actor_is_distinct_from_failed_reader_and_selection_mismatch(self):
+        from unittest.mock import patch
+        m = self.module()
+        driver = m.Driver('reader.py', 1, .01)
+        for actors, expected in [([], 'actor_absent'),
+                                 ([{'selected': False}], 'selection_absent'),
+                                 ([{'selected': True}, {'selected': True}], 'selection_ambiguous')]:
+            result = subprocess.CompletedProcess([], 0, json.dumps({'actors': actors, 'counters': {'mainloop_frame': 5}}), '')
+            with patch.object(m.subprocess, 'run', return_value=result):
+                self.assertEqual(driver.observe()['readiness'], expected)
+        error = subprocess.CalledProcessError(7, [], stderr='binding signature absent')
+        with patch.object(m.subprocess, 'run', side_effect=error):
+            row = driver.observe()
+        self.assertEqual(row['readiness'], 'reader_failed')
+        self.assertEqual(row['stderr'], 'binding signature absent')
+
+    def test_loading_observations_progress_to_selected_without_input(self):
+        m = self.module()
+        driver = m.Driver('unused', 1, .01)
+        rows = iter([dict(readiness='reader_failed', stderr='engine not loaded'),
+                     dict(readiness='actor_absent', actor_count=0, frame=0, game_seconds=2),
+                     dict(readiness='selected', actor_count=1, frame=3, game_seconds=4)])
+        driver.observe = lambda: next(rows)
+        self.assertEqual(driver.ready(2)['frame'], 3)
+        self.assertEqual(driver.progress_record['polls'], 3)
+        self.assertEqual(driver.progress_record['last_progress_poll'], 3)
+        self.assertFalse(driver.held)
+
+    def test_cli_progress_lock_excludes_another_attempt_before_reader_or_input(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reader = root / 'reader.py'; reader.write_text('raise RuntimeError("must not run")')
+            progress = root / 'progress.json'
+            with progress.with_suffix('.lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = subprocess.run([sys.executable, str(DRIVER), '--reader', str(reader),
+                    '--progress', str(progress), '--place', '/bin/true'], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('BlockingIOError', result.stderr)
+            self.assertFalse(progress.exists())
+            self.assertEqual(result.stdout, '')
+
+    def test_waiting_resume_preserves_diagnostics_but_running_refuses_replay(self):
+        m = self.module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reader = root / 'reader.py'; reader.write_text('pass')
+            journal = root / 'progress.json'
+            driver = m.Driver(str(reader), 1, .01)
+            driver.journal(journal, False, ['place'])
+            driver.observe = lambda: dict(readiness='actor_absent', frame=0, actor_count=0)
+            with self.assertRaisesRegex(RuntimeError, 'actor_absent'):
+                driver.ready(.001)
+            previous = json.loads(journal.read_text())
+            driver.journal(journal, True, ['place'])
+            self.assertEqual(driver.progress_record['polls'], previous['polls'])
+            reader.write_text('changed reader')
+            with self.assertRaisesRegex(ValueError, 'source changed'):
+                driver.journal(journal, True, ['place'])
+            reader.write_text('pass')
+            driver.mark_running()
+            with self.assertRaisesRegex(ValueError, 'interrupted'):
+                driver.journal(journal, True, ['place'])
+
 class ContactLauncher(unittest.TestCase):
     def test_failed_runtime_restores_world_and_stops_only_owned_container(self):
         workspace = DRIVER.parents[2] / 'magic'
