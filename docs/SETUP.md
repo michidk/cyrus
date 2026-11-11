@@ -1285,3 +1285,48 @@ validates those inputs, skips accepted stages and establishes the live-state
 precondition for the next incomplete stage through public loading. Modified
 inputs or readbacks fail explicitly. Completed pixel evidence remains separate
 from the logical/binding driver's checkpoints.
+
+
+## Paced original book audio
+
+`dev/scripts/original-book-audio.sh RUN GOG OUTPUT IMAGE_ARCHIVE READY.py TRANSITION.py`
+restores `cyrus-retro:dev` from the explicit local archive when necessary, then
+records the real PulseAudio sink monitor. The image must include PulseAudio,
+its utilities and the SDL PulseAudio backend dependencies. Build the retro
+Dockerfile and retain a local image archive before an ephemeral runtime reset.
+The default retro runner keeps dummy audio; this launcher explicitly selects
+PulseAudio. No hardware renderer or host audio device is required.
+
+Use host-visible paths under `/home/vibepod/workspaces` for the writable run,
+GOG files and output. The launcher copies its small scripts into the output,
+mounts config and evidence there, holds one per-output lock and removes only
+its own container. Existing capture evidence is never overwritten. An optional
+`CYRUS_DOSBOX_CONFIG` selects a local emulator configuration. The run must use
+real writable configuration files and read-only links to the shared assets.
+
+The readiness observer must wait for an identified book page, then print one
+JSON object such as `{"ready":true,"page":"options"}`. A DOSBox window or title
+screen is not book readiness. The transition driver sends ordinary input and
+observes the destination page. It prints JSON lines containing `from`, `to`,
+`sent` and `acknowledged`. Times are monotonic seconds relative to the supplied
+`CYRUS_CAPTURE_EPOCH`. Keep installed image references and observer scripts in
+local evidence, outside the tracked tree. A changed screenshot alone does not
+identify the requested destination.
+
+`CYRUS_BOOK_TIMEOUT` bounds each readiness and transition process separately
+(default 120 seconds). The recorder starts only after readiness, admits PCM
+before input and retains the driver log, WAV and result on failure. Its result
+checks stereo 16-bit 48 kHz PCM, wall-clock pacing, nonzero audio and valid
+acknowledgements starting at the observed page. The 250 ms default pacing
+allowance covers recorder admission and shutdown uncertainty. These checks
+establish a paced audible recording; they do not establish uninterrupted game
+mixing, rustle identity or parity with cyrus. Compare the waveform and installed
+effects separately before changing production scheduling or gain.
+
+Run the failure controls without an install or Docker:
+
+```sh
+python3 dev/scripts/test-paced-mixer-capture.py
+python3 dev/scripts/test-original-book-audio.py
+python3 dev/scripts/test-ensure-runtime-image.py
+```
