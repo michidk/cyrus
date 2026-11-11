@@ -13,7 +13,13 @@ cargo run -p cyrus -- --headless --scene 27 # preload, scene export and control 
 cargo run -p cyrus -- --export-all-worlds   # write every WORLD.INI world to the cache directory
 ```
 
-Without `--scene`, a windowed launch runs startup through the book menu.
+Without `--scene`, a normal windowed launch plays splash/title, then selects its
+entry from installed `SYSTEM.INI [debug] final_version`, `MENU.INI [general]
+ignore_autosave` and the native autosave. Final-version fresh starts play
+Introduction before entering the starting world. A valid native slot-one session
+opens the book; missing or corrupt autosaves take the fresh path. Non-final or
+ignore-autosave configurations enter the starting world without Introduction.
+`--skip-startup` retains the explicit book-menu inspection entry.
 `--scene` and headless launches retain direct scene loading.
 `--skip-startup` bypasses the splash and waits behind the title for required
 menu/HUD preparation. New Game and the temporary Load fallback export the

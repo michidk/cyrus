@@ -54,7 +54,7 @@ The link is gitignored. cyrus only reads from it.
 ## Run
 
 ```sh
-just run                 # splash, title, then the book menu
+just run                 # splash/title, then Introduction for a fresh native launch
 just run --skip-startup   # skip splash, prepare menu assets behind the title
 just run --new-game       # New Game from the book, with its introduction movie
 just run --new-game --skip-movies   # ... entering the world straight away
@@ -369,7 +369,12 @@ the Windows Glide splash; the full DOS overlay contains the older shield logo.
 caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents both paths. Enter, Space, or Escape advances startup.
-`--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--new-game`,
+Native default startup selects its entry from installed final-version and
+ignore-autosave flags and a validated native autosave. A final-version launch
+without an autosave plays Introduction before the starting world. A valid
+autosave opens the book. Non-final or ignore-autosave configurations enter the
+starting world directly. This follows [preservation startup entry](https://github.com/michidk/redguard-preservation/pull/314).
+`--skip-startup` explicitly opens the book while required menu preparation remains behind the title. `--new-game`,
 `--movie INDEX` and `--load-slot SLOT` (native) skip the splash and drive the book once it is open, as the
 entry's key press would; `--skip-movies` makes New Game, from the book too, enter its world without the
 introduction movie. `--scene` loads a world directly and excludes all three. MCP `skip_startup` goes to the menu; `load_scene {name}` enters

@@ -53,7 +53,12 @@ persistence and world-entry playtests with an explicit install. See
 [SETUP](../../docs/SETUP.md) for commands and controls.
 
 Default windowed startup plays the installed Windows Glide swoosh animation and decoded
-640×480 title image, then opens the book menu once required assets are ready.
+640×480 title image. Native default launches then use installed startup policy
+and validated native autosave state to select Introduction, book, or direct world
+entry. The title remains visible while a pending launch action initializes;
+book motion and drawing do not briefly appear before its cinematic. Explicit
+`--skip-startup` retains book inspection. Browser default-entry policy remains
+unchanged; its IndexedDB autosave selection is not covered by native acceptance.
 Native menu/HUD export begins after the title becomes visible. The full
 parser-coverage scan remains in headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.

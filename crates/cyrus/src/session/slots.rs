@@ -68,6 +68,13 @@ fn description(value: &str) -> Result<()> {
 }
 
 impl SlotStore {
+    /// Slot one is the autosave. A corrupt envelope or session is not a valid startup save.
+    pub(crate) fn has_valid_autosave(&self) -> bool {
+        self.read(1, None).is_ok_and(|(document, _)| {
+            cyrus_session::RuntimeSessionSnapshot::decode_document(&document).is_ok()
+        })
+    }
+
     fn writer_lock(&self) -> Result<File> {
         cyrus_config::create_dir_all(&self.root)?;
         let path = self.root.join(".writer-lock");
@@ -360,6 +367,18 @@ mod tests {
         fn drop(&mut self) {
             std::fs::remove_dir_all(&self.0.root).unwrap();
         }
+    }
+
+    #[test]
+    fn startup_autosave_rejects_absent_corrupt_and_non_session_documents() {
+        let store = Store::new();
+        assert!(!store.0.has_valid_autosave());
+        std::fs::write(store.0.root.join("001.cyrus"), "broken envelope").unwrap();
+        assert!(!store.0.has_valid_autosave());
+        std::fs::remove_file(store.0.root.join("001.cyrus")).unwrap();
+        let plan = store.0.plan(SlotOperation::AutoSave).unwrap();
+        store.0.publish(plan, b"invalid session").unwrap();
+        assert!(!store.0.has_valid_autosave());
     }
 
     #[test]

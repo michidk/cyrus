@@ -102,6 +102,7 @@ pub(super) fn register(app: &mut App) {
             Update,
             drive
                 .after(super::menu::drive)
+                .after(super::menu::launch)
                 .run_if(in_state(AppState::Menu)),
         )
         .add_systems(

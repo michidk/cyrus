@@ -62,6 +62,10 @@ struct Args {
     control: Option<String>,
 }
 
+/// Default startup selects its destination from installed flags and the native autosave.
+#[derive(Resource)]
+struct AutomaticStartup;
+
 fn main() -> anyhow::Result<()> {
     // Bevy's task-pool threads take the default 2 MiB stack, which a debug build overflows while
     // loading ISLAND (an IO pool thread, minutes after load). Set before any thread exists.
@@ -248,6 +252,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             || args.launch.new_game
             || args.launch.movie.is_some()
             || args.load_slot.is_some();
+        if startup && !direct && !args.launch.skip_startup {
+            app.insert_resource(AutomaticStartup);
+        }
         app.insert_resource(cyrus_startup::LaunchRequest::new(
             args.launch.new_game,
             args.launch.movie,
@@ -309,12 +316,20 @@ fn exit_when_primary_window_closes(
     }
 }
 
+type PreparedStartup = anyhow::Result<Option<cyrus_assets::startup::StartupEntry>>;
+
+type StartupSelection<'w> = (
+    Option<Res<'w, cyrus_startup::StartupPresentation>>,
+    Option<Res<'w, AutomaticStartup>>,
+    Option<ResMut<'w, cyrus_startup::LaunchRequest>>,
+);
+
 /// Prepare the first visible assets without blocking the window's event loop.
 fn prepare_install(
     mut commands: Commands,
     install: Option<Res<cyrus_assets::install::GameInstall>>,
-    startup: Option<Res<cyrus_startup::StartupPresentation>>,
-    mut pending: Local<Option<bevy::tasks::Task<anyhow::Result<()>>>>,
+    (startup, automatic, mut launch): StartupSelection,
+    mut pending: Local<Option<bevy::tasks::Task<PreparedStartup>>>,
     mut attempted: Local<bool>,
     mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
     mut next: ResMut<NextState<cyrus_game::AppState>>,
@@ -323,7 +338,10 @@ fn prepare_install(
         if let Some(result) = bevy::tasks::futures::check_ready(task) {
             *pending = None;
             match result {
-                Ok(()) => {
+                Ok(entry) => {
+                    if let (Some(entry), Some(launch)) = (entry, launch.as_deref_mut()) {
+                        apply_startup_entry(launch, entry);
+                    }
                     progress.visible = false;
                     commands.insert_resource(cyrus_audio::AudioReadiness {
                         prepare: startup.is_none(),
@@ -350,20 +368,64 @@ fn prepare_install(
     progress.fraction = None;
     let install = install.clone();
     let startup = startup.is_some();
+    let automatic = automatic.is_some();
     *pending = Some(bevy::tasks::IoTaskPool::get().spawn(async move {
         let cache = cyrus_config::cache_dir();
         install.cache_path(cache)?;
         if startup {
-            cyrus_assets::startup::export_startup(&install, cache)
+            cyrus_assets::startup::export_startup(&install, cache)?;
         } else {
-            cyrus_assets::hud_export::export_hud(&install, cache)
+            cyrus_assets::hud_export::export_hud(&install, cache)?;
+        }
+        if automatic {
+            cyrus_assets::startup::startup_entry(
+                &install,
+                session::slots::SlotStore::default().has_valid_autosave(),
+            )
+            .map(Some)
+        } else {
+            Ok(None)
         }
     }));
+}
+
+fn apply_startup_entry(
+    launch: &mut cyrus_startup::LaunchRequest,
+    entry: cyrus_assets::startup::StartupEntry,
+) {
+    use cyrus_assets::startup::StartupEntry;
+    if entry != StartupEntry::Book {
+        *launch = cyrus_startup::LaunchRequest::automatic_new_game(launch.skip_movies);
+        if entry == StartupEntry::World {
+            launch.action = Some(cyrus_startup::LaunchAction::NewGameWithoutMovie);
+        }
+    }
 }
 
 #[cfg(test)]
 mod install_tests {
     use super::*;
+
+    #[test]
+    fn default_fresh_start_requests_introduction_without_losing_explicit_movie_skip() {
+        use cyrus_assets::startup::StartupEntry;
+        let mut launch = cyrus_startup::LaunchRequest::new(false, None, false);
+        apply_startup_entry(&mut launch, StartupEntry::Introduction);
+        assert_eq!(launch.action, Some(cyrus_startup::LaunchAction::NewGame));
+        assert!(!launch.skip_movies);
+        let mut skipped = cyrus_startup::LaunchRequest::new(false, None, true);
+        apply_startup_entry(&mut skipped, StartupEntry::Introduction);
+        assert!(skipped.skip_movies);
+        let mut book = cyrus_startup::LaunchRequest::default();
+        apply_startup_entry(&mut book, StartupEntry::Book);
+        assert_eq!(book.action, None);
+        apply_startup_entry(&mut book, StartupEntry::World);
+        assert_eq!(
+            book.action,
+            Some(cyrus_startup::LaunchAction::NewGameWithoutMovie)
+        );
+        assert!(!book.skip_movies);
+    }
 
     #[test]
     fn preparation_waits_for_selection_and_keeps_failures_in_the_same_window() {
