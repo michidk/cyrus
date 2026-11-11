@@ -74,8 +74,11 @@ def main():
     parser.add_argument('--install', required=True, type=Path)
     parser.add_argument('--cache', required=True, type=Path)
     parser.add_argument('--port', type=int, default=7126)
+    parser.add_argument('--gpu-pixels', action='store_true', help='run paired GPU-output acceptance')
     parser.add_argument('--seed-session', type=Path)
     args = parser.parse_args()
+    if args.gpu_pixels and args.seed_session is None:
+        parser.error('--gpu-pixels requires --seed-session')
     signal.signal(signal.SIGTERM, interrupted)
     for name in ('runtime', 'binary', 'install', 'cache'):
         path = getattr(args, name).resolve(strict=True)
@@ -91,7 +94,8 @@ def main():
     with (args.runtime / 'transient-runtime.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         attempt = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
-        logs = args.runtime / 'evidence/transients-current/attempts' / attempt
+        output_name = 'transients-pixels' if args.gpu_pixels else 'transients-current'
+        logs = args.runtime / 'evidence' / output_name / 'attempts' / attempt
         logs.mkdir(parents=True)
         retain_previous(logs.parent.parent, logs)
         config = args.runtime / 'transient-config'
@@ -129,10 +133,10 @@ def main():
                 follower = subprocess.Popen(['docker', 'logs', '-f', name], stdout=runtime_log,
                                             stderr=subprocess.STDOUT)
                 with (logs / 'driver.log').open('w') as driver_log:
-                    run_driver([sys.executable, str(ROOT / 'dev/scripts/native-transient-session.py'),
-                                    str(args.port), str(args.runtime / 'evidence/transients-current'),
+                    run_driver([sys.executable, str(ROOT / 'dev/scripts' / ('native-transient-pixels.py' if args.gpu_pixels else 'native-transient-session.py')),
+                                    str(args.port), str(args.runtime / 'evidence' / output_name),
                                     '--binary', str(args.binary), '--runtime-output',
-                                    '/run/evidence/transients-current',
+                                    '/run/evidence/' + output_name,
                                     *(['--seed-session', str(args.seed_session)] if args.seed_session else [])], driver_log)
             finally:
                 if started:

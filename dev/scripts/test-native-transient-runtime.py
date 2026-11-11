@@ -21,6 +21,15 @@ transient = load('native-transient-session')
 
 
 class RecoveryControls(unittest.TestCase):
+    def test_gpu_mode_requires_seed_before_starting_runtime(self):
+        import subprocess
+        result = subprocess.run([
+            __import__('sys').executable, str(Path(runtime.__file__)), '--gpu-pixels',
+            '--runtime', '/unused', '--binary', '/unused/cyrus', '--sha256', 'unused',
+            '--install', '/unused', '--cache', '/unused'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('--gpu-pixels requires --seed-session', result.stderr)
+
     def test_missing_image_builds_only_runtime_and_existing_image_is_reused(self):
         for status in (0, 1):
             with self.subTest(status=status), patch.object(runtime.subprocess, 'run',

@@ -1263,3 +1263,25 @@ their source and gate inputs have not changed.
 `--seed-session PATH` can reuse a retained installed diagnostic fixture for
 bootstrap recovery. The application still validates and publishes it through
 public session load. Completed checkpoints take precedence over a bootstrap seed.
+
+For automated transient GPU-output acceptance, add `--gpu-pixels` and an explicit
+`--seed-session` pointing to the retained stationary installed fixture. Install
+`Pillow==11.3.0` and `blake3` into the Python environment first. Output goes to
+`evidence/transients-pixels`, preserving the earlier binding checkpoints.
+`native-transient-pixels.py` reuses the public screenshot command: Bevy copies
+the rendered texture into a GPU readback buffer, maps it, and writes the PNG.
+The driver waits for a complete new PNG within the existing screenshot deadline.
+It holds the installed effect image at frame zero, derives a visible signal from
+paired empty/active public sessions in a central crop excluding HUD, and requires
+that signal after restored admission and rejected loading. Empty replacement
+and expiration must match the empty control at those pixels. The oracle rejects
+missing output, old visible output after retirement, dimension changes and weak
+positive controls. Run `python3 dev/scripts/test-native-transient-pixels.py` for
+synthetic mutation and real PNG-decoding controls. This checks actual GPU output
+after admission, not the exact first GPU frame or original pixel parity.
+The pixel driver checkpoints each completed output assertion with executable,
+seed, driver and helper identities plus readback/session hashes. A restart
+validates those inputs, skips accepted stages and establishes the live-state
+precondition for the next incomplete stage through public loading. Modified
+inputs or readbacks fail explicitly. Completed pixel evidence remains separate
+from the logical/binding driver's checkpoints.
