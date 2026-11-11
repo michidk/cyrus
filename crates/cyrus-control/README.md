@@ -128,3 +128,14 @@ The selector index refers to the current runtime hierarchy, not an original face
 or material ID. A named material-bearing mesh itself accepts only index zero.
 Out-of-range indices fail. Authored placement node names and generated primitive
 names differ; global primitive names need not be unique across placed instances.
+
+`rendered_actor {index, after_generation?}` observes a current actor after
+presentation and transform updates. It reports logical/displayed model frames,
+validated model source identity, and expected versus bound attachment sources,
+owners, transforms and visibility. With `after_generation`, it waits for the
+first settled presentation update of a replacement generation (up to 180 seconds).
+Empty-world, scene preparation, retained revisit restoration and model-instance/mesh
+loading keep the observation pending.
+`state.rendered_actor_pending` confirms that the observation is armed before
+starting a public load or revisit. One observation may be outstanding. This
+read-only diagnostic does not reconstruct missing roots or advance animation.

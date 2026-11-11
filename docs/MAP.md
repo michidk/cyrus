@@ -201,6 +201,7 @@ module where it is defined and regenerate.
 - `src/water/heights.rs` — Read-only binding of exact engine heights to logical camera terrain sampling.
 - `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
 - `src/weapon_model.rs` — Equipped weapon models, placed from the retained logical attachment pose.
+- `src/weapon_model/inspection.rs` — Read-only correlation of logical attachment poses with rendered owners.
 
 ## `cyrus-script` — Game scripting host, player controller, simulation clock and in-game screens, built on the portable SOUP runtime.
 
@@ -429,6 +430,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
+- `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.

@@ -27,6 +27,7 @@ class Recovery(unittest.TestCase):
             fresh_runtime = False
             reject = True
             empty = True
+            settling = True
             frozen = False
             changed_source = False
             omit_screenshot = False
@@ -35,7 +36,7 @@ class Recovery(unittest.TestCase):
 
             class Handler(socketserver.StreamRequestHandler):
                 def handle(self):
-                    nonlocal empty, clock, scene, fresh_runtime
+                    nonlocal empty, clock, scene, fresh_runtime, settling
                     command = json.loads(self.rfile.readline())['cmd']
                     kind = command['type']
                     commands.append(kind)
@@ -53,6 +54,10 @@ class Recovery(unittest.TestCase):
                     elif kind == 'load_scene':
                         scene = command['name']
                     elif kind == 'session_capture_result':
+                        if settling:
+                            settling = False
+                            ok = False
+                            error = 'displayed model mesh has not settled to the selected frame'
                         result = {'pending': False, 'document': DOCUMENT.replace('\"content_id\": \"0\"', '\"content_id\": \"changed\"') if changed_source else DOCUMENT}
                     elif kind == 'session_load':
                         fresh_runtime = False
@@ -82,6 +87,7 @@ class Recovery(unittest.TestCase):
                     self.assertTrue((output / 'checkpoint.json').exists())
                     self.assertFalse((output / 'result.json').exists())
                     self.assertEqual(commands.count('load_scene'), 2)
+                    self.assertEqual(commands.count('session_capture'), 2, 'consumed unsettled frame must retry capture')
                     commands.clear()
                     reject = False
                     fresh_runtime = True

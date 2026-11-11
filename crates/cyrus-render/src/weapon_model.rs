@@ -1,8 +1,10 @@
 //! Equipped weapon models, placed from the retained logical attachment pose.
+mod inspection;
 use crate::{player_model::model_source, script_transform::scene_transform_at};
 use bevy::{asset::AssetPath, prelude::*};
 use cyrus_script::script::{Pose, ScriptActors, ScriptBinding};
 use cyrus_world::{animation::AnimationPose, lifecycle::PreparedWorld};
+pub use inspection::inspect_actor_model;
 
 /// Draws the hand or hilt model the script world retained for each bound actor, and the frame
 /// transient models its display natives placed (they vanish when the next ordinary update empties
@@ -127,7 +129,11 @@ fn bind(
             },
             WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(want.source))),
             want.transform,
-            Visibility::Hidden,
+            if want.hidden {
+                Visibility::Hidden
+            } else {
+                Visibility::Inherited
+            },
         ));
     }
 }
@@ -245,17 +251,50 @@ mod tests {
             PreparedWorld::from_cache("ISLAND".into(), app.world().resource::<AssetServer>());
         app.insert_resource(prepared);
         app.insert_resource(actors);
-        app.world_mut().spawn((
-            ScriptBinding {
-                actor: id,
-                source: Handle::<Animations>::default(),
-            },
-            AnimationPose {
-                model: "STATIC".into(),
-                frame: 0,
-            },
-        ));
+        let old_owner = app
+            .world_mut()
+            .spawn((
+                Name::new("STATIC"),
+                ScriptBinding {
+                    actor: id,
+                    source: Handle::<Animations>::default(),
+                },
+                AnimationPose {
+                    model: "STATIC".into(),
+                    frame: 0,
+                },
+            ))
+            .id();
         app.update();
+        assert_eq!(roots(&mut app), [expected]);
+        let observations = inspect_actor_model(app.world(), id).unwrap();
+        assert_eq!(
+            observations["attachments"][0]["hidden"], false,
+            "first-update attachment must honor its visible logical owner"
+        );
+        // Publication retires the entity owner and binds the retained actor to
+        // a new entity. Its very first update must already draw the same pose.
+        app.world_mut().despawn(old_owner);
+        let replacement = app
+            .world_mut()
+            .spawn((
+                Name::new("STATIC"),
+                ScriptBinding {
+                    actor: id,
+                    source: Handle::<Animations>::default(),
+                },
+                AnimationPose {
+                    model: "STATIC".into(),
+                    frame: 0,
+                },
+            ))
+            .id();
+        app.update();
+        let rebound = inspect_actor_model(app.world(), id).unwrap();
+        assert_eq!(rebound["owner"], replacement.to_bits());
+        assert_ne!(rebound["owner"], observations["owner"]);
+        assert_eq!(rebound["attachments"].as_array().unwrap().len(), 1);
+        assert_eq!(rebound["attachments"][0]["hidden"], false);
         assert_eq!(roots(&mut app), [expected]);
         // The next ordinary update empties the frame's pool, so the model goes away.
         let mut random = cyrus_game::random::EngineRandom::default();

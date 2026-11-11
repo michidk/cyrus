@@ -20,6 +20,7 @@ pub mod subtitles;
 mod terrain;
 mod weapon_model;
 pub use terrain::TextureAdmission as TerrainTextureAdmission;
+pub use weapon_model::inspect_actor_model;
 mod water;
 use bevy::prelude::*;
 pub use water::{

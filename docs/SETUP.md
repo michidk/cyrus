@@ -1080,3 +1080,28 @@ presentation at ordinary update four. It checks destination, camera, fade and
 player preparation, retains the image, and closes its isolated page within a
 90-second endpoint bound. Compare its image with the original at the same
 ordinary update; host wall duration does not establish fade timing parity.
+
+For animation/attachment continuation, reuse a captured two-world seed and select
+an installed animated actor with an equipped attachment in each world. Actor
+indices come from `scripts` and the seed's retained actor census:
+
+```sh
+python3 dev/scripts/native-session-capture.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --continuation-seed HOST_SEED --runtime-seed RUNTIME_SEED \
+  --attachment-actor ACTIVE_INDEX --revisit SCENE --revisit-actor DORMANT_INDEX
+python3 dev/scripts/test-native-session-assertions.py
+```
+
+This mode restores the seed instead of repeating world visits. It captures a new
+durable fixture with a precise pre-capture observation, then arms the public
+`rendered_actor` generation wait before publication and before revisiting the
+dormant world. Each reply records the first settled presentation update's frame
+and game time after rendered readiness and retained revisit restoration. Assertions
+require the displayed frame to match that update's
+logical model, a validated rendered model source, fresh actor ownership, and
+matching attachment sources, visibility, local transforms and world matrices.
+Saved frames may advance; a changed frame alone is not a failed continuation.
+The dormant logical document must remain unchanged before revisit, apart from
+generation rebinding. First-update observations and the revisit screenshot remain
+local. This fixture does not establish original-game pixel or timing parity.
