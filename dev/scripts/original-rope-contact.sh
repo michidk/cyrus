@@ -57,7 +57,7 @@ docker run -d --name "$name" --cap-add SYS_PTRACE -e DISPLAY=:1 \
     -v "$output/config:/config" \
     -v "$reader:/tmp/state.py:ro" -v "$placement:/tmp/place.py:ro" \
     -v "$root/dev/scripts/original-rope-contact.py:/tmp/driver.py:ro" \
-    "${CYRUS_RETRO_IMAGE:-cyrus-retro:dev}" -set "dosbox hostkey=ctrlalt" >/dev/null
+    "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" -set "dosbox hostkey=ctrlalt" >/dev/null
 created=1
 docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py \
     "$@" --place python3 /tmp/place.py > "$output/contact.jsonl" 2> "$output/contact.stderr"

@@ -145,13 +145,17 @@ For a bounded original rope contact probe, use a prepared writable run directory
 with its shared assets linked as described above:
 
 ```sh
+docker build -f dev/docker/retro/Dockerfile.contact \
+    -t cyrus-retro-contact:dev dev/docker/retro
 bash dev/scripts/original-rope-contact.sh RUN READER.py PLACE.py OUTPUT
 ```
 
 The launcher holds the host live-run lock for one run, mounts the host config
 and local diagnostics, restores `WORLD.INI` afterwards and stops its own
 container on success or failure. It rejects the canonical install as a writable
-run. It uses the existing `cyrus-retro:dev` image and passes
+run. It uses `cyrus-retro-contact:dev`, which runs the same guest configuration on
+Xvfb without the interactive preview services. Build it with the command above;
+`CYRUS_RETRO_IMAGE` can select an existing compatible image. The launcher passes
 `-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
 F12 for the guest console.
 Other original capture workflows keep their existing modifier. For these runs,

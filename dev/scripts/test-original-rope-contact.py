@@ -120,6 +120,7 @@ class ContactLauncher(unittest.TestCase):
             self.assertEqual(result.returncode, 7, result.stderr)
             self.assertEqual(world.read_text(), '[world]\nstart_world=9\n')
             calls = (root / 'calls').read_text().splitlines()
+            self.assertIn('cyrus-retro-contact:dev', calls[0])
             self.assertIn('-set dosbox hostkey=ctrlalt', calls[0])
             self.assertIn('CYRUS_CONFIG_DIR=/config', calls[0])
             self.assertIn('SYS_PTRACE', calls[0])
