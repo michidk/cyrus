@@ -41,6 +41,12 @@ fn installed_flags_override_autosave_and_report_invalid_configuration() {
         )
         .unwrap();
         assert_eq!(startup_entry(&install, valid).unwrap(), expected);
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let prepared = cyrus_assets::game::prepare(&source, "startup/entry.json").unwrap();
+        assert_eq!(prepared.len(), 1);
+        let policy: cyrus_assets::startup::StartupPolicy =
+            serde_json::from_slice(&prepared["startup/entry.json"]).unwrap();
+        assert_eq!(policy.entry(valid), expected);
     }
     std::fs::write(
         root.join("MENU.INI"),

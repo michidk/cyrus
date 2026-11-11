@@ -57,8 +57,8 @@ Default windowed startup plays the installed Windows Glide swoosh animation and 
 and validated native autosave state to select Introduction, book, or direct world
 entry. The title remains visible while a pending launch action initializes;
 book motion and drawing do not briefly appear before its cinematic. Explicit
-`--skip-startup` retains book inspection. Browser default-entry policy remains
-unchanged; its IndexedDB autosave selection is not covered by native acceptance.
+`--skip-startup` retains book inspection. The browser uses the same installed
+policy with its validated IndexedDB autosave before constructing the application.
 Native menu/HUD export begins after the title becomes visible. The full
 parser-coverage scan remains in headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.

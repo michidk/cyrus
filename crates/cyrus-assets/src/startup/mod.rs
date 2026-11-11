@@ -23,31 +23,52 @@ pub enum StartupEntry {
     World,
 }
 
+/// Installed startup flags, shared by native preparation and the browser worker.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartupPolicy {
+    pub final_version: bool,
+    pub ignore_autosave: bool,
+}
+
+impl StartupPolicy {
+    /// Select the documented startup destination after the host validates its autosave.
+    pub fn entry(self, valid_autosave: bool) -> StartupEntry {
+        if !self.final_version || self.ignore_autosave {
+            StartupEntry::World
+        } else if valid_autosave {
+            StartupEntry::Book
+        } else {
+            StartupEntry::Introduction
+        }
+    }
+}
+
+/// Read policy through preservation without preparing presentation assets or writing originals.
+pub fn startup_policy(source: &dyn crate::source::ReadAssets) -> anyhow::Result<StartupPolicy> {
+    use anyhow::Context;
+    let system = rgpre::import::system_ini::SystemIni::parse(&crate::preparation::text(
+        source,
+        "SYSTEM.INI",
+    )?)
+    .context("startup: SYSTEM.INI")?;
+    let menu =
+        rgpre::import::menu_ini::MenuGeneral::parse(&crate::preparation::text(source, "MENU.INI")?)
+            .map_err(anyhow::Error::msg)?;
+    Ok(StartupPolicy {
+        final_version: system
+            .debug
+            .final_version
+            .context("startup: SYSTEM.INI [debug] final_version is missing")?,
+        ignore_autosave: menu.ignore_autosave,
+    })
+}
+
 /// Read installed startup policy without changing the install or preparing presentation assets.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn startup_entry(
     install: &crate::install::GameInstall,
     valid_autosave: bool,
 ) -> anyhow::Result<StartupEntry> {
-    use anyhow::Context;
-    let source = crate::native::Files::scan(install, false)?;
-    let read = |name| -> anyhow::Result<String> {
-        let bytes = crate::preparation::read(&source, name)?;
-        String::from_utf8(bytes).with_context(|| format!("startup: {name} is not UTF-8"))
-    };
-    let system = rgpre::import::system_ini::SystemIni::parse(&read("SYSTEM.INI")?)
-        .context("startup: SYSTEM.INI")?;
-    let menu = rgpre::import::menu_ini::MenuGeneral::parse(&read("MENU.INI")?)
-        .map_err(anyhow::Error::msg)?;
-    let final_version = system
-        .debug
-        .final_version
-        .context("startup: SYSTEM.INI [debug] final_version is missing")?;
-    Ok(if !final_version || menu.ignore_autosave {
-        StartupEntry::World
-    } else if valid_autosave {
-        StartupEntry::Book
-    } else {
-        StartupEntry::Introduction
-    })
+    Ok(startup_policy(&crate::native::Files::scan(install, false)?)?.entry(valid_autosave))
 }

@@ -13,7 +13,7 @@ pub fn register(app: &mut App) {
     super::session::register(app, enabled);
     if enabled {
         audio::register(app);
-        app.add_systems(PostUpdate, light_image::respond);
+        app.add_systems(PostUpdate, (light_image::respond, publish_startup));
         app.add_systems(
             Update,
             (sync_sky, sync_texture, sync_acceptance)
@@ -84,6 +84,27 @@ fn sync_sky(
     })();
     if let Err(error) = result {
         error!("browser sky capture request: {error:?}");
+    }
+}
+
+/// Observe each startup phase, including movie-to-world handoff, without advancing its clock.
+fn publish_startup(
+    state: Res<State<cyrus_game::AppState>>,
+    presentation: Res<cyrus_startup::StartupPresentation>,
+    clock: Option<Res<cyrus_script::clock::SimulationClock>>,
+) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let record = serde_json::json!({
+        "state": format!("{:?}", state.get()),
+        "presentation": &*presentation,
+        "clock": clock.as_ref().map(|clock| serde_json::json!({"game_seconds": clock.game_seconds()})),
+    });
+    let result = js_sys::JSON::parse(&record.to_string())
+        .and_then(|value| js_sys::Reflect::set(&window, &"__cyrusStartup".into(), &value));
+    if let Err(error) = result {
+        error!("browser startup observation: {error:?}");
     }
 }
 

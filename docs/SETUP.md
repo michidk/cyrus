@@ -400,8 +400,8 @@ the Windows Glide splash; the full DOS overlay contains the older shield logo.
 caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents both paths. Enter, Space, or Escape advances startup.
-Native default startup selects its entry from installed final-version and
-ignore-autosave flags and a validated native autosave. A final-version launch
+Default startup selects its entry from installed final-version and
+ignore-autosave flags and a validated host autosave, native storage or browser IndexedDB. A final-version launch
 without an autosave plays Introduction before the starting world. A valid
 autosave opens the book. Non-final or ignore-autosave configurations enter the
 starting world directly. This follows [preservation startup entry](https://github.com/michidk/redguard-preservation/pull/314).

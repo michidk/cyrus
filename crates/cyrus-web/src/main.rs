@@ -14,6 +14,7 @@ mod session;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "session/selection.rs"]
 mod session_selection;
+mod startup;
 mod storage;
 
 use bevy::prelude::*;
@@ -28,6 +29,26 @@ fn main() {
         .unwrap_or_else(|error| wasm_bindgen::throw_str(&error.to_string()));
     #[cfg(not(target_arch = "wasm32"))]
     let options = cyrus_app::launch::GameOptions::default();
+    #[cfg(target_arch = "wasm32")]
+    wasm_bindgen_futures::spawn_local(async move {
+        let entry = if startup::automatic(&options) {
+            Some(startup::installed_entry().await.unwrap_or_else(|error| {
+                wasm_bindgen::throw_str(&format!("browser startup: {error:#}"))
+            }))
+        } else {
+            None
+        };
+        run(options, entry);
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    run(options, None);
+}
+
+fn run(
+    options: cyrus_app::launch::GameOptions,
+    entry: Option<cyrus_assets::startup::StartupEntry>,
+) {
+    let launch = startup::launch(&options, entry);
     let scene = options.scene;
     let mut app = App::new();
     if let Some(view) = options.view {
@@ -103,11 +124,7 @@ fn main() {
             .run_if(in_state(cyrus_game::AppState::Loading))
             .run_if(resource_exists::<cyrus_startup::StartGame>),
     );
-    app.insert_resource(cyrus_startup::LaunchRequest::new(
-        options.new_game,
-        options.movie,
-        options.skip_movies,
-    ));
+    app.insert_resource(launch);
     let mut presentation = if options.skip_startup || options.new_game || options.movie.is_some() {
         cyrus_startup::StartupPresentation::without_splash()
     } else {

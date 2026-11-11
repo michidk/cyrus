@@ -406,6 +406,7 @@ module where it is defined and regenerate.
 - `src/session/load_assets.rs` — Browser cache preparation without publishing a world or starting gameplay.
 - `src/session/selection.rs` — Retained browser slot selection, separate from captured gameplay state.
 - `src/session/storage.rs` — Asynchronous browser session publication; callers own document validation.
+- `src/startup.rs` — Default browser entry uses installed policy after validating its reserved session slot.
 - `src/storage.rs` — Shared browser document storage for preferences, cheats and future save records.
 
 ## `cyrus-world` — World lifetime, explicit animation execution and actor transforms.

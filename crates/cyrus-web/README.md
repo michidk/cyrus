@@ -1,6 +1,6 @@
 # cyrus-web
 
-The browser game runs startup through the book menu by default. It uses the same
+The browser game selects its default startup destination from installed startup flags and its validated IndexedDB autosave. Fresh final-version launches play Introduction before entering the world; valid autosaves open the book. Explicit `?skip-startup` retains book inspection. It uses the same
 world, game and presentation plugins as the native game. This host owns URL
 selection and localStorage preferences; it has no native control port.
 
@@ -235,3 +235,22 @@ count. `__cyrusAudioResult` reports pending, started or an error. Set
 `__cyrusVoiceStopRequest` to a request ID to exercise the examine view's speech-stop
 path; `__cyrusVoiceStopResult` acknowledges that ID. These diagnostic adapters do
 not alter installed repetition counts, source cursors or the audio drain policy.
+
+Installed startup acceptance uses the public browser entry point with an explicit
+install URL, isolated storage and presented-frame screenshots. Separate bounded
+runs stop at Introduction, publish an autosave from the first ready world update
+and reload default startup, or inspect explicit startup skip:
+
+```sh
+node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT introduction
+node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT autosave
+node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT menu
+```
+
+With `?capture`, `window.__cyrusStartup` publishes the application state, startup
+presentation and simulation game seconds across the movie-to-world boundary.
+The observer reads state without advancing the clock.
+
+Each run has a three-minute endpoint bound; autosave reload has a separate
+90-second bound. Full movie completion is separate acceptance. Wall duration
+is not a game timing measurement. The result records installed movie metadata.
