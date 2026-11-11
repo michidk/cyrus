@@ -1,194 +1,31 @@
-//! Render the installed book's authored geometry into presentation images.
-//! Projection and placements follow preservation's engine/menu.md.
-use super::book_motion::BookPose;
+//! Paint the installed book's page surfaces: labels, widgets and pictures drawn into the textures
+//! the book's 3D scene (`book_scene`) shows.
 use super::menu::MenuState;
 use anyhow::{Context, ensure};
-use bevy::math::Vec2;
 use cyrus_assets::menu::MenuAsset;
-use cyrus_assets::menu::MenuFace;
 use cyrus_assets::menu::MenuPicture;
 use cyrus_assets::menu::PageTexture;
-use cyrus_world::heading::wrap;
-use image::{Rgba, RgbaImage};
+use image::RgbaImage;
 
-const WIDTH: usize = 640;
-const HEIGHT: usize = 480;
-
-// shortcut: the book's own lighting and camera-plane clipping remain unsupported (only faces that carry a light, the logbook scrolls, are lit); add them after their rendering rules are recovered.
-fn render(faces: &[MenuFace], textures: &[RgbaImage]) -> anyhow::Result<RgbaImage> {
-    let mut image = RgbaImage::from_pixel(WIDTH as u32, HEIGHT as u32, Rgba([0, 0, 0, 255]));
-    render_into(&mut image, faces, textures)?;
-    Ok(image)
+/// What a menu redraw produced: the painted page surfaces of the book's 3D scene, or a dialog over it.
+pub(super) enum Painted {
+    /// Every page surface, text, widgets and pictures included, ready to upload as textures.
+    Surfaces(Vec<PageTexture>),
+    /// A confirmation or description dialog, transparent outside the dialog, drawn over the scene.
+    Dialog(RgbaImage),
 }
 
-pub(super) fn render_into(
-    image: &mut RgbaImage,
-    faces: &[MenuFace],
-    textures: &[RgbaImage],
-) -> anyhow::Result<()> {
-    let mut depth = vec![0.0; WIDTH * HEIGHT];
-    for face in faces {
-        let triangle = face
-            .vertices
-            .map(|v| (Vec2::new(v[0], v[1]), v[2], Vec2::new(v[3], v[4])));
-        let [a, b, c] = triangle.map(|v| v.0);
-        let area = (b - a).perp_dot(c - a);
-        if area >= -0.0001
-            || !area.is_finite()
-            || triangle.iter().any(|v| v.1 <= 0.0 || !v.1.is_finite())
-        {
-            continue;
-        }
-        let min = a.min(b).min(c).floor().max(Vec2::ZERO);
-        let max = a
-            .max(b)
-            .max(c)
-            .ceil()
-            .min(Vec2::new(WIDTH as f32, HEIGHT as f32));
-        for y in min.y as usize..max.y as usize {
-            for x in min.x as usize..max.x as usize {
-                let point = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
-                let weights = [
-                    (b - point).perp_dot(c - point) / area,
-                    (c - point).perp_dot(a - point) / area,
-                    (a - point).perp_dot(b - point) / area,
-                ];
-                if weights.iter().any(|v| *v < 0.0) {
-                    continue;
-                }
-                let inverse_z: f32 = (0..3).map(|i| weights[i] * triangle[i].1).sum();
-                let index = y * WIDTH + x;
-                if inverse_z + 0.0000001 < depth[index] {
-                    continue;
-                }
-                let color = if let Some(texture) = face.texture {
-                    let uv = (0..3)
-                        .map(|i| triangle[i].2 * (weights[i] * triangle[i].1))
-                        .sum::<Vec2>()
-                        / inverse_z;
-                    let mut texel = sample(&textures[texture], uv);
-                    if let Some(light) = face.light_rgb {
-                        texel = modulate_rgb(texel, channel_level(&light, &weights), true);
-                    } else if let Some(light) = face.light {
-                        texel = modulate(texel, (0..3).map(|i| weights[i] * light[i]).sum());
-                    }
-                    texel
-                } else if let Some(light) = face.light_rgb {
-                    modulate_rgb(Rgba(face.color), channel_level(&light, &weights), false)
-                } else {
-                    Rgba(face.color)
-                };
-                if color.0[3] == 0 {
-                    continue;
-                }
-                image.put_pixel(x as u32, y as u32, color);
-                depth[index] = inverse_z;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Texture times iterated colour: the interpolated lighting level becomes an integer `L` and each
-/// colour channel `T` becomes `floor(T * (L + 1) / 256)` (preservation's terrain texture
-/// combination, which the model draws share). Alpha is untouched.
-fn modulate(texel: Rgba<u8>, level: f32) -> Rgba<u8> {
-    let level = u32::from(level.clamp(0.0, 255.0) as u8) + 1;
-    let [r, g, b, a] = texel.0;
-    let lit = |t: u8| (u32::from(t) * level / 256) as u8;
-    Rgba([lit(r), lit(g), lit(b), a])
-}
-
-/// The per-channel level at a point: each corner's level weighted by the barycentric weights.
-fn channel_level(light: &[[f32; 3]; 3], weights: &[f32; 3]) -> [f32; 3] {
-    std::array::from_fn(|channel| (0..3).map(|i| weights[i] * light[i][channel]).sum())
-}
-
-/// [`modulate`] with its own level per channel. A textured face scales each channel `T` by
-/// `L + 1` over 256; a solid-colour face scales its palette colour by `L` over 256 (preservation
-/// `engine/model-lighting.md`). Alpha is untouched.
-fn modulate_rgb(colour: Rgba<u8>, level: [f32; 3], textured: bool) -> Rgba<u8> {
-    let [r, g, b, a] = colour.0;
-    let lit = |channel: u8, level: f32| {
-        let level = u32::from(level.clamp(0.0, 255.0) as u8) + u32::from(textured);
-        (u32::from(channel) * level / 256) as u8
-    };
-    Rgba([lit(r, level[0]), lit(g, level[1]), lit(b, level[2]), a])
-}
-
-fn sample(image: &RgbaImage, uv: Vec2) -> Rgba<u8> {
-    let point = uv - Vec2::splat(0.5);
-    let base = point.floor();
-    let fraction = point - base;
-    let texel = |dx: i32, dy: i32| {
-        let x = (base.x as i32 + dx).rem_euclid(image.width() as i32) as u32;
-        let y = (base.y as i32 + dy).rem_euclid(image.height() as i32) as u32;
-        image.get_pixel(x, y).0.map(f32::from)
-    };
-    let a = texel(0, 0);
-    let b = texel(1, 0);
-    let c = texel(0, 1);
-    let d = texel(1, 1);
-    Rgba(std::array::from_fn(|i| {
-        ((a[i] * (1.0 - fraction.x) + b[i] * fraction.x) * (1.0 - fraction.y)
-            + (c[i] * (1.0 - fraction.x) + d[i] * fraction.x) * fraction.y)
-            .round() as u8
-    }))
-}
-
-fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
-    #[allow(clippy::approx_constant)] // Decimal period from the original rotation table.
-    let sample = |angle: i32| (f64::from(wrap(angle)) * 6.2831852 / 2048.0).sin() as f32;
-    let sin = sample(pose.pitch);
-    let cos = sample(pose.pitch + 512);
-    let mut faces = Vec::new();
-    for (index, model) in book.models.iter().enumerate() {
-        for face in &model.faces {
-            let vertices: Vec<_> = face
-                .corners
-                .iter()
-                .map(|corner| {
-                    // A forward turn ends one past the last authored frame, which shows the last pose.
-                    let point =
-                        model.frames[pose.frames[index].min(model.frames.len() - 1)][corner.vertex];
-                    let x = model.position[0] - point[0] - pose.camera[0];
-                    let y = model.position[1] + point[1] - pose.camera[1];
-                    let z = model.position[2] + pose.depth[index] - point[2] - pose.camera[2];
-                    let view_y = y * cos - z * sin;
-                    let view_z = y * sin + z * cos;
-                    [
-                        320.0 + x / view_z * (320.0 / 0.788),
-                        240.0 + view_y / view_z * (320.0 / 0.788),
-                        view_z.recip(),
-                        corner.uv[0],
-                        corner.uv[1],
-                    ]
-                })
-                .collect();
-            for corner in 1..vertices.len().saturating_sub(1) {
-                faces.push(MenuFace {
-                    vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
-                    texture: face.texture,
-                    color: face.color,
-                    light: None,
-                    light_rgb: None,
-                });
-            }
-        }
-    }
-    faces
-}
-
-pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaImage> {
+pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<Painted> {
     if let Some(confirmation) = &state.delete_confirmation {
-        return confirmation.paint(book);
+        return confirmation.paint(book).map(Painted::Dialog);
     }
     if let Some(editor) = &state.description_editor {
         return super::confirmation::LastGameConfirmation::paint_description(
             &book.confirmation,
             &editor.background,
             &editor.display(),
-        );
+        )
+        .map(Painted::Dialog);
     }
     let preferences = state
         .preferences
@@ -360,15 +197,7 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
             }
         }
     }
-    let textures: Vec<_> = surfaces
-        .into_iter()
-        .map(|s| RgbaImage::from_raw(s.width.into(), s.height.into(), s.rgba).unwrap())
-        .collect();
-    let motion = state
-        .motion
-        .as_ref()
-        .context("menu: book motion unavailable")?;
-    render(&project(book, &motion.pose), &textures)
+    Ok(Painted::Surfaces(surfaces))
 }
 
 fn picture(surface: &mut PageTexture, picture: &MenuPicture, position: [i32; 2]) {
@@ -473,77 +302,5 @@ mod tests {
         assert_eq!(drawn_characters(&font, "AAAAAAAAAA", 120, Some(246)), 6);
         assert_eq!(drawn_characters(&font, "AAAAAAAAAA", 120, None), 10);
         assert_eq!(drawn_characters(&font, "AAA", 120, Some(247)), 3);
-    }
-
-    #[test]
-    fn lit_texture_is_floored_per_channel_and_unlit_stays_exact() {
-        assert_eq!(
-            modulate(Rgba([200, 100, 0, 255]), 255.0).0,
-            [200, 100, 0, 255]
-        );
-        assert_eq!(modulate(Rgba([200, 100, 0, 255]), 0.0).0, [0, 0, 0, 255]);
-        assert_eq!(
-            modulate(Rgba([200, 100, 50, 255]), 127.5).0,
-            [100, 50, 25, 255]
-        );
-        let texture = RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]));
-        let face = |light| MenuFace {
-            vertices: [
-                [0., 0., 1., 0., 0.],
-                [0., 8., 1., 0., 0.],
-                [8., 0., 1., 0., 0.],
-            ],
-            texture: Some(0),
-            color: [0; 4],
-            light,
-            light_rgb: None,
-        };
-        let draw = |light| {
-            render(&[face(light)], std::slice::from_ref(&texture))
-                .unwrap()
-                .get_pixel(1, 1)
-                .0
-        };
-        assert_eq!(draw(None), [200, 100, 50, 255]);
-        assert_eq!(draw(Some([255.0; 3])), [200, 100, 50, 255]);
-        assert_eq!(draw(Some([0.0; 3])), [0, 0, 0, 255]);
-        // Corner levels interpolate across the face in screen space.
-        let ramp = render(
-            &[face(Some([0.0, 255.0, 255.0]))],
-            std::slice::from_ref(&texture),
-        )
-        .unwrap();
-        assert!(ramp.get_pixel(1, 1).0[0] < ramp.get_pixel(0, 6).0[0]);
-    }
-
-    #[test]
-    fn back_of_a_turned_page_does_not_cover_its_visible_surface() {
-        let faces = vec![
-            MenuFace {
-                vertices: [
-                    [0., 0., 1., 0., 0.],
-                    [0., 5., 1., 0., 0.],
-                    [5., 0., 1., 0., 0.],
-                ],
-                texture: None,
-                color: [255, 0, 0, 255],
-                light: None,
-                light_rgb: None,
-            },
-            MenuFace {
-                vertices: [
-                    [0., 0., 2., 0., 0.],
-                    [5., 0., 2., 0., 0.],
-                    [0., 5., 2., 0., 0.],
-                ],
-                texture: None,
-                color: [0, 0, 255, 255],
-                light: None,
-                light_rgb: None,
-            },
-        ];
-        let image = render(&faces, &[]).unwrap();
-        assert_eq!(image.get_pixel(1, 1).0, [255, 0, 0, 255]);
-        assert_eq!(image.get_pixel(6, 6).0, [0, 0, 0, 255]);
     }
 }

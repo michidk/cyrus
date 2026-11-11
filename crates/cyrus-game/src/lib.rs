@@ -57,6 +57,14 @@ impl MovieUnlocks {
     }
 }
 
+/// Whether the debug flycam is enabled. While it is, the game and the book leave the camera alone.
+#[derive(Resource, Default)]
+pub struct FlycamEngaged(pub bool);
+
+/// The camera that renders the book menu's 3D scene.
+#[derive(Component)]
+pub struct BookCamera;
+
 /// The book opened from live gameplay (ordinary in-game context, as opposed to death).
 /// Retained until the book returns to gameplay.
 #[derive(Resource)]

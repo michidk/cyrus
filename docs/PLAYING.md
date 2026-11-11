@@ -74,7 +74,9 @@ intercept function keys before the game receives them.
 
 F1's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
 right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
-player control. Its camera movement does not move Cyrus through the world.
+player control. Its camera movement does not move Cyrus through the world. In the book menu it
+flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
+the **Pass input to game** option beside it is ticked.
 
 Faithful controls are the default. `--controls modern` (browser
 `?controls=modern`, or F1's Player controller setting) moves Cyrus with W, A, S

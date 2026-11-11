@@ -7,19 +7,15 @@ Engine facts behind each entry live in
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Unintended differences are bugs; report them in [GitHub issues](https://github.com/michidk/cyrus/issues), not here.
 
-## 3dfx splash variant
+## 3dfx splash
 
-**Verified:** the GOG Windows launch plays the metallic `3DfxSpl2.dll` splash.
-Emulated Voodoo hardware, such as DOSBox-X with `glide=emu`, runs the DOS Glide
-overlay and shows the older shield animation
+**Verified:** the GOG Windows launch plays the metallic `3DfxSpl2.dll` splash. Emulated Voodoo hardware,
+such as DOSBox-X with `glide=emu`, runs the DOS Glide overlay and shows an older shield animation instead
 ([startup facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#splash-variants)).
 
-cyrus plays the Windows variant by default, because it is what GOG players see.
-`--splash dos` (browser `?splash=dos`) plays the overlay's shield animation from
-the installed `glide2x_emu.ovl` instead. Comparisons against DOSBox-X must
-select the DOS variant. **Verified:** a side-by-side capture against DOSBox-X
-running the GOG overlay matches the shield, logo, tints and projected shadow.
-Glide edge antialiasing is approximated by supersampling.
+cyrus plays only the Windows splash, because it is what GOG players see, and has no option for the shield.
+Comparisons against DOSBox-X therefore show a different splash. Glide edge antialiasing is approximated by
+supersampling.
 
 ## Skipped introduction movie
 
@@ -211,6 +207,29 @@ opening ship duel in both builds.
 **Inferred:** the original plays a gameplay script's movie directly from the main loop. cyrus enters the
 in-game book context, plays the movie over it and resumes the world when it ends, so the book can show
 for the moment before the first frame and effect sounds stop as they do for any book entry.
+
+## Book, logbook and examine are drawn by the GPU
+
+**Verified:** the original draws the book menu, the logbook scrolls and the examine view through Glide
+with bilinear texture filtering. cyrus draws them as meshes through a perspective camera with the same
+projection, placements and camera paths, into the original's 640 by 480 frame, which is then scaled to
+the window like the other startup pictures. Light levels follow the original's per-channel combine
+(`floor(T * (L + 1) / 256)`, interpolated in screen space), applied in a shader. Page text, widgets and
+pictures are painted into the page textures on the CPU, as the original does.
+
+**Verified:** against the previous CPU renderer the settled book pages differ by a mean of about 1.5 out
+of 765 per pixel (roughly 0.5 % of pixels visibly) and the logbook by about 0.3. The remainder is the
+GPU's texture sampling and rounding, not different geometry. **Unknown:** whether the original's own
+sampling matches either to the last bit; it was not compared pixel by pixel.
+
+Dialogs over the book (delete confirmation, game description) are drawn on a transparent layer above the
+scene, where the original composited them into the same frame; the result is the same picture.
+The F1 flycam also flies the book's camera in the menu, which the original has no equivalent of; it is
+off by default and a debug aid only.
+
+The 3dfx splash is likewise drawn live on the GPU, as the original's Glide splash is, instead of
+playing frames baked at install time. **Verified:** against the baked frames the best-matching live frames
+differ by a mean of about 2 out of 765 per pixel.
 
 ## Gamepad dead zone
 

@@ -164,6 +164,7 @@ impl CameraSnapshot {
             flycam: FlycamSettings {
                 enabled: self.flycam,
                 speed: self.speed,
+                ..Default::default()
             },
             frame_scene: FrameScene(self.frame_scene),
             initial: self
@@ -214,6 +215,7 @@ mod tests {
         original.insert_resource(FlycamSettings {
             enabled: true,
             speed: 72.0,
+            ..Default::default()
         });
         original.insert_resource(FrameScene(true));
         original.insert_resource(InitialView(Transform::from_xyz(11.0, 22.0, 33.0)));

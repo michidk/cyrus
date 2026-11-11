@@ -406,11 +406,9 @@ reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 `startup/` in the cache directory. Native windowed launch generates this cache when
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
-the Windows Glide splash; the full DOS overlay contains the older shield logo.
-`--splash dos` plays that overlay animation from `glide2x_emu.ovl`; startup export
-caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
+the Windows Glide splash GOG players see; cyrus plays only that one ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
-documents both paths. Enter, Space, or Escape advances startup.
+documents the DLL format. Enter, Space, or Escape advances startup.
 Default startup selects its entry from installed final-version and
 ignore-autosave flags and a validated host autosave, native storage or browser IndexedDB. A final-version launch
 without an autosave plays Introduction before the starting world. A valid
@@ -663,7 +661,7 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 Press F1 and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
-an inspection pose. WASD moves it, right mouse looks,
+an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
 F1 world selections show the installed loading screen while the destination assets
 load, then recreate the player at marker zero and return to the gameplay camera.

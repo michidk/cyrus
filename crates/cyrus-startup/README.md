@@ -1,7 +1,16 @@
 # cyrus-startup
 
 Installed splash/title presentation, the book menu and settings, cinematic playback,
-world-entry loading, and the installed logbook reader. Book motion, rasterization and helpers remain internal.
+world-entry loading, and the installed logbook reader. Book motion and helpers remain internal.
+The book is a real 3D scene: its models are meshes under a perspective camera that renders into the
+640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
+Page text, widgets and pictures are painted on the CPU into the page textures. F1 Flycam also flies
+this camera in the book menu. While it is enabled the menu ignores the keyboard, unless F1's
+"Pass input to game" is ticked. Dialogs are
+drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
+on the same kind of camera, drawn by one shared lit material that applies the original's per-channel
+light levels (`view3d`). The 3dfx splash is also drawn live on the GPU every frame, from its
+exported meshes and draws (`splash`).
 Book motion includes the documented Save camera movement and reversible Load
 page turn. Load opens the installed page and requests slot metadata from the native/browser
 host. Its first page uses stored descriptions, retains slot revisions and loads
@@ -71,10 +80,10 @@ the low font texture colour at palette index 161, following [preservation PR #31
 The bottom-right red title label reports menu/HUD preparation, menu asset loading,
 and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
-the authored fade. The cache regenerates when replacing the older DOS shield
-splash. The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
-documents the driver variants and DLL format. Splash rasterization uses
-supersampling; Glide edge coverage, floating-point approximations and pixel
+the authored fade. The cache regenerates when the splash export changes. The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
+documents the DLL format. The splash draws into a 1280 by 960 image shown at
+half size, so edges are antialiased by
+2×2 supersampling; Glide edge coverage, floating-point approximations and pixel
 quantization need a hardware comparison before claiming pixel-exact rendering.
 
 The book menu derives entries, layout, texture slots, widgets, and action IDs

@@ -96,7 +96,7 @@ struct LoadingPausedCamera;
 
 fn suspend_world_cameras(
     mut commands: Commands,
-    mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
+    mut cameras: Query<(Entity, &mut Camera), super::view3d::GameplayCameras>,
 ) {
     for (entity, mut camera) in &mut cameras {
         if camera.is_active {

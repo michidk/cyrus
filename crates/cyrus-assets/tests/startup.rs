@@ -38,39 +38,27 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
         .filter(|&(x, y)| title.get_pixel(x, y).0 == [105, 66, 30, 255])
         .count();
     assert_eq!(version_pixels, 187);
-    assert!((0..150).all(|frame| output.join(format!("splash-{frame:02}.png")).is_file()));
-    let first = image::open(output.join("splash-00.png"))
-        .unwrap()
-        .to_rgba8();
-    assert!(first.pixels().all(|pixel| pixel.0 == [0, 0, 0, 255]));
-    let logo = image::open(output.join("splash-89.png"))
-        .unwrap()
-        .to_rgba8();
-    assert_eq!(logo.dimensions(), (640, 480));
-    assert!(logo.pixels().any(|pixel| {
-        pixel[0] > 80
-            && u16::from(pixel[0]) > 2 * u16::from(pixel[2])
-            && 2 * u16::from(pixel[0]) > 3 * u16::from(pixel[1])
-    }));
-    let faded = image::open(output.join("splash-149.png"))
-        .unwrap()
-        .to_rgba8();
-    assert!(
-        faded
-            .pixels()
-            .all(|pixel| pixel.0[..3].iter().all(|channel| *channel < 20))
+    let splash_path = output.join("splash.splash");
+    let asset: cyrus_assets::splash_asset::SplashAsset =
+        serde_json::from_slice(&std::fs::read(&splash_path).unwrap()).unwrap();
+    asset.validate().unwrap();
+    // The authored frames and the two-second fade make up the 150 frames the game plays.
+    assert_eq!(
+        asset.frames.len() + 2 * asset.frames_per_second as usize,
+        cyrus_assets::SPLASH_FRAMES
     );
-    let frame = output.join("splash-89.png");
-    let modified = std::fs::metadata(&frame).unwrap().modified().unwrap();
+    assert!(asset.frames.iter().all(|frame| !frame.is_empty()));
+    assert!(!asset.final_draws.is_empty());
+    let modified = std::fs::metadata(&splash_path).unwrap().modified().unwrap();
     export_startup(&install, &cache).unwrap();
     assert_eq!(
-        std::fs::metadata(&frame).unwrap().modified().unwrap(),
+        std::fs::metadata(&splash_path).unwrap().modified().unwrap(),
         modified
     );
-    std::fs::remove_file(output.join("splash-149.png")).unwrap();
+    std::fs::remove_file(&splash_path).unwrap();
     std::fs::remove_file(output.join("title-sound.png")).unwrap();
     export_startup(&install, &cache).unwrap();
-    assert!(output.join("splash-149.png").is_file());
+    assert!(splash_path.is_file());
     assert!(output.join("title-sound.png").is_file());
     std::fs::remove_dir_all(cache).unwrap();
 }

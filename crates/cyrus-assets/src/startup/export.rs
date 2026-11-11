@@ -1,7 +1,6 @@
 use anyhow::Context;
 use rgpre::import::{
-    fnt::parse_fnt, glide_splash::parse_glide_splash, glide_splash_dll::parse_windows_glide_splash,
-    gxa::parse_gxa_file,
+    fnt::parse_fnt, glide_splash_dll::parse_windows_glide_splash, gxa::parse_gxa_file,
 };
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -50,20 +49,8 @@ pub(crate) fn prepare_startup(
     let font = cyrus_text::Font::from(
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path))?,
     );
-    // The DOS overlay variant is optional; GOG installs ship it beside the Windows DLL.
-    let overlay = "splash/glide2x_emu.ovl";
-    let overlay_bytes = if source.manifest().find(overlay).is_some() {
-        Some(source.read(overlay)?)
-    } else {
-        None
-    };
     let mut fingerprint = DefaultHasher::new();
-    (7u32, &dll_bytes, &title_bytes, &font_bytes, &overlay_bytes).hash(&mut fingerprint);
-    let dos_frames = if overlay_bytes.is_some() {
-        crate::DOS_SPLASH_FRAMES
-    } else {
-        0
-    };
+    (9u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
     let directory = Path::new("startup");
     let stamp = directory.join("source.txt");
@@ -72,10 +59,7 @@ pub(crate) fn prepare_startup(
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .as_deref()
         == Some(&fingerprint)
-        && (0..crate::SPLASH_FRAMES)
-            .all(|frame| output.exists(&directory.join(format!("splash-{frame:02}.png"))))
-        && (0..dos_frames)
-            .all(|frame| output.exists(&directory.join(format!("splash-dos-{frame:02}.png"))))
+        && output.exists(&directory.join("splash.splash"))
         && [
             "title.png",
             "title-preparing.png",
@@ -97,44 +81,17 @@ pub(crate) fn prepare_startup(
         anyhow::bail!("startup: {}: unsupported title dimensions", title);
     }
     output.remove(&stamp)?;
-    let final_image = super::raster::render(&splash, &splash.final_draws, 1.0);
-    let mut fade_images = [final_image.clone(), final_image];
-    for frame in 0..crate::SPLASH_FRAMES {
-        let image = if frame < splash.frames.len() {
-            let visibility = if frame < 24 {
-                0.0
-            } else {
-                ((frame - 24) as f32 / 8.0).min(1.0)
-            };
-            super::raster::render(&splash, &splash.frames[frame], visibility)
-        } else {
-            let step = frame - splash.frames.len();
-            let alpha = (102 * step.saturating_sub(1) / (2 * splash.frames_per_second as usize))
-                as f32
-                / 255.0;
-            let image = &mut fade_images[step % 2];
-            for pixel in image.pixels_mut() {
-                for channel in &mut pixel.0[..3] {
-                    *channel = (f32::from(*channel) * (1.0 - alpha)) as u8;
-                }
-            }
-            image.clone()
-        };
-        let path = directory.join(format!("splash-{frame:02}.png"));
-        output
-            .image(&path, &image)
-            .with_context(|| format!("startup: writing {}", path.display()))?;
-    }
-    if let Some(bytes) = &overlay_bytes {
-        let splash = parse_glide_splash(bytes).with_context(|| format!("startup: {overlay}"))?;
-        for frame in 0..dos_frames {
-            let image = super::dos_raster::render(&splash, frame + super::dos_raster::FIRST_FRAME);
-            let path = directory.join(format!("splash-dos-{frame:02}.png"));
-            output
-                .image(&path, &image)
-                .with_context(|| format!("startup: writing {}", path.display()))?;
-        }
-    }
+    let asset = super::splash_data::export(&splash);
+    anyhow::ensure!(
+        splash.frames.len() + 2 * splash.frames_per_second as usize == crate::SPLASH_FRAMES,
+        "startup: {dll}: the splash runs {} frames, expected {}",
+        splash.frames.len() + 2 * splash.frames_per_second as usize,
+        crate::SPLASH_FRAMES
+    );
+    let path = directory.join("splash.splash");
+    output
+        .publish(&path, &serde_json::to_vec(&asset)?)
+        .with_context(|| format!("startup: writing {}", path.display()))?;
     let mut background = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
         .context("startup: title pixel count is invalid")?;
     let palette = rgpre::import::palette::Palette {

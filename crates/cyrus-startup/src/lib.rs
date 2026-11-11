@@ -1,8 +1,11 @@
 //! Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 mod book_motion;
+mod book_scene;
 mod confirmation;
 mod credits;
 mod examine;
+mod splash;
+mod view3d;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
 /// Marker for installed loading and first-world black-overlay transitions.
@@ -35,34 +38,11 @@ pub use preparation::LoadingPlugin;
 /// Plays installed startup images through the installed book menu, before gameplay.
 pub struct StartupPlugin;
 
-/// Installed 3dfx splash variant played before the title. Both ship with the GOG release.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Splash {
-    /// `3DfxSpl2.dll`, which GOG's Windows DOSBox plays when the game opens Glide.
-    #[default]
-    Windows,
-    /// The older shield animation in the DOS Glide overlay `glide2x_emu.ovl`.
-    Dos,
-}
-
-impl Splash {
-    /// Parses the shared launch option; absent selects the Windows default.
-    pub fn from_option(value: Option<&str>) -> Self {
-        if value == Some("dos") {
-            Self::Dos
-        } else {
-            Self::Windows
-        }
-    }
-}
-
 /// Presence selects startup presentation instead of the scene-viewer preload UI.
 #[derive(Resource, Default, serde::Serialize)]
 pub struct StartupPresentation {
     /// Bypass splash playback while retaining required game preparation.
     pub skip: bool,
-    pub splash: Splash,
     pub(crate) title_visible: bool,
     pub(crate) error: Option<String>,
     #[serde(skip)]
@@ -107,7 +87,13 @@ pub struct QuitRequest;
 
 #[derive(Resource)]
 struct Playback {
-    frames: Vec<Handle<Image>>,
+    /// Frames the splash plays; zero when it is skipped.
+    count: usize,
+    /// The 3dfx splash's exported meshes and draws, and the scene that draws them live.
+    live: Option<(
+        Handle<cyrus_assets::splash_asset::SplashAsset>,
+        splash::SplashView,
+    )>,
     title: Handle<Image>,
     elapsed: f32,
     failed: bool,
@@ -149,6 +135,11 @@ impl Plugin for StartupPlugin {
         movie::register(app);
         credits::register(app);
         loading::register(app);
+        // Hosts without the renderer draw no models, so the lit material is registered only with it.
+        splash::register_assets(app);
+        if app.is_plugin_added::<bevy::pbr::PbrPlugin>() {
+            app.add_plugins((view3d::LitViewPlugin, splash::SplashPlugin));
+        }
         app.add_plugins((LogbookPlugin, OverlayPlugin, examine::ExaminePlugin));
     }
 }
@@ -184,28 +175,28 @@ fn sync_audio(
     }
 }
 
-use cyrus_assets::{DOS_SPLASH_FRAMES, SPLASH_FRAMES};
+use cyrus_assets::SPLASH_FRAMES;
 
 fn setup(
     mut commands: Commands,
     assets: Res<AssetServer>,
     mut startup: ResMut<StartupPresentation>,
     game: Option<Res<StartGame>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     startup.title_visible = false;
     startup.error = None;
-    let (prefix, count) = match startup.splash {
-        Splash::Windows => ("splash", SPLASH_FRAMES),
-        Splash::Dos => ("splash-dos", DOS_SPLASH_FRAMES),
-    };
     let count = if startup.skip || game.is_some() {
         0
     } else {
-        count
+        SPLASH_FRAMES
     };
-    let frames: Vec<_> = (0..count)
-        .map(|frame| assets.load(format!("cache://startup/{prefix}-{frame:02}.png")))
-        .collect();
+    let live = (count > 0).then(|| {
+        (
+            assets.load("cache://startup/splash.splash"),
+            splash::SplashView::new(&mut images),
+        )
+    });
     spawn_camera(&mut commands);
     let title = game
         .as_ref()
@@ -214,12 +205,22 @@ fn setup(
             || assets.load("cache://startup/title.png"),
             |game| game.image.clone(),
         );
+    let first = live
+        .as_ref()
+        .map(|(_, view)| view.target())
+        .unwrap_or_else(|| title.clone());
     commands.spawn((
-        Sprite::from_image(frames.first().unwrap_or(&title).clone()),
+        Sprite {
+            image: first,
+            // The live splash renders at twice the size, for supersampling.
+            custom_size: live.is_some().then_some(Vec2::new(640.0, 480.0)),
+            ..default()
+        },
         StartupContent,
     ));
     commands.insert_resource(Playback {
-        frames,
+        count,
+        live,
         title,
         elapsed: 0.0,
         failed: false,
@@ -251,44 +252,55 @@ fn fit_image(windows: Query<&Window>, mut image: FittedImages) {
 fn advance(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    input: (Res<Time>, Res<ButtonInput<KeyCode>>),
+    input: (
+        Res<Time>,
+        Res<ButtonInput<KeyCode>>,
+        Res<NextState<AppState>>,
+    ),
     mut playback: ResMut<Playback>,
-    rendering: (Query<&mut Sprite, With<StartupContent>>, Res<Assets<Image>>),
-    next: Res<NextState<AppState>>,
+    mut image: Query<&mut Sprite, With<StartupContent>>,
+    mut drawing: splash::SplashAssets,
     mut startup: ResMut<StartupPresentation>,
 ) {
-    let (mut image, images) = rendering;
-    if matches!(*next, NextState::Pending(AppState::InGame)) {
+    if matches!(*input.2, NextState::Pending(AppState::InGame)) {
         return;
     }
     if playback.failed {
         return;
     }
-    for handle in playback
-        .frames
-        .iter()
-        .chain(std::iter::once(&playback.title))
-    {
-        if images.contains(handle.id()) {
-            continue;
+    let failed = |commands: &mut Commands, error: &dyn std::fmt::Display| {
+        error!("startup: {error}");
+        commands.spawn((
+            Text::new("Startup assets unavailable. Export them with --export-startup."),
+            StartupContent,
+        ));
+    };
+    if let Some((handle, _)) = &playback.live {
+        match assets.get_load_state(handle.id()) {
+            Some(LoadState::Failed(error)) => {
+                failed(&mut commands, &error);
+                playback.failed = true;
+                return;
+            }
+            Some(LoadState::Loaded) => {}
+            _ => return,
         }
-        if let Some(LoadState::Failed(error)) = assets.get_load_state(handle.id()) {
-            error!("startup: {error}");
-            commands.spawn((
-                Text::new("Startup assets unavailable. Export them with --export-startup."),
-                StartupContent,
-            ));
+    }
+    let title = playback.title.id();
+    if !drawing.images.contains(title) {
+        if let Some(LoadState::Failed(error)) = assets.get_load_state(title) {
+            failed(&mut commands, &error);
             playback.failed = true;
             return;
         }
-        if !assets.is_loaded_with_dependencies(handle.id()) {
+        if !assets.is_loaded_with_dependencies(title) {
             return;
         }
     }
     let Ok(mut sprite) = image.single_mut() else {
         return;
     };
-    let splash_duration = playback.frames.len() as f32 / 30.0;
+    let splash_duration = playback.count as f32 / 30.0;
     let skip = [KeyCode::Enter, KeyCode::Space, KeyCode::Escape]
         .iter()
         .any(|key| input.1.just_pressed(*key));
@@ -298,9 +310,15 @@ fn advance(
     } else {
         playback.elapsed += input.0.delta_secs();
     }
+    let frame = (playback.elapsed * 30.0) as usize;
     if playback.elapsed < splash_duration {
-        sprite.image = playback.frames[(playback.elapsed * 30.0) as usize].clone();
+        if let Some((handle, view)) = playback.live.as_mut() {
+            view.present(&mut commands, &mut drawing, handle, frame);
+        }
     } else {
+        if let Some((_, view)) = playback.live.as_mut() {
+            view.finish(&mut commands);
+        }
         sprite.image = playback.title.clone();
         startup.title_visible = true;
     }

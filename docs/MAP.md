@@ -70,12 +70,10 @@ module where it is defined and regenerate.
 - `src/sound/dialogue/export.rs` — Per-label original RTX preparation for disk caches and browser workers.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/source.rs` — Original-file access. Browser workers and native installs share the same parsers.
-- `src/startup/dos_raster.rs` — DOS Glide overlay splash rendering from preservation's `docs/engine/startup.md`
 - `src/startup/export.rs` — (undocumented)
 - `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.
 - `src/startup/mod.rs` — Shared startup preparation and native streaming cinematic input.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
-- `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
@@ -369,7 +367,7 @@ module where it is defined and regenerate.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/logbook.rs` — Installed logbook paper, text and rotating scrolls over the suspended world.
 - `src/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
-- `src/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
+- `src/menu_raster.rs` — Paint the installed book's page surfaces: labels, widgets and pictures drawn into the textures
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
