@@ -73,6 +73,71 @@ class Comparison(unittest.TestCase):
             self.assertEqual(row['player']['position'], [1, -2, 3])
             self.assertEqual(json.loads(output.getvalue()), row)
 
+    def test_readiness_timeout_resumes_without_discarding_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output, journal = root / 'source', root / 'output', root / 'progress'
+            source.write_text('accepted schedule')
+            progress = contact.prepare_progress(journal, source, output, False)
+            driver = contact.Driver('unused', .01, None)
+            driver.call = lambda *args, **kwargs: dict(state='InGame', scene='CATACOMB',
+                scene_ready=False, scripts={'state': 'Loading'})
+            with self.assertRaisesRegex(RuntimeError, 'can be resumed'):
+                contact.wait_ready(driver, .001, journal, progress)
+            restored = contact.prepare_progress(journal, source, output, True)
+            self.assertGreater(restored['polls'], 0)
+            self.assertEqual(restored['last_observation']['scripts'], 'Loading')
+            driver.call = lambda *args, **kwargs: dict(state='InGame', scene='CATACOMB',
+                scene_ready=True, scripts={'state': 'Loaded', 'ordinary_updates': 1})
+            contact.wait_ready(driver, 1, journal, restored)
+            self.assertEqual(json.loads(journal.read_text())['status'], 'ready')
+            self.assertFalse(output.exists())
+
+    def test_loaded_world_without_an_update_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'progress'
+            progress = {'status': 'waiting', 'polls': 0}
+            driver = contact.Driver('unused', .01, None)
+            driver.call = lambda *args, **kwargs: dict(state='InGame', scene='CATACOMB',
+                scene_ready=True, scripts={'state': 'Loaded', 'ordinary_updates': 0})
+            with self.assertRaisesRegex(RuntimeError, 'timed out'):
+                contact.wait_ready(driver, .001, path, progress)
+            self.assertEqual(json.loads(path.read_text())['status'], 'waiting')
+
+    def test_completed_resume_validates_output_without_sending_input(self):
+        import hashlib
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output = root / 'source', root / 'output'
+            journal = output.with_suffix('.progress.json')
+            source.write_text('accepted schedule')
+            progress = contact.prepare_progress(journal, source, output, False)
+            output.write_text('completed observations')
+            progress.update(status='completed',
+                            output_sha256=hashlib.sha256(output.read_bytes()).hexdigest())
+            contact.save_progress(journal, progress)
+            args = SimpleNamespace(output=output, original=source, resume=True)
+            contact.execute_locked(args, None, None)
+            output.write_text('changed observations')
+            with self.assertRaisesRegex(ValueError, 'missing or changed'):
+                contact.execute_locked(args, None, None)
+
+    def test_resume_rejects_changed_source_and_interrupted_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output, journal = root / 'source', root / 'output', root / 'progress'
+            source.write_text('accepted schedule')
+            progress = contact.prepare_progress(journal, source, output, False)
+            source.write_text('different schedule')
+            with self.assertRaisesRegex(ValueError, 'source or output changed'):
+                contact.prepare_progress(journal, source, output, True)
+            source.write_text('accepted schedule')
+            progress['status'] = 'running'
+            contact.save_progress(journal, progress)
+            with self.assertRaisesRegex(ValueError, 'input attempt was interrupted'):
+                contact.prepare_progress(journal, source, output, True)
+
     def test_rejected_native_walk_releases_held_input(self):
         driver = contact.Driver('unused', 1, io.StringIO())
         calls = []

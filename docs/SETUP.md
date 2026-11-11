@@ -1042,3 +1042,12 @@ progress. This is a comparison of input per update, not equal elapsed game time
 or automatic contact/clank equivalence. Use matched mixer recordings to assess
 sound. All held input is released on failure. Driver controls run with
 `python3 dev/scripts/test-native-rope-contact.py`.
+
+Native rope readiness writes an atomic `OUTPUT.progress.json` before any input.
+After a readiness timeout or process restart, rerun the same command with
+`--resume`. It verifies the accepted original schedule hash and preserves loading
+observations. A completed run validates its output hash and returns without
+sending input again. An interrupted input attempt is never automatically replayed;
+keep its partial JSONL and use a new output path for a fresh comparison. The output
+lock rejects concurrent drivers for the same attempt. `--ready-timeout` bounds
+startup separately from each world-progress interval.

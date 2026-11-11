@@ -7,6 +7,9 @@ Audio and attachment evidence remain explicit in the resulting record.
 """
 import argparse
 import importlib.util
+import hashlib
+import fcntl
+import os
 import json
 from pathlib import Path
 import time
@@ -36,14 +39,81 @@ def accepted_schedule(path):
     return phases['placed'][-1]['player'], schedule
 
 
+def save_progress(path, value):
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    with temporary.open('w') as stream:
+        json.dump(value, stream, indent=2)
+        stream.write('\n')
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def prepare_progress(path, original, output, resume):
+    identity = hashlib.sha256(original.read_bytes()).hexdigest()
+    if path.exists():
+        if not resume:
+            raise ValueError('progress exists; use --resume or a new output path')
+        value = json.loads(path.read_text())
+        if value.get('version') != 1 or value.get('status') not in {'waiting', 'ready', 'running', 'completed'}:
+            raise ValueError('unsupported or corrupt progress record')
+        if value['original_sha256'] != identity or value['output'] != str(output.resolve()):
+            raise ValueError('resume source or output changed')
+        if value['status'] == 'running':
+            raise ValueError('input attempt was interrupted; preserve it and use a new output path')
+        return value
+    if resume:
+        raise ValueError('no saved progress to resume')
+    if output.exists():
+        raise ValueError('output already exists; preserve it and use a new output path')
+    value = dict(version=1, original_sha256=identity, output=str(output.resolve()),
+                 status='waiting', polls=0)
+    save_progress(path, value)
+    return value
+
+
+def wait_ready(driver, seconds, path, progress):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            state = driver.call('state', _timeout=max(.001, deadline - time.monotonic()))
+        except (OSError, ValueError) as error:
+            progress['last_observation'] = str(error)
+        else:
+            scripts = state.get('scripts') or {}
+            progress['last_observation'] = dict(state=state.get('state'),
+                scene=state.get('scene'), scene_ready=state.get('scene_ready'),
+                scripts=scripts.get('state'), ordinary_updates=scripts.get('ordinary_updates'),
+                error=scripts.get('error'))
+            if scripts.get('error'):
+                save_progress(path, progress)
+                raise RuntimeError(scripts['error'])
+            if (state.get('state') == 'InGame' and state.get('scene') == 'CATACOMB'
+                    and state.get('scene_ready') and scripts.get('state') == 'Loaded'
+                    and scripts.get('ordinary_updates', 0) > 0):
+                progress['status'] = 'ready'
+                save_progress(path, progress)
+                return
+        progress['polls'] += 1
+        save_progress(path, progress)
+        time.sleep(.2)
+    raise RuntimeError('native readiness timed out; saved progress can be resumed')
+
+
 class Driver:
     def __init__(self, addr, timeout, output):
         self.addr, self.timeout, self.output = addr, timeout, output
         self.index = None
         self.held = set()
 
-    def call(self, kind, **args):
-        return trace.call(self.addr, dict(type=kind, **args), timeout=self.timeout)
+    def call(self, kind, _timeout=None, **args):
+        timeout = self.timeout if _timeout is None else min(self.timeout, _timeout)
+        return trace.call(self.addr, dict(type=kind, **args), timeout=timeout)
 
     def sample(self, phase):
         state = self.call('state')
@@ -118,21 +188,47 @@ class Driver:
                 self.key(key, False)
 
 
+def execute(args):
+    original, schedule = accepted_schedule(args.original)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.with_suffix(args.output.suffix + '.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        execute_locked(args, original, schedule)
+
+
+def execute_locked(args, original, schedule):
+    progress_path = args.output.with_suffix(args.output.suffix + '.progress.json')
+    progress = prepare_progress(progress_path, args.original, args.output, args.resume)
+    if progress['status'] == 'completed':
+        if not args.output.is_file() or hashlib.sha256(args.output.read_bytes()).hexdigest() != progress['output_sha256']:
+            raise ValueError('completed output is missing or changed')
+        return
+    driver = Driver(args.addr, args.timeout, None)
+    wait_ready(driver, args.ready_timeout, progress_path, progress)
+    progress['status'] = 'running'
+    save_progress(progress_path, progress)
+    with args.output.open('x') as output:
+        driver.output = output
+        driver.run(original, schedule)
+        output.flush()
+        os.fsync(output.fileno())
+    progress.update(status='completed', output_sha256=hashlib.sha256(args.output.read_bytes()).hexdigest())
+    save_progress(progress_path, progress)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--addr', required=True)
     parser.add_argument('--original', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--timeout', type=float, default=35)
+    parser.add_argument('--resume', action='store_true',
+                        help='resume readiness or acknowledge completed output; never replay interrupted input')
     parser.add_argument('--ready-timeout', type=float, default=180)
     args = parser.parse_args()
     if args.timeout <= 0 or args.ready_timeout <= 0:
         parser.error('timeout must be positive')
-    original, schedule = accepted_schedule(args.original)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    trace.wait_live(args.addr, args.ready_timeout)
-    with args.output.open('w') as output:
-        Driver(args.addr, args.timeout, output).run(original, schedule)
+    execute(args)
 
 
 if __name__ == '__main__':
