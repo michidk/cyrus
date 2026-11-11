@@ -753,3 +753,8 @@ angles when the query is prepared. Previous angle history belongs to movement an
 rollback and does not supply this copy. Later script rotation changes primary
 collision while residual collision retains the prepared orientation until the next
 query preparation, following preservation's per-update shape contract.
+
+Current-schema actor snapshots validate map-light eligibility against the installed
+placement before restoration. Hidden material preparation and logical publication
+therefore use the same light owners; a saved eligibility flag cannot promote or
+suppress an installed light role.

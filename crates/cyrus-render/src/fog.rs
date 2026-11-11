@@ -68,6 +68,7 @@ fn owns_prepared_environment(
     world: &cyrus_script::script::ScriptWorld,
     prepared: &cyrus_world::lifecycle::PreparedWorld,
     environment: &EnvironmentRequest,
+    active: Option<&crate::environment::ActiveEnvironment>,
     request: Option<&cyrus_world::animation::AnimationRequest>,
     animations: Option<&Assets<cyrus_assets::animation::Animations>>,
 ) -> bool {
@@ -76,7 +77,11 @@ fn owns_prepared_environment(
         return false;
     };
     prepared.world.is_none_or(|id| id == world.world)
-        && environment.0.path() == Some(&prepared.environment_path)
+        && (environment.0.path() == Some(&prepared.environment_path)
+            || active.is_some_and(|active| {
+                active.source == Some(environment.0.id())
+                    && active.restored_path.as_ref() == Some(&prepared.environment_path)
+            }))
         && request.0 == prepared.animations
         && animations.world == world.world
         && animations.metadata["script_content_id"].as_str() == Some(world.content_id.as_str())
@@ -511,6 +516,7 @@ fn apply_scene_fog(
             Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
             Option<Res<cyrus_world::animation::AnimationRequest>>,
             Option<Res<Assets<cyrus_assets::animation::Animations>>>,
+            Option<Res<crate::environment::ActiveEnvironment>>,
         ),
         crate::lighting::runtime::LightView,
     ),
@@ -548,6 +554,7 @@ fn apply_scene_fog(
                 current,
                 prepared,
                 &request,
+                light_owners.4.as_deref(),
                 light_owners.2.as_deref(),
                 light_owners.3.as_deref(),
             )
@@ -1532,6 +1539,51 @@ mod tests {
             .lights
             .clone();
         assert_eq!(first.image, format!("{:?}", bound_image.id()));
+
+        // Public material inspection must retain a validated private restored environment.
+        let saved_environment = serde_json::to_vec(
+            app.world()
+                .resource::<Assets<Environment>>()
+                .get(&app.world().resource::<EnvironmentRequest>().0)
+                .unwrap(),
+        )?;
+        let original_request = app.world().resource::<EnvironmentRequest>().0.clone();
+        let private = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(serde_json::from_slice::<Environment>(&saved_environment)?);
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = private.clone();
+        assert!(
+            observe(&app).is_err(),
+            "unvalidated private asset must not acquire ownership"
+        );
+        app.insert_resource(crate::environment::ActiveEnvironment {
+            source: Some(private.id()),
+            sky: None,
+            restored_path: Some("MGUILD.environment".into()),
+        });
+        assert_eq!(
+            observe(&app)?.rows_after_lookup_256,
+            first.rows_after_lookup_256
+        );
+        app.world_mut()
+            .resource_mut::<crate::environment::ActiveEnvironment>()
+            .source = None;
+        assert!(
+            observe(&app).is_err(),
+            "retired environment cannot acquire ownership"
+        );
+        app.world_mut()
+            .resource_mut::<crate::environment::ActiveEnvironment>()
+            .source = Some(private.id());
+        app.world_mut()
+            .resource_mut::<crate::environment::ActiveEnvironment>()
+            .restored_path = Some("START.environment".into());
+        assert!(
+            observe(&app).is_err(),
+            "another world source cannot acquire ownership"
+        );
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = original_request;
 
         // A material with valid bytes is insufficient while its owner is staged.
         app.world_mut()

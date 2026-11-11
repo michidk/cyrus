@@ -17766,6 +17766,30 @@ fn snapshot_marks_only_type_six_placements_as_map_lights() {
     let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
     assert_eq!(saved["actors"][0]["map_light"], true);
     assert_eq!(saved["actors"][1]["map_light"], false);
+    for index in 0..2 {
+        let mut mismatched = saved.clone();
+        mismatched["actors"][index]["map_light"] = serde_json::json!(index != 0);
+        let error = ScriptWorld::from_snapshot(
+            serde_json::from_value(mismatched).unwrap(),
+            &sources,
+            cyrus_script::script::WorldRestoreContext {
+                generation: 2,
+                globals: cyrus_script::script::GameplayGlobals::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .err()
+        .expect("installed map-light eligibility must not be changed by a save");
+        assert!(
+            format!("{error:#}").contains("map-light eligibility differs"),
+            "{error:#}"
+        );
+        assert_eq!(
+            world.object_lights().len(),
+            1,
+            "rejected restore leaves the live light owner unchanged"
+        );
+    }
 }
 
 #[test]

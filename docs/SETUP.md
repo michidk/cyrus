@@ -1124,3 +1124,29 @@ Saved frames may advance; a changed frame alone is not a failed continuation.
 The dormant logical document must remain unchanged before revisit, apart from
 generation rebinding. First-update observations and the revisit screenshot remain
 local. This fixture does not establish original-game pixel or timing parity.
+
+For installed light restoration, `native-light-session.py` uses the public native
+session boundary and material-bound light-image observation. It visits both worlds
+to build a fixture on the current executable. Supply an enabled locked steady light
+actor index, a uniquely named scene mesh and a view containing active map lights:
+
+```sh
+python3 -m pip install blake3==1.0.11
+python3 dev/scripts/native-light-session.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --scene ACTIVE_WORLD --dormant OTHER_WORLD --light-actor INDEX \
+  --node UNIQUE_MESH --position X Y Z
+python3 dev/scripts/test-native-light-session.py
+```
+
+An optional `--runtime-seed RUNTIME_SEED` reuses a compatible captured session.
+The driver verifies its requested inspection view and suspends gameplay through the
+public console during asynchronous session preparation, then closes it and requires
+game-clock progress. It saves its public fixture and requires publication with matching
+bound light rows, saved scripted-light state and fresh scene ownership, then submits
+an integrity-valid negative document with inconsistent installed light eligibility. Rejection must
+preserve the live generation, mesh/material/image bindings and light rows. Leaving
+the world must remove its named binding; revisiting must restore matching light
+rows and saved logical state under a new owner. The final screenshot remains local.
+CPU material rows establish binding continuity, not GPU readback or original
+visual/timing parity.
