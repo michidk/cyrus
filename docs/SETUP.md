@@ -557,7 +557,7 @@ Local lights and complete static-prelighting behavior remain unsupported.
 
 ### Sky, fog, and water
 
-Re-export worlds to regenerate `.environment` sidecars. F1 provides independent
+Re-export worlds to regenerate `.environment` sidecars. F10 provides independent
 Faithful/Modern buttons for Water, Fog, and Sky. All default to Faithful.
 
 **Verified:** Faithful sky uses the installed BSI/COL texture, camera-relative
@@ -573,7 +573,7 @@ cross its surface. Both retain the world's colors and horizon haze.
 **Verified:** Faithful fog uses the original tables and installed clipping
 range (7/3800 engine units in the shipped configuration). Modern fog defaults to
 four times that far distance and fades smoothly over the distant portion of
-the view. F1's distance control selects Modern Fog; Original resets the distance
+the view. F10's distance control selects Modern Fog; Original resets the distance
 and returns Fog to Faithful. Water and Sky are unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
@@ -674,11 +674,11 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F1 and use **Flycam** to switch between inspection
+Press F10 and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
-F1 world selections show the installed loading screen while the destination assets
+F10 world selections show the installed loading screen while the destination assets
 load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not toggle flycam. Turning it off preserves the player
 position. Initial placement uses the installed player marker. The ordinary player
@@ -797,7 +797,7 @@ game (**Verified** from preservation `engine/console.md`); none, zero or a non-n
 is refused, and the browser reports it unavailable because its wait would block the page.
 Other catalog entries report unavailable owners.
 
-Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
+Browser `savecheats` persists to localStorage `cyrus-cheats`. F10 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can
 recover malformed local state; failed imports and saves retain existing state.
 

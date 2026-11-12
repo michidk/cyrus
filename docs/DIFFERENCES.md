@@ -234,7 +234,7 @@ code, so menu navigation by gamepad is not provided in Faithful mode.
 
 ## Optional anisotropic filtering
 
-F1's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+F10's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
 area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
 modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
 models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture

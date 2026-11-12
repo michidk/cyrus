@@ -44,7 +44,7 @@ Settings come from `settings.toml` in the config directory (see `docs/SETUP.md`)
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
 from a writable directory. On Windows the executable is `cyrus.exe`.
 The Linux archive uses Ubuntu 24.04 system libraries.
-In any windowed launch, press F1 to choose a world, set flycam speed, and
+In any windowed launch, press F10 to choose a world, set flycam speed, and
 change runtime fidelity. The menu remains available across startup and world entry.
 
 This crate owns native settings and preference storage, binding initialization,
@@ -84,7 +84,7 @@ Shared browser/CLI options use exactly the same names:
 | `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |
 | `--sky modern` | `?sky=modern` | Sky fidelity mode |
-| `--mode modern` | `?mode=modern` | Every presentation area at once, including modern lighting (shadow-mapped PBR, native only), which has no flag of its own and is also switched in the F1 debug menu; per-area flags override the others |
+| `--mode modern` | `?mode=modern` | Every presentation area at once, including modern lighting (shadow-mapped PBR, native only), which has no flag of its own and is also switched in the F10 debug menu; per-area flags override the others |
 
 Mode values are `faithful` or `modern`. Native flags override saved settings.
 Native-only flags include headless/control and export commands. `--export-scene
