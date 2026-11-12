@@ -11,3 +11,10 @@ order so delta frames remain correct during forward skips.
 
 Run `cargo test -p cyrus-media`. Installed streaming contracts live in
 `cyrus-assets/tests/movie_stream.rs`; native playback contracts live in render.
+
+For a bounded independent picture oracle from an explicitly supplied local
+compressed payload, run `cargo run -p cyrus-media --example frame_window --
+MOVIE OUTPUT FIRST LAST`. It decodes the authored prefix and retains only the
+inclusive window as raw RGBA with numbered metadata. It requires a new output
+directory and never modifies the input. Installed discovery and subtitle
+composition remain in the asset and presentation consumers.

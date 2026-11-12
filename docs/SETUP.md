@@ -2072,6 +2072,34 @@ a per-run lock and container teardown. Capture ends after the requested movie
 progress with nonzero audio in the final observation window; a silent tail cannot
 prove waveform equivalence. This tool does not start a preview. An optional skip frame sends one public Escape
 press before the later endpoint, exercising the installed forward-skip path.
+Screencast delivery order is asynchronous PNG encoding completion. Chromium's
+`monotonicTimestamp` is the captured frame's expected-display `reference_time` in
+TimeTicks seconds, not a physical scanout acknowledgement. The presentation
+receipt keeps every raw timestamp and arrival sequence, lists all arrival
+reversals, and assigns a separate expected-display sequence. Missing clocks,
+duplicate clock/identity pairs and altered image pixels still reject admission.
+Do not use CDP session IDs as frame sequence numbers.
+
+The observer retains the actual installed worker `.movie` metadata, including
+MENU.INI subtitle intervals/text and REDSEL glyphs/palette, together with live
+menu preferences. The independent image oracle applies vertical expansion,
+scanlines and subtitle composition using those values. Its composition hash is
+part of the receipt. Missing composition metadata cannot fall back to a bare
+video oracle. Raw capture and composed reference pixels are never masked.
+
+After completion, pass `--align` to `cinematic-presented-frames.py` to require
+native trace boundaries for the production movie-clock calls bracketing each
+identified image. The receipt records both call intervals and picture-age
+bounds. These measurements do not identify physical display or DAC latency and
+must not be converted to a compensating playback delay.
+
+Set `CYRUS_CINEMATIC_ACCEPTED_CANCELLATION` to a previously admitted capture
+directory to reuse its exact cancellation phase and boundaries during a separate
+presentation run. The driver revalidates its retirement and PCM, records their
+hashes, and sends a public Escape without the diagnostic clock hold. This new
+seek supplies presentation evidence only; it does not replace active-bank
+cancellation coverage.
+
 For skip acceptance set `CYRUS_CINEMATIC_PRESENTED_WINDOW` to an independent
 `movie_window` export containing early images and the destination endpoint.
 `FRAME_COUNT` and `FIRST_FRAME` can retain a small late window after decoding the
@@ -2079,7 +2107,7 @@ prefix. Combine reference windows without changing their movie frame numbers.
 The endpoint requires an exact identified compositor image at or beyond the
 requested frame; published status alone cannot finish the recording. Passing the
 last independently exported frame without identification rejects the run. The
-reference must include the selected subtitle/scanline presentation state; raw
+reference uses the captured subtitle/scanline presentation state; raw
 decoded pixels cannot establish equivalence to an image with subtitle overlays.
 
 The diagnostic launch arms both sample and source observers and waits for a

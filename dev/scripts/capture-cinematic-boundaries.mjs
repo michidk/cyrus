@@ -12,6 +12,7 @@ import {compareSourceGeneration} from './compare-source-generation.mjs';
 import {navigateCinematic, installCinematicEndpoint, observeMovieTime, observeMovieSchedule, requireMovieHorizon, armCinematicPlayback, observeMovieSeek, cinematicProgress} from './cinematic-navigation.mjs';
 import {requireCinematicTrace, requireCinematicCancellation, requireCancellationPhase} from './cinematic-trace.mjs';
 import {installCinematicSeekGate} from './cinematic-seek-gate.mjs';
+import {installCinematicComposition} from './cinematic-composition.mjs';
 import {sourceGenerationBoundaries} from './source-generation-boundaries.mjs';
 
 const [endpoint, page, output, frameArgument, rateArgument, skipArgument] = process.argv.slice(2);
@@ -20,6 +21,24 @@ assert(Number.isInteger(skipAt) && skipAt >= 0 && (!skipAt || stopFrame > skipAt
 assert(endpoint && page && output && Number.isInteger(stopFrame) && stopFrame > 0
   && Number.isInteger(audioRate) && audioRate > 0,
 'usage: CDP_URL EXPLICIT_INSTALL_MOVIE_URL NEW_OUTPUT_DIRECTORY MIN_END_FRAME INSTALLED_AUDIO_RATE');
+// Presentation can reuse an independently admitted cancellation phase without
+// suspending its new audio graph or relabelling its seek as cancellation coverage.
+const acceptedCancellation=process.env.CYRUS_CINEMATIC_ACCEPTED_CANCELLATION;
+let reusedCancellation;
+if(acceptedCancellation) {
+  assert(skipAt,'cancellation receipt reuse requires a public presentation seek');
+  const phaseBytes=readFileSync(join(acceptedCancellation,'cancellation-phase.json'));
+  const boundaryBytes=readFileSync(join(acceptedCancellation,'cancellation-boundaries.json'));
+  const phase=JSON.parse(phaseBytes), boundaries=JSON.parse(boundaryBytes);
+  const traceBytes=readFileSync(join(acceptedCancellation,'cancellation-trace.json'));
+  const trace=JSON.parse(traceBytes), completion=JSON.parse(readFileSync(join(acceptedCancellation,'cancellation-trace-completion.json')));
+  requireCinematicTrace(trace,phase,completion,'cinematic-cancellation-phase');
+  assert.deepEqual(boundaries,sourceGenerationBoundaries(trace,phase.sources),'retained native boundaries differ from original trace');
+  reusedCancellation={traceSha256:createHash('sha256').update(traceBytes).digest('hex'),phaseSha256:createHash('sha256').update(phaseBytes).digest('hex'),
+    boundariesSha256:createHash('sha256').update(boundaryBytes).digest('hex'),
+    result:requireCancellationPhase(phase,boundaries),pcm:compareSourceGeneration(phase,boundaries)};
+}
+const controlledCancellation=skipAt && !reusedCancellation;
 const presentedWindow=process.env.CYRUS_CINEMATIC_PRESENTED_WINDOW;
 assert(!skipAt || presentedWindow,'public seek acceptance requires an independently exported presented-frame window');
 const presentedMaximum=presentedWindow ? Math.max(...JSON.parse(readFileSync(join(presentedWindow,'window.json'),'utf8')).frames.map(frame=>frame.number)) : Infinity;
@@ -28,6 +47,7 @@ assert(process.env.CYRUS_BROWSER_BUILD_RECORD, 'set CYRUS_BROWSER_BUILD_RECORD t
 const build = JSON.parse(readFileSync(process.env.CYRUS_BROWSER_BUILD_RECORD, 'utf8'));
 assert(!existsSync(output), 'use a new output directory; never overwrite a retained recording');
 mkdirSync(output, {recursive:true});
+if(reusedCancellation)writeFileSync(join(output,'reused-cancellation.json'),JSON.stringify(reusedCancellation));
 const cdp = await connectCdp(endpoint), trace = [], surfaces = [];
 let traceDone, traceEnding = false, tracing = false, recording = false, failure = null, provenance, traceCompletion;
 let ended;
@@ -75,7 +95,7 @@ cdp.onEvent(message => {
   if (message.method === 'Page.screencastFrame') {
     const f = message.params, id = surfaces.length;
     writeFileSync(join(output, `surface-${id}.png`), Buffer.from(f.data, 'base64'));
-    surfaces.push({id, metadata:f.metadata});
+    surfaces.push({id, arrivalSequence:id, receivedMonotonicMs:performance.now(), metadata:f.metadata});
     cdp.call('Page.screencastFrameAck', {sessionId:f.sessionId})
       .catch(error => {failure ??= String(error);});
   }
@@ -93,8 +113,8 @@ try {
       PacketAudio.prototype.schedule=(${observeMovieSchedule.toString()})(PacketAudio.prototype.schedule);
       movieTime=(${observeMovieTime.toString()})(movieTime,id=>movies.get(id),window.__returnedMovieClocks=[]);}
       return false;})()`});
-  const graph = '(' + installCinematicEndpoint.toString() + ')();'
-    + (skipAt ? '(' + installCinematicSeekGate.toString() + ')(' + skipAt + ');' : '') + `globalThis.__sessionSampleClockOutput=true;globalThis.__cinematicRetireTaps=true;globalThis.__cinematicOrderedTaps=true;
+  const graph = '(' + installCinematicComposition.toString() + ')();' + '(' + installCinematicEndpoint.toString() + ')();'
+    + (controlledCancellation ? '(' + installCinematicSeekGate.toString() + ')(' + skipAt + ');' : '') + `globalThis.__sessionSampleClockOutput=true;globalThis.__cinematicRetireTaps=true;globalThis.__cinematicOrderedTaps=true;
     globalThis.__sessionSampleSourceFilter=s=>s.buffer?.sampleRate===${audioRate};`
     + readFileSync(new URL('./session-sample-graph.js', import.meta.url), 'utf8')
     + readFileSync(new URL('./source-generation-graph.js', import.meta.url), 'utf8');
@@ -108,6 +128,11 @@ try {
   while (performance.now() < deadline) {
     const state = await evaluate(`(${cinematicProgress.toString()})(${stopFrame})`);
     writeFileSync(join(output, 'progress.json'), JSON.stringify(state));
+    if(state.movie?.frame>=1 && !existsSync(join(output,'movie-composition.json'))) {
+      const composition=await evaluate(`({metadata:__cinematicMovieMetadata[new URL(location.href).searchParams.get('movie')??'0'],preferences:__cyrusMenu.preferences})`);
+      assert(composition.metadata && composition.preferences,'missing installed movie composition/settings');
+      writeFileSync(join(output,'movie-composition.json'),JSON.stringify(composition));
+    }
     assert(!failure && !state.error && !state.observer && !state.graph,
       failure ?? state.error ?? state.observer ?? state.graph);
     if (state.movie?.frame >= 1 && !debuggerReleased) {
@@ -122,7 +147,7 @@ try {
       await cdp.call('Input.dispatchMouseEvent', {type:'mousePressed',x:320,y:240,button:'left',clickCount:1});
       await cdp.call('Input.dispatchMouseEvent', {type:'mouseReleased',x:320,y:240,button:'left',clickCount:1});
     }
-    if (skipAt && !skipSent && state.seekGate?.state === 'ready') {
+    if (skipAt && !skipSent && (controlledCancellation ? state.seekGate?.state === 'ready' : state.movie?.frame >= skipAt && !state.movie.loading)) {
       await evaluate(`console.timeStamp('cinematic-public-skip')`);
       await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
       await wait(100);
@@ -130,7 +155,7 @@ try {
       skipSent = true;
       writeFileSync(join(output,'skip.json'),JSON.stringify({from:state.movie.frame,key:'Escape'}));
     }
-    if (skipAt && state.seekGate?.state === 'retired' && !phaseSaved) {
+    if (controlledCancellation && state.seekGate?.state === 'retired' && !phaseSaved) {
       await saveCancellationPhase();phaseSaved=true;
     }
     if (state.movie?.frame >= stopFrame && !state.movie.loading && state.signalEnergy > 0.001) {
@@ -140,6 +165,9 @@ try {
         const shot=await cdp.call('Page.captureScreenshot',{format:'png',fromSurface:true});
         writeFileSync(join(output,'endpoint.png'),Buffer.from(shot.data,'base64'));
         writeFileSync(join(output,'surfaces.json'),JSON.stringify(surfaces));
+        const composition=await evaluate(`({metadata:__cinematicMovieMetadata[new URL(location.href).searchParams.get('movie')??'0'],preferences:__cyrusMenu.preferences})`);
+        assert(composition.metadata && composition.preferences,'missing installed movie composition/settings');
+        writeFileSync(join(output,'movie-composition.json'),JSON.stringify(composition));
         const receipt=join(output,`presented-${presentationAttempt++}.json`);
         try {
           await promisify(execFile)(process.env.CYRUS_ANALYSIS_PYTHON??'python3',[
@@ -153,7 +181,7 @@ try {
     await wait(100);
   }
   assert(reached, 'movie progression endpoint deadline');
-  assert(!skipAt || phaseSaved,'public seek lacks persisted cancellation phase');
+  assert(!controlledCancellation || phaseSaved,'public seek lacks persisted cancellation phase');
   // Freeze source, mixed PCM and clock observations in one task before readback.
   await evaluate(`(async()=>{globalThis.__cinematicEndpointStopped=true;const p=__sessionSamples,windowBlocks=p.blocks.slice(-200);
     const drain=__sourceGeneration.freeze(windowBlocks.at(-1)?.frame+128);
@@ -189,7 +217,7 @@ try {
   writeFileSync(join(output,'mix-comparison.json'),JSON.stringify(comparison,null,2));
   assert(capture.graph.returnedClockReads?.length, 'production movieTime return was not observed');
   requireMovieHorizon(capture.graph.returnedClockReads,comparison.rate);
-  if (skipAt) {
+  if (controlledCancellation) {
     const cancellation = requireCinematicCancellation(capture,boundaries);
     writeFileSync(join(output,'cancellation.json'),JSON.stringify(cancellation,null,2));
   }
