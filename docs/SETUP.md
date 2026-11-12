@@ -341,6 +341,17 @@ Both use 16 codegen units and thin LTO. Releases trade a larger download for
 shorter compilation compared with the former single-unit profile.
 Set `CYRUS_WASM_PROFILE=wasm-release` to build with the release profile name.
 
+For browser CPU profiling, set `CARGO_PROFILE_WASM_DEV_STRIP=none` and
+`CYRUS_WEB_KEEP_DEBUG=1` before `dev/scripts/build-web.sh`. This retains Rust
+function names through wasm-bindgen. An optional `CYRUS_WEB_CHECKPOINT_DIR`
+on a persistent host mount saves each completed raw WASM package before
+packaging. Rerunning the same command restores matching completed packages
+without Cargo, including after target-directory loss or a packaging failure.
+Source, compiler, profile and Rust flags must match; corrupt checkpoints fail
+closed. Interrupted compiler invocations still require Cargo to finish. The
+checkpoint directory contains build outputs only, never installed game data.
+It does not change the inherited Cargo target directory or retain dependencies.
+
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
