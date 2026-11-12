@@ -9,6 +9,6 @@ description = "Typed guest SDK for cyrus mods: wraps the raw wasvy bindings of c
 [workspace]
 
 [dependencies]
-wit-bindgen = "0.58"
+wit-bindgen = "0.63"
 # Same version as crates/cyrus-mods.
 wasvy_macros = "=0.0.11"
