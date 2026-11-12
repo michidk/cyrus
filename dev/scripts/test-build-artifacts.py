@@ -78,6 +78,7 @@ done
 ''')
         (scripts / "viewer-server.py").write_text("# Local viewer server\n")
         self.env = dict(os.environ, PATH=f"{bindir}:/usr/bin:/bin")
+        self.env.pop("CARGO_TARGET_DIR", None)
 
     def build(self, *args):
         subprocess.run(["bash", "dev/scripts/build-artifacts.sh", *args],
@@ -125,7 +126,7 @@ done
 
     def test_real_web_builder_compiles_and_exports_all_requested_apps(self):
         source = Path(__file__).parent
-        for name in ("build-web.sh", "toolchain.sh", "build-provenance.py"):
+        for name in ("build-web.sh", "toolchain.sh", "build-provenance.py", "resolve-wasm-bindgen.py"):
             shutil.copy2(source / name, self.root / "dev/scripts" / name)
         subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "init", "--quiet"],
                        cwd=self.root, check=True)
@@ -145,9 +146,14 @@ done
         web.mkdir()
         for name in ("loader.js", "install.js", "local-install.js", "sw.js", "loading.css", "asset-worker.js", "game-assets.js"):
             (web / name).write_text(name)
+        (self.root / "Cargo.lock").write_text('[[package]]\nname = "wasm-bindgen"\nversion = "0.2.100"\n')
         bindgen = self.root / "bin/wasm-bindgen"
         bindgen.write_text('''#!/bin/bash
 set -euo pipefail
+if [[ "${1:-}" = --version ]]; then
+    echo 'wasm-bindgen 0.2.100'
+    exit 0
+fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --out-dir) out=$2; shift 2 ;;
