@@ -505,3 +505,15 @@ state while CD output continues, then uses public book input to change Speech an
 mute/unmute book music after world restoration. The graph oracle checks installed CD samples at
 the live gain, silence while paused and unchanged selection through preferences.
 These checks establish mixer/graph output, not physical-speaker parity.
+
+The installed browser music driver also accepts `scenario: "book_restore"` with
+explicit conversation placement, destination stem and replacement alias. It checks
+book speech teardown, muted diagnostic restoration, rejected restoration during
+held destination preparation, superseded request retirement and later book unmute.
+Graph PCM and source-admission counts distinguish publication silence from a pause
+applied only on the following update. `isolate_publication: true` runs the narrow
+muted-publication failure control. Captures and fixture values remain local.
+
+`music_settings ... --muted-publication` and the native driver's matching flag
+check replacement pause before the first ordinary update, then capture mixer silence,
+unmute, pause and continuation without changing the restored playback entity.

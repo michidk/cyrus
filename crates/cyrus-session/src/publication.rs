@@ -18,6 +18,9 @@ impl RuntimeSessionCandidate {
 
     pub(super) fn publish(mut self, world: &mut World, saved_game: bool) -> Result<()> {
         self.validate_publication(world)?;
+        if !saved_game {
+            self.music.enforce_live_pause(world);
+        }
         let same_world = saved_game
             && world
                 .get_resource::<cyrus_world::lifecycle::CurrentScene>()

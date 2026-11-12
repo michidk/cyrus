@@ -166,6 +166,23 @@ pub struct MusicCandidate {
     pub playback: Option<(MusicTransport, PlaybackSettings)>,
 }
 
+impl MusicCandidate {
+    /// Apply live host inhibition before publishing replacement output. A zero
+    /// Music preference or active cinematic pauses the candidate without clearing
+    /// its saved pause, changing its gain, or advancing its decoder cursor.
+    pub fn enforce_live_pause(&mut self, world: &bevy::prelude::World) {
+        let inhibited = world
+            .get_resource::<cyrus_assets::sound::SoundSettings>()
+            .is_some_and(|settings| settings.redbook_volume == 0)
+            || world
+                .iter_entities()
+                .any(|entity| entity.contains::<crate::CinematicAudio>());
+        if inhibited && let Some((_, settings)) = &mut self.playback {
+            settings.paused = true;
+        }
+    }
+}
+
 fn valid_gain(gain: f32) -> bool {
     gain == 1.0 || (0..=127).any(|volume| super::redbook_gain(volume) == Some(gain))
 }

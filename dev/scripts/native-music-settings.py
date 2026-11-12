@@ -20,6 +20,7 @@ def main():
     parser.add_argument('output', type=Path)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--track', type=int, required=True)
+    parser.add_argument('--muted-publication', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     with (args.output / 'acceptance.lock').open('a') as lock:
@@ -28,8 +29,18 @@ def main():
         expected = hashlib.sha256(args.binary.read_bytes()).hexdigest()
         speech.wait_for_executable(args.container, expected)
         result = {'executable': expected, 'stages': []}
+        if args.muted_publication:
+            publication = args.output / 'publication.json'
+            deadline = time.monotonic() + 30
+            while not publication.exists():
+                if time.monotonic() > deadline:
+                    raise TimeoutError('publication boundary receipt unavailable')
+                time.sleep(.05)
+            result['publication'] = json.loads(publication.read_text())
+            if not result['publication']['paused'] or result['publication']['track'] != args.track:
+                raise ValueError('live mute was not applied at the publication boundary')
         try:
-            for phase, present in enumerate([True, True, False, True, True]):
+            for phase, present in enumerate([not args.muted_publication, True, False, True, True]):
                 (args.output / 'command').write_text(str(phase))
                 receipt = args.output / f'phase-{phase}.json'
                 deadline = time.monotonic() + 30

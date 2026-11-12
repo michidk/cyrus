@@ -308,3 +308,8 @@ planning, not a publishable replacement. Inspection never consumes a result.
 `RuntimeSessionSnapshot::required_dialogue_labels` combines retained script-cache
 labels with active control/examine voice sources. Native and browser preparation
 use this complete hint set; installed source identity validation remains mandatory.
+
+Diagnostic CD publication applies current host inhibition before starting replacement
+output: a zero Music preference or active cinematic adds pause to the saved state.
+It preserves the saved decoder cursor, drive gain and any saved pause. Original-style
+saved-game loads continue to retain the live CD transport.
