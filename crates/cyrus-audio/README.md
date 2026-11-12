@@ -487,3 +487,21 @@ the prepared world starts its configured track. Requests for the current track,
 missing assignments and `-1` retain the live source, following preservation's
 [world-load CD contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/music.md#track-selection).
 Map stems use the first authored variant; numeric identities preserve variants.
+
+CD world selection waits for initial installed settings, then settles until the
+next world publication. Sound, Speech and Music preference updates preserve an
+established book or restored CD selection; they only apply their existing volume,
+pause and speech policies. The public installed `music_restoration` tests cover
+late settings admission and preference changes after diagnostic replacement.
+
+`music_settings INSTALL TRACK OUTPUT` is a paced native example for restored CD
+ownership. `native-music-settings.py CONTAINER OUTPUT --binary EXECUTABLE --track N`
+checks actual mixer PCM through speech changes, music pause/resume and effects
+mute, retaining the playback entity. Run it under the existing paced audio runtime
+with a host-mounted config/output directory and a per-run lock.
+The installed browser music driver accepts `scenario: "settings"` plus an explicit
+conversation placement. It observes authored speech interruption and subtitle
+state while CD output continues, then uses public book input to change Speech and
+mute/unmute book music after world restoration. The graph oracle checks installed CD samples at
+the live gain, silence while paused and unchanged selection through preferences.
+These checks establish mixer/graph output, not physical-speaker parity.

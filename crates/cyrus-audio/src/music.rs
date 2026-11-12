@@ -94,12 +94,19 @@ pub struct Music {
     pub track: Option<u32>,
     /// The drive's linear channel gain; it starts at full level and only accepted volumes change it.
     pub gain: f32,
-    /// A restored owner consumes the next world-publication notifications without selecting music.
-    restore_pending: bool,
+    /// World selection waits for its inputs; restored publication preserves the saved owner.
+    world_selection: WorldSelection,
     #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<Result<AudioSource, String>>>,
     #[cfg(target_arch = "wasm32")]
     load: Option<Handle<AudioSource>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorldSelection {
+    Settled,
+    Pending,
+    Restored,
 }
 
 impl Default for Music {
@@ -107,7 +114,7 @@ impl Default for Music {
         Self {
             track: None,
             gain: 1.0,
-            restore_pending: false,
+            world_selection: WorldSelection::Settled,
             load: None,
         }
     }
@@ -246,7 +253,7 @@ fn stop_for_world_entry(
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
-    if music.restore_pending {
+    if music.world_selection == WorldSelection::Restored {
         return;
     }
     let value = install.and_then(|install| world_track(&install, &request.0).ok());
@@ -266,7 +273,7 @@ fn stop_for_browser_world_entry(
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
-    if music.restore_pending {
+    if music.world_selection == WorldSelection::Restored {
         return;
     }
     let value = bank.and_then(|bank| bank.track_for_scene(&request.0));
@@ -291,12 +298,21 @@ fn start_world_track(
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
-    // Observe both inputs on every update, including a restored publication. A
-    // short-circuit run condition can defer the other input's first observation.
-    if !current.is_changed() && !settings.as_ref().is_some_and(|value| value.is_changed()) {
+    if music.world_selection == WorldSelection::Restored {
         return;
     }
-    if music.restore_pending || !music_enabled(&settings, &audio) || current.name.is_empty() {
+    if current.is_changed() {
+        music.world_selection = if current.name.is_empty() {
+            WorldSelection::Settled
+        } else {
+            WorldSelection::Pending
+        };
+    }
+    if music.world_selection != WorldSelection::Pending || settings.is_none() || audio.is_none() {
+        return;
+    }
+    if !music_enabled(&settings, &audio) {
+        music.world_selection = WorldSelection::Settled;
         return;
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -306,7 +322,10 @@ fn start_world_track(
     #[cfg(not(target_arch = "wasm32"))]
     let value = match world_track(&install, &current.name) {
         Ok(value) => value,
-        Err(e) => return error!("music: scene {}: {e}", current.name),
+        Err(e) => {
+            music.world_selection = WorldSelection::Settled;
+            return error!("music: scene {}: {e}", current.name);
+        }
     };
     #[cfg(target_arch = "wasm32")]
     let value = {
@@ -315,6 +334,7 @@ fn start_world_track(
         };
         bank.world_tracks.get(&world).copied().unwrap_or(-1)
     };
+    music.world_selection = WorldSelection::Settled;
     if value == -1 || u32::try_from(value).ok() == music.track {
         return;
     }
@@ -329,8 +349,8 @@ fn start_world_track(
 
 // WorldChange runs first, so the restored scene's notification is consumed in this update.
 fn finish_restoration(mut music: ResMut<Music>) {
-    if music.restore_pending {
-        music.restore_pending = false;
+    if music.world_selection == WorldSelection::Restored {
+        music.world_selection = WorldSelection::Settled;
     }
 }
 
