@@ -236,6 +236,15 @@ impl ScriptWorld {
             // selected actor's ordinary hook, combat, or script stages.
             let selected_role = self.selected_player_index() == Some(id.index);
             let selected_player = selected_role && inputs.player_controller.is_some();
+            if inputs.actor_update_skipped.unwrap_or(false)
+                && !selected_role
+                && self
+                    .camera
+                    .as_ref()
+                    .is_none_or(|camera| camera.camera_actor != id)
+            {
+                continue;
+            }
             let actor = &mut self.actors[id.index];
             actor.sync_falling_motion();
             if actor.placement().is_none() && !selected_player {

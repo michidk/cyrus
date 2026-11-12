@@ -8,6 +8,11 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: `drno` suspends the entire ordinary update of nonplayer actors, including
+response timers, movement and combat. The selected player and camera continue;
+turning it off resumes the retained actor state. This follows preservation's
+[cheat update rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md).
+
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does
 not change armed dispatch. This follows preservation's

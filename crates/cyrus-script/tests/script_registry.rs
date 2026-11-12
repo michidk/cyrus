@@ -6601,10 +6601,17 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             let control = world.actors()[0].control_state().unwrap();
             assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
             assert_eq!(control.living_state, LivingState::ORDINARY);
-            assert_eq!(control.torch_burning, if step < 6 { 200 } else { 199 });
+            assert_eq!(
+                control.torch_burning,
+                if enabled != 0 || step < 6 { 200 } else { 199 }
+            );
             assert_eq!(
                 world.animation_frame(id).unwrap(),
-                Some(10 + (initial_frame - 10 + step as u32 + 1) % 4)
+                Some(if enabled != 0 {
+                    initial_frame
+                } else {
+                    10 + (initial_frame - 10 + step as u32 + 1) % 4
+                })
             );
             assert_eq!(
                 map_actor_locals(&app)[0],
@@ -51995,3 +52002,6 @@ fn selected_wall_contact_receipt_comes_from_admitted_primary_response_not_floor_
         "a capture armed after the response cannot relabel it as a new contact"
     );
 }
+
+#[path = "script_registry/actor_update_skip.rs"]
+mod actor_update_skip_tests;
