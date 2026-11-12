@@ -76,6 +76,7 @@ class Acceptance(unittest.TestCase):
                 with self.assertRaises(FileNotFoundError):
                     capture.capture(path, ['driver'], 1, .1, ['ready'])
             self.assertIn('--latency-msec=20', start.call_args.args[0])
+            self.assertGreater(json.loads((path / 'result.json').read_text())['epoch_monotonic_seconds'], 0)
 
     def test_missing_monitor_preserves_failure(self):
         with tempfile.TemporaryDirectory() as temp:

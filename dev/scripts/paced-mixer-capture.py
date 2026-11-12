@@ -73,6 +73,7 @@ def capture(output, command, timeout, tolerance, ready_command):
         readiness.check_returncode()
         result['readiness'] = require_ready(json.loads(readiness.stdout))
         began = time.monotonic()
+        result['epoch_monotonic_seconds'] = began
         with (output / 'recorder.log').open('w') as recorder_log:
             recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--file-format=wav',
                 '--format=s16le', '--rate=48000', '--channels=2', '--latency-msec=20', str(path)],

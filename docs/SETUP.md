@@ -89,6 +89,20 @@ reporting the replacement as a failure. Run native cyrus with a real-time audio 
 shortens every voiced line (**Verified:** the START story from the last kill to the world change took
 30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
 prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
+The sink uses signed 16-bit stereo at 48000 Hz, matching the monitor calibration signal.
+An unspecified sink rate can select 44100 Hz and resample a 48000 Hz calibration twice,
+so an unchanged player volume does not establish unity gain.
+
+For native book PCM acquisition, recover the runtime with
+`dev/scripts/ensure-book-audio-runtime.sh IMAGE /absolute/path/to/local-image.tar`.
+It restores the supplied archive or builds `Dockerfile.sound-acceptance`, checks software
+Vulkan and the PulseAudio ALSA plugin together, and seals a newly built image only after
+that check passes. Mount the current `paced-audio.sh` when reusing an older image.
+Use the same live sink for calibration and the acknowledged public transition; retain
+its sink/player settings and reference hashes. A paced recording alone does not admit
+waveform continuity or calibrated production gain. The transition recorder retains its
+monotonic PCM/input epoch in `result.json` so separately sampled game clocks can be
+bound to that recording without reconstructing wall time.
 
 `dev/scripts/world-pursuit.py --port 7117 DRINT EXTPALAC` exercises combat actors' lost-sight routing:
 it places the selected player (`place_player`) next to the nearest living combat actor, then holds it
