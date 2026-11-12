@@ -173,5 +173,130 @@ fn second_jump_release_resolves_queued_motion_in_the_same_ordinary_update() {
     // would leave ROPE queued until the following ordinary update.
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(control.queued_motion, JumpMotion::NONE);
-    assert_eq!(control.jump_selector, 24);
+    assert_eq!(control.jump_selector, 23);
+}
+
+#[test]
+fn second_jump_release_advances_regrab_countdown_on_its_ordinary_update() {
+    let (_, mut world, data, scene) = rope_classification_fixture();
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    assert!(world.selected_player_on_rope());
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    tick_rope_classification_with_timing(
+        &mut world,
+        &data,
+        &scene,
+        cyrus_script::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+        [2, 16, 512],
+    );
+    assert!(!world.selected_player_on_rope());
+    assert!(world.actors()[player.index].failure().is_none());
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .jump_selector,
+        22
+    );
+}
+
+#[test]
+fn directional_release_carries_the_new_speed_only_on_the_next_ordinary_update() {
+    use cyrus_script::player::input::PlayerInput;
+    use cyrus_script::script::{OrdinaryInputs, PlayerControllerInput, ScriptHud, ScriptInputs};
+
+    let (_, mut world, data, scene) = rope_classification_fixture_with(
+        |scripts| {
+            // Keep the synthetic floor from consuming the queued rope motion.
+            let actor = scripts.actors.get_mut("CYRUS").unwrap();
+            actor.attributes[Attribute::Collide] = 11;
+            actor.attributes[Attribute::ReservedCollide] = 11;
+        },
+        |_| {},
+    );
+    let player = world.selected_player().unwrap();
+    let hud = ScriptHud::default();
+    hud.configure(
+        &inventory_asset(&[]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    let tick = |world: &mut ScriptWorld, held: &PlayerInput| {
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                OrdinaryInputs {
+                    scene: Some(&scene),
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        fine_ticks: Some(8),
+                        frame_scale: Some(256),
+                        step_fps: Some(12),
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        magic_carpet: Some(true),
+                        player_controller: Some(PlayerControllerInput {
+                            held,
+                            walk_mode: true,
+                            auto_defend: false,
+                            steer: None,
+                        }),
+                        ..Default::default()
+                    },
+                },
+                &mut cyrus_game::random::EngineRandom::from_state(42),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[player.index].failure().is_none(),
+            "{:?}",
+            world.actors()[player.index].failure()
+        );
+    };
+    tick(&mut world, &Default::default());
+    assert!(world.selected_player_on_rope());
+    tick(&mut world, &Default::default());
+    let before = world.spatial(player).unwrap().local;
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_vector[2],
+        0
+    );
+    let jump = PlayerInput {
+        jump: true,
+        forward: true,
+        ..Default::default()
+    };
+    tick(&mut world, &jump);
+    assert!(!world.selected_player_on_rope());
+    let release = world.spatial(player).unwrap().local;
+    assert_eq!(
+        [release.position[0], release.position[2]],
+        [before.position[0], before.position[2]]
+    );
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .motion_vector[2],
+        64
+    );
+    tick(&mut world, &jump);
+    let carried = world.spatial(player).unwrap().local;
+    let expected =
+        cyrus_world::transform::translate_forward(release.position, release.angles[1] as u16, 64)
+            .unwrap();
+    assert_eq!(
+        [carried.position[0], carried.position[2]],
+        [expected[0], expected[2]]
+    );
 }

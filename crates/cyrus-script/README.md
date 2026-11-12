@@ -79,6 +79,11 @@ drivers have an explicit unarmed positive scenario requiring grab, held attachme
 and jump detach; diagnostic timing does not establish contact/clank parity.
 Verified: jump release admits ordinary movement and collision on that update after removing the
 attachment. The retained rope jump latch protects the regrab countdown while falling with Jump held.
+Carried displacement reads the retained speed before attached controls run; a directional release
+therefore first carries its new speed on the following update. Attachment admission follows the
+ordinary controller, so release and repeated jump updates advance the regrab countdown on that
+same update. The countdown pauses when both queued and falling motion are absent. This follows
+preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/fd87586bee7ab2bfeffc0d96b8d91e3c1eabff3c/docs/engine/SOUP.md#rope-attachment).
 
 ## Module guide
 

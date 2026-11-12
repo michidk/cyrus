@@ -127,11 +127,10 @@ impl ScriptWorld {
             .is_some_and(|control| control.rope_attached)
     }
 
-    /// One selected-player rope update before the movement stages: while attached the controls run
-    /// and the player is placed on its node; otherwise the attach test runs. Returns whether the
-    /// player is on a rope, which skips the ordinary movement and combat stages.
+    /// Run attached controls before ordinary movement admission. A release returns false so the
+    /// ordinary controller and subsequent attachment test see its newly queued motion.
     #[allow(clippy::too_many_arguments)] // The update reads the keys, clock, probe data and sound sink.
-    pub(super) fn update_player_rope(
+    pub(super) fn control_player_rope(
         &mut self,
         id: ScriptActorId,
         data: &Animations,
@@ -177,6 +176,22 @@ impl ScriptWorld {
                 .as_ref()
                 .is_some_and(|control| control.rope_attached));
         }
+        Ok(false)
+    }
+
+    /// Test attachment after the ordinary controller, including its new jump or rope release.
+    pub(super) fn admit_player_rope(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        held: Option<&PlayerInput>,
+        ticks: u32,
+        probe: Option<RopeProbe<'_>>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let Some(settings) = self.updates.rope else {
+            return Ok(false);
+        };
         if self.ropes.is_empty() {
             return Ok(false);
         }
