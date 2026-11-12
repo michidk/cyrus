@@ -35,6 +35,7 @@ def main():
     parser.add_argument('rig', type=Path, help='persistent host directory containing web/ bindings and fixture.json')
     parser.add_argument('--cdp-port', type=int, default=9224)
     parser.add_argument('--http-port', type=int, default=42123)
+    parser.add_argument('--stages', type=int, choices=range(1,14), default=13)
     args = parser.parse_args()
     rig = args.rig.resolve()
     if not rig.is_relative_to('/home/vibepod/workspaces'):
@@ -72,7 +73,7 @@ def main():
                 f'TCP:host.docker.internal:{args.http_port}')
             subprocess.run(['node', 'dev/scripts/test-positional-browser.mjs',
                             f'http://127.0.0.1:{args.cdp_port}', f'http://127.0.0.1:{args.http_port}/',
-                            str(rig / 'web/positional_emitters_bg.wasm'), str(rig / 'browser-final')],
+                            str(rig / 'web/positional_emitters_bg.wasm'), str(rig / 'browser-final'), str(args.stages)],
                            check=True, timeout=110)
         finally:
             if started:

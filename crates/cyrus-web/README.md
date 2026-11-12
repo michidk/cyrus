@@ -277,3 +277,13 @@ options and stops its disposable page at ordinary update four. It checks the
 installed destination, camera publication, active world-entry fade and prepared
 player, then retains a stable screenshot for comparison at that same update.
 It does not inspect attachments or establish camera/pixel parity by itself.
+
+The isolated `listener_publication` example uses the production
+`camera::driven_view_transform` with the public script camera update/glide and
+synchronous sound services. Build it with `cargo build -p cyrus-web --example
+listener_publication` (or the browser target/profile) through the shared queue.
+It consumes the explicitly exported local `positional_emitters` fixture, adds
+idle diagnostic player/camera roles, and records logical/render poses beside
+seven native/browser PCM observations. The audio crate documents the fixture and
+bounded recovery launcher. This is a controlled camera/audio integration scene,
+not a complete installed-room replay.

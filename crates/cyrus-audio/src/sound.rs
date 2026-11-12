@@ -74,6 +74,7 @@ impl Plugin for SoundPlugin {
             )
             .init_resource::<crate::AudioReadiness>()
             .init_resource::<SoundEffects>()
+            .init_resource::<crate::ScriptListener>()
             .init_resource::<Speech>()
             .init_resource::<Channels>()
             .init_resource::<script::RuntimeDialogue>()
@@ -361,7 +362,11 @@ impl Channels {
         effects: &SoundEffects,
         cue: PositionalCue,
         owner: Owner,
-        listener: (&SoundSettings, &crate::AudioListener),
+        listener: (
+            &SoundSettings,
+            &crate::AudioListener,
+            Option<cyrus_world::sound::ListenerPose>,
+        ),
     ) {
         let Some(effect) = usize::try_from(cue.effect)
             .ok()
@@ -369,14 +374,15 @@ impl Channels {
         else {
             return;
         };
-        let (settings, listener) = listener;
-        let (volume, pan) = match positional_q8(cue.position, settings, listener, cue.volume) {
-            Ok(mix) => mix,
-            Err(error) => {
-                warn_once!("script Sound effect {}: {error}", cue.effect);
-                return;
-            }
-        };
+        let (settings, listener, published) = listener;
+        let (volume, pan) =
+            match positional_q8(cue.position, settings, listener, published, cue.volume) {
+                Ok(mix) => mix,
+                Err(error) => {
+                    warn_once!("script Sound effect {}: {error}", cue.effect);
+                    return;
+                }
+            };
         self.start(
             commands,
             mixer,
@@ -661,6 +667,7 @@ fn positional_q8(
     position: [i32; 3],
     settings: &SoundSettings,
     listener: &crate::AudioListener,
+    published: Option<cyrus_world::sound::ListenerPose>,
     volume_offset: i32,
 ) -> Result<(u8, u8), String> {
     let distance = settings
@@ -672,6 +679,7 @@ fn positional_q8(
         (f64::from(camera.y) * -5120.0).floor() as i32,
         (f64::from(camera.z) * 5120.0 + 16_777_215.0).floor() as i32,
     ];
+    let camera_q8 = published.map_or(camera_q8, |pose| pose.position);
     let difference = std::array::from_fn(|axis| position[axis].wrapping_sub(camera_q8[axis]));
     let length =
         cyrus_script::script::rounded_distance(difference).map_err(|error| error.to_string())?;
@@ -681,6 +689,7 @@ fn positional_q8(
         (f64::from(forward.x) * -65536.0).round() as i64,
         (f64::from(forward.z) * 65536.0).round() as i64,
     );
+    let yaw = published.map_or(yaw, |pose| i32::from(pose.yaw));
     Ok((
         volume,
         pan(
@@ -764,6 +773,7 @@ fn play_requests(
     speech: Res<Speech>,
     settings: Option<Res<SoundSettings>>,
     listener: Option<Res<crate::AudioListener>>,
+    published: Res<crate::ScriptListener>,
     alive: Query<(), With<PlayingSound>>,
     sources: Option<Res<Assets<AudioSource>>>,
     mut panned: Option<ResMut<Assets<Panned>>>,
@@ -797,7 +807,23 @@ fn play_requests(
                             );
                             continue;
                         };
-                        match positional(*position, &listener.0, distance, 0) {
+                        let mixed = if published.0.is_some() {
+                            let position = [
+                                (f64::from(position.x) * -5120.0).floor() as i32,
+                                (f64::from(position.y) * -5120.0).floor() as i32,
+                                (f64::from(position.z) * 5120.0 + 16_777_215.0).floor() as i32,
+                            ];
+                            positional_q8(
+                                position,
+                                settings.as_deref().expect("checked settings"),
+                                listener,
+                                published.0,
+                                0,
+                            )
+                        } else {
+                            positional(*position, &listener.0, distance, 0)
+                        };
+                        match mixed {
                             Ok((volume, pan)) => (volume, Some(pan)),
                             Err(e) => {
                                 warn_once!("sound: effect {index}: {e}");
@@ -1319,6 +1345,7 @@ mod queued_teardown_tests {
         let mut app = App::new();
         app.add_message::<SoundRequest>()
             .init_resource::<SoundEffects>()
+            .init_resource::<crate::ScriptListener>()
             .init_resource::<Speech>()
             .insert_resource(Channels {
                 pending: vec![

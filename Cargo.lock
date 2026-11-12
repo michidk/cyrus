@@ -3068,6 +3068,7 @@ dependencies = [
  "cyrus-render",
  "cyrus-script",
  "cyrus-session",
+ "cyrus-soup",
  "cyrus-startup",
  "cyrus-world",
  "getrandom 0.4.3",

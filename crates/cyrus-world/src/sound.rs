@@ -64,12 +64,25 @@ pub struct AmbientSoundUpdate {
     pub active: bool,
 }
 
+/// Published camera coordinates used by positional sound, independent of render gliding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListenerPose {
+    /// Signed Q8 engine coordinates.
+    pub position: [i32; 3],
+    /// Wrapped engine yaw, 2048 units per turn.
+    pub yaw: u16,
+}
+
 /// Synchronous sample status, positional mixing and channel ownership service.
 /// Borrowed only during one scheduler invocation; it need not cross threads.
 /// Implementations follow preservation's engine/sound.md: zero volume or object
 /// exclusion stops the remembered channel; status two restarts it; otherwise its
 /// volume and pan are updated. Script effects bypass animation surface remapping.
 pub trait AmbientSoundDriver: std::fmt::Debug {
+    /// Publish the logical camera before synchronous sound work. None clears a released camera.
+    /// Status-only consumers may ignore publication.
+    fn publish_listener(&self, _pose: Option<ListenerPose>) {}
+
     fn update(&self, request: AmbientSoundRequest) -> Result<AmbientSoundUpdate, String>;
 }
 

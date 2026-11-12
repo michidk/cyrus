@@ -91,6 +91,9 @@ impl ScriptWorld {
         updated?;
         self.apply_camera_publication(published)?;
         self.camera = Some(state);
+        if let Some(driver) = inputs.ambient_sound {
+            self.publish_sound_listener(driver);
+        }
         Ok(())
     }
 

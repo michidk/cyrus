@@ -25,6 +25,11 @@ impl Default for AudioReadiness {
 #[derive(Resource)]
 pub struct AudioListener(pub GlobalTransform);
 
+/// Exact camera publication retained by synchronous script sound services.
+/// Rendering may glide independently; positional script mixing uses this pose when present.
+#[derive(Resource, Default, Debug)]
+pub struct ScriptListener(pub Option<cyrus_world::sound::ListenerPose>);
+
 /// Presence pauses CD music while cinematic audio owns playback.
 #[derive(Component)]
 pub struct CinematicAudio;

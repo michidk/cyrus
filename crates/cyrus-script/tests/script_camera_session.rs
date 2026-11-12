@@ -1180,6 +1180,79 @@ mod live {
     }
 
     #[test]
+    fn camera_publication_reaches_sound_before_the_native_returns_without_render_glide() {
+        #[derive(Debug, Default)]
+        struct Listener(std::cell::RefCell<Option<cyrus_world::sound::ListenerPose>>);
+        impl cyrus_world::sound::AmbientSoundDriver for Listener {
+            fn publish_listener(&self, pose: Option<cyrus_world::sound::ListenerPose>) {
+                *self.0.borrow_mut() = pose;
+            }
+            fn update(
+                &self,
+                _: cyrus_world::sound::AmbientSoundRequest,
+            ) -> Result<cyrus_world::sound::AmbientSoundUpdate, String> {
+                unreachable!("no ambient invocation")
+            }
+        }
+        let (mut world, service) = location_world(Native::ShowObjLoc, &[3, -2, 5], false);
+        let listener = Listener::default();
+        let before = world.camera().unwrap().current;
+        world
+            .advance(
+                world.id(0).unwrap(),
+                BODY,
+                ScriptInputs {
+                    hud: Some(&ScriptHud::default()),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    camera_update: Some(&service),
+                    ambient_sound: Some(&listener),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        let camera = world.camera().unwrap();
+        assert_ne!(camera.current, before);
+        assert_eq!(
+            *listener.0.borrow(),
+            Some(cyrus_world::sound::ListenerPose {
+                position: camera.current.position,
+                yaw: camera.current.angles[1] as u16
+            })
+        );
+        let accepted = *listener.0.borrow();
+        let (mut rejected, mut service) = function_world(Native::CameraController);
+        service.fail = true;
+        assert!(
+            rejected
+                .advance(
+                    rejected.id(0).unwrap(),
+                    BODY,
+                    ScriptInputs {
+                        hud: Some(&ScriptHud::default()),
+                        nominal_ticks: Some(2),
+                        frame_scale: Some(256),
+                        camera_update: Some(&service),
+                        ambient_sound: Some(&listener),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100
+                )
+                .is_err()
+        );
+        assert_eq!(
+            *listener.0.borrow(),
+            accepted,
+            "rejected camera update preserves listener"
+        );
+    }
+
+    #[test]
     fn location_natives_run_the_pose_update_and_publish_the_camera_actor() {
         for (name, arguments) in [
             (Native::ShowObjLoc, vec![3, -2, 5]),

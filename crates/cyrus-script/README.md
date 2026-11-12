@@ -785,3 +785,9 @@ or local position, through the shared query-position rule. Retained family
 membership alone does not select an attached emitter after the attribute clears.
 The start retains its captured position; later emitter movement does not update
 an already playing `Sound` sample, following preservation's sound contract.
+
+Verified: successful camera-controller and scripted camera pose publication also
+updates the borrowed synchronous sample service before returning. The listener
+uses the published logical position/yaw independently of render gliding; failed
+camera updates do not publish a replacement. Status-only sample adapters may
+ignore listener publication.

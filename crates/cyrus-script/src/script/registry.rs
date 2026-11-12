@@ -961,6 +961,16 @@ impl ScriptWorld {
         self.gxa_overlay.as_ref()
     }
 
+    /// Publish the current logical camera to the synchronous sample owner, never its render glide.
+    pub fn publish_sound_listener(&self, driver: &dyn cyrus_world::sound::AmbientSoundDriver) {
+        driver.publish_listener(self.camera.as_ref().map(|camera| {
+            cyrus_world::sound::ListenerPose {
+                position: camera.current.position,
+                yaw: cyrus_world::heading::wrap(camera.current.angles[1] as u16),
+            }
+        }));
+    }
+
     /// Retained camera session, when the world has both a player and a CAMERA instance.
     pub fn camera(&self) -> Option<&super::camera::CameraState> {
         self.camera.as_ref()
@@ -4233,7 +4243,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if !succeeded {
             return Ok(());
         }
-        self.registry.apply_camera_publication(published)
+        let camera_updated = !published.is_empty();
+        self.registry.apply_camera_publication(published)?;
+        if camera_updated && let Some(driver) = self.inputs.ambient_sound {
+            self.registry.publish_sound_listener(driver);
+        }
+        Ok(())
     }
 
     fn actor_is_dead(&self, index: usize) -> Result<bool> {

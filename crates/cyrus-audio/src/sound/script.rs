@@ -10,6 +10,7 @@ struct SoundFrame<'w, 's> {
     effects: Res<'w, SoundEffects>,
     settings: Option<Res<'w, SoundSettings>>,
     listener: Option<Res<'w, crate::AudioListener>>,
+    script_listener: ResMut<'w, crate::ScriptListener>,
     surfaces: Option<Res<'w, SurfaceSounds>>,
     actors: Query<
         'w,
@@ -40,6 +41,8 @@ impl SoundFrame<'_, '_> {
             effects,
             #[cfg(target_arch = "wasm32")]
             listener,
+            #[cfg(target_arch = "wasm32")]
+            script_listener,
             alive,
             #[cfg(target_arch = "wasm32")]
             sources,
@@ -87,7 +90,7 @@ impl SoundFrame<'_, '_> {
                                 effects,
                                 cue,
                                 owner,
-                                (settings, listener),
+                                (settings, listener, script_listener.0),
                             );
                         } else {
                             warn_once!(
@@ -114,6 +117,7 @@ impl SoundFrame<'_, '_> {
             effects,
             settings,
             listener,
+            script_listener,
             surfaces,
             actors,
             bindings,
@@ -213,7 +217,7 @@ impl SoundFrame<'_, '_> {
                                     effects,
                                     cue,
                                     owner,
-                                    (settings, listener),
+                                    (settings, listener, script_listener.0),
                                 );
                             } else {
                                 warn_once!(
@@ -333,7 +337,9 @@ impl SoundFrame<'_, '_> {
                                 .map(|(_, binding)| binding.actor.index)
                         );
                         let mixed = match position {
-                            Some(position) => positional_q8(*position, settings, listener, 0),
+                            Some(position) => {
+                                positional_q8(*position, settings, listener, script_listener.0, 0)
+                            }
                             None => positional(transform.translation(), &listener.0, distance, 0),
                         };
                         let (volume, pan) = match mixed {
@@ -438,6 +444,28 @@ pub(super) fn play_audio(world: &mut World) {
 }
 
 pub(super) fn execute_ordinary(world: &mut World, phase: cyrus_script::script::OrdinaryPhase) {
+    if phase == cyrus_script::script::OrdinaryPhase::ModelPresentation {
+        let pose = world
+            .get_resource::<cyrus_script::script::ScriptActors>()
+            .and_then(|actors| actors.current.as_ref())
+            .and_then(|logical| {
+                let camera = logical.camera()?;
+                // Frame preparation supplies interpolated view yaw until a later logical
+                // camera update publishes its replacement during the ordinary traversal.
+                let yaw = world
+                    .get_resource::<cyrus_script::script::CameraFrameState>()
+                    .filter(|frame| frame.generation() == Some(logical.generation()))
+                    .and_then(|frame| frame.published.as_ref())
+                    .map_or(camera.current.angles[1] as u16, |frame| {
+                        frame.view_angles[1]
+                    });
+                Some(cyrus_world::sound::ListenerPose {
+                    position: camera.current.position,
+                    yaw: cyrus_world::heading::wrap(yaw),
+                })
+            });
+        world.resource_mut::<crate::ScriptListener>().0 = pose;
+    }
     play_audio(world);
     if let Err(error) = world.run_system_cached_with(scoped_ordinary, phase) {
         world
@@ -468,6 +496,9 @@ impl std::fmt::Debug for ScopedSounds<'_, '_, '_> {
 }
 
 impl cyrus_world::sound::AmbientSoundDriver for ScopedSounds<'_, '_, '_> {
+    fn publish_listener(&self, pose: Option<cyrus_world::sound::ListenerPose>) {
+        self.frame.borrow_mut().script_listener.0 = pose;
+    }
     fn update(
         &self,
         request: cyrus_world::sound::AmbientSoundRequest,
@@ -490,6 +521,7 @@ impl cyrus_world::sound::AmbientSoundDriver for ScopedSounds<'_, '_, '_> {
             effects,
             settings,
             listener,
+            script_listener,
             sources,
             panned,
             channels,
@@ -501,7 +533,13 @@ impl cyrus_world::sound::AmbientSoundDriver for ScopedSounds<'_, '_, '_> {
         let listener = listener
             .as_deref()
             .ok_or("AmbientSound: listener unavailable")?;
-        let (volume, pan) = positional_q8(request.position, settings, listener, request.volume)?;
+        let (volume, pan) = positional_q8(
+            request.position,
+            settings,
+            listener,
+            script_listener.0,
+            request.volume,
+        )?;
         let mut mixer = Mixer {
             master: settings.master_volume,
             sources: sources.as_deref(),
@@ -520,6 +558,11 @@ pub struct ScriptSounds<'w, 's> {
 }
 
 impl ScriptSounds<'_, '_> {
+    /// Exact logical camera most recently published to the sample owner, before render propagation.
+    pub fn listener_pose(&self) -> Option<cyrus_world::sound::ListenerPose> {
+        self.frame.script_listener.0
+    }
+
     /// Maintain the engine-owned player torch effect (effect 25). The original
     /// uses one shared channel, refreshes its positional mix every frame, and
     /// stops it as soon as the logical torch counter reaches zero.
@@ -557,8 +600,14 @@ impl ScriptSounds<'_, '_> {
             .listener
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("torch sound: listener unavailable"))?;
-        let (volume, pan) = positional_q8(request.position, settings, listener, request.volume)
-            .map_err(|error| anyhow::anyhow!("torch sound: {error}"))?;
+        let (volume, pan) = positional_q8(
+            request.position,
+            settings,
+            listener,
+            self.frame.script_listener.0,
+            request.volume,
+        )
+        .map_err(|error| anyhow::anyhow!("torch sound: {error}"))?;
         let mut mixer = Mixer {
             master: settings.master_volume,
             sources: self.frame.sources.as_deref(),
@@ -906,8 +955,14 @@ impl ScriptSounds<'_, '_> {
             self.frame.listener.as_deref(),
             "RTX volume: listener unavailable",
         )?;
-        let (volume, _) =
-            positional_q8(position, settings, listener, 0).map_err(anyhow::Error::msg)?;
+        let (volume, _) = positional_q8(
+            position,
+            settings,
+            listener,
+            self.frame.script_listener.0,
+            0,
+        )
+        .map_err(anyhow::Error::msg)?;
         self.frame
             .channels
             .update_slot(sample, volume, settings.master_volume, 64)
@@ -934,8 +989,14 @@ impl ScriptSounds<'_, '_> {
             "AmbientRtx: listener unavailable",
         )?;
         let master = settings.master_volume;
-        let (volume, pan) = positional_q8(position, settings, listener, volume_offset)
-            .map_err(anyhow::Error::msg)?;
+        let (volume, pan) = positional_q8(
+            position,
+            settings,
+            listener,
+            self.frame.script_listener.0,
+            volume_offset,
+        )
+        .map_err(anyhow::Error::msg)?;
         if killed || volume == 0 {
             cyrus_assets::sound::DialogueSamples::stop(self, sample)?;
             return Ok(false);
@@ -1321,6 +1382,13 @@ impl std::fmt::Debug for DialogueAmbient<'_, '_, '_, '_> {
 }
 
 impl cyrus_world::sound::AmbientSoundDriver for DialogueAmbient<'_, '_, '_, '_> {
+    fn publish_listener(&self, pose: Option<cyrus_world::sound::ListenerPose>) {
+        self.source
+            .state
+            .borrow_mut()
+            .0
+            .with_driver(self.generation, |driver, _| driver.publish_listener(pose));
+    }
     fn update(
         &self,
         request: cyrus_world::sound::AmbientSoundRequest,
@@ -1647,6 +1715,7 @@ mod dialogue_tests {
         assert!(!game.reserve_walk_node(second, 0, 0).unwrap());
         let mut audio = World::new();
         audio.init_resource::<SoundEffects>();
+        audio.init_resource::<crate::ScriptListener>();
         let mut channels = Channels::default();
         channels.samples.start(0, None, None).unwrap().unwrap();
         channels.samples.start(1, None, None).unwrap().unwrap();
@@ -1699,6 +1768,7 @@ mod dialogue_tests {
         assert!(game.reserve_walk_node(first, 0, 0).unwrap());
         let mut audio = World::new();
         audio.init_resource::<SoundEffects>();
+        audio.init_resource::<crate::ScriptListener>();
         let mut channels = Channels::default();
         channels.samples.start(0, None, None).unwrap().unwrap();
         channels.samples.start(1, None, None).unwrap().unwrap();
@@ -1745,6 +1815,7 @@ mod dialogue_tests {
         let mut game = maintenance_world(false);
         let mut audio = World::new();
         audio.init_resource::<SoundEffects>();
+        audio.init_resource::<crate::ScriptListener>();
         let mut channels = Channels::default();
         channels.samples.start(0, None, None).unwrap().unwrap();
         audio.insert_resource(channels);
@@ -1777,6 +1848,7 @@ mod dialogue_tests {
         };
         let mut audio = World::new();
         audio.init_resource::<SoundEffects>();
+        audio.init_resource::<crate::ScriptListener>();
         let pending = vec![
             PendingCue::Flat(None, (0, 0, 0)),
             PendingCue::Positional(
@@ -1883,6 +1955,7 @@ mod dialogue_tests {
     fn dialogue_feedback_stops_the_shared_slot_before_deferred_commands() {
         let mut world = World::new();
         world.init_resource::<SoundEffects>();
+        world.init_resource::<crate::ScriptListener>();
         world.init_resource::<Observation>();
         let mut channels = Channels::default();
         assert_eq!(
@@ -1942,6 +2015,7 @@ mod dialogue_tests {
     fn dialogue_playback_resolves_logical_speaker_and_stops_shared_sample() {
         let mut world = World::new();
         world.init_resource::<SoundEffects>();
+        world.init_resource::<crate::ScriptListener>();
         world.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
         world.insert_resource(crate::AudioListener(GlobalTransform::default()));
         let mut channels = Channels::default();
@@ -1964,6 +2038,7 @@ mod dialogue_tests {
     fn ambient_rtx_stops_a_killed_receivers_clip_and_ends_once_it_has_finished() {
         let mut world = World::new();
         world.init_resource::<SoundEffects>();
+        world.init_resource::<crate::ScriptListener>();
         world.init_resource::<AmbientRtxRuns>();
         world.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
         world.insert_resource(crate::AudioListener(GlobalTransform::default()));
@@ -2058,6 +2133,7 @@ mod dialogue_tests {
         use cyrus_assets::sound::{DialogueEntry, DialogueVoice};
         let mut world = World::new();
         world.init_resource::<SoundEffects>();
+        world.init_resource::<crate::ScriptListener>();
         world.init_resource::<Channels>();
         world.init_resource::<Starts>();
         world.insert_resource(SoundSettings::parse(""));
@@ -2451,6 +2527,7 @@ mod dialogue_tests {
         use cyrus_assets::sound::{DialogueEntry, DialogueVoice};
         let mut world = World::new();
         world.init_resource::<SoundEffects>();
+        world.init_resource::<crate::ScriptListener>();
         world.init_resource::<Channels>();
         world.insert_resource(SoundSettings::parse(""));
         let mut sources = Assets::<AudioSource>::default();

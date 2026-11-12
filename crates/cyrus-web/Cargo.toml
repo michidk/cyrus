@@ -36,4 +36,5 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "History", "Location", "Storage", "Document", "Element", "UrlSearchParams"] }
 
 [dev-dependencies]
+cyrus-soup.workspace = true
 cyrus-collision.workspace = true

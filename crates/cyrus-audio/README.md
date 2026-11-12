@@ -391,3 +391,27 @@ previous stage state before observing the remaining phases. Every new PCM result
 is checkpointed only after executed bytecode identity is verified. The bounded
 replay keeps the production caller's stage progression; it does not treat host
 elapsed time as a game update count.
+
+Verified: synchronous script sound services retain exact signed-Q8 camera position
+and yaw separately from the rendered transform. Camera-controller and successful
+camera-native publication reach the sample owner before subsequent synchronous
+sound work; positional starts and ambient refreshes use that publication. Model-presentation
+phase entry replaces or clears the previous world's listener before cue draining.
+The fallback transform remains available to standalone hosts without a logical
+camera. This follows preservation's [listener contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#listener).
+
+The `cyrus-web --example listener_publication` integration probe consumes the explicitly exported local
+`positional_emitters` fixture and supplies diagnostic player/camera roles. Its
+seven stages run the public cameraController native hook, camera glide APIs and script sound services
+against the installed emitter/settings/PCM, retaining logical/render poses in the
+trace and checking the sample owner's publication before playback. The generic
+browser/native drivers accept an optional stage-count argument (default thirteen);
+use seven for this probe. The recoverable browser launcher accepts `--stages 7`.
+
+The native driver accepts an optional executable path after its stage count.
+With that path it binds saved observations to the executable SHA256, validates
+retained levels with the same oracle, and replays public stage state before
+capturing missing phases. A different executable or changed stage state rejects
+the checkpoint. The listener fixture moves the initialized player through public
+placement restore before invoking cameraController; it does not initialize the
+player twice.

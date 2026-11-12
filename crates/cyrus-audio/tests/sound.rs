@@ -830,3 +830,87 @@ fn public_global_stop_cancels_waiting_gameplay_cues_and_allows_later_starts() {
     app.update();
     assert_eq!(count(&mut app), 0);
 }
+
+#[test]
+fn synchronous_listener_publication_overrides_a_stale_render_camera_before_start() {
+    use bevy::prelude::*;
+    use cyrus_audio::{
+        AudioListener, ScriptListener,
+        sound::{Effect, Panned, ScriptSounds, SoundEffects, SoundPlugin},
+    };
+    use cyrus_world::sound::{ListenerPose, ScriptSound, SoundCue};
+    use rgpre::import::sfx::AudioType;
+    fn start(mut sounds: ScriptSounds) {
+        sounds.with_driver(Some(17), |driver, emit| {
+            driver.publish_listener(Some(ListenerPose {
+                position: [0, 0, 0],
+                yaw: 512,
+            }));
+            emit(SoundCue::Script {
+                generation: 17,
+                index: 0,
+                sound: ScriptSound::Positional {
+                    effect: 0,
+                    volume: 0,
+                    rate_offset_hz: 0,
+                    position: [512 * 256, 0, 512 * 256],
+                    start_index: None,
+                },
+            })
+            .unwrap();
+        });
+    }
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
+        .init_asset::<AudioSource>()
+        .init_asset::<Panned>()
+        .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
+        .insert_resource(SoundSettings::parse(
+            "[system]\nsound_distance=64\nvolume=255\n",
+        ))
+        // The previous render pose is far outside the attenuation radius.
+        .insert_resource(AudioListener(GlobalTransform::from_translation(
+            Vec3::splat(10000.0),
+        )))
+        .add_systems(Update, start.before(cyrus_audio::PlayCues));
+    let audio = app
+        .world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .add(AudioSource {
+            bytes: pcm_wav(AudioType::Mono16, 22050, &[0, 64].repeat(32))
+                .unwrap()
+                .into(),
+        });
+    app.insert_resource(SoundEffects(vec![Some(Effect {
+        audio,
+        bits_per_sample: 16,
+        base_volume: 64,
+        sample_rate: 22050,
+        repetitions: cyrus_audio::sound::SampleRepetitions::FOREVER,
+    })]));
+    app.update();
+    assert_eq!(app.world().resource::<ScriptListener>().0.unwrap().yaw, 512);
+    let handle = app
+        .world_mut()
+        .query::<&bevy::audio::AudioPlayer<Panned>>()
+        .single(app.world())
+        .unwrap()
+        .0
+        .clone();
+    let pcm: Vec<_> = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&handle)
+        .unwrap()
+        .decoder()
+        .take(2)
+        .collect();
+    assert!(
+        pcm[0] > 0.0 && pcm[1] > 0.0,
+        "stale camera incorrectly muted published listener: {pcm:?}"
+    );
+    assert!(
+        (pcm[0] / pcm[1] - 2.0).abs() < 0.0001,
+        "yaw must come from current publication: {pcm:?}"
+    );
+}

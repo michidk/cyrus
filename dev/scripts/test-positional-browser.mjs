@@ -5,8 +5,10 @@ import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {connectCdp} from './capture-cdp.mjs';
-const [endpoint, page, wasmFile, output] = process.argv.slice(2);
+const [endpoint, page, wasmFile, output, count="13"] = process.argv.slice(2);
 assert(endpoint && page && wasmFile && output, 'usage: node dev/scripts/test-positional-browser.mjs CDP_URL PAGE_URL WASM_FILE OUTPUT_DIR');
+const stages=Number(count);
+assert(Number.isInteger(stages)&&stages>0&&stages<=13,"invalid stage count");
 mkdirSync(output,{recursive:true});
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const expectedWasm = digest(readFileSync(wasmFile));
@@ -16,7 +18,7 @@ const checkpoint = `${output}/result.json`;
 const saved = existsSync(checkpoint) ? JSON.parse(readFileSync(checkpoint, 'utf8')) : null;
 if (saved) {
   assert.deepEqual(saved.executedWasm, [expectedWasm], 'checkpoint WASM provenance differs');
-  assert(saved.results.length <= 13, 'invalid checkpoint length');
+  assert(saved.results.length <= stages, 'invalid checkpoint length');
   for (const [phase, stage] of saved.results.entries()) {
     assert.equal(stage.phase, phase);
     assert(stage.pcm.frames >= 8192, 'checkpoint lacks complete PCM observation');
@@ -55,7 +57,7 @@ try {
   `});
   await cdp.call('Page.navigate',{url:page});
   const deadline = performance.now()+85000;
-  while (phase < 13) {
+  while (phase < stages) {
     assert.equal(failures.length,0,failures.map(String).join('\n'));
     assert.equal(runtimeErrors.length,0,JSON.stringify(runtimeErrors));
     assert(performance.now()<deadline, 'bounded SOUP output acceptance expired');
