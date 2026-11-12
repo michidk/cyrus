@@ -225,10 +225,6 @@ impl ScriptWorld {
                     .combat
                     .as_ref()
                     .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
-            ensure!(
-                world.actors[id.index].attributes[Attribute::HoldingWeapon] == 0,
-                "player controller swimmer actor unsupported"
-            );
             let action = select_sheathed_action(
                 input.held,
                 SheathedControllerState {

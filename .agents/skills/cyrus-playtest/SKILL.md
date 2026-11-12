@@ -33,8 +33,9 @@ when explicitly testing the picker or its recovery flow.
 ## Prove the loop works
 
 `just smoke-mcp` starts the game headless and drives it through the MCP
-server over stdio (tool list, state, a key press suppressed while the headless loader has no ready rendered world,
-leaving the player stationary, a fidelity switch, quit). Run it after touching the control server, the MCP
+server over stdio (tool list, loaded metadata, held/released key sampling after export,
+zero ordinary updates and a stationary player without a rendered world, a fidelity switch, quit).
+Run it after touching the control server, the MCP
 server or the player. Scenes in the browser build accept a stem (`START`) or
 a WORLD.INI index (`?scene=27`).
 

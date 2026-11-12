@@ -8,6 +8,12 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
+The held walk modifier selects armed walking; the retained walk-mode toggle does
+not change armed dispatch. This follows preservation's
+[controller dispatch](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-controller-dispatch)
+and [weapon predicate](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playerarmed).
+
 Verified: the base selected-player controller rebuilds banked orientations, following
 preservation's [player orientation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#upright-actor-orientation).
 The transition back to zero bank also rebuilds so the last banked matrix cannot retain
@@ -823,3 +829,9 @@ world runs. Presentation traversal resets while the skip-input latch is retained
 This prevents a later skip edge from stopping an unrelated replacement voice.
 Periodic maintenance retains its separate active-record cleanup contract. See
 preservation's [world teardown rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+Verified: selected-player turn queries return zero without a current model, including
+after `HideMe`, before reading spatial state. `PlayerMovementSpeed` returns zero
+without animation state and otherwise reads the current group independently of
+model presence, following preservation
+[player motion queries](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#player-movement-turn-speed-arctangent-and-location-distance-queries).

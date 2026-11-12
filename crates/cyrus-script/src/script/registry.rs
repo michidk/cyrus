@@ -8126,8 +8126,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.inputs,
             )?));
         }
-        // PlayerTurned, PlayerTurnedDirection and PlayerMovementSpeed read the selected player; the
-        // original also returns zero for an actor without its model handle, assumed present here.
+        // Selected-player angle queries require a current model; movement speed only
+        // requires animation state (preservation SOUP.md, player motion queries).
         if [
             Native::PlayerTurned,
             Native::PlayerTurnedDirection,
@@ -8142,16 +8142,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let index = self.registry.resolve(player)?;
             if function == Native::PlayerMovementSpeed {
                 let actor = &self.registry.actors[index];
-                let animation = actor
+                let value = actor
                     .animation
                     .as_ref()
-                    .context("PlayerMovementSpeed: selected-player animation unavailable")?;
-                let value = animation
-                    .playback
-                    .current_group()
+                    .and_then(|animation| animation.playback.current_group())
                     .and_then(super::player_status::movement_speed_attribute)
                     .map_or(0, |attribute| i32::from(actor.attributes[attribute]));
                 return Ok(CallResult::Complete(value));
+            }
+            if self.registry.actors[index].model.current.is_none() {
+                return Ok(CallResult::Complete(0));
             }
             let spatial = self
                 .registry
