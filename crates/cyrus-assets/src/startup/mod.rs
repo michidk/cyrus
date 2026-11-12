@@ -1,10 +1,9 @@
 //! Shared startup preparation and native streaming cinematic input.
-mod dos_raster;
 mod export;
 pub(crate) mod menu_export;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod movie_native;
-mod raster;
+mod splash_data;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use export::export_startup;
 pub(crate) use export::prepare_startup;

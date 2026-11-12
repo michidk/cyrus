@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Installed positional emitter PCM acceptance</title>
+<p>Controlled ISLAND attachment-family audio acceptance. Supply an explicitly exported local fixture.</p>
+<script type="module">
+import init from './positional_emitters.js';
+if (!isSecureContext || !globalThis.AudioWorkletNode) throw Error('positional acceptance requires a secure context with AudioWorklet');
+const fixture = await (await fetch('./fixture.json')).text();
+globalThis.positionalFixture = () => fixture;
+await init();
+</script>

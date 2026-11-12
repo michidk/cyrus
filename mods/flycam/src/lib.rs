@@ -1,4 +1,4 @@
-//! F11 toggles a free first-person camera. While it flies, the host suppresses player input.
+//! Backquote (`) toggles a free first-person camera. While it flies, the host suppresses player input.
 //! A line in the corner shows whether it is on.
 use cyrus_mod_sdk::{Cx, Input, Key, Mod, Persist, Pose, Quat, Vec3};
 
@@ -84,7 +84,7 @@ impl Mod for Flycam {
 
     fn frame(cx: &Cx) {
         let mut fly: Option<Fly> = cx.memory.load(FLIGHT);
-        if cx.input.tapped(Key::F11) {
+        if cx.input.tapped(Key::BACKQUOTE) {
             fly = match fly {
                 Some(_) => None,
                 None => cx.camera.pose().map(Fly::from_pose),
@@ -92,12 +92,12 @@ impl Mod for Flycam {
         }
         match fly.as_mut() {
             Some(fly) => {
-                cx.hud.show("Fly camera: ON (F11)");
+                cx.hud.show("Fly camera: ON (`)");
                 // Scene units per second; the manifest's `speed` setting.
                 fly.steer(&cx.input, cx.settings.number("speed"));
                 cx.camera.drive(fly.pose());
             }
-            None => cx.hud.show("Fly camera: OFF (F11)"),
+            None => cx.hud.show("Fly camera: OFF (`)"),
         }
         cx.memory.save(FLIGHT, fly.as_ref());
     }

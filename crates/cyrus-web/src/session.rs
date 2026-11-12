@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use bevy::{
     log::error,
-    prelude::{App, AssetServer, Mut, PreUpdate, Resource, World},
+    prelude::{App, AssetServer, IntoScheduleConfigs, Mut, PreUpdate, Resource, World},
 };
 use cyrus_session::{RuntimeSessionSnapshot, SessionBoundary, SessionBoundaryResult};
 use serde_json::{Value, json};
@@ -54,7 +54,7 @@ enum IoResult {
 }
 enum SaveTarget {
     Named(String),
-    Slot(SlotRequest, u16, Value),
+    Slot(SlotRequest, Value),
 }
 type Io = Mutex<mpsc::Receiver<Result<IoResult>>>;
 enum Phase {
@@ -83,7 +83,7 @@ pub fn register(app: &mut App, diagnostics: bool) {
     })
     .init_resource::<cyrus_startup::LastGameLoader>()
     .init_resource::<cyrus_startup::SaveLoadHost>()
-    .add_systems(PreUpdate, update);
+    .add_systems(PreUpdate, update.after(cyrus_console::ConsoleInput));
 }
 
 fn task(future: impl Future<Output = Result<IoResult>> + 'static) -> Io {
@@ -181,13 +181,21 @@ impl Host {
                     .get_resource::<cyrus_startup::GameplayThumbnail>()
                     .and_then(|capture| capture.0.clone());
                 if let Some(target) = key {
+                    // Capture admission precedes the save writer. An unsupported live
+                    // checkpoint must not retain a destination that was never written.
+                    // Once admitted, selection still survives a later writer failure.
+                    let slot = match &target {
+                        SaveTarget::Slot(_, plan) => Some(retain_selection(world, plan)?),
+                        SaveTarget::Named(_) => None,
+                    };
                     Ok(Some(Phase::Io(task(async move {
                         match target {
                             SaveTarget::Named(key) => {
                                 session_storage::write(DATABASE, &key, &snapshot).await?;
                                 Ok(IoResult::Written)
                             }
-                            SaveTarget::Slot(operation, slot, plan) => {
+                            SaveTarget::Slot(operation, plan) => {
+                                let slot = slot.context("slot save selection absent")?;
                                 let document = String::from_utf8(snapshot.encode_document()?)?;
                                 Ok(IoResult::Response(
                                     storage::publish(&operation, slot, &plan, &document, thumbnail)
@@ -212,10 +220,9 @@ impl Host {
                 match received {
                     Ok(result) => match result? {
                         IoResult::Planned(operation, value) => {
-                            let slot = retain_selection(world, &value)?;
                             world.resource_mut::<SessionBoundary>().capture_live()?;
                             Ok(Some(Phase::Capture(Some(SaveTarget::Slot(
-                                operation, slot, value,
+                                operation, value,
                             )))))
                         }
                         IoResult::SlotRead(value) => {
@@ -287,15 +294,9 @@ impl Host {
 
 fn update(world: &mut World) {
     world.resource_scope(|world, mut host: Mut<Host>| {
-        let quick_save = world
-            .get_resource::<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>()
-            .is_some_and(|keys| keys.just_pressed(bevy::prelude::KeyCode::F9));
-        if quick_save
+        if cyrus_script::quick_save_pressed(world)
             && host.phase.is_none()
             && host.result.is_none()
-            && world
-                .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
-                .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
             && world.resource::<SessionBoundary>().is_idle()
         {
             let operation = SlotRequest::QuickSave;

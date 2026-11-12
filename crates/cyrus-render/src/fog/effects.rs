@@ -1,5 +1,7 @@
 //! Environmental pool presentation and retained draw cadence.
 mod geometry;
+mod observation;
+pub use observation::inspect_effect_geometry;
 mod timing;
 pub(super) use timing::EffectDrawClock;
 
@@ -77,6 +79,7 @@ fn bind(
     environments: Res<Assets<Environment>>,
     prepared: Option<Res<PreparedWorld>>,
     ready: Option<Res<crate::ReadyScene>>,
+    active: Option<Res<crate::environment::ActiveEnvironment>>,
     animation_sources: (
         Option<Res<cyrus_world::animation::AnimationRequest>>,
         Option<Res<Assets<cyrus_assets::animation::Animations>>>,
@@ -98,6 +101,7 @@ fn bind(
                 world,
                 prepared,
                 &request,
+                active.as_deref(),
                 animation_sources.0.as_deref(),
                 animation_sources.1.as_deref(),
             ) && ready
@@ -811,6 +815,26 @@ mod tests {
             )?,
             before
         );
+        // The public probe must inspect the actual entity bindings, not retained packets alone.
+        let observed = inspect_effect_geometry(app.world_mut())?;
+        assert_eq!(observed["slots"][0]["admitted"], true);
+        assert_eq!(
+            observed["slots"][0]["vertices"].as_array().unwrap().len(),
+            4
+        );
+        assert_eq!(observed["entities"].as_array().unwrap().len(), capacity);
+        let entity = app.world().resource::<LiveEffects>().slots[0].entity;
+        let mesh = app.world().resource::<LiveEffects>().slots[0].mesh.clone();
+        app.world_mut()
+            .entity_mut(entity)
+            .insert(Mesh3d(Handle::default()));
+        assert!(
+            inspect_effect_geometry(app.world_mut())
+                .unwrap_err()
+                .to_string()
+                .contains("binding differs")
+        );
+        app.world_mut().entity_mut(entity).insert(Mesh3d(mesh));
         use cyrus_script::script::{CameraDrive, CameraFrameState, PublishedCamera, ScriptView};
         let mut frame = CameraFrameState::default();
         frame.published = Some(PublishedCamera {

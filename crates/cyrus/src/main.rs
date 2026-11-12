@@ -267,12 +267,11 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             args.launch.movie,
             args.launch.skip_movies,
         ));
-        let mut presentation = if args.launch.skip_startup || direct {
+        let presentation = if args.launch.skip_startup || direct {
             cyrus_startup::StartupPresentation::without_splash()
         } else {
             cyrus_startup::StartupPresentation::default()
         };
-        presentation.splash = cyrus_startup::Splash::from_option(args.launch.splash.as_deref());
         app.insert_resource(presentation);
         if !startup {
             app.insert_resource(cyrus_startup::StartGame::default());

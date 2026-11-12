@@ -29,7 +29,7 @@ class StartupCapture(unittest.TestCase):
 case "$*" in
   'type rgfx.exe') printf launch >> "$CAPTURE_TEST/log" ;;
   'key Return') touch "$CAPTURE_TEST/launched" ;;
-  *) printf recorder >> "$CAPTURE_TEST/log" ;;
+  *) printf '%s\\n' "$*" >> "$CAPTURE_TEST/keys"; printf recorder >> "$CAPTURE_TEST/log" ;;
 esac
 """,
             }.items():
@@ -50,6 +50,13 @@ esac
             self.assertEqual(timeline["start"]["frame"], 0)
             self.assertEqual(timeline["stop"]["frame"], 1)
             self.assertEqual(timeline["stop"]["reason"], "world-progress")
+            chords = (root / "keys").read_text().splitlines()
+            self.assertEqual(chords, [
+                "keydown Control_L keydown Alt_L key w keyup Alt_L keyup Control_L",
+            ] * 2)
+            launcher = INNER.with_name("original-audio-capture.sh").read_text()
+            self.assertIn('dosbox_host_args=(-set "dosbox hostkey=ctrlalt")', launcher)
+            self.assertIn('cyrus-retro:dev "${dosbox_host_args[@]}" >', launcher)
 
 
 if __name__ == "__main__":

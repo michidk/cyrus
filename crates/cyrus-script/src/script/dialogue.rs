@@ -303,6 +303,17 @@ impl DialogueState {
         }
     }
 
+    /// World teardown clears every record, including inactive records whose initial
+    /// sample field still names slot zero. Preserve the skip latch and lifetime
+    /// words, but reset presentation traversal before the replacement world runs.
+    /// Follows preservation's engine/sound.md world teardown contract.
+    pub fn clear_world_lines(&mut self) {
+        for index in 0..self.records.len() {
+            self.clear_line(Some(index));
+        }
+        self.presented = None;
+    }
+
     /// Line selected by the most recent record update, with its original slot.
     /// Rendering must not advance lifetime or choose a different active record.
     pub fn presented_line(&self) -> Option<(usize, &str)> {

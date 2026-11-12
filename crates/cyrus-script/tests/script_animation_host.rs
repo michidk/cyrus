@@ -1028,25 +1028,30 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
             param_count: values.len() as u8,
             kind: CallKind::Function,
         });
-        operations.push(Operation::Assign {
-            destination: Place::Flag {
-                index: index as u16,
-            },
-            formula: Formula {
-                first: Value::Call {
-                    call: Box::new(Call {
-                        function_id,
-                        kind: CallKind::Function,
-                        target: Object::Named { string: 0 },
-                        function: *name,
-                        arguments: values
-                            .iter()
-                            .map(|value| Value::Integer { value: *value })
-                            .collect(),
-                    }),
+        let call = Call {
+            function_id,
+            kind: CallKind::Function,
+            target: Object::Named { string: 0 },
+            function: *name,
+            arguments: values
+                .iter()
+                .map(|value| Value::Integer { value: *value })
+                .collect(),
+        };
+        operations.push(if *name == Native::StopAllSounds {
+            Operation::ObjectCall { call }
+        } else {
+            Operation::Assign {
+                destination: Place::Flag {
+                    index: index as u16,
                 },
-                rest: vec![],
-            },
+                formula: Formula {
+                    first: Value::ObjectCall {
+                        call: Box::new(call),
+                    },
+                    rest: vec![],
+                },
+            }
         });
     }
     operations.push(Operation::End { target: 0 });
@@ -1081,7 +1086,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
             100,
         )
         .unwrap();
-    assert_eq!(world.flags(), [0, 0, 0, 0, 0]);
+    assert_eq!(world.flags(), [0, 0, 0, 0, 99]);
     assert_eq!(
         events,
         vec![
@@ -1111,6 +1116,74 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
             (receiver, ScriptSound::StopAll),
         ]
     );
+}
+
+#[test]
+fn stop_all_sounds_numeric_consumption_fails_after_one_effect() {
+    for target in [Object::Me, Object::Named { string: 0 }] {
+        let call = Call {
+            function_id: 3,
+            kind: CallKind::Function,
+            target: target.clone(),
+            function: Native::StopAllSounds,
+            arguments: vec![],
+        };
+        let mut data = scripts(vec![
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: if target == Object::Me {
+                        Value::Call {
+                            call: Box::new(call),
+                        }
+                    } else {
+                        Value::ObjectCall {
+                            call: Box::new(call),
+                        }
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: Native::StopAllSounds,
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 18).unwrap();
+        let caller = world.id(0).unwrap();
+        let receiver = if target == Object::Me {
+            caller
+        } else {
+            world.id(1).unwrap()
+        };
+        let initial = world.flags().to_vec();
+        let mut events = Vec::new();
+        for attempt in 0..2 {
+            let outcome = world.advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                Default::default(),
+                Some(&mut |id, sound| {
+                    events.push((id, sound));
+                    Ok(())
+                }),
+                None,
+                100,
+            );
+            assert!(
+                outcome.is_err(),
+                "target={target:?}, attempt={attempt}, events={events:?}, flags={:?}",
+                world.flags()
+            );
+            let error = outcome.unwrap_err().to_string();
+            assert!(error.contains("has no supported numeric result"), "{error}");
+            assert_eq!(world.flags(), initial);
+        }
+        assert_eq!(events, [(receiver, ScriptSound::StopAll)]);
+    }
 }
 
 fn activation_world(function: Native) -> (ScriptWorld, cyrus_script::script::ActivationInputs) {
@@ -7363,4 +7436,78 @@ fn overlapping_pickups_retain_one_owner_and_removed_records_cannot_restart_after
     assert_eq!(hud.inventory(None).unwrap().counts[&4], 2);
     assert!(restored.actors()[1].control_state().unwrap().killed);
     assert_eq!(restored.activation().owner(), None);
+}
+
+#[test]
+fn positional_sound_uses_live_slave_attribute_instead_of_retained_family_membership() {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Function,
+                target: Object::Me,
+                function: Native::Sound,
+                arguments: vec![
+                    Value::Integer { value: 1 },
+                    Value::Integer { value: 0 },
+                    Value::Integer { value: 0 },
+                ],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: Native::Sound,
+        param_count: 3,
+        kind: CallKind::Function,
+    });
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
+    data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Master] = 1;
+    data.instances[0].map_position = [110, 0, 0];
+    data.instances[1].map_position = [100, 0, 0];
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    let id = world.id(0).unwrap();
+    assert!(world.spatial(id).unwrap().parent.is_some());
+    for slave in [1, 0, 1] {
+        world
+            .set_actor_attribute(id.index, Attribute::Slave as usize, slave)
+            .unwrap();
+        let expected = if slave != 0 {
+            world.spatial(id).unwrap().effective.unwrap().position
+        } else {
+            world.spatial(id).unwrap().local.position
+        };
+        let mut events = Vec::new();
+        world
+            .advance(
+                id,
+                BODY,
+                cyrus_script::script::ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, sound| {
+                    events.push(sound);
+                    Ok(())
+                }),
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            events,
+            [ScriptSound::Positional {
+                effect: 1,
+                volume: 0,
+                rate_offset_hz: 0,
+                position: expected,
+                start_index: None
+            }],
+            "slave={slave}"
+        );
+    }
 }

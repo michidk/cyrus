@@ -124,6 +124,18 @@ impl LastGameConfirmation {
         )
     }
 
+    pub(super) fn paint_information(
+        artwork: &ConfirmationArtwork,
+        prompt: &str,
+    ) -> anyhow::Result<RgbaImage> {
+        Self::displayed(0, 0).paint_dialog(
+            artwork,
+            &RgbaImage::new(640, 480),
+            &format!("{prompt}\n\nOK"),
+            false,
+        )
+    }
+
     fn paint_dialog(
         &self,
         artwork: &ConfirmationArtwork,
@@ -200,7 +212,7 @@ impl LastGameConfirmation {
     }
 }
 
-fn blend(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
+pub(super) fn blend(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
     if !(0..640).contains(&x) || !(0..480).contains(&y) {
         return;
     }

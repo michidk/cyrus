@@ -80,9 +80,10 @@ fn despawn(
     mut commands: Commands,
     players: Query<Entity, With<Player>>,
     pause: Option<Res<cyrus_game::PauseBookEntry>>,
+    overlay: Option<Res<cyrus_game::GameplayOverlay>>,
 ) {
     // A book opened from gameplay keeps the paused world, and a save made there captures its player.
-    if pause.is_some() {
+    if pause.is_some() || overlay.is_some() {
         return;
     }
     for player in &players {
@@ -135,5 +136,19 @@ mod entry_tests {
         app.update();
 
         assert!(app.world().get_entity(player).is_ok());
+    }
+    #[test]
+    fn information_screens_retain_the_player_and_pose() {
+        for overlay in [
+            cyrus_game::GameplayOverlay::Version,
+            cyrus_game::GameplayOverlay::Credits,
+        ] {
+            let mut app = App::new();
+            let pose = Transform::from_xyz(2.0, 3.0, 4.0);
+            let player = app.world_mut().spawn((Player, pose)).id();
+            app.insert_resource(overlay).add_systems(Update, despawn);
+            app.update();
+            assert_eq!(app.world().get::<Transform>(player), Some(&pose));
+        }
     }
 }

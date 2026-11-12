@@ -2,6 +2,7 @@
 mod clipping;
 mod compositing;
 mod effects;
+pub use effects::inspect_effect_geometry;
 pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;
@@ -22,6 +23,7 @@ use crate::camera::ViewCamera;
 use crate::environment::EnvironmentRequest;
 use bevy::{
     asset::embedded_asset,
+    camera::visibility::RenderLayers,
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
     render::render_resource::{AsBindGroup, ShaderType},
@@ -68,6 +70,7 @@ fn owns_prepared_environment(
     world: &cyrus_script::script::ScriptWorld,
     prepared: &cyrus_world::lifecycle::PreparedWorld,
     environment: &EnvironmentRequest,
+    active: Option<&crate::environment::ActiveEnvironment>,
     request: Option<&cyrus_world::animation::AnimationRequest>,
     animations: Option<&Assets<cyrus_assets::animation::Animations>>,
 ) -> bool {
@@ -76,7 +79,11 @@ fn owns_prepared_environment(
         return false;
     };
     prepared.world.is_none_or(|id| id == world.world)
-        && environment.0.path() == Some(&prepared.environment_path)
+        && (environment.0.path() == Some(&prepared.environment_path)
+            || active.is_some_and(|active| {
+                active.source == Some(environment.0.id())
+                    && active.restored_path.as_ref() == Some(&prepared.environment_path)
+            }))
         && request.0 == prepared.animations
         && animations.world == world.world
         && animations.metadata["script_content_id"].as_str() == Some(world.content_id.as_str())
@@ -483,6 +490,7 @@ fn apply_scene_fog(
             Entity,
             &MeshMaterial3d<StandardMaterial>,
             &mut Mesh3d,
+            Option<&RenderLayers>,
             Option<&bevy::gltf::GltfExtras>,
             Option<&bevy::gltf::GltfMaterialExtras>,
             Option<&bevy::gltf::GltfMaterialName>,
@@ -515,6 +523,7 @@ fn apply_scene_fog(
             Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
             Option<Res<cyrus_world::animation::AnimationRequest>>,
             Option<Res<Assets<cyrus_assets::animation::Animations>>>,
+            Option<Res<crate::environment::ActiveEnvironment>>,
         ),
         crate::lighting::runtime::LightView,
     ),
@@ -552,6 +561,7 @@ fn apply_scene_fog(
                 current,
                 prepared,
                 &request,
+                light_owners.4.as_deref(),
                 light_owners.2.as_deref(),
                 light_owners.3.as_deref(),
             )
@@ -643,7 +653,11 @@ fn apply_scene_fog(
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
-    for (entity, handle, mut mesh, extras, material_extras, material_name) in &mut entities {
+    for (entity, handle, mut mesh, layers, extras, material_extras, material_name) in &mut entities
+    {
+        if layers.is_some_and(|layers| !layers.intersects(&RenderLayers::default())) {
+            continue;
+        }
         if std::iter::once(entity)
             .chain(parents.iter_ancestors(entity))
             .any(|node| staged.contains(node))
@@ -1484,6 +1498,51 @@ mod tests {
             .clone();
         assert_eq!(first.image, format!("{:?}", bound_image.id()));
 
+        // Public material inspection must retain a validated private restored environment.
+        let saved_environment = serde_json::to_vec(
+            app.world()
+                .resource::<Assets<Environment>>()
+                .get(&app.world().resource::<EnvironmentRequest>().0)
+                .unwrap(),
+        )?;
+        let original_request = app.world().resource::<EnvironmentRequest>().0.clone();
+        let private = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(serde_json::from_slice::<Environment>(&saved_environment)?);
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = private.clone();
+        assert!(
+            observe(&app).is_err(),
+            "unvalidated private asset must not acquire ownership"
+        );
+        app.insert_resource(crate::environment::ActiveEnvironment {
+            source: Some(private.id()),
+            sky: None,
+            restored_path: Some("MGUILD.environment".into()),
+        });
+        assert_eq!(
+            observe(&app)?.rows_after_lookup_256,
+            first.rows_after_lookup_256
+        );
+        app.world_mut()
+            .resource_mut::<crate::environment::ActiveEnvironment>()
+            .source = None;
+        assert!(
+            observe(&app).is_err(),
+            "retired environment cannot acquire ownership"
+        );
+        app.world_mut()
+            .resource_mut::<crate::environment::ActiveEnvironment>()
+            .source = Some(private.id());
+        app.world_mut()
+            .resource_mut::<crate::environment::ActiveEnvironment>()
+            .restored_path = Some("START.environment".into());
+        assert!(
+            observe(&app).is_err(),
+            "another world source cannot acquire ownership"
+        );
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = original_request;
+
         // A material with valid bytes is insufficient while its owner is staged.
         app.world_mut()
             .entity_mut(scene_root)
@@ -1680,6 +1739,15 @@ mod tests {
         let extras = bevy::gltf::GltfExtras {
             value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
         };
+        let book_mesh = app
+            .world_mut()
+            .spawn((
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                RenderLayers::layer(5),
+                Visibility::Inherited,
+            ))
+            .id();
         let first = app
             .world_mut()
             .spawn((
@@ -1774,6 +1842,16 @@ mod tests {
                 .is_none()
         );
 
+        assert!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(book_mesh)
+                .is_some()
+        );
+        assert!(app.world().get::<RejectedLighting>(book_mesh).is_none());
+        assert_eq!(
+            app.world().get::<Visibility>(book_mesh),
+            Some(&Visibility::Inherited)
+        );
         assert!(validate_scene_materials(app.world(), &[staged_root]).is_err());
         let environments = app
             .world_mut()

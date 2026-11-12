@@ -17,7 +17,7 @@
 //! [`settings`]); the Mods window draws the settings of each active mod.
 //!
 //! Without an active mod every hook keeps the original behaviour. Activation is
-//! saved to `mods.json` there; the F1 debug menu lists the mods next to it.
+//! saved to `mods.json` there; the F11 debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
 mod settings;

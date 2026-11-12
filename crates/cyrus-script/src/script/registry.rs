@@ -1042,6 +1042,16 @@ impl ScriptWorld {
         self.gxa_overlay.as_ref()
     }
 
+    /// Publish the current logical camera to the synchronous sample owner, never its render glide.
+    pub fn publish_sound_listener(&self, driver: &dyn cyrus_world::sound::AmbientSoundDriver) {
+        driver.publish_listener(self.camera.as_ref().map(|camera| {
+            cyrus_world::sound::ListenerPose {
+                position: camera.current.position,
+                yaw: cyrus_world::heading::wrap(camera.current.angles[1] as u16),
+            }
+        }));
+    }
+
     /// Retained camera session, when the world has both a player and a CAMERA instance.
     pub fn camera(&self) -> Option<&super::camera::CameraState> {
         self.camera.as_ref()
@@ -3763,7 +3773,7 @@ impl ScriptActors {
             // The original's world teardown clears every dialogue record, so a line active at the
             // switch must not keep a speaker from the released world.
             if let Some(dialogue) = self.globals.dialogue.as_mut() {
-                dialogue.reset_active_lines();
+                dialogue.clear_world_lines();
             }
             if !self.discard_current_on_release {
                 self.retained_flags = Some(world.snapshot_flags());
@@ -4319,7 +4329,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if !succeeded {
             return Ok(());
         }
-        self.registry.apply_camera_publication(published)
+        let camera_updated = !published.is_empty();
+        self.registry.apply_camera_publication(published)?;
+        if camera_updated && let Some(driver) = self.inputs.ambient_sound {
+            self.registry.publish_sound_listener(driver);
+        }
+        Ok(())
     }
 
     fn actor_is_dead(&self, index: usize) -> Result<bool> {
@@ -9072,20 +9087,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [effect, volume, rate] = arguments else {
                 anyhow::bail!("Sound requires three arguments")
             };
-            let spatial = self
-                .registry
-                .spatial
-                .as_ref()
-                .context("Sound receiver pose unavailable")?
-                .actor(self.index)?;
-            let position = if spatial.parent.is_some() {
-                spatial
-                    .effective
-                    .context("Sound attached receiver pose unavailable")?
-                    .position
-            } else {
-                spatial.linked_position.unwrap_or(spatial.local.position)
-            };
+            let position = self.registry.query_position(id)?;
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(
@@ -9104,7 +9106,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(id, sound)?;
-            return Ok(CallResult::Complete(0));
+            // The final channel-stop path leaves a residual, not a portable scalar result.
+            return Ok(if function == Native::StopAllSounds {
+                CallResult::CompleteWithoutValue
+            } else {
+                CallResult::Complete(0)
+            });
         }
         if self.registry.actors[self.index]
             .runtime_identifier

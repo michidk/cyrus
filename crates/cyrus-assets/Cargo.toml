@@ -27,3 +27,7 @@ redguard-preservation = { workspace = true, optional = true }
 
 [dev-dependencies]
 toml.workspace = true
+
+[[example]]
+name = "movie_window"
+required-features = ["native"]

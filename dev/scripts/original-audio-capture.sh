@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records the original's audio mixer output while replaying a key timeline, in one lock hold.
-# DOSBox-X's own WAV recorder (F12+W) records the mixer output in emulated time, so the file is
+# DOSBox-X's own WAV recorder (Ctrl+Alt+W) records the mixer output in emulated time, so the file is
 # independent of how slowly the container emulates; the inner script logs the game's loop frame
 # at the start, at each key event and at the stop so audio positions map to the state reader.
 # Usage: original-audio-capture.sh <events.json> <out-dir> [seconds]
@@ -11,6 +11,9 @@
 #           reader when the recorder starts (arguments: reader, CYRUS_HOOK_DELAY, then CYRUS_HOOK_ARGS), for timed placement; CYRUS_HOOK_ARGS are its arguments),
 #           CYRUS_SHOT_INTERVAL (seconds between framebuffer screenshots, written to
 #           <out>/shots and listed in the timeline with the wall times they were taken at).
+# Optional: CYRUS_REQUIRE_HOOK_ACK=1 requires an observed sound-emission acknowledgement.
+#           CYRUS_CAPTURE_GAME_SECONDS stops on observed game progress; duration is a deadline.
+#           CYRUS_CAPTURE_MIN_FRAME defaults to 400.
 # Optional: CYRUS_CLOCK_HELPER, a python script run in the container from the recorder start
 #           that logs "wall frame ..." lines to <out>/clock.log (kept outside the repository).
 # Optional: CYRUS_FRAME_WAIT, seconds to wait for the world loop before recording anyway
@@ -31,6 +34,8 @@ run=${CYRUS_RETRO_RUN:?set CYRUS_RETRO_RUN to a private install copy}
 gog=${CYRUS_RETRO_GOG:?set CYRUS_RETRO_GOG to the directory holding extracted/app/game.gog}
 name=audio-capture-$$
 conf_mount=()
+# Configure the host chord even when reusing an image built before this default.
+dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
 mkdir -p "$out"
 exec 9>/tmp/cyrus-live.lock
 flock 9
@@ -66,18 +71,19 @@ rm -f "$run"/capture/*.wav "$run/capture/START.OK"
 docker run --rm --entrypoint find -v "$run:/game" cyrus-retro:dev /game/Redguard/maps -iname '*.tsg' -delete
 docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTRACE \
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
-    "${conf_mount[@]}" cyrus-retro:dev >/dev/null
+    "${conf_mount[@]}" cyrus-retro:dev "${dosbox_host_args[@]}" >/dev/null
 cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
     [ -z "${conf:-}" ] || rm -f "$conf"
 }
 trap cleanup EXIT
 docker cp "$repo/dev/scripts/original-capture-inner.py" "$name:/tmp/inner.py"
+docker cp "$repo/dev/scripts/capture-hook.py" "$name:/tmp/capture-hook.py"
 docker cp "$events" "$name:/tmp/events.json"
 [ -z "${CYRUS_CLOCK_HELPER:-}" ] || docker cp "$CYRUS_CLOCK_HELPER" "$name:/tmp/clock.py"
 [ -z "${CYRUS_CAPTURE_HOOK:-}" ] || docker cp "$CYRUS_CAPTURE_HOOK" "$name:/tmp/hook.py"
 docker cp "${CYRUS_STATE_READER:?set CYRUS_STATE_READER to original-state.py}" "$name:/tmp/original-state.py"
-docker exec -e CYRUS_CAPTURE_STARTUP="${CYRUS_CAPTURE_STARTUP:-0}" -e CYRUS_HOOK_ARGS="${CYRUS_HOOK_ARGS:-}" -e CYRUS_FRAME_WAIT="${CYRUS_FRAME_WAIT:-150}" -e CYRUS_HOOK_DELAY="${CYRUS_HOOK_DELAY:-0}" -e CYRUS_SHOT_INTERVAL="${CYRUS_SHOT_INTERVAL:-0}" "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
+docker exec -e CYRUS_STATE_TIMEOUT="${CYRUS_STATE_TIMEOUT:-20}" -e CYRUS_CAPTURE_GAME_SECONDS="${CYRUS_CAPTURE_GAME_SECONDS:-0}" -e CYRUS_CAPTURE_MIN_FRAME="${CYRUS_CAPTURE_MIN_FRAME:-400}" -e CYRUS_REQUIRE_HOOK_ACK="${CYRUS_REQUIRE_HOOK_ACK:-0}" -e CYRUS_CAPTURE_STARTUP="${CYRUS_CAPTURE_STARTUP:-0}" -e CYRUS_HOOK_ARGS="${CYRUS_HOOK_ARGS:-}" -e CYRUS_FRAME_WAIT="${CYRUS_FRAME_WAIT:-150}" -e CYRUS_HOOK_DELAY="${CYRUS_HOOK_DELAY:-0}" -e CYRUS_SHOT_INTERVAL="${CYRUS_SHOT_INTERVAL:-0}" "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
 wav=$(ls -t "$run"/capture/*.wav | head -1)
 cp "$wav" "$out/audio.wav"
 [ ! -f "$run/capture/clock.log" ] || cp "$run/capture/clock.log" "$out/clock.log"

@@ -44,13 +44,20 @@ Settings come from `settings.toml` in the config directory (see `docs/SETUP.md`)
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
 from a writable directory. On Windows the executable is `cyrus.exe`.
 The Linux archive uses Ubuntu 24.04 system libraries.
-In any windowed launch, press F1 to choose a world, and
+In any windowed launch, press F11 to choose a world, and
 change runtime fidelity. The menu remains available across startup and world entry.
 
 This crate owns native settings and preference storage, binding initialization,
 scene preparation, debug world options and control-command application.
 `cyrus-control::server` handles TCP framing. Headless assembly omits the camera
 and audio backend; windowed assembly adds the shared presentation plugins.
+
+The public `place_player` control response includes an optional placement-event boundary:
+selected-actor state, world generation, completed ordinary updates and exact elapsed Q8
+nominal ticks with the installed normal frame rate. This acknowledges application in
+PreUpdate before the next ordinary update. Without a clock or prepared world the boundary
+is unavailable; a later `state` poll cannot supply the missing event time. Placement
+acknowledgement does not establish rendered-pixel or mixer correspondence.
 
 Native document storage uses ordinary filesystem writes through `cyrus-config`,
 creating parent directories as needed. Writes overwrite directly; a failed or
@@ -83,7 +90,7 @@ Shared browser/CLI options use exactly the same names:
 | `--volume 0` | `?volume=0` | Master output volume for this launch, 0 to 100 percent; not saved. Use `--volume 0` for automated test runs |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |
 | `--sky modern` | `?sky=modern` | Sky fidelity mode |
-| `--mode modern` | `?mode=modern` | Every presentation area at once, including modern lighting (shadow-mapped PBR, native only), which has no flag of its own and is also switched in the F1 debug menu; per-area flags override the others |
+| `--mode modern` | `?mode=modern` | Every presentation area at once, including modern lighting (shadow-mapped PBR, native only), which has no flag of its own and is also switched in the F11 debug menu; per-area flags override the others |
 
 Mode values are `faithful` or `modern`. Native flags override saved settings.
 Native-only flags include headless/control and export commands. `--export-scene
@@ -181,3 +188,22 @@ confirmation. Its Yes choice restores that slot through the shared atomic sessio
 boundary; missing or malformed saves report errors without starting a fresh world.
 The authored Save page uses the same slot host for description editing, creation
 and revision-checked overwrite. Slot metadata includes the captured gameplay thumbnail.
+
+Native acceptance tools can use the control protocol's `schedule_input` command
+to deliver balanced input at ordinary update boundaries. Admission reuses the
+production world/model service gates. Delivery runs after model preparation and
+before player input sampling and ordinary simulation; returned actor snapshots
+observe that same boundary. See `cyrus-control` for the wire contract and failure
+cleanup. Normal gameplay continues to use the same keyboard bindings.
+
+The native `effect_geometry` diagnostic samples transient geometry after effect
+PostUpdate. `after_generation` arms a bounded first admitted-update observation before
+a public session replacement or dormant-world revisit. Scene/model services and
+the generation-matching world clock sample must be ready. It preserves command order
+and reports a missing binding as an error rather than waiting for it to repair.
+`dev/scripts/native-transient-session.py` drives the installed public acceptance.
+
+Native control captures can use `capture_gameplay_frame` to freeze the ready
+world clock and player presentation before the requested frame is extracted.
+Readback and PNG encoding are asynchronous and bounded to one capture. See the
+control crate README for admission failures and the PCM delivery-cursor limit.

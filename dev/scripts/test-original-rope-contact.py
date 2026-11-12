@@ -191,6 +191,198 @@ class Readiness(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'interrupted'):
                 driver.journal(journal, True, ['place'])
 
+class ExactSchedule(unittest.TestCase):
+    def test_exact_boundary_requires_contiguous_consumed_scales_and_input(self):
+        import copy
+        module = Readiness().module()
+        request = dict(phase='walk-in', frames=2, key='Up')
+        player = dict(drawn=True, falling=0, living=0, health=100)
+        result = dict(phase='walk-in', key='Up', normal_frame_rate=12, boundaries=[
+            dict(frame=10, clock_scale=1000, input_state={'Up': True}, player=player),
+            dict(frame=12, clock_scale=1768, input_state={'Up': False}, player=player)], steps=[
+            dict(frame=10, frame_scale=256, input_state={'Up': True}),
+            dict(frame=11, frame_scale=512, input_state={'Up': True})])
+        rows = module.validate_schedule(result, request)
+        self.assertEqual(rows[0]['clock'], [1000 / 3072] * 2)
+        self.assertEqual(rows[1]['clock'], [1768 / 3072] * 2)
+        mutations = [lambda r: r['steps'].pop(),
+            lambda r: r['steps'][1].update(frame=13),
+            lambda r: r['steps'][1].update(frame_scale=-1),
+            lambda r: r['steps'][1]['input_state'].update(Up=False),
+            lambda r: r['boundaries'][1].update(clock_scale=1800),
+            lambda r: r['boundaries'][1]['input_state'].update(Up=True),
+            lambda r: r.update(key='Control_L'),
+            lambda r: r.update(normal_frame_rate=0),
+            lambda r: r['boundaries'][1]['player'].update(falling=1)]
+        for mutate in mutations:
+            wrong = copy.deepcopy(result); mutate(wrong)
+            with self.subTest(wrong=wrong), self.assertRaises((ValueError, RuntimeError)):
+                module.validate_schedule(wrong, request)
+
+    def test_physical_snapshots_reject_duplicate_frames_and_inconsistent_state(self):
+        import copy
+        module = Readiness().module()
+        player = dict(drawn=False, falling=0, living=0, health=100, rope_attached=True)
+        request = dict(phase='hang', frames=2, key=None, scenario='attachment', atomic_snapshots=True)
+        snapshots = [dict(sequence=i, boundary='ordinary_update_start', execution='stopped',
+            frame=10+i, clock_scale=i*256, player=copy.deepcopy(player),
+            confirmation=dict(frame=10+i, player=copy.deepcopy(player))) for i in range(3)]
+        result = dict(phase='hang', key=None, normal_frame_rate=12,
+            snapshots=snapshots,
+            boundaries=[dict(frame=10+i, clock_scale=i*256, player=copy.deepcopy(player), input_state={}) for i in (0,2)],
+            steps=[dict(frame=10+i, frame_scale=256, input_state={}) for i in range(2)])
+        rows = module.validate_schedule(result, request)
+        mutations = [lambda r: r.pop('snapshots'),
+            lambda r: r['snapshots'][1].update(frame=10),
+            lambda r: r['snapshots'][1].update(sequence=0),
+            lambda r: r['snapshots'][1].update(execution='running'),
+            lambda r: r['snapshots'][1].update(boundary='passive_poll'),
+            lambda r: r['snapshots'][1].update(clock_scale=512),
+            lambda r: r['snapshots'][1]['confirmation']['player'].update(health=99),
+            lambda r: r['snapshots'][1]['confirmation'].update(frame=12),
+            lambda r: r['boundaries'][1]['player'].update(health=99)]
+        for mutate in mutations:
+            wrong = copy.deepcopy(result); mutate(wrong)
+            with self.subTest(wrong=wrong), self.assertRaisesRegex(ValueError, 'snapshot'):
+                module.validate_schedule(wrong, request)
+        self.assertEqual([r['snapshot_sequence'] for r in rows], [0,2])
+
+    def test_physical_backend_cannot_publish_passive_endpoints(self):
+        from unittest.mock import patch
+        module = Readiness().module()
+        driver = module.Driver('unused', 1, .001)
+        driver.physical_release = driver.attachment = True
+        player = dict(drawn=False, falling=0, living=0, health=100, rope_attached=True)
+        response = dict(phase='hang', key=None, normal_frame_rate=12,
+            boundaries=[dict(frame=i, clock_scale=i*256, input_state={}, player=player) for i in (0,1)],
+            steps=[dict(frame=0, frame_scale=256, input_state={})])
+        result = subprocess.CompletedProcess([],0,stdout=json.dumps(response))
+        with patch.object(module.subprocess, 'run', return_value=result) as backend:
+            with self.assertRaisesRegex(ValueError, 'snapshot sequence'):
+                driver.exact_segment('backend', 1, 'hang')
+        self.assertTrue(json.loads(backend.call_args.kwargs['input'])['atomic_snapshots'])
+
+    def test_release_pulse_requires_acknowledged_edge_and_supported_endpoint(self):
+        import copy
+        module = Readiness().module()
+        player = dict(drawn=False, falling=0, queued=0, living=0, health=100, rope_attached=False, group=65)
+        request = dict(phase='detach', frames=3, release_after=1, key='space', scenario='attachment', supported_landing=True)
+        start = dict(frame=10, clock_scale=0, input_state={'space': True}, player=dict(player, rope_attached=True, group=80))
+        release = dict(frame=11, clock_scale=256, input_state={'space': False}, player=dict(player, falling=24, group=85))
+        end = dict(frame=13, clock_scale=768, input_state={'space': False}, player=player)
+        result = dict(phase='detach', key='space', normal_frame_rate=12, boundaries=[start,end], input_edges=[release],
+            steps=[dict(frame=10+i, frame_scale=256, input_state={'space': i<1}) for i in range(3)])
+        rows = module.validate_schedule(result,request)
+        self.assertEqual(rows[1]['boundary'],'release')
+        atomic = copy.deepcopy(result)
+        atomic['snapshots'] = [dict(sequence=i,frame=10+i,clock_scale=i*256,execution='stopped',
+            boundary='ordinary_update_start',player=copy.deepcopy(value),confirmation=dict(frame=10+i,player=copy.deepcopy(value)))
+            for i,value in enumerate((start['player'],release['player'],player,player))]
+        atomic_request = dict(request,atomic_snapshots=True)
+        module.validate_schedule(atomic,atomic_request)
+        rebound = copy.deepcopy(atomic)
+        rebound['snapshots'][2]['player']['rope_attached'] = True
+        rebound['snapshots'][2]['confirmation']['player']['rope_attached'] = True
+        with self.assertRaisesRegex(ValueError,'reattached'):
+            module.validate_schedule(rebound,atomic_request)
+        for mutation in ('held', 'missing', 'late', 'reattached', 'airborne', 'queued', 'wrong-animation'):
+            wrong=copy.deepcopy(result)
+            if mutation=='held':wrong['steps'][1]['input_state']['space']=True
+            elif mutation=='missing':wrong['input_edges']=[]
+            elif mutation=='late':wrong['input_edges'][0]['frame']=12
+            elif mutation=='reattached':wrong['boundaries'][1]['player']['rope_attached']=True
+            elif mutation=='airborne':wrong['boundaries'][1]['player']['falling']=24
+            elif mutation=='queued':wrong['boundaries'][1]['player']['queued']=24
+            else:wrong['boundaries'][1]['player']['group']=44
+            with self.subTest(mutation=mutation),self.assertRaises((ValueError,RuntimeError)):
+                module.validate_schedule(wrong,request)
+
+    def test_required_consumed_scale_cannot_be_replaced_by_same_sum(self):
+        module = Readiness().module()
+        player = dict(drawn=True, falling=0, living=0, health=100)
+        result = dict(phase='walk-in', key=None, normal_frame_rate=12, boundaries=[
+            dict(frame=10, clock_scale=0, input_state={}, player=player),
+            dict(frame=12, clock_scale=1024, input_state={}, player=player)], steps=[
+            dict(frame=10, frame_scale=256, input_state={}),
+            dict(frame=11, frame_scale=768, input_state={})])
+        with self.assertRaisesRegex(ValueError, 'consumed scale differs'):
+            module.validate_schedule(result, dict(phase='walk-in', frames=2, key=None, frame_scale=512))
+
+    def test_pending_interactive_request_waits_without_typing_into_closed_console(self):
+        module=Readiness().module()
+        from unittest.mock import patch
+        driver=module.Driver('unused', 1, .01)
+        pending=dict(console_mode='closed', frame=3,
+                     counters=dict(console_request=1, console_requested_mode=0))
+        admitted=dict(console_mode='interactive', frame=4)
+        for first, accepted in [(pending, True), (dict(console_mode='overlay', frame=3), False)]:
+            keys=[]
+            with patch.object(driver, 'key', side_effect=keys.append), patch.object(driver, 'sample',
+                    side_effect=[first, admitted, admitted]), patch.object(module.time, 'sleep'):
+                if accepted: driver.command('x')
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'not interactive'): driver.command('x')
+            self.assertEqual('x' in keys, accepted)
+            self.assertEqual(keys[-1], 'Escape')
+
+    def test_pending_console_deadline_never_types_gameplay_text(self):
+        module=Readiness().module()
+        from unittest.mock import patch
+        driver=module.Driver('unused', 1, .01)
+        pending=dict(console_mode='closed', frame=3,
+                     counters=dict(console_request=1, console_requested_mode=0))
+        keys=[]
+        with patch.object(driver, 'key', side_effect=keys.append), patch.object(driver, 'sample',
+                return_value=pending), patch.object(module.time, 'monotonic', side_effect=[0,2]):
+            with self.assertRaisesRegex(RuntimeError, 'not admitted'): driver.command('x')
+        self.assertEqual(keys, ['F12','Escape'])
+
+    def test_positive_attachment_requires_unarmed_grab_hold_and_detach(self):
+        import copy
+        module = Readiness().module()
+        for phase, flags in [('approach', [False, True]), ('hang', [True, True]), ('detach', [True, False])]:
+            request = dict(phase=phase, frames=1, key=None, scenario='attachment')
+            result = dict(phase=phase, key=None, normal_frame_rate=12, boundaries=[
+                dict(frame=10+i, clock_scale=512*i, input_state={},
+                    player=dict(drawn=False, falling=0 if flag else 2, living=0,
+                                health=100, rope_attached=flag)) for i, flag in enumerate(flags)],
+                steps=[dict(frame=10, frame_scale=512, input_state={})])
+            self.assertEqual(len(module.validate_schedule(result, request)), 2)
+            for mutation in ['weapon', 'attachment', 'missing']:
+                wrong=copy.deepcopy(result)
+                if mutation == 'weapon': wrong['boundaries'][0]['player']['drawn']=True
+                elif mutation == 'missing': wrong['boundaries'][1]['player'].pop('rope_attached')
+                else: wrong['boundaries'][1]['player']['rope_attached']=not flags[1]
+                with self.subTest(phase=phase, mutation=mutation), self.assertRaises((ValueError, RuntimeError)):
+                    module.validate_schedule(wrong, request)
+
+    def test_backend_identity_change_prevents_readiness_resume(self):
+        module = Readiness().module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reader = root / 'reader'; reader.write_text('reader')
+            backend = root / 'backend'; backend.write_text('first')
+            journal = root / 'progress.json'
+            driver = module.Driver(str(reader), 1, .01)
+            driver.schedule_command = str(backend)
+            driver.journal(journal, False, ['place'])
+            backend.write_text('second')
+            with self.assertRaisesRegex(ValueError, 'source changed'):
+                driver.journal(journal, True, ['place'])
+
+    def test_failed_backend_never_publishes_exact_boundaries(self):
+        from unittest.mock import patch
+        module = Readiness().module()
+        driver = module.Driver('reader', 1, .01)
+        with patch.object(module.subprocess, 'run', side_effect=subprocess.CalledProcessError(7, [])), \
+                patch.object(driver, 'input') as cleanup, patch('builtins.print') as output:
+            with self.assertRaises(subprocess.CalledProcessError):
+                driver.exact_segment('backend', 2, 'walk-in', 'Up')
+            self.assertEqual(json.loads(output.call_args.args[0])['phase'], 'schedule-failure')
+            self.assertNotIn('boundary', json.loads(output.call_args.args[0]))
+            cleanup.assert_called_once_with('keyup', 'Up')
+
+
 class ContactLauncher(unittest.TestCase):
     def test_failed_runtime_restores_world_and_stops_only_owned_container(self):
         workspace = DRIVER.parents[2] / 'magic'
@@ -240,6 +432,48 @@ class ContactLauncher(unittest.TestCase):
             name = calls[0].split('--name ')[1].split()[0]
             self.assertEqual(calls[-1], f'rm -f {name}')
             self.assertEqual((root / 'output/contact.stderr').read_text(), 'rejected\n')
+
+
+class PhysicalRelease(unittest.TestCase):
+    def test_public_cli_disables_gravity_suppression_only_after_hanging(self):
+        from unittest.mock import patch
+        module = Readiness().module()
+        events = []
+        attached = True
+        class Rig:
+            def __init__(self, *args): self.pulse = .001
+            def ready(self, timeout): return {'counters': {'fps': 12}}
+            def mark_running(self): pass
+            def progress(self, *args): return {'player': {'drawn': False, 'falling': 0, 'living': 0, 'health': 100}}
+            def command(self, command): events.append(command)
+            def segment(self, frames, phase, key=None): events.extend([phase, (phase,frames)])
+            def sample(self, phase):
+                events.append(phase)
+                return {'player': {'drawn': False, 'falling': 0, 'living': 0, 'health': 100, 'rope_attached': attached}}
+            def save(self): pass
+            def release(self): events.append('released')
+            progress_record = {}
+        def run(physical, landing=0):
+            events.clear()
+            with patch.object(module, 'Driver', Rig), patch.object(module.subprocess, 'check_output', return_value='1'), patch.object(module.subprocess, 'run'), patch.object(sys, 'argv', [str(DRIVER), '--reader', 'reader', '--attachment', '--schedule-command', 'backend', *(['--physical-release'] if physical else []), '--landing-frames', str(landing), '--place', 'place']):
+                module.main()
+            return list(events)
+        physical = run(True)
+        self.assertLess(physical.index('hang'), physical.index('magiccarpet = 0'))
+        self.assertLess(physical.index('magiccarpet = 0'), physical.index('detach'))
+        self.assertIn('physical-release', physical)
+        self.assertNotIn('magiccarpet = 0', run(False))
+        self.assertIn(('detach',8),run(True,landing=6))
+        attached = False
+        with self.assertRaisesRegex(RuntimeError, 'retained attachment'):
+            run(True)
+        self.assertNotIn('detach', events)
+        self.assertEqual(events[-1], 'released')
+
+    def test_physical_release_rejects_non_attachment_before_input(self):
+        result = subprocess.run([sys.executable, str(DRIVER), '--reader', 'absent', '--physical-release', '--place', 'absent'], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--physical-release requires --attachment', result.stderr)
 
 
 if __name__ == '__main__':

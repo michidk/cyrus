@@ -106,7 +106,7 @@ fn grab_cursor(
         && !suppressed.0
         && pending_world.is_none()
         && !logbook.is_some_and(|screen| screen.suspended())
-        // The F1 settings block the console while open.
+        // The F11 settings block the console while open.
         && !console.is_some_and(|console| console.open || console.blocked);
     let mode = if grab {
         CursorGrabMode::Locked
@@ -229,6 +229,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<FrameScene>()
             .init_resource::<DetachedView>()
             .init_resource::<CameraTakeover>()
+            .init_resource::<cyrus_game::FlycamEngaged>()
             .init_resource::<InputSuppressed>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(Update, suppress.before(InputSample))
@@ -332,8 +333,10 @@ fn suppress(
     flycam: Res<DetachedView>,
     takeover: Res<CameraTakeover>,
     mut suppressed: ResMut<InputSuppressed>,
+    mut engaged: ResMut<cyrus_game::FlycamEngaged>,
 ) {
-    suppressed.0 = flycam.enabled || takeover.0.is_some();
+    engaged.0 = flycam.free(&takeover);
+    suppressed.0 = engaged.0;
 }
 
 fn apply_takeover(

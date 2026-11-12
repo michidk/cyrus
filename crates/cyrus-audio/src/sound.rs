@@ -46,8 +46,6 @@ pub mod persistence;
 mod samples;
 mod script;
 use samples::{Reservation, SampleSlots};
-#[cfg(target_arch = "wasm32")]
-use script::PendingSounds;
 pub use script::{RestoredDialogueAssets, RuntimeDialogue, RuntimeDialogueSnapshot, ScriptSounds};
 use script::{execute_ordinary, play_audio};
 
@@ -76,6 +74,7 @@ impl Plugin for SoundPlugin {
             )
             .init_resource::<crate::AudioReadiness>()
             .init_resource::<SoundEffects>()
+            .init_resource::<crate::ScriptListener>()
             .init_resource::<Speech>()
             .init_resource::<Channels>()
             .init_resource::<script::RuntimeDialogue>()
@@ -86,8 +85,6 @@ impl Plugin for SoundPlugin {
                 Update,
                 (examine_speech.before(play_audio), play_audio).in_set(PlayCues),
             );
-        #[cfg(target_arch = "wasm32")]
-        app.init_resource::<PendingSounds>();
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(
             Update,
@@ -280,7 +277,10 @@ fn finish_speech(
 /// stolen. The start index is 0 at boot; animation and speech starts set it to 6.
 #[derive(Resource, Default)]
 pub(crate) struct Channels {
+    script_generation: script::ScriptGeneration,
     samples: SampleSlots,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pending: Vec<PendingCue>,
     playing: HashMap<u64, Channel>,
     start: usize,
     /// The last sound each animated actor started, for its EndAnimation.
@@ -334,28 +334,60 @@ struct PositionalCue {
     start_index: Option<u8>,
 }
 
-#[cfg(target_arch = "wasm32")]
+/// An animation command retains emission-time placement and remembered-handle intent.
+#[cfg(any(target_arch = "wasm32", test))]
+struct PendingAnimation {
+    actor: Entity,
+    effect: i16,
+    rate_offset_hz: i32,
+    surface: Option<cyrus_assets::surface::Surface>,
+    position: Option<[i32; 3]>,
+    remember: bool,
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
 enum PendingCue {
     Flat(Option<Owner>, (usize, i32, i32)),
     Positional(Owner, PositionalCue),
+    Animation(Owner, PendingAnimation),
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 impl PendingCue {
     fn owner(&self) -> Option<Owner> {
         match self {
             Self::Flat(owner, _) => *owner,
-            Self::Positional(owner, _) => Some(*owner),
+            Self::Positional(owner, _) | Self::Animation(owner, _) => Some(*owner),
         }
     }
     fn effect(&self) -> Option<i32> {
         match self {
             Self::Flat(_, (effect, _, _)) => i32::try_from(*effect).ok(),
             Self::Positional(_, cue) => Some(cue.effect),
+            Self::Animation(_, cue) => Some(i32::from(cue.effect)),
         }
     }
 }
 
 impl Channels {
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn forget_pending_animation(&mut self, actor: Entity) {
+        for cue in &mut self.pending {
+            if let PendingCue::Animation(_, cue) = cue
+                && cue.actor == actor
+            {
+                cue.remember = false;
+            }
+        }
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn stop_pending_animation(&mut self, actor: Entity) {
+        self.pending.retain(|cue| {
+            !matches!(cue,
+            PendingCue::Animation(_, cue) if cue.actor == actor && cue.remember)
+        });
+    }
+
     fn start_positional(
         &mut self,
         commands: &mut Commands,
@@ -363,7 +395,11 @@ impl Channels {
         effects: &SoundEffects,
         cue: PositionalCue,
         owner: Owner,
-        listener: (&SoundSettings, &crate::AudioListener),
+        listener: (
+            &SoundSettings,
+            &crate::AudioListener,
+            Option<cyrus_world::sound::ListenerPose>,
+        ),
     ) {
         let Some(effect) = usize::try_from(cue.effect)
             .ok()
@@ -371,14 +407,15 @@ impl Channels {
         else {
             return;
         };
-        let (settings, listener) = listener;
-        let (volume, pan) = match positional_q8(cue.position, settings, listener, cue.volume) {
-            Ok(mix) => mix,
-            Err(error) => {
-                warn_once!("script Sound effect {}: {error}", cue.effect);
-                return;
-            }
-        };
+        let (settings, listener, published) = listener;
+        let (volume, pan) =
+            match positional_q8(cue.position, settings, listener, published, cue.volume) {
+                Ok(mix) => mix,
+                Err(error) => {
+                    warn_once!("script Sound effect {}: {error}", cue.effect);
+                    return;
+                }
+            };
         self.start(
             commands,
             mixer,
@@ -617,17 +654,17 @@ impl Channels {
         owner: Option<Owner>,
         effect: Option<i32>,
     ) {
+        #[cfg(any(target_arch = "wasm32", test))]
+        self.pending.retain(|cue| {
+            !(owner.is_none_or(|owner| cue.owner() == Some(owner))
+                && effect.is_none_or(|effect| cue.effect() == Some(effect)))
+        });
         let stopped = self.samples.stop_matching(owner, effect);
         self.retire(commands, stopped);
     }
 
     fn stop_all(&mut self, commands: &mut Commands) {
         self.stop_matching(commands, None, None);
-    }
-
-    fn stop_script_generation(&mut self, commands: &mut Commands, generation: u64) {
-        let stopped = self.samples.stop_script_generation(generation);
-        self.retire(commands, stopped);
     }
 
     fn update_slot(&self, slot: u8, volume: u8, master: i32, pan: u8) -> Result<(), String> {
@@ -658,6 +695,7 @@ fn positional_q8(
     position: [i32; 3],
     settings: &SoundSettings,
     listener: &crate::AudioListener,
+    published: Option<cyrus_world::sound::ListenerPose>,
     volume_offset: i32,
 ) -> Result<(u8, u8), String> {
     let distance = settings
@@ -669,6 +707,7 @@ fn positional_q8(
         (f64::from(camera.y) * -5120.0).floor() as i32,
         (f64::from(camera.z) * 5120.0 + 16_777_215.0).floor() as i32,
     ];
+    let camera_q8 = published.map_or(camera_q8, |pose| pose.position);
     let difference = std::array::from_fn(|axis| position[axis].wrapping_sub(camera_q8[axis]));
     let length =
         cyrus_script::script::rounded_distance(difference).map_err(|error| error.to_string())?;
@@ -678,6 +717,7 @@ fn positional_q8(
         (f64::from(forward.x) * -65536.0).round() as i64,
         (f64::from(forward.z) * 65536.0).round() as i64,
     );
+    let yaw = published.map_or(yaw, |pose| i32::from(pose.yaw));
     Ok((
         volume,
         pan(
@@ -761,6 +801,7 @@ fn play_requests(
     speech: Res<Speech>,
     settings: Option<Res<SoundSettings>>,
     listener: Option<Res<crate::AudioListener>>,
+    published: Res<crate::ScriptListener>,
     alive: Query<(), With<PlayingSound>>,
     sources: Option<Res<Assets<AudioSource>>>,
     mut panned: Option<ResMut<Assets<Panned>>>,
@@ -794,7 +835,23 @@ fn play_requests(
                             );
                             continue;
                         };
-                        match positional(*position, &listener.0, distance, 0) {
+                        let mixed = if published.0.is_some() {
+                            let position = [
+                                (f64::from(position.x) * -5120.0).floor() as i32,
+                                (f64::from(position.y) * -5120.0).floor() as i32,
+                                (f64::from(position.z) * 5120.0 + 16_777_215.0).floor() as i32,
+                            ];
+                            positional_q8(
+                                position,
+                                settings.as_deref().expect("checked settings"),
+                                listener,
+                                published.0,
+                                0,
+                            )
+                        } else {
+                            positional(*position, &listener.0, distance, 0)
+                        };
+                        match mixed {
                             Ok((volume, pan)) => (volume, Some(pan)),
                             Err(e) => {
                                 warn_once!("sound: effect {index}: {e}");
@@ -845,7 +902,9 @@ fn play_requests(
                 );
                 channels.start = 6;
             }
-            SoundRequest::StopAll => channels.stop_all(&mut commands),
+            SoundRequest::StopAll => {
+                channels.stop_all(&mut commands);
+            }
         }
     }
 }
@@ -874,10 +933,10 @@ fn finish_bank(
         }
         _ => return,
     }
-    commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
     let Some(bank) = banks.get(&handle.0) else {
         return;
     };
+    commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
     let mut settings = SoundSettings::parse("");
     settings.master_volume = bank.master_volume;
     settings.sound_distance = bank.sound_distance;
@@ -1177,6 +1236,23 @@ mod ambient_tests {
     use bevy::ecs::world::CommandQueue;
 
     #[test]
+    fn public_capture_rejects_deferred_starts_without_consuming_them() {
+        let mut world = World::new();
+        world.init_resource::<Assets<Panned>>();
+        world.insert_resource(Channels {
+            pending: vec![PendingCue::Flat(None, (0, 0, 0))],
+            ..Default::default()
+        });
+        let error = persistence::SamplePlaybackSnapshot::capture(&world)
+            .err()
+            .expect("capture silently discarded the deferred start");
+        assert!(error.to_string().contains("deferred sample starts"));
+        assert_eq!(world.resource::<Channels>().pending.len(), 1);
+        world.resource_mut::<Channels>().pending.clear();
+        assert!(persistence::SamplePlaybackSnapshot::capture(&world).is_ok());
+    }
+
+    #[test]
     fn ambient_updates_gains_restarts_finished_slots_and_stops_excluded_emitters() {
         let world = World::new();
         let mut queue = CommandQueue::default();
@@ -1298,5 +1374,49 @@ mod ambient_tests {
             .unwrap();
         assert!(!stopped.active);
         assert_eq!(stopped.channel, None);
+    }
+}
+
+#[cfg(test)]
+mod queued_teardown_tests {
+    use super::*;
+
+    #[test]
+    fn book_stop_all_cancels_cues_waiting_for_the_browser_bank() {
+        let owner = Owner::Script {
+            generation: 3,
+            index: 2,
+        };
+        let mut app = App::new();
+        app.add_message::<SoundRequest>()
+            .init_resource::<SoundEffects>()
+            .init_resource::<crate::ScriptListener>()
+            .init_resource::<Speech>()
+            .insert_resource(Channels {
+                pending: vec![
+                    PendingCue::Flat(None, (12, 0, 0)),
+                    PendingCue::Positional(
+                        owner,
+                        PositionalCue {
+                            effect: 25,
+                            volume: -40,
+                            rate_offset_hz: 0,
+                            position: [0; 3],
+                            start_index: None,
+                        },
+                    ),
+                ],
+                ..Default::default()
+            })
+            .add_systems(Update, play_requests);
+        let pending = &app.world().resource::<Channels>().pending;
+        assert_eq!(pending[0].effect(), Some(12));
+        assert!(pending[1].owner() == Some(owner));
+        app.world_mut().write_message(SoundRequest::StopAll);
+        app.update();
+        assert!(
+            app.world().resource::<Channels>().pending.is_empty(),
+            "book teardown must cancel starts that have not reached the backend"
+        );
     }
 }

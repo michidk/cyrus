@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deferred sample checkpoint acceptance</title>
+<p>This isolated test requires an explicit local installed-source fixture.</p>
+<script type="module">
+import init from './deferred_sample_capture.js';
+const fixture = new URLSearchParams(location.search).get('fixture');
+if (!fixture) throw Error('supply an explicit fixture URL');
+const response = await fetch(fixture);
+if (!response.ok) throw Error(`fixture load: ${response.status}`);
+const source = await response.json();
+globalThis.captureFixture = () => JSON.stringify(source);
+globalThis.captureAction = () => {
+  const action = globalThis.__deferredRequest ?? '';
+  globalThis.__deferredRequest = '';
+  return action ? JSON.stringify(action) : '';
+};
+await init();
+</script>

@@ -13,6 +13,11 @@ preservation's [player orientation rules](https://github.com/michidk/redguard-pr
 The transition back to zero bank also rebuilds so the last banked matrix cannot retain
 tilt. Upright player turns and ordinary nonplayer actors retain incremental rotation.
 
+Verified: held-direction turn acceleration updates during rope attachment even while
+ground movement and collision are bypassed. Releasing a direction clears its retained
+speed before ordinary movement resumes. This follows preservation's
+[control-animation input contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership).
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
@@ -79,6 +84,21 @@ amplitude service and oscillator advancement. Collision bounds, face transforms,
 placement and rendering read that publication. Snapshots retain it independently of the
 advanced oscillator, following preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#rope-update-order).
 This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
+
+Verified: admission records the attachment without placing a pending grab.
+Subsequent attached updates place the player. A player retains the approach height while the rope grab
+animation's wrapping frame progress is below three. Horizontal hand placement
+continues. Admission chooses the nearest eligible link from the actor position plus the authored
+hand vertex, without a link-length offset. Later placement uses that node and grip height. The public rope
+drivers have an explicit unarmed positive scenario requiring grab, held attachment
+and jump detach; diagnostic timing does not establish contact/clank parity.
+Verified: jump release admits ordinary movement and collision on that update after removing the
+attachment. The retained rope jump latch protects the regrab countdown while falling with Jump held.
+Carried displacement reads the retained speed before attached controls run; a directional release
+therefore first carries its new speed on the following update. Attachment admission follows the
+ordinary controller, so release and repeated jump updates advance the regrab countdown on that
+same update. The countdown pauses when both queued and falling motion are absent. This follows
+preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/fd87586bee7ab2bfeffc0d96b8d91e3c1eabff3c/docs/engine/SOUP.md#rope-attachment).
 
 ## Module guide
 
@@ -745,6 +765,20 @@ Verified: `id` reads the receiver's signed runtime identifier word (what `MyId` 
 identifier is installed identity that name lookup and restore validation key on. See preservation's
 [runtime identifier property](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#runtime-identifier-property).
 
+Verified: natural slope response saturates the direction's movement counter without
+marking a movement-native call. Ordinary cleanup clears an uncalled counter, so
+slide-group movement resumes with its startup acceleration after sliding ends.
+The installed production test covers natural admission, counter cleanup, presented
+pose agreement and continued movement after the slide. See preservation's
+[slide-group movement](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#slide-group-movement).
+
+Verified: a sliding actor's projected primary wall contact preserves its facing and
+marks a wall hit. Grounded heading adjustment requires sliding, falling, queued
+motion and living state all clear after the motion transition. A sliding actor's
+rollback contact retains its attempted position without adding a wall-hit mark.
+Public response tests cover both branches and residual separation continuation,
+following preservation's [wall-facing rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#grounded-wall-facing-adjustment).
+
 Verified: ordinary primary, residual and destination body queries select vertex-bound RAVC
 spheres instead of initial MPSZ spheres when those records exist, following preservation's
 [player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).
@@ -763,3 +797,39 @@ angles when the query is prepared. Previous angle history belongs to movement an
 rollback and does not supply this copy. Later script rotation changes primary
 collision while residual collision retains the prepared orientation until the next
 query preparation, following preservation's per-update shape contract.
+
+Current-schema actor snapshots validate map-light eligibility against the installed
+placement before restoration. Hidden material preparation and logical publication
+therefore use the same light owners; a saved eligibility flag cannot promote or
+suppress an installed light role.
+
+Verified: `StopAllSounds` completes its global sample-stop effect as a statement.
+It has no supported numeric result; consuming it in a formula fails after the
+single effect and retains that failure without replaying the stop. Other immediate
+sound functions retain their documented zero results. This follows preservation's
+[SOUP sound results](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+Verified: positional `Sound` uses the current `attr_slave` selector, then linked
+or local position, through the shared query-position rule. Retained family
+membership alone does not select an attached emitter after the attribute clears.
+The start retains its captured position; later emitter movement does not update
+an already playing `Sound` sample, following preservation's sound contract.
+
+Verified: successful camera-controller and scripted camera pose publication also
+updates the borrowed synchronous sample service before returning. The listener
+uses the published logical position/yaw independently of render gliding; failed
+camera updates do not publish a replacement. Status-only sample adapters may
+ignore listener publication.
+
+Verified: fixed gameplay shortcuts select the original book pages with F2–F6,
+request version information with F1 and credits with F10. The information screens
+retain the live player. F1, book shortcuts and F9 require `final_version`.
+Desktop and browser hosts share F9 keyboard eligibility, including console,
+reader, inspection and pending-transition gates. F11 belongs to the debugger.
+
+Verified: scene teardown clears all shared dialogue records and remembered sample
+handles, including inactive records initialized with slot zero, before the next
+world runs. Presentation traversal resets while the skip-input latch is retained.
+This prevents a later skip edge from stopping an unrelated replacement voice.
+Periodic maintenance retains its separate active-record cleanup contract. See
+preservation's [world teardown rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).

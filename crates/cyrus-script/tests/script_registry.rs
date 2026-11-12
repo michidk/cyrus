@@ -8872,13 +8872,14 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
         player::data::MovementSettings,
         script::{ScriptInputs, ScriptStage},
     };
-    for (normals, slide_range, expected, heading, flags) in [
+    for (normals, slide_range, expected, heading, flags, sliding) in [
         (
             vec![([256, 0, 0], SurfaceClass::Wall)],
             -60000,
             [0, 0, 2019],
             Some(313),
             1,
+            0,
         ),
         (
             vec![
@@ -8889,6 +8890,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             [-3564, 0, 0],
             None,
             1,
+            0,
         ),
         (
             vec![([256, 0, 0], SurfaceClass::Wall)],
@@ -8896,6 +8898,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             [0; 3],
             Some(344),
             2,
+            0,
         ),
         (
             vec![([256, 0, 0], SurfaceClass::Floor)],
@@ -8903,6 +8906,23 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             [-3341, 0, 1893],
             Some(344),
             0,
+            0,
+        ),
+        (
+            vec![([256, 0, 0], SurfaceClass::Wall)],
+            -60000,
+            [0, 0, 2019],
+            Some(344),
+            2,
+            1,
+        ),
+        (
+            vec![([256, 0, 0], SurfaceClass::Wall)],
+            0,
+            [-3341, 0, 1893],
+            Some(344),
+            0,
+            1,
         ),
     ] {
         let mut scripts = cache();
@@ -8934,10 +8954,28 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 },
             );
         }
+        let slide_flag = scripts.definition.references.len() as u16;
+        scripts.definition.references.push(Property::SlideFlag);
         steps.insert(
             2,
             Step {
                 next: 3,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference: slide_flag,
+                    },
+                    formula: Formula {
+                        first: Value::Integer { value: sliding },
+                        rest: vec![],
+                    },
+                },
+            },
+        );
+        steps.insert(
+            3,
+            Step {
+                next: 4,
                 operation: Operation::End { target: 0 },
             },
         );
@@ -18173,6 +18211,30 @@ fn snapshot_marks_only_type_six_placements_as_map_lights() {
     let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
     assert_eq!(saved["actors"][0]["map_light"], true);
     assert_eq!(saved["actors"][1]["map_light"], false);
+    for index in 0..2 {
+        let mut mismatched = saved.clone();
+        mismatched["actors"][index]["map_light"] = serde_json::json!(index != 0);
+        let error = ScriptWorld::from_snapshot(
+            serde_json::from_value(mismatched).unwrap(),
+            &sources,
+            cyrus_script::script::WorldRestoreContext {
+                generation: 2,
+                globals: cyrus_script::script::GameplayGlobals::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .err()
+        .expect("installed map-light eligibility must not be changed by a save");
+        assert!(
+            format!("{error:#}").contains("map-light eligibility differs"),
+            "{error:#}"
+        );
+        assert_eq!(
+            world.object_lights().len(),
+            1,
+            "rejected restore leaves the live light owner unchanged"
+        );
+    }
 }
 
 #[test]
@@ -45415,8 +45477,12 @@ fn tick_rope_classification_with_timing(
                 },
             },
             &mut cyrus_game::random::EngineRandom::from_state(42),
-            &mut |_, _| {
-                anyhow::ensure!(!fail_sound, "rope release sound rejected");
+            &mut |_, cue| {
+                anyhow::ensure!(
+                    !fail_sound
+                        || matches!(cue, cyrus_script::script::ScriptSound::AnimationState(_)),
+                    "rope release sound rejected"
+                );
                 Ok(())
             },
             100,
@@ -45425,13 +45491,9 @@ fn tick_rope_classification_with_timing(
 }
 
 #[test]
-fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_motion() {
+fn rope_release_retains_signed_speed_and_defers_its_carried_classification() {
     use cyrus_script::player::input::PlayerInput;
-    for (forward, backward, speed, classification) in [
-        (false, false, 0, MotionDirection::FORWARD),
-        (true, false, 64, MotionDirection::FORWARD),
-        (false, true, -64, MotionDirection::BACKWARD),
-    ] {
+    for (forward, backward, speed) in [(false, false, 0), (true, false, 64), (false, true, -64)] {
         let (_, mut world, data, scene) = rope_classification_fixture();
         let player = world.selected_player().unwrap();
         tick_rope_classification(
@@ -45497,10 +45559,10 @@ fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
             (control.queued_motion.byte(), control.jump_selector),
-            (24, 24)
+            (0, 23)
         );
         assert_eq!(control.motion_vector[2], speed);
-        assert_eq!(control.motion_classification, classification);
+        assert_eq!(control.motion_classification, MotionDirection::FORWARD);
         // The ordinary wrapper clears directions without a locomotion call.
         assert_eq!(control.move_counter, 0);
     }
@@ -45823,7 +45885,7 @@ fn rope_regrab_fixture() -> (
 fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let (mut world, data, scene) = rope_regrab_fixture();
     let player = world.selected_player().unwrap();
-    // The countdown refuses regrab before the later collision stages cancel queued motion.
+    // The countdown refuses regrab while the detached player retains airborne motion.
     tick_rope_classification_with_timing(
         &mut world,
         &data,
@@ -45847,9 +45909,9 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
             control.falling_state.byte(),
             control.motion_classification
         ),
-        (1, 0, 0, MotionDirection::FORWARD)
+        (1, 24, 0, MotionDirection::FORWARD)
     );
-    // Re-enter airborne motion through the same controller while one exclusion tick remains.
+    // Repeat the jump request while one exclusion tick remains.
     sample_rope_jump_controller(
         &mut world,
         &data,
@@ -45902,8 +45964,25 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
 }
 
 #[test]
-fn rope_expiry_uses_full_nominal_ticks_and_retains_classification_on_grab_failure() {
+fn rope_expiry_uses_full_nominal_ticks_and_retains_queued_motion_on_grab_failure() {
     for ticks in [24, 256] {
+        let (mut admitted, data, scene) = rope_regrab_fixture();
+        tick_rope_classification_with_timing(
+            &mut admitted,
+            &data,
+            &scene,
+            cyrus_script::player::input::PlayerInput::default(),
+            false,
+            [ticks, 0, 0],
+        );
+        assert!(admitted.selected_player_on_rope());
+        assert_eq!(
+            admitted.actors()[admitted.selected_player().unwrap().index]
+                .control_state()
+                .unwrap()
+                .jump_selector,
+            0
+        );
         let (mut world, data, scene) = rope_regrab_fixture();
         let player = world.selected_player().unwrap();
         tick_rope_classification_with_timing(
@@ -47017,10 +47096,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(!live.selected_player_on_rope());
             assert!(live.ropes()[0].attachments.is_empty());
             let control = live.actors()[index].control_state().unwrap();
-            assert_eq!(
-                (control.queued_motion, control.jump_selector),
-                (JumpMotion::ROPE, 24)
-            );
+            assert_eq!(control.jump_selector, 23);
             assert_eq!(
                 movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
                     ["current"][0]
@@ -51776,3 +51852,6 @@ fn ordinary_working_orientation_copies_current_angles_before_script_rotation() {
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
     }
 }
+
+#[path = "script_registry/rope_attachment.rs"]
+mod rope_attachment_tests;

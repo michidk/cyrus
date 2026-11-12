@@ -183,7 +183,7 @@ type Runtime<'w, 's> = (
 type Rendering<'w, 's> = (
     ResMut<'w, Assets<Image>>,
     Query<'w, 's, &'static mut Sprite, With<CapturedBackground>>,
-    Query<'w, 's, (Entity, &'static mut Camera), With<Camera3d>>,
+    Query<'w, 's, (Entity, &'static mut Camera), super::view3d::GameplayCameras>,
     Query<'w, 's, &'static Window, With<bevy::window::PrimaryWindow>>,
     Query<'w, 's, Entity, With<CapturedBackground>>,
 );

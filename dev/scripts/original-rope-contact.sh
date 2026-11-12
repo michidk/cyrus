@@ -39,6 +39,9 @@ if [[ ! -f "$world" || -L "$world" || ! -f "$run/game.ins" ]]; then
     echo 'requires a prepared writable run with a real WORLD.INI and game.ins' >&2
     exit 2
 fi
+if [[ -n "${CYRUS_RETRO_IMAGE_ARCHIVE:-}" ]]; then
+    "$root/dev/scripts/ensure-runtime-image.sh" "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" "$CYRUS_RETRO_IMAGE_ARCHIVE"
+fi
 mkdir -p "$output"
 exec 9>/tmp/cyrus-live.lock
 flock -w 600 9

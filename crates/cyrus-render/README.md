@@ -1,7 +1,8 @@
 # cyrus-render
 
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
-camera, HUD and subtitles.
+camera, HUD and subtitles. World material preparation only handles the default
+render layer; offscreen book and reader layers keep their own materials.
 The game camera explicitly disables MSAA. Sky materials retain encoded-color
 filtering and fog. Faithful has no RGB565 framebuffer quantization or dither: see Fog.
 The game camera keeps the original horizontal field of view when its viewport
@@ -342,7 +343,7 @@ the original camera position. This combines preservation's
 with its [sky texture mapping](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 
 Scene rendering uses the installed near/far planes, including a nonzero
-`world_back_plane` override. F1 exposes a render-distance override in game units;
+`world_back_plane` override. F11 exposes a render-distance override in game units;
 editing it switches Fog to Modern. Faithful uses the original range and fog
 tables. Modern Fog expands the camera-centered terrain and water window to cover the
 selected far frustum. Faithful Fog retains the original terrain window.
@@ -668,3 +669,16 @@ including when a restored actor receives a new entity binding. The public
 `inspect_actor_model` diagnostic correlates the retained model frame and
 attachment geometry with actual rendered owners and validated frame sources;
 it does not repair missing bindings while observing them.
+
+Restored private environments retain their validated installed source path alongside
+the published asset identity. Light and transient-effect ownership accepts that
+pair while still requiring matching prepared animation content. Retirement or a
+source mismatch cannot reuse the restored environment's logical light owner.
+
+`fog::inspect_effect_geometry` observes actual live transient billboard bindings,
+vertices, transforms, image-byte hashes and retained/logical slot ownership without
+advancing the pool or repairing a binding. It rejects a stale logical owner and
+missing or inconsistent mesh/material bindings. Call after effect PostUpdate and
+deferred publication. Runtime identities establish replacement and retirement only
+within the process; this diagnostic does not establish GPU submission or visual
+parity with the original.

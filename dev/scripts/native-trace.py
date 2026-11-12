@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Trace the selected player through the control port, one JSON line per game-clock step.
+"""Trace the selected player through the control port, one JSON line per sampled ordinary-update boundary.
 
 Connects to a running cyrus (CYRUS_CONTROL_ADDR), retries until `state` shows InGame, scene_ready
-and loaded scripts, then runs the placement steps and writes one line per change of the game clock:
-game seconds, frame, position (map units), animation group, health and the falling, queued, sliding
+and loaded scripts, then runs the placement steps and samples through the public boundary scheduler:
+game seconds, ordinary update/generation, position (map units), animation group, health and the falling, queued, sliding
 and living-state bytes. Output goes to --out (keep it under the workspace, never in a tracked path).
 
     native-trace.py --out run.jsonl --drop 200 --drop 400 --drop 700 --origin 40816,-744,41024 [--seconds 8]
@@ -51,7 +51,8 @@ def wait_live(addr, patience):
         try:
             s = call(addr, {"type": "state"})
             scripts = s.get("scripts") or {}
-            if s.get("state") == "InGame" and s.get("scene_ready") and scripts.get("state") == "Loaded":
+            if (s.get("state") == "InGame" and s.get("scene_ready")
+                    and scripts.get("state") == "Loaded" and scripts.get("ordinary_updates", 0) > 0):
                 return
         except (OSError, RuntimeError, ValueError):
             pass
@@ -71,18 +72,41 @@ def player_index(addr):
         offset += 64
 
 
-def sample(addr, index, ev):
-    actor = call(addr, {"type": "scripts", "offset": index, "limit": 1})["actors"][0]
-    state = call(addr, {"type": "state"})
+def sample(addr, ev):
+    """Read clock, pose and health from one ordinary-update boundary snapshot."""
+    response = call(addr, {"type": "schedule_input", "events": [{"after_updates": 0}]})
+    boundaries = response.get("boundaries", [])
+    if len(boundaries) != 1:
+        raise ValueError("native-trace: selected boundary snapshot unavailable")
+    if boundaries[0].get("after_updates") != 0:
+        raise ValueError("native-trace: inconsistent selected boundary snapshot")
+    return boundary_sample(boundaries[0], ev)
+
+
+def boundary_sample(boundary, ev, expected_input=(None, None)):
+    """Decode a selected-player snapshot with an explicitly acknowledged input."""
+    import math
+    actors = boundary.get("player", {}).get("actors", [])
+    if ((boundary.get("key"), boundary.get("action")) != expected_input or len(actors) != 1
+            or type(boundary.get("update")) is not int or type(boundary.get("generation")) is not int
+            or not isinstance(boundary.get("game_seconds"), (int, float))
+            or not math.isfinite(boundary["game_seconds"])):
+        raise ValueError("native-trace: inconsistent selected boundary snapshot")
+    actor = actors[0]
+    if actor.get("source") != "player" or actor.get("name") != "CYRUS":
+        raise ValueError("native-trace: boundary does not contain the selected player")
+    failure = actor.get('failure') or actor.get('unavailable')
+    if failure:
+        raise RuntimeError(f'native-trace: selected player boundary failure: {failure}')
     control = actor.get("control") or {}
-    attrs = actor.get("attributes") or {}
-    # The attribute table is a byte list; attribute 3 is health.
+    attrs = actor.get("attributes") or []
     health = attrs[3] if isinstance(attrs, list) and len(attrs) > 3 else None
     pose = actor["spatial"]["effective"]
     return {
         "ev": ev,
-        "g": state["clock"]["game_seconds"],
-        "frame": state["frame"],
+        "g": boundary["game_seconds"],
+        "frame": boundary["update"],
+        "generation": boundary["generation"],
         "pos": [v / 256 for v in pose["position"]],
         "group": (actor.get("animation") or {}).get("current_group"),
         "health": health,
@@ -90,8 +114,17 @@ def sample(addr, index, ev):
         "queued": control.get("queued_motion"),
         "sliding": control.get("sliding_state"),
         "living": control.get("living_state"),
-        "error": (state.get("scripts") or {}).get("error"),
+        "stable": control.get("stable_position_valid"),
+        "rope_attached": control.get("rope_attached"),
+        "error": None,
     }
+
+
+def validate_continuation(previous, current):
+    """Reject a restart or duplicate/reversed boundary instead of joining lifetimes."""
+    if (current['generation'] != previous['generation'] or current['frame'] <= previous['frame']
+            or current['g'] <= previous['g']):
+        raise ValueError('native-trace: selected update sequence restarted or did not advance')
 
 
 def main():
@@ -109,7 +142,6 @@ def main():
     p.add_argument("--patience", type=float, default=420)
     a = p.parse_args()
     wait_live(a.addr, a.patience)
-    index = player_index(a.addr)
     if not a.keep_cheats:
         for entry in call(a.addr, {"type": "state"}).get("cheats", {}).get("entries", []):
             # task, animation and nodemarker are seeded from SYSTEM.INI at startup (task and
@@ -131,30 +163,40 @@ def main():
         for target in targets:
             call(a.addr, {"type": "place_player", "x": target[0], "y": target[1], "z": target[2], "heading": a.heading})
             call(a.addr, {"type": "reset_camera"})
-            first = sample(a.addr, index, "placed")
+            first = sample(a.addr, "placed")
             first["target"] = target
             out.write(json.dumps(first) + "\n")
             t0, last = first["g"], first["g"]
+            previous = first
             for k in keys:
                 k[3] = k[4] = False
             stall = time.time()
-            while last < t0 + a.seconds:
-                row = sample(a.addr, index, "s")
-                if row["g"] > last:
-                    last = row["g"]
-                    stall = time.time()
-                    out.write(json.dumps(row) + "\n")
-                    out.flush()
-                elif time.time() - stall > 180:
-                    sys.exit("native-trace: game clock stalled 180 s")
-                for k in keys:
-                    if not k[3] and last >= t0 + k[1]:
-                        call(a.addr, {"type": "input", "key": k[0], "action": "press"})
-                        k[3] = True
-                    if k[3] and not k[4] and last >= t0 + k[2]:
-                        call(a.addr, {"type": "input", "key": k[0], "action": "release"})
-                        k[4] = True
-                time.sleep(0.02)
+            try:
+                while last < t0 + a.seconds:
+                    row = sample(a.addr, "s")
+                    validate_continuation(previous, row)
+                    row["missed_updates"] = row["frame"] - previous["frame"] - 1
+                    previous = row
+                    if row["g"] > last:
+                        last = row["g"]
+                        stall = time.time()
+                        out.write(json.dumps(row) + "\n")
+                        out.flush()
+                    elif time.time() - stall > 180:
+                        sys.exit("native-trace: game clock stalled 180 s")
+                    for k in keys:
+                        if not k[3] and last >= t0 + k[1]:
+                            call(a.addr, {"type": "input", "key": k[0], "action": "press"})
+                            k[3] = True
+                        if k[3] and not k[4] and last >= t0 + k[2]:
+                            call(a.addr, {"type": "input", "key": k[0], "action": "release"})
+                            k[4] = True
+                    time.sleep(0.02)
+            finally:
+                for name, _, _, pressed, released in keys:
+                    if pressed and not released:
+                        call(a.addr, {"type": "input", "key": name, "action": "release"})
+
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ module where it is defined and regenerate.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
 - `src/loading.rs` — Native preload scan and parser coverage results.
+- `src/loading_artwork.rs` — Destination-specific loading pictures, prepared on demand from WORLD.INI.
 - `src/logbook.rs` — Installed logbook paper, fonts and scroll geometry for native and browser readers.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
@@ -70,12 +71,12 @@ module where it is defined and regenerate.
 - `src/sound/dialogue/export.rs` — Per-label original RTX preparation for disk caches and browser workers.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/source.rs` — Original-file access. Browser workers and native installs share the same parsers.
-- `src/startup/dos_raster.rs` — DOS Glide overlay splash rendering from preservation's `docs/engine/startup.md`
+- `src/splash_asset.rs` — The installed Windows 3dfx splash's meshes, textures and authored draws, exported once so the
 - `src/startup/export.rs` — (undocumented)
 - `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.
 - `src/startup/mod.rs` — Shared startup preparation and native streaming cinematic input.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
-- `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
+- `src/startup/splash_data.rs` — Converts the parsed Windows 3dfx splash into the asset the game draws live.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
@@ -153,6 +154,10 @@ module where it is defined and regenerate.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
+- `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
+- `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
+- `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
+- `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
 - `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
 - `src/camera/projection.rs` — Original Glide horizontal field of view, independent of viewport aspect ratio.
 - `src/console.rs` — Installed paper and bitmap-font presentation for the shared console editor.
@@ -164,6 +169,7 @@ module where it is defined and regenerate.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
+- `src/fog/effects/observation.rs` — Read-only transient mesh, material and generation observations.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
 - `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
@@ -367,15 +373,17 @@ module where it is defined and regenerate.
 ## `cyrus-startup` — Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
+- `src/book_scene.rs` — The book menu as a real 3D scene: one mesh per model material group under a perspective camera.
 - `src/confirmation.rs` — Mini-confirmation input and pixels, following preservation's book-menu rules.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
 - `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
+- `src/information.rs` — Fixed F1 information and F10 credits screens, returning to the suspended world.
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/logbook.rs` — Installed logbook paper, text and rotating scrolls over the suspended world.
 - `src/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
-- `src/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
+- `src/menu_raster.rs` — Paint the installed book's page surfaces: labels, widgets and pictures drawn into the textures
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
@@ -383,6 +391,8 @@ module where it is defined and regenerate.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the
 - `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
+- `src/splash.rs` — The installed Windows 3dfx splash, drawn live every frame as the original's Glide splash is.
+- `src/view3d.rs` — Shared GPU drawing for the screens that show textured models in the original's fixed 640 by 480
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
@@ -435,6 +445,9 @@ module where it is defined and regenerate.
 - `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
+- `src/control/effect_geometry.rs` — Bounded read-only transient geometry acquisition after presentation publication.
+- `src/control/frame_capture.rs` — Bounded native screenshots whose clock and PCM delivery cursor belong to the extracted frame.
+- `src/control/input_schedule.rs` — Diagnostic input delivery at admitted ordinary simulation boundaries.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
 - `src/debug.rs` — Platform world-picker sources and navigation.
