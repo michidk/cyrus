@@ -564,6 +564,8 @@ impl cyrus_world::sound::AmbientSoundDriver for ScopedSounds<'_, '_, '_> {
             sources,
             panned,
             channels,
+            #[cfg(any(target_arch = "wasm32", test))]
+            bank_loading,
             ..
         } = &mut **frame;
         let settings = settings
@@ -579,6 +581,19 @@ impl cyrus_world::sound::AmbientSoundDriver for ScopedSounds<'_, '_, '_> {
             script_listener.0,
             request.volume,
         )?;
+        // Ambient tasks poll again; unlike one-shot cues, they need no queued
+        // replay. Keep live gain/stop updates, but never start from an old bank.
+        #[cfg(any(target_arch = "wasm32", test))]
+        if bank_loading.is_some()
+            && channels.samples.status(request.channel) == 2
+            && volume != 0
+            && !request.object_update_excluded
+        {
+            return Ok(cyrus_world::sound::AmbientSoundUpdate {
+                channel: request.channel,
+                active: true,
+            });
+        }
         let mut mixer = Mixer {
             master: settings.master_volume,
             sources: sources.as_deref(),
@@ -2133,6 +2148,125 @@ mod dialogue_tests {
             "an authored animation command must survive unavailable bank metadata"
         );
         assert!(app.world().resource::<Channels>().playing.is_empty());
+    }
+
+    fn ambient_admission_poll(
+        In(request): In<cyrus_world::sound::AmbientSoundRequest>,
+        mut sounds: ScriptSounds,
+    ) -> cyrus_world::sound::AmbientSoundUpdate {
+        sounds.with_driver(Some(request.generation), |driver, _| {
+            driver.publish_listener(Some(cyrus_world::sound::ListenerPose {
+                position: [0; 3],
+                yaw: 0,
+            }));
+            driver.update(request).unwrap()
+        })
+    }
+
+    #[test]
+    fn ambient_start_waits_for_bank_admission_without_replaying_polls() {
+        let (mut app, _) = pending_animation_app();
+        let request = cyrus_world::sound::AmbientSoundRequest {
+            generation: 1,
+            actor_index: 2,
+            channel: None,
+            effect: 0,
+            volume: 0,
+            rate_offset_hz: 0,
+            position: [0; 3],
+            object_update_excluded: false,
+        };
+        for _ in 0..3 {
+            let update = app
+                .world_mut()
+                .run_system_cached_with(ambient_admission_poll, request)
+                .unwrap();
+            assert!(update.active);
+            assert_eq!(
+                update.channel, None,
+                "pending ambient poll used the previous bank"
+            );
+        }
+        app.world_mut().remove_resource::<crate::SoundBankHandle>();
+        let update = app
+            .world_mut()
+            .run_system_cached_with(ambient_admission_poll, request)
+            .unwrap();
+        assert!(update.active);
+        assert!(update.channel.is_some());
+        let continued = app
+            .world_mut()
+            .run_system_cached_with(
+                ambient_admission_poll,
+                cyrus_world::sound::AmbientSoundRequest {
+                    channel: update.channel,
+                    ..request
+                },
+            )
+            .unwrap();
+        assert_eq!(continued.channel, update.channel);
+        assert_eq!(
+            app.world_mut()
+                .query_filtered::<Entity, With<PlayingSound>>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert!(app.world().resource::<Channels>().pending.is_empty());
+
+        // A replacement bank must not freeze an admitted decoder's live controls.
+        app.insert_resource(crate::SoundBankHandle(Handle::default()));
+        let slot = update.channel.unwrap();
+        let token = app
+            .world()
+            .resource::<Channels>()
+            .samples
+            .current(slot)
+            .unwrap()
+            .token;
+        let gains = app.world().resource::<Channels>().playing[&token]
+            .gains
+            .clone()
+            .unwrap();
+        let before = gains.snapshot();
+        let moved = app
+            .world_mut()
+            .run_system_cached_with(
+                ambient_admission_poll,
+                cyrus_world::sound::AmbientSoundRequest {
+                    channel: Some(slot),
+                    position: [512 * 256, 0, 512 * 256],
+                    ..request
+                },
+            )
+            .unwrap();
+        assert_eq!(moved.channel, Some(slot));
+        assert_ne!(gains.snapshot(), before);
+        let stopped = app
+            .world_mut()
+            .run_system_cached_with(
+                ambient_admission_poll,
+                cyrus_world::sound::AmbientSoundRequest {
+                    channel: Some(slot),
+                    object_update_excluded: true,
+                    ..request
+                },
+            )
+            .unwrap();
+        assert!(!stopped.active);
+        assert!(app.world().resource::<Channels>().playing.is_empty());
+        let out_of_range = app
+            .world_mut()
+            .run_system_cached_with(
+                ambient_admission_poll,
+                cyrus_world::sound::AmbientSoundRequest {
+                    position: [100_000 * 256, 0, 0],
+                    ..request
+                },
+            )
+            .unwrap();
+        assert!(!out_of_range.active);
+        assert!(out_of_range.channel.is_none());
     }
 
     fn pending_animation_app() -> (App, Entity) {

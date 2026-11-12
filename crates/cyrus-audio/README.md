@@ -517,3 +517,43 @@ muted-publication failure control. Captures and fixture values remain local.
 `music_settings ... --muted-publication` and the native driver's matching flag
 check replacement pause before the first ordinary update, then capture mixer silence,
 unmute, pause and continuation without changing the restored playback entity.
+
+Browser ambient polls honor the effect-bank admission gate before allocating a new
+sample. A waiting poll remains active without queuing replay. An admitted channel
+continues to receive gain/pan and stop updates while replacement preparation is pending.
+This preserves the existing polling contract rather than replaying missed ambient polls.
+
+The recoverable installed browser launcher accepts `--driver ambient` with a local
+JSON fixture naming `emitter`, `emitter_index`, `effect`, `scene`, `source_fixture`,
+and optional `listener_offset` in world units. Select
+the exact installed actor index because several actors can share a script name.
+Choose an offset that isolates the selected source from nearby authored emitters.
+Create the local source oracle with
+`python3 dev/scripts/ambient-source-fixture.py EXPORTED_EFFECT.wav SYSTEM.INI OUTPUT.json`,
+using the selected effect WAV in the runtime sound export cache. The helper checks
+mono PCM and records source width, period, RMS and digest. No install data belongs
+in a fixture committed to this repository.
+
+The ambient driver holds a real bank read, checks live gain changes, requires
+silence after stopping while pending, then checks one freshly admitted owner and
+retains its token through subsequent polling. Other authored one-shots must retire
+before isolated PCM comparison. Public capture supplies exact sample ownership;
+only its ownership metadata crosses the browser diagnostic connection. Readiness
+advances ordinary updates within a game-clock bound rather than assuming a fixed
+short interval reaches the next authored poll. The driver checks gain over three
+source periods of submitted mixer PCM and pan in actual graph PCM using the
+shared preservation oracle.
+
+Each validated stage and the completed bank phase is flushed to a separate
+receipt with executed build, driver and source-oracle identities before the next
+stage starts. Public browser session replacement and dormant revisit remain
+separate acceptance work; this driver verifies the browser bank-admission owner.
+
+`native-ambient-restoration.py PORT OUTPUT --runtime-output /mounted/output
+--container NAME --binary PATH --emitter NAME --emitter-index INDEX --effect INDEX` supplies the paced
+native continuation control through public capture/load, restored listener movement,
+stop/restart and dormant return. It binds receipts to the running executable hash. `--resume-dormant` validates
+five retained stages and their selected sample owner before rerunning the dormant
+transition and completing the final return, without repeating session publication.
+The bank-admission regression is browser-specific; the native run checks the shared
+live decoder and lifecycle contracts, without claiming physical-speaker parity.
