@@ -11,7 +11,9 @@ binding audio and player presentation. Authored type-six light state belongs to 
 logical world; staged scene materials use the saved current world's enabled lights. No scripts, initialization or playback run
 during construction. Settled lifecycle capture validates prepared script bytes against
 the logical source, retains request/current identity and any scene-load error, and
-rejects in-flight preparation. Player replacements also retain the displayed
+rejects in-flight preparation. Live save requests remain pending while a replacement
+model instance or its frame mesh is still being published. Invalid model poses
+still reject capture. Player replacements also retain the displayed
 model/frame and sound surface before the first gameplay update.
 
 This draft provides an exclusive commit and document encoding for its represented

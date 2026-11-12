@@ -4,6 +4,7 @@ mod book_scene;
 mod confirmation;
 mod credits;
 mod examine;
+mod information;
 mod splash;
 mod view3d;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
@@ -142,6 +143,7 @@ impl Plugin for StartupPlugin {
         menu::register(app);
         movie::register(app);
         credits::register(app);
+        information::register(app);
         loading::register(app);
         // Hosts without the renderer draw no models, so the lit material is registered only with it.
         splash::register_assets(app);

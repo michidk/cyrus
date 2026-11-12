@@ -268,14 +268,7 @@ pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value
 }
 
 pub(crate) fn poll(world: &mut World) {
-    let quick_save = world
-        .get_resource::<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>()
-        .is_some_and(|keys| keys.just_pressed(bevy::prelude::KeyCode::F9));
-    if quick_save
-        && world
-            .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
-            .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
-    {
+    if cyrus_script::quick_save_pressed(world) {
         match request_slots(world, SlotOperation::QuickSave) {
             Ok(()) => world.resource_mut::<NativeSessionLoad>().quick = true,
             Err(error) => bevy::log::error!("Quick Save Game: {error:#}"),

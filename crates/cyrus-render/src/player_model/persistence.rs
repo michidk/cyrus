@@ -31,15 +31,18 @@ pub struct PlayerModelCandidate {
 }
 
 fn ready(world: &World, root: Entity) -> Result<()> {
-    let instance = world
-        .get::<WorldInstance>(root)
-        .ok_or_else(|| anyhow::anyhow!("player model {root:?}: instance absent"))?;
-    ensure!(
-        world
-            .get_resource::<WorldInstanceSpawner>()
-            .is_some_and(|spawner| spawner.instance_is_ready(**instance)),
-        "player model {root:?}: instance is not ready"
-    );
+    let instance = world.get::<WorldInstance>(root).ok_or_else(|| {
+        crate::persistence::PresentationPending(format!("player model {root:?}: instance pending"))
+    })?;
+    if !world
+        .get_resource::<WorldInstanceSpawner>()
+        .is_some_and(|spawner| spawner.instance_is_ready(**instance))
+    {
+        return Err(crate::persistence::PresentationPending(format!(
+            "player model {root:?}: instance is not ready"
+        ))
+        .into());
+    }
     Ok(())
 }
 

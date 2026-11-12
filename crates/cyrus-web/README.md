@@ -120,12 +120,12 @@ WASM downloads before Bevy starts; selected-host game assets load behind install
 artwork. New Game and the temporary Load fallback wait for world dependencies.
 Movies read compressed Smacker ranges and play incrementally decoded first-track PCM; subtitle, interlace,
 skip and menu-return rules share the native implementation. Quit attempts tab
-closure and keeps running when refused. F1 opens the world,
+closure and keeps running when refused. F11 opens the world,
 flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and
 saved Controls settings. Gameplay and original-game comparison limits are unchanged.
 
 Direct scene launches use the shared in-game presentation without an additional
-HTML control hint. F1 opens the inspection controls.
+HTML control hint. F11 opens the inspection controls.
 
 Not a default workspace member so day-to-day builds and tests stay lean.
 
@@ -157,7 +157,7 @@ opt-in are required. This read-only metadata does not advance or cancel loading.
 F12 opens the shared cheat console while in a world. Cheat state restores from
 localStorage `cyrus-cheats`, falling back to the read-only installed CHT only when
 local state is absent. SYSTEM.INI startup defaults apply afterwards. `savecheats`
-persists through the same browser storage helper as preferences. The F1 debug
+persists through the same browser storage helper as preferences. The F11 debug
 menu's Cheat files section imports or downloads original-format CHT files.
 Import validates and saves before replacing live state; cancellation, invalid
 files and storage failures preserve the current state. Import also recovers from

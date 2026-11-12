@@ -79,13 +79,17 @@ impl Plugin for ControlPlugin {
                 Update,
                 crate::session::launch_slot.run_if(resource_exists::<crate::session::LaunchSlot>),
             )
-            // `poll` follows `handle` so a control tap's press is still `just_pressed` when F9 is sampled.
+            // Deliver control taps before console capture, then sample F9 after keyboard ownership is resolved.
             .add_systems(
                 PreUpdate,
-                (release_taps, handle, crate::session::poll)
+                (release_taps, handle)
                     .chain()
                     .after(bevy::input::InputSystems)
                     .before(cyrus_console::ConsoleInput),
+            )
+            .add_systems(
+                PreUpdate,
+                crate::session::poll.after(cyrus_console::ConsoleInput),
             );
     }
 }

@@ -56,7 +56,7 @@ try {
     await delay(100);
   }
   assert(ready,'initial world preparation deadline');
-  await key('F1','F1',112);
+  await key('F11','F11',122);
   await shot('picker');
   await click(80,84);
   await shot('choices');
@@ -64,7 +64,7 @@ try {
   await shot('selected');
   await evaluate('window.__cyrusLoadingArmed=true');
   await click(148,84);
-  await key('F1','F1',112);
+  await key('F11','F11',122);
   const deadline = performance.now()+30000;
   while(performance.now()<deadline) {
     const state = await evaluate('({startup:window.__cyrusStartup,stopped:window.__cyrusLoadingStopped})');

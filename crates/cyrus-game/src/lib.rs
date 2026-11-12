@@ -15,6 +15,8 @@ pub enum AppState {
     Loading,
     Menu,
     InGame,
+    /// A fixed gameplay information screen suspends simulation while retaining the world.
+    GameplayOverlay,
 }
 /// A complete replacement was published before a menu-to-game state transition.
 /// Exit systems must not restore checkpoints belonging to the replaced session.
@@ -89,4 +91,11 @@ mod movie_unlock_tests {
         assert_eq!(unlocks, MovieUnlocks::default());
         assert_eq!(MovieUnlocks::from_bits(0xffff).bits(), 0x7fff);
     }
+}
+
+/// Fixed information screens entered from a live world, independent of the book menu.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameplayOverlay {
+    Version,
+    Credits,
 }

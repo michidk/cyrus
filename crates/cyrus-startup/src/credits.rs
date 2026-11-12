@@ -16,7 +16,7 @@ const WIDTH: i32 = 640;
 const HEIGHT: i32 = 480;
 /// The original moves one pixel per swap with swap interval one, i.e. per display refresh;
 /// **Inferred** 60 Hz (the refresh rate it sets is not recovered).
-const PIXELS_PER_SECOND: f64 = 60.0;
+pub(super) const PIXELS_PER_SECOND: f64 = 60.0;
 /// Reader style table entry that style 5 uses.
 const STYLE_FIVE_ENTRY: usize = 9;
 
@@ -35,7 +35,7 @@ pub(super) fn register(app: &mut App) {
 
 /// Where the scroll is: the height of the first visible record and its index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Position {
+pub(super) struct Position {
     top: i32,
     first: i32,
 }
@@ -49,7 +49,7 @@ fn continued(credits: &[CreditLine], index: i32) -> bool {
 
 impl Position {
     /// `line` is the line height of the style-0 font.
-    fn start(line: i32) -> Self {
+    pub(super) fn start(line: i32) -> Self {
         Self {
             top: line,
             first: -(HEIGHT / line) + 1,
@@ -76,7 +76,7 @@ impl Position {
     }
 
     /// One pixel up. Returns true once the first visible record passes the record count.
-    fn advance(&mut self, credits: &[CreditLine], line: i32) -> bool {
+    pub(super) fn advance(&mut self, credits: &[CreditLine], line: i32) -> bool {
         self.top -= 1;
         if self.top < 0 {
             self.top += line;
@@ -98,7 +98,7 @@ impl Position {
     }
 }
 
-fn style_of(styles: &[Option<ReaderStyle>], style: u8) -> Option<ReaderStyle> {
+pub(super) fn style_of(styles: &[Option<ReaderStyle>], style: u8) -> Option<ReaderStyle> {
     let entry = if style == 5 {
         STYLE_FIVE_ENTRY
     } else {
@@ -107,7 +107,7 @@ fn style_of(styles: &[Option<ReaderStyle>], style: u8) -> Option<ReaderStyle> {
     styles.get(entry).copied().flatten()
 }
 
-fn paint(
+pub(super) fn paint(
     fonts: &[Font],
     styles: &[Option<ReaderStyle>],
     palette: &[[u8; 3]],

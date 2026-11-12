@@ -304,3 +304,36 @@ fn idle_input_and_empty_dispatch_do_not_mark_console_changed() {
     app.update();
     assert_eq!(changes.load(std::sync::atomic::Ordering::Relaxed), 1);
 }
+
+#[test]
+fn f12_toggles_console_once_per_press_and_respects_keyboard_ownership() {
+    use bevy::input::{
+        ButtonState,
+        keyboard::{Key, KeyboardInput},
+    };
+    let mut app = App::new();
+    app.add_plugins(ConsolePlugin)
+        .init_resource::<ButtonInput<KeyCode>>();
+    let event = |repeat| KeyboardInput {
+        key_code: KeyCode::F12,
+        logical_key: Key::F12,
+        state: ButtonState::Pressed,
+        text: None,
+        repeat,
+        window: Entity::PLACEHOLDER,
+    };
+    for (repeat, expected) in [(false, true), (true, true), (false, false)] {
+        app.world_mut().write_message(event(repeat));
+        app.update();
+        assert_eq!(app.world().resource::<Console>().open, expected);
+    }
+    app.world_mut().resource_mut::<Console>().blocked = true;
+    app.world_mut().write_message(event(false));
+    app.update();
+    assert!(!app.world().resource::<Console>().open);
+    app.world_mut().resource_mut::<Console>().blocked = false;
+    app.world_mut().resource_mut::<Console>().enabled = false;
+    app.world_mut().write_message(event(false));
+    app.update();
+    assert!(!app.world().resource::<Console>().open);
+}
