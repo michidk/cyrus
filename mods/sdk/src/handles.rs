@@ -6,13 +6,8 @@ use crate::keys::{Action, Key};
 use crate::math::{Pose, Vec3};
 use crate::state::Persist;
 
-/// Names the game publishes today: vertex sets, scene values and shader inputs.
+/// Names the game publishes today: scene values and shader inputs.
 pub mod published {
-    /// Vertex sets (`Vertices`).
-    pub mod vertex_set {
-        /// The animated water vertices of the terrain near the camera.
-        pub const WATER: &str = "water";
-    }
     /// Scene values (`Scene`).
     pub mod scene_value {
         /// The loaded world's wave amplitude, speed and frequency (WLD units), while it has water.
@@ -225,31 +220,6 @@ impl Natives {
                 arguments: self.0.arguments(index),
             })
             .collect()
-    }
-}
-
-/// Vertex sets the game lets mods move, by name (`published::vertex_set`).
-pub struct Vertices(pub(crate) raw::Vertices);
-
-impl Vertices {
-    /// Changes whenever the set's positions change; 0 for a set not published.
-    pub fn generation(&self, set: &str) -> u32 {
-        self.0.generation(set)
-    }
-
-    /// The set's base positions; empty for a set not published.
-    pub fn positions(&self, set: &str) -> Vec<Vec3> {
-        self.0
-            .positions(set)
-            .chunks_exact(3)
-            .map(|p| Vec3::new(p[0], p[1], p[2]))
-            .collect()
-    }
-
-    /// Move each vertex of `set` by one offset this frame, for `generation`; write every frame.
-    pub fn displace(&self, set: &str, generation: u32, offsets: &[Vec3]) {
-        let flat: Vec<f32> = offsets.iter().flat_map(|o| [o.x, o.y, o.z]).collect();
-        self.0.displace(set, generation, &flat);
     }
 }
 

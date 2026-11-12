@@ -349,8 +349,8 @@ tables. Modern Fog expands the camera-centered terrain and water window to cover
 selected far frustum. Faithful Fog retains the original terrain window.
 Modern Fog defaults to 50,000 engine units and a gradual distant
 fade. Modern Sky is camera-centered. Fog and Sky are independently switchable and default to
-Faithful. Water has no mode; mods change it through the generic `hooks` (the "water" vertex set,
-the "water-wave", "water-cell" and "lighting-modern" scene values, the "water-surface" shader
+Faithful. Water has no mode; mods change it through the generic `hooks` (the
+"water-wave", "water-cell" and "lighting-modern" scene values, the "water-surface" shader
 input and the `water_surface.wesl` library). Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend. The framebuffer

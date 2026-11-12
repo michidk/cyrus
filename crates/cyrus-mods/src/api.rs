@@ -4,7 +4,7 @@
 //! so a mod's answer takes effect one frame after it was written.
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
-//! and panics on a mismatch, so `Vertices`, `Camera`, `Movement`, `Memory`, `Uniforms` and `Hud` (queried `Mut`) take
+//! and panics on a mismatch, so `Camera`, `Movement`, `Memory`, `Uniforms` and `Hud` (queried `Mut`) take
 //! `&mut self` throughout and `Input`, `Settings`, `Player` and `Scene` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use crate::settings::{ModSettings, Value};
@@ -12,7 +12,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
-use cyrus_render::hooks::{SceneValues, ShaderInputs, VertexSets};
+use cyrus_render::hooks::{SceneValues, ShaderInputs};
 use cyrus_script::player::input::{
     CameraOrbit, CollisionProbes, Gait, Inputs, LocomotionClaim, LocomotionClaimed, ModernLook,
     MovementWish, PlayAnimation, PlayerInput, PlayerRequests, PlayerTuning, Probe, Wish,
@@ -21,32 +21,6 @@ use cyrus_script::script::{CameraFrameState, ScriptActors};
 use cyrus_soup::{AnimationGroup, Native};
 use std::collections::{BTreeSet, HashMap};
 use wasvy::prelude::*;
-
-/// Vertex sets the presentation lets mods move, by name ([`cyrus_render::hooks`] lists them).
-#[derive(Component, Reflect, Default, WasvyComponent)]
-#[reflect(Component)]
-pub struct Vertices {
-    /// Generation and flattened x, y, z positions of each published set.
-    sets: HashMap<String, (u32, Vec<f32>)>,
-    /// Offsets mods answered this frame, by set.
-    offsets: HashMap<String, (u32, Vec<f32>)>,
-}
-
-#[wasvy::methods]
-impl Vertices {
-    pub fn generation(&mut self, set: String) -> u32 {
-        self.sets.get(&set).map_or(0, |(generation, _)| *generation)
-    }
-    pub fn positions(&mut self, set: String) -> Vec<f32> {
-        self.sets
-            .get(&set)
-            .map(|(_, positions)| positions.clone())
-            .unwrap_or_default()
-    }
-    pub fn displace(&mut self, set: String, generation: u32, offsets: Vec<f32>) {
-        self.offsets.insert(set, (generation, offsets));
-    }
-}
 
 /// Named values the presentation publishes and its clock ([`cyrus_render::hooks`]).
 #[derive(Component, Reflect, Default, WasvyComponent)]
@@ -358,7 +332,6 @@ impl Input {
 pub(crate) fn spawn_host(mut commands: Commands) {
     commands.spawn((
         Name::new("cyrus mod API"),
-        Vertices::default(),
         Scene::default(),
         Camera::default(),
         Movement::default(),
@@ -375,7 +348,6 @@ pub(crate) fn spawn_host(mut commands: Commands) {
 
 /// Every component of the host entity.
 type Host = (
-    &'static mut Vertices,
     &'static mut Scene,
     &'static mut Camera,
     &'static mut Movement,
@@ -417,12 +389,11 @@ pub(crate) struct Sources<'w, 's> {
 /// Hands last frame's mod answers to the engine and publishes this frame's state.
 pub(crate) fn exchange(
     mut host: Query<Host>,
-    (mut sets, mut inputs): (ResMut<VertexSets>, ResMut<ShaderInputs>),
+    mut inputs: ResMut<ShaderInputs>,
     mut out: Outputs,
     mut src: Sources,
 ) {
     let Ok((
-        mut vertices,
         mut scene,
         mut camera,
         mut steering,
@@ -439,7 +410,6 @@ pub(crate) fn exchange(
     if src.values.is_changed() {
         publish_settings(&mut settings, &src.values);
     }
-    exchange_vertices(&mut vertices, &mut sets);
     if src.published.is_changed() {
         scene.values = src.published.values.clone();
     }
@@ -547,27 +517,6 @@ fn publish_settings(settings: &mut Settings, values: &ModSettings) {
                 }
             }
         }
-    }
-}
-
-/// Hands last frame's offsets to each published set and republishes changed positions.
-fn exchange_vertices(vertices: &mut Vertices, sets: &mut VertexSets) {
-    let mut answered = std::mem::take(&mut vertices.offsets);
-    for (name, set) in &mut sets.0 {
-        if let Some((generation, offsets)) = answered.remove(name) {
-            set.offsets = Some((generation, offsets.as_chunks::<3>().0.to_vec()));
-        }
-        let copy = vertices.sets.entry(name.clone()).or_default();
-        if copy.0 != set.generation || copy.1.len() != set.positions.len() * 3 {
-            *copy = (
-                set.generation,
-                set.positions.iter().flatten().copied().collect(),
-            );
-        }
-    }
-    vertices.sets.retain(|name, _| sets.0.contains_key(name));
-    for name in answered.keys() {
-        warn_once!("mods: displace: no vertex set named {name}");
     }
 }
 

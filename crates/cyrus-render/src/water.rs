@@ -124,67 +124,39 @@ enum Surface {
     Original,
     /// The terrain shader moves it, so the mesh keeps the base grid (see `hooks::ShaderInputs`).
     Shader,
-    /// A provider answered with per-vertex offsets.
-    Supplied,
 }
 
-/// The provider hooks water publishes to and reads offsets from.
+/// The provider hooks water publishes to and reads from.
 type Hooks<'w> = (
-    Option<ResMut<'w, crate::hooks::VertexSets>>,
     Option<ResMut<'w, crate::hooks::SceneValues>>,
     Option<Res<'w, crate::hooks::ShaderInputs>>,
 );
 
-/// Publishes the water vertices and wave parameters for a provider and takes its offsets: the
-/// vertices that moved and by how much, if the answer matches the published generation.
-fn exchange(
-    sets: Option<&mut crate::hooks::VertexSets>,
-    values: Option<&mut crate::hooks::SceneValues>,
+/// Publishes the clock, the Lighting mode and the water's wave parameters for a provider.
+fn publish_values(
+    values: &mut crate::hooks::SceneValues,
     water: Option<&Water>,
-    window: crate::terrain::Window,
-    base: &[[f32; 3]],
     (seconds, lighting_modern): (f32, bool),
-) -> Option<Vec<(usize, [f32; 3])>> {
-    if let Some(values) = values {
-        values.seconds = seconds;
-        values.values.insert(
-            crate::hooks::LIGHTING_MODERN.into(),
-            vec![f32::from(u8::from(lighting_modern))],
-        );
-        match water {
-            Some(water) => {
-                values
-                    .values
-                    .insert(crate::hooks::WATER_WAVE.into(), water.parameters.to_vec());
-                values
-                    .values
-                    .insert(crate::hooks::WATER_CELL.into(), vec![CELL_SIZE]);
-            }
-            None => {
-                values.values.remove(crate::hooks::WATER_WAVE);
-                values.values.remove(crate::hooks::WATER_CELL);
-            }
+) {
+    values.seconds = seconds;
+    values.values.insert(
+        crate::hooks::LIGHTING_MODERN.into(),
+        vec![f32::from(u8::from(lighting_modern))],
+    );
+    match water {
+        Some(water) => {
+            values
+                .values
+                .insert(crate::hooks::WATER_WAVE.into(), water.parameters.to_vec());
+            values
+                .values
+                .insert(crate::hooks::WATER_CELL.into(), vec![CELL_SIZE]);
+        }
+        None => {
+            values.values.remove(crate::hooks::WATER_WAVE);
+            values.values.remove(crate::hooks::WATER_CELL);
         }
     }
-    let sets = sets?;
-    let Some(water) = water else {
-        sets.0.remove(crate::hooks::WATER);
-        return None;
-    };
-    let waves = sets.0.entry(crate::hooks::WATER.into()).or_default();
-    let offered = waves.offsets.take();
-    let vertices: Vec<usize> = (0..water.animated_vertices.len())
-        .filter(|&v| water.animated_vertices[v] && window.contains(v))
-        .collect();
-    let positions: Vec<_> = vertices.iter().map(|&v| base[v]).collect();
-    if vertices != waves.vertices || positions != waves.positions {
-        waves.generation = waves.generation.wrapping_add(1);
-        waves.positions = positions;
-        waves.vertices = vertices;
-    }
-    let (generation, offered) = offered?;
-    (generation == waves.generation && offered.len() == waves.vertices.len())
-        .then(|| waves.vertices.iter().copied().zip(offered).collect())
 }
 
 /// The loaded world's player scene, whose terrain receives the live vertex heights.
@@ -246,7 +218,7 @@ pub(crate) fn animate_water(
     ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
-    (distance, (mut sets, mut values, inputs)): (Option<Res<crate::fog::RenderDistance>>, Hooks),
+    (distance, (mut values, inputs)): (Option<Res<crate::fog::RenderDistance>>, Hooks),
     (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
     let (parents, staged, material_names) = hierarchy;
@@ -360,17 +332,16 @@ pub(crate) fn animate_water(
     }
     let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
     let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
-    let supplied = exchange(
-        sets.as_deref_mut().map(|sets| &mut *sets),
-        values.as_deref_mut().map(|values| &mut *values),
-        water,
-        window,
-        &playback.base,
-        (
-            elapsed.as_secs_f32(),
-            fidelity.mode(Area::Lighting) == Mode::Modern,
-        ),
-    );
+    if let Some(values) = values.as_deref_mut() {
+        publish_values(
+            values,
+            water,
+            (
+                elapsed.as_secs_f32(),
+                fidelity.mode(Area::Lighting) == Mode::Modern,
+            ),
+        );
+    }
     // Under modern lighting the terrain draws its unprojected mesh, so the terrain shader can move
     // the modern waves; rewriting and uploading the whole terrain mesh every frame cost most of
     // a frame. The mesh then keeps the base grid and only the ground heights follow the waves.
@@ -380,8 +351,6 @@ pub(crate) fn animate_water(
             .is_some_and(|inputs| inputs.shader_waves());
     let surface = if shader_waves {
         Surface::Shader
-    } else if supplied.is_some() {
-        Surface::Supplied
     } else {
         Surface::Original
     };
@@ -466,23 +435,13 @@ pub(crate) fn animate_water(
         playback.engine_heights = engine_heights(water, window, ticks, &heights.heights);
         publish_heights(&player_scene, window, &playback.engine_heights);
         let mut grid = playback.base.clone();
-        match (surface, supplied, water) {
-            (Surface::Supplied, Some(supplied), _) => {
-                for (vertex, offset) in supplied {
-                    for (axis, delta) in grid[vertex].iter_mut().zip(offset) {
-                        *axis += delta;
-                    }
+        if let (Surface::Original, Some(water)) = (surface, water) {
+            for (vertex, position) in grid.iter_mut().enumerate() {
+                if water.animated_vertices[vertex] && window.contains(vertex) {
+                    position[1] =
+                        -wave_height(water, vertex, ticks, heights.heights[vertex]) / 20.0;
                 }
             }
-            (Surface::Original, _, Some(water)) => {
-                for (vertex, position) in grid.iter_mut().enumerate() {
-                    if water.animated_vertices[vertex] && window.contains(vertex) {
-                        position[1] =
-                            -wave_height(water, vertex, ticks, heights.heights[vertex]) / 20.0;
-                    }
-                }
-            }
-            _ => {}
         }
         let normals = crate::lighting::grid_normals(&grid, side);
         if water.is_some() && surface == Surface::Original {
@@ -631,24 +590,6 @@ mod tests {
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::PrimitiveTopology;
     use std::time::Duration;
-
-    /// Publishes positions, then answers them with a constant mod-supplied height.
-    fn supply_waves(app: &mut App) {
-        app.init_resource::<crate::hooks::VertexSets>();
-        app.update();
-        let mut sets = app.world_mut().resource_mut::<crate::hooks::VertexSets>();
-        let waves = sets
-            .0
-            .get_mut(crate::hooks::WATER)
-            .expect("published water set");
-        let offsets = (
-            waves.generation,
-            vec![[0.0, 1.0, 0.0]; waves.positions.len()],
-        );
-        assert!(!offsets.1.is_empty());
-        waves.offsets = Some(offsets);
-        app.update();
-    }
 
     /// A provider moving the waves in the terrain shader leaves the mesh on the base grid.
     fn shader_waves(app: &mut App, on: bool) {
@@ -1100,10 +1041,10 @@ mod tests {
             .advance_by(Duration::from_millis(110));
         app.update();
         assert_eq!(sample(&app, 18), retained);
-        supply_waves(&mut app);
-        assert_ne!(sample(&app, 18).0, retained.0);
-        // A provider that stops writing hands water back to the original wave.
-        app.update();
+        // A provider moving the waves in the shader and then stopping hands water back to the
+        // original wave.
+        shader_waves(&mut app, true);
+        shader_waves(&mut app, false);
         assert_eq!(
             sample(&app, 18),
             retained,
@@ -1249,12 +1190,8 @@ mod tests {
         };
         assert_eq!(normal(&animated, 1), normal(&animated_other, 0));
         assert_ne!(normal(&animated, 1), [0.0, 1.0, 0.0]);
-        supply_waves(&mut app);
-        assert!(positions(&app, &animated)[1][1] >= 0.0);
         assert_eq!(positions(&app, &animated)[0], a[0]);
         assert_eq!(positions(&app, &first), a);
-        // A provider that stops writing hands water back to the original wave.
-        app.update();
         // Returning to the original wave within the same tick restores its exact displacement.
         assert!((positions(&app, &animated)[1][1] + 0.6).abs() < 0.00001);
         // The terrain shader moving the waves keeps the base grid, and handing them back restores it.

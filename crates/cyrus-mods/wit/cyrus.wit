@@ -1,6 +1,6 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `vertices`, `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms` and `hud` with `QueryFor::Mut` and `input`, `settings`,
 /// `player` and `scene` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
@@ -8,24 +8,6 @@ package cyrus:mods@0.1.0;
 
 interface components {
   use wasvy:ecs/app@0.0.11.{component};
-
-  /// Vertex sets the game lets mods move, by name. A set is published while it exists and
-  /// republished (with a new generation) when its vertices change. Published today:
-  /// "water", the animated water vertices of the terrain near the camera, in scene units;
-  /// moving them replaces the original wave on screen (ground under actors keeps the original).
-  /// Offsets must answer the current generation and be written every frame; when a mod stops,
-  /// the vertices return to the original.
-  /// wasvy:type-path=cyrus_mods::api::Vertices
-  resource vertices {
-    constructor(component: component);
-    /// Changes whenever the set's positions change; 0 for a set not published.
-    generation: func(set: string) -> u32;
-    /// The set's base positions as x, y, z triples; empty for a set not published.
-    positions: func(set: string) -> list<f32>;
-    /// Move each vertex of `set` by an x, y, z offset this frame, one triple per position,
-    /// for `generation`.
-    displace: func(set: string, generation: u32, offsets: list<f32>);
-  }
 
   /// Values the game publishes by name, and its clock. Published today: "water-wave", the
   /// loaded world's wave amplitude, speed and frequency (WLD units), while it has water.

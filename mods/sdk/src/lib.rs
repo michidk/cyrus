@@ -23,7 +23,7 @@ mod state;
 
 pub use handles::{
     Camera, Claim, Collision, Contact, Hud, Input, Memory, Movement, NativeCall, Natives, Player,
-    Scene, Settings, Uniforms, Vertices, published,
+    Scene, Settings, Uniforms, published,
 };
 pub use keys::{Action, Key};
 pub use math::{Pose, Quat, Vec3};
@@ -68,12 +68,11 @@ pub struct Cx {
     pub scene: Scene,
     pub settings: Settings,
     pub uniforms: Uniforms,
-    pub vertices: Vertices,
 }
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 12] {
+fn query_for() -> [QueryFor; 11] {
     [
         QueryFor::Mut(raw::Camera::type_path()),
         QueryFor::Mut(raw::Collision::type_path()),
@@ -86,7 +85,6 @@ fn query_for() -> [QueryFor; 12] {
         QueryFor::Ref(raw::Scene::type_path()),
         QueryFor::Ref(raw::Settings::type_path()),
         QueryFor::Mut(raw::Uniforms::type_path()),
-        QueryFor::Mut(raw::Vertices::type_path()),
     ]
 }
 
@@ -118,7 +116,6 @@ pub fn run<M: Mod>(query: Query) {
                 id: M::ID,
             },
             uniforms: Uniforms(raw::Uniforms::new(row.component(10))),
-            vertices: Vertices(raw::Vertices::new(row.component(11))),
         };
         M::frame(&cx);
     }

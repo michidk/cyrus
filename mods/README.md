@@ -7,7 +7,7 @@ the Mods window that opens with F11. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
-| `modern-water` | vertices, scene, uniforms, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
+| `modern-water` | scene, uniforms, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
 
@@ -87,17 +87,13 @@ The raw WIT is `crates/cyrus-mods/wit/cyrus.wit`; wasvy 0.0.11 carries only prim
 across it, which is why the typed layer lives in the SDK. Other wasvy guest languages (Python, Go) work
 against the WIT directly.
 
-- `vertices`: vertex sets the game lets mods move, by name. `positions(set)` and
-  `generation(set)` read a set; `displace(set, generation, offsets)` moves each
-  vertex by an x, y, z offset this frame (call it every frame; stopping restores
-  the original). Published today: `"water"`, the animated water vertices near
-  the camera.
 - `scene`: `values(key)` reads a value the game publishes by name, `seconds()`
   its clock. Published today: `"water-wave"` (amplitude, speed, frequency),
   `"water-cell"` (terrain grid cell size in scene units) and `"lighting-modern"`
   (1 while the Lighting area is Modern).
 - `uniforms`: `set(key, values)` writes a four-value input the game's shaders read
-  (call it every frame; stopping restores the original). Read today:
+  (call it every frame; stopping restores the original). Effects run in shaders: a mod
+  replaces a shader library and sets its inputs here; the game never hands out its meshes. Read today:
   `"water-surface"` = `[effects, 0, amplitude, cell]`, which turns on the
   shore foam, wet sand and ripples and, with a positive `amplitude`, moves the
   waves in the terrain shader.

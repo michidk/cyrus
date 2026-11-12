@@ -4,7 +4,7 @@
 //! (`name`, `description`) and any of:
 //!
 //! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`
-//!   (vertex sets, scene values, camera, movement and input hooks).
+//!   (scene values, shader inputs, camera, movement and input hooks).
 //! - any shader files that `mod.toml` lists as `[[shader]]` replacements: `replaces` is
 //!   the asset path of the shader to swap (for example
 //!   `embedded://cyrus_render/water_surface.wesl`) and `file` is the replacement in the
@@ -109,7 +109,6 @@ impl Plugin for ModsPlugin {
             .register_type::<Vec<f32>>()
             .insert_resource(catalog)
             .insert_resource(settings)
-            .init_resource::<cyrus_render::hooks::VertexSets>()
             .init_resource::<cyrus_render::hooks::SceneValues>()
             .init_resource::<cyrus_render::hooks::ShaderInputs>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
