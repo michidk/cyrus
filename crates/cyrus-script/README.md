@@ -822,3 +822,9 @@ request version information with F1 and credits with F10. The information screen
 retain the live player. F1, book shortcuts and F9 require `final_version`.
 Desktop and browser hosts share F9 keyboard eligibility, including console,
 reader, inspection and pending-transition gates. F11 belongs to the debugger.
+
+Verified: selected-player turn queries return zero without a current model, including
+after `HideMe`, before reading spatial state. `PlayerMovementSpeed` returns zero
+without animation state and otherwise reads the current group independently of
+model presence, following preservation
+[player motion queries](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#player-movement-turn-speed-arctangent-and-location-distance-queries).
