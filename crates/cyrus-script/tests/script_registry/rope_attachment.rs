@@ -100,3 +100,48 @@ fn admitting_a_rope_attachment_does_not_place_a_pending_grab() {
         before
     );
 }
+
+#[test]
+fn rope_admission_selects_the_link_at_the_actors_hand_without_a_link_length_bias() {
+    let (_, mut world, data, scene) = rope_classification_fixture_with(
+        |_| {},
+        |data| {
+            let actor = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap();
+            actor["raex"]["grip0"] = 0.into();
+            actor["animation_groups"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({
+                    "group_index":AnimationGroup::ROPE_PANIC.index(), "anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+                }));
+            data.metadata["mpsz_entries"][0]["pos_extent"][1] = 0.into();
+            data.metadata["mpsz_entries"][0]["neg_extent"][1] = 48.into();
+            data.metadata["mpsz_entries"][0]["center_offset"][1] = (-24).into();
+            let model = data.models.get_mut("PLAYER").unwrap();
+            model.base_positions = vec![[0.0, 0.0, 0.0]];
+            model.positions = vec![vec![[0.0, 0.0, 0.0]]];
+        },
+    );
+    let player = world.selected_player().unwrap();
+    tick_rope_classification_with_timing(
+        &mut world,
+        &data,
+        &scene,
+        Default::default(),
+        false,
+        [0, 0, 0],
+    );
+    assert!(
+        world.actors()[player.index].failure().is_none(),
+        "{:?}",
+        world.actors()[player.index].failure()
+    );
+    assert!(world.selected_player_on_rope());
+    assert_eq!(world.ropes()[0].attachments[0].node, 0);
+}

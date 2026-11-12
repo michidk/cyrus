@@ -73,7 +73,8 @@ This follows preservation's [transient collision rules](https://github.com/michi
 Verified: admission records the attachment without placing a pending grab.
 Subsequent attached updates place the player. A player retains the approach height while the rope grab
 animation's wrapping frame progress is below three. Horizontal hand placement
-continues. Later placement uses the rope node and grip height. The public rope
+continues. Admission chooses the nearest eligible link from the actor position plus the authored
+hand vertex, without a link-length offset. Later placement uses that node and grip height. The public rope
 drivers have an explicit unarmed positive scenario requiring grab, held attachment
 and jump detach; diagnostic timing does not establish contact/clank parity.
 

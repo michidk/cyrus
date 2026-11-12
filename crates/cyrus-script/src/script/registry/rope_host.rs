@@ -489,8 +489,8 @@ impl ScriptWorld {
     }
 
     /// The link nearest below the player's hand, searched from eight links before `start`: the
-    /// hand point is the grip vertex of the first frame of `anim_rope_panic` plus the player's height and
-    /// two link lengths, and the winner is the link at or above it that is closest. Without that
+    /// hand point is the grip vertex of the first frame of `anim_rope_panic` plus the player's height,
+    /// and the winner is the link at or above it that is closest. Without that
     /// frame `start` stands. Near the ground the hand height is clamped a margin (the grip's height
     /// plus the actor's feet extent) above the floor probe.
     fn rope_hand_link(
@@ -504,15 +504,7 @@ impl ScriptWorld {
         let Some(grip) = self.group_hand_vertex(id, data, AnimationGroup::ROPE_PANIC)? else {
             return Ok(start);
         };
-        let rope = &self.ropes[rope_index];
-        let length = (f64::from(rope.link_length)
-            * f64::from(cyrus_game::ENGINE_UNIT_SCALE)
-            * 256.0)
-            .round() as i32;
-        let base = self.spatial(id)?.local.position[1]
-            .wrapping_add(length.wrapping_mul(2))
-            .wrapping_sub(1);
-        let mut target = grip[1].wrapping_add(base) >> 8;
+        let mut target = grip[1].wrapping_add(self.spatial(id)?.local.position[1]) >> 8;
         if let Some(probe) = probe {
             let floor = self.rope_floor_height(id, probe, data)? >> 8;
             let margin = (grip[1].wrapping_abs() >> 8)
