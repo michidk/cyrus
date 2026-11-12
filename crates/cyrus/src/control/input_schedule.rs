@@ -25,6 +25,8 @@ struct Boundary {
     generation: u64,
     update: u64,
     game_seconds: f64,
+    elapsed_scale: u64,
+    normal_frame_rate: u32,
     player: serde_json::Value,
 }
 
@@ -139,6 +141,7 @@ impl InputScheduler {
                     "key": event.key, "action": event.action, "after_updates": offset,
                     "update": boundary.update, "generation": boundary.generation,
                     "game_seconds": boundary.game_seconds, "player": boundary.player,
+                    "elapsed_scale": boundary.elapsed_scale, "normal_frame_rate": boundary.normal_frame_rate,
                 }));
                 attempt.events.pop_front();
             }
@@ -168,9 +171,10 @@ impl InputScheduler {
 }
 
 // The clock has sampled this invocation, but its input and simulation have not run.
-fn boundary_seconds(clock: &cyrus_script::clock::SimulationClock) -> f64 {
-    clock.game_seconds()
-        - f64::from(clock.step().frame_scale) / 256. / f64::from(clock.settings().normal_frame_rate)
+fn boundary_scale(clock: &cyrus_script::clock::SimulationClock) -> Option<u64> {
+    clock
+        .elapsed_frame_scale()
+        .checked_sub(u64::from(clock.step().frame_scale))
 }
 
 fn observe(
@@ -180,13 +184,18 @@ fn observe(
     if !context.models_prepared() {
         return None;
     }
-    let seconds = boundary_seconds(clock.as_deref()?);
+    let clock = clock.as_deref()?;
+    let elapsed_scale = boundary_scale(clock)?;
+    let normal_frame_rate = clock.settings().normal_frame_rate;
+    let seconds = elapsed_scale as f64 / 256. / f64::from(normal_frame_rate);
     context.with_world_services(|world, _| {
         let player = world.selected_player()?.index;
         Some(Boundary {
             generation: world.generation(),
             update: world.ordinary_updates().checked_add(1)?,
             game_seconds: seconds,
+            elapsed_scale,
+            normal_frame_rate,
             player: world.inspect(player, 1),
         })
     })?
@@ -228,10 +237,10 @@ mod tests {
         let mut scales = BTreeSet::new();
         let mut tick = 0;
         for update in 0..40 {
-            let before = clock.game_seconds();
+            let before = clock.elapsed_frame_scale();
             tick += if update % 2 == 0 { 1 } else { 36 };
             scales.insert(clock.advance(tick).frame_scale);
-            assert!((boundary_seconds(&clock) - before).abs() < 1e-12);
+            assert_eq!(boundary_scale(&clock), Some(before));
         }
         assert!(scales.len() > 1, "exercise changing update durations");
     }
@@ -252,6 +261,8 @@ mod tests {
                     generation: 8,
                     update,
                     game_seconds: update as f64 / 12.0,
+                    elapsed_scale: update * 256,
+                    normal_frame_rate: 12,
                     player: json!({}),
                 }),
                 &mut keys,
@@ -283,6 +294,8 @@ mod tests {
                     generation: 8,
                     update,
                     game_seconds: update as f64 / 12.,
+                    elapsed_scale: update * 256,
+                    normal_frame_rate: 12,
                     player: json!({}),
                 }),
                 &mut keys,
@@ -291,6 +304,8 @@ mod tests {
         }
         let rows = responses.try_recv().unwrap().result.unwrap();
         assert_eq!(rows["boundaries"][1]["game_seconds"], 21. / 12.);
+        assert_eq!(rows["boundaries"][1]["elapsed_scale"], 21 * 256);
+        assert_eq!(rows["boundaries"][1]["normal_frame_rate"], 12);
     }
 
     #[test]
@@ -327,24 +342,32 @@ mod tests {
                 generation: 9,
                 update: 21,
                 game_seconds: 2.,
+                elapsed_scale: 6144,
+                normal_frame_rate: 12,
                 player: json!({}),
             }),
             Some(Boundary {
                 generation: 8,
                 update: 20,
                 game_seconds: 2.,
+                elapsed_scale: 6144,
+                normal_frame_rate: 12,
                 player: json!({}),
             }),
             Some(Boundary {
                 generation: 8,
                 update: 19,
                 game_seconds: 2.,
+                elapsed_scale: 6144,
+                normal_frame_rate: 12,
                 player: json!({}),
             }),
             Some(Boundary {
                 generation: 8,
                 update: 24,
                 game_seconds: 2.,
+                elapsed_scale: 6144,
+                normal_frame_rate: 12,
                 player: json!({}),
             }),
         ] {
@@ -358,6 +381,8 @@ mod tests {
                     generation: 8,
                     update: 20,
                     game_seconds: 1.,
+                    elapsed_scale: 3072,
+                    normal_frame_rate: 12,
                     player: json!({}),
                 }),
                 &mut keys,

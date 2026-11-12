@@ -353,6 +353,12 @@ impl SimulationClock {
         self.step
     }
 
+    /// Exact accumulated simulated duration in Q8 nominal ticks since creation or restore.
+    /// Divide by 256 and the installed normal frame rate to obtain game seconds.
+    pub fn elapsed_frame_scale(&self) -> u64 {
+        self.elapsed_scale
+    }
+
     /// Game seconds simulated since this clock was created or restored: each update advances
     /// `frame_scale / 256` nominal ticks of `1 / normal_frame_rate` second, so a host slower than
     /// the minimum frame rate runs the game slower than wall time, as the original does.

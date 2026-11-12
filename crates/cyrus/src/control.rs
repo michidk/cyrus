@@ -430,7 +430,23 @@ fn handle(
                     [x, y, z].map(|value| value.wrapping_mul(256)),
                     heading,
                 )?;
-                Ok(json!({"position": [x, y, z], "heading": wrap(heading)}))
+                // handle runs in PreUpdate: placement is applied before the next ordinary update.
+                // An absent clock cannot acknowledge an exact simulation event.
+                let player = world.selected_player()
+                    .ok_or_else(|| anyhow::anyhow!("placement: selected player unavailable"))?;
+                let boundary = clock.as_ref().zip(prepared.as_ref()).map(|(clock, prepared)| {
+                    json!({
+                        "ready": true, "scene": prepared.requested_name,
+                        "frame": world.ordinary_updates(), "generation": world.generation(),
+                        "elapsed_scale": clock.elapsed_frame_scale(),
+                        "normal_frame_rate": clock.settings().normal_frame_rate,
+                        "game_seconds": clock.game_seconds(), "execution": "running",
+                        "event": "placement_applied", "phase": "before_ordinary_update",
+                        "player": world.inspect(player.index, 1)["actors"][0],
+                    })
+                });
+                Ok(json!({"position": [x, y, z], "heading": wrap(heading),
+                    "acknowledged": boundary.is_some(), "boundary": boundary}))
             })()
             .map_err(|error| format!("{error:#}")),
             Command::Flycam {
@@ -1294,6 +1310,10 @@ mod tests {
     }
 
     fn script_app() -> App {
+        script_app_with_player(false)
+    }
+
+    fn script_app_with_player(player: bool) -> App {
         use cyrus_assets::{animation::Animations, script::Scripts};
         use cyrus_script::script::{ScriptActors, ScriptWorld};
         let mut app = app();
@@ -1322,6 +1342,11 @@ mod tests {
         script_json["combat_clank_effects"] = json!([null, null]);
         script_json["combat_defenses"] = json!([]);
         let mut scripts: Scripts = serde_json::from_value(script_json).unwrap();
+        if player {
+            let mut actor = scripts.actors["ACTOR"].clone();
+            actor.namespace = None;
+            scripts.actors.insert("CYRUS".into(), actor);
+        }
         scripts.content_id = scripts.content_identity().unwrap();
         let mut actors = ScriptActors::default();
         actors.current = Some(ScriptWorld::prepare(&scripts, 1).unwrap());
@@ -1351,6 +1376,59 @@ mod tests {
                 environment_path: "test.environment".into(),
             });
         app
+    }
+
+    #[test]
+    fn placement_acknowledges_application_before_later_clock_advance() {
+        use cyrus_script::{clock::SimulationClock, script::ScriptActors};
+        let mut app = script_app_with_player(true);
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            world.prepare_spatial().unwrap();
+            let player = world.selected_player().unwrap();
+            world
+                .initialize_player_spatial(player, [0; 3], [0; 3])
+                .unwrap();
+        }
+        let placement = || Command::PlacePlayer {
+            x: 10,
+            y: 20,
+            z: 30,
+            heading: 40,
+        };
+        let unavailable = run_commands(&mut app, vec![placement()]).remove(0);
+        assert_eq!(unavailable["acknowledged"], false);
+        assert!(unavailable["boundary"].is_null());
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        clock.advance(0);
+        let scale = clock.elapsed_frame_scale();
+        app.insert_resource(clock)
+            .add_systems(Update, |mut clock: ResMut<SimulationClock>| {
+                clock.advance(18);
+            });
+        let result = run_commands(&mut app, vec![placement()]).remove(0);
+        assert_eq!(result["acknowledged"], true);
+        let boundary = &result["boundary"];
+        assert_eq!(boundary["elapsed_scale"], scale);
+        assert_eq!(boundary["phase"], "before_ordinary_update");
+        assert_eq!(
+            boundary["player"]["spatial"]["local"]["position"],
+            json!([2560, 5120, 7680])
+        );
+        assert!(
+            app.world()
+                .resource::<SimulationClock>()
+                .elapsed_frame_scale()
+                > scale
+        );
     }
 
     fn run_commands(app: &mut App, commands: Vec<Command>) -> Vec<serde_json::Value> {

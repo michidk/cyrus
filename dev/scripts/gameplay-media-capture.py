@@ -4,11 +4,16 @@
 Local adapters observe running gameplay, trigger the prepared fixture, and save a
 screenshot to their final argument. Observations contain ready, scene, frame,
 game_seconds, execution='running', and player. They must never stop the game.
+Trigger adapters return acknowledged=true plus a boundary with ready, scene, frame,
+player, game_seconds, elapsed_scale (integer Q8 nominal ticks), normal_frame_rate,
+execution, event='placement_applied', and phase='before_ordinary_update'. The
+boundary must be captured when placement is applied, not by a subsequent poll.
 These windows do not establish atomic pose/pixel correspondence or exact parity.
 """
 import argparse
 import importlib.util
 import hashlib
+from fractions import Fraction
 import json
 import math
 from pathlib import Path
@@ -33,6 +38,36 @@ def require_observation(row):
     return row
 
 
+def trigger_origin(acknowledgement, observed):
+    """Admit placement event time, never substitute a later polling clock.
+
+    The setup event may stop execution briefly. Raster observations must still
+    come from running execution. Integer scale is in Q8 nominal ticks.
+    """
+    boundary = acknowledgement.get('boundary')
+    if acknowledgement.get('acknowledged') is not True or not isinstance(boundary, dict):
+        raise ValueError('fixture trigger requires an acknowledged event boundary')
+    scale, rate = boundary.get('elapsed_scale'), boundary.get('normal_frame_rate')
+    if (type(scale) is not int or scale < 0 or type(rate) is not int or rate <= 0
+            or boundary.get('event') != 'placement_applied'
+            or boundary.get('phase') != 'before_ordinary_update'
+            or boundary.get('execution') not in ('running', 'stopped')):
+        raise ValueError('fixture trigger requires an exact placement event clock and phase')
+    require_observation({**boundary, 'execution': 'running'})
+    if boundary['game_seconds'] != scale / (256 * rate):
+        raise ValueError('fixture event clock disagrees with integer elapsed scale')
+    elapsed_from_origin(boundary, observed)
+    return boundary
+
+
+def elapsed_from_origin(boundary, observed):
+    require_observation(observed)
+    if (observed['scene'] != boundary['scene'] or observed['frame'] < boundary['frame']
+            or observed['game_seconds'] < boundary['game_seconds']):
+        raise ValueError('scene or clock reset after fixture event')
+    return observed['game_seconds'] - boundary['game_seconds']
+
+
 def window(before, after, started, ended, pixels):
     require_observation(before)
     require_observation(after)
@@ -55,6 +90,39 @@ def summarize(rows, required_progress):
     if progress < required_progress:
         raise ValueError('insufficient game-clock progress')
     return dict(game_seconds=progress, exact_update_coverage=False, raster_windows=len(rows))
+
+
+def matching_intervals(left, right):
+    """Admit equal event-relative raster windows, with no timing tolerance.
+
+    This checks clock intervals only. It cannot make a non-atomic raster atomic
+    or map PCM samples to an exact game event inside a wall-clock bracket.
+    """
+    def intervals(directory):
+        result = json.loads((directory / 'result.json').read_text())
+        if result.get('success') is not True:
+            raise ValueError('capture did not complete')
+        origin = trigger_origin(result['trigger'], result['trigger_observation'])
+        rate = origin['normal_frame_rate']
+        start = origin['elapsed_scale']
+        rows = [json.loads(line) for line in (directory / 'windows.jsonl').read_text().splitlines()]
+        summarize(rows, 0)
+        times = []
+        for row in rows:
+            window(row['before'], row['after'], *row['wall_seconds'], row['pixels'])
+            bounds = []
+            for observation in (row['before'], row['after']):
+                scale = observation.get('elapsed_scale')
+                if (observation['scene'] != origin['scene'] or type(scale) is not int or scale < 0
+                        or observation.get('normal_frame_rate') != rate
+                        or observation['game_seconds'] != scale / (256 * rate)):
+                    raise ValueError('raster bounds require exact event-clock scale and rate')
+                bounds.append(Fraction(scale - start, 256 * rate))
+            times.append(tuple(bounds))
+        return origin['scene'], times
+    if intervals(left) != intervals(right):
+        raise ValueError('capture event-relative game-clock intervals differ')
+    return dict(matched_clock_intervals=True, atomic=False, exact_pcm_event_mapping=False)
 
 
 def raster_metadata(path):
@@ -122,13 +190,12 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
         sent = time.monotonic() - epoch
         result['trigger'] = json.loads(run(trigger))
         acknowledged = time.monotonic() - epoch
-        if result['trigger'].get('acknowledged') is not True:
-            raise ValueError('fixture trigger not acknowledged')
-        trigger_boundary = sample()
-        result['trigger_observation'] = trigger_boundary
+        result['trigger_observation'] = sample()
+        trigger_boundary = trigger_origin(result['trigger'], result['trigger_observation'])
+        result['trigger_boundary'] = trigger_boundary
         while True:
             raster()
-            post_trigger_progress = rows[-1]['after']['game_seconds'] - trigger_boundary['game_seconds']
+            post_trigger_progress = elapsed_from_origin(trigger_boundary, rows[-1]['after'])
             if post_trigger_progress >= seconds:
                 break
             time.sleep(min(interval, max(0, deadline - time.monotonic())))
@@ -159,14 +226,20 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('output', type=Path)
-    parser.add_argument('--observe', required=True)
-    parser.add_argument('--trigger', required=True)
-    parser.add_argument('--screenshot', required=True)
+    parser.add_argument('output', type=Path, nargs='?')
+    parser.add_argument('--compare-captures', type=Path, nargs=2)
+    parser.add_argument('--observe')
+    parser.add_argument('--trigger')
+    parser.add_argument('--screenshot')
     parser.add_argument('--game-seconds', type=float, default=3)
     parser.add_argument('--timeout', type=float, default=90)
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
+    if args.compare_captures:
+        print(json.dumps(matching_intervals(*args.compare_captures)))
+        return
+    if not all((args.output, args.observe, args.trigger, args.screenshot)):
+        parser.error('capture requires output, --observe, --trigger and --screenshot')
     if any(not math.isfinite(v) or v <= 0 for v in (args.game_seconds, args.timeout, args.interval)):
         parser.error('capture bounds must be finite and positive')
     capture(args.output, shlex.split(args.observe), shlex.split(args.trigger),

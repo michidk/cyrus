@@ -52,6 +52,13 @@ scene preparation, debug world options and control-command application.
 `cyrus-control::server` handles TCP framing. Headless assembly omits the camera
 and audio backend; windowed assembly adds the shared presentation plugins.
 
+The public `place_player` control response includes an optional placement-event boundary:
+selected-actor state, world generation, completed ordinary updates and exact elapsed Q8
+nominal ticks with the installed normal frame rate. This acknowledges application in
+PreUpdate before the next ordinary update. Without a clock or prepared world the boundary
+is unavailable; a later `state` poll cannot supply the missing event time. Placement
+acknowledgement does not establish rendered-pixel or mixer correspondence.
+
 Native document storage uses ordinary filesystem writes through `cyrus-config`,
 creating parent directories as needed. Writes overwrite directly; a failed or
 interrupted write may leave a partial file. Callers own document validation.

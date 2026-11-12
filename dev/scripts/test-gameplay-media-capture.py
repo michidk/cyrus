@@ -20,6 +20,30 @@ def observation(clock=1, frame=12, execution='running'):
 
 
 class Windows(unittest.TestCase):
+    def test_delayed_poll_cannot_shift_acknowledged_trigger_origin(self):
+        boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
+                        event='placement_applied', phase='before_ordinary_update')
+        ack = dict(acknowledged=True, boundary=boundary)
+        self.assertEqual(media.trigger_origin(ack, observation(2, 18)), boundary)
+        self.assertEqual(media.elapsed_from_origin(boundary, observation(2.5, 20)), 1.5)
+
+    def test_boolean_ack_or_uncertain_event_clock_is_rejected(self):
+        boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
+                        event='placement_applied', phase='before_ordinary_update')
+        for bad in (None, dict(boundary, elapsed_scale=3073),
+                    dict(boundary, normal_frame_rate=0), dict(boundary, phase='polled'),
+                    dict(boundary, elapsed_scale=True), dict(boundary, event='unknown')):
+            with self.subTest(boundary=bad), self.assertRaises(ValueError):
+                media.trigger_origin(dict(acknowledged=True, boundary=bad), observation(2, 18))
+
+    def test_trigger_reset_or_future_event_is_rejected(self):
+        boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
+                        event='placement_applied', phase='before_ordinary_update')
+        for poll in (observation(.5, 18), observation(2, 11),
+                     dict(observation(2, 18), scene='ISLAND')):
+            with self.assertRaises(ValueError):
+                media.trigger_origin(dict(acknowledged=True, boundary=boundary), poll)
+
     def test_pixels_have_clock_bounds_and_never_claim_atomic_pose(self):
         row = media.window(observation(), observation(1.25, 14), .2, .4, 'frame.png')
         self.assertEqual(row['game_seconds'], [1, 1.25])
@@ -62,6 +86,47 @@ class Windows(unittest.TestCase):
             media.summarize(rows, 2)
 
 
+class MatchedIntervals(unittest.TestCase):
+    def fixture(self, root, name, start, duration):
+        directory = root / name
+        directory.mkdir()
+        def sample(scale, frame):
+            return dict(observation(scale / 3072, frame), elapsed_scale=scale, normal_frame_rate=12)
+        origin = dict(sample(start, 12), event='placement_applied', phase='before_ordinary_update')
+        (directory / 'result.json').write_text(json.dumps(dict(success=True,
+            trigger=dict(acknowledged=True, boundary=origin), trigger_observation=sample(start, 12))))
+        row = media.window(sample(start, 12), sample(start + duration, 14), .1, .2, '1.png')
+        (directory / 'windows.jsonl').write_text(json.dumps(row) + '\n')
+        return directory
+
+    def test_exact_relative_intervals_allow_different_world_ages(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            left = self.fixture(root, 'left', 3072, 384)
+            right = self.fixture(root, 'right', 6144, 384)
+            command = [sys.executable, str(Path(__file__).with_name('gameplay-media-capture.py')),
+                       '--compare-captures', str(left), str(right)]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(json.loads(result.stdout)['matched_clock_intervals'])
+            self.assertTrue(media.matching_intervals(left, right)['matched_clock_intervals'])
+            self.assertFalse(media.matching_intervals(left, right)['exact_pcm_event_mapping'])
+
+    def test_one_eighth_and_one_sixth_second_cannot_match(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            left = self.fixture(root, 'left', 3072, 384)
+            right = self.fixture(root, 'right', 6144, 512)
+            with self.assertRaisesRegex(ValueError, 'intervals differ'):
+                media.matching_intervals(left, right)
+            path = right / 'windows.jsonl'
+            row = json.loads(path.read_text())
+            del row['after']['elapsed_scale']
+            path.write_text(json.dumps(row))
+            with self.assertRaisesRegex(ValueError, 'exact event-clock'):
+                media.matching_intervals(left, right)
+
+
 class Capture(unittest.TestCase):
     def test_public_command_admits_pcm_before_trigger_and_retains_raster_windows(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -99,7 +164,11 @@ if mode == 'observe':
 elif mode == 'trigger':
     assert (root / 'capture/audio.wav').stat().st_size > 44
     (root / 'triggered').touch()
-    print('{"acknowledged":true}')
+    count = int((root / 'counter').read_text())
+    print(json.dumps(dict(acknowledged=True, boundary=dict(ready=True, scene='fixture',
+        frame=count, game_seconds=count / 4, elapsed_scale=count * 768,
+        normal_frame_rate=12, event='placement_applied', phase='before_ordinary_update',
+        execution='stopped', player={'health':100}))))
 else:
     import base64
     pathlib.Path(sys.argv[3]).write_bytes(base64.b64decode(
@@ -117,6 +186,8 @@ else:
             report = json.loads((root / 'capture/result.json').read_text())
             self.assertTrue(report['success'])
             self.assertGreaterEqual(report['post_trigger_game_seconds'], 1)
+            self.assertGreater(report['trigger_observation']['game_seconds'],
+                               report['trigger_boundary']['game_seconds'])
             self.assertGreater(report['audio']['peak'], 0)
             self.assertTrue((root / 'triggered').exists())
             rows = [json.loads(line) for line in (root / 'capture/windows.jsonl').read_text().splitlines()]

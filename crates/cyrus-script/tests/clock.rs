@@ -213,3 +213,13 @@ fn game_seconds_sum_every_step_as_frame_scale_over_256_nominal_ticks() {
     assert!((clock.game_seconds() - scale as f64 / 256.0 / 12.0).abs() < 1e-9);
     assert!(clock.game_seconds() > 1.0);
 }
+
+#[test]
+fn exact_elapsed_scale_tracks_consumed_steps_without_float_reconstruction() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    let mut consumed = 0;
+    for sample in [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 56, 60, 61, 62, 90] {
+        consumed += u64::from(clock.advance(sample).frame_scale);
+        assert_eq!(clock.elapsed_frame_scale(), consumed);
+    }
+}
