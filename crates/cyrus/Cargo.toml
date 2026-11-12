@@ -10,6 +10,12 @@ path = "src/main.rs"
 # Host adapters have persistence, lifecycle and navigation tests.
 test = true
 
+# Modern-only renderers, off by default. Each adds its switch to the debug menu; the switch starts on
+# and works under Modern lighting.
+[features]
+# Hardware ray-traced lighting through Bevy Solari; native builds only.
+raytracing = ["cyrus-render/raytracing"]
+
 [dependencies]
 cyrus-console = { workspace = true, features = ["cpf"] }
 cyrus-audio.workspace = true
@@ -17,7 +23,7 @@ cyrus-app = { path = "../cyrus-app" }
 cyrus-assets = { workspace = true, features = ["native"] }
 cyrus-config.workspace = true
 cyrus-world.workspace = true
-cyrus-render = { workspace = true, features = ["raytracing"] }
+cyrus-render.workspace = true
 cyrus-session.workspace = true
 cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default"] }

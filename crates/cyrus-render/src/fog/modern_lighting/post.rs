@@ -83,7 +83,7 @@ pub(super) struct PostInputs<'w, 's> {
     time: Res<'w, Time>,
     fidelity: Res<'w, cyrus_game::fidelity::Fidelity>,
     /// Whether Solari traces the world, which keeps the waves on the CPU (`fog::modern_waves`).
-    ray_tracing: Option<Res<'w, crate::fog::RayTracingSupport>>,
+    ray_tracing: Option<Res<'w, crate::fog::RayTracing>>,
     daylight: Res<'w, Daylight>,
     request: Option<Res<'w, EnvironmentRequest>>,
     environments: Res<'w, Assets<Environment>>,

@@ -23,14 +23,12 @@ pub enum Area {
     Sky,
     Lighting,
     Textures,
-    /// Hardware ray-traced lighting; Modern replaces the original's shading where the GPU supports it.
-    RayTracing,
     Music,
     AnisotropicFiltering,
 }
 
 impl Area {
-    pub const ALL: [Area; 10] = [
+    pub const ALL: [Area; 9] = [
         Area::PlayerController,
         Area::Camera,
         Area::Water,
@@ -38,7 +36,6 @@ impl Area {
         Area::Sky,
         Area::Lighting,
         Area::Textures,
-        Area::RayTracing,
         Area::Music,
         Area::AnisotropicFiltering,
     ];
@@ -56,8 +53,6 @@ pub struct Fidelity {
     pub lighting: Mode,
     /// Modern point-samples world textures instead of the original's bilinear filtering.
     pub textures: Mode,
-    /// Modern traces rays for lighting through the debug menu's ray-tracing switch.
-    pub ray_tracing: Mode,
     /// Modern mutes CD-ROM data-sector bytes that a disc image places inside an audio track.
     pub music: Mode,
     /// Modern averages up to sixteen samples along world texture footprints.
@@ -74,7 +69,6 @@ impl Fidelity {
             Area::Sky => self.sky,
             Area::Lighting => self.lighting,
             Area::Textures => self.textures,
-            Area::RayTracing => self.ray_tracing,
             Area::Music => self.music,
             Area::AnisotropicFiltering => self.anisotropic_filtering,
         }
@@ -88,7 +82,6 @@ impl Fidelity {
             Area::Sky => self.sky = mode,
             Area::Lighting => self.lighting = mode,
             Area::Textures => self.textures = mode,
-            Area::RayTracing => self.ray_tracing = mode,
             Area::Music => self.music = mode,
             Area::AnisotropicFiltering => self.anisotropic_filtering = mode,
         }

@@ -120,9 +120,11 @@ world model and terrain textures instead, so the pixel art stays sharp. The sky 
 
 ## Ray-traced lighting
 
-The original has no ray tracing. The debug menu's **Ray tracing** switch (the `ray_tracing` fidelity
-area, Modern only, native builds only, `--ray-tracing modern`, not part of `--mode`) lights the world
-with Bevy Solari instead of the raster shading above. Solari traces only plain PBR meshes, so each opaque
+The original has no ray tracing. Builds with the `raytracing` cargo feature (off by default, native
+only: `cargo run -p cyrus --features raytracing`) add a **Ray tracing** switch beneath the lighting row
+of the debug menu. It starts on and works only under Modern lighting, so it is greyed out in Faithful;
+`--ray-tracing on|off` and the control `ray_tracing {enabled}` set it. On a GPU with ray queries it
+lights the world with Bevy Solari instead of the raster shading above. Solari traces only plain PBR meshes, so each opaque
 world mesh gets a traced stand-in in that layout while the original draw stops; flats, water, sky and
 chroma-keyed meshes keep their original shading. The lights use the modern lighting's calibration, and
 object and baked lights become small emissive spheres of the same power. **Verified:** the original adds each

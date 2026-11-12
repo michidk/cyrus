@@ -58,7 +58,7 @@ pub fn prepare_scene_materials(
     let extension = fog_extension(
         environment,
         fidelity,
-        world.get_resource::<super::RayTracingSupport>(),
+        world.get_resource::<super::RayTracing>(),
         clipping,
     );
     let mut pending = roots.to_vec();

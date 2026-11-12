@@ -138,12 +138,10 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_game::fidelity::Mode::Faithful
         }
     };
-    // `--mode` sets every area but ray tracing; the per-area flags below override it.
+    // `--mode` sets every area; the per-area flags below override it.
     if let Some(value) = &args.launch.mode {
         for area in cyrus_game::fidelity::Area::ALL {
-            if area != cyrus_game::fidelity::Area::RayTracing {
-                settings.fidelity.set(area, mode(value));
-            }
+            settings.fidelity.set(area, mode(value));
         }
     }
     for (area, value) in [
@@ -156,10 +154,6 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             args.launch.controls,
         ),
         (cyrus_game::fidelity::Area::Camera, args.launch.camera),
-        (
-            cyrus_game::fidelity::Area::RayTracing,
-            args.launch.ray_tracing,
-        ),
     ] {
         if let Some(value) = value {
             settings.fidelity.set(area, mode(&value));
@@ -241,9 +235,23 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
             cyrus_render::fog::ModernLightingPlugin,
-            cyrus_render::fog::RayTracingPlugin,
             cyrus_debug::DebugMenuPlugin,
         ));
+        #[cfg(feature = "raytracing")]
+        {
+            app.add_plugins(cyrus_render::fog::RayTracingPlugin);
+            if let Some(value) = &args.launch.ray_tracing {
+                app.world_mut()
+                    .resource_mut::<cyrus_render::fog::RayTracing>()
+                    .enabled = value == "on";
+            }
+        }
+        #[cfg(not(feature = "raytracing"))]
+        if args.launch.ray_tracing.is_some() {
+            warn!(
+                "--ray-tracing ignored: this build has no ray tracing (cargo feature `raytracing`)"
+            );
+        }
         app.add_systems(
             Update,
             cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>

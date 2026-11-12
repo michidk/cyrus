@@ -174,7 +174,7 @@ module where it is defined and regenerate.
 - `src/fog/modern_lighting/sharing.rs` — Shared materials for the models under modern lighting, so the camera's passes batch their draws.
 - `src/fog/observation.rs` — Read-only acquisition of the CPU image bound to a live scene material.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
-- `src/fog/ray_tracing.rs` — Ray-traced lighting through Bevy Solari, selected by `Area::RayTracing` on a GPU with ray
+- `src/fog/ray_tracing.rs` — Ray-traced lighting through Bevy Solari: a switch under Modern lighting, on by default, that
 - `src/fog/ray_tracing/haze.rs` — The scene fog over the traced image.
 - `src/fog/ray_tracing/lights.rs` — The sun, ambient light, object lights and baked lights Solari traces, calibrated as the raster
 - `src/fog/ray_tracing/plugin.rs` — The ray-tracing plugin: Solari's camera setup and teardown, the history reset on cuts, and the

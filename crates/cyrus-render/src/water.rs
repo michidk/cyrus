@@ -201,7 +201,7 @@ pub(crate) fn animate_water(
     time: Res<Time<Real>>,
     clock: Option<Res<crate::presentation_clock::PresentationClock>>,
     fidelity: Res<Fidelity>,
-    ray_tracing: Option<Res<crate::fog::RayTracingSupport>>,
+    ray_tracing: Option<Res<crate::fog::RayTracing>>,
     mut playback: ResMut<WaterPlayback>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut entities: Query<(Entity, &mut Mesh3d)>,
@@ -502,10 +502,9 @@ pub(crate) fn animate_water(
             .collect();
         playback.grid = grid;
     }
-    // Modern lighting and ray tracing draw the whole unprojected terrain, which can cast shadows and
+    // Modern lighting, traced or not, draws the whole unprojected terrain, which can cast shadows and
     // be traced, instead of the original's per-frame camera-space preparation.
-    let prepare_for_camera =
-        !crate::fog::ray_tracing::world_space_geometry(&fidelity, ray_tracing.as_deref());
+    let prepare_for_camera = fidelity.mode(Area::Lighting) != Mode::Modern;
     let view = cameras
         .single()
         .ok()

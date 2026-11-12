@@ -58,7 +58,7 @@ struct InputParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct FidelityParams {
     #[schemars(
-        description = "player_controller, camera, water, fog, sky, lighting, textures, ray_tracing or music"
+        description = "player_controller, camera, water, fog, sky, lighting, textures, music or anisotropic_filtering"
     )]
     area: String,
     #[schemars(description = "faithful or modern")]
@@ -82,6 +82,11 @@ struct ModernEffectParams {
         description = "grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, depth_of_field or motion_blur"
     )]
     effect: String,
+    enabled: bool,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct RayTracingParams {
     enabled: bool,
 }
 
@@ -319,6 +324,16 @@ impl Cyrus {
             effect: p.effect,
             enabled: p.enabled,
         })?)
+    }
+
+    #[tool(
+        description = "Switch ray tracing, which works under the lighting fidelity area Modern on a GPU with ray queries; fails in builds without ray tracing."
+    )]
+    fn set_ray_tracing(
+        &self,
+        Parameters(p): Parameters<RayTracingParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::RayTracing { enabled: p.enabled })?)
     }
 
     #[tool(

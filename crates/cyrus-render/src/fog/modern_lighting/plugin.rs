@@ -106,20 +106,14 @@ impl Plugin for ModernLightingPlugin {
 }
 
 /// Ray tracing, where it runs, lights the scene in place of this module.
-fn lit(fidelity: Res<Fidelity>, ray_tracing: Option<Res<super::super::RayTracingSupport>>) -> bool {
+fn lit(fidelity: Res<Fidelity>, ray_tracing: Option<Res<super::super::RayTracing>>) -> bool {
     fidelity.mode(Area::Lighting) == Mode::Modern
-        && !ray_tracing
-            .is_some_and(|support| super::super::ray_tracing::ray_traced(&fidelity, &support))
+        && !super::super::ray_tracing::traced_if_built(&fidelity, ray_tracing.as_deref())
 }
 
-/// Whether a tier runs the day/night cycle: modern lighting, or ray tracing, which shares it.
-fn cycled(
-    fidelity: Res<Fidelity>,
-    ray_tracing: Option<Res<super::super::RayTracingSupport>>,
-) -> bool {
+/// Whether the day/night cycle runs: under modern lighting, which ray tracing shares it with.
+fn cycled(fidelity: Res<Fidelity>) -> bool {
     fidelity.mode(Area::Lighting) == Mode::Modern
-        || ray_tracing
-            .is_some_and(|support| super::super::ray_tracing::ray_traced(&fidelity, &support))
 }
 
 /// Drops the cycle's sky tint once no tier runs the cycle. Kept apart from `restore`, which also
@@ -309,9 +303,12 @@ mod tests {
     fn the_traced_cycle_keeps_its_sky_tint() {
         let mut world = World::new();
         let mut fidelity = Fidelity::default();
-        fidelity.set(Area::RayTracing, Mode::Modern);
+        fidelity.set(Area::Lighting, Mode::Modern);
         world.insert_resource(fidelity);
-        world.insert_resource(super::super::super::RayTracingSupport::Available);
+        world.insert_resource(super::super::super::RayTracing {
+            enabled: true,
+            support: super::super::super::RayTracingSupport::Available,
+        });
         let tint = Daylight(Some(day_night::SkyLight {
             tint: Vec3::splat(0.5),
             sun_rotation: Quat::IDENTITY,
@@ -325,7 +322,7 @@ mod tests {
         assert_eq!(*world.resource::<Daylight>(), tint);
         world
             .resource_mut::<Fidelity>()
-            .set(Area::RayTracing, Mode::Faithful);
+            .set(Area::Lighting, Mode::Faithful);
         schedule.run(&mut world);
         assert_eq!(*world.resource::<Daylight>(), Daylight(None));
     }
