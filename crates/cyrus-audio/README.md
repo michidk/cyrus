@@ -546,8 +546,23 @@ shared preservation oracle.
 
 Each validated stage and the completed bank phase is flushed to a separate
 receipt with executed build, driver and source-oracle identities before the next
-stage starts. Public browser session replacement and dormant revisit remain
-separate acceptance work; this driver verifies the browser bank-admission owner.
+stage starts. The fixture's `phase` selects `bank` (default), `save`,
+`restoration` or `dormant`; run them separately with the same explicit install.
+`save` writes a public session slot and atomically retains its exact document on
+the host. `restoration` reuses that checkpoint, validates its document digest,
+executed WASM, source oracle and selected fixture, then imports the bytes through
+the sealed production session-storage module before requesting public load.
+It queues an old-generation cue behind a held bank read, proves the queue through
+public capture rejection, and checks fresh generation/entity ownership and live
+listener gain/pan after replacement. `dormant` finalizes destination retirement
+silence before checking return playback and unchanged ownership through further
+ordinary polling. Each phase writes its own completion receipt; a later failure
+cannot replace an earlier completed receipt. Saved documents stay local.
+
+`node dev/scripts/test-ambient-session-checkpoint.mjs` checks browser expression
+syntax, literal storage round-trip and stale/corrupt checkpoint rejection without
+an install. The installed run observes submitted mixer gain and real graph PCM;
+it does not establish physical-speaker parity.
 
 `native-ambient-restoration.py PORT OUTPUT --runtime-output /mounted/output
 --container NAME --binary PATH --emitter NAME --emitter-index INDEX --effect INDEX` supplies the paced

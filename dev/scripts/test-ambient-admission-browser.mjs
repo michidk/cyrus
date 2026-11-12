@@ -1,7 +1,7 @@
 // Authored ambient polling waits for bank admission without replaying missed polls.
 import assert from 'node:assert/strict';
-import {readFileSync,writeFileSync,mkdirSync,renameSync,openSync,fsyncSync,closeSync} from 'node:fs';
-import {createHash} from 'node:crypto';
+import {readFileSync,writeFileSync,mkdirSync,renameSync,existsSync,openSync,fsyncSync,closeSync} from 'node:fs';
+import {digest,storageModuleExpression,restoreStorageExpression,validateSessionCheckpoint} from './ambient-session-checkpoint.mjs';
 import {setTimeout as delay} from 'node:timers/promises';
 import {connectCdp} from './capture-cdp.mjs';
 import {checkLevels,expected} from './test-positional-pcm.mjs';
@@ -17,17 +17,17 @@ assert(Number.isInteger(Number(emitterIndex))&&Number(emitterIndex)>=0,'invalid 
 assert(source.frames>0&&source.rate>0&&source.source_rms>0,'source fixture requires nonempty PCM period and RMS');
 const url=new URL(page);url.search=new URLSearchParams({capture:'1',scene,install:new URL(install).href});
 const cdp=await connectCdp(endpoint);let provenance,id=0;
-assert(acceptancePhase==='bank','ambient browser driver supports the bank phase');
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+assert(['bank','save','restoration','dormant'].includes(acceptancePhase),'unknown ambient phase');
 const results={phase:acceptancePhase,driver_sha256:digest(readFileSync(new URL(import.meta.url))),
   source_fixture_sha256:digest(readFileSync(sourceFixture)),stages:{}};
-function persist(name,value){
-  const path=`${output}/${name}.json`,temporary=path+'.tmp';
-  writeFileSync(temporary,JSON.stringify(value,null,2));
+function persistBytes(path,bytes){
+  const temporary=path+'.tmp';
+  writeFileSync(temporary,bytes);
   const fd=openSync(temporary,'r');try{fsyncSync(fd)}finally{closeSync(fd)}
   renameSync(temporary,path);
   const directory=openSync(output,'r');try{fsyncSync(directory)}finally{closeSync(directory)}
 }
+function persist(name,value){persistBytes(`${output}/${name}.json`,JSON.stringify(value,null,2))}
 async function finishPhase(name){
   results.provenance=await provenance.verify();
   persist(name+'-complete',results);
@@ -77,9 +77,9 @@ async function resetCamera(){
   await until('ordinary camera reset consumption',
     '__cyrusCapture.scripts.globals.camera_reset_request===false',600);
 }
-async function sample(action){
+async function sample(action,fields={}){
   const current=++id;
-  await evaluate(`window.__cyrusSampleRequest=${JSON.stringify(JSON.stringify({action,id:current,...(action==='play'?{effect:Number(effect)}:{})}))};true`);
+  await evaluate(`window.__cyrusSampleRequest=${JSON.stringify(JSON.stringify({action,id:current,...(action==='play'?{effect:Number(effect)}:{}),...fields}))};true`);
   await until('shared sample request',`window.__cyrusSampleResult===${current}`);
 }
 async function session(type,fields={}){
@@ -94,7 +94,9 @@ async function session(type,fields={}){
       // Inspect ownership in-page. Copying the full rendered-world document
       // over CDP for every readiness poll makes recovery unnecessarily slow.
       const {document,...metadata}=result;
-      return {...metadata,sample_slots:JSON.parse(document.split('\\n').slice(2).join('\\n')).samples.ownership.samples.slots.filter(Boolean)};
+      const samples=JSON.parse(document.split('\\n').slice(2).join('\\n')).samples;
+      return {...metadata,sample_slots:samples.ownership.samples.slots.filter(Boolean),
+        sample_players:samples.players.map(p=>({token:p.token,entity:p.entity,transport:p.transport}))};
     })()`);
     if(!result.pending)return result;
     assert(performance.now()<deadline,'session completion deadline');
@@ -130,7 +132,7 @@ async function record(name,present){
   const state=await evaluate('({startup:__cyrusStartup,world:__cyrusCapture.world,scripts:__cyrusCapture.scripts,preferences:window.__cyrusMenu?.preferences})');
   const samples=await evaluate(`__sessionSamples.blocks.filter(b=>b.frame>=${pcm.start}&&b.frame<${pcm.end}).map(b=>({left:Array.from(b.left),right:Array.from(b.right)}))`);
   writeFileSync(`${output}/${name}-pcm.json`,JSON.stringify(samples));
-  let positional,sampleOwner;
+  let positional,sampleOwner,samplePlayer;
   if(source&&present){
     const actor=state.scripts.actors.find(row=>row.name===emitter&&row.id.index===Number(emitterIndex));
     const camera=state.startup.camera_pose;
@@ -150,6 +152,7 @@ async function record(name,present){
       assert.deepEqual(slots[0].owner,{Script:{generation:actor.id.generation,index:actor.id.index}},'audible transport belongs to another emitter');
       assert.equal(slots[0].effect,Number(effect),'audible transport uses another installed effect');
       sampleOwner=slots[0];
+      samplePlayer=captured.sample_players.find(player=>player.token===sampleOwner.token);
     }
     const setting=name=>Number(source.system.match(new RegExp(`^${name}=(.*)$`,'mi'))[1]);
     const stage={phase:name,position:(actor.spatial.effective?.position??actor.spatial.linked_position??actor.spatial.local.position),listener:camera.position,
@@ -171,7 +174,7 @@ async function record(name,present){
     const rms=channel=>Math.sqrt(samples.flatMap(b=>b[channel]).reduce((sum,v)=>sum+v*v,0)/(samples.length*128));
     const graphRms=[rms('left'),rms('right')],gain=expected(stage);
     assert(Math.abs(graphRms[0]/graphRms[1]-gain[0]/gain[1])<.015,'graph pan differs from installed positional rule');
-    positional={stage,levels,graphRms,sampleOwner};
+    positional={stage,levels,graphRms,sampleOwner,samplePlayer};
   }
   results.stages[name]={pcm,state,positional};
   results.provenance=await provenance.verify();
@@ -226,6 +229,7 @@ try{
   // supply the isolated continuing source. No diagnostic tone is injected.
   await sample('stop');
   await consoleOpen(false);await progress();await consoleOpen(true);
+  if(acceptancePhase==='bank'){
   await record('authored-before-bank',true);
   await evaluate(`(()=>{const read=cyrusGameAssets.read.bind(cyrusGameAssets);window.__bankControl={hold:true,waiting:false};cyrusGameAssets.read=async path=>{if(path==='sounds/bank.sounds'&&__bankControl.hold){__bankControl.waiting=true;await new Promise(resolve=>__bankControl.release=resolve)}return read(path)};return true})()`);
   await sample('reload_bank');
@@ -251,6 +255,90 @@ try{
   assert.deepEqual(results.stages['continued-once'].positional.sampleOwner,admittedOwner,
     'ordinary polling duplicated or restarted the admitted ambient owner');
   await finishPhase('bank');
+  }
+  if(['save','restoration'].includes(acceptancePhase)){
+    const build=JSON.parse(readFileSync('target/web/build-provenance.json'));
+    const wasm=build.artifacts['target/web/pkg/cyrus-web_bg.wasm'];
+    const storage=Object.keys(build.artifacts).find(path=>path.endsWith('/session-storage.js'));
+    assert(storage,'sealed public session storage module absent');
+    await evaluate(storageModuleExpression(new URL(storage.replace('target/web/',''),url).href));
+    const checkpointPath=`${output}/saved-checkpoint.json`,documentPath=`${output}/saved.session`;
+    let checkpoint;
+    if(existsSync(checkpointPath)){
+      checkpoint=JSON.parse(readFileSync(checkpointPath));
+      const document=readFileSync(documentPath,'utf8');
+      validateSessionCheckpoint(checkpoint,document,{wasm,source_fixture_sha256:results.source_fixture_sha256,fixture:{emitter,index:Number(emitterIndex),effect:Number(effect),scene,offset}});
+      await evaluate(restoreStorageExpression(document));
+    }else{
+      await record('before-save',true);
+      const deadline=performance.now()+90000;let saved;
+      for(;;){saved=await session('save',{key:'ambient-restoration'});if(!saved.error)break;
+        assert(/model.*(not ready|settled)|export still in flight/.test(saved.error)&&performance.now()<deadline,saved.error);await delay(250);}
+      const document=await evaluate(`__ambientStorage.read('cyrus-sessions','ambient-restoration')`);
+      assert.equal(typeof document,'string');
+      const snapshot=JSON.parse(document.split('\n').slice(2).join('\n'));
+      checkpoint={wasm,document_sha256:digest(document),source_fixture_sha256:results.source_fixture_sha256,
+        fixture:{emitter,index:Number(emitterIndex),effect:Number(effect),scene,offset},
+        saved_slots:snapshot.samples.ownership.samples.slots.filter(Boolean),
+        saved_players:snapshot.samples.players.map(player=>({token:player.token,entity:player.entity,source_identity:player.transport.source_identity})),saved};
+      validateSessionCheckpoint(checkpoint,document,{wasm,source_fixture_sha256:results.source_fixture_sha256,fixture:{emitter,index:Number(emitterIndex),effect:Number(effect),scene,offset}});
+      persistBytes(documentPath,document);persist('saved-checkpoint',checkpoint);
+    }
+    assert.equal(checkpoint.saved_slots.filter(slot=>slot.effect===Number(effect)&&slot.owner?.Script?.index===Number(emitterIndex)).length,1,
+      'public save lacks the active selected ambient owner');
+    results.checkpoint=checkpoint;
+    await finishPhase(acceptancePhase==='save'?'save':'checkpoint-recovered');
+    if(acceptancePhase==='restoration'){
+      const generation=await evaluate('__cyrusCapture.scripts.generation');
+      const old=await session('capture');assert(!old.error,old.error);
+      await evaluate(`(()=>{const read=cyrusGameAssets.read.bind(cyrusGameAssets);window.__restoreBank={waiting:false};cyrusGameAssets.read=async path=>{if(path==='sounds/bank.sounds'&&!__restoreBank.released){__restoreBank.waiting=true;await new Promise(resolve=>__restoreBank.release=resolve)}return read(path)};return true})()`);
+      await sample('reload_bank');
+      await until('replacement bank held','__restoreBank.waiting&&__cyrusSampleInspection.bank_pending');
+      await sample('script_play',{generation,index:Number(emitterIndex),effect:Number(effect)});
+      const queued=await session('capture');
+      assert(/deferred sample starts await browser bank admission/.test(queued.error),
+        'old owner cue was not demonstrably queued at the public capture boundary');
+      results.old_queue_rejection=queued.error;
+      const loadId=++id;
+      await evaluate(`window.__cyrusSessionRequest=${JSON.stringify(JSON.stringify({type:'load',id:loadId,key:'ambient-restoration'}))};true`);
+      const requested=await until('replacement request',`__cyrusSessionResult?.id===${loadId}&&__cyrusSessionResult`);
+      results.replacement_request=requested;
+      persist('replacement-requested',results);
+      await evaluate('__restoreBank.released=true;__restoreBank.release();true');
+      const loaded=requested.pending?await session('result'):requested;assert(!loaded.error,loaded.error);
+      await until('fresh restored owner',`__cyrusCapture.scripts.generation!==${generation}`,180);
+      await consoleOpen(false);await progress();await consoleOpen(true);
+      await record('restored-continuation',true);
+      const fresh=results.stages['restored-continuation'].positional;
+      assert.notEqual(fresh.sampleOwner.owner.Script.generation,generation,'old generation survived replacement');
+      assert(old.sample_players.every(player=>player.entity!==fresh.samplePlayer.entity),'old playback entity survived replacement');
+      const savedOwner=checkpoint.saved_slots.find(slot=>slot.effect===Number(effect)&&slot.owner?.Script?.index===Number(emitterIndex));
+      const savedPlayer=checkpoint.saved_players?.find(player=>player.token===savedOwner.token);
+      if(savedPlayer)assert.equal(fresh.samplePlayer.transport.source_identity,savedPlayer.source_identity,'restoration changed the installed source identity');
+      await action({action:'place_player',x:point[0]-512+offset[0],y:point[1]+offset[1],z:point[2]+offset[2],heading:0});
+      await resetCamera();await progress();await consoleOpen(true);
+      await record('restored-live-gain-update',true);
+      assert.deepEqual(results.stages['restored-live-gain-update'].positional.sampleOwner,fresh.sampleOwner,
+        'listener update replaced the fresh ambient owner');
+      await finishPhase('restoration');
+    }
+  }
+  if(acceptancePhase==='dormant'){
+    const generation=await evaluate('__cyrusCapture.scripts.generation');
+    await action({action:'load_scene',name:destination});await ready(destination,generation);
+    await consoleOpen(true);await sample('stop');await record('dormant-old-owner-silent',false);
+    await finishPhase('dormant-retirement');
+    await action({action:'load_scene',name:scene});await ready(scene);
+    await action({action:'place_player',x:point[0]+512+offset[0],y:point[1]+offset[1],z:point[2]+offset[2],heading:0});
+    await resetCamera();await progress();await consoleOpen(true);
+    await record('dormant-restored-ambient',true);
+    const owner=results.stages['dormant-restored-ambient'].positional.sampleOwner;
+    await consoleOpen(false);await progress();await consoleOpen(true);
+    await record('dormant-continued-once',true);
+    assert.deepEqual(results.stages['dormant-continued-once'].positional.sampleOwner,owner,
+      'dormant return restarted or duplicated the fresh ambient owner');
+    await finishPhase('dormant');
+  }
   persist('result',results);
 }catch(error){
   results.failureCapture=await session('capture').catch(e=>({error:String(e)}));
