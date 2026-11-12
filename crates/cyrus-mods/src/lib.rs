@@ -252,6 +252,19 @@ fn mod_folders() -> anyhow::Result<Vec<PathBuf>> {
 }
 
 /// A mod's id: its folder name.
+/// Records why the mod folder `id` cannot be loaded, logging it once per distinct reason.
+fn note_problem(
+    problems: &mut std::collections::BTreeMap<String, String>,
+    id: &str,
+    error: &anyhow::Error,
+) {
+    let message = format!("{error:#}");
+    if problems.get(id) != Some(&message) {
+        error!("mods: {message}");
+    }
+    problems.insert(id.to_owned(), message);
+}
+
 fn folder_id(dir: &Path) -> anyhow::Result<String> {
     dir.file_name()
         .and_then(|name| name.to_str())
@@ -267,6 +280,10 @@ struct Catalog {
     /// The asset paths whose shader a mod currently supplies.
     replaced_shaders: HashSet<String>,
     status: Option<String>,
+    /// Mod folders that cannot be loaded, by folder name, with the reason. Shown in the Mods
+    /// window, so a broken mod is visible where the mods are listed and does not take the others
+    /// with it.
+    problems: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -282,20 +299,39 @@ impl Catalog {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Saved::default(),
             Err(error) => return Err(error).with_context(|| active_file().display().to_string()),
         };
+        Ok(Self::load(&mod_folders()?, &saved.active))
+    }
+
+    /// The catalog of mod folders: each one that reads is an entry, each one that does not is a
+    /// problem beside the others, which still load.
+    fn load(folders: &[PathBuf], active: &[String]) -> Self {
         let mut entries = Vec::new();
-        for dir in mod_folders()? {
-            entries.push(Entry::read(&dir, saved.active.contains(&folder_id(&dir)?))?);
+        let mut problems = std::collections::BTreeMap::new();
+        for dir in folders {
+            let id = match folder_id(dir) {
+                Ok(id) => id,
+                Err(error) => {
+                    error!("mods: {error:#}");
+                    continue;
+                }
+            };
+            match Entry::read(dir, active.contains(&id)) {
+                Ok(entry) => entries.push(entry),
+                Err(error) => note_problem(&mut problems, &id, &error),
+            }
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
-        Ok(Self {
+        Self {
             entries,
+            problems,
             ..default()
-        })
+        }
     }
 
     /// Picks up folders added to or removed from the mods folder and manifests edited since the
-    /// last look. A folder that cannot be read is reported in the status and left out; an
-    /// installed mod whose manifest becomes unreadable keeps its last good one.
+    /// last look. A folder that cannot be read is recorded in `problems` and left out; an
+    /// installed mod whose manifest becomes unreadable keeps its last good one, with the problem
+    /// shown beside it.
     fn rescan(&mut self, settings: &mut ModSettings) -> bool {
         let folders = match mod_folders() {
             Ok(folders) => folders,
@@ -309,6 +345,11 @@ impl Catalog {
             .and_then(|bytes| serde_json::from_slice::<Saved>(&bytes).ok())
             .unwrap_or_default();
         let mut changed = false;
+        self.problems.retain(|id, _| {
+            folders
+                .iter()
+                .any(|dir| folder_id(dir).is_ok_and(|name| name == *id))
+        });
         for entry in &mut self.entries {
             let present = folders
                 .iter()
@@ -334,9 +375,10 @@ impl Catalog {
                                 info!("mods: reread the manifest of {id}");
                                 entry.manifest = fresh.manifest;
                                 entry.has_files = fresh.has_files;
+                                self.problems.remove(&id);
                                 changed = true;
                             }
-                            Err(error) => self.status = Some(format!("{error:#}")),
+                            Err(error) => note_problem(&mut self.problems, &id, &error),
                         }
                     }
                     entry.has_wasm = dir.join("mod.wasm").is_file();
@@ -346,15 +388,10 @@ impl Catalog {
                         info!("mods: found {id}");
                         self.entries.retain(|entry| entry.id != id);
                         self.entries.push(fresh);
+                        self.problems.remove(&id);
                         changed = true;
                     }
-                    Err(error) => {
-                        let message = format!("{error:#}");
-                        if self.status.as_deref() != Some(message.as_str()) {
-                            error!("mods: {message}");
-                        }
-                        self.status = Some(message);
-                    }
+                    Err(error) => note_problem(&mut self.problems, &id, &error),
                 },
             }
         }
@@ -585,7 +622,7 @@ fn window(
     mut settings: ResMut<ModSettings>,
 ) -> Result {
     egui::Window::new("Mods").show(contexts.ctx_mut()?, |ui| {
-        if catalog.entries.is_empty() {
+        if catalog.entries.is_empty() && catalog.problems.is_empty() {
             ui.label(format!(
                 "No mods in {}. `just mods` installs the bundled ones.",
                 mods_dir().display()
@@ -633,6 +670,12 @@ fn window(
         }
         if let Some(error) = save_error {
             catalog.bypass_change_detection().status = Some(format!("{error:#}"));
+        }
+        for (id, problem) in &catalog.problems {
+            ui.colored_label(
+                egui::Color32::LIGHT_RED,
+                format!("{id} cannot be loaded: {problem}"),
+            );
         }
         if let Some(status) = &catalog.status {
             ui.colored_label(egui::Color32::LIGHT_RED, status);
@@ -696,5 +739,46 @@ mod tests {
         .err()
         .expect("unknown natives are rejected");
         assert!(error.to_string().contains("NoSuchNative"), "{error}");
+    }
+
+    fn mod_folder(root: &Path, id: &str, manifest: &str) -> PathBuf {
+        let dir = root.join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mod.toml"), manifest).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_broken_mod_is_a_problem_and_the_others_still_load() {
+        let root = std::env::temp_dir().join(format!("cyrus-mods-catalog-{}", std::process::id()));
+        let good = mod_folder(&root, "good", "name = \"Good\"");
+        let broken = mod_folder(&root, "broken", "name = [not a string");
+        let bad_patch = mod_folder(
+            &root,
+            "bad-patch",
+            "name = \"Bad\"
+[[script-patch]]
+world = \"ISLAND\"
+actor = \"X\"
+remove = [\"NoSuchNative\"]",
+        );
+        let catalog = Catalog::load(&[good, broken, bad_patch], &["good".into()]);
+        std::fs::remove_dir_all(&root).unwrap();
+        let ids: Vec<_> = catalog
+            .entries
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect();
+        assert_eq!(ids, ["good"]);
+        assert!(catalog.entries[0].active);
+        assert_eq!(
+            catalog
+                .problems
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["bad-patch", "broken"]
+        );
+        assert!(catalog.problems["bad-patch"].contains("NoSuchNative"));
     }
 }

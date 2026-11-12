@@ -43,21 +43,10 @@ genmap:
 build:
     cargo build --workspace
 
-# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into game-config/mods;
-# a mod folder without a Cargo.toml (a manifest only) is copied as it is
+# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into the config dir mods folder
+# (game-config/mods in a checkout); a Rust example, so it runs the same on every platform
 mods:
-    for dir in mods/*/; do \
-        [ -f "$dir/mod.toml" ] || continue; \
-        id="$(basename "$dir")"; \
-        mkdir -p "game-config/mods/$id"; \
-        cp "$dir/mod.toml" "game-config/mods/$id/"; \
-        if [ -f "$dir/Cargo.toml" ]; then \
-            (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../target/mods" cargo build --release --target wasm32-wasip2); \
-            cp "target/mods/wasm32-wasip2/release/${id//-/_}.wasm" "game-config/mods/$id/mod.wasm"; \
-        fi; \
-        for shader in "$dir"/*.wesl; do [ -f "$shader" ] && cp "$shader" "game-config/mods/$id/"; done; \
-        if [ -d "$dir/files" ]; then rm -rf "game-config/mods/$id/files"; cp -a "$dir/files" "game-config/mods/$id/files"; fi; \
-    done
+    cargo run -p cyrus-mods --example install_mods
 
 run *ARGS:
     cargo run -p cyrus -- {{ARGS}}
