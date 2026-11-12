@@ -1,6 +1,7 @@
 //! TCP control server (see `cyrus-control`). A thread accepts connections and
 //! forwards each request into the ECS; one system answers them in frame order.
 
+mod effect_geometry;
 mod input_schedule;
 mod light_image;
 mod rendered_actor;
@@ -52,6 +53,10 @@ impl Plugin for ControlPlugin {
             }
         };
         app.add_systems(PostUpdate, light_image::respond);
+        app.add_systems(
+            PostUpdate,
+            effect_geometry::respond.after(bevy::asset::AssetEventSystems),
+        );
         app.add_systems(
             PostUpdate,
             rendered_actor::respond.after(bevy::asset::AssetEventSystems),
@@ -134,6 +139,7 @@ struct Inspection<'w, 's> {
     marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
     clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
     rendered_actor_pending: Option<Res<'w, rendered_actor::PendingRenderedActor>>,
+    effect_geometry_pending: Option<Res<'w, effect_geometry::PendingEffectGeometry>>,
     input_scheduler: ResMut<'w, input_schedule::InputScheduler>,
 }
 
@@ -188,6 +194,7 @@ fn handle(
         mut marker,
         clock,
         rendered_actor_pending,
+        effect_geometry_pending,
         mut input_scheduler,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
@@ -303,6 +310,17 @@ fn handle(
                     break;
                 }
             }
+            Command::EffectGeometry { after_generation } => {
+                if effect_geometry_pending.is_some() {
+                    Err("effect geometry observation already pending".into())
+                } else {
+                    commands.insert_resource(effect_geometry::PendingEffectGeometry {
+                        id, after_generation, reply,
+                        deadline: std::time::Instant::now() + std::time::Duration::from_secs(180),
+                    });
+                    break;
+                }
+            }
             Command::BoundLightImage { name, primitive } => {
                 commands.insert_resource(light_image::PendingLightImage { id, name, primitive, reply });
                 // Stop dispatch so later commands cannot change the selected world before capture.
@@ -320,7 +338,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                 });
                 Ok(
-                    json!({"rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -1054,6 +1072,119 @@ mod tests {
             !app.world()
                 .resource::<ButtonInput<KeyCode>>()
                 .pressed(KeyCode::ArrowUp)
+        );
+    }
+
+    #[test]
+    fn effect_geometry_waits_for_an_admitted_update_after_scene_readiness() {
+        let mut app = script_app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let animations = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations
+            .clone();
+        app.insert_resource(cyrus_render::ReadyScene(animations));
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 84,
+                cmd: Command::EffectGeometry {
+                    after_generation: Some(0),
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(
+            responses.try_recv().is_err(),
+            "asset readiness is not an admitted world update"
+        );
+        app.world_mut()
+            .resource_mut::<effect_geometry::PendingEffectGeometry>()
+            .deadline = std::time::Instant::now();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 84);
+        assert!(response.error.unwrap().contains("deadline expired"));
+    }
+
+    #[test]
+    fn armed_effect_geometry_request_allows_load_commands_and_has_a_deadline() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 40,
+                cmd: Command::EffectGeometry {
+                    after_generation: Some(0),
+                },
+            },
+            reply: reply.clone(),
+        })
+        .unwrap();
+        tx.send(Pending {
+            request: Request {
+                id: 41,
+                cmd: Command::Ping,
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(responses.try_recv().is_err());
+        app.update();
+        assert_eq!(responses.try_recv().unwrap().id, 41);
+        assert!(responses.try_recv().is_err());
+        app.world_mut()
+            .resource_mut::<effect_geometry::PendingEffectGeometry>()
+            .deadline = std::time::Instant::now();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 40);
+        assert!(response.error.unwrap().contains("deadline expired"));
+        assert!(
+            !app.world()
+                .contains_resource::<effect_geometry::PendingEffectGeometry>()
+        );
+    }
+
+    #[test]
+    fn effect_geometry_request_is_one_shot_and_keeps_following_commands_ordered() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        for (id, cmd) in [
+            (
+                42,
+                Command::EffectGeometry {
+                    after_generation: None,
+                },
+            ),
+            (43, Command::Ping),
+        ] {
+            tx.send(Pending {
+                request: Request { id, cmd },
+                reply: reply.clone(),
+            })
+            .unwrap();
+        }
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 42);
+        assert!(response.error.unwrap().contains("service absent"));
+        assert!(responses.try_recv().is_err());
+        app.update();
+        assert_eq!(responses.try_recv().unwrap().id, 43);
+        assert!(
+            !app.world()
+                .contains_resource::<effect_geometry::PendingEffectGeometry>()
         );
     }
 

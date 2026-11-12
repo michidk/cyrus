@@ -2,6 +2,7 @@
 mod clipping;
 mod compositing;
 mod effects;
+pub use effects::inspect_effect_geometry;
 pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;

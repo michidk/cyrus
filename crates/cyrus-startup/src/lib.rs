@@ -71,6 +71,7 @@ pub struct WorldLoadRequest(pub String);
 /// A world entry waits on the loading screen before entering its world.
 #[derive(Resource, Default)]
 pub struct StartGame {
+    artwork_world: Option<u32>,
     /// Menu entry uses installed transition artwork; direct inspections use the title.
     image: Handle<Image>,
     background: Vec<u8>,
@@ -79,6 +80,13 @@ pub struct StartGame {
     /// Menu entries fade the loading screen in, then out before entering the world.
     faded_in: bool,
     fade_out: Option<Entity>,
+}
+
+impl StartGame {
+    /// WORLD.INI destination supplying the selected artwork; absent for direct title inspections.
+    pub fn artwork_world(&self) -> Option<u32> {
+        self.artwork_world
+    }
 }
 
 /// Browser host attempts to close its tab without terminating the game loop.

@@ -36,6 +36,7 @@ module where it is defined and regenerate.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
 - `src/loading.rs` — Native preload scan and parser coverage results.
+- `src/loading_artwork.rs` — Destination-specific loading pictures, prepared on demand from WORLD.INI.
 - `src/logbook.rs` — Installed logbook paper, fonts and scroll geometry for native and browser readers.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
@@ -159,6 +160,7 @@ module where it is defined and regenerate.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
 - `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
+- `src/fog/effects/observation.rs` — Read-only transient mesh, material and generation observations.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
 - `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
@@ -432,6 +434,7 @@ module where it is defined and regenerate.
 - `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
+- `src/control/effect_geometry.rs` — Bounded read-only transient geometry acquisition after presentation publication.
 - `src/control/input_schedule.rs` — Diagnostic input delivery at admitted ordinary simulation boundaries.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.

@@ -1,7 +1,9 @@
 //! The installed title stays visible until menu or world assets are ready.
 use super::{StartGame, StartupContent, StartupPresentation};
+use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::world_serialization::WorldInstance;
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
+use cyrus_assets::loading_artwork::LoadingArtwork;
 use cyrus_assets::menu::MenuAsset;
 use cyrus_game::AppState;
 use cyrus_world::lifecycle::{PreparationProgress, PreparedWorld, SceneLoadError};
@@ -31,7 +33,32 @@ struct WorldEntry<'w, 's> {
     fades: Query<'w, 's, &'static super::fade::Fade>,
 }
 
+#[derive(Default, TypePath)]
+struct LoadingArtworkLoader;
+impl AssetLoader for LoadingArtworkLoader {
+    type Asset = LoadingArtwork;
+    type Settings = ();
+    type Error = anyhow::Error;
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _: &(),
+        _: &mut LoadContext<'_>,
+    ) -> Result<LoadingArtwork, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let artwork: LoadingArtwork = serde_json::from_slice(&bytes)?;
+        artwork.validate()?;
+        Ok(artwork)
+    }
+    fn extensions(&self) -> &[&str] {
+        &["loading"]
+    }
+}
+
 pub(super) fn register(app: &mut App) {
+    app.init_asset::<LoadingArtwork>()
+        .init_asset_loader::<LoadingArtworkLoader>();
     app.add_systems(Update, begin_requested_world)
         .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
         .add_systems(OnExit(AppState::Loading), resume_world_cameras)
@@ -44,6 +71,16 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnExit(AppState::Loading), cleanup);
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct ArtworkAssets<'w, 's> {
+    images: Res<'w, Assets<LoadingArtwork>>,
+    pending: Local<'s, Option<(String, Handle<LoadingArtwork>)>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    install: Option<Res<'w, cyrus_assets::install::GameInstall>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    preparation: Local<'s, Option<(String, bevy::tasks::Task<anyhow::Result<()>>)>>,
+}
+
 fn begin_requested_world(
     mut commands: Commands,
     request: Option<Res<super::WorldLoadRequest>>,
@@ -52,12 +89,13 @@ fn begin_requested_world(
         Res<Assets<MenuAsset>>,
         ResMut<Assets<Image>>,
     ),
+    mut artwork: ArtworkAssets,
     mut startup: ResMut<StartupPresentation>,
     mut next: ResMut<NextState<AppState>>,
-    state: Res<State<AppState>>,
-    time: Res<Time>,
+    timing: (Res<State<AppState>>, Res<Time>),
 ) {
     let (assets, menus, mut images) = assets;
+    let (state, time) = timing;
     let Some(request) = request else { return };
     if !matches!(state.get(), AppState::InGame | AppState::Menu) {
         return;
@@ -76,6 +114,69 @@ fn begin_requested_world(
         }
         return;
     };
+    let (world, pictures) = if request.0 == book.new_game.world.to_string() {
+        (book.new_game.world, &book.new_game.loading)
+    } else {
+        if artwork
+            .pending
+            .as_ref()
+            .is_none_or(|(world, _)| *world != request.0)
+        {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(install) = artwork.install.as_ref() {
+                use bevy::tasks::{IoTaskPool, block_on, poll_once};
+                let install = (**install).clone();
+                if artwork
+                    .preparation
+                    .as_ref()
+                    .is_none_or(|(world, _)| *world != request.0)
+                {
+                    let name = request.0.clone();
+                    *artwork.preparation = Some((
+                        name.clone(),
+                        IoTaskPool::get().spawn(async move {
+                            cyrus_assets::loading_artwork::export(
+                                &install,
+                                &name,
+                                cyrus_config::cache_dir(),
+                            )
+                        }),
+                    ));
+                }
+                let Some(result) =
+                    block_on(poll_once(&mut artwork.preparation.as_mut().unwrap().1))
+                else {
+                    return;
+                };
+                *artwork.preparation = None;
+                if let Err(error) = result {
+                    commands.insert_resource(SceneLoadError(format!(
+                        "World {} loading artwork: {error:#}",
+                        request.0
+                    )));
+                    commands.remove_resource::<super::WorldLoadRequest>();
+                    return;
+                }
+            }
+            *artwork.pending = Some((
+                request.0.clone(),
+                assets.load(format!("cache://loading/{}.loading", request.0)),
+            ));
+        }
+        let handle = &artwork.pending.as_ref().unwrap().1;
+        let Some(artwork) = artwork.images.get(handle) else {
+            if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(handle.id())
+            {
+                commands.insert_resource(SceneLoadError(format!(
+                    "World {} loading artwork: {error}",
+                    request.0
+                )));
+                commands.remove_resource::<super::WorldLoadRequest>();
+            }
+            return;
+        };
+        (artwork.world, &artwork.pictures)
+    };
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.0.clone()));
     commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
     commands.insert_resource(cyrus_script::player::placement::MarkerEntry::default());
@@ -87,6 +188,8 @@ fn begin_requested_world(
         &mut images,
         &mut next,
         book,
+        world,
+        pictures,
         time.elapsed_secs_f64(),
     );
 }
@@ -411,37 +514,66 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
-        world_entry_recreates_player(false);
+        world_entry_recreates_player(false, 0);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_from_paused_book_recreates_the_retained_player() {
-        world_entry_recreates_player(true);
+        world_entry_recreates_player(true, 0);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn world_entry_recreates_player(from_book: bool) {
+    #[test]
+    fn destination_world_entry_presents_its_configured_artwork() {
+        world_entry_recreates_player(false, 2);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn world_entry_recreates_player(from_book: bool, destination: u32) {
         use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
             eprintln!("skipped: no install (debug world loading)");
             return;
         };
         let cache = std::env::temp_dir().join(format!(
-            "cyrus-debug-loading-{}-{from_book}",
+            "cyrus-debug-loading-{}-{from_book}-{destination}",
             std::process::id()
         ));
         cyrus_assets::startup::export_menu(&install, &cache).unwrap();
         let book: MenuAsset =
             serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        cyrus_assets::loading_artwork::export(&install, &destination.to_string(), &cache).unwrap();
+        let destination_artwork: LoadingArtwork = serde_json::from_slice(
+            &std::fs::read(cache.join(format!("loading/{destination}.loading"))).unwrap(),
+        )
+        .unwrap();
         std::fs::remove_dir_all(cache).unwrap();
-        let artwork = book
+        let artwork = destination_artwork
+            .pictures
+            .iter()
+            .map(|picture| picture.rgba.clone())
+            .collect::<Vec<_>>();
+        let new_game_artwork = book
             .new_game
             .loading
             .iter()
             .map(|picture| picture.rgba.clone())
             .collect::<Vec<_>>();
         let mut app = App::new();
+        let directory = bevy::asset::io::memory::Dir::default();
+        directory.insert_asset(
+            std::path::Path::new(&format!("loading/{destination}.loading")),
+            serde_json::to_vec(&destination_artwork).unwrap(),
+        );
+        app.register_asset_source(
+            "cache",
+            bevy::asset::io::AssetSourceBuilder::new(move || {
+                Box::new(bevy::asset::io::memory::MemoryAssetReader {
+                    root: directory.clone(),
+                })
+            }),
+        );
         app.add_plugins((
             MinimalPlugins,
             AssetPlugin::default(),
@@ -449,6 +581,7 @@ mod tests {
         ))
         .insert_state(AppState::InGame)
         .init_asset::<MenuAsset>()
+        .init_asset::<LoadingArtwork>()
         .init_asset::<Image>()
         .init_resource::<cyrus_game::fidelity::Fidelity>()
         .init_resource::<ButtonInput<KeyCode>>()
@@ -463,6 +596,7 @@ mod tests {
             .resource_mut::<Assets<MenuAsset>>()
             .add(book);
         app.insert_resource(StartupPresentation { menu, ..default() });
+        app.init_asset_loader::<LoadingArtworkLoader>();
         let camera = app
             .world_mut()
             .spawn((Camera3d::default(), Camera::default()))
@@ -481,18 +615,31 @@ mod tests {
             marker: 9,
             heading: 512,
         });
-        app.insert_resource(super::super::WorldLoadRequest("START".into()));
-        app.update();
+        app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.world().get_resource::<StartGame>().is_none()
+            && std::time::Instant::now() < deadline
+        {
+            app.update();
+            std::thread::yield_now();
+        }
         assert_eq!(
             app.world().resource::<StartGame>().background.len(),
             640 * 480 * 4
         );
         assert!(artwork.contains(&app.world().resource::<StartGame>().background));
         assert_eq!(
+            app.world().resource::<StartGame>().artwork_world(),
+            Some(destination)
+        );
+        if destination != 0 {
+            assert!(!new_game_artwork.contains(&app.world().resource::<StartGame>().background));
+        }
+        assert_eq!(
             app.world()
                 .resource::<cyrus_world::lifecycle::SceneRequest>()
                 .0,
-            "START"
+            destination.to_string()
         );
         assert_eq!(
             *app.world()

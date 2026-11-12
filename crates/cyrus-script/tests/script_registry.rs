@@ -44987,8 +44987,12 @@ fn tick_rope_classification_with_timing(
                 },
             },
             &mut cyrus_game::random::EngineRandom::from_state(42),
-            &mut |_, _| {
-                anyhow::ensure!(!fail_sound, "rope release sound rejected");
+            &mut |_, cue| {
+                anyhow::ensure!(
+                    !fail_sound
+                        || matches!(cue, cyrus_script::script::ScriptSound::AnimationState(_)),
+                    "rope release sound rejected"
+                );
                 Ok(())
             },
             100,
@@ -44997,13 +45001,9 @@ fn tick_rope_classification_with_timing(
 }
 
 #[test]
-fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_motion() {
+fn rope_release_retains_signed_speed_and_defers_its_carried_classification() {
     use cyrus_script::player::input::PlayerInput;
-    for (forward, backward, speed, classification) in [
-        (false, false, 0, MotionDirection::FORWARD),
-        (true, false, 64, MotionDirection::FORWARD),
-        (false, true, -64, MotionDirection::BACKWARD),
-    ] {
+    for (forward, backward, speed) in [(false, false, 0), (true, false, 64), (false, true, -64)] {
         let (_, mut world, data, scene) = rope_classification_fixture();
         let player = world.selected_player().unwrap();
         tick_rope_classification(
@@ -45069,10 +45069,10 @@ fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
             (control.queued_motion.byte(), control.jump_selector),
-            (24, 24)
+            (0, 23)
         );
         assert_eq!(control.motion_vector[2], speed);
-        assert_eq!(control.motion_classification, classification);
+        assert_eq!(control.motion_classification, MotionDirection::FORWARD);
         // The ordinary wrapper clears directions without a locomotion call.
         assert_eq!(control.move_counter, 0);
     }
@@ -45395,7 +45395,7 @@ fn rope_regrab_fixture() -> (
 fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let (mut world, data, scene) = rope_regrab_fixture();
     let player = world.selected_player().unwrap();
-    // The countdown refuses regrab before the later collision stages cancel queued motion.
+    // The countdown refuses regrab while the detached player retains airborne motion.
     tick_rope_classification_with_timing(
         &mut world,
         &data,
@@ -45419,9 +45419,9 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
             control.falling_state.byte(),
             control.motion_classification
         ),
-        (1, 0, 0, MotionDirection::FORWARD)
+        (1, 24, 0, MotionDirection::FORWARD)
     );
-    // Re-enter airborne motion through the same controller while one exclusion tick remains.
+    // Repeat the jump request while one exclusion tick remains.
     sample_rope_jump_controller(
         &mut world,
         &data,
@@ -45474,8 +45474,25 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
 }
 
 #[test]
-fn rope_expiry_uses_full_nominal_ticks_and_retains_classification_on_grab_failure() {
+fn rope_expiry_uses_full_nominal_ticks_and_retains_queued_motion_on_grab_failure() {
     for ticks in [24, 256] {
+        let (mut admitted, data, scene) = rope_regrab_fixture();
+        tick_rope_classification_with_timing(
+            &mut admitted,
+            &data,
+            &scene,
+            cyrus_script::player::input::PlayerInput::default(),
+            false,
+            [ticks, 0, 0],
+        );
+        assert!(admitted.selected_player_on_rope());
+        assert_eq!(
+            admitted.actors()[admitted.selected_player().unwrap().index]
+                .control_state()
+                .unwrap()
+                .jump_selector,
+            0
+        );
         let (mut world, data, scene) = rope_regrab_fixture();
         let player = world.selected_player().unwrap();
         tick_rope_classification_with_timing(
@@ -46587,10 +46604,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(!live.selected_player_on_rope());
             assert!(live.ropes()[0].attachments.is_empty());
             let control = live.actors()[index].control_state().unwrap();
-            assert_eq!(
-                (control.queued_motion, control.jump_selector),
-                (JumpMotion::ROPE, 24)
-            );
+            assert_eq!(control.jump_selector, 23);
             assert_eq!(
                 movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
                     ["current"][0]
@@ -51336,3 +51350,6 @@ fn ordinary_working_orientation_copies_current_angles_before_script_rotation() {
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
     }
 }
+
+#[path = "script_registry/rope_attachment.rs"]
+mod rope_attachment_tests;

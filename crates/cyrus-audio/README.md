@@ -3,7 +3,10 @@
 Native/browser effects, speech and CD music playback. `SoundPlugin` and
 `MusicPlugin` retain the shared request, cue and playback-state interfaces.
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
-in presentation. This crate has no rendering or startup dependency.
+in presentation. Deferred browser starts belong to the channel pool, so public
+sample stops, periodic maintenance and saved-world restoration cancel them
+through the same operation as live samples. Owner/effect filters apply to both
+pending and live playback. This crate has no rendering or startup dependency.
 Native credits music waits for `GameInstall` before its update runs, so the
 install picker can stay open without initializing CD playback.
 
@@ -303,3 +306,88 @@ RTX label hints independently of the script dialogue cache. Hosts prepare those
 labels before validating the exact saved source identities. Old documents without
 these optional hints remain readable; an unavailable source still rejects the
 replacement. The existing mixed-buffer drain policy is unchanged.
+
+Global control/book stops drain after gameplay cues already waiting at that audio
+boundary. A later update may start new samples. `native-sound-reset.py` checks
+public cancellation and continuation against a paced Pulse monitor;
+`browser-sound-reset.js`, evaluated after `session-sample-graph.js`, checks real
+WebAudio quanta around the book's production input. The installed
+`test-browser-sound-reset-live.mjs` driver records cancellation, later starts
+and executed artifact hashes through CDP. Already mixed output buffers
+may drain before the silent browser observation window.
+
+The isolated `sound_callers` example drives public `ScriptWorld::update_shells`
+and `update_separate` into `SoundPlugin` and the real audio backend, without a
+renderer or game assets. Its synthetic looping PCM distinguishes active output
+from silence. Two independent callers exercise `EndMySound`, `EndMySounds`,
+`KillMe`, statement `StopAllSounds`, later playback, numeric-result rejection,
+and a second update that must not repeat the failed effect. Public integration
+tests additionally assert exact channel counts and owner isolation.
+
+Build with `cargo build -p cyrus-audio --example sound_callers` through the
+repository's Cargo wrapper. Run in the paced-audio acceptance image with a
+host-mounted `CYRUS_CONFIG_DIR`, then run
+`python3 dev/scripts/test-sound-callers-native.py CONTAINER OUTPUT_DIR` to check
+actual Pulse monitor PCM. Each caller kind admits nine nominal updates at
+three-second observation intervals and terminates automatically.
+
+For browser acceptance, build the same example for `wasm32-unknown-unknown`
+with `--features bevy/web --profile wasm-dev`, package with the matching
+`wasm-bindgen --target web`, and load it from a loopback HTTP page that calls
+its generated `init`. Enable browser autoplay for this isolated test host.
+Run `node dev/scripts/test-sound-callers-browser.mjs CDP_URL PAGE_URL WASM_FILE`.
+The driver taps the actual CPAL WebAudio graph, waits for already mixed buffers
+to drain, and asserts active/silent output for every phase. This is controlled
+backend acceptance, not an installed-game or physical-device timing comparison.
+Place `dev/fixtures/sound-callers.html` beside the generated bindings as
+`index.html`. Serve only that test output directory on a separate non-preview
+loopback test endpoint. The browser driver also checks the executed WASM bytes
+against `WASM_FILE`; a stale artifact cannot satisfy the acceptance.
+Use a secure browser origin: AudioWorklet is unavailable on an ordinary Docker
+host URL. For container Chrome, a loopback-only `socat` bridge inside that test
+container can forward its `127.0.0.1` test port to the host server. Load the
+browser-loopback URL, not the Docker host URL. The fixture rejects an unavailable
+AudioWorklet before starting the application, so the observer cannot panic the
+production CPAL buffer-start callback.
+`test-sound-callers-browser-controls.mjs CDP_URL INSECURE_PAGE LOOPBACK_PAGE`
+checks early rejection of an insecure origin and mismatched executed WASM.
+`node dev/scripts/test-browser-sound-reset.mjs` retains the output-oracle controls
+for stale sound after stop, absent continuation and missing output quanta.
+
+`positional_emitters` exports a local controlled fixture from installed ISLAND
+DR_SPIN6, its DR_POL6 attachment master and its authored looping effect. Run
+`cargo run -p cyrus-audio --example positional_emitters -- --export INSTALL FIXTURE_JSON`
+through the repository wrapper, then run the example with `FIXTURE_JSON` as its
+sole argument in the paced-audio runtime. The export retains installed family
+placements, attributes, sound settings and PCM. It replaces the script bodies
+with explicit diagnostic `Sound` and master `SetPosition` calls. Keep the export
+under ignored local state; it contains game data.
+
+The thirteen bounded nominal stages compare an attached start, movement without
+restarting that snapshot, a fresh start after movement, a cleared slave attribute,
+re-enabled attachment, listener yaw, pitch/roll invariance and local-position
+playback. Silent stages separate starts. `test-positional-native.mjs CONTAINER OUTPUT_DIR`
+checks actual paced Pulse stereo PCM. Build the same example for the browser,
+package with the matching wasm-bindgen version, and place
+`dev/fixtures/positional-emitters.html` beside the bindings as `index.html`, with
+an explicitly exported `fixture.json`. Use a separate non-preview browser-loopback
+test endpoint, as for `sound_callers`.
+`test-positional-browser.mjs CDP_URL PAGE_URL WASM_FILE OUTPUT_DIR` checks executed WASM
+identity and actual WebAudio graph quanta. Both drivers share the independent
+preservation formula oracle in `test-positional-pcm.mjs`; run
+`node dev/scripts/test-positional-controls.mjs` for literal gain/pan values and
+negative controls. Gain assertions allow finite-window RMS variation; pan uses
+the shared mono signal in both output channels. This fixture checks public
+caller/backend behavior, not the complete authored room sequence or rendered
+host camera-publication ordering.
+
+`python3 dev/scripts/run-positional-browser.py /absolute/host/rig` recovers the
+isolated browser acceptance rig from retained `web/` artifacts without compiling.
+It pulls only its pinned Chrome image when absent, waits for HTTP/CDP readiness,
+uses a host-mounted config directory and per-run lock, and removes its own
+container/server on exit. Rerunning after a reset retains `browser-final/result.json`.
+The driver validates checkpoint WASM identity and replays the fixture, comparing
+previous stage state before observing the remaining phases. Every new PCM result
+is checkpointed only after executed bytecode identity is verified. The bounded
+replay keeps the production caller's stage progression; it does not treat host
+elapsed time as a game update count.

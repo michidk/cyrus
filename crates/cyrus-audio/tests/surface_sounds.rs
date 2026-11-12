@@ -837,3 +837,91 @@ fn installed_loop_pcm_updates_gains_and_reconstructs_through_the_headless_host()
         restored.by_ref().take(1024).collect::<Vec<_>>()
     );
 }
+
+#[path = "support/sound_callers.rs"]
+mod sound_callers_fixture;
+use sound_callers_fixture::separate_sound_world;
+
+fn check_separate_sound_owners(shells: bool) {
+    use cyrus_script::script::ScriptInputs;
+    let (mut app, rendered_actor) = fixture();
+    app.world_mut().despawn(rendered_actor);
+    let mut scripts = separate_sound_world(shells);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    for (phase, expected) in [4, 3, 2, 2, 2, 0, 1, 0, 0].into_iter().enumerate() {
+        let mut cues = Vec::new();
+        let mut emit = |actor: ScriptActorId, sound| {
+            cues.push(SoundCue::Script {
+                generation: actor.generation,
+                index: actor.index,
+                sound,
+            });
+            Ok(())
+        };
+        let inputs = ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        };
+        if shells {
+            scripts
+                .update_shells(inputs, &mut random, &mut emit, 100)
+                .unwrap();
+        } else {
+            scripts
+                .update_separate([600, 600], inputs, &mut random, &mut emit, 100)
+                .unwrap();
+        }
+        for actor in scripts.actors() {
+            if phase >= 7 && actor.name() == "KEEPER" {
+                assert!(
+                    actor
+                        .failure()
+                        .unwrap()
+                        .contains("has no supported numeric result")
+                );
+            } else {
+                assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            }
+        }
+        assert_eq!(cues.len(), [4, 1, 1, 2, 0, 1, 1, 1, 0][phase]);
+        for cue in cues {
+            app.world_mut().write_message(cue);
+        }
+        app.update();
+        assert_eq!(playing(&mut app), expected, "shells={shells}");
+    }
+    let stopper = scripts
+        .actors()
+        .iter()
+        .find(|actor| actor.name() == "STOPPER")
+        .unwrap();
+    assert!(
+        stopper.runtime().is_none(),
+        "KillMe ends its script context"
+    );
+    let keeper = scripts
+        .actors()
+        .iter()
+        .find(|actor| actor.name() == "KEEPER")
+        .unwrap();
+    assert!(
+        keeper.runtime().is_some(),
+        "the other context remains retained"
+    );
+    assert_eq!(
+        scripts.flags(),
+        [7],
+        "statement StopAllSounds continues before the numeric failure"
+    );
+}
+
+#[test]
+fn shell_sounds_keep_owners_without_rendered_entities() {
+    check_separate_sound_owners(true);
+}
+
+#[test]
+fn code_object_sounds_keep_owners_without_rendered_entities() {
+    check_separate_sound_owners(false);
+}

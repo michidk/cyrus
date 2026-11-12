@@ -64,26 +64,75 @@ def planned_updates(expected, step_seconds, tolerance=0):
     return count
 
 
-def accepted_schedule(path):
+def valid_baseline(player, attachment):
+    weapon_matches = not player['drawn'] if attachment else bool(player['drawn'])
+    motion_matches = attachment or not player['falling']
+    return weapon_matches and motion_matches and not player['living'] and player['health'] > 0
+
+
+def attachment_outcome(phase, start, end):
+    expected = {'approach': (False, True), 'hang': (True, True), 'detach': (True, False)}
+    if phase not in expected or (start.get('rope_attached'), end.get('rope_attached')) != expected[phase]:
+        raise ValueError(f'positive rope {phase} attachment outcome was rejected')
+
+
+def validate_physical_source(rows):
+    """Revalidate frozen acquisition evidence before admitting physical replay."""
+    spec = importlib.util.spec_from_file_location('original_rope', Path(__file__).with_name('original-rope-contact.py'))
+    original = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(original)
+    for phase in ('approach', 'hang', 'detach'):
+        records = [row for row in rows if row.get('phase') == 'schedule-evidence'
+                   and row.get('request', {}).get('phase') == phase]
+        if len(records) != 1 or records[0]['request'].get('atomic_snapshots') is not True:
+            raise ValueError('physical replay requires atomic snapshot evidence')
+        record = records[0]
+        validated = original.validate_schedule(record['result'], record['request'])
+        published = [row for row in rows if row.get('phase') == phase and row.get('boundary')]
+        if published != validated:
+            raise ValueError('physical replay boundaries differ from atomic snapshot evidence')
+
+
+def accepted_schedule(path, attachment=False):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
+    names = ('approach', 'hang', 'detach') if attachment else ('walk-in', 'attack', 'continuation')
     phases = {}
     for row in rows:
-        if row['phase'] in ('placed', 'walk-in', 'attack', 'continuation'):
+        if row['phase'] in ('placed', *names):
             player = row['player']
-            if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+            if not valid_baseline(player, attachment):
                 raise ValueError('original contact baseline was rejected')
             phases.setdefault(row['phase'], []).append(row)
-    if set(phases) != {'placed', 'walk-in', 'attack', 'continuation'}:
+    if set(phases) != {'placed', *names}:
         raise ValueError('original contact run is incomplete')
+    physical = [i for i, row in enumerate(rows) if row.get('phase') == 'physical-release']
+    if physical:
+        hang = [i for i, row in enumerate(rows) if row.get('phase') == 'hang' and row.get('boundary') == 'end']
+        detach = [i for i, row in enumerate(rows) if row.get('phase') == 'detach' and row.get('boundary') == 'start']
+        if (not attachment or len(physical) != 1 or len(hang) != 1 or len(detach) != 1
+                or not hang[0] < physical[0] < detach[0]):
+            raise ValueError('physical release must follow hanging and precede detach')
+        player = rows[physical[0]]['player']
+        if not valid_baseline(player, True) or not player.get('rope_attached'):
+            raise ValueError('physical release requires a retained attachment')
     schedule = {}
-    for phase in ('walk-in', 'attack', 'continuation'):
+    for phase in names:
         edges = [row for row in phases[phase] if row.get('boundary')]
         boundaries = {row['boundary']: row for row in edges}
-        if len(edges) != 2 or set(boundaries) != {'start', 'end'}:
+        expected_edges = {'start', 'release', 'end'} if physical and phase == 'detach' and 'release' in boundaries else {'start', 'end'}
+        if len(edges) != len(expected_edges) or set(boundaries) != expected_edges:
             raise ValueError(f'original {phase} lacks acknowledged game-clock boundaries; acquire timing samples')
         if not all(row.get('input_ack') is True for row in boundaries.values()):
             raise ValueError(f'original {phase} input was not acknowledged')
+        if attachment:
+            attachment_outcome(phase, boundaries['start']['player'], boundaries['end']['player'])
         schedule[phase] = interval(boundaries['start'], boundaries['end'])
+        if 'release' in boundaries:
+            schedule[phase]['pulse'] = interval(boundaries['start'], boundaries['release'])
+            schedule[phase]['supported_landing'] = True
+    if physical:
+        validate_physical_source(rows)
+        schedule['detach']['physical_release'] = True
     return phases['placed'][-1]['player'], schedule
 
 
@@ -202,6 +251,7 @@ class Driver:
         self.clock_tolerance = clock_tolerance
         self.index = None
         self.held = set()
+        self.attachment = False
 
     def call(self, kind, _timeout=None, **args):
         timeout = self.timeout if _timeout is None else min(self.timeout, _timeout)
@@ -248,7 +298,7 @@ class Driver:
             previous = row['frame']
             if validate:
                 player = row['player']
-                if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+                if not valid_baseline(player, self.attachment):
                     raise RuntimeError('native contact baseline was rejected')
             if row['frame'] - start >= frames:
                 return row
@@ -279,37 +329,57 @@ class Driver:
         if not 0 < step_seconds < float('inf'):
             raise RuntimeError('native ordinary timing probe did not advance')
         updates = planned_updates(expected, step_seconds, self.clock_tolerance)
+        pulse = expected.get('pulse')
+        release_updates = planned_updates(pulse, step_seconds, self.clock_tolerance) if pulse else updates
+        if pulse and not 0 < release_updates < updates:
+            raise ValueError('native pulse requires a released continuation')
         events = [dict(after_updates=offset, **(
             dict(key=key, action=action) if key else {}))
-            for offset, action in [(0, 'press'), (updates, 'release')]]
+            for offset, action in [(0, 'press'), (release_updates, 'release')]]
+        if pulse:
+            events += [dict(after_updates=i) for i in range(1, updates + 1) if i != release_updates]
+            events.sort(key=lambda event: event['after_updates'])
         response = self.call('schedule_input', events=events)
         rows = response['boundaries']
-        if len(rows) != 2:
+        if len(rows) != len(events):
             raise RuntimeError('native schedule did not report both boundaries')
         boundaries = []
-        for row, event, edge in zip(rows, events, ['start', 'end']):
+        for row, event in zip(rows, events):
+            edge = ('start' if event['after_updates'] == 0 else
+                    'end' if event['after_updates'] == updates else
+                    'release' if event['after_updates'] == release_updates else 'sample')
             if (row['after_updates'] != event['after_updates']
                     or row.get('key') != event.get('key')
                     or row.get('action') != event.get('action')):
                 raise RuntimeError('native boundary acknowledgement differs from schedule')
+            if rows and (row['update'] != rows[0]['update'] + event['after_updates']
+                    or row['generation'] != rows[0]['generation']):
+                raise RuntimeError('native schedule crossed unavailable ordinary boundaries')
             actor, = row['player']['actors']
             control = actor['control']
             player = dict(drawn=control['weapon_drawn'], falling=control['falling_state'],
                 living=control['living_state'], health=actor['attributes'][3],
-                rope_attached=control['rope_attached'],
+                rope_attached=control['rope_attached'], queued=control.get('queued_motion'),
+                group=actor.get('animation', {}).get('current_group'),
                 position=[v / 256 for v in actor['spatial']['effective']['position']])
             boundary = dict(phase=phase, boundary=edge, input_ack=True,
                 frame=row['update'], generation=row['generation'],
                 clock=[row['game_seconds'], row['game_seconds']], player=player)
             self.output.write(json.dumps(boundary) + '\n')
             self.output.flush()
-            if not player['drawn'] or player['falling'] or player['living'] or player['health'] <= 0:
+            if not valid_baseline(player, self.attachment):
                 raise RuntimeError('native contact baseline was rejected')
             boundaries.append(boundary)
-        start, end = boundaries
+        start, end = boundaries[0], boundaries[-1]
         if (start['generation'] != end['generation']
                 or end['frame'] - start['frame'] != updates):
             raise RuntimeError('native schedule crossed unavailable ordinary boundaries')
+        if pulse:
+            released = next(row for row in boundaries if row['boundary'] == 'release')
+            if (released['generation'] != start['generation']
+                    or released['frame'] - start['frame'] != release_updates):
+                raise RuntimeError('native pulse release crossed unavailable ordinary boundaries')
+            compare_interval(pulse, interval(start, released), self.clock_tolerance)
         observed = interval(start, end)
         try:
             compare_interval(expected, observed, self.clock_tolerance)
@@ -319,6 +389,19 @@ class Driver:
                 clock_tolerance=self.clock_tolerance, error=str(error))) + '\n')
             self.output.flush()
             raise
+        if self.attachment:
+            attachment_outcome(phase, start['player'], end['player'])
+        if expected.get('supported_landing'):
+            detached = False
+            for row in boundaries:
+                attached = row['player']['rope_attached']
+                if detached and attached:
+                    raise ValueError('native pulse reattached during landing continuation')
+                detached |= attached is False
+            player = end['player']
+            if (player['rope_attached'] or player['falling'] != 0 or player.get('queued') != 0
+                    or not any(row['player'].get('group') in range(65, 75) for row in boundaries)):
+                raise ValueError('native pulse did not reach supported landing')
         result = dict(phase=phase, comparison='matched', duration=observed['duration'],
                       clock_tolerance=self.clock_tolerance,
                       displacement=[b - a for a, b in zip(start['player']['position'], end['player']['position'])],
@@ -332,8 +415,9 @@ class Driver:
         try:
             self.progress(1, 'ready')
             self.call('cheat', name='magiccarpet', value=1)
-            self.call('console', line='item add,1')
-            if not self.sample('inventory')['player']['drawn']:
+            if not self.attachment:
+                self.call('console', line='item add,1')
+            if not self.attachment and not self.sample('inventory')['player']['drawn']:
                 response = self.call('input', key='KeyS', action='tap')
                 if response != dict(key='KeyS', action='tap'):
                     raise RuntimeError('native sword input acknowledgement does not match request')
@@ -344,7 +428,14 @@ class Driver:
             self.progress(2, 'placed', validate=True)
             capture = MixerCapture(self.mixer_path) if self.mixer_path else nullcontext()
             with capture:
-                for phase, key in [('walk-in', 'ArrowUp'), ('attack', 'ControlLeft'), ('continuation', None)]:
+                phases = [('approach', 'Space'), ('hang', None), ('detach', 'Space')] if self.attachment else [
+                    ('walk-in', 'ArrowUp'), ('attack', 'ControlLeft'), ('continuation', None)]
+                for phase, key in phases:
+                    if phase == 'detach' and schedule[phase].get('physical_release'):
+                        self.call('cheat', name='magiccarpet', value=0)
+                        row = self.sample('physical-release')
+                        if not valid_baseline(row['player'], True) or not row['player'].get('rope_attached'):
+                            raise RuntimeError('physical release requires a retained attachment')
                     self.timed_segment(phase, schedule[phase], key)
         finally:
             for key in tuple(self.held):
@@ -352,7 +443,7 @@ class Driver:
 
 
 def execute(args):
-    original, schedule = accepted_schedule(args.original)
+    original, schedule = accepted_schedule(args.original, attachment=args.attachment)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.with_suffix(args.output.suffix + '.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -367,6 +458,7 @@ def execute_locked(args, original, schedule):
             raise ValueError('completed output is missing or changed')
         return
     driver = Driver(args.addr, args.timeout, None, args.clock_tolerance, args.record_mixer)
+    driver.attachment = args.attachment
     wait_ready(driver, args.ready_timeout, progress_path, progress)
     progress['status'] = 'running'
     save_progress(progress_path, progress)
@@ -389,6 +481,8 @@ def main():
                         help='capture WAV from paced-audio.sh cyrus.monitor in this environment')
     parser.add_argument('--clock-tolerance', type=float, default=0,
                         help='maximum elapsed-game-seconds error including boundary uncertainty; default exact')
+    parser.add_argument('--attachment', action='store_true',
+                        help='replay and require positive unarmed grab, hold and jump detach')
     parser.add_argument('--resume', action='store_true',
                         help='resume readiness or acknowledge completed output; never replay interrupted input')
     parser.add_argument('--ready-timeout', type=float, default=180)

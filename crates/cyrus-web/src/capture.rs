@@ -91,6 +91,7 @@ fn sync_sky(
 fn publish_startup(
     state: Res<State<cyrus_game::AppState>>,
     presentation: Res<cyrus_startup::StartupPresentation>,
+    loading: Option<Res<cyrus_startup::StartGame>>,
     clock: Option<Res<cyrus_script::clock::SimulationClock>>,
     fades: Query<&BackgroundColor, With<cyrus_startup::WorldEntryFade>>,
     camera: Res<cyrus_script::script::CameraFrameState>,
@@ -100,6 +101,7 @@ fn publish_startup(
     };
     let record = serde_json::json!({
         "state": format!("{:?}", state.get()),
+        "loading_world": loading.as_ref().and_then(|loading| loading.artwork_world()),
         "presentation": &*presentation,
         "world_fades": fades.iter().map(|color| color.0.alpha()).collect::<Vec<_>>(),
         "camera_published": camera.published.is_some(),

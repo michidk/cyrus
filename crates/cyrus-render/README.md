@@ -673,3 +673,11 @@ Restored private environments retain their validated installed source path along
 the published asset identity. Light and transient-effect ownership accepts that
 pair while still requiring matching prepared animation content. Retirement or a
 source mismatch cannot reuse the restored environment's logical light owner.
+
+`fog::inspect_effect_geometry` observes actual live transient billboard bindings,
+vertices, transforms, image-byte hashes and retained/logical slot ownership without
+advancing the pool or repairing a binding. It rejects a stale logical owner and
+missing or inconsistent mesh/material bindings. Call after effect PostUpdate and
+deferred publication. Runtime identities establish replacement and retirement only
+within the process; this diagnostic does not establish GPU submission or visual
+parity with the original.

@@ -46,8 +46,6 @@ pub mod persistence;
 mod samples;
 mod script;
 use samples::{Reservation, SampleSlots};
-#[cfg(target_arch = "wasm32")]
-use script::PendingSounds;
 pub use script::{RestoredDialogueAssets, RuntimeDialogue, RuntimeDialogueSnapshot, ScriptSounds};
 use script::{execute_ordinary, play_audio};
 
@@ -86,8 +84,6 @@ impl Plugin for SoundPlugin {
                 Update,
                 (examine_speech.before(play_audio), play_audio).in_set(PlayCues),
             );
-        #[cfg(target_arch = "wasm32")]
-        app.init_resource::<PendingSounds>();
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(
             Update,
@@ -281,6 +277,8 @@ fn finish_speech(
 #[derive(Resource, Default)]
 pub(crate) struct Channels {
     samples: SampleSlots,
+    #[cfg(any(target_arch = "wasm32", test))]
+    pending: Vec<PendingCue>,
     playing: HashMap<u64, Channel>,
     start: usize,
     /// The last sound each animated actor started, for its EndAnimation.
@@ -334,12 +332,12 @@ struct PositionalCue {
     start_index: Option<u8>,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 enum PendingCue {
     Flat(Option<Owner>, (usize, i32, i32)),
     Positional(Owner, PositionalCue),
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 impl PendingCue {
     fn owner(&self) -> Option<Owner> {
         match self {
@@ -617,6 +615,11 @@ impl Channels {
         owner: Option<Owner>,
         effect: Option<i32>,
     ) {
+        #[cfg(any(target_arch = "wasm32", test))]
+        self.pending.retain(|cue| {
+            !(owner.is_none_or(|owner| cue.owner() == Some(owner))
+                && effect.is_none_or(|effect| cue.effect() == Some(effect)))
+        });
         let stopped = self.samples.stop_matching(owner, effect);
         self.retire(commands, stopped);
     }
@@ -845,7 +848,9 @@ fn play_requests(
                 );
                 channels.start = 6;
             }
-            SoundRequest::StopAll => channels.stop_all(&mut commands),
+            SoundRequest::StopAll => {
+                channels.stop_all(&mut commands);
+            }
         }
     }
 }
@@ -1298,5 +1303,48 @@ mod ambient_tests {
             .unwrap();
         assert!(!stopped.active);
         assert_eq!(stopped.channel, None);
+    }
+}
+
+#[cfg(test)]
+mod queued_teardown_tests {
+    use super::*;
+
+    #[test]
+    fn book_stop_all_cancels_cues_waiting_for_the_browser_bank() {
+        let owner = Owner::Script {
+            generation: 3,
+            index: 2,
+        };
+        let mut app = App::new();
+        app.add_message::<SoundRequest>()
+            .init_resource::<SoundEffects>()
+            .init_resource::<Speech>()
+            .insert_resource(Channels {
+                pending: vec![
+                    PendingCue::Flat(None, (12, 0, 0)),
+                    PendingCue::Positional(
+                        owner,
+                        PositionalCue {
+                            effect: 25,
+                            volume: -40,
+                            rate_offset_hz: 0,
+                            position: [0; 3],
+                            start_index: None,
+                        },
+                    ),
+                ],
+                ..Default::default()
+            })
+            .add_systems(Update, play_requests);
+        let pending = &app.world().resource::<Channels>().pending;
+        assert_eq!(pending[0].effect(), Some(12));
+        assert!(pending[1].owner() == Some(owner));
+        app.world_mut().write_message(SoundRequest::StopAll);
+        app.update();
+        assert!(
+            app.world().resource::<Channels>().pending.is_empty(),
+            "book teardown must cancel starts that have not reached the backend"
+        );
     }
 }

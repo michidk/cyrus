@@ -111,6 +111,7 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
         )?,
         "startup" => crate::startup::prepare_startup(source, output)?,
         "menu" => crate::startup::prepare_menu(source, output)?,
+        "loading" => crate::loading_artwork::prepare(source, path, output)?,
         "logbook" => crate::logbook::prepare(source, output)?,
         "overlay" => crate::overlay::prepare(source, path, output)?,
         "hud" => crate::hud_export::prepare(source, output)?,

@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import time
@@ -134,8 +135,12 @@ class Driver:
                 # The public boundary rejects a frame whose asynchronous mesh
                 # replacement has not settled. Its result was consumed; retry
                 # capture without changing animation or accepting stale geometry.
-                if ('displayed model mesh has not settled to the selected frame' not in str(error)
-                        or time.monotonic() >= deadline):
+                not_ready = (
+                    'displayed model mesh has not settled to the selected frame' in str(error)
+                    or re.fullmatch(r'session_capture_result: player model [^:]+: instance is not ready', str(error))
+                    or re.fullmatch(r'session_capture_result: dialogue \[\d+(?:, \d+)*\]: export still in flight at save boundary', str(error))
+                )
+                if not not_ready or time.monotonic() >= deadline:
                     raise
                 time.sleep(self.args.interval)
 

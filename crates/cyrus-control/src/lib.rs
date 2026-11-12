@@ -72,6 +72,12 @@ pub enum Command {
         name: String,
         primitive: usize,
     },
+    /// Inspect transient billboard geometry after effect publication.
+    EffectGeometry {
+        /// Arm before a load to observe the first completed replacement update.
+        #[serde(default)]
+        after_generation: Option<u64>,
+    },
     /// Read one actor's model and attachment ownership after presentation updates.
     RenderedActor {
         index: usize,

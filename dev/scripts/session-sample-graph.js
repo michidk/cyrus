@@ -15,34 +15,41 @@
   `], {type: 'text/javascript'}));
   AudioBufferSourceNode.prototype.start = function (...args) {
     const result = original.apply(this, args);
-    if (this.loop || this.buffer?.numberOfChannels !== 2) return result;
-    if (context && context !== this.context) { probe.error = 'multiple sample stream clocks'; return result; }
-    context = this.context;
-    if (!ready) ready = context.audioWorklet.addModule(worklet).then(() => {
-      tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2, channelCountMode: 'explicit'});
-      tap.port.onmessage = ({data}) => {
-        probe.blocks.push(data);
-        if (probe.blocks.length > 24000) probe.blocks.splice(0, 1000);
-      };
-      connect.call(tap, context.destination);
-      // Keep the observer processing silent quanta between scheduled buffers.
-      const silence = context.createConstantSource();
-      silence.offset.value = 0;
-      connect.call(silence, tap);
-      silence.start();
-    });
-    if (tap) connect.call(this, tap);
-    else ready.then(() => connect.call(this, tap)).catch(error => {probe.error = String(error)});
-    probe.buffers.push({frame: (args[0] || context.currentTime) * context.sampleRate,
-      left: new Float32Array(this.buffer.getChannelData(0)), right: new Float32Array(this.buffer.getChannelData(1))});
+    try {
+      if (probe.error) return result;
+      if (this.loop || this.buffer?.numberOfChannels !== 2) return result;
+      if (context && context !== this.context) { probe.error = 'multiple sample stream clocks'; return result; }
+      context = this.context;
+      if (!context.audioWorklet) throw Error('AudioWorklet unavailable; capture requires a secure origin');
+      if (!ready) ready = context.audioWorklet.addModule(worklet).then(() => {
+        tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2, channelCountMode: 'explicit'});
+        tap.port.onmessage = ({data}) => {
+          probe.blocks.push(data);
+          if (probe.blocks.length > 24000) probe.blocks.splice(0, 1000);
+        };
+        connect.call(tap, context.destination);
+        // Keep the observer processing silent quanta between scheduled buffers.
+        const silence = context.createConstantSource();
+        silence.offset.value = 0;
+        connect.call(silence, tap);
+        silence.start();
+      });
+      if (tap) connect.call(this, tap);
+      else ready.then(() => connect.call(this, tap)).catch(error => {probe.error = String(error)});
+      probe.buffers.push({frame: (args[0] || context.currentTime) * context.sampleRate,
+        left: new Float32Array(this.buffer.getChannelData(0)), right: new Float32Array(this.buffer.getChannelData(1))});
+    } catch (error) {
+      probe.error = String(error);
+    }
     return result;
   };
-  probe.status = () => ({error: probe.error, ready: !!tap, rate: context?.sampleRate,
+  probe.status = () => ({error: probe.error, ready: !!tap && !probe.error, rate: context?.sampleRate,
     now: context && Math.round(context.currentTime * context.sampleRate),
     buffers: probe.buffers.map(b => ({frame: b.frame, length: b.left.length,
       energy: b.left.reduce((sum, x) => sum + x*x, 0) + b.right.reduce((sum, x) => sum + x*x, 0)})),
     last: probe.blocks.at(-1)?.frame});
   probe.match = (start, end, shift = 0) => {
+    if (probe.error) throw Error(`sample graph rejected: ${probe.error}`);
     const blocks = probe.blocks.filter(b => b.frame >= start && b.frame < end);
     let next = start;
     for (const block of blocks) { if (block.frame !== next) throw Error(`missing or duplicate sample graph quantum: expected ${next}, got ${block.frame}, window ${start}..${end}`); next += 128; }

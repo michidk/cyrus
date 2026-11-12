@@ -70,6 +70,21 @@ placement and rendering read that publication. Snapshots retain it independently
 advanced oscillator, following preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#rope-update-order).
 This follows preservation's [transient collision rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#live-and-transient-collision-candidates).
 
+Verified: admission records the attachment without placing a pending grab.
+Subsequent attached updates place the player. A player retains the approach height while the rope grab
+animation's wrapping frame progress is below three. Horizontal hand placement
+continues. Admission chooses the nearest eligible link from the actor position plus the authored
+hand vertex, without a link-length offset. Later placement uses that node and grip height. The public rope
+drivers have an explicit unarmed positive scenario requiring grab, held attachment
+and jump detach; diagnostic timing does not establish contact/clank parity.
+Verified: jump release admits ordinary movement and collision on that update after removing the
+attachment. The retained rope jump latch protects the regrab countdown while falling with Jump held.
+Carried displacement reads the retained speed before attached controls run; a directional release
+therefore first carries its new speed on the following update. Attachment admission follows the
+ordinary controller, so release and repeated jump updates advance the regrab countdown on that
+same update. The countdown pauses when both queued and falling motion are absent. This follows
+preservation's [rope update order](https://github.com/michidk/redguard-preservation/blob/fd87586bee7ab2bfeffc0d96b8d91e3c1eabff3c/docs/engine/SOUP.md#rope-attachment).
+
 ## Module guide
 
 | Module | Responsibility |
@@ -758,3 +773,15 @@ Current-schema actor snapshots validate map-light eligibility against the instal
 placement before restoration. Hidden material preparation and logical publication
 therefore use the same light owners; a saved eligibility flag cannot promote or
 suppress an installed light role.
+
+Verified: `StopAllSounds` completes its global sample-stop effect as a statement.
+It has no supported numeric result; consuming it in a formula fails after the
+single effect and retains that failure without replaying the stop. Other immediate
+sound functions retain their documented zero results. This follows preservation's
+[SOUP sound results](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+Verified: positional `Sound` uses the current `attr_slave` selector, then linked
+or local position, through the shared query-position rule. Retained family
+membership alone does not select an attached emitter after the attribute clears.
+The start retains its captured position; later emitter movement does not update
+an already playing `Sound` sample, following preservation's sound contract.

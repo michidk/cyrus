@@ -1,5 +1,10 @@
 # cyrus-assets
 
+`loading/WORLD.loading` prepares only the requested destination's full-screen
+GXA frames through preservation’s `WORLD.INI` lookup. Native export and the
+browser worker share preparation and validation; no world artwork table is
+duplicated in the host.
+
 Cursor preparation is an unverified source increment for #90. The on-demand
 `cursor/pointers.cursor` group reads the `SYSTEM.INI [system] pointers` path
 through preservation, resolves DOS separators and case through the source
