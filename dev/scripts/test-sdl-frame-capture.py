@@ -3,6 +3,9 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import tempfile
+import json
 
 spec = importlib.util.spec_from_file_location('capture', Path(__file__).with_name('sdl-frame-capture.py'))
 capture = importlib.util.module_from_spec(spec)
@@ -10,6 +13,41 @@ spec.loader.exec_module(capture)
 
 
 class Capture(unittest.TestCase):
+    def test_progress_uses_presented_playback_clock_and_persists_endpoint(self):
+        self.run_progress([10, 10, 11, 13], expected=13)
+
+    def test_frozen_gameplay_clock_cannot_admit_movie_progress(self):
+        self.run_progress([10, 10, 10, 10], error=TimeoutError)
+
+    def test_reversed_clock_and_missing_generation_reject_without_receipt(self):
+        self.run_progress([10, 9], error=ValueError)
+        self.run_progress([10, 13], error=ValueError, missing_pcm=True)
+
+    def run_progress(self, clocks, expected=None, error=None, missing_pcm=False):
+        def sample(directory, output, rows, timeout):
+            index = len(list(output.parent.glob('[0-9]*')))
+            output.mkdir()
+            result = dict(ok=True, owner='sdl_surface_present', sequence=index + 1,
+                          monotonic_ns=100 + index, fields={'movie': clocks[index].to_bytes(4, 'little').hex()})
+            if not missing_pcm:
+                result['pcm_generation'] = dict(frames=1000 + index, sequence=index + 1,
+                                                monotonic_ns=90 + index, rate=48000)
+            (output / 'result.json').write_text(json.dumps(result))
+            return result
+        with tempfile.TemporaryDirectory() as temporary, patch.object(capture, 'capture', side_effect=sample):
+            output = Path(temporary) / 'series'
+            args = ('unused', output, {'movie': {'address': 16, 'size': 4}}, 'movie', 3)
+            if error:
+                with self.assertRaises(error):
+                    capture.capture_progress(*args, max_captures=len(clocks), require_pcm=True)
+                self.assertFalse((output / 'complete.json').exists())
+                self.assertTrue((output / '0/result.json').exists())
+            else:
+                result = capture.capture_progress(*args, max_captures=len(clocks), require_pcm=True)
+                self.assertEqual(result['last'], expected)
+                self.assertEqual(json.loads((output / 'complete.json').read_text()), result)
+                self.assertEqual(len(json.loads((output / 'progress.json').read_text())), len(clocks))
+
     def test_bindings_are_bounded_and_not_paths_or_json(self):
         self.assertEqual(capture.bindings({'clock': {'address': 16, 'size': 4}})['clock']['size'], 4)
         for bad in ({}, {'x': {'address': True, 'size': 4}}, {'x': {'address': 1, 'size': 4097}},

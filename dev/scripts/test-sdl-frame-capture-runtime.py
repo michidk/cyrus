@@ -42,6 +42,11 @@ with tempfile.TemporaryDirectory() as temporary:
         assert result['sequence'] > 0
         if mode not in ('invalid', 'failed', 'scheduled-skipped', 'scheduled-expired', 'indirect-null'):
             assert result['ok'] is True, result
+            surface = result['surface']
+            assert (surface['width'], surface['height']) == (16, 16), surface
+            assert surface['bits_per_pixel'] in (24, 32), surface
+            assert surface['pitch'] >= 16 * surface['bits_per_pixel'] // 8, surface
+            assert all(surface['masks'][:3]) and surface['format'] > 0, surface
             if mode == 'indirect':
                 assert result['fields']['health'] == '5a', result
                 assert result['fields']['animation'] == '0b00ffff', result

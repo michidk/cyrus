@@ -43,6 +43,8 @@ struct capture {
     uint64_t sequence;
     long thread;
     struct timespec time;
+    Uint32 pixel_format, rmask, gmask, bmask, amask;
+    int width, height, pitch, bits_per_pixel;
     SDL_Surface *image;
 };
 static atomic_bool busy = 0;
@@ -74,6 +76,9 @@ static void *write_capture(void *pointer) {
             fprintf(result, "},\"pcm_generation\":{\"frames\":%llu,\"sequence\":%llu,\"monotonic_ns\":%llu,\"rate\":%u",
                 (unsigned long long)capture->generated_frames, (unsigned long long)capture->generated_sequence,
                 (unsigned long long)capture->generated_ns, capture->generated_rate);
+        fprintf(result, "},\"surface\":{\"format\":%u,\"width\":%d,\"height\":%d,\"pitch\":%d,\"bits_per_pixel\":%d,\"masks\":[%u,%u,%u,%u]",
+            capture->pixel_format, capture->width, capture->height, capture->pitch,
+            capture->bits_per_pixel, capture->rmask, capture->gmask, capture->bmask, capture->amask);
         // Errors are fixed diagnostic messages, never raw paths or JSON text.
         fprintf(result, "},\"error\":\"%s\"}\n", capture->error[0] ? (capture->rejection ? capture->rejection : "surface or binding capture failed") : "");
         if (fclose(result) == 0) {
@@ -225,6 +230,11 @@ static struct capture *freeze_surface(SDL_Window *window) {
     SDL_Surface *surface = SDL_GetWindowSurface(window);
     if (!capture->error[0] && surface && surface->w > 0 && surface->h > 0 &&
         (uint64_t)surface->w * surface->h <= 4096 * 4096 && read_fields(capture, capture->clock_field[0] ? 1 : 0) == 0) {
+        capture->pixel_format = surface->format->format;
+        capture->width = surface->w; capture->height = surface->h; capture->pitch = surface->pitch;
+        capture->bits_per_pixel = surface->format->BitsPerPixel;
+        capture->rmask = surface->format->Rmask; capture->gmask = surface->format->Gmask;
+        capture->bmask = surface->format->Bmask; capture->amask = surface->format->Amask;
         capture->image = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGB24, 0);
         if (!capture->image || read_fields(capture, 1) != 0) capture->error[0] = 1;
     } else capture->error[0] = 1;

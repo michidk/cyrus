@@ -1988,6 +1988,24 @@ counts delivered stereo signed-16 frames at presentation; it still does not map
 samples to mixer generation. Exact original/native windows must match before
 interpreting pixels or PCM as a gameplay comparison.
 
+For bounded playback acquisition, pass `--progress FIELD TICKS --timeout SECONDS`.
+This retains each owned presentation and writes `complete.json` only after the
+bound playback clock advances by the requested ticks. Frozen clocks, reversed
+clocks/sequences and exhausted budgets fail without a completion receipt. Raw
+captures and incremental `progress.json` remain available after failure. Bind the
+actual movie decoder ordinal for cinematics: the gameplay clock can remain
+stationary during playback ([playback clock](https://github.com/michidk/redguard-preservation/pull/315)).
+Never convert wall duration into a movie frame number.
+
+With both SDL probes loaded, `--require-pcm` requires a committed generated-PCM
+cursor at every presentation and rejects missing generation, backwards cursors
+or a changed sample rate. The retained cursor is a callback-generation prefix,
+not DAC position. Each result also retains the original SDL surface format,
+channel masks, pitch and dimensions before conversion to RGB24. These describe
+the capture boundary; upstream renderer quantization must be established
+separately. Converting a surface to RGB24 does not prove that its source had
+24-bit color precision.
+
 Run the binding controls with `python3 dev/scripts/test-sdl-frame-capture.py`.
 The runtime control compiles `test-sdl-frame-capture.c` against SDL2 and runs
 `test-sdl-frame-capture-runtime.py FIXTURE_EXECUTABLE INTERPOSER_SO FAILED_BACKEND_SO`. It requires
