@@ -139,3 +139,40 @@ loading keep the observation pending.
 `state.rendered_actor_pending` confirms that the observation is armed before
 starting a public load or revisit. One observation may be outstanding. This
 read-only diagnostic does not reconstruct missing roots or advance animation.
+
+`schedule_input {events}` delivers diagnostic input before ordinary player input
+sampling. Each event has `after_updates` relative to the next admitted ordinary
+update, starting at zero, and optional `key` and `action`. Supply both for an
+explicit `press` or `release`, or neither to observe a boundary without changing
+input. For example:
+
+```json
+{"id":2,"cmd":{"type":"schedule_input","events":[{"after_updates":0,"key":"ArrowUp","action":"press"},{"after_updates":12,"key":"ArrowUp","action":"release"}]}}
+```
+
+The deferred response contains `boundaries`, each with the actual `update`, world
+`generation`, cumulative `game_seconds`, transition and selected logical actor
+snapshot in `player.actors`. Snapshots precede input sampling and simulation at
+that boundary. `game_seconds` excludes the sampled forthcoming step, so the
+interval between press and release includes exactly the updates that held input.
+Update counts do
+not prescribe elapsed seconds. Compare the reported clocks before interpreting
+motion or contact.
+
+Schedules require a current admitted world, at most 256 ordered events, initially
+released scheduled keys, and balanced explicit transitions. Taps are unavailable.
+One schedule can run at a time; immediate control `input` requests are rejected
+while it owns delivery. A lost admission, changed generation, skipped/repeated
+update or 35-second execution deadline rejects the attempt and releases its held
+keys. Unrelated held keys are preserved. Ordinary gameplay input sampling is
+unchanged when no schedule is pending. This diagnostic facility does not pause,
+step or change the simulation clock.
+
+`effect_geometry {after_generation?}` observes transient billboard bindings after
+PostUpdate. Without a generation it replies once; with one it waits up to 180
+seconds for a different ready generation, completed dormant-world restoration
+and its model-ready admitted clock sample, then observes that update without retrying missing geometry. Other commands remain
+available while armed. `state.effect_geometry_pending` acknowledges admission, so
+a driver can submit a load after the probe is armed. The result includes its
+acquisition frame and CPU geometry/material/image observations. This does not
+establish GPU submission or original pixel parity.

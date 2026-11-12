@@ -1,5 +1,10 @@
 # cyrus-assets
 
+`loading/WORLD.loading` prepares only the requested destination's full-screen
+GXA frames through preservation’s `WORLD.INI` lookup. Native export and the
+browser worker share preparation and validation; no world artwork table is
+duplicated in the host.
+
 Cursor preparation is an unverified source increment for #90. The on-demand
 `cursor/pointers.cursor` group reads the `SYSTEM.INI [system] pointers` path
 through preservation, resolves DOS separators and case through the source
@@ -372,3 +377,13 @@ or reading original save contents as native sessions.
 The worker's `startup/entry.json` contains parsed startup policy only. It does
 not prepare splash images or menu artwork. `StartupPolicy::entry` shares the
 fresh/autosave and installed bypass rules between native and browser hosts.
+
+The `movie_window` example exports a bounded installed cinematic window for
+browser clock acceptance, using the same preparation and packet decoder as
+playback. Run `cargo run -p cyrus-assets --features native --example movie_window -- INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT]`
+through the repository Cargo wrapper. The defaults select movie zero and 60
+frames. Use a new OUTPUT directory beneath an existing ignored local artifact directory,
+outside the read-only install. Existing outputs are rejected to preserve evidence.
+The window manifest references decoded RGBA frames and original-layout PCM;
+none of that output belongs in the tracked tree. Serve it on a secure local
+origin for `dev/scripts/test-browser-movie-seek.mjs`.

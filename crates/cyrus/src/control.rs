@@ -1,6 +1,8 @@
 //! TCP control server (see `cyrus-control`). A thread accepts connections and
 //! forwards each request into the ECS; one system answers them in frame order.
 
+mod effect_geometry;
+mod input_schedule;
 mod light_image;
 mod rendered_actor;
 
@@ -53,11 +55,23 @@ impl Plugin for ControlPlugin {
         app.add_systems(PostUpdate, light_image::respond);
         app.add_systems(
             PostUpdate,
+            effect_geometry::respond.after(bevy::asset::AssetEventSystems),
+        );
+        app.add_systems(
+            PostUpdate,
             rendered_actor::respond.after(bevy::asset::AssetEventSystems),
         );
         app.insert_resource(Inbox(Mutex::new(rx)))
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
+            .init_resource::<input_schedule::InputScheduler>()
+            .add_systems(
+                Update,
+                input_schedule::apply
+                    .after(cyrus_script::script::ModelPreparation)
+                    .before(cyrus_script::player::input::InputSample)
+                    .before(cyrus_script::script::OrdinaryUpdates),
+            )
             .init_resource::<crate::session::NativeSessionLoad>()
             .init_resource::<crate::session::slots::SlotStore>()
             .init_resource::<cyrus_startup::LastGameLoader>()
@@ -65,13 +79,17 @@ impl Plugin for ControlPlugin {
                 Update,
                 crate::session::launch_slot.run_if(resource_exists::<crate::session::LaunchSlot>),
             )
-            // `poll` follows `handle` so a control tap's press is still `just_pressed` when F9 is sampled.
+            // Deliver control taps before console capture, then sample F9 after keyboard ownership is resolved.
             .add_systems(
                 PreUpdate,
-                (release_taps, handle, crate::session::poll)
+                (release_taps, handle)
                     .chain()
                     .after(bevy::input::InputSystems)
                     .before(cyrus_console::ConsoleInput),
+            )
+            .add_systems(
+                PreUpdate,
+                crate::session::poll.after(cyrus_console::ConsoleInput),
             );
     }
 }
@@ -125,6 +143,8 @@ struct Inspection<'w, 's> {
     marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
     clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
     rendered_actor_pending: Option<Res<'w, rendered_actor::PendingRenderedActor>>,
+    effect_geometry_pending: Option<Res<'w, effect_geometry::PendingEffectGeometry>>,
+    input_scheduler: ResMut<'w, input_schedule::InputScheduler>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -178,6 +198,8 @@ fn handle(
         mut marker,
         clock,
         rendered_actor_pending,
+        effect_geometry_pending,
+        mut input_scheduler,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam): (
@@ -292,6 +314,17 @@ fn handle(
                     break;
                 }
             }
+            Command::EffectGeometry { after_generation } => {
+                if effect_geometry_pending.is_some() {
+                    Err("effect geometry observation already pending".into())
+                } else {
+                    commands.insert_resource(effect_geometry::PendingEffectGeometry {
+                        id, after_generation, reply,
+                        deadline: std::time::Instant::now() + std::time::Duration::from_secs(180),
+                    });
+                    break;
+                }
+            }
             Command::BoundLightImage { name, primitive } => {
                 commands.insert_resource(light_image::PendingLightImage { id, name, primitive, reply });
                 // Stop dispatch so later commands cannot change the selected world before capture.
@@ -309,7 +342,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                 });
                 Ok(
-                    json!({"rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -397,7 +430,23 @@ fn handle(
                     [x, y, z].map(|value| value.wrapping_mul(256)),
                     heading,
                 )?;
-                Ok(json!({"position": [x, y, z], "heading": wrap(heading)}))
+                // handle runs in PreUpdate: placement is applied before the next ordinary update.
+                // An absent clock cannot acknowledge an exact simulation event.
+                let player = world.selected_player()
+                    .ok_or_else(|| anyhow::anyhow!("placement: selected player unavailable"))?;
+                let boundary = clock.as_ref().zip(prepared.as_ref()).map(|(clock, prepared)| {
+                    json!({
+                        "ready": true, "scene": prepared.requested_name,
+                        "frame": world.ordinary_updates(), "generation": world.generation(),
+                        "elapsed_scale": clock.elapsed_frame_scale(),
+                        "normal_frame_rate": clock.settings().normal_frame_rate,
+                        "game_seconds": clock.game_seconds(), "execution": "running",
+                        "event": "placement_applied", "phase": "before_ordinary_update",
+                        "player": world.inspect(player.index, 1)["actors"][0],
+                    })
+                });
+                Ok(json!({"position": [x, y, z], "heading": wrap(heading),
+                    "acknowledged": boundary.is_some(), "boundary": boundary}))
             })()
             .map_err(|error| format!("{error:#}")),
             Command::Flycam {
@@ -419,6 +468,14 @@ fn handle(
                 }
                 None => Err("no flycam".into()),
             },
+            Command::ScheduleInput { events } => {
+                let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
+                match input_scheduler.arm(id, reply.clone(), generation, events, &keys) {
+                    Ok(()) => continue,
+                    Err(error) => Err(error),
+                }
+            }
+            Command::Input { .. } if input_scheduler.pending() => Err("input schedule owns control input until completion".into()),
             Command::Input { key, action } => match parse_key(&key) {
                 Some(code) => {
                     match action {
@@ -1014,6 +1071,144 @@ mod tests {
     }
 
     #[test]
+    fn public_schedule_input_rejects_unavailable_world_without_pressing() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        let request =
+            serde_json::from_value(json!({"id":91,"cmd":{"type":"schedule_input","events":[
+                {"after_updates":0,"key":"ArrowUp","action":"press"},
+                {"after_updates":2,"key":"ArrowUp","action":"release"}
+            ]}}))
+            .unwrap();
+        tx.send(Pending { request, reply }).unwrap();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 91);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("no world"));
+        assert!(
+            !app.world()
+                .resource::<ButtonInput<KeyCode>>()
+                .pressed(KeyCode::ArrowUp)
+        );
+    }
+
+    #[test]
+    fn effect_geometry_waits_for_an_admitted_update_after_scene_readiness() {
+        let mut app = script_app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let animations = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations
+            .clone();
+        app.insert_resource(cyrus_render::ReadyScene(animations));
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 84,
+                cmd: Command::EffectGeometry {
+                    after_generation: Some(0),
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(
+            responses.try_recv().is_err(),
+            "asset readiness is not an admitted world update"
+        );
+        app.world_mut()
+            .resource_mut::<effect_geometry::PendingEffectGeometry>()
+            .deadline = std::time::Instant::now();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 84);
+        assert!(response.error.unwrap().contains("deadline expired"));
+    }
+
+    #[test]
+    fn armed_effect_geometry_request_allows_load_commands_and_has_a_deadline() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 40,
+                cmd: Command::EffectGeometry {
+                    after_generation: Some(0),
+                },
+            },
+            reply: reply.clone(),
+        })
+        .unwrap();
+        tx.send(Pending {
+            request: Request {
+                id: 41,
+                cmd: Command::Ping,
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(responses.try_recv().is_err());
+        app.update();
+        assert_eq!(responses.try_recv().unwrap().id, 41);
+        assert!(responses.try_recv().is_err());
+        app.world_mut()
+            .resource_mut::<effect_geometry::PendingEffectGeometry>()
+            .deadline = std::time::Instant::now();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 40);
+        assert!(response.error.unwrap().contains("deadline expired"));
+        assert!(
+            !app.world()
+                .contains_resource::<effect_geometry::PendingEffectGeometry>()
+        );
+    }
+
+    #[test]
+    fn effect_geometry_request_is_one_shot_and_keeps_following_commands_ordered() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        for (id, cmd) in [
+            (
+                42,
+                Command::EffectGeometry {
+                    after_generation: None,
+                },
+            ),
+            (43, Command::Ping),
+        ] {
+            tx.send(Pending {
+                request: Request { id, cmd },
+                reply: reply.clone(),
+            })
+            .unwrap();
+        }
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert_eq!(response.id, 42);
+        assert!(response.error.unwrap().contains("service absent"));
+        assert!(responses.try_recv().is_err());
+        app.update();
+        assert_eq!(responses.try_recv().unwrap().id, 43);
+        assert!(
+            !app.world()
+                .contains_resource::<effect_geometry::PendingEffectGeometry>()
+        );
+    }
+
+    #[test]
     fn console_reply_contains_dispatched_output_and_validation_errors() {
         let mut app = app();
         app.insert_state(cyrus_game::AppState::InGame);
@@ -1115,6 +1310,10 @@ mod tests {
     }
 
     fn script_app() -> App {
+        script_app_with_player(false)
+    }
+
+    fn script_app_with_player(player: bool) -> App {
         use cyrus_assets::{animation::Animations, script::Scripts};
         use cyrus_script::script::{ScriptActors, ScriptWorld};
         let mut app = app();
@@ -1143,6 +1342,11 @@ mod tests {
         script_json["combat_clank_effects"] = json!([null, null]);
         script_json["combat_defenses"] = json!([]);
         let mut scripts: Scripts = serde_json::from_value(script_json).unwrap();
+        if player {
+            let mut actor = scripts.actors["ACTOR"].clone();
+            actor.namespace = None;
+            scripts.actors.insert("CYRUS".into(), actor);
+        }
         scripts.content_id = scripts.content_identity().unwrap();
         let mut actors = ScriptActors::default();
         actors.current = Some(ScriptWorld::prepare(&scripts, 1).unwrap());
@@ -1172,6 +1376,59 @@ mod tests {
                 environment_path: "test.environment".into(),
             });
         app
+    }
+
+    #[test]
+    fn placement_acknowledges_application_before_later_clock_advance() {
+        use cyrus_script::{clock::SimulationClock, script::ScriptActors};
+        let mut app = script_app_with_player(true);
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            world.prepare_spatial().unwrap();
+            let player = world.selected_player().unwrap();
+            world
+                .initialize_player_spatial(player, [0; 3], [0; 3])
+                .unwrap();
+        }
+        let placement = || Command::PlacePlayer {
+            x: 10,
+            y: 20,
+            z: 30,
+            heading: 40,
+        };
+        let unavailable = run_commands(&mut app, vec![placement()]).remove(0);
+        assert_eq!(unavailable["acknowledged"], false);
+        assert!(unavailable["boundary"].is_null());
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        clock.advance(0);
+        let scale = clock.elapsed_frame_scale();
+        app.insert_resource(clock)
+            .add_systems(Update, |mut clock: ResMut<SimulationClock>| {
+                clock.advance(18);
+            });
+        let result = run_commands(&mut app, vec![placement()]).remove(0);
+        assert_eq!(result["acknowledged"], true);
+        let boundary = &result["boundary"];
+        assert_eq!(boundary["elapsed_scale"], scale);
+        assert_eq!(boundary["phase"], "before_ordinary_update");
+        assert_eq!(
+            boundary["player"]["spatial"]["local"]["position"],
+            json!([2560, 5120, 7680])
+        );
+        assert!(
+            app.world()
+                .resource::<SimulationClock>()
+                .elapsed_frame_scale()
+                > scale
+        );
     }
 
     fn run_commands(app: &mut App, commands: Vec<Command>) -> Vec<serde_json::Value> {

@@ -51,20 +51,22 @@ state is supported. Unfinished traversal and interaction remain tracked in the
 [gameplay](https://github.com/michidk/cyrus/issues/4) issues.
 
 **Verified:** the following shortcuts are handled by cyrus independently of the
-editable gameplay bindings. Gameplay book shortcuts require the installed
-`final_version` setting; the tested GOG install enables it.
+editable gameplay bindings. F1, gameplay book shortcuts and Quick Save require
+the installed `final_version` setting; the tested GOG install enables it.
 
 | Input | Action |
 | --- | --- |
 | Escape, then release | Open the gameplay book; close or back out of other screens |
+| F1 | Show original compatibility versions; Enter or Action confirms |
 | F2 / F3 | Open Save / Load |
 | F4 / F5 / F6 | Open Display / Sound / Controls |
 | F7 | Toggle auto-defend |
 | F8 | Cycle candle visibility |
 | Tab | Toggle walk mode |
 | F9 | Quick save, when saving is permitted |
+| F10 | Show credits; Escape returns to the world |
+| F11 | Open cyrus inspection settings |
 | F12 | Open or close the developer console |
-| F1 | Open cyrus inspection settings |
 
 In the book, use Up/Down to select, Enter to activate, Left/Right to adjust an
 option, and Escape to return. Wait for a page turn to settle. Mouse clicking
@@ -72,13 +74,16 @@ book entries is not implemented. Key rebinding starts when you activate a
 Controls entry; Escape cancels capture. Browser or desktop shortcuts may
 intercept function keys before the game receives them.
 
-The fly camera is the bundled `flycam` mod (see `mods/README.md`): activate it in the
-Mods window under F1, then F11 toggles it. WASD flies, the mouse looks and
-Space/Left Shift moves vertically; the speed is a setting of the mod. The flight does
-not move Cyrus through the world, and keys typed into the console are ignored.
+F11's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
+right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
+player control. Its camera movement does not move Cyrus through the world. In the book menu it
+flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
+the **Pass input to game** option beside it is ticked.
+The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate it in the
+Mods window under F11, then Insert toggles it; its speed is a setting of the mod.
 
 Faithful controls are the default. `--controls modern` (browser
-`?controls=modern`, or F1's Player controller setting) moves Cyrus with W, A, S
+`?controls=modern`, or F11's Player controller setting) moves Cyrus with W, A, S
 and D relative to the camera: he turns toward the held direction while moving
 forward. He walks unless Shift is held, which runs; the Tab walk mode does not
 apply. Space jumps as installed. With a gamepad, the left stick moves him the
@@ -86,7 +91,7 @@ same way: a partial tilt walks, a full tilt runs. The arrow keys and the D-pad d
 not move him, and a quick sword key on W, A, S or D (S in the GOG install) moves
 instead of drawing the sword. In conversation topic menus, W and S or the left stick
 move the selection up and down. In the book menu, the D-pad or left stick acts as
-the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F1's Camera setting) turns the
+the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F11's Camera setting) turns the
 follow camera with horizontal mouse movement or the right stick and locks the
 cursor during play; in a browser, click the game to lock it, also after Escape released it. Both sticks use the installed joystick dead zone.
 Vertical mouse movement does not tilt the camera. The Faithful camera follows

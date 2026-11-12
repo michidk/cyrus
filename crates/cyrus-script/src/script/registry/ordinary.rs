@@ -332,21 +332,6 @@ impl ScriptWorld {
                         )?;
                     }
                 }
-                // The selected player on a rope skips the movement and collision stages below.
-                let on_rope = selected_player
-                    && self.update_player_rope(
-                        id,
-                        data,
-                        inputs.player_controller.map(|controller| controller.held),
-                        i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),
-                        ticks,
-                        scene.map(|scene| super::rope_host::RopeProbe {
-                            scene,
-                            view,
-                            actors: &selected,
-                        }),
-                        sounds,
-                    )?;
                 self.rolled_back = false;
                 self.refresh_living_bounds(id)?;
                 let rollback = self.capture_ordinary_rollback(id, sounds)?;
@@ -384,6 +369,21 @@ impl ScriptWorld {
                     });
                     self.run_pre_script_displacement(id, scale, inputs, query)?;
                 }
+                // The selected player on a rope skips the movement and collision stages below.
+                let mut on_rope = selected_player
+                    && self.control_player_rope(
+                        id,
+                        data,
+                        inputs.player_controller.map(|controller| controller.held),
+                        i32::try_from(inputs.frame_scale.unwrap_or(0)).unwrap_or(i32::MAX),
+                        ticks,
+                        scene.map(|scene| super::rope_host::RopeProbe {
+                            scene,
+                            view,
+                            actors: &selected,
+                        }),
+                        sounds,
+                    )?;
                 // An actor whose collision attribute lacks bit 0x04 never reaches the ground
                 // response that resolves queued or falling motion (preservation player.md, "Stable
                 // ordinary position" and "Terrain sink recovery"), so that motion stays as it is.
@@ -461,8 +461,10 @@ impl ScriptWorld {
                     fine_ticks: 0,
                 };
                 // The input update runs every frame, including while a script task owns the player.
-                if let (Some(query), Some(controller)) = (&player_query, inputs.player_controller) {
-                    let settings = &query.scene.settings;
+                if selected_player && let Some(controller) = inputs.player_controller {
+                    let settings = &scene
+                        .ok_or_else(|| anyhow::anyhow!("player input scene unavailable"))?
+                        .settings;
                     let (increment, limit) = if self.player_turn_uses_fight_values(id, inputs)? {
                         let attributes = &self.actors[id.index].attributes;
                         (
@@ -525,6 +527,20 @@ impl ScriptWorld {
                         Some(sounds),
                         Some(random),
                         budget,
+                    )?;
+                }
+                if selected_player && !on_rope {
+                    on_rope = self.admit_player_rope(
+                        id,
+                        data,
+                        inputs.player_controller.map(|controller| controller.held),
+                        ticks,
+                        scene.map(|scene| super::rope_host::RopeProbe {
+                            scene,
+                            view,
+                            actors: &selected,
+                        }),
+                        sounds,
                     )?;
                 }
                 let actor = &self.actors[id.index];

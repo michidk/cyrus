@@ -32,6 +32,9 @@ class PacketAudio {
         const samples = pcm.length / alignment;
         const start = startSample / rate;
         const end = (startSample + samples) / rate;
+        // Observe exhaustion against the old boundary before admitting new PCM.
+        // Otherwise an unpolled underrun becomes elapsed movie time on arrival.
+        if (!this.paused) void this.currentTime;
         this.bufferEnd = Math.max(this.bufferEnd, end);
         if (last) {
             this.complete = true;
@@ -52,13 +55,15 @@ class PacketAudio {
         if (!this.paused) this.schedule(block);
     }
     schedule(block) {
-        const position = this.currentTime;
-        if (block.end <= position) return;
         const source = this.context.createBufferSource();
         source.buffer = block.buffer;
         source.connect(this.context.destination);
+        const position = this.currentTime;
+        if (block.end <= position) { source.disconnect(); return; }
         const offset = Math.max(0, position - block.start);
-        source.start(this.context.currentTime + Math.max(0, block.start - position), offset);
+        // Map both the start and offset through the established playback origin.
+        // A second currentTime read can advance and delay this block independently.
+        source.start(this.origin + Math.max(block.start, position) - this.position, offset);
         this.sources.push(source);
         source.onended = () => {
             this.sources = this.sources.filter(active => active !== source);

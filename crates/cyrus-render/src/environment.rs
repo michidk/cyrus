@@ -21,6 +21,8 @@ pub struct EnvironmentRequest(pub Handle<Environment>);
 pub(crate) struct ActiveEnvironment {
     pub(crate) source: Option<AssetId<Environment>>,
     pub(crate) sky: Option<Entity>,
+    /// Installed source validated before a private session environment was published.
+    pub(crate) restored_path: Option<bevy::asset::AssetPath<'static>>,
 }
 
 /// Renders the Glide sky and BIOS-timed sky scrolling and terrain waves.
@@ -73,6 +75,7 @@ fn apply_sky(
         commands.entity(entity).despawn();
     }
     active.source = None;
+    active.restored_path = None;
     distance.original = None;
     let Some(environment) = environments.get(&request.0) else {
         return;

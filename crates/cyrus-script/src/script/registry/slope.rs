@@ -503,7 +503,6 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated slope control")
             .move_counter |= slide.step.counter_mask();
-        self.globals.locomotion_called |= slide.step.called_flag();
         if slide.distance > 0 {
             let position = cyrus_world::transform::translate_forward(
                 self.spatial(id)?.local.position,

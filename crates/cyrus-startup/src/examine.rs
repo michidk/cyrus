@@ -1,18 +1,14 @@
 //! The examine view's model over the suspended world. Pose, camera and lights follow
 //! preservation's `engine/hud.md` examine view and `engine/model-lighting.md`; the textures are
 //! decoded here with the loaded world's palette.
+use super::view3d::{LitAssets, LitFace, LitMesh, LitModel, LitScene, target_image, view_camera};
 use bevy::{
-    asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
+    asset::{AssetLoader, LoadContext, io::Reader},
     prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
-use cyrus_assets::{
-    examine::{ExamineArtwork, ExamineModel},
-    menu::MenuFace,
-};
+use cyrus_assets::examine::{ExamineArtwork, ExamineModel};
 use cyrus_game::AppState;
 use cyrus_script::item_viewer::{ExamineLook, ExamineScreen, ViewerPose};
-use image::{Rgba, RgbaImage};
 
 #[derive(Default, TypePath)]
 struct Loader;
@@ -57,9 +53,28 @@ impl Plugin for ExaminePlugin {
     }
 }
 
-fn setup(mut commands: Commands, server: Res<AssetServer>, mut screen: ResMut<ExamineScreen>) {
+/// Render layer of the examine view's scene.
+const EXAMINE_LAYER: usize = 7;
+
+#[derive(Component)]
+struct ExamineCamera;
+
+/// The panel and camera `cleanup` removes.
+type Teardown = Or<(With<Panel>, With<ExamineCamera>)>;
+
+fn setup(
+    mut commands: Commands,
+    server: Res<AssetServer>,
+    mut screen: ResMut<ExamineScreen>,
+    mut images: ResMut<Assets<Image>>,
+) {
     commands.insert_resource(Artwork(server.load("cache://hud/examine.models")));
     screen.enabled = true;
+    let target = images.add(target_image([0, 0, 0, 0]));
+    commands.spawn((
+        ExamineCamera,
+        view_camera(target.clone(), EXAMINE_LAYER, Color::NONE),
+    ));
     commands
         .spawn((
             Panel,
@@ -76,7 +91,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut screen: ResMut<Ex
         .with_children(|parent| {
             parent.spawn((
                 Canvas,
-                ImageNode::new(Handle::default()),
+                ImageNode::new(target),
                 Node {
                     height: percent(100),
                     max_width: percent(100),
@@ -89,23 +104,40 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut screen: ResMut<Ex
 
 fn cleanup(
     mut commands: Commands,
-    panels: Query<Entity, With<Panel>>,
+    panels: Query<Entity, Teardown>,
+    meshes: Query<(Entity, &LitMesh)>,
     mut screen: ResMut<ExamineScreen>,
 ) {
-    for panel in &panels {
-        commands.entity(panel).despawn();
+    for entity in &panels {
+        commands.entity(entity).despawn();
+    }
+    for (entity, mesh) in &meshes {
+        if mesh.0 == EXAMINE_LAYER {
+            commands.entity(entity).despawn();
+        }
     }
     screen.enabled = false;
 }
 
-#[allow(clippy::too_many_arguments)] // Reads one asset and updates its presentation node and image.
+/// The scene's textures change with the model and the world palette only.
+fn texture_key(name: &str, look: &ExamineLook) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut hasher);
+    look.palette.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[allow(clippy::too_many_arguments)] // Reads one asset and updates its presentation node and scene.
 fn draw(
     artwork: Option<Res<Artwork>>,
     assets: Res<Assets<ExamineArtwork>>,
     mut screen: ResMut<ExamineScreen>,
-    mut images: ResMut<Assets<Image>>,
+    mut commands: Commands,
+    mut assets_3d: LitAssets,
     mut panels: Query<&mut Visibility, With<Panel>>,
-    mut canvases: Query<&mut ImageNode, With<Canvas>>,
+    mut cameras: Query<&mut Camera, With<ExamineCamera>>,
+    mut model: Local<LitModel>,
     mut previous: Local<Option<(String, ViewerPose)>>,
 ) {
     let Ok(mut panel) = panels.single_mut() else {
@@ -116,8 +148,12 @@ fn draw(
     } else {
         Visibility::Hidden
     };
+    for mut camera in &mut cameras {
+        camera.is_active = screen.open;
+    }
     if !screen.open {
         *previous = None;
+        model.clear(&mut commands);
         return;
     }
     let (Some(artwork), Some(name), Some(pose)) = (artwork, screen.model.clone(), screen.pose)
@@ -125,52 +161,32 @@ fn draw(
         return;
     };
     let current = (name.clone(), pose);
-    if previous.as_ref() == Some(&current)
-        && canvases
-            .single()
-            .is_ok_and(|canvas| canvas.image != Handle::default())
-    {
+    if previous.as_ref() == Some(&current) && model.is_shown() {
         return;
     }
     let (Some(art), Some(look)) = (assets.get(&artwork.0), screen.look.as_ref()) else {
         return;
     };
-    let painted = art
+    let built = art
         .models
         .get(&name)
         .ok_or_else(|| anyhow::anyhow!("examine: model {name} is not in the exported artwork"))
-        .and_then(|model| paint(art, model, &pose, look));
-    match painted {
-        Ok(pixels) => {
-            let image = Image::new(
-                Extent3d {
-                    width: 640,
-                    height: 480,
-                    depth_or_array_layers: 1,
-                },
-                TextureDimension::D2,
-                pixels.into_raw(),
-                TextureFormat::Rgba8UnormSrgb,
-                RenderAssetUsages::default(),
-            );
-            if let Ok(mut canvas) = canvases.single_mut() {
-                if canvas.image == Handle::default() {
-                    canvas.image = images.add(image);
-                } else if let Some(mut existing) = images.get_mut(&canvas.image) {
-                    *existing = image;
-                } else {
-                    canvas.image = images.add(image);
-                }
-            }
-            *previous = Some(current);
-        }
+        .and_then(|found| build_scene(art, found, &pose, look));
+    match built {
+        Ok(scene) => model.show(
+            &mut commands,
+            &mut assets_3d,
+            &scene,
+            EXAMINE_LAYER,
+            texture_key(&name, look),
+        ),
         Err(error) => {
             warn!("examine view: {error:#}");
             screen.error = Some(format!("{error:#}"));
             // Retrying every update would repeat the failure; keep the request's pose unchanged.
-            *previous = Some(current);
         }
     }
+    *previous = Some(current);
 }
 
 type Matrix = [[f32; 3]; 3];
@@ -260,46 +276,57 @@ fn corner_level(
     level.map(|c| c.clamp(0.0, 255.0))
 }
 
-/// Draw one model at `pose` over a transparent 640 by 480 frame.
-fn paint(
+/// A texture as RGBA through the world palette; palette entry zero is the transparent colour key.
+fn decode_texture(
+    artwork: &ExamineArtwork,
+    look: &ExamineLook,
+    index: usize,
+) -> (u16, u16, Vec<u8>) {
+    let source = &artwork.textures[index];
+    let rgba = source
+        .indices
+        .iter()
+        .flat_map(|&entry| {
+            let [r, g, b] = look.palette[usize::from(entry)];
+            [r, g, b, if entry == 0 { 0 } else { 255 }]
+        })
+        .collect();
+    (source.width, source.height, rgba)
+}
+
+/// The model at `pose` as lit triangles in view space, its textures decoded with the world palette.
+fn build_scene(
     artwork: &ExamineArtwork,
     model: &ExamineModel,
     pose: &ViewerPose,
     look: &ExamineLook,
-) -> anyhow::Result<RgbaImage> {
+) -> anyhow::Result<LitScene> {
     anyhow::ensure!(
         look.palette.len() == 256,
         "examine: the world palette is absent from this cache; re-export the world"
     );
     let matrix = orientation(pose);
     let origin = pose.position;
-    let mut textures = Vec::new();
+    let mut scene = LitScene::default();
     let mut local = std::collections::BTreeMap::new();
-    let mut faces = Vec::new();
     for face in &model.faces {
-        let texture = face.texture.map(|index| {
-            *local.entry(index).or_insert_with(|| {
-                let source = &artwork.textures[index];
-                let rgba = source
-                    .indices
-                    .iter()
-                    .flat_map(|&entry| {
-                        let [r, g, b] = look.palette[usize::from(entry)];
-                        [r, g, b, if entry == 0 { 0 } else { 255 }]
-                    })
-                    .collect();
-                textures.push(
-                    RgbaImage::from_raw(u32::from(source.width), u32::from(source.height), rgba)
-                        .expect("validated texture dimensions"),
-                );
-                textures.len() - 1
-            })
-        });
-        let color = face.solid.map_or([0; 4], |index| {
-            let [r, g, b] = look.palette[usize::from(index)];
-            [r, g, b, 255]
-        });
-        let corners: Vec<([f32; 5], [f32; 3])> = face
+        let (texture, bias) = match face.texture {
+            Some(index) => {
+                let texture = *local.entry(index).or_insert_with(|| {
+                    scene.textures.push(decode_texture(artwork, look, index));
+                    scene.textures.len() - 1
+                });
+                (texture, 1.0)
+            }
+            None => {
+                let colour = face.solid.map_or([0; 4], |index| {
+                    let [r, g, b] = look.palette[usize::from(index)];
+                    [r, g, b, 255]
+                });
+                (scene.solid_texture(colour), 0.0)
+            }
+        };
+        let corners: Vec<([f32; 3], [f32; 2], [f32; 3])> = face
             .corners
             .iter()
             .zip(&face.normals)
@@ -317,35 +344,21 @@ fn paint(
                     *normal,
                     face.brightness,
                 );
-                let scale = 320.0 / 0.788;
-                (
-                    [
-                        320.0 + world[0] / world[2] * scale,
-                        240.0 + world[1] / world[2] * scale,
-                        world[2].recip(),
-                        corner.uv[0],
-                        corner.uv[1],
-                    ],
-                    level,
-                )
+                (world, corner.uv, level)
             })
             .collect();
         for index in 1..corners.len().saturating_sub(1) {
-            // The Glide state culls by winding, as the book menu's does: only negative signed
-            // area (positive screen Y down) is visible.
             let triangle = [corners[0], corners[index], corners[index + 1]];
-            faces.push(MenuFace {
-                vertices: triangle.map(|(vertex, _)| vertex),
+            scene.faces.push(LitFace {
+                vertices: triangle.map(|corner| corner.0),
+                uv: triangle.map(|corner| corner.1),
+                levels: triangle.map(|corner| corner.2),
+                bias,
                 texture,
-                color,
-                light: None,
-                light_rgb: Some(triangle.map(|(_, level)| level)),
             });
         }
     }
-    let mut image = RgbaImage::from_pixel(640, 480, Rgba([0, 0, 0, 0]));
-    super::menu_raster::render_into(&mut image, &faces, &textures)?;
-    Ok(image)
+    Ok(scene)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -423,37 +436,57 @@ mod tests {
         assert!((half[0][0] + 1.0).abs() < 1e-5 && (half[2][2] + 1.0).abs() < 1e-5);
     }
 
+    /// Screen position of a view-space point under the original's projection.
+    fn project(point: [f32; 3]) -> [f32; 2] {
+        let scale = 320.0 / 0.788;
+        [
+            320.0 + point[0] / point[2] * scale,
+            240.0 + point[1] / point[2] * scale,
+        ]
+    }
+
+    /// Signed screen area of a triangle; only negative area (screen Y down) is visible.
+    fn area(face: &LitFace) -> f32 {
+        let [a, b, c] = face.vertices.map(project);
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    }
+
     #[test]
     fn a_textured_model_draws_through_the_world_palette_and_projects_about_the_centre() {
         let (artwork, model) = quad(0);
-        let image = paint(&artwork, &model, &pose(), &look()).unwrap();
-        // 100 units across at depth 400 span about 100 / 400 * 406 = 101 pixels.
-        let centre = image.get_pixel(320, 240).0;
-        assert_eq!(centre[3], 255);
-        assert_eq!(image.get_pixel(5, 5).0[3], 0);
-        assert_eq!(image.get_pixel(420, 240).0[3], 0);
-        assert_eq!(image.get_pixel(270, 240).0[3], 255);
+        let scene = build_scene(&artwork, &model, &pose(), &look()).unwrap();
         // Palette entry 200 is (200, 0, 55). The normals face away from the lights, so only the
-        // ambient level 64 (+1) over 256 reaches it.
-        assert_eq!(centre[0], (200 * 65 / 256) as u8);
-        assert_eq!(centre[2], (55 * 65 / 256) as u8);
+        // ambient level 64 (+1 for a textured face) over 256 reaches it.
+        assert_eq!(scene.textures[0].2[..4], [200, 0, 55, 255]);
+        assert_eq!(scene.faces.len(), 2);
+        assert!(scene.faces.iter().all(|face| face.bias == 1.0));
+        assert_eq!(scene.faces[0].levels[0], [64.0; 3]);
+        // 100 units across at depth 400 span about 100 / 400 * 406 = 101 pixels about the centre.
+        let xs: Vec<f32> = scene
+            .faces
+            .iter()
+            .flat_map(|face| face.vertices.map(|vertex| project(vertex)[0]))
+            .collect();
+        assert!((xs.iter().cloned().fold(f32::MAX, f32::min) - 269.0).abs() < 1.0);
+        assert!((xs.iter().cloned().fold(f32::MIN, f32::max) - 371.0).abs() < 1.0);
+        assert!(scene.faces.iter().all(|face| area(face) < 0.0));
         // The face brightness byte adds to the ambient level.
         let (artwork, model) = quad(100);
-        let bright = paint(&artwork, &model, &pose(), &look()).unwrap();
-        assert!(bright.get_pixel(320, 240).0[0] > centre[0]);
+        let bright = build_scene(&artwork, &model, &pose(), &look()).unwrap();
+        assert!(bright.faces[0].levels[0][0] > 64.0);
     }
 
     #[test]
     fn a_face_turned_towards_the_registered_lights_is_lit_by_them() {
         let (artwork, mut model) = quad(0);
-        let away = paint(&artwork, &model, &pose(), &look()).unwrap();
+        let away = build_scene(&artwork, &model, &pose(), &look()).unwrap();
         model.faces[0].normals = vec![[0.0, 0.0, -1.0]; 4];
-        let towards = paint(&artwork, &model, &pose(), &look()).unwrap();
-        assert!(towards.get_pixel(320, 240).0[0] > away.get_pixel(320, 240).0[0] + 50);
+        let towards = build_scene(&artwork, &model, &pose(), &look()).unwrap();
+        assert!(towards.faces[0].levels[0][0] > away.faces[0].levels[0][0] + 50.0);
     }
 
-    /// Every installed inventory model draws visibly at its resting pose with the installed
-    /// extents, so a draw that culls or misplaces real geometry is caught.
+    /// Every installed inventory model projects visible geometry at its resting pose with the
+    /// installed extents, so a draw that culls or misplaces real geometry is caught.
     #[test]
     fn every_installed_inventory_model_is_visible_at_its_resting_pose() {
         let root = std::env::var_os("REDGUARD_DIR")
@@ -487,11 +520,17 @@ mod tests {
                 position: [0.0, 0.0, depth],
                 ..pose()
             };
-            let image = paint(&artwork, &artwork.models[name], &pose, &look).unwrap();
-            let visible = image.pixels().filter(|pixel| pixel.0[3] != 0).count();
+            let scene = build_scene(&artwork, &artwork.models[name], &pose, &look).unwrap();
+            let visible: f32 = scene
+                .faces
+                .iter()
+                .map(area)
+                .filter(|area| *area < 0.0)
+                .map(|area| -area)
+                .sum();
             assert!(
-                visible > 100,
-                "item {id} model {name}: {visible} visible pixels"
+                visible > 200.0,
+                "item {id} model {name}: {visible} visible square pixels"
             );
             drawn += 1;
         }
@@ -503,8 +542,8 @@ mod tests {
         let (artwork, mut model) = quad(0);
         model.faces[0].corners.reverse();
         model.faces[0].normals.reverse();
-        let image = paint(&artwork, &model, &pose(), &look()).unwrap();
-        assert_eq!(image.get_pixel(320, 240).0[3], 0);
+        let scene = build_scene(&artwork, &model, &pose(), &look()).unwrap();
+        assert!(scene.faces.iter().all(|face| area(face) > 0.0));
     }
 
     #[test]
@@ -512,7 +551,7 @@ mod tests {
         let (artwork, model) = quad(0);
         let mut look = look();
         look.palette.clear();
-        let error = paint(&artwork, &model, &pose(), &look).unwrap_err();
+        let error = build_scene(&artwork, &model, &pose(), &look).err().unwrap();
         assert!(format!("{error:#}").contains("re-export the world"));
     }
 }

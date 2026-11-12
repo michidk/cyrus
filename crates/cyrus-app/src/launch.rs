@@ -79,9 +79,6 @@ pub struct GameOptions {
     /// Follow camera; modern turns it with the mouse.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub camera: Option<String>,
-    /// Installed 3dfx splash: the GOG Windows launch's `3DfxSpl2.dll` or the DOS Glide overlay.
-    #[arg(long, value_parser = ["windows", "dos"])]
-    pub splash: Option<String>,
 }
 
 /// The linear output gain of a `--volume` percentage; full volume when it is absent.
@@ -194,7 +191,6 @@ mod tests {
             "--scene=start",
             "--skip-startup",
             "--music=modern",
-            "--splash=dos",
             "--controls=modern",
             "--camera=modern",
             "--mode=modern",
@@ -204,8 +200,6 @@ mod tests {
         assert_eq!(game.music.as_deref(), Some("modern"));
         assert_eq!(game.controls.as_deref(), Some("modern"));
         assert_eq!(game.camera.as_deref(), Some("modern"));
-        assert_eq!(game.splash.as_deref(), Some("dos"));
-        assert!(GameOptions::try_parse_from(["game", "--splash=other"]).is_err());
         assert_eq!(game.scene.as_deref(), Some("START"));
         assert!(game.skip_startup);
         let direct = GameOptions::try_parse_from(["game", "--new-game", "--skip-movies"]).unwrap();

@@ -89,6 +89,61 @@ reporting the replacement as a failure. Run native cyrus with a real-time audio 
 shortens every voiced line (**Verified:** the START story from the last kill to the world change took
 30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
 prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
+The sink uses signed 16-bit stereo at 48000 Hz, matching the monitor calibration signal.
+An unspecified sink rate can select 44100 Hz and resample a 48000 Hz calibration twice,
+so an unchanged player volume does not establish unity gain.
+
+For native book PCM acquisition, recover the runtime with
+`dev/scripts/ensure-book-audio-runtime.sh IMAGE /absolute/path/to/local-image.tar`.
+It restores the supplied archive or builds `Dockerfile.sound-acceptance`, checks software
+Vulkan and the PulseAudio ALSA plugin together, and seals a newly built image only after
+that check passes. Mount the current `paced-audio.sh` when reusing an older image.
+Use the same live sink for calibration and the acknowledged public transition; retain
+its sink/player settings and reference hashes. A paced recording alone does not admit
+waveform continuity or calibrated production gain. The transition recorder retains its
+monotonic PCM/input epoch in `result.json` so separately sampled game clocks can be
+bound to that recording without reconstructing wall time.
+
+`paired-book-audio.py` records a known unity signal and a public transition in one
+monitor WAV while an independent clock observer runs. Use a private paced runtime
+and a host-mounted evidence/config directory:
+
+```sh
+python3 paired-book-audio.py --producer dosbox-x \
+  --clock-command 'python3 /evidence/clock-observer.py' \
+  --ready-command 'python3 /evidence/check-ready.py' \
+  capture /evidence/paired -- python3 /evidence/transition.py
+```
+
+The readiness command observes the settled source page. The clock command emits
+JSON lines with monotonic `before`/`after` read bounds and `game_seconds`.
+The transition command uses the recorder's epoch and emits the ordinary `sent`,
+`acknowledged`, `from` and `to` event. It owns its bounded audio tail. The clock
+observer is terminated when that driver finishes, so a longer observer timeout
+cannot add unrelated repeated cues to the transition window.
+
+Calibration temporarily mutes exactly one named game producer while the known
+signal plays. The original unmuted player settings are restored and compared
+before public input, including after calibration failure. Other producers are
+untouched. This prevents a quiet producer's constant sample offset from corrupting
+strict unity; it does not change the transition's production volume. Recording
+ownership is protected by a per-output lock.
+
+Run `check-paired-book-audio.py RECORDING REPORT --reference EFFECT.wav` for each
+installed cue. Its phase windows come from recorded events, with the existing
+recorder pacing allowance retained as PCM/wall epoch uncertainty. It requires
+strict stereo unity, unchanged player settings, cue continuity, and observed
+clock samples bracketing that uncertainty. Shared epoch error is retained when
+bounding cue cadence; host time is never interpolated into game time.
+
+For different recording sample rates, play the retained source recording through
+the target sink with `paced-monitor-check.py --reference SOURCE.wav`. Then run
+`book-audio-transfer.py CAPTURE SOURCE.wav REPORT --reference EFFECT.wav` for each
+cue. It requires admitted explicit-unity playback of that source hash and cue
+continuity at both boundaries, and reports the measured transfer ratio per cue.
+It does not assume a generic resampler response or authorize changing production
+gain to compensate for a frequency-dependent recording path.
+
 
 `dev/scripts/world-pursuit.py --port 7117 DRINT EXTPALAC` exercises combat actors' lost-sight routing:
 it places the selected player (`place_player`) next to the nearest living combat actor, then holds it
@@ -158,8 +213,13 @@ Xvfb without the interactive preview services. Build it with the command above;
 `CYRUS_RETRO_IMAGE` can select an existing compatible image. The launcher passes
 `-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
 F12 for the guest console.
-Other original capture workflows keep their existing modifier. For these runs,
-use Ctrl+Alt+W for the emulator recorder.
+The contact image includes the full Python standard library. Its build checks
+that `ctypes` can resolve the process-tracing entry point used by atomic boundary
+readers; an image with only `python3-minimal` cannot run those readers.
+Original audio capture also configures this modifier explicitly, including when
+reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
+recorder chord must not open the guest console. A local config override must place
+`hostkey=ctrlalt` in `[dosbox]`, not `[sdl]`.
 
 The reader and placement adapter are local diagnostics kept outside tracked
 files. The reader follows the `original-state.py` JSON contract; the placement
@@ -265,6 +325,9 @@ The browser parses them in a worker and generates selected previews in memory.
 
 The game and viewer share `target/web`, the loader, Cache Storage, and the
 selected read-only install service. Both prepare assets in browser memory.
+Digest-addressed original-file ranges reuse Cache Storage when the explicit range agrees with the HTTP Range header. Other
+Range requests bypass this cache. Run `bun dev/scripts/test-original-range-cache.mjs`
+to check reuse, source/range isolation and response validation.
 Set `CARGO_TARGET_DIR` to build the wasm outside the checkout (for example on a
 volume that is not cleaned); the web root stays in `target/web`.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
@@ -339,6 +402,17 @@ Both use 16 codegen units and thin LTO. Releases trade a larger download for
 shorter compilation compared with the former single-unit profile.
 Set `CYRUS_WASM_PROFILE=wasm-release` to build with the release profile name.
 
+For browser CPU profiling, set `CARGO_PROFILE_WASM_DEV_STRIP=none` and
+`CYRUS_WEB_KEEP_DEBUG=1` before `dev/scripts/build-web.sh`. This retains Rust
+function names through wasm-bindgen. An optional `CYRUS_WEB_CHECKPOINT_DIR`
+on a persistent host mount saves each completed raw WASM package before
+packaging. Rerunning the same command restores matching completed packages
+without Cargo, including after target-directory loss or a packaging failure.
+Source, compiler, profile and Rust flags must match; corrupt checkpoints fail
+closed. Interrupted compiler invocations still require Cargo to finish. The
+checkpoint directory contains build outputs only, never installed game data.
+It does not change the inherited Cargo target directory or retain dependencies.
+
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
@@ -406,11 +480,9 @@ reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 `startup/` in the cache directory. Native windowed launch generates this cache when
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
-the Windows Glide splash; the full DOS overlay contains the older shield logo.
-`--splash dos` plays that overlay animation from `glide2x_emu.ovl`; startup export
-caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
+the Windows Glide splash GOG players see; cyrus plays only that one ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
-documents both paths. Enter, Space, or Escape advances startup.
+documents the DLL format. Enter, Space, or Escape advances startup.
 Default startup selects its entry from installed final-version and
 ignore-autosave flags and a validated host autosave, native storage or browser IndexedDB. A final-version launch
 without an autosave plays Introduction before the starting world. A valid
@@ -544,7 +616,7 @@ Local lights and complete static-prelighting behavior remain unsupported.
 
 ### Sky, fog, and water
 
-Re-export worlds to regenerate `.environment` sidecars. F1 provides independent
+Re-export worlds to regenerate `.environment` sidecars. F11 provides independent
 Faithful/Modern buttons for Fog and Sky, which default to Faithful. Water changes only through the
 `modern-water` native mod.
 
@@ -561,7 +633,7 @@ cross its surface. Both retain the world's colors and horizon haze.
 **Verified:** Faithful fog uses the original tables and installed clipping
 range (7/3800 engine units in the shipped configuration). Modern fog defaults to
 four times that far distance and fades smoothly over the distant portion of
-the view. F1's distance control selects Modern Fog; Original resets the distance
+the view. F11's distance control selects Modern Fog; Original resets the distance
 and returns Fog to Faithful. Sky is unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
@@ -661,11 +733,12 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-The view is detached from the player when `--view` or `?view=` supplies an inspection
-pose, or when the control protocol's `flycam` command asks for it; it then stays where it
-was put. Free flight is the bundled `flycam` mod: activate it under F1, then F11 flies
-(WASD, mouse, Space/Left Shift; the speed is a setting of the mod). Neither moves the player.
-F1 world selections show the installed loading screen while the destination assets
+Press F11 and use **Flycam** to switch between inspection
+and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
+an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
+and Space/Shift moves up/down; its speed is adjustable in the same menu.
+F11 world selections show the installed loading screen while the destination assets
+Free flight is also available as the bundled `flycam` mod (see `mods/README.md`), toggled with Insert.
 load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not detach the view. Detaching preserves the player
 position. Initial placement uses the installed player marker. The ordinary player
@@ -784,7 +857,7 @@ game (**Verified** from preservation `engine/console.md`); none, zero or a non-n
 is refused, and the browser reports it unavailable because its wait would block the page.
 Other catalog entries report unavailable owners.
 
-Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
+Browser `savecheats` persists to localStorage `cyrus-cheats`. F11 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can
 recover malformed local state; failed imports and saves retain existing state.
 
@@ -1044,6 +1117,42 @@ only after a valid placed baseline. It stops the recorder on completion or
 failure; the launcher mounts the run output's `audio/` as the capture directory.
 A recording alone does not establish which sound occurred.
 
+`dev/scripts/native-trace.py` samples the selected player through an observation-only
+`schedule_input` event at an ordinary update boundary. Pose, motion, health,
+animation, game clock and logical generation come from that single snapshot.
+`frame` is the ordinary update number. A generation change, duplicate/reversed
+update or nonadvancing clock rejects continuation, and `missed_updates` reports
+sampling gaps. Selected-actor failures are errors rather than healthy samples.
+Held trace inputs are released on failure. These observations do not establish
+exact input timing: `--key` still uses asynchronous public input requests. Use an
+acknowledged schedule for a matched input comparison.
+
+`dev/scripts/native-edge-trace.py --out <ignored-path> --release-update <N>
+--updates <M>` captures one scheduled edge attempt from an externally established
+alive, ordinary, nonfalling pose with no queued motion or sliding. Observation zero precedes the default ArrowUp press at
+update one; `--key` and `--press-update` select the trigger. Every boundary through
+M is requested in the same schedule, including the acknowledged release at N.
+Acceptance rejects gaps, generation changes, early falling, missing falling entry,
+and a missing health decrease followed by a nonfalling continuation boundary.
+The raw response is retained as `<out>.raw.json` even when validation fails;
+accepted JSONL is written only after validation, replacing any previous result.
+`native-trace.py` waits for the first admitted ordinary update as well as loaded
+scripts, avoiding placement in the initial Loaded-before-update window.
+
+Use `--place X,Y,Z --heading H --settle-updates N` to restore a verified
+floor position through public logical placement before arming input. The driver
+first requests an observation-only sequence, retaining it as
+`<out>.support.raw.json`. Its final three consecutive boundaries must have a
+valid stable position, no rope attachment, ordinary nonfalling controls, unchanged
+positive health and identical position. Failure stops before the input schedule.
+Choose the floor and approach from installed geometry and original evidence;
+placement alone does not establish support.
+
+This verifies acquisition completeness, not original parity or edge-service
+attribution. Compare the retained clocks and actor states against original evidence
+before accepting gameplay behavior. Schedules retain the public service's bounded
+execution deadline and 256-event limit.
+
 Replay an accepted original rope schedule through a running native control port:
 
 ```sh
@@ -1064,9 +1173,15 @@ The native driver pulses the sword toggle for one update, so asynchronous reads
 do not hold it through animation completion and request sheathing again. It
 prepares the gravity cheat through public controls,
 places the player at the observed original baseline and records attachment state.
-It validates each input response and waits for the player action to reflect the
-requested state. State reads bracket actor reads so sample uncertainty remains
-visible. Holds use elapsed game seconds. `--clock-tolerance SECONDS` declares the
+It submits each walk, attack and continuation interval through `schedule_input`.
+Transitions apply before ordinary input sampling at offsets from the next admitted
+update; continuation uses observation-only boundaries. An observation-only ordinary interval
+chooses an attempted update count, but acceptance uses only the actual clocks
+returned with the boundary acknowledgements. Each acknowledgement also identifies
+the world generation, ordinary update and selected actor state before that update.
+Its timestamp excludes the forthcoming update, even when frame scales vary.
+Skipped boundaries or a changed generation reject the attempt. Setup state reads
+still bracket actor reads so their uncertainty remains visible. `--clock-tolerance SECONDS` declares the
 maximum timing error, including both runs' boundary uncertainty; the default is
 exact. A mismatch fails before any displacement/contact comparison is emitted.
 A `comparison: "matched"` row establishes timing within that budget, not gameplay
@@ -1124,3 +1239,586 @@ Saved frames may advance; a changed frame alone is not a failed continuation.
 The dormant logical document must remain unchanged before revisit, apart from
 generation rebinding. First-update observations and the revisit screenshot remain
 local. This fixture does not establish original-game pixel or timing parity.
+
+For installed light restoration, `native-light-session.py` uses the public native
+session boundary and material-bound light-image observation. It visits both worlds
+to build a fixture on the current executable. Supply an enabled locked steady light
+actor index, a uniquely named scene mesh and a view containing active map lights:
+
+```sh
+python3 -m pip install blake3==1.0.11
+python3 dev/scripts/native-light-session.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --scene ACTIVE_WORLD --dormant OTHER_WORLD --light-actor INDEX \
+  --node UNIQUE_MESH --position X Y Z
+python3 dev/scripts/test-native-light-session.py
+```
+
+An optional `--runtime-seed RUNTIME_SEED` reuses a compatible captured session.
+The driver verifies its requested inspection view and suspends gameplay through the
+public console during asynchronous session preparation, then closes it and requires
+game-clock progress. It saves its public fixture and requires publication with matching
+bound light rows, saved scripted-light state and fresh scene ownership, then submits
+an integrity-valid negative document with inconsistent installed light eligibility. Rejection must
+preserve the live generation, mesh/material/image bindings and light rows. Leaving
+the world must remove its named binding; revisiting must restore matching light
+rows and saved logical state under a new owner. The final screenshot remains local.
+CPU material rows establish binding continuity, not GPU readback or original
+visual/timing parity.
+
+For original timing acquisition, `original-rope-contact.py --schedule-command PATH`
+uses a local executable specific to the original build. It receives one JSON
+request on stdin with `phase`, `frames` and `key` (`null` for observation only).
+It returns `phase`, `key`, the installed `normal_frame_rate`, two `boundaries`,
+and exactly `frames` consumed `steps`. Each boundary contains `frame`, integer
+`clock_scale` in 1/256 nominal tick, `input_state` and the selected `player`.
+Each step contains its contiguous `frame`, consumed integer `frame_scale` and
+`input_state`. The end clock must equal the start plus all consumed scales;
+held input must be acknowledged through every step and released at the end.
+The driver retains the backend evidence before validating it and emits exact
+boundary clocks only after the complete schedule and baseline pass. Backend
+identity is included in the readiness journal. Build-specific instrumentation
+stays local, outside the tracked tree. Record its method in `instrumentation`;
+debugger stops can change measured FPS, so exact boundary timing alone does not
+establish ordinary playback cadence or gameplay parity. Without this option,
+original host-input acquisition retains its conservative clock ranges.
+
+`original-rope-contact.py --schedule-frame-scale N` requires every consumed
+instrumented update to use that measured Q8 scale; the backend must wait for an
+admissible start and the driver rejects a changed scale. `--attack-frames` and
+`--continuation-frames` select bounded reacquisition lengths alongside `--frames`.
+These constrain observations and never set the original simulation clock.
+Native planning rejects an exact interval that is not a whole number of the
+measured ordinary interval before sending gameplay input. A reported common
+interval is a reacquisition candidate, not accepted timing evidence.
+
+For an ephemeral original image, set `CYRUS_RETRO_IMAGE_ARCHIVE` to a local Docker
+archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
+the live-run lock, serializes concurrent restores and verifies the requested
+image exists. An existing image requires no archive load. The helper
+`dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
+Archives remain local; recovery never removes peer images or containers.
+
+For separate transient-geometry restoration, run the native diagnostic driver with
+an explicit installed game, the host config directory mounted into the runtime,
+and the same per-run locking used above:
+
+```sh
+python3 dev/scripts/native-transient-session.py PORT HOST_OUTPUT \
+  --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
+  --scene ISLAND --dormant START --game-seconds 0.4
+python3 dev/scripts/test-native-transient-session.py
+```
+
+The driver selects a retained effect record when available. Otherwise it selects an
+expiring image from the installed effect catalog. Its position is derived from
+the camera pose in the actual public capture, so deferred entry framing cannot
+leave the fixture outside the view. Its local diagnostic fixture activates that
+installed descriptor at speed zero and
+holds its image frame to isolate publication from lifetime and animation. It uses
+the public inspection camera and session capture/load, without modifying the
+install. This fixture does not establish the producer's original timing.
+The `effect_geometry` control observes actual billboard mesh/material/texture
+bindings after PostUpdate. Optional `after_generation` arms one bounded request
+before replacement and samples the first ready presentation update under the new
+generation. It waits for dormant-world service restoration and an admitted
+model-ready world clock sample for that generation, but does not retry
+missing geometry or repair bindings. Responses include acquisition frame, actual
+vertices, transforms, image-byte hashes, logical and retained slots, and all live
+billboard entity identities. These are CPU observations, not GPU readback.
+
+The driver requires matching geometry under fresh ownership, removal of old
+entities/assets from the selected slots, preservation after an integrity-valid
+invalid effect-source load, and dormant-world revisit continuation. It then
+resumes the installed lifetime rule and requires the expired effect to stop
+submitting. Captures, negative documents, first-update observations and the final
+PNG stay local. Preparation and game-clock progress have separate bounded
+cutoffs; slow decoding alone is not treated as a stalled game clock. Original
+pixel and timing parity remain unverified.
+
+`native-transient-runtime.py` recovers the minimal software-render runtime after
+Docker images disappear, without invoking Cargo. Supply the retained executable
+and its independently recorded digest:
+
+```sh
+python3 dev/scripts/native-transient-runtime.py \
+  --runtime /absolute/host/runtime --binary /absolute/host/runtime/cyrus \
+  --sha256 EXECUTABLE_SHA256 --install /absolute/path/to/Redguard \
+  --cache /absolute/host/cache
+python3 dev/scripts/test-native-transient-runtime.py
+```
+
+Bind-mount sources must live under `/home/vibepod/workspaces`. The launcher checks
+the executable digest, reuses its minimal image when present and reloads its host
+archive when the
+Docker image disappears. When both are absent it builds only that image. Image
+tags and archive names include the runtime recipe digest; completed image saves
+replace the archive atomically. A host lock prevents overlapping runs of this runtime.
+Each attempt retains image provenance, image-build output, runtime output and
+driver output in `evidence/transients-current/attempts/`. Each attempt also
+retains the prior observation/session/image files before the driver replaces them.
+The host config directory
+survives container retirement; its cache link resolves to the explicit cache mount.
+Only the container created by that invocation is stopped.
+
+The transient driver atomically checkpoints preparation, successful publication,
+rejection, revisit and expiration, including a public session and evidence hashes.
+After interruption, the same invocation validates executable, driver, options and
+retained evidence, publicly loads the last completed stage and resumes outstanding
+assertions. Incomplete stages rerun. Changed inputs require a fresh output directory;
+a stale result file cannot satisfy a new run. Package gates remain reusable when
+their source and gate inputs have not changed.
+
+`--seed-session PATH` can reuse a retained installed diagnostic fixture for
+bootstrap recovery. The application still validates and publishes it through
+public session load. Completed checkpoints take precedence over a bootstrap seed.
+
+For automated transient GPU-output acceptance, add `--gpu-pixels` and an explicit
+`--seed-session` pointing to the retained stationary installed fixture. Install
+`Pillow==11.3.0` and `blake3` into the Python environment first. Output goes to
+`evidence/transients-pixels`, preserving the earlier binding checkpoints.
+`native-transient-pixels.py` reuses the public screenshot command: Bevy copies
+the rendered texture into a GPU readback buffer, maps it, and writes the PNG.
+The driver waits for a complete new PNG within the existing screenshot deadline.
+It holds the installed effect image at frame zero, derives a visible signal from
+paired empty/active public sessions in a central crop excluding HUD, and requires
+that signal after restored admission and rejected loading. Empty replacement
+and expiration must match the empty control at those pixels. The oracle rejects
+missing output, old visible output after retirement, dimension changes and weak
+positive controls. Run `python3 dev/scripts/test-native-transient-pixels.py` for
+synthetic mutation and real PNG-decoding controls. This checks actual GPU output
+after admission, not the exact first GPU frame or original pixel parity.
+The pixel driver checkpoints each completed output assertion with executable,
+seed, driver and helper identities plus readback/session hashes. A restart
+validates those inputs, skips accepted stages and establishes the live-state
+precondition for the next incomplete stage through public loading. Modified
+inputs or readbacks fail explicitly. Completed pixel evidence remains separate
+from the logical/binding driver's checkpoints.
+
+For positive rope attachment, use `--attachment` on both rope drivers with a
+placement derived from an installed rope and a backend supporting the original
+`space` key. This is a separate unarmed scenario: Jump approaches the rope,
+released input must retain attachment, and a second Jump must detach. `--frames`,
+`--continuation-frames` and `--attack-frames` bound those three phases respectively.
+Original acquisition requires acknowledged ordinary boundaries. Both drivers
+reject absent or wrong attachment outcomes; airborne state is admitted only in
+this explicit unarmed scenario. The default armed/nonfalling contact guard stays
+in force. A positive diagnostic fixture does not establish natural cadence,
+weapon contact or clank parity.
+For a gravity-enabled release, add `--physical-release` to original acquisition.
+It keeps fly mode for placement and attachment, then turns it off after hanging
+and records a `physical-release` observation before the detach schedule. Native
+replay admits that observation only between the acknowledged hang and detach
+boundaries and turns fly mode off at the same phase. This prepares a physical
+fall; the observation alone does not prove landing, natural cadence, or clank
+parity. Keep the ordinary-boundary clock and outcome checks for those claims.
+For a bounded Jump pulse followed by released continuation, add
+`--attack-frames <pulse-updates> --landing-frames <released-updates>`.
+`--landing-frames` requires physical release. The backend receives `release_after`
+and must report a single acknowledged `input_edges` release at that update.
+Every subsequent consumed step must report Jump released. The endpoint must be
+detached with falling and queued motion cleared, and the atomic sequence must
+contain a landing animation. Held-input reattachment is rejected. Native replay
+plans the pulse and whole interval separately, acknowledges the release and
+samples each continuation boundary; both intervals retain the exact clock oracle.
+
+Physical acquisition also requests `atomic_snapshots` from the local scheduling
+backend. It must stop gameplay execution at `ordinary_update_start` and return
+one `snapshots` entry per boundary, including both endpoints. Each entry carries
+its zero-based `sequence`, global `frame`, cumulative `clock_scale`, selected
+`player`, and `execution: "stopped"`. A second read while stopped supplies
+`confirmation: {frame, player}`. The driver rejects repeated/skipped frames,
+changed confirmation state, different boundary kinds, missing entries and clocks
+that disagree with consumed scales. Input endpoint state must equal the
+corresponding snapshot. Accepted endpoint rows report `snapshot_boundary` and
+`snapshot_sequence`; raw evidence retains the entire sequence. Native physical
+replay revalidates that evidence and requires its published endpoints to agree
+before input. Backend stops can affect cadence, so atomic acquisition alone does
+not establish natural timing.
+
+
+## Paced original book audio
+
+`dev/scripts/original-book-audio.sh RUN GOG OUTPUT IMAGE_ARCHIVE READY.py TRANSITION.py`
+restores `cyrus-retro:dev` from the explicit local archive when necessary, then
+records the real PulseAudio sink monitor. The image must include PulseAudio,
+its utilities and the SDL PulseAudio backend dependencies. Build the retro
+Dockerfile and retain a local image archive before an ephemeral runtime reset.
+The default retro runner keeps dummy audio; this launcher explicitly selects
+PulseAudio. No hardware renderer or host audio device is required.
+
+Use host-visible paths under `/home/vibepod/workspaces` for the writable run,
+GOG files and output. The launcher copies its small scripts into the output,
+mounts config and evidence there, holds per-output and per-run locks and removes only
+its own container. Existing capture evidence is never overwritten. An optional
+`CYRUS_DOSBOX_CONFIG` selects a local emulator configuration. The run must use
+real writable configuration files and read-only links to the shared assets.
+
+For isolated rustle measurements, set `CYRUS_BOOK_REALTIME=1` and
+`CYRUS_BOOK_ISOLATE_MUSIC=1`. The former enables DOSBox-X adaptive maximum cycles
+for this run, allowing its guest mixer to keep pace with the real sink instead
+of demanding a fixed emulated CPU budget under host contention. The latter
+copies the private run's `SYSTEM.INI` into evidence, changes its enabled
+`redbook` setting to `off`, and mounts that file over the guest configuration.
+The source configuration stays unchanged even if the runtime disappears.
+Linked configuration files, canonical installs and unsupported settings are
+rejected. This isolates overlapping music from the effect waveform; a mixer
+command before game launch is insufficient when the game subsequently sets
+its CD audio volume. These capture options do not change cyrus audio policy,
+the interactive original's defaults or the continuity rejection limits.
+
+The readiness observer must wait for an identified book page, then print one
+JSON object such as `{"ready":true,"page":"options"}`. A DOSBox window or title
+screen is not book readiness. The transition driver sends ordinary input and
+observes the destination page. It prints JSON lines containing `from`, `to`,
+`sent` and `acknowledged`. Times are monotonic seconds relative to the supplied
+`CYRUS_CAPTURE_EPOCH`. Keep installed image references and observer scripts in
+local evidence, outside the tracked tree. A changed screenshot alone does not
+identify the requested destination.
+
+`CYRUS_BOOK_TIMEOUT` bounds each readiness and transition process separately
+(default 120 seconds). The recorder starts only after readiness, admits PCM
+before input and retains the driver log, WAV and result on failure. Its result
+checks stereo 16-bit 48 kHz PCM, wall-clock pacing, nonzero audio and valid
+acknowledgements starting at the observed page. The 250 ms default pacing
+allowance covers recorder admission and shutdown uncertainty. These checks
+establish a paced audible recording; they do not establish uninterrupted game
+mixing, rustle identity or parity with cyrus. Compare the waveform and installed
+effects separately before changing production scheduling or gain.
+
+Run the failure controls without an install or Docker:
+
+```sh
+python3 dev/scripts/test-paced-mixer-capture.py
+python3 dev/scripts/test-original-book-audio.py
+python3 dev/scripts/test-ensure-runtime-image.py
+```
+
+## Global sample stop
+
+For global sample-stop acceptance, `dev/docker/dev/Dockerfile.sound-acceptance`
+adds the project's paced Pulse sink to the minimal rendered runtime. Mount an
+explicit read-only install, host config/cache and output, then run
+`python3 dev/scripts/native-sound-reset.py PORT HOST_OUTPUT --container NAME`.
+It uses public play/stop requests, keeps ordinary gameplay paused briefly through
+the console to isolate the selected installed looping effect, and records real
+Pulse monitor PCM before/after cancellation and subsequent playback. It checks
+bounded game-clock progress before and after the isolated windows. PCM remains
+local. `browser-sound-reset.js`, evaluated after `session-sample-graph.js` in a
+capture-enabled installed browser, exposes `__cyrusSoundReset.sample(name,
+present)`. Drive the real book/menu input between active, stopped and continued
+observations. The probe waits past buffers already submitted at the boundary,
+then checks 8192 frames of actual WebAudio output. Active windows wait for a new
+nonzero submitted buffer, so a slow host is not mistaken for failed continuation.
+The complete installed driver runs with
+`node dev/scripts/test-browser-sound-reset-live.mjs CDP_URL PAGE_URL INSTALL_URL VOICE_LABEL [LOOP_EFFECT] [SCENE]`.
+It uses real Escape input, records book readiness and game-clock continuation,
+and verifies the executed browser artifacts against the sealed build record.
+Use a secure origin or a loopback origin for AudioWorklet support. Its negative controls run with
+`node dev/scripts/test-browser-sound-reset.mjs`. These checks do not establish
+original output latency or physical-device parity.
+
+The sample graph observer records setup failures in `__sessionSamples.error`
+and leaves production buffer starts intact. An observer error rejects the capture;
+it does not permit substituting submitted buffers for actual output. Run
+`node --test dev/scripts/test-session-sample-graph.mjs` for missing-worklet,
+synchronous/asynchronous setup and production-start failure controls.
+`node dev/scripts/test-browser-sample-graph.mjs CDP_URL SECURE_OR_LOOPBACK_PAGE`
+checks a generated tone against actual render quanta, then removes the observer's
+worklet API and requires the real source's playback-end acknowledgement. It owns
+and closes a disposable browser context; it does not need the install.
+
+
+### Original sound-emission capture boundaries
+
+`original-audio-capture.sh` retains an optional probe's stdout, stderr and
+`hook-result.json` under the run's capture directory. A requested hook delay is
+only a request. It is recorded as `hook_requested`, never as an observed
+placement or sound emission. A nonzero probe exit fails the capture; an
+unfinished probe is terminated when the recording ends.
+
+Set `CYRUS_REQUIRE_HOOK_ACK=1` when admitting an emission comparison. The local
+probe must print exactly one JSON object with `acknowledged: true` and a
+`boundary` containing `event: "sound_emitted"`, monotonic `before` and `after`
+timestamps, observed `game_seconds`, integer `frame`, `scene`, `owner` and
+integer requested `effect`. The probe owns observing the real emission, rather
+than polling later or echoing its requested delay. The recorder rejects missing,
+failed, malformed, unfinished and post-recording acknowledgements, retaining
+their diagnostics. These structural checks do not independently prove that a
+probe observed the right engine event.
+
+`CYRUS_CAPTURE_MIN_FRAME` selects the initial world-frame readiness threshold
+(default 400). `CYRUS_CAPTURE_GAME_SECONDS` optionally stops a run after observed
+game-clock progress; the positional duration remains a wall deadline and fails
+when the requested progress is not reached. Slow movie decoding does not count
+as world-clock progress. `CYRUS_STATE_TIMEOUT` bounds each reader call in wall
+seconds (default 20); use a shorter bound for short diagnostic runs. Missing or
+timed-out clock observations cannot satisfy the requested progress. Each launcher
+invocation holds its lock for one run.
+
+The timeline identifies DOSBox's WAV as `emulated_mixer`. Probe wall bounds and
+game-clock observations remain separate from its PCM sample clock. File flush
+sizes, requested delays and wall-time scaling do not establish exact emission
+sample offsets or physical-device playback. Use an independently calibrated
+output recording and matched emission boundaries for that comparison.
+
+Run `python3 dev/scripts/test-capture-hook.py`,
+`python3 dev/scripts/test-original-capture-hook.py` and
+`python3 dev/scripts/test-original-startup-capture.py` for probe failure,
+acknowledgement, game-clock cutoff and startup controls.
+
+### Rustle continuity before timing or gain comparison
+
+A real-time sink can contain emulator underruns while still producing exactly
+one second of PCM per wall second. Before interpreting a book recording, check
+its sample timeline against the exported installed effects:
+
+```sh
+python3 -m venv /absolute/host/analysis-env
+/absolute/host/analysis-env/bin/pip install numpy==2.4.6 scipy==1.17.1
+/absolute/host/analysis-env/bin/python dev/scripts/book-audio-continuity.py \
+  /absolute/host/capture/audio.wav /absolute/host/continuity.json \
+  --reference /absolute/host/config/cache/sounds/066.wav \
+  --reference /absolute/host/config/cache/sounds/067.wav
+/absolute/host/analysis-env/bin/python dev/scripts/test-book-audio-continuity.py
+```
+
+Reuse an existing analysis environment when available. The tool requires signed 16-bit PCM and resamples both
+inputs to 8 kHz and locates independent 100 ms reference windows. By default,
+anchors require correlation of at least 0.8; at least three must span 300 ms.
+Their relative delay must vary by no more than 10 ms. These are configurable
+analysis admission limits, not recovered engine constants. The report retains
+individual anchor times, correlations, gains and input hashes. A discontinuity
+or insufficient reference evidence exits unsuccessfully and withholds shared
+onset/gain estimates. Output is never overwritten. Overlapping cues, noise or
+resampling can prevent enough anchors; a failure alone does not diagnose a
+production audio bug. Passing establishes timing consistency at the admitted
+windows, not every sample between them.
+
+For browser acceptance, run `dev/scripts/test-browser-book-audio.mjs` against a
+private Chromium CDP endpoint and a sealed installed build:
+
+```sh
+CYRUS_BROWSER_BUILD_RECORD=/absolute/host/web/build-provenance.json \
+CYRUS_ANALYSIS_PYTHON=/absolute/host/analysis-env/bin/python \
+node dev/scripts/test-browser-book-audio.mjs \
+  http://127.0.0.1:9228 http://localhost:36084/ \
+  http://localhost:36084/original/ /absolute/host/066.wav \
+  /absolute/host/new-capture
+```
+
+The install service must expose the player's install explicitly. The driver uses
+public keyboard input to open Options and return to Main, waiting for acknowledged
+selection and page readiness. It records stereo PCM from consecutive AudioWorklet
+quanta, the input and ready epochs, executed application/worker hashes, and the
+unchanged continuity analysis. Missing graph quanta, stale build artifacts,
+readiness failure and reference discontinuity reject acceptance. The output
+folder must be new so a retry cannot overwrite evidence. Run the continuity
+failure controls with `dev/scripts/test-book-audio-continuity.py` in the same
+analysis environment. This harness does not start or restart managed previews.
+Append another installed WAV after the output path to require both cues, for
+example effect 67 alongside effect 66. This also writes `normalized.json`.
+The driver reads all references before connecting, retains exact copies and source
+hashes in the evidence directory, and analyzes those copies. Runtime cache
+invalidation cannot remove a reference after recording. Missing sources fail
+before browser work; existing evidence is never overwritten. Run
+`node dev/scripts/test-book-audio-references.mjs` for retention failure controls.
+
+`book-audio-normalize.py` accepts the same monitor/output/reference paths plus
+`--input-seconds`, the acknowledged input epoch measured from the recording's
+PCM start. It refines the common 8 kHz analysis grid by sixteenfold polyphase
+interpolation, giving 7.8125 microsecond alignment resolution. Integer-grid
+alignment can underestimate fitted gain or reject an overlapping cue when the
+true onset lies between samples. The original coarse result is retained beside
+the refined anchors. Correlation 0.8, three independent windows spanning 300 ms,
+and the 10 ms drift limit are unchanged. Overlap annotations show where an
+admitted cue continues while another plays; they do not subtract another cue or
+admit obscured windows. These are window-continuity observations, not proof of
+every tail sample. Fitted gain describes the shared analysis band, not a
+calibrated output device or a recovered engine volume constant. Compare measured
+input-relative onsets separately from game-clock scheduling and rendering pace.
+
+Use the same transition direction and selection, explicit input epoch and
+bounded audio window on both platforms. Check every expected rustle reference
+before comparing onset/gain. The browser driver retains same-epoch PCM/game-clock
+samples in `clock-observations.json` and `capture.json`. With both references,
+normalization reports enclosing observed game-clock bounds for each admitted
+onset. It rejects missing brackets, duplicate PCM timestamps and clock resets;
+it never interpolates game progress from wall time. Polling bounds do not
+establish an exact cue-dispatch update. The clock observer reads the AudioContext
+clock without scanning retained PCM buffers. Acknowledged page input and paced WAV duration
+remain separate requirements. The capture tool retains readiness stderr in
+`readiness.log` when the observer fails, so display startup failures can be
+distinguished from a missing book page.
+
+To make continuity part of the original launcher's exit status, append the host
+reference WAV paths after its transition driver argument and set
+`CYRUS_AUDIO_ANALYSIS_PYTHON` to the analysis environment's Python executable.
+It writes `OUTPUT/continuity.json` and propagates continuity rejection while
+preserving the paced recording and cleaning up its owned container. Omit
+references only for capture diagnostics, not for timing/gain acceptance.
+
+
+### Isolate monitor drain from emulator delivery
+
+The book recorder requests 20 ms PulseAudio latency. Default recorder buffering
+can leave a large unconsumed tail when SIGINT stops a short recording. Keep the
+existing pacing and installed-waveform rejection limits; a longer or apparently
+non-silent WAV does not establish continuous emulator output.
+
+Inside a runtime already running `paced-audio.sh`, use the independent control:
+
+```sh
+python3 /host-mounted/scripts/paced-monitor-check.py /host-mounted/control
+python3 /host-mounted/scripts/paced-monitor-check.py /host-mounted/rustle \
+  --reference /host-mounted/installed-cache/sounds/066.wav
+```
+
+It creates a deterministic three-second stereo signal when no reference is
+supplied, warms the null sink with a low-latency silent playback client, records
+its monitor and plays the reference through PulseAudio. It retains admission,
+playback, wall and sample durations, the exact reference hash and an explicit
+PulseAudio playback volume. `--playback-volume 65536` is unity. The player PID
+must appear in the retained sink-input snapshot while playback is active;
+a pre-playback snapshot describes only the warmup stream and cannot establish
+calibration gain. Missing or exited playback rejects the control. This measures
+the PulseAudio capture segment only, not the emulator mixer or native application
+volume, and must not calibrate a browser graph tap taken at a different boundary. Run `book-audio-continuity.py` on the host
+against each generated monitor/reference pair to check the sample timeline.
+`--recorder-latency-ms 0 --cold-sink` selects server defaults without warmup
+as the idle-clock/delayed-drain control;
+actual server latency constraints can make this control pass when another client
+already keeps the sink active. Use a separate idle control runtime for isolation.
+The warmup allows the idle null sink's existing two-second timer to expire.
+All processes are bounded and evidence is never overwritten.
+
+The finite calibration player prebuffers the complete reference. It retains
+verbose negotiated buffer metrics and rejects a prebuffer smaller than the
+reference, preventing shared-host client scheduling from inserting silence into
+an otherwise paced monitor. The recorder still requests 20 ms latency. Pacing
+compares wall/sample progress from the same admitted PCM boundary, retaining
+launch admission delay separately. The 250 ms pacing and 10 ms waveform limits
+are unchanged. `--streaming --producer-stall-ms 200` is a diagnostic failure
+control for the old 20 ms producer path; the same interruption on the default
+preloaded path must leave the waveform continuous. `--producer-stall-ms` only
+interrupts the owned signal player, never the game or other processes.
+
+For a same-rate signed16 unity calibration, run:
+
+```sh
+python3 dev/scripts/check-monitor-calibration.py CAPTURE REFERENCE.wav REPORT.json
+python3 dev/scripts/test-monitor-calibration.py
+```
+
+The unity checker requires the captured reference hash, admitted pacing,
+unchanged waveform continuity and unit fitted gain within FFT numerical
+roundoff. It rejects altered gain even when continuity passes. Different sample
+rates require a separate resampler calibration and are rejected. This strict
+signal-path control is not a production volume tolerance.
+
+This isolates server/recorder behavior from DOSBox. A clean direct reference and
+a discontinuous emulator recording locate the remaining fault upstream of the
+monitor. DOSBox mixer prebuffer, block size, emulated CPU load and host scheduling
+must be evaluated separately. The continuity analyzer sums local window energy
+directly and excludes sub-unit PCM energy, so floating-point residue in a silent
+tail cannot displace an audible waveform anchor. Excessive prebuffer can prevent sound entirely
+when the mixer drops queued samples before reaching its startup watermark.
+Emulator tuning stays in explicit local capture configurations until an installed
+acknowledged recording passes both waveform and clock checks. Do not change game
+cue timing or gain to compensate for an emulator delivery fault.
+
+```sh
+python3 dev/scripts/test-paced-monitor-check.py
+```
+
+### Non-stalling gameplay media capture
+
+The minimal `dev/docker/retro/Dockerfile.contact` runtime includes raster and
+PulseAudio capture tools. Its entrypoint defaults to dummy audio and preserves
+an explicit `SDL_AUDIODRIVER=pulseaudio`. Run the entrypoint through
+`dev/docker/dev/paced-audio.sh` to create the real sink monitor before launch.
+Mount a writable host `CYRUS_CONFIG_DIR` and an evidence directory, keeping the
+install read-only. The entrypoint creates the configured directory and stores
+its Xvfb framebuffer there, with `/config` as the fallback. Use an exclusive lock for the writable run.
+
+Inside that runtime, `dev/scripts/gameplay-media-capture.py` records real monitor
+PCM and screenshot windows without stepping or stopping gameplay:
+
+```sh
+python3 gameplay-media-capture.py /evidence/new-capture \
+  --observe 'python3 /local/observe.py' \
+  --trigger 'python3 /local/trigger.py' \
+  --screenshot scrot --game-seconds 3 --timeout 90
+```
+
+The local observation adapter returns JSON with `ready: true`, `scene`, integer
+`frame`, finite `game_seconds`, integer `elapsed_scale` in Q8 nominal ticks,
+installed integer `normal_frame_rate`, `execution: "running"`, and selected
+`player` state. `game_seconds` must equal the integer clock divided by 256 and
+the rate. A passive reader also returns `elapsed_scale_end` from after its actor
+read; an atomic boundary snapshot may omit that field. Read spans are retained,
+not collapsed to an invented instant. Missing scales, inconsistent seconds and
+reversed read spans reject acquisition before they can become success evidence.
+The adapter must observe without stopping execution. The trigger adapter returns
+`acknowledged: true` and a `boundary` captured when placement is applied. That
+boundary carries the same actor/scene/frame/clock fields, integer `elapsed_scale`
+in Q8 nominal ticks, installed `normal_frame_rate`, `event: "placement_applied"`
+and `phase: "before_ordinary_update"`. Its `execution` may be `"stopped"` for a
+single setup stop. Native `place_player` supplies this acknowledgement when its
+clock and prepared world are available. Boolean-only acknowledgements and later
+polling timestamps cannot establish the trigger origin. Per-update debugger
+stops cannot establish natural cadence. The screenshot command receives its output path as
+its last argument. Keep executable-specific adapters outside the tracked tree.
+
+The recorder admits PCM and a baseline raster before the trigger, then captures
+until the requested game-clock progress from that event boundary. The later
+trigger observation remains diagnostic and cannot shift the origin. Each raster
+retains both surrounding actor observations and wall/game-clock bounds, integer
+`clock_scale`, installed `normal_frame_rate`, and signed `event_relative_scale`
+bounds measured from the acknowledged placement. Pre-trigger baseline windows
+retain negative offsets. A window is explicitly non-atomic. Gaps stay visible and are never admitted as exact
+update coverage. Scene changes, clock reversal, stopped execution, unavailable
+actors, silent audio and monitor pacing failure reject capture. Partial media,
+adapter diagnostics and failure results survive rejection; retries require a new
+evidence directory. These observations support natural-cadence investigation;
+they do not replace the exact update oracle or establish pose/pixel/audio parity.
+
+To admit two captures' clock windows before interpreting their pixels or PCM:
+
+```sh
+python3 dev/scripts/gameplay-media-capture.py --compare-captures /evidence/original /evidence/native
+```
+
+Every raster records a `pcm_frames` range of complete stereo sample frames
+delivered to the recorder during its observation/screenshot bracket. The recorder
+captures raw signed 16-bit stereo at 48 kHz in `audio.raw`, then wraps those bytes
+in `audio.wav` without resampling. An incomplete final sample frame rejects
+finalization. `pcm-windows.jsonl` retains adjacent observation brackets through
+the recorder tail, including integer/event-relative clocks and file frame ranges.
+Those ranges cover the complete successful recording and may overlap across an
+observation's read span. `observations.jsonl` retains each observation, recorder
+cursor bracket and monotonic epoch immediately, so a failed run keeps its progress.
+`pcm_unobserved_tail_frames` reports delivered PCM after the last retained
+observation if capture fails.
+
+These sample ranges describe recorder delivery, which may lag mixer generation.
+They do not assert a zero-latency correspondence with a game event. The output
+keeps `exact_pcm_event_mapping: false`; event mapping must be established before
+interpreting playback timing.
+
+Native `schedule_input` observations
+publish these fields before the input's update is consumed. The comparison
+requires equal scene and event-relative game-clock intervals for every raster
+and PCM window, using exact rational arithmetic. Missing PCM windows, gaps in
+sample coverage and incomplete recording coverage reject admission. Missing scales and unequal intervals reject
+admission. Different absolute world ages are allowed. Admission establishes only
+matching clock windows. It does not establish equivalent world state, atomic
+pose/pixel correspondence or exact PCM sample-to-event mapping inside a wall-clock
+bracket. Those still require their own evidence.
+
+Run the capture and explicit-audio failure controls without an install:
+
+```sh
+python3 dev/scripts/test-gameplay-media-capture.py
+python3 dev/scripts/test-contact-entrypoint.py
+```

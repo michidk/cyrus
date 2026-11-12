@@ -1,8 +1,12 @@
 //! Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 mod book_motion;
+mod book_scene;
 mod confirmation;
 mod credits;
 mod examine;
+mod information;
+mod splash;
+mod view3d;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
 /// Marker for installed loading and first-world black-overlay transitions.
@@ -35,34 +39,11 @@ pub use preparation::LoadingPlugin;
 /// Plays installed startup images through the installed book menu, before gameplay.
 pub struct StartupPlugin;
 
-/// Installed 3dfx splash variant played before the title. Both ship with the GOG release.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Splash {
-    /// `3DfxSpl2.dll`, which GOG's Windows DOSBox plays when the game opens Glide.
-    #[default]
-    Windows,
-    /// The older shield animation in the DOS Glide overlay `glide2x_emu.ovl`.
-    Dos,
-}
-
-impl Splash {
-    /// Parses the shared launch option; absent selects the Windows default.
-    pub fn from_option(value: Option<&str>) -> Self {
-        if value == Some("dos") {
-            Self::Dos
-        } else {
-            Self::Windows
-        }
-    }
-}
-
 /// Presence selects startup presentation instead of the scene-viewer preload UI.
 #[derive(Resource, Default, serde::Serialize)]
 pub struct StartupPresentation {
     /// Bypass splash playback while retaining required game preparation.
     pub skip: bool,
-    pub splash: Splash,
     pub(crate) title_visible: bool,
     pub(crate) error: Option<String>,
     #[serde(skip)]
@@ -91,6 +72,7 @@ pub struct WorldLoadRequest(pub String);
 /// A world entry waits on the loading screen before entering its world.
 #[derive(Resource, Default)]
 pub struct StartGame {
+    artwork_world: Option<u32>,
     /// Menu entry uses installed transition artwork; direct inspections use the title.
     image: Handle<Image>,
     background: Vec<u8>,
@@ -101,13 +83,26 @@ pub struct StartGame {
     fade_out: Option<Entity>,
 }
 
+impl StartGame {
+    /// WORLD.INI destination supplying the selected artwork; absent for direct title inspections.
+    pub fn artwork_world(&self) -> Option<u32> {
+        self.artwork_world
+    }
+}
+
 /// Browser host attempts to close its tab without terminating the game loop.
 #[derive(Message)]
 pub struct QuitRequest;
 
 #[derive(Resource)]
 struct Playback {
-    frames: Vec<Handle<Image>>,
+    /// Frames the splash plays; zero when it is skipped.
+    count: usize,
+    /// The 3dfx splash's exported meshes and draws, and the scene that draws them live.
+    live: Option<(
+        Handle<cyrus_assets::splash_asset::SplashAsset>,
+        splash::SplashView,
+    )>,
     title: Handle<Image>,
     elapsed: f32,
     failed: bool,
@@ -148,14 +143,20 @@ impl Plugin for StartupPlugin {
         menu::register(app);
         movie::register(app);
         credits::register(app);
+        information::register(app);
         loading::register(app);
+        // Hosts without the renderer draw no models, so the lit material is registered only with it.
+        splash::register_assets(app);
+        if app.is_plugin_added::<bevy::pbr::PbrPlugin>() {
+            app.add_plugins((view3d::LitViewPlugin, splash::SplashPlugin));
+        }
         app.add_plugins((LogbookPlugin, OverlayPlugin, examine::ExaminePlugin));
     }
 }
 
 fn sync_audio(
     startup: Res<StartupPresentation>,
-    menu: Option<Res<MenuState>>,
+    preferences: Option<Res<cyrus_game::preferences::Preferences>>,
     mut readiness: ResMut<cyrus_audio::AudioReadiness>,
     settings: Option<ResMut<cyrus_audio::sound::SoundSettings>>,
 ) {
@@ -163,7 +164,9 @@ fn sync_audio(
     // otherwise run without audio settings (the torch sound then fails the script world).
     readiness.prepare = startup.skip || startup.title_visible;
     if let (Some(preferences), Some(mut settings)) = (
-        menu.as_ref().and_then(|menu| menu.preferences.as_ref()),
+        preferences
+            .as_ref()
+            .and_then(|preferences| preferences.menu().as_ref().ok().and_then(Option::as_ref)),
         settings,
     ) {
         let mut next = settings.clone();
@@ -184,28 +187,28 @@ fn sync_audio(
     }
 }
 
-use cyrus_assets::{DOS_SPLASH_FRAMES, SPLASH_FRAMES};
+use cyrus_assets::SPLASH_FRAMES;
 
 fn setup(
     mut commands: Commands,
     assets: Res<AssetServer>,
     mut startup: ResMut<StartupPresentation>,
     game: Option<Res<StartGame>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     startup.title_visible = false;
     startup.error = None;
-    let (prefix, count) = match startup.splash {
-        Splash::Windows => ("splash", SPLASH_FRAMES),
-        Splash::Dos => ("splash-dos", DOS_SPLASH_FRAMES),
-    };
     let count = if startup.skip || game.is_some() {
         0
     } else {
-        count
+        SPLASH_FRAMES
     };
-    let frames: Vec<_> = (0..count)
-        .map(|frame| assets.load(format!("cache://startup/{prefix}-{frame:02}.png")))
-        .collect();
+    let live = (count > 0).then(|| {
+        (
+            assets.load("cache://startup/splash.splash"),
+            splash::SplashView::new(&mut images),
+        )
+    });
     spawn_camera(&mut commands);
     let title = game
         .as_ref()
@@ -214,12 +217,22 @@ fn setup(
             || assets.load("cache://startup/title.png"),
             |game| game.image.clone(),
         );
+    let first = live
+        .as_ref()
+        .map(|(_, view)| view.target())
+        .unwrap_or_else(|| title.clone());
     commands.spawn((
-        Sprite::from_image(frames.first().unwrap_or(&title).clone()),
+        Sprite {
+            image: first,
+            // The live splash renders at twice the size, for supersampling.
+            custom_size: live.is_some().then_some(Vec2::new(640.0, 480.0)),
+            ..default()
+        },
         StartupContent,
     ));
     commands.insert_resource(Playback {
-        frames,
+        count,
+        live,
         title,
         elapsed: 0.0,
         failed: false,
@@ -251,44 +264,55 @@ fn fit_image(windows: Query<&Window>, mut image: FittedImages) {
 fn advance(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    input: (Res<Time>, Res<ButtonInput<KeyCode>>),
+    input: (
+        Res<Time>,
+        Res<ButtonInput<KeyCode>>,
+        Res<NextState<AppState>>,
+    ),
     mut playback: ResMut<Playback>,
-    rendering: (Query<&mut Sprite, With<StartupContent>>, Res<Assets<Image>>),
-    next: Res<NextState<AppState>>,
+    mut image: Query<&mut Sprite, With<StartupContent>>,
+    mut drawing: splash::SplashAssets,
     mut startup: ResMut<StartupPresentation>,
 ) {
-    let (mut image, images) = rendering;
-    if matches!(*next, NextState::Pending(AppState::InGame)) {
+    if matches!(*input.2, NextState::Pending(AppState::InGame)) {
         return;
     }
     if playback.failed {
         return;
     }
-    for handle in playback
-        .frames
-        .iter()
-        .chain(std::iter::once(&playback.title))
-    {
-        if images.contains(handle.id()) {
-            continue;
+    let failed = |commands: &mut Commands, error: &dyn std::fmt::Display| {
+        error!("startup: {error}");
+        commands.spawn((
+            Text::new("Startup assets unavailable. Export them with --export-startup."),
+            StartupContent,
+        ));
+    };
+    if let Some((handle, _)) = &playback.live {
+        match assets.get_load_state(handle.id()) {
+            Some(LoadState::Failed(error)) => {
+                failed(&mut commands, &error);
+                playback.failed = true;
+                return;
+            }
+            Some(LoadState::Loaded) => {}
+            _ => return,
         }
-        if let Some(LoadState::Failed(error)) = assets.get_load_state(handle.id()) {
-            error!("startup: {error}");
-            commands.spawn((
-                Text::new("Startup assets unavailable. Export them with --export-startup."),
-                StartupContent,
-            ));
+    }
+    let title = playback.title.id();
+    if !drawing.images.contains(title) {
+        if let Some(LoadState::Failed(error)) = assets.get_load_state(title) {
+            failed(&mut commands, &error);
             playback.failed = true;
             return;
         }
-        if !assets.is_loaded_with_dependencies(handle.id()) {
+        if !assets.is_loaded_with_dependencies(title) {
             return;
         }
     }
     let Ok(mut sprite) = image.single_mut() else {
         return;
     };
-    let splash_duration = playback.frames.len() as f32 / 30.0;
+    let splash_duration = playback.count as f32 / 30.0;
     let skip = [KeyCode::Enter, KeyCode::Space, KeyCode::Escape]
         .iter()
         .any(|key| input.1.just_pressed(*key));
@@ -298,9 +322,15 @@ fn advance(
     } else {
         playback.elapsed += input.0.delta_secs();
     }
+    let frame = (playback.elapsed * 30.0) as usize;
     if playback.elapsed < splash_duration {
-        sprite.image = playback.frames[(playback.elapsed * 30.0) as usize].clone();
+        if let Some((handle, view)) = playback.live.as_mut() {
+            view.present(&mut commands, &mut drawing, handle, frame);
+        }
     } else {
+        if let Some((_, view)) = playback.live.as_mut() {
+            view.finish(&mut commands);
+        }
         sprite.image = playback.title.clone();
         startup.title_visible = true;
     }
@@ -355,6 +385,56 @@ mod tests {
         app.update();
         assert!(app.world().resource::<AudioReadiness>().prepare);
     }
+    struct MemoryPreferences;
+
+    impl cyrus_game::preferences::PreferenceStore for MemoryPreferences {
+        fn load(
+            &self,
+            _: cyrus_game::preferences::PreferenceKey,
+        ) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn opening_book_does_not_round_trip_installed_audio_through_display_sliders() {
+        use cyrus_assets::{preferences::MenuPreferences, sound::SoundSettings};
+        use cyrus_game::preferences::Preferences;
+        let displayed = MenuPreferences {
+            values: [(601, 19), (602, 15), (603, 1), (504, 1), (505, 0)].into(),
+            bindings: [0; 15],
+        };
+        let mut app = App::new();
+        app.init_resource::<StartupPresentation>()
+            .init_resource::<cyrus_audio::AudioReadiness>()
+            .insert_resource(SoundSettings::parse(
+                "[system]\nvolume=255\nredbook_volume=200",
+            ))
+            .insert_resource(Preferences::new(MemoryPreferences))
+            .init_resource::<MenuState>()
+            .add_systems(Update, sync_audio);
+        app.world_mut().resource_mut::<MenuState>().preferences = Some(displayed.clone());
+        app.update();
+        let settings = app.world().resource::<SoundSettings>();
+        assert_eq!(
+            (settings.master_volume, settings.redbook_volume),
+            (255, 200)
+        );
+        app.world_mut()
+            .resource_mut::<Preferences>()
+            .save_menu(displayed)
+            .unwrap();
+        app.update();
+        let settings = app.world().resource::<SoundSettings>();
+        assert_eq!(
+            (settings.master_volume, settings.redbook_volume),
+            (243, 192)
+        );
+    }
+
     #[test]
     fn audio_host_copies_committed_preferences_before_cues() {
         use cyrus_assets::{preferences::MenuPreferences, sound::SoundSettings};
@@ -368,11 +448,16 @@ mod tests {
         app.update();
         assert!(!app.world().resource::<AudioReadiness>().prepare);
         app.init_resource::<MenuState>();
+        app.insert_resource(cyrus_game::preferences::Preferences::new(MemoryPreferences));
         let preferences = MenuPreferences {
             values: [(601, 0), (602, 0), (603, 0), (504, 0), (505, 0)].into(),
             bindings: [0; 15],
         };
-        app.world_mut().resource_mut::<MenuState>().preferences = Some(preferences);
+        app.world_mut().resource_mut::<MenuState>().preferences = Some(preferences.clone());
+        app.world_mut()
+            .resource_mut::<cyrus_game::preferences::Preferences>()
+            .save_menu(preferences)
+            .unwrap();
         app.world_mut()
             .resource_mut::<StartupPresentation>()
             .title_visible = true;
@@ -405,6 +490,16 @@ mod tests {
             .unwrap()
             .values
             .insert(504, 1);
+        let preferences = app
+            .world()
+            .resource::<MenuState>()
+            .preferences
+            .clone()
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<cyrus_game::preferences::Preferences>()
+            .save_menu(preferences)
+            .unwrap();
         app.update();
     }
 

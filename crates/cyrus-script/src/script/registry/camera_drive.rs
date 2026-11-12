@@ -49,6 +49,11 @@ pub struct CameraFrameState {
 }
 
 impl CameraFrameState {
+    /// Logical-world generation that owns the retained render publication.
+    pub fn generation(&self) -> Option<u64> {
+        self.world
+    }
+
     /// Drop publication and collision history when the driven world is no longer present.
     ///
     /// The presentation resource outlives a world replacement. Keeping the previous world's

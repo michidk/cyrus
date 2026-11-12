@@ -1,9 +1,12 @@
 # Unattended original contact probes use X input and state diagnostics, not VNC.
-FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
+FROM ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        dosbox-x xvfb xdotool python3-minimal \
+        dosbox-x xvfb xdotool python3 scrot \
+        pulseaudio pulseaudio-utils libasound2-plugins \
     && rm -rf /var/lib/apt/lists/*
+# Atomic boundary readers use the standard-library FFI for process tracing.
+RUN python3 -c 'import ctypes; ctypes.CDLL(None).ptrace'
 COPY contact-entrypoint.sh /usr/local/bin/contact-entrypoint.sh
 COPY dosbox-x.conf /etc/cyrus/dosbox-x.conf
 ENTRYPOINT ["bash", "/usr/local/bin/contact-entrypoint.sh"]

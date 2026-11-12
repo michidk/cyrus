@@ -119,12 +119,12 @@ WASM downloads before Bevy starts; selected-host game assets load behind install
 artwork. New Game and the temporary Load fallback wait for world dependencies.
 Movies read compressed Smacker ranges and play incrementally decoded first-track PCM; subtitle, interlace,
 skip and menu-return rules share the native implementation. Quit attempts tab
-closure and keeps running when refused. F1 opens the world,
+closure and keeps running when refused. F11 opens the world,
 flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and
 saved Controls settings. Gameplay and original-game comparison limits are unchanged.
 
 Direct scene launches use the shared in-game presentation without an additional
-HTML control hint. F1 opens the inspection controls.
+HTML control hint. F11 opens the inspection controls.
 
 Not a default workspace member so day-to-day builds and tests stay lean.
 
@@ -156,7 +156,7 @@ opt-in are required. This read-only metadata does not advance or cancel loading.
 F12 opens the shared cheat console while in a world. Cheat state restores from
 localStorage `cyrus-cheats`, falling back to the read-only installed CHT only when
 local state is absent. SYSTEM.INI startup defaults apply afterwards. `savecheats`
-persists through the same browser storage helper as preferences. The F1 debug
+persists through the same browser storage helper as preferences. The F11 debug
 menu's Cheat files section imports or downloads original-format CHT files.
 Import validates and saves before replacing live state; cancellation, invalid
 files and storage failures preserve the current state. Import also recovers from
@@ -276,3 +276,43 @@ options and stops its disposable page at ordinary update four. It checks the
 installed destination, camera publication, active world-entry fade and prepared
 player, then retains a stable screenshot for comparison at that same update.
 It does not inspect attachments or establish camera/pixel parity by itself.
+
+The isolated `listener_publication` example uses the production
+`camera::driven_view_transform` with the public script camera update/glide and
+synchronous sound services. Build it with `cargo build -p cyrus-web --example
+listener_publication` (or the browser target/profile) through the shared queue.
+It consumes the explicitly exported local `positional_emitters` fixture, adds
+idle diagnostic player/camera roles, and records logical/render poses beside
+seven native/browser PCM observations. The audio crate documents the fixture and
+bounded recovery launcher. This is a controlled camera/audio integration scene,
+not a complete installed-room replay.
+
+With opt-in `?capture`, `__cyrusSampleRequest` accepts JSON `play`/`stop` actions
+with an id and effect for play, through the same shared `SoundRequest` adapter as
+native controls. `__cyrusSampleResult` acknowledges dispatch, not audible output.
+The acceptance request's `load_scene` action stages through the ordinary browser
+scene transition while preserving the running world until preparation succeeds.
+`__cyrusStartup.console_open` lets bounded drivers observe actual console input.
+`test-ambient-lifecycle-browser.mjs CDP PAGE INSTALL OUTPUT EMITTER LOOP_EFFECT`
+uses these public adapters, real placement and scene lifecycle with actual graph
+PCM, explicit installed files and executed-build provenance. It checks authored
+room movement/revisit, shared-pool retirement and later start/stop continuation.
+
+`test-world-deferred-capture.mjs CDP PAGE INSTALL OUTPUT [LOOP_EFFECT] [SCENE]`
+drives full-world public session capture/save/load with actual graph PCM. Under
+`?capture`, sample actions also accept `reload_bank`, `script_play` and `inspect`.
+Reload requests a real installed bank read through `AssetServer`; the driver holds
+that reader promise, while script play dispatches an ordinary owned cue. Inspection
+reports live transport count, pending bank admission and retained save selection.
+The driver verifies capture rejection preserves both existing save storage and
+selection, live output and queued admission, then saves and restores after release.
+This controlled reload does not imply ordinary gameplay routinely reloads banks.
+Slot selection is retained after capture admission and before the writer; a later
+writer failure keeps the admitted selection, as does an admitted load decode failure.
+
+The capture sample adapter's `animation` action takes an emitter generation/index
+and a typed `command` (`play`, `stop`, `forget`). Play includes an installed effect
+and optional rate offset. It resolves one bound emitter and its current logical
+placement, then dispatches the ordinary animation sound cue. The animation bank
+acceptance driver uses this adapter to test delayed starts, remembered-handle
+cancellation and fresh owner publication through public session load.

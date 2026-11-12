@@ -105,6 +105,7 @@ impl BoundSceneLightImage {
                     current,
                     prepared,
                     request,
+                    world.get_resource::<crate::environment::ActiveEnvironment>(),
                     world.get_resource::<cyrus_world::animation::AnimationRequest>(),
                     world.get_resource::<Assets<cyrus_assets::animation::Animations>>(),
                 ),

@@ -2,12 +2,12 @@
 pub mod music;
 pub mod persistence;
 pub mod sound;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 mod sound_bank;
 use bevy::prelude::*;
 pub use music::MusicPlugin;
 pub use sound::{ApplyPreferences, PlayCues, SoundPlugin};
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 pub use sound_bank::{SoundBank, SoundBankHandle};
 
 /// Host readiness to prepare installed effects and speech; standalone hosts prepare immediately.
@@ -24,6 +24,11 @@ impl Default for AudioReadiness {
 /// Optional listener pose in Bevy world space; positional starts require its presence.
 #[derive(Resource)]
 pub struct AudioListener(pub GlobalTransform);
+
+/// Exact camera publication retained by synchronous script sound services.
+/// Rendering may glide independently; positional script mixing uses this pose when present.
+#[derive(Resource, Default, Debug)]
+pub struct ScriptListener(pub Option<cyrus_world::sound::ListenerPose>);
 
 /// Presence pauses CD music while cinematic audio owns playback.
 #[derive(Component)]

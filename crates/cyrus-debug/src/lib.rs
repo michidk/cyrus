@@ -12,6 +12,7 @@ use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_inspector};
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
+use cyrus_render::camera::DetachedView;
 use cyrus_render::fog::RenderDistance;
 use cyrus_script::player::Player;
 
@@ -21,7 +22,7 @@ mod performance;
 
 pub struct DebugMenuPlugin;
 
-/// The F1 menu's visibility; other native panels open alongside it.
+/// The F11 menu's visibility; other native panels open alongside it.
 #[derive(Resource, Default)]
 pub struct DebugMenu {
     pub open: bool,
@@ -105,7 +106,7 @@ fn toggle_menu(
     mut console: Option<ResMut<cyrus_console::Console>>,
     mut egui: ResMut<EguiGlobalSettings>,
 ) {
-    if keys.just_pressed(KeyCode::F1) && !console.as_ref().is_some_and(|console| console.open) {
+    if keys.just_pressed(KeyCode::F11) && !console.as_ref().is_some_and(|console| console.open) {
         menu.open = !menu.open;
         egui.enable_absorb_bevy_input_system = menu.open || menu.inspector_open;
     }
@@ -123,6 +124,7 @@ fn debug_menu(
     mut menu: ResMut<DebugMenu>,
     mut egui_settings: ResMut<EguiGlobalSettings>,
     mut world: ResMut<WorldPicker>,
+    mut flycam: ResMut<DetachedView>,
     mut fidelity: ResMut<Fidelity>,
     mut distance: ResMut<RenderDistance>,
     mut transfers: ResMut<cyrus_game::cheats::CheatTransfer>,
@@ -184,6 +186,20 @@ fn debug_menu(
                 }
             });
         }
+        ui.checkbox(&mut flycam.enabled, "Flycam");
+        ui.horizontal(|ui| {
+            ui.label("Flycam speed");
+            ui.add(
+                egui::DragValue::new(&mut flycam.speed)
+                    .range(0.0..=f32::MAX)
+                    .speed(1.0),
+            );
+        });
+        ui.add_enabled(
+            flycam.enabled,
+            egui::Checkbox::new(&mut flycam.pass_input, "Pass input to game"),
+        );
+
         if let Some([near, original]) = distance.original {
             let mut far = distance.effective(&fidelity).unwrap()[1];
             ui.horizontal(|ui| {
@@ -349,7 +365,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn f1_survives_replacing_the_startup_camera() {
+    fn f11_survives_replacing_the_startup_camera() {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -360,6 +376,7 @@ mod tests {
         ))
         .init_asset::<bevy::shader::Shader>()
         .add_plugins(DebugMenuPlugin)
+        .init_resource::<DetachedView>()
         .init_resource::<Fidelity>()
         .init_resource::<RenderDistance>()
         .insert_resource(WorldPicker {
@@ -383,8 +400,8 @@ mod tests {
         for expected_open in [true, false, true] {
             app.world_mut()
                 .write_message(bevy::input::keyboard::KeyboardInput {
-                    key_code: KeyCode::F1,
-                    logical_key: bevy::input::keyboard::Key::F1,
+                    key_code: KeyCode::F11,
+                    logical_key: bevy::input::keyboard::Key::F11,
                     state: bevy::input::ButtonState::Pressed,
                     text: None,
                     repeat: false,
@@ -416,7 +433,7 @@ mod tests {
             )), expected_open);
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
-                .release(KeyCode::F1);
+                .release(KeyCode::F11);
         }
     }
 
@@ -432,6 +449,7 @@ mod tests {
         ))
         .init_asset::<bevy::shader::Shader>()
         .add_plugins(DebugMenuPlugin)
+        .init_resource::<DetachedView>()
         .init_resource::<Fidelity>()
         .init_resource::<RenderDistance>()
         .init_resource::<WorldPicker>();
@@ -631,10 +649,24 @@ mod tests {
     }
 
     #[test]
-    fn f1_keeps_the_independent_inspector_open() {
+    fn original_function_keys_do_not_open_the_debug_menu() {
         let mut app = App::new();
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::F1);
+        keys.press(KeyCode::F10);
+        app.insert_resource(keys)
+            .init_resource::<DebugMenu>()
+            .init_resource::<EguiGlobalSettings>()
+            .add_systems(Update, toggle_menu);
+        app.update();
+        assert!(!app.world().resource::<DebugMenu>().open);
+    }
+
+    #[test]
+    fn f11_keeps_the_independent_inspector_open() {
+        let mut app = App::new();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::F11);
         app.insert_resource(keys)
             .insert_resource(DebugMenu {
                 open: true,

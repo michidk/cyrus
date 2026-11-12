@@ -12,6 +12,50 @@ struct Request {
     label: String,
     effect: Option<i32>,
 }
+/// Native control-port equivalents for opt-in lifecycle PCM acceptance.
+#[derive(serde::Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum SampleRequest {
+    Play {
+        id: u32,
+        effect: usize,
+    },
+    Stop {
+        id: u32,
+    },
+    /// Re-read the installed bank through the ordinary asset reader and admission owner.
+    ReloadBank {
+        id: u32,
+    },
+    ScriptPlay {
+        id: u32,
+        generation: u64,
+        index: usize,
+        effect: i32,
+    },
+    Animation {
+        id: u32,
+        generation: u64,
+        index: usize,
+        command: AnimationCommand,
+    },
+    Inspect {
+        id: u32,
+    },
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum AnimationCommand {
+    Play {
+        effect: i16,
+        #[serde(default)]
+        rate_offset_hz: i32,
+    },
+    Stop,
+    Forget,
+}
+
 #[derive(Resource, Default)]
 struct Pending(Option<(Request, Handle<DialogueClip>)>);
 
@@ -27,6 +71,152 @@ fn respond(world: &mut World) {
         return;
     };
     let result = (|| -> anyhow::Result<()> {
+        let sample_key = JsValue::from_str("__cyrusSampleRequest");
+        let value = js_sys::Reflect::get(&window, &sample_key)
+            .map_err(|e| anyhow::anyhow!("sample request: {e:?}"))?;
+        if !value.is_null() && !value.is_undefined() {
+            js_sys::Reflect::set(&window, &sample_key, &JsValue::NULL)
+                .map_err(|e| anyhow::anyhow!("clearing sample request: {e:?}"))?;
+            let request: SampleRequest = serde_json::from_str(
+                &value
+                    .as_string()
+                    .ok_or_else(|| anyhow::anyhow!("sample request must be JSON text"))?,
+            )?;
+            let id = match request {
+                SampleRequest::ReloadBank { id } => {
+                    use cyrus_audio::{SoundBank, SoundBankHandle};
+                    anyhow::ensure!(
+                        !world.contains_resource::<SoundBankHandle>(),
+                        "bank admission already pending"
+                    );
+                    let server = world.resource::<AssetServer>();
+                    let handle = server.load::<SoundBank>("cache://sounds/bank.sounds");
+                    server.reload("cache://sounds/bank.sounds");
+                    world
+                        .resource_mut::<Assets<SoundBank>>()
+                        .remove(handle.id());
+                    world.insert_resource(SoundBankHandle(handle));
+                    id
+                }
+                SampleRequest::ScriptPlay {
+                    id,
+                    generation,
+                    index,
+                    effect,
+                } => {
+                    let actors = world.resource::<cyrus_script::script::ScriptActors>();
+                    let current = actors
+                        .current
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("script world absent"))?;
+                    anyhow::ensure!(
+                        current.generation() == generation
+                            && !current.inspect(index, 1)["actors"]
+                                .as_array()
+                                .is_none_or(Vec::is_empty),
+                        "script owner absent"
+                    );
+                    world.write_message(cyrus_world::sound::SoundCue::Script {
+                        generation,
+                        index,
+                        sound: cyrus_world::sound::ScriptSound::Flat {
+                            effect,
+                            volume: 0,
+                            rate_offset_hz: 0,
+                        },
+                    });
+                    id
+                }
+                SampleRequest::Animation {
+                    id,
+                    generation,
+                    index,
+                    command,
+                } => {
+                    let mut bindings =
+                        world.query::<(Entity, &cyrus_script::script::ScriptBinding)>();
+                    let nodes = bindings
+                        .iter(world)
+                        .filter(|(_, binding)| {
+                            binding.actor.generation == generation && binding.actor.index == index
+                        })
+                        .map(|(entity, _)| entity)
+                        .collect::<Vec<_>>();
+                    anyhow::ensure!(nodes.len() == 1, "animation emitter binding must be unique");
+                    let sound = match command {
+                        AnimationCommand::Play {
+                            effect,
+                            rate_offset_hz,
+                        } => cyrus_world::animation::AnimationSound::Play {
+                            effect,
+                            rate_offset_hz,
+                        },
+                        AnimationCommand::Stop => cyrus_world::animation::AnimationSound::Stop,
+                        AnimationCommand::Forget => cyrus_world::animation::AnimationSound::Forget,
+                    };
+                    let actors = world.resource::<cyrus_script::script::ScriptActors>();
+                    let current = actors
+                        .current
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("animation world absent"))?;
+                    anyhow::ensure!(
+                        current.generation() == generation,
+                        "animation generation expired"
+                    );
+                    let row = current.inspect(index, 1);
+                    let position = row["actors"][0]["spatial"]["effective"]["position"]
+                        .as_array()
+                        .and_then(|p| {
+                            p.iter()
+                                .map(|v| i32::try_from(v.as_i64()?).ok())
+                                .collect::<Option<Vec<_>>>()
+                        })
+                        .and_then(|p| p.try_into().ok());
+                    anyhow::ensure!(
+                        position.is_some(),
+                        "animation effective position unavailable"
+                    );
+                    world.write_message(cyrus_world::sound::SoundCue::Animation {
+                        actor: nodes[0],
+                        sound,
+                        surface: Some(cyrus_assets::surface::Surface::UNKNOWN),
+                        position,
+                    });
+                    id
+                }
+                SampleRequest::Inspect { id } => id,
+                SampleRequest::Play { id, effect } => {
+                    world.write_message(SoundRequest::Play {
+                        effect,
+                        position: None,
+                    });
+                    id
+                }
+                SampleRequest::Stop { id } => {
+                    world.write_message(SoundRequest::StopAll);
+                    id
+                }
+            };
+            let playing = world
+                .query_filtered::<Entity, With<cyrus_audio::sound::PlayingSound>>()
+                .iter(world)
+                .count();
+            let selected = world.get_resource::<cyrus_script::script::DeathDispatch>().and_then(|dispatch| dispatch.last_save.as_ref()).map(|selected| serde_json::json!({"slot":selected.slot,"description":selected.description}));
+            let response = serde_json::json!({"id":id,"playing":playing,"bank_pending":world.contains_resource::<cyrus_audio::SoundBankHandle>(),"selected":selected});
+            js_sys::Reflect::set(
+                &window,
+                &"__cyrusSampleInspection".into(),
+                &js_sys::JSON::parse(&response.to_string())
+                    .map_err(|e| anyhow::anyhow!("sample inspection: {e:?}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("sample inspection: {e:?}"))?;
+            js_sys::Reflect::set(
+                &window,
+                &"__cyrusSampleResult".into(),
+                &JsValue::from_f64(f64::from(id)),
+            )
+            .map_err(|e| anyhow::anyhow!("sample response: {e:?}"))?;
+        }
         let stop = js_sys::Reflect::get(&window, &"__cyrusVoiceStopRequest".into())
             .map_err(|e| anyhow::anyhow!("voice stop request: {e:?}"))?;
         if !stop.is_null() && !stop.is_undefined() {

@@ -8,7 +8,8 @@ set -e
 mkdir -p /run/pulse
 cat > /tmp/cyrus.pa <<'PA'
 load-module module-native-protocol-unix auth-anonymous=1 socket=/run/pulse/native
-load-module module-null-sink sink_name=cyrus
+# Fix the calibration sample domain; the server default may otherwise be 44100 Hz.
+load-module module-null-sink sink_name=cyrus rate=48000 channels=2 format=s16le
 set-default-sink cyrus
 PA
 pulseaudio --system -n -F /tmp/cyrus.pa --daemonize=yes --disallow-exit --exit-idle-time=-1 \

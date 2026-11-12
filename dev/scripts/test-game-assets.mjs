@@ -10,7 +10,7 @@ const assets = await openGameAssets('https://example.test/original/', { createWo
       if (data.kind === 'game-open') this.onmessage({ data: { id: data.id, worlds: '[["2","START"]]' } });
       if (data.kind === 'game-prepare') {
         const key = data.path.replace(/\.(dialogue|wav)$/, '');
-        const files = data.path.startsWith('dialogue/')
+        const files = data.path.startsWith('loading/') ? [[data.path, new Uint8Array([Number(data.path.split('/')[1].split('.')[0])])]] : data.path.startsWith('dialogue/')
           ? [[key + '.dialogue', new Uint8Array([3])], [key + '.wav', new Uint8Array([4])]]
           : [['START.glb', new Uint8Array([1])], ['START.scripts', new Uint8Array([2])]];
         this.onmessage({ data: { id: data.id, files } });
@@ -23,6 +23,7 @@ const assets = await openGameAssets('https://example.test/original/', { createWo
 assert.deepEqual(assets.worlds, [['2', 'START']]);
 assert.deepEqual(await Promise.all([assets.read('START.glb'), assets.read('START.scripts')]), [new Uint8Array([1]), new Uint8Array([2])]);
 assert.equal(calls.filter(call => call.kind === 'game-prepare').length, 1, 'world sidecars share one preparation');
+assert.deepEqual(await Promise.all([assets.read('loading/0.loading'), assets.read('loading/2.loading')]), [new Uint8Array([0]), new Uint8Array([2])], 'destinations prepare independently even when requested together');
 const beforeDialogue = calls.length;
 assert.deepEqual(await Promise.all([assets.read('dialogue/74657874.dialogue'), assets.read('dialogue/74657874.wav')]), [new Uint8Array([3]), new Uint8Array([4])]);
 assert.equal(calls.slice(beforeDialogue).filter(call => call.kind === 'game-prepare').length, 1, 'entry and voice share one preparation');

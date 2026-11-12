@@ -10,6 +10,16 @@ use std::net::{TcpStream, ToSocketAddrs};
 
 pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 
+/// One input transition relative to the next admitted ordinary update (offset zero).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct InputBoundary {
+    pub after_updates: u64,
+    /// Both key and action are absent for a clock/state observation only.
+    pub key: Option<String>,
+    pub action: Option<InputAction>,
+}
+
 /// Original slot identities with host revision tokens for stale-list protection.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -61,6 +71,12 @@ pub enum Command {
     BoundLightImage {
         name: String,
         primitive: usize,
+    },
+    /// Inspect transient billboard geometry after effect publication.
+    EffectGeometry {
+        /// Arm before a load to observe the first completed replacement update.
+        #[serde(default)]
+        after_generation: Option<u64>,
     },
     /// Read one actor's model and attachment ownership after presentation updates.
     RenderedActor {
@@ -147,8 +163,12 @@ pub enum Command {
         key: String,
         action: InputAction,
     },
-    /// Detach the view from the player, or hand it back; the camera stays where it is put and
-    /// has no controls of its own (free flight is the fly camera mod's, on `F11`).
+    /// Deliver a balanced input sequence before input sampling at exact ordinary updates.
+    /// Reply after the last transition with actual update/clock/actor observations.
+    ScheduleInput {
+        events: Vec<InputBoundary>,
+    },
+    /// Turn the inspection flycam on or off; it moves with `KeyW/A/S/D`, `Space`, `ShiftLeft`.
     /// `position` places it in rendered world units and `look_at` aims it at a point.
     Flycam {
         enabled: bool,

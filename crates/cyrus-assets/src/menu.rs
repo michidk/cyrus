@@ -93,23 +93,6 @@ pub struct MenuCorner {
     pub uv: [f32; 2],
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct MenuFace {
-    /// Screen X/Y, reciprocal depth, and texel U/V for each triangle corner.
-    pub vertices: [[f32; 5]; 3],
-    pub texture: Option<usize>,
-    pub color: [u8; 4],
-    /// Lighting level (0 to 255, every channel alike) at each corner. Textured pixels take the
-    /// level interpolated in screen space, converted to an integer `L`, and become
-    /// `floor(texel * (L + 1) / 256)`; `None` draws the texture unlit.
-    #[serde(default)]
-    pub light: Option<[f32; 3]>,
-    /// Per-channel lighting level at each corner; when present it replaces `light`, and each
-    /// colour channel takes its own interpolated level.
-    #[serde(default)]
-    pub light_rgb: Option<[[f32; 3]; 3]>,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PageTexture {
     pub width: u16,

@@ -23,8 +23,10 @@ self.addEventListener("fetch", event => {
   const scope = new URL("./", self.location.href).pathname;
   const relative = url.pathname.slice(scope.length);
   const original = /^[a-f0-9]{64}$/i.test(url.searchParams.get("v") || "");
+  const explicitRange = original && url.searchParams.get("range");
+  const matchingRange = explicitRange && event.request.headers.get("Range") === "bytes=" + explicitRange;
   if (/\/game-config\/cache\/(?:[a-f0-9]{64}\/)?movies\/.*\.(smk|wav)$/.test(url.pathname) ||
-      event.request.headers.has("Range")) return;
+      (event.request.headers.has("Range") && !matchingRange)) return;
   if (event.request.method !== "GET" ||
       !(url.pathname.includes("/game-config/cache/") ||
         (url.origin === self.location.origin && relative.endsWith(".wasm")) || original)) return;

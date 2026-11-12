@@ -56,6 +56,10 @@ pub struct CameraSnapshot {
     projection: [f32; 4],
     near_clip_plane: [f32; 4],
     flycam: bool,
+    speed: f32,
+    /// Absent in snapshots saved before the option existed.
+    #[serde(default)]
+    pass_input: bool,
     frame_scene: bool,
     initial: Option<Pose>,
 }
@@ -119,6 +123,8 @@ impl CameraSnapshot {
             ],
             near_clip_plane: projection.near_clip_plane.to_array(),
             flycam: flycam.enabled,
+            speed: flycam.speed,
+            pass_input: flycam.pass_input,
             frame_scene: frame.0,
             initial: world
                 .get_resource::<InitialView>()
@@ -157,6 +163,8 @@ impl CameraSnapshot {
             })),
             flycam: DetachedView {
                 enabled: self.flycam,
+                speed: self.speed,
+                pass_input: self.pass_input,
             },
             frame_scene: FrameScene(self.frame_scene),
             initial: self
@@ -204,7 +212,11 @@ mod tests {
     #[test]
     fn camera_replacement_retains_pose_projection_and_pending_framing() {
         let mut original = World::new();
-        original.insert_resource(DetachedView { enabled: true });
+        original.insert_resource(DetachedView {
+            enabled: true,
+            speed: 72.0,
+            pass_input: true,
+        });
         original.insert_resource(FrameScene(true));
         original.insert_resource(InitialView(Transform::from_xyz(11.0, 22.0, 33.0)));
         original.spawn((

@@ -278,3 +278,35 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     assert!(error.contains("MENU.INI [page0] texture[0]"), "{error}");
     std::fs::remove_dir_all(temp).unwrap();
 }
+
+#[test]
+fn installed_destination_loading_artwork_uses_its_own_world_definition() {
+    let Some(root) = std::env::var_os("REDGUARD_DIR") else {
+        eprintln!("skipped: no install (destination loading artwork)");
+        return;
+    };
+    let install = GameInstall::open(std::path::Path::new(&root)).unwrap();
+    let source = cyrus_assets::native::Files::open(&install).unwrap();
+    let start = cyrus_assets::game::prepare(&source, "loading/0.loading").unwrap();
+    let cave = cyrus_assets::game::prepare(&source, "loading/2.loading").unwrap();
+    let start: cyrus_assets::loading_artwork::LoadingArtwork =
+        serde_json::from_slice(&start["loading/0.loading"]).unwrap();
+    let cave: cyrus_assets::loading_artwork::LoadingArtwork =
+        serde_json::from_slice(&cave["loading/2.loading"]).unwrap();
+    assert_eq!((start.world, cave.world), (0, 2));
+    assert_ne!(
+        start.pictures[0].rgba, cave.pictures[0].rgba,
+        "destination must change visible pixels, not only metadata"
+    );
+    let temp =
+        std::env::temp_dir().join(format!("cyrus-destination-artwork-{}", std::process::id()));
+    cyrus_assets::loading_artwork::export(&install, "2", &temp).unwrap();
+    let native: cyrus_assets::loading_artwork::LoadingArtwork =
+        serde_json::from_slice(&std::fs::read(temp.join("loading/2.loading")).unwrap()).unwrap();
+    assert_eq!(
+        native.pictures[0].rgba, cave.pictures[0].rgba,
+        "native and worker preparation must preserve the same palette pixels"
+    );
+    std::fs::remove_dir_all(temp).unwrap();
+    assert!(cyrus_assets::game::prepare(&source, "loading/9999.loading").is_err());
+}

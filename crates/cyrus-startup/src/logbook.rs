@@ -1,4 +1,5 @@
 //! Installed logbook paper, text and rotating scrolls over the suspended world.
+use super::view3d::{LitAssets, LitFace, LitMesh, LitModel, LitScene, target_image, view_camera};
 use bevy::{
     asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     prelude::*,
@@ -6,7 +7,7 @@ use bevy::{
 };
 use cyrus_assets::{
     logbook::LogbookArtwork,
-    menu::{ConfirmationArtwork, MenuAsset, MenuFace},
+    menu::{ConfirmationArtwork, MenuAsset},
 };
 use cyrus_game::AppState;
 use cyrus_script::logbook::LogbookScreen;
@@ -65,11 +66,39 @@ impl Plugin for LogbookPlugin {
             .add_systems(Update, draw.run_if(in_state(AppState::InGame)));
     }
 }
-fn setup(mut commands: Commands, server: Res<AssetServer>) {
+/// Render layer of the reader's scroll scene.
+const READER_LAYER: usize = 6;
+
+#[derive(Component)]
+struct ReaderCamera;
+
+/// The panel and camera `cleanup` removes.
+type Teardown = Or<(With<Panel>, With<ReaderCamera>)>;
+/// The entry dialog layer's image and visibility.
+type EntryNode = (&'static mut ImageNode, &'static mut Visibility);
+/// The transparent layer the manual-entry dialog is drawn on, above the scrolls.
+#[derive(Component)]
+struct EntryLayer;
+
+fn setup(mut commands: Commands, server: Res<AssetServer>, mut images: ResMut<Assets<Image>>) {
     commands.insert_resource(Artwork {
         reader: server.load("cache://logbook/reader.logbook"),
         menu: server.load("cache://menu/book.menu"),
     });
+    let target = images.add(target_image([0, 0, 0, 0]));
+    commands.spawn((
+        ReaderCamera,
+        view_camera(target.clone(), READER_LAYER, Color::NONE),
+    ));
+    // The paper and text, the scrolls and the entry dialog stack in the same 640 by 480 frame.
+    let layer = || Node {
+        position_type: PositionType::Absolute,
+        left: px(0),
+        top: px(0),
+        width: percent(100),
+        height: percent(100),
+        ..default()
+    };
     commands
         .spawn((
             Panel,
@@ -85,40 +114,83 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
             },
         ))
         .with_children(|parent| {
-            parent.spawn((
-                Page,
-                ImageNode::new(Handle::default()),
-                Node {
-                    height: percent(100),
-                    max_width: percent(100),
-                    aspect_ratio: Some(640. / 480.),
-                    ..default()
-                },
-            ));
+            parent
+                .spawn((
+                    Page,
+                    ImageNode::new(Handle::default()),
+                    Node {
+                        height: percent(100),
+                        max_width: percent(100),
+                        aspect_ratio: Some(640. / 480.),
+                        ..default()
+                    },
+                ))
+                .with_children(|page| {
+                    page.spawn((ImageNode::new(target), layer()));
+                    page.spawn((
+                        EntryLayer,
+                        ImageNode::new(Handle::default()),
+                        Visibility::Hidden,
+                        layer(),
+                    ));
+                });
         });
 }
 fn cleanup(
     mut commands: Commands,
-    panels: Query<Entity, With<Panel>>,
+    panels: Query<Entity, Teardown>,
+    meshes: Query<(Entity, &LitMesh)>,
     mut screen: ResMut<LogbookScreen>,
 ) {
-    for panel in &panels {
-        commands.entity(panel).despawn();
+    for entity in &panels {
+        commands.entity(entity).despawn();
+    }
+    for (entity, mesh) in &meshes {
+        if mesh.0 == READER_LAYER {
+            commands.entity(entity).despawn();
+        }
     }
     // The game lifecycle releases its clock pause on the next non-game update.
     screen.ready = false;
     screen.error = None;
 }
-#[allow(clippy::too_many_arguments)] // Reads one asset and updates its presentation node and image.
+
+/// Uploads `pixels` into the image an [`ImageNode`] shows, creating it on first use.
+fn upload(images: &mut Assets<Image>, node: &mut ImageNode, pixels: RgbaImage) {
+    let image = Image::new(
+        Extent3d {
+            width: 640,
+            height: 480,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels.into_raw(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    if node.image == Handle::default() {
+        node.image = images.add(image);
+    } else if let Some(mut existing) = images.get_mut(&node.image) {
+        *existing = image;
+    } else {
+        node.image = images.add(image);
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // Reads one asset and updates its presentation nodes and scene.
 fn draw(
     server: Res<AssetServer>,
     artwork: Res<Artwork>,
     assets: Res<Assets<LogbookArtwork>>,
     menus: Res<Assets<MenuAsset>>,
     mut screen: ResMut<LogbookScreen>,
-    mut images: ResMut<Assets<Image>>,
-    mut panels: Query<&mut Visibility, With<Panel>>,
-    mut pages: Query<&mut ImageNode, With<Page>>,
+    mut commands: Commands,
+    mut assets_3d: LitAssets,
+    mut panels: Query<&mut Visibility, (With<Panel>, Without<EntryLayer>)>,
+    mut pages: Query<&mut ImageNode, (With<Page>, Without<EntryLayer>)>,
+    mut entries: Query<EntryNode, (With<EntryLayer>, Without<Panel>)>,
+    mut cameras: Query<&mut Camera, With<ReaderCamera>>,
+    mut model: Local<LitModel>,
     mut previous: Local<Option<ReaderFrame>>,
 ) {
     let Some(artwork_data) = assets.get(&artwork.reader) else {
@@ -140,8 +212,12 @@ fn draw(
     } else {
         Visibility::Hidden
     };
+    for mut camera in &mut cameras {
+        camera.is_active = screen.open;
+    }
     if !screen.open {
         *previous = None;
+        model.clear(&mut commands);
         return;
     }
     let pose = ReaderFrame {
@@ -173,42 +249,30 @@ fn draw(
     } else {
         None
     };
-    let painted = paint(artwork_data, book, screen.rotation).map(|mut pixels| {
+    if let Ok(mut page) = pages.single_mut() {
+        upload(
+            &mut assets_3d.images,
+            &mut page,
+            paint_paper(artwork_data, book),
+        );
+    }
+    model.show(
+        &mut commands,
+        &mut assets_3d,
+        &build_scene(artwork_data, screen.rotation),
+        READER_LAYER,
+        0,
+    );
+    if let Ok((mut node, mut visibility)) = entries.single_mut() {
+        *visibility = Visibility::Hidden;
         if let (Some(text), Some(dialog)) = (&pose.entry, dialog) {
-            paint_entry(&mut pixels, dialog, text, pose.cursor);
-        }
-        pixels
-    });
-    match painted {
-        Ok(pixels) => {
-            let image = Image::new(
-                Extent3d {
-                    width: 640,
-                    height: 480,
-                    depth_or_array_layers: 1,
-                },
-                TextureDimension::D2,
-                pixels.into_raw(),
-                TextureFormat::Rgba8UnormSrgb,
-                RenderAssetUsages::default(),
-            );
-            if let Ok(mut page) = pages.single_mut() {
-                if page.image == Handle::default() {
-                    page.image = images.add(image);
-                } else if let Some(mut existing) = images.get_mut(&page.image) {
-                    *existing = image;
-                } else {
-                    page.image = images.add(image);
-                }
-            }
-            *previous = Some(pose);
-        }
-        Err(error) => {
-            screen.error = Some(format!("logbook: {error:#}"));
-            screen.open = false;
-            screen.waiting_for_release = true;
+            let mut overlay = RgbaImage::new(640, 480);
+            paint_entry(&mut overlay, dialog, text, pose.cursor);
+            upload(&mut assets_3d.images, &mut node, overlay);
+            *visibility = Visibility::Inherited;
         }
     }
+    *previous = Some(pose);
 }
 
 /// Display-copy wrapping follows preservation's manual-entry dialog rules. CR/VT stay bytes;
@@ -309,16 +373,7 @@ fn paint_entry(image: &mut RgbaImage, artwork: &ConfirmationArtwork, text: &str,
 }
 
 fn entry_pixel(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
-    if !(0..640).contains(&x) || !(0..480).contains(&y) {
-        return;
-    }
-    let pixel = image.get_pixel_mut(x as u32, y as u32);
-    let alpha = u32::from(alpha);
-    for channel in 0..3 {
-        pixel[channel] =
-            ((u32::from(colour[channel]) * alpha + u32::from(pixel[channel]) * (255 - alpha) + 127)
-                / 255) as u8;
-    }
+    super::confirmation::blend(image, x, y, colour, alpha);
 }
 
 /// The style table entry for an entry's prefix digit, `None` for style 5, which the original never
@@ -372,11 +427,7 @@ fn reader_light(position: [f32; 3], normal: [f32; 3], brightness: u8) -> f32 {
     level.clamp(0.0, 255.0)
 }
 
-fn paint(
-    artwork: &LogbookArtwork,
-    book: &cyrus_script::logbook::Logbook,
-    rotation: i32,
-) -> anyhow::Result<RgbaImage> {
+fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) -> RgbaImage {
     let mut image = RgbaImage::new(640, 480);
     for y in 0..480 {
         let source_y = (y + book.offset()) % 480;
@@ -429,13 +480,23 @@ fn paint(
             pen_x += font.advance(ch);
         }
     }
+    image
+}
+
+/// The two rotating scrolls as lit triangles in the reader's view space.
+fn build_scene(artwork: &LogbookArtwork, rotation: i32) -> LitScene {
     #[allow(clippy::approx_constant)] // Original table's decimal period.
     let sample = |angle: i32| (f64::from(wrap(angle)) * 6.2831852 / 2048.).sin() as f32;
     let (sin, cos) = (sample(rotation), sample(rotation + 512));
-    let mut faces = Vec::new();
+    let mut scene = LitScene::default();
+    for texture in &artwork.textures {
+        scene
+            .textures
+            .push((texture.width, texture.height, texture.rgba.clone()));
+    }
     for y in [-212., 200.] {
         for (face_index, face) in artwork.scroll.faces.iter().enumerate() {
-            let (vertices, levels): (Vec<_>, Vec<_>) = face
+            let corners: Vec<([f32; 3], [f32; 2], f32)> = face
                 .corners
                 .iter()
                 .enumerate()
@@ -451,43 +512,34 @@ fn paint(
                         [nz, nx * sin + ny * cos, -nx * cos + ny * sin],
                         artwork.scroll_brightness[face_index],
                     );
-                    (
-                        [
-                            320. + px / pz * (320. / 0.788),
-                            240. + view_y / pz * (320. / 0.788),
-                            pz.recip(),
-                            corner.uv[0],
-                            corner.uv[1],
-                        ],
-                        level,
-                    )
+                    ([px, view_y, pz], corner.uv, level)
                 })
-                .unzip();
-            for corner in 1..vertices.len() - 1 {
-                faces.push(MenuFace {
-                    vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
-                    texture: face.texture,
-                    color: face.color,
-                    light: Some([levels[0], levels[corner], levels[corner + 1]]),
-                    light_rgb: None,
+                .collect();
+            // A textured face is lit by its corner levels. A solid-colour face is drawn unlit, as
+            // the original's draw ignores the single level for it.
+            let (texture, bias) = match face.texture {
+                Some(texture) => (texture, 1.0),
+                None => (scene.solid_texture(face.color), 1.0),
+            };
+            for corner in 1..corners.len() - 1 {
+                let triangle = [corners[0], corners[corner], corners[corner + 1]];
+                scene.faces.push(LitFace {
+                    vertices: triangle.map(|corner| corner.0),
+                    uv: triangle.map(|corner| corner.1),
+                    levels: triangle.map(|corner| {
+                        if face.texture.is_some() {
+                            [corner.2; 3]
+                        } else {
+                            [255.0; 3]
+                        }
+                    }),
+                    bias,
+                    texture,
                 });
             }
         }
     }
-    let textures = artwork
-        .textures
-        .iter()
-        .map(|texture| {
-            RgbaImage::from_raw(
-                u32::from(texture.width),
-                u32::from(texture.height),
-                texture.rgba.clone(),
-            )
-            .expect("validated logbook texture")
-        })
-        .collect::<Vec<_>>();
-    super::menu_raster::render_into(&mut image, &faces, &textures)?;
-    Ok(image)
+    scene
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -819,36 +871,25 @@ mod tests {
         let mut book =
             cyrus_script::logbook::Logbook::new(&vec!["7,A readable journal entry.".into(); 20])
                 .unwrap();
-        let bottom = paint(&artwork, &book, 0).unwrap();
+        let bottom = paint_paper(&artwork, &book);
         book.update(cyrus_script::logbook::LogbookInput {
             home: true,
             ..default()
         });
-        let top = paint(&artwork, &book, 0).unwrap();
+        let top = paint_paper(&artwork, &book);
         assert_ne!(top, bottom);
-        assert_ne!(top, paint(&artwork, &book, 100).unwrap());
         assert_eq!(top.dimensions(), (640, 480));
-        // Opt-in artifact for local original/native comparisons; never emitted by CI.
-        if let Some(path) = std::env::var_os("CYRUS_LOGBOOK_CAPTURE") {
-            top.save(path).unwrap();
-        }
-        // Opt-in rotated poses (the reader's third angle after Up taps) for the original lighting
-        // comparison; the scroll rows are free of text, so the entry text need not match.
-        if let Some(directory) = std::env::var_os("CYRUS_LOGBOOK_POSES") {
-            // The same single short entry the original comparison used, opened as the reader opens.
-            let single =
-                cyrus_script::logbook::Logbook::new(&["7,A short single entry.".into()]).unwrap();
-            assert_eq!(single.offset(), 0);
-            paint(&artwork, &single, 0)
-                .unwrap()
-                .save(std::path::Path::new(&directory).join("native-single.png"))
-                .unwrap();
-            for rotation in [0, 1988, 1928] {
-                paint(&artwork, &book, rotation)
-                    .unwrap()
-                    .save(std::path::Path::new(&directory).join(format!("native-{rotation}.png")))
-                    .unwrap();
-            }
-        }
+        // The scrolls turn with the reader's third angle, and their corners are lit.
+        let still = build_scene(&artwork, 0);
+        let turned = build_scene(&artwork, 100);
+        assert!(!still.faces.is_empty());
+        assert_eq!(still.faces.len(), turned.faces.len());
+        assert_ne!(still.faces[0].vertices, turned.faces[0].vertices);
+        assert!(still.faces.iter().all(|face| {
+            face.levels
+                .iter()
+                .flatten()
+                .all(|l| (0.0..=255.0).contains(l))
+        }));
     }
 }

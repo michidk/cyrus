@@ -309,6 +309,15 @@ pub(crate) fn validate_model_pose(
             if world.get::<Mesh3d>(*entity).is_none() {
                 continue;
             }
+            if world.get::<BoundFrameMesh>(*entity).is_none()
+                && world.get::<RejectedPose>(*entity).is_none()
+            {
+                return Err(crate::persistence::PresentationPending(format!(
+                    "displayed model {} frame {}: mesh {entity:?} is still being bound",
+                    pose.model, pose.frame
+                ))
+                .into());
+            }
             anyhow::ensure!(
                 world
                     .get::<BoundFrameMesh>(*entity)
@@ -316,7 +325,16 @@ pub(crate) fn validate_model_pose(
                         && binding.node == node
                         && binding.name == pose.model
                         && binding.frame == pose.frame),
-                "displayed model mesh has not settled to the selected frame"
+                "displayed model {} frame {} mesh {entity:?} has not settled to source {:?}: bound {:?}",
+                pose.model,
+                pose.frame,
+                source.id(),
+                world.get::<BoundFrameMesh>(*entity).map(|binding| (
+                    &binding.name,
+                    binding.frame,
+                    binding.source,
+                    binding.node
+                ))
             );
         }
     }
@@ -430,5 +448,69 @@ impl bevy::prelude::Plugin for AnimationRenderPlugin {
             bevy::prelude::PostUpdate,
             apply_poses.before(bevy::asset::AssetEventSystems),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::prelude::World;
+
+    #[test]
+    fn capture_waits_for_a_new_mesh_but_rejects_an_invalid_pose() {
+        let mut world = World::new();
+        let mut assets = Assets::<Animations>::default();
+        let source = assets.add(Animations {
+            version: 2,
+            world: 1,
+            metadata: Default::default(),
+            sections: Default::default(),
+            models: [(
+                "MODEL".into(),
+                AnimationModel {
+                    radius: None,
+                    base_positions: vec![],
+                    base_normals: vec![],
+                    faces: vec![],
+                    corner_normals: vec![],
+                    encoding: "animated_i16".into(),
+                    positions: vec![vec![], vec![]],
+                    normals: vec![vec![], vec![]],
+                },
+            )]
+            .into(),
+            unsupported: Default::default(),
+        });
+        world.insert_resource(assets);
+        let node = world.spawn_empty().id();
+        let mesh = world.spawn((Mesh3d::default(), ChildOf(node))).id();
+        let pose = AnimationPose {
+            model: "MODEL".into(),
+            frame: 1,
+        };
+        let error = validate_model_pose(&world, &[node], &source, &pose).unwrap_err();
+        assert!(error.is::<crate::persistence::PresentationPending>());
+        world.entity_mut(mesh).insert(RejectedPose {
+            source: source.id(),
+            model: pose.model.clone(),
+            frame: pose.frame,
+        });
+        let error = validate_model_pose(&world, &[node], &source, &pose).unwrap_err();
+        assert!(!error.is::<crate::persistence::PresentationPending>());
+        world
+            .entity_mut(mesh)
+            .remove::<RejectedPose>()
+            .insert(BoundFrameMesh {
+                source: source.id(),
+                node,
+                name: pose.model.clone(),
+                mapping: MeshFrameBinding {
+                    version: 1,
+                    source_vertices: vec![],
+                },
+                original: Handle::default(),
+                frame: pose.frame,
+            });
+        validate_model_pose(&world, &[node], &source, &pose).unwrap();
     }
 }

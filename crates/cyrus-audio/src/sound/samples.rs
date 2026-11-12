@@ -107,12 +107,6 @@ impl SampleSlots {
         self.remove_where(|sample| sample.owner.is_some_and(|owner| !current(owner)))
     }
 
-    pub fn stop_script_generation(&mut self, generation: u64) -> Vec<Reservation> {
-        self.remove_where(|sample| {
-            matches!(sample.owner, Some(Owner::Script { generation: value, .. }) if value == generation)
-        })
-    }
-
     fn remove_where(&mut self, matches: impl Fn(&Sample) -> bool) -> Vec<Reservation> {
         self.slots
             .iter_mut()
@@ -414,6 +408,14 @@ pub(super) struct ChannelOwnershipCandidate {
 impl super::Channels {
     pub(super) fn snapshot_ownership(&self) -> anyhow::Result<ChannelOwnershipSnapshot> {
         use anyhow::ensure;
+        // Deferred browser starts have no decoder/slot or checkpoint replay contract.
+        // Reject the incomplete pool rather than silently dropping its future output.
+        #[cfg(any(target_arch = "wasm32", test))]
+        ensure!(
+            self.pending.is_empty(),
+            "audio snapshot: {} deferred sample starts await browser bank admission",
+            self.pending.len()
+        );
         let occupied = self.samples.slots.iter().flatten().count();
         ensure!(
             self.playing.len() == occupied,
@@ -577,7 +579,10 @@ impl ChannelOwnershipCandidate {
             );
         }
         Ok(super::Channels {
+            script_generation: super::script::ScriptGeneration::default(),
             samples: self.samples,
+            #[cfg(any(target_arch = "wasm32", test))]
+            pending: Vec::new(),
             playing,
             start: self.start,
             animation: self.animation,

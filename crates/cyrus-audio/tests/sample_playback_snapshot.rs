@@ -17,6 +17,9 @@ use cyrus_audio::{
 use rgpre::import::sfx::AudioType;
 use std::collections::BTreeMap;
 
+#[path = "support/sound_callers.rs"]
+mod callers;
+
 fn fixture() -> Result<(App, AudioSource)> {
     fixture_with_repetitions(SampleRepetitions::FOREVER)
 }
@@ -66,6 +69,12 @@ fn finite_sample_candidate_retains_remaining_passes_after_wrap() -> Result<()> {
 
 fn check_sample_candidate(repetitions: SampleRepetitions) -> Result<()> {
     let (mut app, source) = fixture_with_repetitions(repetitions)?;
+    app.init_resource::<cyrus_script::script::ScriptActors>();
+    app.world_mut()
+        .resource_mut::<cyrus_script::script::ScriptActors>()
+        .current = Some(callers::separate_sound_world(false));
+    app.update();
+
     let (old_entity, handle) = app
         .world_mut()
         .query::<(Entity, &AudioPlayer<Panned>)>()
@@ -119,6 +128,15 @@ fn check_sample_candidate(repetitions: SampleRepetitions) -> Result<()> {
             commands.entity(old_entity).despawn();
         });
     queue.apply(app.world_mut());
+    app.world_mut()
+        .resource_mut::<cyrus_script::script::ScriptActors>()
+        .current = Some(callers::separate_sound_world_at_generation(false, 18));
+    app.update();
+    assert!(
+        app.world().get::<PlayingSound>(replacement).is_some(),
+        "validated replacement must not inherit the previous pool's teardown"
+    );
+
     assert!(app.world().get::<PlayingSound>(old_entity).is_none());
     assert!(
         app.world()

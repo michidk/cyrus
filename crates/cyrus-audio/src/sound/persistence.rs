@@ -63,6 +63,8 @@ impl SamplePlaybackSnapshot {
     /// Capture after channel reclamation and cue dispatch, with deferred commands
     /// applied. The host must stop simulation and establish its backend checkpoint
     /// policy before calling; source cursor capture does not freeze device output.
+    /// Starts awaiting browser bank admission reject capture without consuming the
+    /// live queue. They have no decoder checkpoint or serialized replay contract.
     pub fn capture(world: &World) -> Result<Self> {
         let query = world.try_query_filtered::<Entity, With<PlayingSound>>();
         let channels = world

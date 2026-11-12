@@ -160,6 +160,7 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
         world.place_selected_player([40832 * 256, -616 * 256, 40400 * 256], 0)?;
     }
     let mut moving_after_slide = 0;
+    let mut saw_natural_slide = false;
     let mut previous: Option<[i32; 3]> = None;
     for _ in 0..80 {
         app.update();
@@ -176,6 +177,14 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
             .control_state()
             .context("control")?;
         let group = world.inspect(id.index, 1)["actors"][0]["animation"]["current_group"].as_u64();
+        if !saw_natural_slide && control.sliding_distance != 0 {
+            ensure!(
+                control.move_counter == 0,
+                "natural slope response retained uncalled movement counters: {}",
+                control.move_counter
+            );
+            saw_natural_slide = true;
+        }
         if let Some(before) = previous
             && control.sliding_state == 0
             && group
@@ -189,6 +198,7 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
         }
         previous = Some(current);
     }
+    ensure!(saw_natural_slide, "fixture did not enter natural sliding");
     ensure!(
         moving_after_slide >= 3,
         "the slide group moved the player only {moving_after_slide} updates after the slide ended"

@@ -30,6 +30,11 @@ class Driver:
         self.held = set()
         self.progress_path = None
         self.progress_record = {}
+        self.schedule_command = None
+        self.schedule_frame_scale = None
+        self.attachment = False
+        self.physical_release = False
+        self.detach_release_after = None
 
     def input(self, action, key):
         subprocess.run(['xdotool', action, key], check=True, timeout=5)
@@ -63,6 +68,14 @@ class Driver:
         self.key('F12')
         try:
             opened = self.sample('console-open')
+            deadline = time.monotonic() + self.timeout
+            while (opened['console_mode'] == 'closed'
+                   and opened.get('counters', {}).get('console_request') == 1
+                   and opened.get('counters', {}).get('console_requested_mode') == 0):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('interactive console request was not admitted')
+                time.sleep(.05)
+                opened = self.sample('console-open')
             require_interactive_console(opened)
             before = opened['frame']
             time.sleep(2 * self.pulse)
@@ -80,6 +93,12 @@ class Driver:
 
     def journal(self, path, resume, placement):
         identity = dict(reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
+                        schedule_command=self.schedule_command,
+                        schedule_frame_scale=self.schedule_frame_scale,
+                        attachment=self.attachment, physical_release=self.physical_release,
+                        detach_release_after=self.detach_release_after,
+                        schedule_sha256=(hashlib.sha256(Path(self.schedule_command).read_bytes()).hexdigest()
+                            if self.schedule_command else None),
                         placement=placement, placement_files={item: hashlib.sha256(Path(item).read_bytes()).hexdigest()
                             for item in placement if Path(item).is_file()})
         self.progress_path = path
@@ -169,7 +188,40 @@ class Driver:
         print(json.dumps(row), flush=True)
         return row
 
+    def exact_segment(self, command, frames, phase, key=None):
+        request = dict(phase=phase, frames=frames, key=key)
+        if self.attachment:
+            request['scenario'] = 'attachment'
+        if self.physical_release:
+            request['atomic_snapshots'] = True
+        if phase == 'detach' and self.detach_release_after is not None:
+            request.update(release_after=self.detach_release_after, supported_landing=True)
+        if self.schedule_frame_scale is not None:
+            request['frame_scale'] = self.schedule_frame_scale
+        # Backend failure/timeout must not leave its scheduled gameplay key held.
+        if key:
+            self.held.add(key)
+        try:
+            result = subprocess.run([command], input=json.dumps(request), capture_output=True,
+                                    text=True, check=True, timeout=self.timeout)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            def text(value):
+                return value.decode(errors='replace') if isinstance(value, bytes) else value
+            print(json.dumps(dict(phase='schedule-failure', request=request,
+                stdout=text(error.stdout), stderr=text(error.stderr), error=str(error))), flush=True)
+            raise
+        finally:
+            if key:
+                self.input('keyup', key)
+        response = json.loads(result.stdout)
+        print(json.dumps(dict(phase='schedule-evidence', request=request, result=response)), flush=True)
+        rows = validate_schedule(response, request)
+        for row in rows:
+            print(json.dumps(row), flush=True)
+
     def segment(self, frames, phase, key=None):
+        if self.schedule_command:
+            return self.exact_segment(self.schedule_command, frames, phase, key)
         self.boundary(phase, 'start', key)
         try:
             self.progress(frames, phase, validate=True)
@@ -214,14 +266,126 @@ class Driver:
             time.sleep(.05)
 
 
+def validate_snapshots(result, frames):
+    """Require one stopped, repeatable state at each ordinary update start.
+
+    The executable-specific backend owns stopping execution at this boundary.
+    Repeated reads while stopped must agree; a frame label alone is insufficient.
+    Clocks use the same consumed-scale units as the acknowledged input schedule.
+    """
+    snapshots = result.get('snapshots', [])
+    if len(snapshots) != frames + 1:
+        raise ValueError('atomic snapshot sequence is incomplete')
+    start = result['boundaries'][0]
+    elapsed = start['clock_scale']
+    for sequence, row in enumerate(snapshots):
+        if (type(row.get('sequence')) is not int or type(row.get('frame')) is not int
+                or type(row.get('clock_scale')) is not int or not isinstance(row.get('player'), dict)
+                or row.get('sequence') != sequence or row.get('boundary') != 'ordinary_update_start'
+                or row.get('execution') != 'stopped' or row.get('frame') != start['frame'] + sequence
+                or row.get('clock_scale') != elapsed
+                or row.get('confirmation') != dict(frame=row.get('frame'), player=row.get('player'))):
+            raise ValueError('atomic snapshot boundary is inconsistent')
+        if sequence < frames:
+            elapsed += result['steps'][sequence]['frame_scale']
+    for edge, snapshot in zip(result['boundaries'], (snapshots[0], snapshots[-1])):
+        if any(edge.get(key) != snapshot.get(key) for key in ('frame', 'clock_scale', 'player')):
+            raise ValueError('input boundary differs from atomic snapshot')
+    return snapshots
+
+
+def validate_schedule(result, request):
+    """Accept exact clocks only with a contiguous consumed-step acknowledgement."""
+    frames, key = request['frames'], request['key']
+    rate = result['normal_frame_rate']
+    if type(rate) is not int or rate <= 0:
+        raise ValueError('invalid installed nominal frame rate')
+    edges, steps = result['boundaries'], result['steps']
+    if len(edges) != 2 or len(steps) != frames:
+        raise ValueError('boundary schedule is incomplete')
+    start, end = edges
+    if (type(start['frame']) is not int or type(end['frame']) is not int
+            or end['frame'] - start['frame'] != frames):
+        raise ValueError('boundary update count differs from schedule')
+    if result.get('phase') != request['phase'] or result.get('key') != key:
+        raise ValueError('boundary schedule identity changed')
+    release_after = request.get('release_after', frames)
+    if type(release_after) is not int or not 0 < release_after <= frames or (release_after < frames and not key):
+        raise ValueError('invalid input pulse boundary')
+    elapsed = 0
+    for offset, step in enumerate(steps):
+        if (type(step['frame']) is not int or step['frame'] != start['frame'] + offset
+                or type(step['frame_scale']) is not int or step['frame_scale'] < 0):
+            raise ValueError('consumed ordinary boundary skipped or invalid')
+        if key and step['input_state'].get(key) is not (offset < release_after):
+            raise ValueError('scheduled input was not consumed at every ordinary boundary')
+        if request.get('frame_scale') is not None and step['frame_scale'] != request['frame_scale']:
+            raise ValueError('consumed scale differs from requested ordinary schedule')
+        elapsed += step['frame_scale']
+    if (type(start['clock_scale']) is not int or type(end['clock_scale']) is not int
+            or end['clock_scale'] - start['clock_scale'] != elapsed or elapsed <= 0):
+        raise ValueError('boundary clock differs from consumed frame scales')
+    snapshots = validate_snapshots(result, frames) if request.get('atomic_snapshots') else None
+    edges_to_publish = [('start', start, True)]
+    if release_after < frames:
+        releases = result.get('input_edges', [])
+        if len(releases) != 1:
+            raise ValueError('pulse lacks an acknowledged release boundary')
+        release = releases[0]
+        release_clock = start['clock_scale'] + sum(step['frame_scale'] for step in steps[:release_after])
+        if release['frame'] != start['frame'] + release_after or release['clock_scale'] != release_clock:
+            raise ValueError('pulse release boundary differs from consumed updates')
+        if snapshots is not None and any(release.get(key) != snapshots[release_after].get(key) for key in ('frame','clock_scale','player')):
+            raise ValueError('pulse release differs from atomic snapshot')
+        edges_to_publish.append(('release', release, False))
+    edges_to_publish.append(('end', end, False))
+    rows = []
+    for edge, row, pressed in edges_to_publish:
+        baseline(row, attachment=request.get('scenario') == 'attachment')
+        if key and row['input_state'].get(key) is not pressed:
+            raise ValueError('boundary input acknowledgement differs from schedule')
+        seconds = row['clock_scale'] / 256 / rate
+        rows.append(dict(phase=request['phase'], boundary=edge, input_ack=True,
+            frame=row['frame'], clock=[seconds, seconds], player=row['player'],
+            timing_source='ordinary_boundary', instrumentation=result.get('instrumentation')))
+        if snapshots is not None:
+            snapshot = snapshots[release_after if edge == 'release' else (0 if edge == 'start' else -1)]
+            rows[-1].update(snapshot_boundary=snapshot['boundary'], snapshot_sequence=snapshot['sequence'])
+    if request.get('scenario') == 'attachment':
+        attachment_outcome(request['phase'], rows[0]['player'], rows[-1]['player'])
+    if request.get('supported_landing'):
+        supported_landing(rows[-1]['player'], snapshots)
+    return rows
+
+
+def supported_landing(player, snapshots=None):
+    """Admit the unarmed living landing fixture, never merely a cleared fall flag."""
+    detached = False
+    for row in snapshots or []:
+        attached = row['player'].get('rope_attached')
+        if detached and attached:
+            raise ValueError('physical pulse reattached during landing continuation')
+        detached |= attached is False
+    if (player.get('rope_attached') or player.get('falling') != 0 or player.get('queued') != 0
+            or not any(row['player'].get('group') in range(65, 75) for row in snapshots or [dict(player=player)])):
+        raise ValueError('physical pulse did not reach supported landing')
+
+
+def attachment_outcome(phase, start, end):
+    expected = {'approach': (False, True), 'hang': (True, True), 'detach': (True, False)}
+    if phase not in expected or (start.get('rope_attached'), end.get('rope_attached')) != expected[phase]:
+        raise RuntimeError(f'positive rope {phase} attachment outcome was rejected')
+
+
 def require_interactive_console(row):
     if row['console_mode'] != 'interactive':
         raise RuntimeError('console is not interactive; refusing gameplay text')
 
 
-def baseline(row):
+def baseline(row, attachment=False):
     player = row['player']
-    if not player['drawn'] or player['falling'] or player['living'] != 0:
+    if (bool(player['drawn']) != (not attachment)
+            or (not attachment and player['falling']) or player['living'] != 0):
         raise RuntimeError(f"invalid contact baseline: {row}")
     if player['health'] <= 0:
         raise RuntimeError('selected player is dead')
@@ -235,21 +399,43 @@ def main():
     parser.add_argument('--progress', type=Path, help='durable readiness journal')
     parser.add_argument('--resume', action='store_true', help='resume waiting only; never replay input')
     parser.add_argument('--frames', type=int, default=16)
+    parser.add_argument('--attachment', action='store_true',
+                        help='require an unarmed positive grab, held attachment and jump detach')
+    parser.add_argument('--physical-release', action='store_true',
+                        help='disable fly mode after hanging, before the detach schedule; requires --attachment')
+    parser.add_argument('--landing-frames', type=int, default=0,
+                        help='released-input continuation after physical Jump pulse; require supported landing')
+    parser.add_argument('--attack-frames', type=int, default=2)
+    parser.add_argument('--continuation-frames', type=int, default=12)
+    parser.add_argument('--schedule-frame-scale', type=int, help='require this measured consumed scale at every instrumented update')
     parser.add_argument('--timeout', type=float, default=35)
     parser.add_argument('--ready-timeout', type=float, default=100)
     parser.add_argument('--pulse', type=float, default=.2)
+    parser.add_argument('--schedule-command', help='local executable accepting a JSON schedule on stdin; returns boundary and consumed-step acknowledgements')
     parser.add_argument('--record', action='store_true',
                         help='record the DOSBox-X mixer with the Ctrl+Alt host modifier')
     parser.add_argument('--attack-key', default='Control_L')
     args = parser.parse_args()
-    if args.frames <= 0 or args.timeout <= 0 or args.ready_timeout <= 0 or args.pulse <= 0:
+    if min(args.frames, args.attack_frames, args.continuation_frames) <= 0 or (args.schedule_frame_scale is not None and (args.schedule_frame_scale <= 0 or not args.schedule_command)) or args.timeout <= 0 or args.ready_timeout <= 0 or args.pulse <= 0:
         parser.error('frames, timeouts and pulse must be positive')
+    if args.landing_frames < 0 or (args.landing_frames and not args.physical_release):
+        parser.error('--landing-frames requires --physical-release and a nonnegative count')
+    if args.physical_release and not args.attachment:
+        parser.error('--physical-release requires --attachment')
     with ExitStack() as stack:
         if args.progress:
             args.progress.parent.mkdir(parents=True, exist_ok=True)
             lock = stack.enter_context(args.progress.with_suffix('.lock').open('a'))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         driver = Driver(args.reader, args.timeout, args.pulse)
+        driver.attachment = args.attachment
+        driver.physical_release = args.physical_release
+        if args.landing_frames:
+            driver.detach_release_after = args.attack_frames
+        if args.attachment and not args.schedule_command:
+            parser.error('--attachment requires acknowledged --schedule-command boundaries')
+        driver.schedule_command = args.schedule_command
+        driver.schedule_frame_scale = args.schedule_frame_scale
         if args.resume and args.progress is None:
             parser.error('--resume requires --progress')
         if args.progress:
@@ -265,8 +451,9 @@ def main():
                 driver.pulse = max(driver.pulse, 2 / fps)
             driver.progress(2, 'ready')
             driver.command('magiccarpet = 1')
-            driver.command('item add,1')
-            if not driver.sample('inventory')['player']['drawn']:
+            if not args.attachment:
+                driver.command('item add,1')
+            if not args.attachment and not driver.sample('inventory')['player']['drawn']:
                 driver.input('keydown', 's')
                 try:
                     driver.progress(2, 'draw')
@@ -275,13 +462,24 @@ def main():
             driver.progress(12, 'settle')
             subprocess.run(args.place, check=True, timeout=args.timeout)
             row = driver.progress(2, 'placed')
-            baseline(row)
+            baseline(row, attachment=args.attachment)
             if args.record:
                 driver.recorder()
                 recording = True
-            driver.segment(args.frames, 'walk-in', 'Up')
-            driver.segment(2, 'attack', args.attack_key)
-            driver.segment(12, 'continuation')
+            if args.attachment:
+                driver.segment(args.frames, 'approach', 'space')
+                driver.segment(args.continuation_frames, 'hang')
+                if args.physical_release:
+                    driver.command('magiccarpet = 0')
+                    row = driver.sample('physical-release')
+                    baseline(row, attachment=True)
+                    if not row['player'].get('rope_attached'):
+                        raise RuntimeError('physical release requires a retained attachment')
+                driver.segment(args.attack_frames + args.landing_frames, 'detach', 'space')
+            else:
+                driver.segment(args.frames, 'walk-in', 'Up')
+                driver.segment(args.attack_frames, 'attack', args.attack_key)
+                driver.segment(args.continuation_frames, 'continuation')
             driver.progress_record['status'] = 'completed'
             driver.save()
         finally:

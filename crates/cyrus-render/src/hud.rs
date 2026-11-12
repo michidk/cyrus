@@ -464,7 +464,10 @@ fn hide_for_book_capture(
     }
 }
 
-fn spawn(mut commands: Commands, assets: Res<AssetServer>) {
+fn spawn(mut commands: Commands, assets: Res<AssetServer>, existing: Query<(), With<HudContent>>) {
+    if !existing.is_empty() {
+        return;
+    }
     commands.insert_resource(HudHandle(assets.load("cache://hud/overlay.hud")));
     commands
         .spawn((
@@ -1117,13 +1120,18 @@ fn update(
     let state = &mut *state;
 
     // Fixed, non-configurable keys: F8 candle mode, Tab walk mode, F7 auto-defend.
+    let shortcuts_enabled = !compass
+        .console
+        .as_ref()
+        .is_some_and(|console| console.blocked)
+        && !compass.suppressed.as_ref().is_some_and(|input| input.0);
     let mut toggled = false;
-    if keys.just_pressed(KeyCode::F8) {
+    if shortcuts_enabled && keys.just_pressed(KeyCode::F8) {
         state.candle_mode = (state.candle_mode + 1) % 3;
         toggled = true;
     }
     for (notice, key) in [KeyCode::Tab, KeyCode::F7].into_iter().enumerate() {
-        if keys.just_pressed(key) {
+        if shortcuts_enabled && keys.just_pressed(key) {
             let flag = if notice == 0 {
                 &mut toggles.walk_mode
             } else {
@@ -1502,7 +1510,14 @@ fn update(
     }
 }
 
-fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
+fn despawn(
+    mut commands: Commands,
+    content: Query<Entity, With<HudContent>>,
+    overlay: Option<Res<cyrus_game::GameplayOverlay>>,
+) {
+    if overlay.is_some() {
+        return;
+    }
     for entity in &content {
         commands.entity(entity).despawn();
     }
@@ -2352,6 +2367,51 @@ mod tests {
         let state = app.world().resource::<HudState>();
         assert!(!state.walk_mode);
         assert!(state.auto_defend);
+    }
+
+    #[test]
+    fn fixed_toggles_cycle_and_respect_inspection_focus() {
+        let mut app = compass_app();
+        let original_auto_defend = app
+            .world()
+            .resource::<cyrus_script::player::input::PlayerToggles>()
+            .auto_defend;
+        for expected in [1, 2, 0] {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::F8);
+            app.update();
+            assert_eq!(app.world().resource::<HudState>().candle_mode, expected);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .reset_all();
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::F7);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_script::player::input::PlayerToggles>()
+                .auto_defend,
+            !original_auto_defend
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.insert_resource(cyrus_script::player::input::InputSuppressed(true));
+        for key in [KeyCode::F7, KeyCode::F8, KeyCode::Tab] {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(key);
+        }
+        app.update();
+        let toggles = app
+            .world()
+            .resource::<cyrus_script::player::input::PlayerToggles>();
+        assert_eq!(toggles.auto_defend, !original_auto_defend);
+        assert!(!toggles.walk_mode);
+        assert_eq!(app.world().resource::<HudState>().candle_mode, 0);
     }
 
     fn use_key(app: &mut App, held: bool) {

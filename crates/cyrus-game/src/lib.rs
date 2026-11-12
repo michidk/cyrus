@@ -15,6 +15,8 @@ pub enum AppState {
     Loading,
     Menu,
     InGame,
+    /// A fixed gameplay information screen suspends simulation while retaining the world.
+    GameplayOverlay,
 }
 /// A complete replacement was published before a menu-to-game state transition.
 /// Exit systems must not restore checkpoints belonging to the replaced session.
@@ -57,6 +59,14 @@ impl MovieUnlocks {
     }
 }
 
+/// Whether the debug flycam is enabled. While it is, the game and the book leave the camera alone.
+#[derive(Resource, Default)]
+pub struct FlycamEngaged(pub bool);
+
+/// The camera that renders the book menu's 3D scene.
+#[derive(Component)]
+pub struct BookCamera;
+
 /// The book opened from live gameplay (ordinary in-game context, as opposed to death).
 /// Retained until the book returns to gameplay.
 #[derive(Resource)]
@@ -81,4 +91,11 @@ mod movie_unlock_tests {
         assert_eq!(unlocks, MovieUnlocks::default());
         assert_eq!(MovieUnlocks::from_bits(0xffff).bits(), 0x7fff);
     }
+}
+
+/// Fixed information screens entered from a live world, independent of the book menu.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameplayOverlay {
+    Version,
+    Credits,
 }

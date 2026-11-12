@@ -1,4 +1,4 @@
-//! F11 toggles a free first-person camera. While it flies, the host suppresses player input.
+//! Insert toggles a free first-person camera. While it flies, the host suppresses player input.
 //! A line in the corner shows whether it is on.
 mod bindings {
     wasvy_macros::guest_bindings!({
@@ -70,14 +70,14 @@ impl bindings::Guest for Flycam {
             let hud = Hud::new(row.component(3));
             let memory = Memory::new(row.component(4));
             let mut fly = Fly::load(&memory);
-            if input.tapped("F11") {
+            if input.tapped("Insert") {
                 fly = match fly {
                     Some(_) => None,
                     None => start(&camera.pose()),
                 };
             }
             if let Some(fly) = fly.as_mut() {
-                hud.show("Fly camera: ON (F11)");
+                hud.show("Fly camera: ON (Insert)");
                 steer(fly, &input, speed);
                 // Rotation = yaw about Y, then pitch about X; quaternion from half angles.
                 let (sy, cy) = (fly.yaw * 0.5).sin_cos();
@@ -85,7 +85,7 @@ impl bindings::Guest for Flycam {
                 let [x, y, z] = fly.position;
                 camera.drive(&[x, y, z, cy * sp, sy * cp, -sy * sp, cy * cp]);
             } else {
-                hud.show("Fly camera: OFF (F11)");
+                hud.show("Fly camera: OFF (Insert)");
             }
             Fly::save(fly.as_ref(), &memory);
         }
