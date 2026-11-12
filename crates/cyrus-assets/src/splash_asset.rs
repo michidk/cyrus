@@ -82,12 +82,6 @@ impl SplashAsset {
                 draw.mesh < self.meshes.len() && draw.texture < self.textures.len(),
                 "splash: a draw uses a missing mesh or texture"
             );
-            // The installed splash draws every face opaque; blending is not implemented.
-            ensure!(
-                draw.alpha == 255,
-                "splash: a translucent draw (alpha {}) is not supported",
-                draw.alpha
-            );
         }
         Ok(())
     }
@@ -154,12 +148,5 @@ mod tests {
             rgba: Vec::new(),
         };
         assert!(asset.validate().is_err());
-    }
-
-    #[test]
-    fn a_translucent_draw_is_rejected_instead_of_drawn_opaque() {
-        let mut asset = asset();
-        asset.frames[0][0].alpha = 128;
-        assert!(format!("{:#}", asset.validate().unwrap_err()).contains("translucent"));
     }
 }

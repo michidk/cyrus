@@ -32,5 +32,5 @@ fn vertex(
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let texel = textureSample(splash_texture, splash_sampler, in.uv).rgb;
     let mixed = clamp(in.color / 255.0 * texel * visibility.x, vec3(0.0), vec3(1.0));
-    return vec4(srgb_to_linear(mixed), 1.0);
+    return vec4(srgb_to_linear(mixed), visibility.y);
 }

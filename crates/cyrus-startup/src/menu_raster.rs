@@ -3,8 +3,9 @@
 use super::menu::MenuState;
 use anyhow::{Context, ensure};
 use cyrus_assets::menu::MenuAsset;
-use cyrus_assets::menu::MenuPicture;
 use cyrus_assets::menu::PageTexture;
+use cyrus_assets::menu::{MenuEntry, MenuItem, MenuPage, MenuPicture};
+use cyrus_assets::preferences::MenuPreferences;
 use image::RgbaImage;
 
 /// What a menu redraw produced: the painted page surfaces of the book's 3D scene, or a dialog over it.
@@ -13,6 +14,16 @@ pub(super) enum Painted {
     Surfaces(Vec<PageTexture>),
     /// A confirmation or description dialog, transparent outside the dialog, drawn over the scene.
     Dialog(RgbaImage),
+}
+
+/// What one redraw of one book page reads.
+#[derive(Clone, Copy)]
+struct PageContext<'a> {
+    book: &'a MenuAsset,
+    state: &'a MenuState,
+    preferences: &'a MenuPreferences,
+    id: u8,
+    page: &'a MenuPage,
 }
 
 pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<Painted> {
@@ -32,172 +43,253 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<Paint
         .as_ref()
         .context("menu: preferences unavailable")?;
     let mut surfaces = book.textures.clone();
-    for (page_id, page) in &book.pages {
-        for (index, entry) in page.entries.iter().enumerate() {
-            let mut item = if *page_id == state.page {
-                state.entries.get(index).unwrap_or(&entry.item).clone()
-            } else {
-                entry.item.clone()
-            };
-            if *page_id == 1 && item.action == 101 && state.list_page == 0 {
-                item.text = "<NEW SAVE GAME>".into();
-            }
-            if matches!(*page_id, 1 | 2) && matches!(item.action, 102 | 202) {
-                let row = page.entries[..index]
-                    .iter()
-                    .filter(|entry| matches!(entry.item.action, 102 | 202))
-                    .count();
-                let base = if *page_id == 1 {
-                    if state.list_page == 0 {
-                        0
-                    } else {
-                        8 + (state.list_page - 1) * 9
-                    }
-                } else {
-                    state.list_page * 9
-                };
-                let slot = state
-                    .slots
-                    .iter()
-                    .filter(|slot| *page_id != 1 || (slot.slot != 0 && slot.slot != 1))
-                    .skip(base)
-                    .nth(row);
-                item.text = slot
-                    .map(|slot| slot.description.chars().take(40).collect())
-                    .unwrap_or_default();
-                item.grayed = slot.is_none();
-            }
-            if !item.visible {
-                continue;
-            }
-            let selected = state.selections.get(page_id).copied().flatten() == Some(index)
-                && item.eligible()
-                && !state.main_entry_disabled(*page_id, index);
-            // The original draws the Save and Load list rows with the small font pair.
-            let small = matches!(item.action, 101 | 102 | 202);
-            let font = &book.fonts[usize::from(selected) + 2 * usize::from(small)];
-            let surface = &mut surfaces[entry.texture];
-            let style = if selected {
-                0
-            } else if !item.selectable {
-                3
-            } else if item.grayed || state.main_entry_disabled(*page_id, index) {
-                2
-            } else {
-                1
-            };
-            text(
-                surface,
-                font,
-                &book.palette,
-                &item.text,
-                entry.position,
-                entry.justify,
-                style,
-            )?;
-            if let Some(value) = preferences.values.get(&entry.item.action) {
-                let frames = if matches!(entry.item.action, 601 | 602) {
-                    &book.sliders
-                } else {
-                    &book.checks
-                };
-                let frame = if !matches!(entry.item.action, 601 | 602) {
-                    *value as usize
-                } else {
-                    ((*value as f32 * (frames.len() - 1) as f32
-                        / (entry.slider[1] - entry.slider[0]) as f32)
-                        .round() as usize)
-                        .min(frames.len() - 1)
-                };
-                picture(surface, &frames[frame], entry.output_position);
-            }
-            if (710..=724).contains(&entry.item.action) {
-                let capturing =
-                    state.page == *page_id && state.capturing == Some(entry.item.action);
-                let prompt = if state.blink_on {
-                    format!("<{}>", book.waiting_message)
-                } else {
-                    format!(">{}<", book.waiting_message)
-                };
-                let label = if capturing {
-                    &prompt
-                } else {
-                    &book.key_names
-                        [usize::from(preferences.bindings[(entry.item.action - 710) as usize])]
-                };
-                let font = &book.fonts[usize::from(capturing)];
-                let shown = drawn_characters(
-                    font,
-                    &label.to_ascii_uppercase(),
-                    entry.output_position[0],
-                    (entry.output_justify == 0).then_some(BINDING_PEN_LIMIT),
-                );
-                text(
-                    surface,
-                    font,
-                    &book.palette,
-                    label.get(..shown).unwrap_or(label),
-                    entry.output_position,
-                    entry.output_justify,
-                    if capturing { 0 } else { 1 },
-                )?;
-            }
-        }
-        let selected_thumbnail = if matches!(*page_id, 1 | 2) && *page_id == state.page {
-            state.selected.and_then(|index| {
-                if state
-                    .entries
-                    .get(index)
-                    .is_some_and(|entry| entry.action == 101)
-                {
-                    state.gameplay_thumbnail.as_ref()
-                } else {
-                    state
-                        .slot_rows
-                        .get(&index)
-                        .and_then(|row| state.slots.get(*row))
-                        .and_then(|slot| slot.thumbnail.as_ref())
-                }
-            })
-        } else if *page_id == 0 {
-            state.gameplay_thumbnail.as_ref()
-        } else {
-            None
+    for (id, page) in &book.pages {
+        let context = PageContext {
+            book,
+            state,
+            preferences,
+            id: *id,
+            page,
         };
-        if let Some(thumbnail) = selected_thumbnail
-            && let Ok(decoded) = image::load_from_memory(thumbnail)
-        {
-            let rgba = decoded.to_rgba8();
-            if rgba.width() == 256
-                && rgba.height() == 192
-                // The main page keeps its entries on its second surface, so its snapshot takes
-                // the first; the save/load pages show theirs on the second.
-                && let Some(surface) = page.surfaces.get(usize::from(*page_id != 0))
-            {
-                picture(
-                    &mut surfaces[*surface],
-                    &MenuPicture {
-                        width: 256,
-                        height: 192,
-                        rgba: rgba.into_raw(),
-                    },
-                    [0, 33],
-                );
-            }
+        for index in 0..page.entries.len() {
+            paint_entry(&context, &mut surfaces, index)?;
         }
-        if *page_id == 3
-            && let Some(index) = state.selections.get(page_id).copied().flatten()
-        {
-            let action = page.entries[index].item.action;
-            if (301..=305).contains(&action)
-                && let Some(frame) = book.movies.get((action - 301) as usize)
-                && let Some(surface) = page.surfaces.get(1)
-            {
-                picture(&mut surfaces[*surface], frame, [0, 33]);
-            }
-        }
+        paint_thumbnail(&context, &mut surfaces);
+        paint_movie_preview(&context, &mut surfaces);
     }
     Ok(Painted::Surfaces(surfaces))
+}
+
+/// The entry as the page shows it: the live entry on the open page, the Save and Load row labels
+/// from the stored slots, and the first Save row as `<NEW SAVE GAME>`.
+fn entry_item(context: &PageContext, index: usize) -> MenuItem {
+    let PageContext {
+        state, id, page, ..
+    } = *context;
+    let entry = &page.entries[index];
+    let mut item = if id == state.page {
+        state.entries.get(index).unwrap_or(&entry.item).clone()
+    } else {
+        entry.item.clone()
+    };
+    if id == 1 && item.action == 101 && state.list_page == 0 {
+        item.text = "<NEW SAVE GAME>".into();
+    }
+    if matches!(id, 1 | 2) && matches!(item.action, 102 | 202) {
+        let row = page.entries[..index]
+            .iter()
+            .filter(|entry| matches!(entry.item.action, 102 | 202))
+            .count();
+        let base = if id == 1 {
+            if state.list_page == 0 {
+                0
+            } else {
+                8 + (state.list_page - 1) * 9
+            }
+        } else {
+            state.list_page * 9
+        };
+        let slot = state
+            .slots
+            .iter()
+            .filter(|slot| id != 1 || (slot.slot != 0 && slot.slot != 1))
+            .skip(base)
+            .nth(row);
+        item.text = slot
+            .map(|slot| slot.description.chars().take(40).collect())
+            .unwrap_or_default();
+        item.grayed = slot.is_none();
+    }
+    item
+}
+
+/// Draws one entry's label, its value widget and its key binding into the page surface it uses.
+fn paint_entry(
+    context: &PageContext,
+    surfaces: &mut [PageTexture],
+    index: usize,
+) -> anyhow::Result<()> {
+    let PageContext {
+        book,
+        state,
+        id,
+        page,
+        ..
+    } = *context;
+    let entry = &page.entries[index];
+    let item = entry_item(context, index);
+    if !item.visible {
+        return Ok(());
+    }
+    let disabled = state.main_entry_disabled(id, index);
+    let selected =
+        state.selections.get(&id).copied().flatten() == Some(index) && item.eligible() && !disabled;
+    // The original draws the Save and Load list rows with the small font pair.
+    let small = matches!(item.action, 101 | 102 | 202);
+    let font = &book.fonts[usize::from(selected) + 2 * usize::from(small)];
+    let style = if selected {
+        0
+    } else if !item.selectable {
+        3
+    } else if item.grayed || disabled {
+        2
+    } else {
+        1
+    };
+    let surface = &mut surfaces[entry.texture];
+    text(
+        surface,
+        font,
+        &book.palette,
+        &item.text,
+        entry.position,
+        entry.justify,
+        style,
+    )?;
+    paint_value(context, surface, entry);
+    if (710..=724).contains(&entry.item.action) {
+        paint_binding(context, surface, entry)?;
+    }
+    Ok(())
+}
+
+/// The check or slider picture of an entry that has a stored value.
+fn paint_value(context: &PageContext, surface: &mut PageTexture, entry: &MenuEntry) {
+    let PageContext {
+        book, preferences, ..
+    } = *context;
+    let Some(value) = preferences.values.get(&entry.item.action) else {
+        return;
+    };
+    let slider = matches!(entry.item.action, 601 | 602);
+    let frames = if slider { &book.sliders } else { &book.checks };
+    let frame = if slider {
+        ((*value as f32 * (frames.len() - 1) as f32 / (entry.slider[1] - entry.slider[0]) as f32)
+            .round() as usize)
+            .min(frames.len() - 1)
+    } else {
+        *value as usize
+    };
+    picture(surface, &frames[frame], entry.output_position);
+}
+
+/// The name of a Controls entry's key, or the blinking capture prompt while it is being rebound.
+fn paint_binding(
+    context: &PageContext,
+    surface: &mut PageTexture,
+    entry: &MenuEntry,
+) -> anyhow::Result<()> {
+    let PageContext {
+        book,
+        state,
+        preferences,
+        id,
+        ..
+    } = *context;
+    let capturing = state.page == id && state.capturing == Some(entry.item.action);
+    let prompt = if state.blink_on {
+        format!("<{}>", book.waiting_message)
+    } else {
+        format!(">{}<", book.waiting_message)
+    };
+    let label = if capturing {
+        &prompt
+    } else {
+        &book.key_names[usize::from(preferences.bindings[(entry.item.action - 710) as usize])]
+    };
+    let font = &book.fonts[usize::from(capturing)];
+    let shown = drawn_characters(
+        font,
+        &label.to_ascii_uppercase(),
+        entry.output_position[0],
+        (entry.output_justify == 0).then_some(BINDING_PEN_LIMIT),
+    );
+    text(
+        surface,
+        font,
+        &book.palette,
+        label.get(..shown).unwrap_or(label),
+        entry.output_position,
+        entry.output_justify,
+        if capturing { 0 } else { 1 },
+    )
+}
+
+/// The snapshot or save thumbnail the page shows for its selection, as encoded image bytes.
+fn selected_thumbnail<'a>(context: &PageContext<'a>) -> Option<&'a Vec<u8>> {
+    let PageContext { state, id, .. } = *context;
+    if matches!(id, 1 | 2) && id == state.page {
+        state.selected.and_then(|index| {
+            if state
+                .entries
+                .get(index)
+                .is_some_and(|entry| entry.action == 101)
+            {
+                state.gameplay_thumbnail.as_ref()
+            } else {
+                state
+                    .slot_rows
+                    .get(&index)
+                    .and_then(|row| state.slots.get(*row))
+                    .and_then(|slot| slot.thumbnail.as_ref())
+            }
+        })
+    } else if id == 0 {
+        state.gameplay_thumbnail.as_ref()
+    } else {
+        None
+    }
+}
+
+/// Pastes the selected 256 by 192 thumbnail into the page's picture frame.
+fn paint_thumbnail(context: &PageContext, surfaces: &mut [PageTexture]) {
+    let Some(thumbnail) = selected_thumbnail(context) else {
+        return;
+    };
+    let Ok(decoded) = image::load_from_memory(thumbnail) else {
+        return;
+    };
+    let rgba = decoded.to_rgba8();
+    if rgba.width() == 256
+        && rgba.height() == 192
+        // The main page keeps its entries on its second surface, so its snapshot takes the first;
+        // the save/load pages show theirs on the second.
+        && let Some(surface) = context.page.surfaces.get(usize::from(context.id != 0))
+    {
+        picture(
+            &mut surfaces[*surface],
+            &MenuPicture {
+                width: 256,
+                height: 192,
+                rgba: rgba.into_raw(),
+            },
+            [0, 33],
+        );
+    }
+}
+
+/// Shows the preview frame of the selected movie on the Movies page.
+fn paint_movie_preview(context: &PageContext, surfaces: &mut [PageTexture]) {
+    let PageContext {
+        book,
+        state,
+        id,
+        page,
+        ..
+    } = *context;
+    if id != 3 {
+        return;
+    }
+    let Some(index) = state.selections.get(&id).copied().flatten() else {
+        return;
+    };
+    let action = page.entries[index].item.action;
+    if (301..=305).contains(&action)
+        && let Some(frame) = book.movies.get((action - 301) as usize)
+        && let Some(surface) = page.surfaces.get(1)
+    {
+        picture(&mut surfaces[*surface], frame, [0, 33]);
+    }
 }
 
 fn picture(surface: &mut PageTexture, picture: &MenuPicture, position: [i32; 2]) {

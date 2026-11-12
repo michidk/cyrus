@@ -276,6 +276,24 @@ fn corner_level(
     level.map(|c| c.clamp(0.0, 255.0))
 }
 
+/// A texture as RGBA through the world palette; palette entry zero is the transparent colour key.
+fn decode_texture(
+    artwork: &ExamineArtwork,
+    look: &ExamineLook,
+    index: usize,
+) -> (u16, u16, Vec<u8>) {
+    let source = &artwork.textures[index];
+    let rgba = source
+        .indices
+        .iter()
+        .flat_map(|&entry| {
+            let [r, g, b] = look.palette[usize::from(entry)];
+            [r, g, b, if entry == 0 { 0 } else { 255 }]
+        })
+        .collect();
+    (source.width, source.height, rgba)
+}
+
 /// The model at `pose` as lit triangles in view space, its textures decoded with the world palette.
 fn build_scene(
     artwork: &ExamineArtwork,
@@ -295,16 +313,7 @@ fn build_scene(
         let (texture, bias) = match face.texture {
             Some(index) => {
                 let texture = *local.entry(index).or_insert_with(|| {
-                    let source = &artwork.textures[index];
-                    let rgba = source
-                        .indices
-                        .iter()
-                        .flat_map(|&entry| {
-                            let [r, g, b] = look.palette[usize::from(entry)];
-                            [r, g, b, if entry == 0 { 0 } else { 255 }]
-                        })
-                        .collect();
-                    scene.textures.push((source.width, source.height, rgba));
+                    scene.textures.push(decode_texture(artwork, look, index));
                     scene.textures.len() - 1
                 });
                 (texture, 1.0)

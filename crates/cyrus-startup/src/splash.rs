@@ -18,6 +18,7 @@ use bevy::{
     shader::ShaderRef,
 };
 use cyrus_assets::splash_asset::{SplashAsset, SplashDraw};
+use std::collections::BTreeMap;
 
 /// The supersampled render size; the sprite shows it at half this size.
 const WIDTH: u32 = 1280;
@@ -57,7 +58,8 @@ pub(super) fn register_assets(app: &mut App) {
         .init_asset_loader::<Loader>();
 }
 
-/// A splash draw's material: the texture, and the fog visibility every draw of a frame shares.
+/// A splash draw's material: the texture, the fog visibility every draw of a frame shares (x) and the
+/// draw's own alpha (y). A translucent draw is blended; an opaque one writes depth.
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 pub struct SplashMaterial {
     #[texture(0)]
@@ -68,6 +70,14 @@ pub struct SplashMaterial {
 }
 
 impl Material for SplashMaterial {
+    fn alpha_mode(&self) -> AlphaMode {
+        if self.visibility.y < 1.0 {
+            AlphaMode::Blend
+        } else {
+            AlphaMode::Opaque
+        }
+    }
+
     fn vertex_shader() -> ShaderRef {
         "embedded://cyrus_startup/splash.wesl".into()
     }
@@ -209,11 +219,41 @@ fn add_draw(asset: &SplashAsset, draw: &SplashDraw, reference: f32, batch: &mut 
     }
 }
 
-/// The running splash: its render target, camera and one mesh per texture.
+/// One group of draws: the faces of one texture drawn at one alpha.
+struct Slot {
+    entity: Entity,
+    mesh: Handle<Mesh>,
+    material: Handle<SplashMaterial>,
+}
+
+/// The faces of every draw, grouped by texture and alpha. Nothing is grouped while the fog is fully
+/// black, as nothing would show.
+fn batch_draws(
+    asset: &SplashAsset,
+    draws: &[SplashDraw],
+    reference: f32,
+    visible: bool,
+) -> BTreeMap<(usize, u8), Batch> {
+    let mut batches: BTreeMap<(usize, u8), Batch> = BTreeMap::new();
+    if visible {
+        for draw in draws {
+            add_draw(
+                asset,
+                draw,
+                reference,
+                batches.entry((draw.texture, draw.alpha)).or_default(),
+            );
+        }
+    }
+    batches
+}
+
+/// The running splash: its render target, camera and the meshes of the current frame.
 pub(super) struct SplashView {
     target: Handle<Image>,
     camera: Option<Entity>,
-    meshes: Vec<(Entity, Handle<Mesh>, Handle<SplashMaterial>)>,
+    textures: Vec<Handle<Image>>,
+    slots: BTreeMap<(usize, u8), Slot>,
     shown: Option<usize>,
 }
 
@@ -236,13 +276,77 @@ impl SplashView {
         Self {
             target: images.add(target),
             camera: None,
-            meshes: Vec::new(),
+            textures: Vec::new(),
+            slots: BTreeMap::new(),
             shown: None,
         }
     }
 
     pub fn target(&self) -> Handle<Image> {
         self.target.clone()
+    }
+
+    /// Spawns the camera and uploads the splash's textures.
+    fn spawn(&mut self, commands: &mut Commands, images: &mut Assets<Image>, asset: &SplashAsset) {
+        self.camera = Some(
+            commands
+                .spawn((
+                    StartupContent,
+                    view_camera(self.target.clone(), SPLASH_LAYER, Color::BLACK),
+                ))
+                .id(),
+        );
+        self.textures = asset
+            .textures
+            .iter()
+            .map(|texture| {
+                images.add(raw_texture_image(
+                    texture.width,
+                    texture.height,
+                    texture.rgba.clone(),
+                ))
+            })
+            .collect();
+    }
+
+    /// The slot for faces of `texture` at `alpha`, spawned hidden on first use.
+    fn slot(
+        &mut self,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<SplashMaterial>,
+        key: (usize, u8),
+    ) -> &Slot {
+        let texture = self.textures[key.0].clone();
+        self.slots.entry(key).or_insert_with(|| {
+            // A degenerate triangle until the frame fills the mesh in.
+            let mesh = meshes.add(
+                Mesh::new(PrimitiveTopology::TriangleList, default())
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3])
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0; 2]; 3])
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, vec![[0.0; 4]; 3]),
+            );
+            let material = materials.add(SplashMaterial {
+                texture,
+                visibility: Vec4::new(0.0, f32::from(key.1) / 255.0, 0.0, 0.0),
+            });
+            let entity = commands
+                .spawn((
+                    StartupContent,
+                    Mesh3d(mesh.clone()),
+                    MeshMaterial3d(material.clone()),
+                    Transform::IDENTITY,
+                    NoFrustumCulling,
+                    Visibility::Hidden,
+                    RenderLayers::layer(SPLASH_LAYER),
+                ))
+                .id();
+            Slot {
+                entity,
+                mesh,
+                material,
+            }
+        })
     }
 
     /// Draws `frame` of the splash.
@@ -266,44 +370,7 @@ impl SplashView {
             return;
         };
         if self.camera.is_none() {
-            self.camera = Some(
-                commands
-                    .spawn((
-                        StartupContent,
-                        view_camera(self.target.clone(), SPLASH_LAYER, Color::BLACK),
-                    ))
-                    .id(),
-            );
-            for texture in &asset.textures {
-                let image = images.add(raw_texture_image(
-                    texture.width,
-                    texture.height,
-                    texture.rgba.clone(),
-                ));
-                // A degenerate triangle until the first frame fills the mesh in.
-                let mesh = meshes.add(
-                    Mesh::new(PrimitiveTopology::TriangleList, default())
-                        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3])
-                        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0; 2]; 3])
-                        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, vec![[0.0; 4]; 3]),
-                );
-                let material = materials.add(SplashMaterial {
-                    texture: image,
-                    visibility: Vec4::ZERO,
-                });
-                let entity = commands
-                    .spawn((
-                        StartupContent,
-                        Mesh3d(mesh.clone()),
-                        MeshMaterial3d(material.clone()),
-                        Transform::IDENTITY,
-                        NoFrustumCulling,
-                        Visibility::Hidden,
-                        RenderLayers::layer(SPLASH_LAYER),
-                    ))
-                    .id();
-                self.meshes.push((entity, mesh, material));
-            }
+            self.spawn(commands, images, asset);
         }
         if self.shown == Some(frame) {
             return;
@@ -318,38 +385,30 @@ impl SplashView {
                 .entity(camera)
                 .insert(projection_for((reference / 2.0).tan()));
         }
-        let mut batches: Vec<Batch> = asset.textures.iter().map(|_| Batch::default()).collect();
-        if visibility > 0.0 {
-            for draw in frame_draws {
-                add_draw(asset, draw, reference, &mut batches[draw.texture]);
-            }
+        for slot in self.slots.values() {
+            commands.entity(slot.entity).insert(Visibility::Hidden);
         }
-        for ((entity, mesh, material), batch) in self.meshes.iter().zip(batches) {
-            let shown = !batch.positions.is_empty();
-            if shown && let Some(mut mesh) = meshes.get_mut(mesh) {
+        for (key, batch) in batch_draws(asset, frame_draws, reference, visibility > 0.0) {
+            let slot = self.slot(commands, meshes, materials, key);
+            if let Some(mut mesh) = meshes.get_mut(&slot.mesh) {
                 mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, batch.positions);
                 mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, batch.uvs);
                 mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, batch.colors);
             }
-            if let Some(mut material) = materials.get_mut(material) {
-                material.visibility = Vec4::new(visibility, 0.0, 0.0, 0.0);
+            if let Some(mut material) = materials.get_mut(&slot.material) {
+                material.visibility.x = visibility;
             }
-            commands.entity(*entity).insert(if shown {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            });
+            commands.entity(slot.entity).insert(Visibility::Inherited);
         }
     }
 
     /// Removes the camera and meshes once the splash has finished.
     pub fn finish(&mut self, commands: &mut Commands) {
-        for entity in self
-            .camera
-            .take()
-            .into_iter()
-            .chain(self.meshes.drain(..).map(|(entity, ..)| entity))
-        {
+        for entity in self.camera.take().into_iter().chain(
+            std::mem::take(&mut self.slots)
+                .into_values()
+                .map(|slot| slot.entity),
+        ) {
             commands.entity(entity).despawn();
         }
         self.shown = None;
@@ -392,5 +451,73 @@ mod tests {
         // The last frame has been dimmed on every second step, ending very dark.
         assert!(visibility(&asset, 149) < 0.1);
         assert!(visibility(&asset, 149) < visibility(&asset, 120));
+    }
+
+    /// An asset with one single-triangle mesh and one texture, drawn at the given alphas.
+    fn drawn(alphas: &[u8]) -> (SplashAsset, Vec<SplashDraw>) {
+        use cyrus_assets::splash_asset::{SplashMesh, SplashTexture, SplashVertex};
+        let identity = Mat4::IDENTITY.to_cols_array();
+        let vertex = |x: f32| SplashVertex {
+            position: [x, 0.0, 10.0],
+            normal: [0.0, 0.0, 1.0],
+            uv: [0.0; 2],
+        };
+        let mut asset = asset(1, 30);
+        asset.meshes = vec![SplashMesh {
+            vertices: vec![vertex(0.0), vertex(1.0), vertex(2.0)],
+            faces: vec![[0, 1, 2]],
+        }];
+        asset.sphere_mapped = vec![false];
+        asset.textures = vec![SplashTexture {
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+        }];
+        let draws = alphas
+            .iter()
+            .map(|alpha| SplashDraw {
+                mesh: 0,
+                texture: 0,
+                transform: identity,
+                camera: identity,
+                horizontal_fov: 1.0,
+                light_color: [1.0; 3],
+                light_position: [0.0, 0.0, 0.0],
+                alpha: *alpha,
+            })
+            .collect();
+        (asset, draws)
+    }
+
+    #[test]
+    fn draws_are_grouped_by_texture_and_alpha() {
+        let (asset, draws) = drawn(&[255, 128, 255]);
+        let batches = batch_draws(&asset, &draws, 1.0, true);
+        assert_eq!(
+            batches.keys().copied().collect::<Vec<_>>(),
+            [(0, 128), (0, 255)]
+        );
+        // Two opaque triangles and one translucent one.
+        assert_eq!(batches[&(0, 255)].positions.len(), 6);
+        assert_eq!(batches[&(0, 128)].positions.len(), 3);
+    }
+
+    #[test]
+    fn nothing_is_grouped_while_the_fog_is_fully_black() {
+        let (asset, draws) = drawn(&[255]);
+        assert!(batch_draws(&asset, &draws, 1.0, false).is_empty());
+    }
+
+    #[test]
+    fn a_translucent_material_blends_and_an_opaque_one_does_not() {
+        let material = |alpha: f32| SplashMaterial {
+            texture: Handle::default(),
+            visibility: Vec4::new(1.0, alpha, 0.0, 0.0),
+        };
+        assert!(matches!(material(1.0).alpha_mode(), AlphaMode::Opaque));
+        assert!(matches!(
+            material(128.0 / 255.0).alpha_mode(),
+            AlphaMode::Blend
+        ));
     }
 }

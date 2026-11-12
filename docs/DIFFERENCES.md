@@ -230,7 +230,9 @@ off by default and a debug aid only.
 
 The 3dfx splash is likewise drawn live on the GPU, as the original's Glide splash is, instead of
 playing frames baked at install time. **Verified:** against the baked frames the best-matching live frames
-differ by a mean of about 2 out of 765 per pixel.
+differ by a mean of about 2 out of 765 per pixel. A draw with an alpha below 255 is
+blended, in linear colour space rather than the original's 8-bit space; the installed splash draws every face
+opaque, so this has no visible effect.
 
 ## Gamepad dead zone
 

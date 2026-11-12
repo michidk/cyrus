@@ -6,16 +6,18 @@
 //! viewer, so every point and the camera position map `(x, y, z)` to `(x, -y, -z)`, a half turn
 //! about X that keeps handedness and winding.
 use super::StartupContent;
+use super::book_motion::BookPose;
 use super::menu::MenuState;
 use super::menu_raster::Painted;
 use super::view3d::{HEIGHT, WIDTH};
 use bevy::{
     asset::RenderAssetUsages,
     camera::visibility::{NoFrustumCulling, RenderLayers},
+    ecs::system::SystemParam,
     mesh::PrimitiveTopology,
     prelude::*,
 };
-use cyrus_assets::menu::{MenuAsset, MenuModel};
+use cyrus_assets::menu::{MenuAsset, MenuModel, PageTexture};
 use cyrus_game::BookCamera;
 use cyrus_world::heading::wrap;
 use std::collections::{BTreeMap, HashMap};
@@ -146,128 +148,141 @@ type BookSprite = (
     Without<super::last_game::CapturedBackground>,
 );
 
-/// Uploads what the last redraw painted and keeps the models and camera on the book's pose.
-// A Bevy system: its parameters are independent resources and queries.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn present(
-    mut commands: Commands,
-    mut menu: ResMut<MenuState>,
-    definitions: Res<Assets<MenuAsset>>,
-    scene: Option<ResMut<BookScene>>,
-    mut images: ResMut<Assets<Image>>,
-    meshes: Option<ResMut<Assets<Mesh>>>,
-    materials: Option<ResMut<Assets<StandardMaterial>>>,
-    mut sprite: Query<(Entity, &mut Sprite), BookSprite>,
-    mut visibility: Query<&mut Visibility>,
-    flycam: Option<Res<cyrus_game::FlycamEngaged>>,
-    mut cameras: Query<&mut Transform, With<BookCamera>>,
-) {
-    let Some(book) = definitions.get(&menu.asset) else {
-        return;
-    };
-    let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
-        // Headless hosts draw nothing; the menu state still advances.
-        menu.painted = None;
-        return;
-    };
-    let mut scene = scene;
-    if scene.is_none() {
-        let Some(Painted::Surfaces(surfaces)) = menu.painted.take() else {
-            return;
-        };
-        let Ok((sprite_entity, mut sprite)) = sprite.single_mut() else {
-            menu.painted = Some(Painted::Surfaces(surfaces));
-            return;
-        };
-        let target = images.add(super::view3d::target_image([0, 0, 0, 255]));
-        menu.image = target.clone();
-        sprite.image = target.clone();
+/// What the book scene draws into: commands, the asset stores and the entities it updates. The
+/// meshes and materials are absent in hosts without a renderer, which draw nothing.
+#[derive(SystemParam)]
+pub(super) struct BookDrawing<'w, 's> {
+    commands: Commands<'w, 's>,
+    images: ResMut<'w, Assets<Image>>,
+    meshes: Option<ResMut<'w, Assets<Mesh>>>,
+    materials: Option<ResMut<'w, Assets<StandardMaterial>>>,
+    sprite: Query<'w, 's, (Entity, &'static mut Sprite), BookSprite>,
+    visibility: Query<'w, 's, &'static mut Visibility>,
+    cameras: Query<'w, 's, &'static mut Transform, With<BookCamera>>,
+}
 
-        let textures: Vec<Handle<Image>> = surfaces
-            .into_iter()
-            .map(|s| images.add(super::view3d::texture_image(s.width, s.height, s.rgba)))
-            .collect();
-
-        let mut grouped: BTreeMap<(usize, Option<usize>, [u8; 4]), Vec<usize>> = BTreeMap::new();
-        for (index, model) in book.models.iter().enumerate() {
-            for (face_index, face) in model.faces.iter().enumerate() {
-                let colour = if face.texture.is_some() {
-                    [0; 4]
-                } else {
-                    face.color
-                };
-                grouped
-                    .entry((index, face.texture, colour))
-                    .or_default()
-                    .push(face_index);
-            }
+/// One mesh per model and texture or solid colour, spawned in its first pose.
+fn spawn_groups(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    book: &MenuAsset,
+    textures: &[Handle<Image>],
+) -> Vec<Group> {
+    let mut grouped: BTreeMap<(usize, Option<usize>, [u8; 4]), Vec<usize>> = BTreeMap::new();
+    for (index, model) in book.models.iter().enumerate() {
+        for (face_index, face) in model.faces.iter().enumerate() {
+            let colour = if face.texture.is_some() {
+                [0; 4]
+            } else {
+                face.color
+            };
+            grouped
+                .entry((index, face.texture, colour))
+                .or_default()
+                .push(face_index);
         }
-        let mut textured: HashMap<usize, Handle<StandardMaterial>> = HashMap::new();
-        let mut groups = Vec::new();
-        let layer = RenderLayers::layer(BOOK_LAYER);
-        for ((model, texture, colour), faces) in grouped {
-            let handle = match texture {
-                Some(texture) => textured
-                    .entry(texture)
-                    .or_insert_with(|| {
-                        materials.add(material(Some(textures[texture].clone()), [0; 4]))
-                    })
-                    .clone(),
-                None => materials.add(material(None, colour)),
-            };
-            let group = Group {
-                model,
-                faces,
-                mesh: Handle::default(),
-            };
-            let pose = Shown {
-                frame: 0,
-                depth: 0.0,
-            };
-            let mesh = meshes.add(group_mesh(book, &group, pose));
-            commands.spawn((
-                StartupContent,
-                Mesh3d(mesh.clone()),
-                MeshMaterial3d(handle),
-                Transform::IDENTITY,
-                NoFrustumCulling,
-                layer.clone(),
-            ));
-            groups.push(Group { mesh, ..group });
-        }
-
-        let overlay = images.add(super::view3d::texture_image(
-            WIDTH as u16,
-            HEIGHT as u16,
-            vec![0; (WIDTH * HEIGHT * 4) as usize],
-        ));
-        let overlay_entity = commands
-            .spawn((
-                Sprite::from_image(overlay.clone()),
-                Transform::from_xyz(0.0, 0.0, 1.0),
-                Visibility::Hidden,
-                ChildOf(sprite_entity),
-            ))
-            .id();
+    }
+    let mut textured: HashMap<usize, Handle<StandardMaterial>> = HashMap::new();
+    let mut groups = Vec::new();
+    let layer = RenderLayers::layer(BOOK_LAYER);
+    for ((model, texture, colour), faces) in grouped {
+        let handle = match texture {
+            Some(texture) => textured
+                .entry(texture)
+                .or_insert_with(|| materials.add(material(Some(textures[texture].clone()), [0; 4])))
+                .clone(),
+            None => materials.add(material(None, colour)),
+        };
+        let group = Group {
+            model,
+            faces,
+            mesh: Handle::default(),
+        };
+        let first = Shown {
+            frame: 0,
+            depth: 0.0,
+        };
+        let mesh = meshes.add(group_mesh(book, &group, first));
         commands.spawn((
             StartupContent,
-            BookCamera,
-            super::view3d::view_camera(target, BOOK_LAYER, Color::BLACK),
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(handle),
+            Transform::IDENTITY,
+            NoFrustumCulling,
+            layer.clone(),
         ));
-        commands.insert_resource(BookScene {
-            textures,
-            overlay,
-            overlay_entity,
-            groups,
-            shown: [None; 5],
-            camera: None,
-            was_flying: false,
-        });
-        // The resource appears at the next command flush; the pose syncs from the next frame.
-        return;
+        groups.push(Group { mesh, ..group });
     }
-    let scene = scene.as_deref_mut().unwrap();
-    match menu.painted.take() {
+    groups
+}
+
+/// Builds the scene from the first painted surfaces: the render target the sprite shows, the page
+/// textures, the models, the dialog layer and the camera. Gives the surfaces back when the book's
+/// sprite does not exist yet.
+fn create(
+    drawing: &mut BookDrawing,
+    menu: &mut MenuState,
+    book: &MenuAsset,
+    surfaces: Vec<PageTexture>,
+) -> Result<BookScene, Vec<PageTexture>> {
+    let BookDrawing {
+        commands,
+        images,
+        meshes: Some(meshes),
+        materials: Some(materials),
+        sprite,
+        ..
+    } = drawing
+    else {
+        return Err(surfaces);
+    };
+    let Ok((sprite_entity, mut sprite)) = sprite.single_mut() else {
+        return Err(surfaces);
+    };
+    let target = images.add(super::view3d::target_image([0, 0, 0, 255]));
+    menu.image = target.clone();
+    sprite.image = target.clone();
+    let textures: Vec<Handle<Image>> = surfaces
+        .into_iter()
+        .map(|s| images.add(super::view3d::texture_image(s.width, s.height, s.rgba)))
+        .collect();
+    let groups = spawn_groups(commands, meshes, materials, book, &textures);
+    let overlay = images.add(super::view3d::texture_image(
+        WIDTH as u16,
+        HEIGHT as u16,
+        vec![0; (WIDTH * HEIGHT * 4) as usize],
+    ));
+    let overlay_entity = commands
+        .spawn((
+            Sprite::from_image(overlay.clone()),
+            Transform::from_xyz(0.0, 0.0, 1.0),
+            Visibility::Hidden,
+            ChildOf(sprite_entity),
+        ))
+        .id();
+    commands.spawn((
+        StartupContent,
+        BookCamera,
+        super::view3d::view_camera(target, BOOK_LAYER, Color::BLACK),
+    ));
+    Ok(BookScene {
+        textures,
+        overlay,
+        overlay_entity,
+        groups,
+        shown: [None; 5],
+        camera: None,
+        was_flying: false,
+    })
+}
+
+/// Uploads what the last redraw painted: the page surfaces, or a dialog over the scene.
+fn upload(drawing: &mut BookDrawing, scene: &BookScene, painted: Option<Painted>) {
+    let BookDrawing {
+        images, visibility, ..
+    } = drawing;
+    match painted {
         Some(Painted::Surfaces(surfaces)) => {
             for (handle, surface) in scene.textures.iter().zip(surfaces) {
                 if let Some(mut image) = images.get_mut(handle) {
@@ -288,39 +303,81 @@ pub(super) fn present(
         }
         None => {}
     }
-    let Some(motion) = menu.motion.as_ref() else {
-        return;
-    };
-    let pose = &motion.pose;
-    for model in 0..5 {
-        let wanted = Shown {
-            frame: pose.frames[model],
-            depth: pose.depth[model],
-        };
-        if scene.shown[model] == Some(wanted) {
-            continue;
-        }
-        scene.shown[model] = Some(wanted);
-        for group in scene.groups.iter().filter(|group| group.model == model) {
-            if let Some(mut mesh) = meshes.get_mut(&group.mesh) {
-                mesh.insert_attribute(
-                    Mesh::ATTRIBUTE_POSITION,
-                    positions(&book.models[model], &group.faces, wanted),
-                );
+}
+
+/// Puts the models in the book's frames and, unless the flycam owns it, the camera on its pose.
+fn follow_pose(
+    drawing: &mut BookDrawing,
+    scene: &mut BookScene,
+    book: &MenuAsset,
+    pose: &BookPose,
+    flying: bool,
+) {
+    if let Some(meshes) = drawing.meshes.as_mut() {
+        for model in 0..5 {
+            let wanted = Shown {
+                frame: pose.frames[model],
+                depth: pose.depth[model],
+            };
+            if scene.shown[model] == Some(wanted) {
+                continue;
+            }
+            scene.shown[model] = Some(wanted);
+            for group in scene.groups.iter().filter(|group| group.model == model) {
+                if let Some(mut mesh) = meshes.get_mut(&group.mesh) {
+                    mesh.insert_attribute(
+                        Mesh::ATTRIBUTE_POSITION,
+                        positions(&book.models[model], &group.faces, wanted),
+                    );
+                }
             }
         }
     }
     // While the debug flycam is on the book never moves the camera; when it is turned off the camera
     // jumps to the book's current pose.
-    let flying = flycam.is_some_and(|flycam| flycam.0);
     let wanted = (pose.camera, pose.pitch);
     if !flying && (scene.camera != Some(wanted) || scene.was_flying) {
-        for mut transform in &mut cameras {
+        for mut transform in &mut drawing.cameras {
             *transform = camera_transform(pose.camera, pose.pitch);
         }
         scene.camera = Some(wanted);
     }
     scene.was_flying = flying;
+}
+
+/// Uploads what the last redraw painted and keeps the models and camera on the book's pose.
+pub(super) fn present(
+    mut drawing: BookDrawing,
+    mut menu: ResMut<MenuState>,
+    definitions: Res<Assets<MenuAsset>>,
+    scene: Option<ResMut<BookScene>>,
+    flycam: Option<Res<cyrus_game::FlycamEngaged>>,
+) {
+    let Some(book) = definitions.get(&menu.asset) else {
+        return;
+    };
+    if drawing.meshes.is_none() || drawing.materials.is_none() {
+        // Headless hosts draw nothing; the menu state still advances.
+        menu.painted = None;
+        return;
+    }
+    let Some(mut scene) = scene else {
+        let Some(Painted::Surfaces(surfaces)) = menu.painted.take() else {
+            return;
+        };
+        match create(&mut drawing, &mut menu, book, surfaces) {
+            // The resource appears at the next command flush; the pose syncs from the next frame.
+            Ok(created) => drawing.commands.insert_resource(created),
+            Err(surfaces) => menu.painted = Some(Painted::Surfaces(surfaces)),
+        }
+        return;
+    };
+    upload(&mut drawing, &scene, menu.painted.take());
+    let Some(motion) = menu.motion.as_ref() else {
+        return;
+    };
+    let flying = flycam.is_some_and(|flycam| flycam.0);
+    follow_pose(&mut drawing, &mut scene, book, &motion.pose, flying);
 }
 
 #[cfg(test)]
