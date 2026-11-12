@@ -200,3 +200,11 @@ The capture waits at render extraction without changing simulation cadence;
 a skipped clock, missed contact update, changed generation or deadline fails.
 Omitting the boundary preserves next-frame capture. PCM delivery cursors remain
 explicitly distinct from mixer generation attribution.
+
+An opt-in Linux mixer tap supplies an additional `pcm_generation` receipt when
+`CYRUS_MIXER_CAPTURE_DIR` names an empty output directory. It contains the last
+completed callback's frame prefix, sequence, monotonic nanoseconds, rate and raw
+sample format. These fields describe generation before audio-device submission,
+independently of the optional monitor delivery cursor. A missing or invalidated
+tap returns null. Producer discontinuities and recorder pacing remain separate
+gates; neither receipt alone establishes device playback or original PCM parity.

@@ -3021,6 +3021,7 @@ dependencies = [
  "bevy",
  "blake3",
  "clap",
+ "cpal",
  "cyrus-app",
  "cyrus-assets",
  "cyrus-audio",

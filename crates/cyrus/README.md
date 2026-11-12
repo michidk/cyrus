@@ -214,3 +214,13 @@ The clock/actor/presentation receipt is frozen before render extraction and reta
 through asynchronous GPU readback and PNG encoding. Late or unavailable boundaries
 fail instead of silently capturing the next frame; ordinary gameplay cadence is
 unchanged. See `cyrus-control` for the trigger protocol and cursor limitations.
+
+Independent Linux acceptance runs may set `CYRUS_MIXER_CAPTURE_DIR` to an empty
+host-mounted directory. The ALSA owner retains completed mixer callback bytes
+and generation timestamps before device submission, using bounded asynchronous
+file delivery. Frame receipts then include `pcm_generation` independently of the
+optional monitor delivery cursor. Unsupported formats, overflow, writer failure
+and stream replacement invalidate the cursor. `generated-pcm.py` checks producer
+pacing without substituting recorder process duration. Native f32 bytes retain
+their raw hash; exported s16 WAV is explicitly a preview conversion. Generated
+samples alone do not prove device playback or original-game PCM parity.

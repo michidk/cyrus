@@ -839,6 +839,12 @@ fn output_stream_worker(
     boost_current_thread_priority(stream.conf.buffer_size, stream.conf.sample_rate);
 
     let mut ctxt = StreamWorkerContext::new(&timeout, stream, &rx);
+    #[cfg(target_os = "linux")]
+    let mut capture = crate::diagnostic_output::Capture::open(
+        stream.conf.sample_rate,
+        stream.conf.channels,
+        stream.sample_format,
+    );
 
     loop {
         let flow =
@@ -868,6 +874,8 @@ fn output_stream_worker(
                     delay_frames,
                     data_callback,
                     error_callback,
+                    #[cfg(target_os = "linux")]
+                    capture.as_mut(),
                 ) {
                     error_callback(err.into());
                 }
@@ -1012,6 +1020,7 @@ fn process_output(
     delay_frames: usize,
     data_callback: &mut (dyn FnMut(&mut Data, &OutputCallbackInfo) + Send + 'static),
     error_callback: &mut dyn FnMut(StreamError),
+    #[cfg(target_os = "linux")] capture: Option<&mut crate::diagnostic_output::Capture>,
 ) -> Result<(), BackendSpecificError> {
     // Buffer is always pre-filled with equilibrium, user overwrites what they want
     buffer.copy_from_slice(&stream.silence_template);
@@ -1033,6 +1042,11 @@ fn process_output(
         let timestamp = crate::OutputStreamTimestamp { callback, playback };
         let info = crate::OutputCallbackInfo { timestamp };
         data_callback(&mut data, &info);
+    }
+
+    #[cfg(target_os = "linux")]
+    if let Some(capture) = capture {
+        capture.generated(buffer);
     }
 
     loop {

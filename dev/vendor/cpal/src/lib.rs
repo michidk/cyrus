@@ -192,6 +192,10 @@ use std::convert::TryInto;
 use std::time::Duration;
 
 pub mod device_description;
+/// Optional callback-owned PCM diagnostics for independent Linux acceptance runs.
+#[cfg(target_os = "linux")]
+pub mod diagnostic_output;
+
 mod error;
 mod host;
 pub mod platform;

@@ -149,6 +149,10 @@ fn boundary(world: &mut World, pcm_path: Option<&PathBuf>) -> anyhow::Result<Val
         .get_resource::<bevy::diagnostic::FrameCount>()
         .ok_or_else(|| anyhow::anyhow!("gameplay frame: render frame counter unavailable"))?
         .0;
+    #[cfg(target_os = "linux")]
+    let generated = cpal::diagnostic_output::cursor().map(|c| json!({"frames":c.frames,"sequence":c.sequence,"monotonic_ns":c.monotonic_ns,"rate":c.rate,"format":c.format}));
+    #[cfg(not(target_os = "linux"))]
+    let generated: Option<Value> = None;
     Ok(json!({
         "ready": true, "scene": scene, "execution": "running",
         "frame": actors.ordinary_updates(), "render_frame": frame,
@@ -158,7 +162,7 @@ fn boundary(world: &mut World, pcm_path: Option<&PathBuf>) -> anyhow::Result<Val
         "elapsed_scale": clock.elapsed_frame_scale(), "normal_frame_rate": clock.settings().normal_frame_rate,
         "game_seconds": clock.game_seconds(), "player": actors.inspect(player.index, 1)["actors"][0],
         "event": "render_frame", "phase": "render_extraction",
-        "pcm_delivery_frames": pcm_frames, "exact_pcm_event_mapping": false,
+        "pcm_generation": generated, "pcm_delivery_frames": pcm_frames, "exact_pcm_event_mapping": false,
     }))
 }
 
