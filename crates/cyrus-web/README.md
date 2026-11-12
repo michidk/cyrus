@@ -298,3 +298,15 @@ scene transition while preserving the running world until preparation succeeds.
 uses these public adapters, real placement and scene lifecycle with actual graph
 PCM, explicit installed files and executed-build provenance. It checks authored
 room movement/revisit, shared-pool retirement and later start/stop continuation.
+
+`test-world-deferred-capture.mjs CDP PAGE INSTALL OUTPUT [LOOP_EFFECT] [SCENE]`
+drives full-world public session capture/save/load with actual graph PCM. Under
+`?capture`, sample actions also accept `reload_bank`, `script_play` and `inspect`.
+Reload requests a real installed bank read through `AssetServer`; the driver holds
+that reader promise, while script play dispatches an ordinary owned cue. Inspection
+reports live transport count, pending bank admission and retained save selection.
+The driver verifies capture rejection preserves both existing save storage and
+selection, live output and queued admission, then saves and restores after release.
+This controlled reload does not imply ordinary gameplay routinely reloads banks.
+Slot selection is retained after capture admission and before the writer; a later
+writer failure keeps the admitted selection, as does an admitted load decode failure.

@@ -16,8 +16,26 @@ struct Request {
 #[derive(serde::Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum SampleRequest {
-    Play { id: u32, effect: usize },
-    Stop { id: u32 },
+    Play {
+        id: u32,
+        effect: usize,
+    },
+    Stop {
+        id: u32,
+    },
+    /// Re-read the installed bank through the ordinary asset reader and admission owner.
+    ReloadBank {
+        id: u32,
+    },
+    ScriptPlay {
+        id: u32,
+        generation: u64,
+        index: usize,
+        effect: i32,
+    },
+    Inspect {
+        id: u32,
+    },
 }
 
 #[derive(Resource, Default)]
@@ -46,17 +64,77 @@ fn respond(world: &mut World) {
                     .as_string()
                     .ok_or_else(|| anyhow::anyhow!("sample request must be JSON text"))?,
             )?;
-            let (id, request) = match request {
-                SampleRequest::Play { id, effect } => (
+            let id = match request {
+                SampleRequest::ReloadBank { id } => {
+                    use cyrus_audio::{SoundBank, SoundBankHandle};
+                    anyhow::ensure!(
+                        !world.contains_resource::<SoundBankHandle>(),
+                        "bank admission already pending"
+                    );
+                    let server = world.resource::<AssetServer>();
+                    let handle = server.load::<SoundBank>("cache://sounds/bank.sounds");
+                    server.reload("cache://sounds/bank.sounds");
+                    world
+                        .resource_mut::<Assets<SoundBank>>()
+                        .remove(handle.id());
+                    world.insert_resource(SoundBankHandle(handle));
+                    id
+                }
+                SampleRequest::ScriptPlay {
                     id,
-                    SoundRequest::Play {
+                    generation,
+                    index,
+                    effect,
+                } => {
+                    let actors = world.resource::<cyrus_script::script::ScriptActors>();
+                    let current = actors
+                        .current
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("script world absent"))?;
+                    anyhow::ensure!(
+                        current.generation() == generation
+                            && !current.inspect(index, 1)["actors"]
+                                .as_array()
+                                .is_none_or(Vec::is_empty),
+                        "script owner absent"
+                    );
+                    world.write_message(cyrus_world::sound::SoundCue::Script {
+                        generation,
+                        index,
+                        sound: cyrus_world::sound::ScriptSound::Flat {
+                            effect,
+                            volume: 0,
+                            rate_offset_hz: 0,
+                        },
+                    });
+                    id
+                }
+                SampleRequest::Inspect { id } => id,
+                SampleRequest::Play { id, effect } => {
+                    world.write_message(SoundRequest::Play {
                         effect,
                         position: None,
-                    },
-                ),
-                SampleRequest::Stop { id } => (id, SoundRequest::StopAll),
+                    });
+                    id
+                }
+                SampleRequest::Stop { id } => {
+                    world.write_message(SoundRequest::StopAll);
+                    id
+                }
             };
-            world.write_message(request);
+            let playing = world
+                .query_filtered::<Entity, With<cyrus_audio::sound::PlayingSound>>()
+                .iter(world)
+                .count();
+            let selected = world.get_resource::<cyrus_script::script::DeathDispatch>().and_then(|dispatch| dispatch.last_save.as_ref()).map(|selected| serde_json::json!({"slot":selected.slot,"description":selected.description}));
+            let response = serde_json::json!({"id":id,"playing":playing,"bank_pending":world.contains_resource::<cyrus_audio::SoundBankHandle>(),"selected":selected});
+            js_sys::Reflect::set(
+                &window,
+                &"__cyrusSampleInspection".into(),
+                &js_sys::JSON::parse(&response.to_string())
+                    .map_err(|e| anyhow::anyhow!("sample inspection: {e:?}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("sample inspection: {e:?}"))?;
             js_sys::Reflect::set(
                 &window,
                 &"__cyrusSampleResult".into(),
