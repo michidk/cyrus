@@ -310,3 +310,10 @@ selection, live output and queued admission, then saves and restores after relea
 This controlled reload does not imply ordinary gameplay routinely reloads banks.
 Slot selection is retained after capture admission and before the writer; a later
 writer failure keeps the admitted selection, as does an admitted load decode failure.
+
+The capture sample adapter's `animation` action takes an emitter generation/index
+and a typed `command` (`play`, `stop`, `forget`). Play includes an installed effect
+and optional rate offset. It resolves one bound emitter and its current logical
+placement, then dispatches the ordinary animation sound cue. The animation bank
+acceptance driver uses this adapter to test delayed starts, remembered-handle
+cancellation and fresh owner publication through public session load.

@@ -450,3 +450,17 @@ admission, replacement, deferred cancellation and later playback. This controlle
 audio-owner fixture does not establish full aggregate-world pending-save
 reachability or physical-output parity. Native package tests cover the capture
 boundary; bank deferral and its runtime PCM acceptance are browser-specific.
+
+Browser bank preparation defers animation PlaySound commands in the same ordered
+queue as script/flat starts. Deferred animation starts retain emitter identity,
+requested effect, rate offset, surface and logical placement. A later PlaySound or
+replacement-group Forget drops the remembered-handle intent without cancelling
+older playback; EndAnimation cancels only the still-remembered start. Owned stops
+and world teardown cancel queued starts as well as live channels. Admission does
+not transfer a queued command to a recreated entity or a different logical owner.
+Pending commands remain unsupported by aggregate audio checkpoints.
+
+`node dev/scripts/test-animation-bank-browser.mjs CDP PAGE INSTALL OUTPUT
+[LOOP_EFFECT] [SCENE] [EMITTER]` drives installed animation emitters through the
+opt-in browser capture adapter, real bank reads, remembered stops and public
+session replacement. It verifies actual graph PCM and executed browser provenance.

@@ -26,89 +26,102 @@ struct SoundFrame<'w, 's> {
     sources: Option<Res<'w, Assets<AudioSource>>>,
     panned: Option<ResMut<'w, Assets<Panned>>>,
     channels: ResMut<'w, Channels>,
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", test))]
     bank_loading: Option<Res<'w, crate::sound_bank::SoundBankHandle>>,
 }
 
 impl SoundFrame<'_, '_> {
     fn prepare(&mut self, ownership: Option<Option<u64>>) {
-        let Self {
-            commands,
-            #[cfg(target_arch = "wasm32")]
-            settings,
-            actors,
-            #[cfg(target_arch = "wasm32")]
-            effects,
-            #[cfg(target_arch = "wasm32")]
-            listener,
-            #[cfg(target_arch = "wasm32")]
-            script_listener,
-            alive,
-            #[cfg(target_arch = "wasm32")]
-            sources,
-            #[cfg(target_arch = "wasm32")]
-            panned,
-            channels,
-            #[cfg(target_arch = "wasm32")]
-            bank_loading,
-            ..
-        } = self;
-        channels.reclaim(alive);
-        #[cfg(target_arch = "wasm32")]
-        let mut mixer = Mixer {
-            master: settings.as_ref().map_or(256, |s| s.master_volume),
-            sources: sources.as_deref(),
-            panned: panned.as_deref_mut(),
-        };
+        self.channels.reclaim(&self.alive);
         let current_owner = |owner: Owner| match owner {
             Owner::Entity(_) => true,
             Owner::Script { generation, .. } => {
                 ownership.is_none_or(|current| current == Some(generation))
             }
         };
-        let expired = channels.samples.stop_expired(current_owner);
-        channels.retire(commands, expired);
-        #[cfg(target_arch = "wasm32")]
-        channels
+        let expired = self.channels.samples.stop_expired(current_owner);
+        self.channels.retire(&mut self.commands, expired);
+        #[cfg(any(target_arch = "wasm32", test))]
+        self.channels
             .pending
             .retain(|cue| cue.owner().is_none_or(current_owner));
-        // Preserve authored cue order while the browser bank is loading.
-        #[cfg(target_arch = "wasm32")]
-        if bank_loading.is_none() {
-            for cue in std::mem::take(&mut channels.pending) {
+        // A despawned actor's remembered sound is forgotten, not stopped.
+        self.channels
+            .animation
+            .retain(|actor, _| self.actors.contains(*actor));
+        self.channels
+            .animation_checkpoint
+            .retain(|actor, _| self.actors.contains(*actor));
+        #[cfg(any(target_arch = "wasm32", test))]
+        if self.bank_loading.is_none() {
+            for cue in std::mem::take(&mut self.channels.pending) {
                 match cue {
-                    PendingCue::Flat(owner, flat) => {
-                        channels.start_flat(commands, &mut mixer, effects, flat, owner)
+                    PendingCue::Animation(owner, cue) => {
+                        let current = self.bindings.get(cue.actor).ok().map_or(
+                            Owner::Entity(cue.actor),
+                            |(_, binding)| Owner::Script {
+                                generation: binding.actor.generation,
+                                index: binding.actor.index,
+                            },
+                        );
+                        if current != owner || !self.actors.contains(cue.actor) {
+                            continue;
+                        }
+                        self.emit(
+                            &SoundCue::Animation {
+                                actor: cue.actor,
+                                sound: AnimationSound::Play {
+                                    effect: cue.effect,
+                                    rate_offset_hz: cue.rate_offset_hz,
+                                },
+                                surface: cue.surface,
+                                position: cue.position,
+                            },
+                            ownership,
+                        );
+                        if !cue.remember {
+                            self.channels.animation.remove(&cue.actor);
+                        }
                     }
-                    PendingCue::Positional(owner, cue) => {
-                        if let (Some(settings), Some(listener)) =
-                            (settings.as_deref(), listener.as_deref())
-                        {
-                            channels.start_positional(
-                                commands,
+                    cue => {
+                        let mut mixer = Mixer {
+                            master: self.settings.as_ref().map_or(256, |s| s.master_volume),
+                            sources: self.sources.as_deref(),
+                            panned: self.panned.as_deref_mut(),
+                        };
+                        match cue {
+                            PendingCue::Flat(owner, flat) => self.channels.start_flat(
+                                &mut self.commands,
                                 &mut mixer,
-                                effects,
-                                cue,
+                                &self.effects,
+                                flat,
                                 owner,
-                                (settings, listener, script_listener.0),
-                            );
-                        } else {
-                            warn_once!(
-                                "queued script Sound effect {}: listener/settings unavailable",
-                                cue.effect
-                            );
+                            ),
+                            PendingCue::Positional(owner, cue) => {
+                                if let (Some(settings), Some(listener)) =
+                                    (self.settings.as_deref(), self.listener.as_deref())
+                                {
+                                    self.channels.start_positional(
+                                        &mut self.commands,
+                                        &mut mixer,
+                                        &self.effects,
+                                        cue,
+                                        owner,
+                                        (settings, listener, self.script_listener.0),
+                                    );
+                                } else {
+                                    warn_once!(
+                                        "queued script Sound effect {}: listener/settings unavailable",
+                                        cue.effect
+                                    );
+                                }
+                            }
+                            PendingCue::Animation(_, _) => unreachable!(),
                         }
                     }
                 }
             }
         }
-        // A despawned actor's remembered sound is forgotten, not stopped.
-        channels
-            .animation
-            .retain(|actor, _| actors.contains(*actor));
-        channels
-            .animation_checkpoint
-            .retain(|actor, _| actors.contains(*actor));
     }
 
     fn emit(&mut self, cue: &SoundCue, ownership: Option<Option<u64>>) {
@@ -124,7 +137,7 @@ impl SoundFrame<'_, '_> {
             sources,
             panned,
             channels,
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(any(target_arch = "wasm32", test))]
             bank_loading,
             ..
         } = self;
@@ -203,7 +216,7 @@ impl SoundFrame<'_, '_> {
                                 position: *position,
                                 start_index: *start_index,
                             };
-                            #[cfg(target_arch = "wasm32")]
+                            #[cfg(any(target_arch = "wasm32", test))]
                             if bank_loading.is_some() {
                                 channels.pending.push(PendingCue::Positional(owner, cue));
                                 continue;
@@ -231,7 +244,7 @@ impl SoundFrame<'_, '_> {
                             rate_offset_hz,
                         } => {
                             if let Ok(effect) = usize::try_from(*effect) {
-                                #[cfg(target_arch = "wasm32")]
+                                #[cfg(any(target_arch = "wasm32", test))]
                                 if bank_loading.is_some() {
                                     channels.pending.push(PendingCue::Flat(
                                         Some(owner),
@@ -268,7 +281,7 @@ impl SoundFrame<'_, '_> {
                     rate_offset_hz,
                 } => {
                     // Browser cues wait for the exported bank instead of being lost.
-                    #[cfg(target_arch = "wasm32")]
+                    #[cfg(any(target_arch = "wasm32", test))]
                     if bank_loading.is_some() {
                         channels
                             .pending
@@ -294,6 +307,31 @@ impl SoundFrame<'_, '_> {
                         rate_offset_hz,
                     } => {
                         channels.animation.remove(actor);
+                        #[cfg(any(target_arch = "wasm32", test))]
+                        {
+                            channels.forget_pending_animation(*actor);
+                            if bank_loading.is_some() {
+                                let owner = bindings.get(*actor).ok().map_or(
+                                    Owner::Entity(*actor),
+                                    |(_, binding)| Owner::Script {
+                                        generation: binding.actor.generation,
+                                        index: binding.actor.index,
+                                    },
+                                );
+                                channels.pending.push(PendingCue::Animation(
+                                    owner,
+                                    PendingAnimation {
+                                        actor: *actor,
+                                        effect: *requested,
+                                        rate_offset_hz: *rate_offset_hz,
+                                        surface: *surface,
+                                        position: *position,
+                                        remember: true,
+                                    },
+                                ));
+                                continue;
+                            }
+                        }
                         let Ok((transform, is_player, player_source)) = actors.get(*actor) else {
                             warn_once!("sound: animation cue for {actor} without a transform");
                             continue;
@@ -376,11 +414,15 @@ impl SoundFrame<'_, '_> {
                         }
                     }
                     AnimationSound::Stop => {
+                        #[cfg(any(target_arch = "wasm32", test))]
+                        channels.stop_pending_animation(*actor);
                         if let Some(slot) = channels.animation.remove(actor) {
                             channels.stop_slot(commands, slot);
                         }
                     }
                     AnimationSound::Forget => {
+                        #[cfg(any(target_arch = "wasm32", test))]
+                        channels.forget_pending_animation(*actor);
                         channels.animation.remove(actor);
                     }
                     AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {
@@ -2068,8 +2110,153 @@ mod dialogue_tests {
     }
 
     #[test]
+    fn public_animation_play_waits_for_bank_admission() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin));
+        app.insert_resource(crate::SoundBankHandle(Handle::default()));
+        app.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
+        app.insert_resource(crate::AudioListener(GlobalTransform::default()));
+        let actor = app.world_mut().spawn(GlobalTransform::default()).id();
+        app.world_mut().write_message(SoundCue::Animation {
+            actor,
+            sound: AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+            surface: Some(cyrus_assets::surface::Surface::UNKNOWN),
+            position: Some([0; 3]),
+        });
+        app.update();
+        assert_eq!(
+            app.world().resource::<Channels>().pending.len(),
+            1,
+            "an authored animation command must survive unavailable bank metadata"
+        );
+        assert!(app.world().resource::<Channels>().playing.is_empty());
+    }
+
+    fn pending_animation_app() -> (App, Entity) {
+        let mut app = App::new();
+        app.init_resource::<Assets<AudioSource>>()
+            .init_resource::<Assets<Panned>>();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin));
+        app.insert_resource(crate::SoundBankHandle(Handle::default()));
+        app.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
+        app.insert_resource(crate::AudioListener(GlobalTransform::default()));
+        let source = app
+            .world_mut()
+            .resource_mut::<Assets<AudioSource>>()
+            .add(AudioSource {
+                bytes: cyrus_assets::audio::pcm_wav(
+                    rgpre::import::sfx::AudioType::Mono16,
+                    11025,
+                    &[0, 64, 0, 64],
+                )
+                .unwrap()
+                .into(),
+            });
+        app.world_mut().resource_mut::<SoundEffects>().0 = vec![Some(Effect {
+            bits_per_sample: 16,
+            audio: source,
+            repetitions: SampleRepetitions::FOREVER,
+            base_volume: 127,
+            sample_rate: 11025,
+        })];
+        let actor = app.world_mut().spawn(GlobalTransform::default()).id();
+        (app, actor)
+    }
+    fn animation_command(app: &mut App, actor: Entity, sound: AnimationSound) {
+        app.world_mut().write_message(SoundCue::Animation {
+            actor,
+            sound,
+            surface: Some(cyrus_assets::surface::Surface::UNKNOWN),
+            position: Some([0; 3]),
+        });
+        app.update();
+    }
+    #[test]
+    fn pending_animation_stop_cancels_only_the_remembered_start() {
+        let (mut app, actor) = pending_animation_app();
+        for _ in 0..2 {
+            animation_command(
+                &mut app,
+                actor,
+                AnimationSound::Play {
+                    effect: 0,
+                    rate_offset_hz: 0,
+                },
+            );
+        }
+        animation_command(&mut app, actor, AnimationSound::Stop);
+        assert_eq!(app.world().resource::<Channels>().pending.len(), 1);
+        app.world_mut().remove_resource::<crate::SoundBankHandle>();
+        app.update();
+        assert_eq!(app.world().resource::<Channels>().playing.len(), 1);
+        assert!(
+            !app.world()
+                .resource::<Channels>()
+                .animation
+                .contains_key(&actor)
+        );
+        app.update();
+        assert_eq!(app.world().resource::<Channels>().playing.len(), 1);
+    }
+    #[test]
+    fn pending_animation_forget_preserves_playback_without_a_stop_handle() {
+        let (mut app, actor) = pending_animation_app();
+        animation_command(
+            &mut app,
+            actor,
+            AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+        );
+        animation_command(&mut app, actor, AnimationSound::Forget);
+        animation_command(&mut app, actor, AnimationSound::Stop);
+        app.world_mut().remove_resource::<crate::SoundBankHandle>();
+        app.update();
+        assert_eq!(app.world().resource::<Channels>().playing.len(), 1);
+        assert!(
+            !app.world()
+                .resource::<Channels>()
+                .animation
+                .contains_key(&actor)
+        );
+    }
+    #[test]
+    fn pending_animation_does_not_transfer_to_a_recreated_entity() {
+        let (mut app, actor) = pending_animation_app();
+        animation_command(
+            &mut app,
+            actor,
+            AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+        );
+        app.world_mut().despawn(actor);
+        let replacement = app.world_mut().spawn(GlobalTransform::default()).id();
+        animation_command(
+            &mut app,
+            replacement,
+            AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+        );
+        app.world_mut().remove_resource::<crate::SoundBankHandle>();
+        app.update();
+        let channels = app.world().resource::<Channels>();
+        assert_eq!(channels.playing.len(), 1);
+        assert!(channels.animation.contains_key(&replacement));
+        assert!(!channels.animation.contains_key(&actor));
+    }
+
+    #[test]
     fn queued_script_stops_preserve_other_owners_and_effects() {
         let mut app = App::new();
+        app.insert_resource(crate::SoundBankHandle(Handle::default()));
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin));
         let mut actors = cyrus_script::script::ScriptActors::default();
         actors.current = Some(maintenance_world(false));

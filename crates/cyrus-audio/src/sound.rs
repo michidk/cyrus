@@ -334,28 +334,60 @@ struct PositionalCue {
     start_index: Option<u8>,
 }
 
+/// An animation command retains emission-time placement and remembered-handle intent.
+#[cfg(any(target_arch = "wasm32", test))]
+struct PendingAnimation {
+    actor: Entity,
+    effect: i16,
+    rate_offset_hz: i32,
+    surface: Option<cyrus_assets::surface::Surface>,
+    position: Option<[i32; 3]>,
+    remember: bool,
+}
+
 #[cfg(any(target_arch = "wasm32", test))]
 enum PendingCue {
     Flat(Option<Owner>, (usize, i32, i32)),
     Positional(Owner, PositionalCue),
+    Animation(Owner, PendingAnimation),
 }
 #[cfg(any(target_arch = "wasm32", test))]
 impl PendingCue {
     fn owner(&self) -> Option<Owner> {
         match self {
             Self::Flat(owner, _) => *owner,
-            Self::Positional(owner, _) => Some(*owner),
+            Self::Positional(owner, _) | Self::Animation(owner, _) => Some(*owner),
         }
     }
     fn effect(&self) -> Option<i32> {
         match self {
             Self::Flat(_, (effect, _, _)) => i32::try_from(*effect).ok(),
             Self::Positional(_, cue) => Some(cue.effect),
+            Self::Animation(_, cue) => Some(i32::from(cue.effect)),
         }
     }
 }
 
 impl Channels {
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn forget_pending_animation(&mut self, actor: Entity) {
+        for cue in &mut self.pending {
+            if let PendingCue::Animation(_, cue) = cue
+                && cue.actor == actor
+            {
+                cue.remember = false;
+            }
+        }
+    }
+
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn stop_pending_animation(&mut self, actor: Entity) {
+        self.pending.retain(|cue| {
+            !matches!(cue,
+            PendingCue::Animation(_, cue) if cue.actor == actor && cue.remember)
+        });
+    }
+
     fn start_positional(
         &mut self,
         commands: &mut Commands,
@@ -901,10 +933,10 @@ fn finish_bank(
         }
         _ => return,
     }
-    commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
     let Some(bank) = banks.get(&handle.0) else {
         return;
     };
+    commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
     let mut settings = SoundSettings::parse("");
     settings.master_volume = bank.master_volume;
     settings.sound_distance = bank.sound_distance;
