@@ -2,6 +2,59 @@
 use super::*;
 
 #[test]
+fn attached_rope_input_keeps_turn_acceleration_and_release_current() {
+    use cyrus_script::player::input::PlayerInput;
+
+    let (_, mut world, data, mut scene) = rope_classification_fixture();
+    scene.settings.turn_speed = 12;
+    scene.settings.turn_max_speed = 48;
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    assert!(world.selected_player_on_rope());
+
+    for expected in [12, 24, 36, 48, 48] {
+        tick_rope_classification(
+            &mut world,
+            &data,
+            &scene,
+            PlayerInput {
+                left: true,
+                ..Default::default()
+            },
+            false,
+        );
+        assert!(world.selected_player_on_rope());
+        assert!(world.actors()[player.index].failure().is_none());
+        let turn = world.inspect(0, 0)["globals"]["turn"].clone();
+        assert_eq!(turn["left"], expected);
+        assert_eq!(turn["right"], 0);
+    }
+
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    let turn = world.inspect(0, 0)["globals"]["turn"].clone();
+    assert_eq!(turn["left"], 0);
+    assert_eq!(turn["right"], 0);
+    assert!(world.selected_player_on_rope());
+
+    tick_rope_classification(
+        &mut world,
+        &data,
+        &scene,
+        PlayerInput {
+            right: true,
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    );
+    assert!(!world.selected_player_on_rope());
+    assert!(world.actors()[player.index].failure().is_none());
+    let turn = world.inspect(0, 0)["globals"]["turn"].clone();
+    assert_eq!(turn["left"], 0);
+    assert_eq!(turn["right"], 12);
+}
+
+#[test]
 fn a_positive_rope_grab_retains_height_before_three_animation_progress_values() {
     let (_, mut world, data, scene) = rope_classification_fixture_with(
         |_| {},

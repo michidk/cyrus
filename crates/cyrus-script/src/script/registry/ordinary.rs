@@ -461,8 +461,10 @@ impl ScriptWorld {
                     fine_ticks: 0,
                 };
                 // The input update runs every frame, including while a script task owns the player.
-                if let (Some(query), Some(controller)) = (&player_query, inputs.player_controller) {
-                    let settings = &query.scene.settings;
+                if selected_player && let Some(controller) = inputs.player_controller {
+                    let settings = &scene
+                        .ok_or_else(|| anyhow::anyhow!("player input scene unavailable"))?
+                        .settings;
                     let (increment, limit) = if self.player_turn_uses_fight_values(id, inputs)? {
                         let attributes = &self.actors[id.index].attributes;
                         (
