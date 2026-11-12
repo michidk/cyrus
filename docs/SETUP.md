@@ -1713,8 +1713,14 @@ python3 gameplay-media-capture.py /evidence/new-capture \
 ```
 
 The local observation adapter returns JSON with `ready: true`, `scene`, integer
-`frame`, finite `game_seconds`, `execution: "running"`, and selected `player`
-state. It must observe without stopping execution. The trigger adapter returns
+`frame`, finite `game_seconds`, integer `elapsed_scale` in Q8 nominal ticks,
+installed integer `normal_frame_rate`, `execution: "running"`, and selected
+`player` state. `game_seconds` must equal the integer clock divided by 256 and
+the rate. A passive reader also returns `elapsed_scale_end` from after its actor
+read; an atomic boundary snapshot may omit that field. Read spans are retained,
+not collapsed to an invented instant. Missing scales, inconsistent seconds and
+reversed read spans reject acquisition before they can become success evidence.
+The adapter must observe without stopping execution. The trigger adapter returns
 `acknowledged: true` and a `boundary` captured when placement is applied. That
 boundary carries the same actor/scene/frame/clock fields, integer `elapsed_scale`
 in Q8 nominal ticks, installed `normal_frame_rate`, `event: "placement_applied"`
@@ -1728,8 +1734,10 @@ its last argument. Keep executable-specific adapters outside the tracked tree.
 The recorder admits PCM and a baseline raster before the trigger, then captures
 until the requested game-clock progress from that event boundary. The later
 trigger observation remains diagnostic and cannot shift the origin. Each raster
-retains both surrounding actor observations and wall/game-clock bounds. A window
-is explicitly non-atomic. Gaps stay visible and are never admitted as exact
+retains both surrounding actor observations and wall/game-clock bounds, integer
+`clock_scale`, installed `normal_frame_rate`, and signed `event_relative_scale`
+bounds measured from the acknowledged placement. Pre-trigger baseline windows
+retain negative offsets. A window is explicitly non-atomic. Gaps stay visible and are never admitted as exact
 update coverage. Scene changes, clock reversal, stopped execution, unavailable
 actors, silent audio and monitor pacing failure reject capture. Partial media,
 adapter diagnostics and failure results survive rejection; retries require a new
@@ -1742,11 +1750,28 @@ To admit two captures' clock windows before interpreting their pixels or PCM:
 python3 dev/scripts/gameplay-media-capture.py --compare-captures /evidence/original /evidence/native
 ```
 
-Both observation adapters must retain integer `elapsed_scale` and
-`normal_frame_rate` on every raster bound. Native `schedule_input` observations
+Every raster records a `pcm_frames` range of complete stereo sample frames
+delivered to the recorder during its observation/screenshot bracket. The recorder
+captures raw signed 16-bit stereo at 48 kHz in `audio.raw`, then wraps those bytes
+in `audio.wav` without resampling. An incomplete final sample frame rejects
+finalization. `pcm-windows.jsonl` retains adjacent observation brackets through
+the recorder tail, including integer/event-relative clocks and file frame ranges.
+Those ranges cover the complete successful recording and may overlap across an
+observation's read span. `observations.jsonl` retains each observation, recorder
+cursor bracket and monotonic epoch immediately, so a failed run keeps its progress.
+`pcm_unobserved_tail_frames` reports delivered PCM after the last retained
+observation if capture fails.
+
+These sample ranges describe recorder delivery, which may lag mixer generation.
+They do not assert a zero-latency correspondence with a game event. The output
+keeps `exact_pcm_event_mapping: false`; event mapping must be established before
+interpreting playback timing.
+
+Native `schedule_input` observations
 publish these fields before the input's update is consumed. The comparison
-requires equal scene and event-relative game-clock intervals for every window,
-using exact rational arithmetic. Missing scales and unequal intervals reject
+requires equal scene and event-relative game-clock intervals for every raster
+and PCM window, using exact rational arithmetic. Missing PCM windows, gaps in
+sample coverage and incomplete recording coverage reject admission. Missing scales and unequal intervals reject
 admission. Different absolute world ages are allowed. Admission establishes only
 matching clock windows. It does not establish equivalent world state, atomic
 pose/pixel correspondence or exact PCM sample-to-event mapping inside a wall-clock

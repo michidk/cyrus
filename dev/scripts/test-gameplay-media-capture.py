@@ -16,10 +16,32 @@ spec.loader.exec_module(media)
 
 def observation(clock=1, frame=12, execution='running'):
     return dict(ready=True, scene='CAVERNS', game_seconds=clock, frame=frame,
-                execution=execution, player={'position_q8': [1, 2, 3]})
+                execution=execution, player={'position_q8': [1, 2, 3]},
+                elapsed_scale=int(clock * 3072) if isinstance(clock, (int, float)) and __import__('math').isfinite(clock) else 0,
+                normal_frame_rate=12)
 
 
 class Windows(unittest.TestCase):
+    def test_missing_or_inconsistent_integer_scale_is_rejected_at_acquisition(self):
+        for row in (dict(observation(), elapsed_scale=None),
+                    dict(observation(), elapsed_scale=True),
+                    dict(observation(), elapsed_scale=3073),
+                    dict(observation(), elapsed_scale_end=3071),
+                    dict(observation(), game_seconds=True)):
+            with self.assertRaises(ValueError):
+                media.require_observation(row)
+
+    def test_read_span_and_event_relative_bounds_survive_window_serialization(self):
+        before = dict(observation(1, 12), elapsed_scale_end=3200)
+        after = dict(observation(1.25, 14), elapsed_scale_end=4000)
+        row = media.window(before, after, .2, .4, 'frame.png')
+        origin = dict(observation(.5, 8), event='placement_applied', phase='before_ordinary_update')
+        anchored = media.anchor_window(row, origin)
+        self.assertEqual(anchored['clock_scale'], [3072, 4000])
+        self.assertEqual(anchored['event_relative_scale'], [1536, 2464])
+        self.assertEqual(anchored['normal_frame_rate'], 12)
+        self.assertFalse(anchored['atomic'])
+
     def test_delayed_poll_cannot_shift_acknowledged_trigger_origin(self):
         boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
                         event='placement_applied', phase='before_ordinary_update')
@@ -69,6 +91,21 @@ class Windows(unittest.TestCase):
             with self.assertRaises(ValueError):
                 media.window(bad, observation(1.25, 14), .2, .4, 'frame.png')
 
+    def test_pcm_delivery_cursor_and_incomplete_final_frame(self):
+        import struct, wave
+        with tempfile.TemporaryDirectory() as temp:
+            raw, wav = Path(temp) / 'audio.raw', Path(temp) / 'audio.wav'
+            payload = struct.pack('<hh', 1234, -1234) * 3
+            raw.write_bytes(payload + b'x')
+            self.assertEqual(media.pcm_frames(raw), 3)
+            with self.assertRaisesRegex(ValueError, 'incomplete stereo'):
+                media.finalize_pcm(raw, wav)
+            raw.write_bytes(payload)
+            media.finalize_pcm(raw, wav)
+            with wave.open(str(wav)) as recording:
+                self.assertEqual(recording.getparams()[:3], (2, 2, 48000))
+                self.assertEqual(recording.readframes(3), payload)
+
     def test_non_raster_output_cannot_be_admitted_as_pixels(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'frame.png'
@@ -94,9 +131,12 @@ class MatchedIntervals(unittest.TestCase):
             return dict(observation(scale / 3072, frame), elapsed_scale=scale, normal_frame_rate=12)
         origin = dict(sample(start, 12), event='placement_applied', phase='before_ordinary_update')
         (directory / 'result.json').write_text(json.dumps(dict(success=True,
-            trigger=dict(acknowledged=True, boundary=origin), trigger_observation=sample(start, 12))))
+            trigger=dict(acknowledged=True, boundary=origin), trigger_observation=sample(start, 12),
+            audio=dict(frames=48000))))
         row = media.window(sample(start, 12), sample(start + duration, 14), .1, .2, '1.png')
         (directory / 'windows.jsonl').write_text(json.dumps(row) + '\n')
+        row.update(pcm_frames=[0, 48000], pixels=None)
+        (directory / 'pcm-windows.jsonl').write_text(json.dumps(row) + '\n')
         return directory
 
     def test_exact_relative_intervals_allow_different_world_ages(self):
@@ -111,6 +151,35 @@ class MatchedIntervals(unittest.TestCase):
             self.assertTrue(json.loads(result.stdout)['matched_clock_intervals'])
             self.assertTrue(media.matching_intervals(left, right)['matched_clock_intervals'])
             self.assertFalse(media.matching_intervals(left, right)['exact_pcm_event_mapping'])
+
+    def test_passive_read_span_is_part_of_exact_interval_admission(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            left = self.fixture(root, 'left', 3072, 384)
+            right = self.fixture(root, 'right', 6144, 384)
+            path = right / 'windows.jsonl'
+            row = json.loads(path.read_text())
+            row['after']['elapsed_scale_end'] = row['after']['elapsed_scale'] + 1
+            path.write_text(json.dumps(row))
+            with self.assertRaisesRegex(ValueError, 'intervals differ'):
+                media.matching_intervals(left, right)
+
+    def test_pcm_clock_mismatch_cannot_hide_behind_matching_rasters(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            left = self.fixture(root, 'left', 3072, 384)
+            right = self.fixture(root, 'right', 6144, 384)
+            path = right / 'pcm-windows.jsonl'
+            row = json.loads(path.read_text())
+            row['after']['elapsed_scale'] += 128
+            row['after']['game_seconds'] = row['after']['elapsed_scale'] / 3072
+            path.write_text(json.dumps(row))
+            with self.assertRaisesRegex(ValueError, 'intervals differ'):
+                media.matching_intervals(left, right)
+            row['pcm_frames'] = [1, 48000]
+            path.write_text(json.dumps(row))
+            with self.assertRaisesRegex(ValueError, 'gap'):
+                media.matching_intervals(left, right)
 
     def test_one_eighth_and_one_sixth_second_cannot_match(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -139,14 +208,13 @@ def stop(*args):
     global running
     running = False
 signal.signal(signal.SIGINT, stop)
-with wave.open(sys.argv[-1], 'wb') as out:
-    out.setparams((2, 2, 48000, 0, 'NONE', 'not compressed'))
+with open(sys.argv[-1], 'wb', buffering=0) as out:
     start = time.monotonic()
     frames = 0
     while running:
         needed = int((time.monotonic() - start) * 48000) - frames
         if needed > 0:
-            out.writeframes(struct.pack('<hh', 1000, -1000) * needed)
+            out.write(struct.pack('<hh', 1000, -1000) * needed)
             frames += needed
         time.sleep(.005)
 """)
@@ -156,13 +224,15 @@ with wave.open(sys.argv[-1], 'wb') as out:
 root = pathlib.Path(sys.argv[1])
 mode = sys.argv[2]
 if mode == 'observe':
+    if (root / 'fail-observer').exists() and (root / 'triggered').exists():
+        sys.stderr.write('actor observation interrupted after trigger');sys.exit(7)
     path = root / 'counter'
     count = int(path.read_text()) + 1 if path.exists() else 0
     path.write_text(str(count))
     print(json.dumps(dict(ready=True, scene='fixture', frame=count,
-        game_seconds=count / 4, execution='running', player={'health':100})))
+        game_seconds=count / 4, elapsed_scale=count * 768, normal_frame_rate=12, execution='running', player={'health':100})))
 elif mode == 'trigger':
-    assert (root / 'capture/audio.wav').stat().st_size > 44
+    assert (root / 'capture/audio.raw').stat().st_size > 44
     (root / 'triggered').touch()
     count = int((root / 'counter').read_text())
     print(json.dumps(dict(acknowledged=True, boundary=dict(ready=True, scene='fixture',
@@ -194,9 +264,31 @@ else:
             self.assertGreaterEqual(len(rows), 2)
             self.assertLess(rows[0]['wall_seconds'][1], report['audio']['transitions'][0]['sent'])
             self.assertTrue(all((root / 'capture' / row['pixels']).exists() for row in rows))
+            self.assertTrue(all('event_relative_scale' in row and 'pcm_frames' in row for row in rows))
+            pcm = [json.loads(line) for line in (root / 'capture/pcm-windows.jsonl').read_text().splitlines()]
+            self.assertEqual(pcm[0]['pcm_frames'][0], 0)
+            self.assertEqual(pcm[-1]['pcm_frames'][1], report['audio']['frames'])
+            self.assertTrue(all('clock_scale' in row and 'event_relative_scale' in row for row in pcm))
+            self.assertFalse(report['audio']['exact_pcm_event_mapping'])
+            self.assertEqual(report['pcm_unobserved_tail_frames'], 0)
             repeated = subprocess.run(command, env=env, capture_output=True, text=True)
             self.assertNotEqual(repeated.returncode, 0)
             self.assertEqual(json.loads((root / 'capture/result.json').read_text()), report)
+            # A later observer failure retains live PCM and the earlier clock/cursor journal.
+            (root / 'triggered').unlink()
+            (root / 'fail-observer').touch()
+            command[2] = str(root / 'interrupted')
+            interrupted = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertNotEqual(interrupted.returncode, 0)
+            failed = json.loads((root / 'interrupted/result.json').read_text())
+            self.assertFalse(failed['success'])
+            self.assertGreater(failed['pcm_delivery_frames'], 0)
+            self.assertGreaterEqual(failed['pcm_unobserved_tail_frames'], 0)
+            points = (root / 'interrupted/observations.jsonl').read_text().splitlines()
+            self.assertGreaterEqual(len(points), 3)
+            self.assertIn('actor observation interrupted after trigger',
+                          (root / 'interrupted/adapters.log').read_text())
+
 
     def test_failed_observer_preserves_diagnostic_without_trigger_or_pcm(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -207,7 +299,7 @@ else:
                     ['must-not-trigger'], ['must-not-capture'], 1, 5, .1)
             self.assertIn('actor unavailable', (root / 'capture/adapters.log').read_text())
             self.assertFalse(json.loads((root / 'capture/result.json').read_text())['success'])
-            self.assertFalse((root / 'capture/audio.wav').exists())
+            self.assertFalse((root / 'capture/audio.raw').exists())
 
 
 if __name__ == '__main__':

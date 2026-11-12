@@ -3,7 +3,8 @@
 
 Local adapters observe running gameplay, trigger the prepared fixture, and save a
 screenshot to their final argument. Observations contain ready, scene, frame,
-game_seconds, execution='running', and player. They must never stop the game.
+game_seconds, integer elapsed_scale and normal_frame_rate, execution='running',
+and player. Passive reads also retain elapsed_scale_end. They must never stop the game.
 Trigger adapters return acknowledged=true plus a boundary with ready, scene, frame,
 player, game_seconds, elapsed_scale (integer Q8 nominal ticks), normal_frame_rate,
 execution, event='placement_applied', and phase='before_ordinary_update'. The
@@ -21,6 +22,7 @@ import shlex
 import signal
 import subprocess
 import struct
+import wave
 import time
 
 spec = importlib.util.spec_from_file_location('mixer', Path(__file__).with_name('paced-mixer-capture.py'))
@@ -32,9 +34,15 @@ def require_observation(row):
     if (row.get('ready') is not True or not row.get('scene') or not row.get('player')
             or row.get('execution') != 'running'
             or type(row.get('frame')) is not int
-            or not isinstance(row.get('game_seconds'), (int, float))
+            or type(row.get('game_seconds')) not in (int, float)
             or not math.isfinite(row['game_seconds'])):
         raise ValueError('require ready selected actor, finite clock and running execution')
+    scale, rate = row.get('elapsed_scale'), row.get('normal_frame_rate')
+    end = row.get('elapsed_scale_end', scale)
+    if (type(scale) is not int or scale < 0 or type(end) is not int or end < scale
+            or type(rate) is not int or rate <= 0
+            or row['game_seconds'] != scale / (256 * rate)):
+        raise ValueError('observation requires exact event-clock scale, read span and rate')
     return row
 
 
@@ -63,7 +71,8 @@ def trigger_origin(acknowledgement, observed):
 def elapsed_from_origin(boundary, observed):
     require_observation(observed)
     if (observed['scene'] != boundary['scene'] or observed['frame'] < boundary['frame']
-            or observed['game_seconds'] < boundary['game_seconds']):
+            or observed['game_seconds'] < boundary['game_seconds']
+            or (boundary.get('generation') is not None and observed.get('generation') != boundary['generation'])):
         raise ValueError('scene or clock reset after fixture event')
     return observed['game_seconds'] - boundary['game_seconds']
 
@@ -72,12 +81,36 @@ def window(before, after, started, ended, pixels):
     require_observation(before)
     require_observation(after)
     if (before['scene'] != after['scene'] or after['frame'] < before['frame']
-            or after['game_seconds'] < before['game_seconds']
+            or after['elapsed_scale'] < before.get('elapsed_scale_end', before['elapsed_scale'])
+            or after['normal_frame_rate'] != before['normal_frame_rate']
+            or (before.get('generation') is not None and after.get('generation') != before['generation'])
             or not 0 <= started <= ended):
         raise ValueError('scene or clock reset within raster window')
     return dict(before=before, after=after, wall_seconds=[started, ended],
                 game_seconds=[before['game_seconds'], after['game_seconds']],
-                pixels=pixels, atomic=False)
+                pixels=pixels, atomic=False,
+                clock_scale=[before['elapsed_scale'], after.get('elapsed_scale_end', after['elapsed_scale'])],
+                normal_frame_rate=before['normal_frame_rate'])
+
+
+def anchor_window(row, origin):
+    if row['before']['scene'] != origin['scene'] or row['normal_frame_rate'] != origin['normal_frame_rate']:
+        raise ValueError('window does not belong to the placement event clock')
+    return dict(row, event_relative_scale=[value - origin['elapsed_scale'] for value in row['clock_scale']])
+
+
+def pcm_frames(path):
+    """Complete stereo s16 frames delivered to the recorder file, not mixer event time."""
+    return path.stat().st_size // 4 if path.exists() else 0
+
+
+def finalize_pcm(raw, wav):
+    if raw.stat().st_size % 4:
+        raise ValueError('monitor ended with an incomplete stereo PCM frame')
+    with raw.open('rb') as source, wave.open(str(wav), 'wb') as target:
+        target.setparams((2, 2, 48000, 0, 'NONE', 'not compressed'))
+        while block := source.read(1024 * 1024):
+            target.writeframesraw(block)
 
 
 def summarize(rows, required_progress):
@@ -93,7 +126,7 @@ def summarize(rows, required_progress):
 
 
 def matching_intervals(left, right):
-    """Admit equal event-relative raster windows, with no timing tolerance.
+    """Admit equal event-relative raster and PCM windows, with no timing tolerance.
 
     This checks clock intervals only. It cannot make a non-atomic raster atomic
     or map PCM samples to an exact game event inside a wall-clock bracket.
@@ -104,25 +137,33 @@ def matching_intervals(left, right):
             raise ValueError('capture did not complete')
         origin = trigger_origin(result['trigger'], result['trigger_observation'])
         rate = origin['normal_frame_rate']
-        start = origin['elapsed_scale']
         rows = [json.loads(line) for line in (directory / 'windows.jsonl').read_text().splitlines()]
         summarize(rows, 0)
-        times = []
-        for row in rows:
-            window(row['before'], row['after'], *row['wall_seconds'], row['pixels'])
-            bounds = []
-            for observation in (row['before'], row['after']):
-                scale = observation.get('elapsed_scale')
-                if (observation['scene'] != origin['scene'] or type(scale) is not int or scale < 0
-                        or observation.get('normal_frame_rate') != rate
-                        or observation['game_seconds'] != scale / (256 * rate)):
-                    raise ValueError('raster bounds require exact event-clock scale and rate')
-                bounds.append(Fraction(scale - start, 256 * rate))
-            times.append(tuple(bounds))
-        return origin['scene'], times
+        def clock_intervals(windows):
+            times = []
+            for row in windows:
+                measured = window(row['before'], row['after'], *row['wall_seconds'], row['pixels'])
+                anchored = anchor_window(measured, origin)
+                times.append(tuple(Fraction(scale, 256 * rate) for scale in anchored['event_relative_scale']))
+            return times
+        pcm = [json.loads(line) for line in (directory / 'pcm-windows.jsonl').read_text().splitlines()]
+        total = result['audio']['frames']
+        if type(total) is not int or total <= 0:
+            raise ValueError('PCM recording has no complete frames')
+        previous_start = previous_end = 0
+        for row in pcm:
+            first, last = row['pcm_frames']
+            if (type(first) is not int or type(last) is not int
+                    or not previous_start <= first <= previous_end <= last <= total):
+                raise ValueError('PCM delivery ranges have a gap, reset or invalid frame bound')
+            previous_start, previous_end = first, last
+        if not pcm or previous_end != total:
+            raise ValueError('PCM clock windows do not cover the complete recording')
+        return origin['scene'], clock_intervals(rows), clock_intervals(pcm)
     if intervals(left) != intervals(right):
         raise ValueError('capture event-relative game-clock intervals differ')
-    return dict(matched_clock_intervals=True, atomic=False, exact_pcm_event_mapping=False)
+    return dict(matched_clock_intervals=True, matched_pcm_clock_intervals=True,
+                atomic=False, exact_pcm_event_mapping=False)
 
 
 def raster_metadata(path):
@@ -142,6 +183,9 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
     result = dict(success=False, exact_update_coverage=False)
     recorder = None
     rows = []
+    points = []
+    origin = None
+    raw = output / 'audio.raw'
     epoch = time.monotonic()
     deadline = epoch + timeout
 
@@ -157,24 +201,47 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
         return proc.stdout
 
     def sample():
-        return require_observation(json.loads(run(observe)))
+        started, first = time.monotonic() - epoch, pcm_frames(raw)
+        observed = require_observation(json.loads(run(observe)))
+        point = dict(observation=observed, wall_seconds=[started, time.monotonic() - epoch],
+                     epoch_monotonic_seconds=epoch, pcm_frames=[first, pcm_frames(raw)])
+        points.append(point)
+        with (output / 'observations.jsonl').open('a') as log:
+            log.write(json.dumps(point) + '\n')
+        persist_pcm_windows()
+        return observed
+
+    def persist_windows():
+        with (output / 'windows.jsonl').open('w') as log:
+            for row in rows:
+                log.write(json.dumps(anchor_window(row, origin) if origin else row) + '\n')
+
+    def persist_pcm_windows():
+        with (output / 'pcm-windows.jsonl').open('w') as log:
+            for before, after in zip(points, points[1:]):
+                row = window(before['observation'], after['observation'],
+                             before['wall_seconds'][0], after['wall_seconds'][1], None)
+                row.update(pcm_frames=[before['pcm_frames'][0], after['pcm_frames'][1]],
+                           pcm_mapping='recorder_delivery_bracket')
+                log.write(json.dumps(anchor_window(row, origin) if origin else row) + '\n')
 
     try:
         baseline = sample()
         result['baseline'] = baseline
         epoch = time.monotonic()
         result['epoch_monotonic_seconds'] = epoch
+        points[:] = [dict(observation=baseline, wall_seconds=[0, 0], pcm_frames=[0, 0])]
         path = output / 'audio.wav'
         with (output / 'recorder.log').open('w') as log:
-            recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--file-format=wav',
-                '--format=s16le', '--rate=48000', '--channels=2', '--latency-msec=20', str(path)], stderr=log)
-        while not path.exists() or path.stat().st_size <= 44:
+            recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--raw',
+                '--format=s16le', '--rate=48000', '--channels=2', '--latency-msec=20', str(raw)], stderr=log)
+        while pcm_frames(raw) == 0:
             if recorder.poll() is not None or time.monotonic() > min(deadline, epoch + 5):
                 raise RuntimeError('monitor did not admit PCM before trigger')
             time.sleep(.01)
         # Retain a real raster before trigger, with the recorder already admitted.
         def raster():
-            started = time.monotonic() - epoch
+            started, first = time.monotonic() - epoch, pcm_frames(raw)
             before = sample()
             pixels = f'frame-{len(rows):04}.png'
             run(screenshot + [str(output / pixels)])
@@ -183,9 +250,10 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
             metadata = raster_metadata(output / pixels)
             row = window(before, after, started, ended, pixels)
             row['raster'] = metadata
+            row['pcm_frames'] = [first, pcm_frames(raw)]
+            row['pcm_mapping'] = 'recorder_delivery_bracket'
             rows.append(row)
-            with (output / 'windows.jsonl').open('a') as log:
-                log.write(json.dumps(row) + '\n')
+            persist_windows()
         raster()
         sent = time.monotonic() - epoch
         result['trigger'] = json.loads(run(trigger))
@@ -193,6 +261,9 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
         result['trigger_observation'] = sample()
         trigger_boundary = trigger_origin(result['trigger'], result['trigger_observation'])
         result['trigger_boundary'] = trigger_boundary
+        origin = trigger_boundary
+        persist_windows()
+        persist_pcm_windows()
         while True:
             raster()
             post_trigger_progress = elapsed_from_origin(trigger_boundary, rows[-1]['after'])
@@ -204,9 +275,14 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
         code = recorder.wait(timeout=5)
         if code not in (0, -signal.SIGINT):
             raise RuntimeError(f'monitor recorder exited {code}')
+        # Bound the recorder tail with a running observation, without treating file
+        # delivery as a zero-latency mixer event or interpolating game time.
+        sample()
+        finalize_pcm(raw, path)
         # Reuse the real monitor pacing/non-silence gate, with explicit fixture epochs.
         audio = mixer.validate(path, ended - epoch,
             [dict(sent=sent, acknowledged=acknowledged, **{'from': 'prepared', 'to': 'triggered'})], .25)
+        audio.update(exact_pcm_event_mapping=False, clock_windows='pcm-windows.jsonl')
         result.update(summarize(rows, seconds), audio=audio,
                       post_trigger_game_seconds=post_trigger_progress, success=True)
     except Exception as error:
@@ -220,6 +296,8 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
             except subprocess.TimeoutExpired:
                 recorder.kill()
                 recorder.wait()
+        result['pcm_delivery_frames'] = pcm_frames(raw)
+        result['pcm_unobserved_tail_frames'] = pcm_frames(raw) - (points[-1]['pcm_frames'][1] if points else 0)
         (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 
