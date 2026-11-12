@@ -325,6 +325,9 @@ The browser parses them in a worker and generates selected previews in memory.
 
 The game and viewer share `target/web`, the loader, Cache Storage, and the
 selected read-only install service. Both prepare assets in browser memory.
+Digest-addressed original-file ranges reuse Cache Storage when the explicit range agrees with the HTTP Range header. Other
+Range requests bypass this cache. Run `bun dev/scripts/test-original-range-cache.mjs`
+to check reuse, source/range isolation and response validation.
 Set `CARGO_TARGET_DIR` to build the wasm outside the checkout (for example on a
 volume that is not cleaned); the web root stays in `target/web`.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
