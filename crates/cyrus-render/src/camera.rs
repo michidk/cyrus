@@ -16,6 +16,9 @@ pub struct ViewCamera;
 pub struct FlycamSettings {
     pub enabled: bool,
     pub speed: f32,
+    /// Keep sending keyboard input to the game or the book while the flycam is enabled. By default
+    /// the flycam owns the controls.
+    pub pass_input: bool,
 }
 
 impl Default for FlycamSettings {
@@ -23,6 +26,7 @@ impl Default for FlycamSettings {
         Self {
             enabled: false,
             speed: 150.0,
+            pass_input: false,
         }
     }
 }
@@ -80,14 +84,25 @@ fn frame_scene(
     frame.0 = false;
 }
 
+/// Whether the inspection camera takes input: enabled, and no console or logbook reading input.
+fn flycam_active(
+    flycam: Res<FlycamSettings>,
+    console: Option<Res<cyrus_console::Console>>,
+    logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
+) -> bool {
+    flycam.enabled
+        && !console.is_some_and(|console| console.open)
+        && !logbook.is_some_and(|screen| screen.suspended())
+}
+
 /// WASD + mouse look while the right button is held, Space/Shift for up/down.
-fn flycam_controller(
+fn flycam_controller<C: Component>(
     keys: Res<ButtonInput<KeyCode>>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse: Res<AccumulatedMouseMotion>,
     flycam: Res<FlycamSettings>,
     time: Res<Time>,
-    mut player: Query<&mut Transform, With<ViewCamera>>,
+    mut player: Query<&mut Transform, With<C>>,
 ) {
     let Ok(mut t) = player.single_mut() else {
         return;
@@ -265,6 +280,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<crate::fog::RenderDistance>()
             .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
+            .init_resource::<cyrus_game::FlycamEngaged>()
             .init_resource::<InputSuppressed>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(Update, suppress.before(InputSample))
@@ -280,14 +296,17 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 (
+                    flycam_controller::<cyrus_game::BookCamera>.run_if(flycam_active),
+                )
+                    .run_if(in_state(AppState::Menu)),
+            )
+            .add_systems(
+                Update,
+                (
                     frame_scene.run_if(|f: Res<FrameScene>, camera: Res<FlycamSettings>| {
                         f.0 && camera.enabled
                     }),
-                    flycam_controller.run_if(
-                        |f: Res<FlycamSettings>, console: Option<Res<cyrus_console::Console>>, logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>| {
-                            f.enabled && !console.is_some_and(|console| console.open) && !logbook.is_some_and(|screen| screen.suspended())
-                        },
-                    ),
+                    flycam_controller::<ViewCamera>.run_if(flycam_active),
                     follow_player
                         .after(cyrus_script::player::placement::PlayerPlacement)
                         .run_if(|f: Res<FlycamSettings>, drive: Res<cyrus_script::script::CameraDrive>| {
@@ -363,8 +382,13 @@ pub(crate) fn script_view(
     });
 }
 
-fn suppress(flycam: Res<FlycamSettings>, mut suppressed: ResMut<InputSuppressed>) {
-    suppressed.0 = flycam.enabled;
+fn suppress(
+    flycam: Res<FlycamSettings>,
+    mut suppressed: ResMut<InputSuppressed>,
+    mut engaged: ResMut<cyrus_game::FlycamEngaged>,
+) {
+    engaged.0 = flycam.enabled;
+    suppressed.0 = flycam.enabled && !flycam.pass_input;
 }
 fn spawn(
     mut commands: Commands,
@@ -516,6 +540,7 @@ mod tests {
         app.insert_resource(FlycamSettings {
             enabled: false,
             speed: 321.0,
+            ..default()
         })
         .add_systems(Update, spawn);
         let camera = app
@@ -550,6 +575,7 @@ mod tests {
             .insert_resource(FlycamSettings {
                 enabled: true,
                 speed: 150.0,
+                ..default()
             })
             .add_systems(Update, script_view);
         app.world_mut()

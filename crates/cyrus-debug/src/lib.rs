@@ -194,6 +194,10 @@ fn debug_menu(
                     .speed(1.0),
             );
         });
+        ui.add_enabled(
+            flycam.enabled,
+            egui::Checkbox::new(&mut flycam.pass_input, "Pass input to game"),
+        );
 
         if let Some([near, original]) = distance.original {
             let mut far = distance.effective(&fidelity).unwrap()[1];

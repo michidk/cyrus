@@ -200,7 +200,7 @@ impl LastGameConfirmation {
     }
 }
 
-fn blend(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
+pub(super) fn blend(image: &mut RgbaImage, x: i32, y: i32, colour: [u8; 3], alpha: u8) {
     if !(0..640).contains(&x) || !(0..480).contains(&y) {
         return;
     }

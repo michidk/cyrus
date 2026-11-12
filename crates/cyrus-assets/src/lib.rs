@@ -499,6 +499,7 @@ pub mod script_export;
 pub mod sound;
 #[cfg(feature = "parsers")]
 pub mod sound_export;
+pub mod splash_asset;
 #[cfg(feature = "parsers")]
 pub mod startup;
 pub mod surface;
@@ -508,8 +509,6 @@ pub mod music;
 
 /// Number of cached Windows Glide splash frames, including the authored fade.
 pub const SPLASH_FRAMES: usize = 150;
-/// Number of cached DOS Glide overlay splash frames: authored frames 1 through 74.
-pub const DOS_SPLASH_FRAMES: usize = 74;
 
 pub mod logbook;
 pub mod overlay;

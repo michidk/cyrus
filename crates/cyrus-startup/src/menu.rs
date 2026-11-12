@@ -87,6 +87,11 @@ struct MenuTiming {
     last_tick: u32,
 }
 
+/// A dialog is drawn on its own transparent layer over the book scene.
+pub(super) fn dialog_backdrop() -> image::RgbaImage {
+    image::RgbaImage::new(640, 480)
+}
+
 pub(super) struct DeleteConfirmation {
     slot: super::SaveSlot,
     pub dialog: super::confirmation::LastGameConfirmation,
@@ -159,6 +164,9 @@ pub struct MenuState {
     pub unavailable: Option<String>,
     #[serde(skip)]
     pub(super) image: Handle<Image>,
+    /// The last redraw, until the book scene uploads it.
+    #[serde(skip)]
+    pub(super) painted: Option<super::menu_raster::Painted>,
     #[serde(skip)]
     pub(super) selections: BTreeMap<u8, Option<usize>>,
     #[serde(skip)]
@@ -329,6 +337,7 @@ pub(super) fn register(app: &mut App) {
                 description_text.before(drive),
                 drive.before(cyrus_audio::ApplyPreferences),
                 launch.after(drive),
+                super::book_scene::present.after(drive),
             )
                 .run_if(in_state(AppState::Menu)),
         )
@@ -542,6 +551,8 @@ type Inputs<'w> = (
     Res<'w, Time<Real>>,
     Option<Res<'w, ButtonInput<MouseButton>>>,
     Option<Res<'w, cyrus_script::player::input::JoystickState>>,
+    // The debug flycam owns the keyboard while it is enabled, as it owns the player's in a world.
+    Option<Res<'w, cyrus_script::player::input::InputSuppressed>>,
 );
 
 type MenuRuntime<'w, 's> = (
@@ -555,7 +566,13 @@ type MenuRuntime<'w, 's> = (
 fn description_text(
     mut events: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut menu: ResMut<MenuState>,
+    flying: Option<Res<cyrus_script::player::input::InputSuppressed>>,
 ) {
+    // The debug flycam owns the keyboard while it is enabled, so its keys do not type.
+    if flying.is_some_and(|flying| flying.0) {
+        events.clear();
+        return;
+    }
     for event in events.read() {
         if event.state != bevy::input::ButtonState::Pressed
             || matches!(
@@ -579,10 +596,7 @@ pub(super) fn drive(
     (launch, clock): (Res<LaunchRequest>, Option<ResMut<SimulationClock>>),
     input: Inputs,
     mut menu: ResMut<MenuState>,
-    rendering: (
-        ResMut<Assets<Image>>,
-        Query<&mut Sprite, With<StartupContent>>,
-    ),
+    mut images: ResMut<Assets<Image>>,
     mut output: (
         MessageWriter<AppExit>,
         Query<&mut Text, With<MenuNotice>>,
@@ -594,7 +608,6 @@ pub(super) fn drive(
         return;
     }
     let (assets, definitions) = assets;
-    let (mut images, mut sprite) = rendering;
     let (mut preferences_state, mut bindings, mut commands, mut next, mut save_load) = runtime;
     if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(menu.asset.id()) {
         if menu.unavailable.is_none() {
@@ -737,7 +750,6 @@ pub(super) fn drive(
         menu.motion.as_mut().unwrap().tick(|effect| {
             output.2.write(flat_sound(effect));
         });
-        menu.dirty = true;
     }
     if menu_tick {
         clock.advance(sample);
@@ -749,7 +761,8 @@ pub(super) fn drive(
     }
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
-    if !moving && !menu.closing && !save_load.busy() {
+    let flying = input.5.as_deref().is_some_and(|suppressed| suppressed.0);
+    if !moving && !menu.closing && !save_load.busy() && !flying {
         if let Some(mut editor) = menu.description_editor.take() {
             let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
             if keys.just_pressed(KeyCode::Escape) {
@@ -805,18 +818,11 @@ pub(super) fn drive(
                 .cloned();
             if let Some(slot) = slot {
                 menu.unavailable = menu.persistence_error.clone();
-                match super::menu_raster::paint(book, &menu) {
-                    Ok(background) => {
-                        menu.delete_confirmation = Some(DeleteConfirmation {
-                            slot,
-                            dialog: super::confirmation::LastGameConfirmation::displayed(0, sample),
-                            background,
-                        })
-                    }
-                    Err(error) => {
-                        menu.unavailable = Some(format!("Delete confirmation: {error:#}"))
-                    }
-                }
+                menu.delete_confirmation = Some(DeleteConfirmation {
+                    slot,
+                    dialog: super::confirmation::LastGameConfirmation::displayed(0, sample),
+                    background: dialog_backdrop(),
+                });
                 menu.dirty = true;
             }
         } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::PageDown) {
@@ -958,22 +964,14 @@ pub(super) fn drive(
                             .and_then(|row| menu.slots.get(*row))
                             .cloned();
                         if entry.action == 101 || slot.is_some() {
-                            match super::menu_raster::paint(book, &menu) {
-                                Ok(background) => {
-                                    menu.description_editor =
-                                        Some(super::save_load::DescriptionEditor {
-                                            text: slot
-                                                .as_ref()
-                                                .map(|slot| slot.description.clone())
-                                                .unwrap_or_default(),
-                                            slot,
-                                            background,
-                                        })
-                                }
-                                Err(error) => {
-                                    menu.unavailable = Some(format!("Game Description: {error:#}"))
-                                }
-                            }
+                            menu.description_editor = Some(super::save_load::DescriptionEditor {
+                                text: slot
+                                    .as_ref()
+                                    .map(|slot| slot.description.clone())
+                                    .unwrap_or_default(),
+                                slot,
+                                background: dialog_backdrop(),
+                            });
                             menu.dirty = true;
                         }
                     }
@@ -1009,28 +1007,8 @@ pub(super) fn drive(
     menu.dirty |= previous != (menu.page, menu.selected, menu.capturing, menu.blink_on);
     if menu.dirty {
         match super::menu_raster::paint(book, &menu) {
-            Ok(pixels) => {
-                let image = Image::new(
-                    bevy::render::render_resource::Extent3d {
-                        width: 640,
-                        height: 480,
-                        depth_or_array_layers: 1,
-                    },
-                    bevy::render::render_resource::TextureDimension::D2,
-                    pixels.into_raw(),
-                    bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
-                    bevy::asset::RenderAssetUsages::default(),
-                );
-                if menu.image == Handle::default() {
-                    menu.image = images.add(image);
-                } else if let Some(mut existing) = images.get_mut(&menu.image) {
-                    *existing = image;
-                } else {
-                    menu.image = images.add(image);
-                }
-                if let Ok(mut sprite) = sprite.single_mut() {
-                    sprite.image = menu.image.clone();
-                }
+            Ok(painted) => {
+                menu.painted = Some(painted);
                 menu.ready = !moving && !menu.closing;
                 menu.dirty = false;
             }
@@ -1144,6 +1122,7 @@ fn cleanup(
     commands.remove_resource::<cyrus_script::script::LastGameEntry>();
     commands.remove_resource::<super::last_game::CapturedFrame>();
     commands.remove_resource::<MenuState>();
+    commands.remove_resource::<super::book_scene::BookScene>();
     commands.remove_resource::<cyrus_script::PausedGameplay>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
 }
@@ -1163,9 +1142,12 @@ fn load_unlocks(unlocks: Option<Res<cyrus_game::MovieUnlocks>>, menu: Option<Res
 #[derive(Component)]
 pub(super) struct BookPausedCamera;
 
+/// A gameplay 3D camera, not the book's own.
+type ActiveGameplayCamera = super::view3d::GameplayCameras;
+
 fn pause_cameras(
     mut commands: Commands,
-    mut cameras: Query<(Entity, &mut Camera), With<Camera3d>>,
+    mut cameras: Query<(Entity, &mut Camera), ActiveGameplayCamera>,
     confirmation: Option<Res<cyrus_script::script::LastGameEntry>>,
     death: Option<Res<cyrus_script::script::DeathBookEntry>>,
     pause: Option<Res<cyrus_game::PauseBookEntry>>,

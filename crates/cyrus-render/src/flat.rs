@@ -148,18 +148,19 @@ fn prepare(
                         .map(|extra| (extra, names.get(node).ok()))
                 }),
         );
-        commands.entity(entity).insert(Inspected);
+        commands.entity(entity).try_insert(Inspected);
         match result {
             Ok(Some((private, flat))) => {
                 mesh.0 = meshes.add(private);
+                // The entity can be despawned by an earlier command of this frame.
                 commands
                     .entity(entity)
-                    .insert(flat)
-                    .remove::<bevy::camera::primitives::Aabb>();
+                    .try_insert(flat)
+                    .try_remove::<bevy::camera::primitives::Aabb>();
             }
             Ok(None) => {}
             Err(error) => {
-                commands.entity(entity).insert(Visibility::Hidden);
+                commands.entity(entity).try_insert(Visibility::Hidden);
                 let failure = failures
                     .entry(format!("{error:#}"))
                     .or_insert_with(|| (entity, format!("{:?}", mesh.0.path()), 0));

@@ -569,27 +569,14 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
     cyrus_assets::startup::export_startup(&install, &output).unwrap();
     let splash = output.join("startup");
     let image = |name: &str| image::open(splash.join(name)).unwrap().to_rgba8();
-    let first = image("splash-00.png");
-    let middle = image("splash-89.png");
-    let last = image("splash-149.png");
-    assert_eq!(middle.dimensions(), (640, 480));
-    let brightness = |image: &image::RgbaImage| {
-        image
-            .pixels()
-            .map(|p| u64::from(p[0]) + u64::from(p[1]) + u64::from(p[2]))
-            .sum::<u64>()
-    };
-    assert!(brightness(&middle) > brightness(&first));
-    assert!(brightness(&middle) > brightness(&last));
-    assert!(
-        middle
-            .pixels()
-            .filter(|p| p[0] > 0 || p[1] > 0 || p[2] > 0)
-            .count()
-            > 10000
+    let asset: cyrus_assets::splash_asset::SplashAsset =
+        serde_json::from_slice(&std::fs::read(splash.join("splash.splash")).unwrap()).unwrap();
+    asset.validate().unwrap();
+    assert_eq!(
+        asset.frames.len() + 2 * asset.frames_per_second as usize,
+        cyrus_assets::SPLASH_FRAMES
     );
-    assert!((0..150).all(|frame| splash.join(format!("splash-{frame:02}.png")).is_file()));
-    assert!(!splash.join("splash-150.png").exists());
+    assert!(asset.frames.iter().all(|frame| !frame.is_empty()));
     let title = image("title.png");
     let source = rgpre::import::gxa::parse_gxa_file(
         &std::fs::read(install.root.join("system/STARTUP2.GXA")).unwrap(),
@@ -599,15 +586,31 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
         &title.as_raw()[..640 * 467 * 4],
         &source.frames[0].rgba[..640 * 467 * 4]
     );
+    // The labels draw palette entry 161 tinted by the palette entry the six-bit colour request
+    // matches, component by component over 255 (preservation engine/startup.md).
+    let frame = &source.frames[0];
+    let palette = rgpre::import::palette::Palette {
+        colors: frame.palette.map(|rgb| rgb.map(|component| component >> 2)),
+    };
+    let label_colour = |request: [u8; 3]| {
+        let tint = usize::from(palette.match_vga(request));
+        let [r, g, b]: [u8; 3] = std::array::from_fn(|channel| {
+            (u16::from(frame.palette[161][channel]) * u16::from(frame.palette[tint][channel]) / 255)
+                as u8
+        });
+        image::Rgba([r, g, b, 255])
+    };
+    let version = label_colour([32; 3]);
+    let status = label_colour([50, 0, 0]);
     assert!(
         title
             .enumerate_pixels()
-            .any(|(x, y, p)| x < 150 && y >= 467 && p.0 == [32, 32, 32, 255])
+            .any(|(x, y, p)| x < 150 && y >= 467 && *p == version)
     );
     assert!(
         title
             .enumerate_pixels()
-            .any(|(x, y, p)| x > 500 && y >= 467 && p.0 == [50, 0, 0, 255])
+            .any(|(x, y, p)| x > 500 && y >= 467 && *p == status)
     );
     for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
         let stage = image(name);
@@ -619,7 +622,7 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
         assert!(
             stage
                 .enumerate_pixels()
-                .any(|(x, y, p)| { x > 400 && y >= 467 && p.0 == [50, 0, 0, 255] })
+                .any(|(x, y, p)| { x > 400 && y >= 467 && *p == status })
         );
         assert_ne!(
             stage, title,
