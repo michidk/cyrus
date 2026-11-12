@@ -667,6 +667,22 @@ For independent original audio captures, `original-audio-capture.sh` repairs mis
 `prepare-original-definitions.py INSTALLED_REDGUARD RUN_REDGUARD`. Existing
 per-run files are preserved. Linked definition destinations are rejected so
 recovery cannot write into the install.
+
+`python3 dev/scripts/animation-transition.py ADAPTER KEYS.INI OUTPUT --group GROUP
+--effect EFFECT` drives a selected-player quick-sword transition through an
+executable observation/capture adapter. Group and effect come from the selected
+actor's installed animation definition; the key binding comes from the supplied
+`KEYS.INI`. The adapter protocol is documented in the script. It must arm event
+and PCM observation before input. The driver waits for ordinary progress,
+releases input on observed group entry to prevent held-key retriggering, and
+stops at observed group completion or bounded game progress. A wall deadline
+limits a stalled observer. Changed player/world identity, missing emission/stop
+ordering or incomplete PCM reject the receipt. Every observation is saved
+atomically; only `status=captured` admits the complete contract. A group change
+without sound-service observations remains rejected. This requires an adapter
+that observes the real sound service; group/frame interpolation is insufficient.
+Run its failure/continuation controls with
+`python3 dev/scripts/test-animation-transition.py`.
 The disc is mounted from `game.gog` through a `game.cue` copy of `game.ins`: stock DOSBox-X
 reads a cue sheet only by its `.cue` extension, and without the disc every movie is skipped.
 The default copy keeps `final_version=0`, which makes the original skip the Introduction and start in the first
