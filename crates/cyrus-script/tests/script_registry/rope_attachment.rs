@@ -145,3 +145,33 @@ fn rope_admission_selects_the_link_at_the_actors_hand_without_a_link_length_bias
     assert!(world.selected_player_on_rope());
     assert_eq!(world.ropes()[0].attachments[0].node, 0);
 }
+
+#[test]
+fn second_jump_release_resolves_queued_motion_in_the_same_ordinary_update() {
+    let (_, mut world, data, scene) = rope_classification_fixture();
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    assert!(world.selected_player_on_rope());
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    tick_rope_classification(
+        &mut world,
+        &data,
+        &scene,
+        cyrus_script::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        },
+        false,
+    );
+    assert!(!world.selected_player_on_rope());
+    assert!(
+        world.actors()[player.index].failure().is_none(),
+        "{:?}",
+        world.actors()[player.index].failure()
+    );
+    // This supported fixture resolves its release immediately. Keeping the attached bypass
+    // would leave ROPE queued until the following ordinary update.
+    let control = world.actors()[player.index].control_state().unwrap();
+    assert_eq!(control.queued_motion, JumpMotion::NONE);
+    assert_eq!(control.jump_selector, 24);
+}

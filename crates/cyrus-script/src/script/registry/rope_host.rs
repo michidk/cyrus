@@ -36,7 +36,7 @@ pub(super) struct PlayerRope {
     /// selector) runs.
     last_rope: Option<usize>,
     /// The jump key was held when the rope was grabbed; the release waits for it to be up.
-    latch: bool,
+    pub(super) latch: bool,
     turn_rate: i32,
     turn_total: i32,
     /// The node position of the previous update, engine map units, for the node's measured speed.
@@ -172,7 +172,10 @@ impl ScriptWorld {
                 probe,
                 sounds,
             )?;
-            return Ok(true);
+            return Ok(self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.rope_attached));
         }
         if self.ropes.is_empty() {
             return Ok(false);

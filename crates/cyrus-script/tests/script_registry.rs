@@ -45069,7 +45069,7 @@ fn rope_release_classification_survives_zero_speed_and_uses_signed_speed_before_
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
             (control.queued_motion.byte(), control.jump_selector),
-            (24, 24)
+            (0, 24)
         );
         assert_eq!(control.motion_vector[2], speed);
         assert_eq!(control.motion_classification, classification);
@@ -46587,10 +46587,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(!live.selected_player_on_rope());
             assert!(live.ropes()[0].attachments.is_empty());
             let control = live.actors()[index].control_state().unwrap();
-            assert_eq!(
-                (control.queued_motion, control.jump_selector),
-                (JumpMotion::ROPE, 24)
-            );
+            assert_eq!(control.jump_selector, 24);
             assert_eq!(
                 movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
                     ["current"][0]

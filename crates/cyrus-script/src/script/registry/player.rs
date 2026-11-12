@@ -551,11 +551,12 @@ impl ScriptWorld {
             .animation
             .as_ref()
             .and_then(|animation| animation.playback.current_group());
+        let rope_jump_latched = self.player_rope.latch;
         let control = self.actors[index]
             .control
             .as_mut()
             .context("airborne player control unavailable")?;
-        steer_airborne(control, group, held);
+        steer_airborne(control, group, held, rope_jump_latched);
         Ok(())
     }
 
@@ -1538,6 +1539,7 @@ fn steer_airborne(
     control: &mut super::ActorControlState,
     group: Option<AnimationGroup>,
     held: &crate::player::input::PlayerInput,
+    rope_jump_latched: bool,
 ) {
     if held.forward
         && control.queued_motion.kind() == JumpMotion::STANDING
@@ -1549,9 +1551,8 @@ fn steer_airborne(
         control.queued_motion = JumpMotion::FORWARD;
     }
     if held.jump {
-        // shortcut: the two retained rope-release flags are not modelled (ropes #21);
-        // upgrade when the rope owner retains them.
-        if control.falling_state != JumpMotion::NONE {
+        // The retained rope jump latch protects the regrab countdown while falling.
+        if control.falling_state != JumpMotion::NONE && !rope_jump_latched {
             control.jump_selector = 0;
         }
         if control
@@ -1581,9 +1582,9 @@ mod airborne_tests {
             queued_motion: JumpMotion::from_byte(0x81),
             ..Default::default()
         };
-        steer_airborne(&mut control, Some(AnimationGroup::RUN_TORCH), &held);
+        steer_airborne(&mut control, Some(AnimationGroup::RUN_TORCH), &held, false);
         assert_eq!(control.queued_motion, JumpMotion::from_byte(0x81));
-        steer_airborne(&mut control, Some(AnimationGroup::JUMP_START), &held);
+        steer_airborne(&mut control, Some(AnimationGroup::JUMP_START), &held, false);
         assert_eq!(control.queued_motion, JumpMotion::FORWARD);
     }
 
@@ -1632,13 +1633,16 @@ mod airborne_tests {
             actions: [6, 0x82].into(),
             ..Default::default()
         };
-        steer_airborne(&mut control, None, &held);
+        steer_airborne(&mut control, None, &held, false);
         assert_eq!(
             (control.jump_selector, <[u32; 2]>::from(control.actions)),
             (0, [4, 0x80])
         );
+        control.jump_selector = 24;
+        steer_airborne(&mut control, None, &held, true);
+        assert_eq!(control.jump_selector, 24);
         control.actions = [1, 0].into();
-        steer_airborne(&mut control, None, &held);
+        steer_airborne(&mut control, None, &held, false);
         assert_eq!(<[u32; 2]>::from(control.actions), [1, 0]);
     }
 }

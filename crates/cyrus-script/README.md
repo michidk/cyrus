@@ -77,6 +77,8 @@ continues. Admission chooses the nearest eligible link from the actor position p
 hand vertex, without a link-length offset. Later placement uses that node and grip height. The public rope
 drivers have an explicit unarmed positive scenario requiring grab, held attachment
 and jump detach; diagnostic timing does not establish contact/clank parity.
+Verified: jump release admits ordinary movement and collision on that update after removing the
+attachment. The retained rope jump latch protects the regrab countdown while falling with Jump held.
 
 ## Module guide
 
