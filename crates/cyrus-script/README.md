@@ -13,6 +13,11 @@ preservation's [player orientation rules](https://github.com/michidk/redguard-pr
 The transition back to zero bank also rebuilds so the last banked matrix cannot retain
 tilt. Upright player turns and ordinary nonplayer actors retain incremental rotation.
 
+Verified: held-direction turn acceleration updates during rope attachment even while
+ground movement and collision are bypassed. Releasing a direction clears its retained
+speed before ordinary movement resumes. This follows preservation's
+[control-animation input contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership).
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
