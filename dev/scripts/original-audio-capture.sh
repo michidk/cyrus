@@ -39,6 +39,7 @@ dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
 mkdir -p "$out"
 exec 9>/tmp/cyrus-live.lock
 flock 9
+python3 "$here/prepare-original-definitions.py" "$gog/extracted/app/Redguard" "$run/Redguard"
 docker image inspect cyrus-retro:dev >/dev/null 2>&1 || docker build -q -t cyrus-retro:dev "$repo/dev/docker/retro" >&2
 if [ -n "${CYRUS_DOSBOX_AUTOEXEC:-}" ]; then
     conf="$run/dosbox-x.autoexec.conf"

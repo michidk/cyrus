@@ -662,6 +662,11 @@ The retro runner needs a writable copy of the GOG `app/` directory (the game
 writes saves); `dev/scripts/run-retro.sh` makes one under `magic/retro-run/` and
 copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
+For independent original audio captures, `original-audio-capture.sh` repairs missing
+`soup386` and `system` files in the writable run copy before launch, using
+`prepare-original-definitions.py INSTALLED_REDGUARD RUN_REDGUARD`. Existing
+per-run files are preserved. Linked definition destinations are rejected so
+recovery cannot write into the install.
 The disc is mounted from `game.gog` through a `game.cue` copy of `game.ins`: stock DOSBox-X
 reads a cue sheet only by its `.cue` extension, and without the disc every movie is skipped.
 The default copy keeps `final_version=0`, which makes the original skip the Introduction and start in the first
