@@ -1316,6 +1316,16 @@ replay admits that observation only between the acknowledged hang and detach
 boundaries and turns fly mode off at the same phase. This prepares a physical
 fall; the observation alone does not prove landing, natural cadence, or clank
 parity. Keep the ordinary-boundary clock and outcome checks for those claims.
+For a bounded Jump pulse followed by released continuation, add
+`--attack-frames <pulse-updates> --landing-frames <released-updates>`.
+`--landing-frames` requires physical release. The backend receives `release_after`
+and must report a single acknowledged `input_edges` release at that update.
+Every subsequent consumed step must report Jump released. The endpoint must be
+detached with falling and queued motion cleared, and the atomic sequence must
+contain a landing animation. Held-input reattachment is rejected. Native replay
+plans the pulse and whole interval separately, acknowledges the release and
+samples each continuation boundary; both intervals retain the exact clock oracle.
+
 Physical acquisition also requests `atomic_snapshots` from the local scheduling
 backend. It must stop gameplay execution at `ordinary_update_start` and return
 one `snapshots` entry per boundary, including both endpoints. Each entry carries

@@ -119,13 +119,17 @@ def accepted_schedule(path, attachment=False):
     for phase in names:
         edges = [row for row in phases[phase] if row.get('boundary')]
         boundaries = {row['boundary']: row for row in edges}
-        if len(edges) != 2 or set(boundaries) != {'start', 'end'}:
+        expected_edges = {'start', 'release', 'end'} if physical and phase == 'detach' and 'release' in boundaries else {'start', 'end'}
+        if len(edges) != len(expected_edges) or set(boundaries) != expected_edges:
             raise ValueError(f'original {phase} lacks acknowledged game-clock boundaries; acquire timing samples')
         if not all(row.get('input_ack') is True for row in boundaries.values()):
             raise ValueError(f'original {phase} input was not acknowledged')
         if attachment:
             attachment_outcome(phase, boundaries['start']['player'], boundaries['end']['player'])
         schedule[phase] = interval(boundaries['start'], boundaries['end'])
+        if 'release' in boundaries:
+            schedule[phase]['pulse'] = interval(boundaries['start'], boundaries['release'])
+            schedule[phase]['supported_landing'] = True
     if physical:
         validate_physical_source(rows)
         schedule['detach']['physical_release'] = True
@@ -325,24 +329,37 @@ class Driver:
         if not 0 < step_seconds < float('inf'):
             raise RuntimeError('native ordinary timing probe did not advance')
         updates = planned_updates(expected, step_seconds, self.clock_tolerance)
+        pulse = expected.get('pulse')
+        release_updates = planned_updates(pulse, step_seconds, self.clock_tolerance) if pulse else updates
+        if pulse and not 0 < release_updates < updates:
+            raise ValueError('native pulse requires a released continuation')
         events = [dict(after_updates=offset, **(
             dict(key=key, action=action) if key else {}))
-            for offset, action in [(0, 'press'), (updates, 'release')]]
+            for offset, action in [(0, 'press'), (release_updates, 'release')]]
+        if pulse:
+            events += [dict(after_updates=i) for i in range(1, updates + 1) if i != release_updates]
+            events.sort(key=lambda event: event['after_updates'])
         response = self.call('schedule_input', events=events)
         rows = response['boundaries']
-        if len(rows) != 2:
+        if len(rows) != len(events):
             raise RuntimeError('native schedule did not report both boundaries')
         boundaries = []
-        for row, event, edge in zip(rows, events, ['start', 'end']):
+        for row, event in zip(rows, events):
+            edge = ('start' if event['after_updates'] == 0 else
+                    'end' if event['after_updates'] == updates else
+                    'release' if event['after_updates'] == release_updates else 'sample')
             if (row['after_updates'] != event['after_updates']
                     or row.get('key') != event.get('key')
                     or row.get('action') != event.get('action')):
                 raise RuntimeError('native boundary acknowledgement differs from schedule')
+            if rows and (row['update'] != rows[0]['update'] + event['after_updates']
+                    or row['generation'] != rows[0]['generation']):
+                raise RuntimeError('native schedule crossed unavailable ordinary boundaries')
             actor, = row['player']['actors']
             control = actor['control']
             player = dict(drawn=control['weapon_drawn'], falling=control['falling_state'],
                 living=control['living_state'], health=actor['attributes'][3],
-                rope_attached=control['rope_attached'],
+                rope_attached=control['rope_attached'], queued=control.get('queued_motion'),
                 group=actor.get('animation', {}).get('current_group'),
                 position=[v / 256 for v in actor['spatial']['effective']['position']])
             boundary = dict(phase=phase, boundary=edge, input_ack=True,
@@ -353,10 +370,16 @@ class Driver:
             if not valid_baseline(player, self.attachment):
                 raise RuntimeError('native contact baseline was rejected')
             boundaries.append(boundary)
-        start, end = boundaries
+        start, end = boundaries[0], boundaries[-1]
         if (start['generation'] != end['generation']
                 or end['frame'] - start['frame'] != updates):
             raise RuntimeError('native schedule crossed unavailable ordinary boundaries')
+        if pulse:
+            released = next(row for row in boundaries if row['boundary'] == 'release')
+            if (released['generation'] != start['generation']
+                    or released['frame'] - start['frame'] != release_updates):
+                raise RuntimeError('native pulse release crossed unavailable ordinary boundaries')
+            compare_interval(pulse, interval(start, released), self.clock_tolerance)
         observed = interval(start, end)
         try:
             compare_interval(expected, observed, self.clock_tolerance)
@@ -368,6 +391,17 @@ class Driver:
             raise
         if self.attachment:
             attachment_outcome(phase, start['player'], end['player'])
+        if expected.get('supported_landing'):
+            detached = False
+            for row in boundaries:
+                attached = row['player']['rope_attached']
+                if detached and attached:
+                    raise ValueError('native pulse reattached during landing continuation')
+                detached |= attached is False
+            player = end['player']
+            if (player['rope_attached'] or player['falling'] != 0 or player.get('queued') != 0
+                    or not any(row['player'].get('group') in range(65, 75) for row in boundaries)):
+                raise ValueError('native pulse did not reach supported landing')
         result = dict(phase=phase, comparison='matched', duration=observed['duration'],
                       clock_tolerance=self.clock_tolerance,
                       displacement=[b - a for a, b in zip(start['player']['position'], end['player']['position'])],

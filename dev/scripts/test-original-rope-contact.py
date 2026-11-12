@@ -262,6 +262,41 @@ class ExactSchedule(unittest.TestCase):
                 driver.exact_segment('backend', 1, 'hang')
         self.assertTrue(json.loads(backend.call_args.kwargs['input'])['atomic_snapshots'])
 
+    def test_release_pulse_requires_acknowledged_edge_and_supported_endpoint(self):
+        import copy
+        module = Readiness().module()
+        player = dict(drawn=False, falling=0, queued=0, living=0, health=100, rope_attached=False, group=65)
+        request = dict(phase='detach', frames=3, release_after=1, key='space', scenario='attachment', supported_landing=True)
+        start = dict(frame=10, clock_scale=0, input_state={'space': True}, player=dict(player, rope_attached=True, group=80))
+        release = dict(frame=11, clock_scale=256, input_state={'space': False}, player=dict(player, falling=24, group=85))
+        end = dict(frame=13, clock_scale=768, input_state={'space': False}, player=player)
+        result = dict(phase='detach', key='space', normal_frame_rate=12, boundaries=[start,end], input_edges=[release],
+            steps=[dict(frame=10+i, frame_scale=256, input_state={'space': i<1}) for i in range(3)])
+        rows = module.validate_schedule(result,request)
+        self.assertEqual(rows[1]['boundary'],'release')
+        atomic = copy.deepcopy(result)
+        atomic['snapshots'] = [dict(sequence=i,frame=10+i,clock_scale=i*256,execution='stopped',
+            boundary='ordinary_update_start',player=copy.deepcopy(value),confirmation=dict(frame=10+i,player=copy.deepcopy(value)))
+            for i,value in enumerate((start['player'],release['player'],player,player))]
+        atomic_request = dict(request,atomic_snapshots=True)
+        module.validate_schedule(atomic,atomic_request)
+        rebound = copy.deepcopy(atomic)
+        rebound['snapshots'][2]['player']['rope_attached'] = True
+        rebound['snapshots'][2]['confirmation']['player']['rope_attached'] = True
+        with self.assertRaisesRegex(ValueError,'reattached'):
+            module.validate_schedule(rebound,atomic_request)
+        for mutation in ('held', 'missing', 'late', 'reattached', 'airborne', 'queued', 'wrong-animation'):
+            wrong=copy.deepcopy(result)
+            if mutation=='held':wrong['steps'][1]['input_state']['space']=True
+            elif mutation=='missing':wrong['input_edges']=[]
+            elif mutation=='late':wrong['input_edges'][0]['frame']=12
+            elif mutation=='reattached':wrong['boundaries'][1]['player']['rope_attached']=True
+            elif mutation=='airborne':wrong['boundaries'][1]['player']['falling']=24
+            elif mutation=='queued':wrong['boundaries'][1]['player']['queued']=24
+            else:wrong['boundaries'][1]['player']['group']=44
+            with self.subTest(mutation=mutation),self.assertRaises((ValueError,RuntimeError)):
+                module.validate_schedule(wrong,request)
+
     def test_required_consumed_scale_cannot_be_replaced_by_same_sum(self):
         module = Readiness().module()
         player = dict(drawn=True, falling=0, living=0, health=100)
@@ -411,16 +446,16 @@ class PhysicalRelease(unittest.TestCase):
             def mark_running(self): pass
             def progress(self, *args): return {'player': {'drawn': False, 'falling': 0, 'living': 0, 'health': 100}}
             def command(self, command): events.append(command)
-            def segment(self, frames, phase, key=None): events.append(phase)
+            def segment(self, frames, phase, key=None): events.extend([phase, (phase,frames)])
             def sample(self, phase):
                 events.append(phase)
                 return {'player': {'drawn': False, 'falling': 0, 'living': 0, 'health': 100, 'rope_attached': attached}}
             def save(self): pass
             def release(self): events.append('released')
             progress_record = {}
-        def run(physical):
+        def run(physical, landing=0):
             events.clear()
-            with patch.object(module, 'Driver', Rig), patch.object(module.subprocess, 'check_output', return_value='1'), patch.object(module.subprocess, 'run'), patch.object(sys, 'argv', [str(DRIVER), '--reader', 'reader', '--attachment', '--schedule-command', 'backend', *(['--physical-release'] if physical else []), '--place', 'place']):
+            with patch.object(module, 'Driver', Rig), patch.object(module.subprocess, 'check_output', return_value='1'), patch.object(module.subprocess, 'run'), patch.object(sys, 'argv', [str(DRIVER), '--reader', 'reader', '--attachment', '--schedule-command', 'backend', *(['--physical-release'] if physical else []), '--landing-frames', str(landing), '--place', 'place']):
                 module.main()
             return list(events)
         physical = run(True)
@@ -428,6 +463,7 @@ class PhysicalRelease(unittest.TestCase):
         self.assertLess(physical.index('magiccarpet = 0'), physical.index('detach'))
         self.assertIn('physical-release', physical)
         self.assertNotIn('magiccarpet = 0', run(False))
+        self.assertIn(('detach',8),run(True,landing=6))
         attached = False
         with self.assertRaisesRegex(RuntimeError, 'retained attachment'):
             run(True)

@@ -163,6 +163,37 @@ class Comparison(unittest.TestCase):
         driver.call = call
         return calls
 
+    def test_pulse_releases_before_supported_landing_and_checks_both_intervals(self):
+        driver = contact.Driver('unused', 1, io.StringIO())
+        driver.attachment = True
+        player = dict(drawn=False, falling=0, living=0, health=100, rope_attached=True, group=80, queued=0, position=[1,2,3])
+        expected = dict(duration=[.5,.5], pulse=dict(duration=[1/6,1/6]), supported_landing=True,
+            start=dict(player=player), end=dict(player=dict(player,rope_attached=False)))
+        for failure in (None, 'release-clock', 'reattached', 'airborne', 'no-landing'):
+            calls=[]
+            def call(kind, **args):
+                calls.append(args['events'])
+                if len(calls)==1:
+                    return dict(boundaries=[dict(after_updates=i,update=i,generation=1,game_seconds=i/6) for i in (0,1)])
+                rows=[]
+                for event in args['events']:
+                    i=event['after_updates'];value=dict(player,rope_attached=i==0 or (failure=='reattached' and i==3),
+                        falling=24 if failure=='airborne' and i==3 else 0,
+                        group=65 if i==2 and failure!='no-landing' else 0)
+                    actor=dict(control=dict(weapon_drawn=False,falling_state=value['falling'],living_state=0,
+                        rope_attached=value['rope_attached'],queued_motion=0),attributes=[0,0,0,100],
+                        animation=dict(current_group=value['group']),spatial={'effective':{'position':[256,512,768]}})
+                    rows.append(dict(event,update=10+i,generation=1,game_seconds=i/6+(.01 if failure=='release-clock' and i==1 else 0),player={'actors':[actor]}))
+                return dict(boundaries=rows)
+            driver.call=call
+            if failure:
+                with self.subTest(failure=failure), self.assertRaises((ValueError,RuntimeError)):
+                    driver.timed_segment('detach',expected,'Space')
+            else:
+                driver.timed_segment('detach',expected,'Space')
+                self.assertEqual(calls[1],[dict(after_updates=0,key='Space',action='press'),
+                    dict(after_updates=1,key='Space',action='release'),dict(after_updates=2),dict(after_updates=3)])
+
     def test_one_eighth_second_cannot_be_rounded_to_one_sixth(self):
         with self.assertRaisesRegex(ValueError, 'candidate common interval 0.5 seconds'):
             contact.planned_updates({'duration': [.125, .125]}, 1 / 6)
