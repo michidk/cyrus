@@ -230,7 +230,7 @@ impl Music {
             music: Music {
                 track: snapshot.track,
                 gain: snapshot.gain,
-                restore_pending: true,
+                world_selection: super::WorldSelection::Restored,
                 load: None,
             },
             playback,

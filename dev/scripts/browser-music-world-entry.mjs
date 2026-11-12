@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {setTimeout as delay} from 'node:timers/promises';
 import {connectCdp} from './capture-cdp.mjs';
+import {captureSampleGraph} from './capture-sample-graph.mjs';
 import {observeBrowserBuild} from './browser-provenance.mjs';
 import {requireSecureOrigin} from './browser-authored-speech.mjs';
 const [endpoint,page,install,fixturePath,output]=process.argv.slice(2);
@@ -58,13 +59,100 @@ try{
   provenance=await observeBrowserBuild(cdp,JSON.parse(readFileSync('target/web/build-provenance.json')),url);
   await cdp.call('Page.enable');
   await cdp.call('Emulation.setDeviceMetricsOverride',{width:640,height:480,deviceScaleFactor:1,mobile:false});
-  await cdp.call('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(new URL('./session-cd-graph.js',import.meta.url),'utf8')+'\nwindow.__cyrusInspectScripts=true;'});
+  await cdp.call('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(new URL('./session-cd-graph.js',import.meta.url),'utf8')+'\n'+readFileSync(new URL('./session-sample-graph.js',import.meta.url),'utf8')+'\n'+readFileSync(new URL('./browser-sound-reset.js',import.meta.url),'utf8')+'\nwindow.__cyrusInspectScripts=true;'});
   await cdp.call('Page.navigate',{url:url.href});await until('picker','document.getElementById("install-picker")');
   assert.equal(await evaluate('document.getElementById("install-url").value'),new URL(install).href);
   await evaluate('document.getElementById("install-picker").requestSubmit();true');await ready();
   await until('installed CD output','__sessionCd.status().ready&&__sessionCd.sources.length===1',180);
   result.initial=await outputWindow(0,true,'initial');
-  if(fixture.scenario==='restore'){
+  if(fixture.scenario==='settings'){
+    await until('first ordinary world update','__cyrusCapture.scripts.globals.world_loop_frame>2');
+    await session('save',{key:'settings-world'});await session('load',{key:'settings-world'});
+    await until('restored world output','__sessionCd.sources.length===2');
+    result.restoredWorld=await outputWindow(1,true,'restored-world');
+    assert(fixture.placement,'installed conversation placement required');
+    const placementDeadline=performance.now()+90000;
+    for(;;){
+      const current=++id;
+      await evaluate(`window.__cyrusAcceptanceRequest=${JSON.stringify(JSON.stringify({id:current,action:'place_player',...fixture.placement}))};true`);
+      const response=await until('conversation placement',`window.__cyrusAcceptanceResult?.id===${current}&&__cyrusAcceptanceResult`);
+      if(response.applied)break;
+      assert(/spatial state unavailable/.test(response.error)&&performance.now()<placementDeadline,response.error);await delay(250);
+    }
+    async function tap(code,name,vk){
+      await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',code,key:name,windowsVirtualKeyCode:vk});
+      try{const clock=await evaluate('__cyrusStartup.clock.game_seconds');await until('sampled input',`__cyrusStartup.clock.game_seconds>${clock+.25}`);}
+      finally{await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',code,key:name,windowsVirtualKeyCode:vk});}
+    }
+    await until('greeting finished','__cyrusCapture.scripts.globals.dialogue.records.every(r=>!r.active)');
+    await tap('ControlLeft','Control',17);
+    await until('authored conversation speech','(()=>{const d=__cyrusCapture.scripts.globals.dialogue;return d.presented!==null&&d.records[d.presented].active&&d.records[d.presented].sample!==null})()');
+    result.subtitle=await evaluate('structuredClone(__cyrusCapture.scripts.globals.dialogue)');
+    const speech=await evaluate(`__cyrusSoundReset.sample('conversation',true)`);
+    result.speechPcm=await captureSampleGraph(cdp,`${output}/conversation`,speech.start,speech.end);
+    writeFileSync(`${output}/conversation.png`,Buffer.from((await cdp.call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+    result.conversationMusic=await outputWindow(1,true,'conversation-music');
+    const body=response=>JSON.parse(response.document.split('\n').slice(2).join('\n'));
+    let old,voice;
+    for(let attempt=0;attempt<10;attempt++){
+      await until('interruptible authored line','(()=>{const d=__cyrusCapture.scripts.globals.dialogue;return d.presented!==null&&d.records[d.presented].active&&d.records[d.presented].sample!==null})()');
+      old=body(await session('capture'));
+      result.subtitleBeforeSkip=await evaluate('structuredClone(__cyrusCapture.scripts.globals.dialogue)');
+      const record=result.subtitleBeforeSkip.records[result.subtitleBeforeSkip.presented];
+      const slot=record?.active&&old.samples.ownership.samples.slots[record.sample];
+      voice=slot&&old.samples.players.find(player=>player.token===slot.token);
+      if(voice)break;
+    }
+    assert(voice,'could not retain an active authored voice at the public capture boundary');
+    await tap('ShiftLeft','Shift',16);
+    const fresh=body(await session('capture'));
+    assert(!fresh.samples.players.some(player=>player.entity===voice.entity),'skip retained interrupted speech output');
+    result.afterSkip=await evaluate('structuredClone(__cyrusCapture.scripts.globals.dialogue)');
+    assert.equal(fresh.music.track,old.music.track,'speech interruption replaced music');
+    assert.equal(await evaluate('__sessionCd.sources.length'),2,'speech interruption restarted CD');
+    result.skipMusic=await outputWindow(1,true,'skip-music');
+    await key('Escape',27);
+    await until('book ready','window.__cyrusMenu?.page===0&&__cyrusMenu.ready');
+    await until('book CD admitted','__sessionCd.sources.length===3');
+    result.book=await outputWindow(2,true,'book');
+    result.bookMusic=await musicOwner();assert.equal(result.bookMusic.track,2);
+    async function select(action){
+      for(let attempt=0;attempt<12;attempt++){
+        const menu=await evaluate('window.__cyrusMenu');assert(menu.ready);
+        if(menu.entries[menu.selected]?.action===action)return;
+        await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',code:'ArrowDown',key:'ArrowDown',windowsVirtualKeyCode:40});
+        try{await until('selection',`__cyrusMenu.selected!==${menu.selected}`,5);}
+        finally{await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',code:'ArrowDown',key:'ArrowDown',windowsVirtualKeyCode:40});}
+        await until('selection ready','__cyrusMenu.ready');
+      }throw Error('installed action unavailable: '+action);
+    }
+    await select(4);await key('Enter',13);await until('options','__cyrusMenu.page===4&&__cyrusMenu.ready');
+    await select(406);await key('Enter',13);await until('sound options','__cyrusMenu.page===6&&__cyrusMenu.ready');
+    await select(603);await key('Enter',13);
+    await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    result.afterSpeech=await musicOwner();
+    result.speech=await outputWindow(await evaluate('__sessionCd.sources.length-1'),true,'speech-setting');
+    assert.equal(result.afterSpeech.track,2,'speech preference replaced book music with world assignment');
+    assert.equal(await evaluate('__sessionCd.sources.length'),3,'speech setting restarted established CD output');
+    await select(602);
+    async function slider(direction){
+      const before=await evaluate('__cyrusMenu.preferences.values[602]');
+      await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',code:direction,key:direction,windowsVirtualKeyCode:direction==='ArrowLeft'?37:39});
+      try{await until('slider acknowledgement',`__cyrusMenu.preferences.values[602]!==${before}`,5);}
+      finally{await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',code:direction,key:direction,windowsVirtualKeyCode:direction==='ArrowLeft'?37:39});}
+      await until('slider ready','__cyrusMenu.ready');
+    }
+    for(let step=0;await evaluate('__cyrusMenu.preferences.values[602]>0');step++){
+      assert(step<21,'installed slider did not reach zero');await slider('ArrowLeft');
+    }
+    await until('music paused','__sessionCd.sources[2].stopped!==null');
+    result.muted=await outputWindow(2,false,'muted');
+    result.mutedOwner=await musicOwner();assert.equal(result.mutedOwner.track,2);
+    await slider('ArrowRight');await until('music unpaused','__sessionCd.sources.length===4');
+    result.unmuted=await outputWindow(3,true,'unmuted');
+    result.unmutedOwner=await musicOwner();assert.equal(result.unmutedOwner.track,2);
+    assert(await evaluate(`(()=>{const a=__sessionCd.sources[2].buffer,b=__sessionCd.sources[3].buffer;return a.length===b.length&&a.getChannelData(0).every((sample,i)=>sample===b.getChannelData(0)[i])})()`),'unmute replaced the restored track bytes');
+  }else if(fixture.scenario==='restore'){
     result.initialMusic=await musicOwner();
     await key('F10',121);await until('credits CD admitted','__sessionCd.sources.length===2');
     result.credits=await outputWindow(1,true,'credits');
@@ -138,4 +226,4 @@ try{
   }
   result.provenance=await provenance.verify();
   writeFileSync(`${output}/result.json`,JSON.stringify(result,null,2));
-}catch(error){writeFileSync(`${output}/failure.json`,JSON.stringify({error:String(error),result,status:await evaluate('window.__sessionCd?.status()').catch(()=>null),events:cdp.events},null,2));throw error;}finally{provenance?.stop();await cdp.close();}
+}catch(error){result.provenance=await provenance?.verify().catch(problem=>({error:String(problem)}));writeFileSync(`${output}/failure.json`,JSON.stringify({error:String(error),result,status:await evaluate('window.__sessionCd?.status()').catch(()=>null),events:cdp.events},null,2));throw error;}finally{provenance?.stop();await cdp.close();}
