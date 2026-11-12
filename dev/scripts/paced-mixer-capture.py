@@ -63,7 +63,7 @@ def capture(output, command, timeout, tolerance, ready_command):
     path = output / 'audio.wav'
     if path.exists():
         raise ValueError('audio.wav exists; preserve the run and choose another output')
-    result = {'success': False, 'command': command}
+    result = {'success': False, 'command': command, 'pacing_tolerance_seconds': tolerance}
     recorder = None
     try:
         readiness = subprocess.run(ready_command, capture_output=True, text=True,

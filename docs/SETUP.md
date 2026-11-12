@@ -104,6 +104,47 @@ waveform continuity or calibrated production gain. The transition recorder retai
 monotonic PCM/input epoch in `result.json` so separately sampled game clocks can be
 bound to that recording without reconstructing wall time.
 
+`paired-book-audio.py` records a known unity signal and a public transition in one
+monitor WAV while an independent clock observer runs. Use a private paced runtime
+and a host-mounted evidence/config directory:
+
+```sh
+python3 paired-book-audio.py --producer dosbox-x \
+  --clock-command 'python3 /evidence/clock-observer.py' \
+  --ready-command 'python3 /evidence/check-ready.py' \
+  capture /evidence/paired -- python3 /evidence/transition.py
+```
+
+The readiness command observes the settled source page. The clock command emits
+JSON lines with monotonic `before`/`after` read bounds and `game_seconds`.
+The transition command uses the recorder's epoch and emits the ordinary `sent`,
+`acknowledged`, `from` and `to` event. It owns its bounded audio tail. The clock
+observer is terminated when that driver finishes, so a longer observer timeout
+cannot add unrelated repeated cues to the transition window.
+
+Calibration temporarily mutes exactly one named game producer while the known
+signal plays. The original unmuted player settings are restored and compared
+before public input, including after calibration failure. Other producers are
+untouched. This prevents a quiet producer's constant sample offset from corrupting
+strict unity; it does not change the transition's production volume. Recording
+ownership is protected by a per-output lock.
+
+Run `check-paired-book-audio.py RECORDING REPORT --reference EFFECT.wav` for each
+installed cue. Its phase windows come from recorded events, with the existing
+recorder pacing allowance retained as PCM/wall epoch uncertainty. It requires
+strict stereo unity, unchanged player settings, cue continuity, and observed
+clock samples bracketing that uncertainty. Shared epoch error is retained when
+bounding cue cadence; host time is never interpolated into game time.
+
+For different recording sample rates, play the retained source recording through
+the target sink with `paced-monitor-check.py --reference SOURCE.wav`. Then run
+`book-audio-transfer.py CAPTURE SOURCE.wav REPORT --reference EFFECT.wav` for each
+cue. It requires admitted explicit-unity playback of that source hash and cue
+continuity at both boundaries, and reports the measured transfer ratio per cue.
+It does not assume a generic resampler response or authorize changing production
+gain to compensate for a frequency-dependent recording path.
+
+
 `dev/scripts/world-pursuit.py --port 7117 DRINT EXTPALAC` exercises combat actors' lost-sight routing:
 it places the selected player (`place_player`) next to the nearest living combat actor, then holds it
 far away, and prints failed actors, a world-level script error and how many actors reached
