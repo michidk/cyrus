@@ -236,22 +236,15 @@ fn stop_track(
 
 /// A world load stops the CD when it begins, ahead of the loading screen, if the
 /// world names a different track; the new track starts once the world is prepared.
+#[cfg(not(target_arch = "wasm32"))]
 fn stop_for_world_entry(
     mut commands: Commands,
     #[cfg(not(target_arch = "wasm32"))] install: Option<Res<GameInstall>>,
-    #[cfg(target_arch = "wasm32")] bank: Option<Res<cyrus_assets::sound::MusicSettings>>,
     request: Res<SceneRequest>,
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
-    #[cfg(not(target_arch = "wasm32"))]
     let value = install.and_then(|install| world_track(&install, &request.0).ok());
-    // shortcut: the browser knows a world's track only by numeric WORLD.INI ID; other names stop at commit.
-    #[cfg(target_arch = "wasm32")]
-    let value = bank.and_then(|bank| {
-        let world = request.0.parse::<u32>().ok()?;
-        bank.world_tracks.get(&world).copied()
-    });
     if let Some(value) = value
         && value != -1
         && u32::try_from(value).ok() != music.track
@@ -259,6 +252,26 @@ fn stop_for_world_entry(
         stop_track(&mut commands, &mut music, &playing);
     }
 }
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn stop_for_browser_world_entry(
+    mut commands: Commands,
+    bank: Option<Res<cyrus_assets::sound::MusicSettings>>,
+    request: Res<SceneRequest>,
+    mut music: ResMut<Music>,
+    playing: Query<Entity, With<MusicPlayer>>,
+) {
+    let value = bank.and_then(|bank| bank.track_for_scene(&request.0));
+    if let Some(value) = value
+        && value != -1
+        && u32::try_from(value).ok() != music.track
+    {
+        stop_track(&mut commands, &mut music, &playing);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+use stop_for_browser_world_entry as stop_for_world_entry;
 
 fn start_world_track(
     mut commands: Commands,
@@ -495,6 +508,60 @@ mod tests {
         app.update();
         assert!(app.world().resource::<Music>().load.is_none());
         app
+    }
+
+    #[test]
+    fn browser_world_request_stops_named_destination_before_publication() {
+        for destination in ["1", "ROOM", "room"] {
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins)
+                .insert_resource(SceneRequest(destination.into()))
+                .insert_resource(Music {
+                    track: Some(2),
+                    ..default()
+                })
+                .insert_resource(
+                    serde_json::from_value::<cyrus_assets::sound::MusicSettings>(
+                        serde_json::json!({"enabled":true,"volume":64,
+                        "world_tracks":{"1":3},"world_names":{"ROOM":1}}),
+                    )
+                    .unwrap(),
+                )
+                .add_systems(Update, stop_for_browser_world_entry);
+            let old = app.world_mut().spawn(MusicPlayer).id();
+            app.update();
+            assert_eq!(
+                app.world().resource::<Music>().track,
+                None,
+                "request {destination} kept the retiring track before world publication"
+            );
+            assert!(app.world().get_entity(old).is_err());
+        }
+    }
+
+    #[test]
+    fn browser_world_request_preserves_same_and_unassigned_music() {
+        for destination in ["ROOM", "OTHER", "unknown", "../ROOM"] {
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins)
+                .insert_resource(SceneRequest(destination.into()))
+                .insert_resource(Music {
+                    track: Some(2),
+                    ..default()
+                })
+                .insert_resource(
+                    serde_json::from_value::<cyrus_assets::sound::MusicSettings>(
+                        serde_json::json!({"enabled":true,"volume":64,
+                        "world_tracks":{"1":2,"2":-1},"world_names":{"ROOM":1,"OTHER":2}}),
+                    )
+                    .unwrap(),
+                )
+                .add_systems(Update, stop_for_browser_world_entry);
+            let old = app.world_mut().spawn(MusicPlayer).id();
+            app.update();
+            assert_eq!(app.world().resource::<Music>().track, Some(2));
+            assert!(app.world().get_entity(old).is_ok());
+        }
     }
 
     #[test]

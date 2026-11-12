@@ -193,3 +193,167 @@ fn get_movement_speed_maps_the_current_group_to_a_speed_attribute() {
         assert_eq!(local(&world), expected, "group {group}");
     }
 }
+
+#[test]
+fn selected_player_queries_return_zero_without_optional_resources() {
+    let mut results = Vec::new();
+    for native in [
+        Native::PlayerTurned,
+        Native::PlayerTurnedDirection,
+        Native::PlayerMovementSpeed,
+    ] {
+        let mut scripts = random_scripts(native, vec![], Object::Me);
+        scripts.definition.functions[1].param_count = 0;
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let result = world.step(world.id(0).unwrap(), Thread::Main, 20);
+        results.push((native, result.map(|_| local(&world))));
+    }
+    assert!(
+        results.iter().all(|(_, result)| matches!(result, Ok(0))),
+        "{results:?}"
+    );
+}
+
+#[test]
+fn player_queries_follow_selected_state_and_model_presence() {
+    for (native, hidden) in [Native::PlayerTurned, Native::PlayerTurnedDirection]
+        .into_iter()
+        .flat_map(|native| [false, true].map(|hidden| (native, hidden)))
+    {
+        let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+            let id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: native,
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .program
+                .steps
+                .insert(0, assign_call(1, id, native, &[]));
+            let hide_id = scripts.definition.functions.len() as u16;
+            scripts.definition.functions.push(Function {
+                name: Native::HideMe,
+                param_count: 0,
+                kind: CallKind::Function,
+            });
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .program
+                .steps
+                .get_mut(&0)
+                .unwrap()
+                .operation = wait(hide_id, Native::HideMe, CallKind::Function, vec![]);
+        });
+        let player = world.selected_player().unwrap();
+        assert!(world.model_presentation(player).unwrap().is_some());
+        world.snapshot_spatial(player).unwrap();
+        world.set_local_angles_for_test(player, [0, 12, 0]);
+        if hidden {
+            world
+                .advance(
+                    player,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+        }
+        assert_eq!(world.model_presentation(player).unwrap().is_none(), hidden);
+        let position = world.spatial(player).unwrap().local;
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        let expected = if hidden {
+            0
+        } else if native == Native::PlayerTurned {
+            1
+        } else {
+            -1
+        };
+        assert_eq!(local(&world), expected, "{native}, hidden {hidden}");
+        assert_eq!(
+            world.spatial(player).unwrap().local.position,
+            position.position
+        );
+        assert_eq!(world.spatial(player).unwrap().local.angles, position.angles);
+    }
+}
+
+#[test]
+fn player_movement_speed_reads_animation_without_a_model_or_spatial_state() {
+    let mut scripts = random_scripts(Native::PlayerMovementSpeed, vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    add_standalone_receivers(&mut scripts);
+    scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::ForwardWalk] = 37;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let player = world.selected_player().unwrap();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,"actors":[{
+            "script_name":"CYRUS","animation_groups":[{"group_index":AnimationGroup::WALK.index(),"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":1},{"opcode":2,"value":0}]}]
+        }]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    world
+        .bind_animation(player, &data, AnimationGroup::WALK)
+        .unwrap();
+    world
+        .advance(
+            player,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert!(world.model_presentation(player).unwrap().is_none());
+    assert!(world.spatial(player).is_err());
+    world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(local(&world), 37);
+}

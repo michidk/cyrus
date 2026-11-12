@@ -27,6 +27,33 @@ fn installed_island_keyboard_walk_and_release() -> Result<()> {
 }
 
 #[test]
+fn installed_carrying_player_keyboard_movement_and_release() -> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (installed carrying-player movement)");
+        return Ok(());
+    };
+    let (mut app, codes, _assets) = prepare_player_app(&install, false)?;
+    for _ in 0..4 {
+        app.update();
+    }
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors
+            .current
+            .as_mut()
+            .context("logical world unavailable")?;
+        let player = world
+            .selected_player()
+            .context("selected player unavailable")?;
+        world.set_attribute_for_test(player, cyrus_soup::Attribute::HoldingWeapon, 1);
+    }
+    walk_route(&mut app, &codes)
+}
+
+#[test]
 fn installed_modern_jump_returns_to_ground_after_release() -> Result<()> {
     installed_keyboard_route(true, false)
 }

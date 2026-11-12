@@ -51855,3 +51855,6 @@ fn ordinary_working_orientation_copies_current_angles_before_script_rotation() {
 
 #[path = "script_registry/rope_attachment.rs"]
 mod rope_attachment_tests;
+
+#[path = "script_registry/carrying_player.rs"]
+mod carrying_player_tests;

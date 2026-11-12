@@ -27,6 +27,11 @@ When execution is admitted, run `cargo test -p cyrus-assets --features parsers
 filesystem and installed-source coverage. The installed worker contract is in
 `node dev/scripts/test-game-worker.mjs <built-worker-package> <install>`.
 
+Catalog version 32 retains the installed map-stem aliases in music settings.
+Named browser world requests resolve the same first authored variant as scene
+loading, so a different CD track retires at the load request rather than waiting
+for destination publication. Older sound banks require preparation again.
+
 Catalog version 31 requires the installed speech and subtitle switches in browser
 sound banks. Older browser caches are prepared again so dialogue record timing
 and subtitle defaults follow `SYSTEM.INI` before saved book preferences apply.

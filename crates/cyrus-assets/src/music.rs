@@ -30,10 +30,27 @@ pub(crate) fn settings_source(
             Ok((entry.index, track))
         })
         .collect::<anyhow::Result<_>>()?;
+    let mut world_names = std::collections::BTreeMap::new();
+    for entry in &worlds.entries {
+        let filename = entry.map.rsplit(['/', '\\']).next().unwrap_or_default();
+        let stem = Path::new(filename)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .with_context(|| {
+                format!(
+                    "WORLD.INI world_map[{}]: invalid map {}",
+                    entry.index, entry.map
+                )
+            })?;
+        world_names
+            .entry(stem.to_ascii_uppercase())
+            .or_insert(entry.index);
+    }
     Ok(crate::sound::MusicSettings {
         enabled: settings.music,
         volume: settings.redbook_volume,
         world_tracks,
+        world_names,
     })
 }
 
@@ -162,6 +179,15 @@ mod tests {
         assert!(music.enabled);
         assert_eq!(music.volume, 64);
         assert_eq!(music.world_tracks, [(0, 3)].into());
+        assert_eq!(music.track_for_scene("start"), Some(3));
+        assert_eq!(music.track_for_scene("0"), Some(3));
+        for invalid in ["", "missing", "../START", "START.RGM"] {
+            assert_eq!(music.track_for_scene(invalid), None);
+        }
+        std::fs::write(install.root.join("WORLD.INI"), "[world]\nworld_map[0]=MAPS\\ROOM.RGM\nworld_palette[0]=ART/COL.COL\nworld_redbook[0]=3\nworld_map[9]=MAPS/room.RGM\nworld_palette[9]=ART/COL.COL\nworld_redbook[9]=2\n").unwrap();
+        let variants = settings(&install).unwrap();
+        assert_eq!(variants.track_for_scene("ROOM"), Some(3));
+        assert_eq!(variants.track_for_scene("9"), Some(2));
         let cache = root.join("cache");
         export(&install, &cache).unwrap();
         for track in ["02.wav", "03.wav"] {

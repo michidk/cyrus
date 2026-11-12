@@ -88,13 +88,35 @@ impl SurfaceSounds {
     }
 }
 
-/// Installed Red Book configuration for browser playback, using WORLD.INI IDs.
+/// Installed Red Book configuration for browser playback, using WORLD.INI identities.
 #[derive(Resource, Clone, Deserialize, Serialize)]
 pub struct MusicSettings {
     pub enabled: bool,
     /// Original redbook volume units; values outside 0..=127 are ignored by the drive.
     pub volume: i32,
     pub world_tracks: std::collections::BTreeMap<u32, i32>,
+    /// Uppercase map stems select the first authored variant, as scene loading does.
+    /// Required so a browser can retire different music before preparing a named scene.
+    pub world_names: std::collections::BTreeMap<String, u32>,
+}
+
+impl MusicSettings {
+    /// Resolve a numeric WORLD.INI identity or case-insensitive map stem without
+    /// loading destination assets. Invalid or unknown scenes have no selection.
+    pub fn track_for_scene(&self, scene: &str) -> Option<i32> {
+        if scene.is_empty()
+            || !scene
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        {
+            return None;
+        }
+        let world = scene
+            .parse::<u32>()
+            .ok()
+            .or_else(|| self.world_names.get(&scene.to_ascii_uppercase()).copied())?;
+        self.world_tracks.get(&world).copied()
+    }
 }
 
 /// Remaining complete passes, including the current pass. Zero means unbounded.
