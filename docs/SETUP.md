@@ -1922,6 +1922,23 @@ that BMP, never the live window. Results identify the presentation sequence and
 thread separately from the game's ordinary update counter. The request directory
 permits one caller and the producer retains at most one copied surface/worker.
 
+Before scheduling a counterpart, select actual retained presentation receipts:
+
+```sh
+python3 dev/scripts/gameplay-media-capture.py --plan-presentations ORIGINAL_CAPTURE COUNTERPART_CAPTURE
+```
+
+The planner normalizes each acknowledged placement origin and compares exact
+rational event-relative times. It returns shared point receipts with source
+row/pixel references and absolute counterpart clocks. Extra observations do not
+change the selected boundaries. Missing counterparts are listed explicitly;
+unrepresentable clock values are never rounded. Duplicate clocks and polling
+brackets cannot identify a presentation and are rejected. A plan with fewer
+than two shared points cannot define a paired window. Planning neither compares
+pixels nor admits PCM parity, and does not replace `--compare-captures` or its
+pacing/continuity gates. A proposed absolute clock without an observed counterpart
+is an acquisition requirement, not evidence that the counterpart presents there.
+
 For an exact planned boundary, pass `--at-clock FIELD VALUE`, or supply
 `at_clock={"field": FIELD, "value": VALUE}` to the Python `capture` function.
 The field must bind an unsigned little-endian 32-bit monotonic clock. The

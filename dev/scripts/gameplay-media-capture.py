@@ -209,6 +209,70 @@ def matching_intervals(left, right):
                 atomic=False, exact_pcm_event_mapping=False)
 
 
+def plan_presentations(left, right):
+    """Pair only observed producer-owned points; never predict or round a clock.
+
+    Targets are exact absolute counterpart clocks derived from acknowledged
+    placement origins. An unavailable receipt is a missing acquisition, not
+    permission to change update cadence or substitute its nearest frame.
+    This plan does not admit pixel equality or generated-audio parity.
+    """
+    def read(directory):
+        result = json.loads((directory / 'result.json').read_text())
+        if result.get('success') is not True:
+            raise ValueError('presentation planning requires a completed capture')
+        origin = trigger_origin(result['trigger'], result['trigger_observation'])
+        rows = [json.loads(line) for line in (directory / 'windows.jsonl').read_text().splitlines()]
+        summarize(rows, 0)
+        receipts = {}
+        for index, row in enumerate(rows):
+            before, after = row['before'], row['after']
+            require_observation(before)
+            scale = before['elapsed_scale']
+            owner = row.get('clock_owner')
+            if (owner not in ('render_extraction', 'sdl_surface_present')
+                    or before != after or before.get('phase') != owner
+                    or before.get('event') != 'render_frame'
+                    or before.get('elapsed_scale_end', scale) != scale
+                    or type(before.get('render_frame')) is not int or before['render_frame'] <= 0
+                    or type(before.get('generation')) is not int):
+                raise ValueError('presentation planning requires producer-owned point receipts')
+            anchor_window(row, origin)
+            if origin.get('generation') is not None and before['generation'] != origin['generation']:
+                raise ValueError('presentation generation changed after placement')
+            if scale >= origin['elapsed_scale']:
+                elapsed_from_origin(origin, before)
+            relative = Fraction(scale - origin['elapsed_scale'], 256 * origin['normal_frame_rate'])
+            if relative < 0:
+                continue
+            if relative in receipts:
+                raise ValueError('duplicate presentation clock cannot identify an unambiguous boundary')
+            receipts[relative] = dict(row=index, pixels=row['pixels'],
+                elapsed_scale=scale, render_frame=before['render_frame'],
+                pcm_mapping=row.get('pcm_mapping'), pcm_frames=row.get('pcm_frames'))
+        return origin, receipts
+
+    left_origin, sources = read(left)
+    right_origin, counterparts = read(right)
+    if left_origin['scene'] != right_origin['scene']:
+        raise ValueError('presentation planning requires the same scene')
+    pairs = []
+    missing = []
+    for time, source in sources.items():
+        target = time * (256 * right_origin['normal_frame_rate']) + right_origin['elapsed_scale']
+        clock = target.numerator if target.denominator == 1 else None
+        entry = dict(event_seconds=str(time), source=source, counterpart_elapsed_scale=clock)
+        if time in counterparts:
+            pairs.append(dict(entry, counterpart=counterparts[time]))
+        else:
+            missing.append(dict(entry, reason='no observed counterpart presentation' if clock is not None
+                                else 'event time is not representable by the counterpart clock'))
+    return dict(scene=left_origin['scene'], pairs=pairs, missing=missing,
+                paired_window_available=len(pairs) >= 2,
+                exact_pcm_event_mapping=False, pixel_comparison_performed=False,
+                reason=None if len(pairs) >= 2 else 'fewer than two shared observed presentation boundaries')
+
+
 def raster_metadata(path):
     data = path.read_bytes()
     if (len(data) < 33 or data[:8] != b'\x89PNG\r\n\x1a\n'
@@ -388,6 +452,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path, nargs='?')
     parser.add_argument('--compare-captures', type=Path, nargs=2)
+    parser.add_argument('--plan-presentations', type=Path, nargs=2)
     parser.add_argument('--owned-frames', action='store_true', help='screenshot adapter returns capture_gameplay_frame result with a frozen render boundary')
     parser.add_argument('--generated-pcm', type=Path, help='SDL mixer tap directory; requires --owned-frames')
     parser.add_argument('--observe')
@@ -397,6 +462,11 @@ def main():
     parser.add_argument('--timeout', type=float, default=90)
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
+    if args.plan_presentations:
+        if args.compare_captures:
+            parser.error('choose planning or comparison')
+        print(json.dumps(plan_presentations(*args.plan_presentations)))
+        return
     if args.compare_captures:
         print(json.dumps(matching_intervals(*args.compare_captures)))
         return
