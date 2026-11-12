@@ -287,3 +287,14 @@ idle diagnostic player/camera roles, and records logical/render poses beside
 seven native/browser PCM observations. The audio crate documents the fixture and
 bounded recovery launcher. This is a controlled camera/audio integration scene,
 not a complete installed-room replay.
+
+With opt-in `?capture`, `__cyrusSampleRequest` accepts JSON `play`/`stop` actions
+with an id and effect for play, through the same shared `SoundRequest` adapter as
+native controls. `__cyrusSampleResult` acknowledges dispatch, not audible output.
+The acceptance request's `load_scene` action stages through the ordinary browser
+scene transition while preserving the running world until preparation succeeds.
+`__cyrusStartup.console_open` lets bounded drivers observe actual console input.
+`test-ambient-lifecycle-browser.mjs CDP PAGE INSTALL OUTPUT EMITTER LOOP_EFFECT`
+uses these public adapters, real placement and scene lifecycle with actual graph
+PCM, explicit installed files and executed-build provenance. It checks authored
+room movement/revisit, shared-pool retirement and later start/stop continuation.

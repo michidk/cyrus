@@ -1,5 +1,12 @@
 //! Synthetic SOUP callers shared by output acceptance and public ownership regressions.
 pub fn separate_sound_world(shells: bool) -> cyrus_script::script::ScriptWorld {
+    separate_sound_world_at_generation(shells, 17)
+}
+
+pub fn separate_sound_world_at_generation(
+    shells: bool,
+    generation: u64,
+) -> cyrus_script::script::ScriptWorld {
     use cyrus_assets::script::{Actor, Scripts};
     use cyrus_soup::program::{
         Call, CallKind, Flag, Formula, Function, Object, Operation, Place, Program, Step, Value,
@@ -168,5 +175,5 @@ pub fn separate_sound_world(shells: bool) -> cyrus_script::script::ScriptWorld {
         }
     }
     scripts.content_id = scripts.content_identity().unwrap();
-    cyrus_script::script::ScriptWorld::prepare(&scripts, 17).unwrap()
+    cyrus_script::script::ScriptWorld::prepare(&scripts, generation).unwrap()
 }

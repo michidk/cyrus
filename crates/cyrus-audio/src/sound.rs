@@ -277,6 +277,7 @@ fn finish_speech(
 /// stolen. The start index is 0 at boot; animation and speech starts set it to 6.
 #[derive(Resource, Default)]
 pub(crate) struct Channels {
+    script_generation: script::ScriptGeneration,
     samples: SampleSlots,
     #[cfg(any(target_arch = "wasm32", test))]
     pending: Vec<PendingCue>,
@@ -632,11 +633,6 @@ impl Channels {
 
     fn stop_all(&mut self, commands: &mut Commands) {
         self.stop_matching(commands, None, None);
-    }
-
-    fn stop_script_generation(&mut self, commands: &mut Commands, generation: u64) {
-        let stopped = self.samples.stop_script_generation(generation);
-        self.retire(commands, stopped);
     }
 
     fn update_slot(&self, slot: u8, volume: u8, master: i32, pan: u8) -> Result<(), String> {

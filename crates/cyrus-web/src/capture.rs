@@ -95,12 +95,14 @@ fn publish_startup(
     clock: Option<Res<cyrus_script::clock::SimulationClock>>,
     fades: Query<&BackgroundColor, With<cyrus_startup::WorldEntryFade>>,
     camera: Res<cyrus_script::script::CameraFrameState>,
+    console: Option<Res<cyrus_console::Console>>,
 ) {
     let Some(window) = web_sys::window() else {
         return;
     };
     let record = serde_json::json!({
         "state": format!("{:?}", state.get()),
+        "console_open": console.as_ref().is_some_and(|console| console.open),
         "loading_world": loading.as_ref().and_then(|loading| loading.artwork_world()),
         "presentation": &*presentation,
         "world_fades": fades.iter().map(|color| color.0.alpha()).collect::<Vec<_>>(),
@@ -143,6 +145,13 @@ fn publish_menu(menu: Option<Res<cyrus_startup::MenuState>>) {
 #[derive(serde::Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum AcceptanceRequest {
+    ResetCamera {
+        id: u32,
+    },
+    LoadScene {
+        id: u32,
+        name: String,
+    },
     PlacePlayer {
         id: u32,
         x: i32,
@@ -164,6 +173,8 @@ enum AcceptanceRequest {
 fn sync_acceptance(
     mut scripts: Option<ResMut<cyrus_script::script::ScriptActors>>,
     hud: Option<Res<cyrus_script::script::ScriptHud>>,
+    mut scene: ResMut<cyrus_world::lifecycle::SceneRequest>,
+    mut commands: Commands,
 ) {
     let Some(window) = web_sys::window() else {
         return;
@@ -186,6 +197,21 @@ fn sync_acceptance(
                 .and_then(|actors| actors.current.as_mut())
                 .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
             match request {
+                AcceptanceRequest::ResetCamera { id: request_id } => {
+                    id = Some(request_id);
+                    world.globals_mut().request_camera_reset();
+                    Ok(())
+                }
+                AcceptanceRequest::LoadScene {
+                    id: request_id,
+                    name,
+                } => {
+                    id = Some(request_id);
+                    anyhow::ensure!(!name.is_empty(), "scene name is empty");
+                    scene.0 = name;
+                    commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
+                    Ok(())
+                }
                 AcceptanceRequest::PlacePlayer {
                     id: request_id,
                     x,

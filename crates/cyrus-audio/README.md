@@ -415,3 +415,19 @@ capturing missing phases. A different executable or changed stage state rejects
 the checkpoint. The listener fixture moves the initialized player through public
 placement restore before invoking cameraController; it does not initialize the
 player twice.
+
+World teardown retires the entire shared sample pool, including unowned
+presentation/control voices and effects, and clears browser-bank deferred starts.
+The observed world generation belongs to the pool, so a validated diagnostic
+session replacement does not inherit the old pool's teardown on its first drain.
+This follows preservation's `engine/sound.md` world-teardown contract.
+
+`native-ambient-lifecycle.py PORT OUTPUT --container NAME --binary PATH
+--emitter NAME --effect INDEX` drives an explicitly selected installed room
+emitter through public placement, camera reset, console inhibition, scene load and dormant
+revisit. It captures actual Pulse stereo output, isolates a looping unowned
+control sample before teardown, requires silence after retirement and checks a
+new start/stop plus authored ambient continuation. The default scene pair is
+ISLAND/START; emitter/effect are supplied from the install. Run it in the paced
+runtime with host-mounted config and a per-run lock. `test-native-ambient-lifecycle.py`
+checks audible/silent/incomplete-window failure controls. No install data is tracked.

@@ -107,12 +107,6 @@ impl SampleSlots {
         self.remove_where(|sample| sample.owner.is_some_and(|owner| !current(owner)))
     }
 
-    pub fn stop_script_generation(&mut self, generation: u64) -> Vec<Reservation> {
-        self.remove_where(|sample| {
-            matches!(sample.owner, Some(Owner::Script { generation: value, .. }) if value == generation)
-        })
-    }
-
     fn remove_where(&mut self, matches: impl Fn(&Sample) -> bool) -> Vec<Reservation> {
         self.slots
             .iter_mut()
@@ -577,6 +571,7 @@ impl ChannelOwnershipCandidate {
             );
         }
         Ok(super::Channels {
+            script_generation: super::script::ScriptGeneration::default(),
             samples: self.samples,
             #[cfg(any(target_arch = "wasm32", test))]
             pending: Vec::new(),

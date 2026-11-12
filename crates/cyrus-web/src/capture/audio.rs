@@ -12,6 +12,14 @@ struct Request {
     label: String,
     effect: Option<i32>,
 }
+/// Native control-port equivalents for opt-in lifecycle PCM acceptance.
+#[derive(serde::Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum SampleRequest {
+    Play { id: u32, effect: usize },
+    Stop { id: u32 },
+}
+
 #[derive(Resource, Default)]
 struct Pending(Option<(Request, Handle<DialogueClip>)>);
 
@@ -27,6 +35,35 @@ fn respond(world: &mut World) {
         return;
     };
     let result = (|| -> anyhow::Result<()> {
+        let sample_key = JsValue::from_str("__cyrusSampleRequest");
+        let value = js_sys::Reflect::get(&window, &sample_key)
+            .map_err(|e| anyhow::anyhow!("sample request: {e:?}"))?;
+        if !value.is_null() && !value.is_undefined() {
+            js_sys::Reflect::set(&window, &sample_key, &JsValue::NULL)
+                .map_err(|e| anyhow::anyhow!("clearing sample request: {e:?}"))?;
+            let request: SampleRequest = serde_json::from_str(
+                &value
+                    .as_string()
+                    .ok_or_else(|| anyhow::anyhow!("sample request must be JSON text"))?,
+            )?;
+            let (id, request) = match request {
+                SampleRequest::Play { id, effect } => (
+                    id,
+                    SoundRequest::Play {
+                        effect,
+                        position: None,
+                    },
+                ),
+                SampleRequest::Stop { id } => (id, SoundRequest::StopAll),
+            };
+            world.write_message(request);
+            js_sys::Reflect::set(
+                &window,
+                &"__cyrusSampleResult".into(),
+                &JsValue::from_f64(f64::from(id)),
+            )
+            .map_err(|e| anyhow::anyhow!("sample response: {e:?}"))?;
+        }
         let stop = js_sys::Reflect::get(&window, &"__cyrusVoiceStopRequest".into())
             .map_err(|e| anyhow::anyhow!("voice stop request: {e:?}"))?;
         if !stop.is_null() && !stop.is_undefined() {
