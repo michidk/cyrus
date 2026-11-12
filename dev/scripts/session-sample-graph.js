@@ -1,14 +1,39 @@
 // Tap the production CPAL stream in parallel. Mixed buffers may drain after a
 // sample owner retires; compare rendered PCM with the buffers actually submitted.
 (() => {
-  const probe = globalThis.__sessionSamples = { buffers: [], blocks: [], error: null };
+  const probe = globalThis.__sessionSamples = { buffers: [], blocks: [], error: null, startFrame: null };
   const original = AudioBufferSourceNode.prototype.start;
   const connect = AudioNode.prototype.connect;
   let context, tap, ready;
   const worklet = URL.createObjectURL(new Blob([`
     registerProcessor('session-sample-tap', class extends AudioWorkletProcessor {
-      process([input]) {
-        this.port.postMessage({frame: currentFrame, left: input[0] ?? new Float32Array(128), right: input[1] ?? new Float32Array(128)});
+      static get parameterDescriptors() { return [
+        {name: 'sampleFrame', defaultValue: 0, automationRate: 'a-rate'},
+        {name: 'coarseFrame', defaultValue: 0, automationRate: 'a-rate'},
+        {name: 'recording', defaultValue: 0, automationRate: 'a-rate'},
+      ]; }
+      constructor(options) { super(); this.armed = options?.processorOptions?.startFrame ?? 0; }
+      process([input], outputs, parameters) {
+        if (parameters.recording[0] !== 1) return true;
+        const clock = parameters.sampleFrame;
+        const length = input[0]?.length;
+        const direction = clock[clock.length - 1] > clock[0] ? 1 : -1;
+        const phase = direction === 1 ? Math.round(clock[0]) : 131072 - Math.round(clock[0]);
+        // The coarse ramp selects a period only. The small continuous triangle
+        // supplies exact sample positions without float32 absolute-ramp drift.
+        const cycle = Math.round((parameters.coarseFrame[0] - this.armed - phase) / 131072);
+        const frame = this.armed + cycle * 131072 + phase;
+        const end = frame + direction * (Math.round(clock[clock.length - 1]) - Math.round(clock[0]));
+        // Validate every fine-clock sample, not just the quantum endpoints.
+        // Keep the worklet-global clock for diagnosis, never repair gaps from it.
+        const error = !length || input[1]?.length !== length || clock.length !== length
+          || clock.some((value, index) => direction * (Math.round(value) - Math.round(clock[0])) !== index)
+          || end !== frame + length - 1 || end >= 2 ** 24;
+        this.port.postMessage({frame, reportedFrame: currentFrame,
+          sequence: this.sequence ?? 0, error: error ? 'invalid automated sample clock' : null,
+          clockError: error ? {coarse: parameters.coarseFrame[0], clock: Array.from(clock)} : null,
+          left: input[0], right: input[1]});
+        this.sequence = (this.sequence ?? 0) + 1;
         return true;
       }
     });
@@ -22,10 +47,31 @@
       context = this.context;
       if (!context.audioWorklet) throw Error('AudioWorklet unavailable; capture requires a secure origin');
       if (!ready) ready = context.audioWorklet.addModule(worklet).then(() => {
-        tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2, channelCountMode: 'explicit'});
+        // Arm on a future render boundary after configuring both automation lanes.
+        // This excludes setup, while retaining every quantum in the capture interval.
+        probe.startFrame = Math.ceil((context.currentTime + 0.1) * context.sampleRate / 128) * 128;
+        tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2,
+          channelCountMode: 'explicit', processorOptions: {startFrame: probe.startFrame}});
+        tap.parameters.get('coarseFrame').setValueAtTime(probe.startFrame, probe.startFrame / context.sampleRate);
+        tap.parameters.get('coarseFrame').linearRampToValueAtTime(2 ** 24, 2 ** 24 / context.sampleRate);
+        tap.parameters.get('sampleFrame').setValueAtTime(0, probe.startFrame / context.sampleRate);
+        // Continuous alternating ramps avoid discontinuous automation endpoints.
+        for (let frame = probe.startFrame, up = true; frame < 2 ** 24; frame += 65536, up = !up) {
+          tap.parameters.get('sampleFrame').linearRampToValueAtTime(up ? 65536 : 0, (frame + 65536) / context.sampleRate);
+        }
+        tap.parameters.get('recording').setValueAtTime(1, probe.startFrame / context.sampleRate);
+        let nextFrame = probe.startFrame, nextSequence = 0;
         tap.port.onmessage = ({data}) => {
-          probe.blocks.push(data);
-          if (probe.blocks.length > 24000) probe.blocks.splice(0, 1000);
+          if (data.error || data.frame !== nextFrame || data.sequence !== nextSequence) {
+            probe.error ??= data.error || 'missing or duplicate sample graph quantum: expected '
+              + nextFrame + '/' + nextSequence + ', got ' + data.frame + '/' + data.sequence;
+          }
+          nextFrame = data.frame + (data.left?.length ?? 0);
+          nextSequence = data.sequence + 1;
+          // Keep the armed interval intact through slow seek decoding. The exact
+          // automated clock bounds storage to at most 2^24 stereo sample frames.
+          if (probe.blocks.length < 2 ** 24 / 128) probe.blocks.push(data);
+          else probe.error ??= 'sample graph capture capacity exceeded';
         };
         connect.call(tap, context.destination);
         // Keep the observer processing silent quanta between scheduled buffers.
@@ -51,6 +97,33 @@
     buffers: probe.buffers.map(b => ({frame: b.frame, length: b.left.length,
       energy: b.left.reduce((sum, x) => sum + x*x, 0) + b.right.reduce((sum, x) => sum + x*x, 0)})),
     last: probe.blocks.at(-1)?.frame});
+  // Freeze the sample window before asynchronous CDP readback. Diagnostics survive
+  // rejection; a failed window never receives exportable PCM.
+  probe.capture = (start, end) => {
+    const blocks = probe.blocks.filter(b => b.frame >= start && b.frame < end);
+    probe.capturedPcm = null;
+    const metadata = probe.lastCapture = {start, end, rate: context?.sampleRate,
+      clock: probe.clock(), armed: probe.startFrame, error: probe.error,
+      quanta: blocks.map(b => ({frame: b.frame, sequence: b.sequence,
+        reportedFrame: b.reportedFrame, length: b.left?.length, error: b.error, clockError: b.clockError}))};
+    let next = start, sequence = blocks[0]?.sequence;
+    for (const block of blocks) {
+      if (block.error || block.frame !== next || block.sequence !== sequence
+          || block.left?.length !== 128 || block.right?.length !== 128) {
+        metadata.error ??= 'missing or duplicate sample graph quantum at ' + next;
+      }
+      next += 128; sequence++;
+    }
+    if (!(end > start) || next !== end) metadata.error ??= 'incomplete sample graph window';
+    if (metadata.error) throw Error('sample graph rejected: ' + metadata.error);
+    const pcm = new Float32Array((end - start) * 2);
+    for (let j = 0; j < blocks.length; j++) for (let i = 0; i < 128; i++) {
+      pcm[j * 256 + i * 2] = blocks[j].left[i];
+      pcm[j * 256 + i * 2 + 1] = blocks[j].right[i];
+    }
+    probe.capturedPcm = pcm;
+    return metadata;
+  };
   probe.match = (start, end, shift = 0) => {
     if (probe.error) throw Error(`sample graph rejected: ${probe.error}`);
     const blocks = probe.blocks.filter(b => b.frame >= start && b.frame < end);

@@ -21,12 +21,17 @@ async function until(expression) {
     if (value) return value;
     await delay(25);
   }
-  throw Error(`audio control deadline: ${expression}`);
+  throw Error(`audio control deadline: ${expression}; ${JSON.stringify(await evaluate('window.__sessionSamples?.status()'))}`);
 }
 try {
   await cdp.call('Page.enable');
-  await cdp.call('Page.navigate', {url: page});
-  await until("document.readyState === 'complete'");
+  let navigated = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (!(await cdp.call('Page.navigate', {url: page})).errorText) { navigated = true; break; }
+    await delay(250);
+  }
+  assert(navigated, 'sample graph control page unavailable');
+  await until(`location.href === ${JSON.stringify(page)} && document.readyState === 'complete'`);
   // Isolate the observer from any application scripts on the supplied local page.
   await evaluate("document.open(); document.write('<title>Sample graph controls</title>'); document.close(); true");
   await evaluate(readFileSync(new URL('./session-sample-graph.js', import.meta.url), 'utf8'));

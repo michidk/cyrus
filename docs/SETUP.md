@@ -1536,6 +1536,24 @@ checks a generated tone against actual render quanta, then removes the observer'
 worklet API and requires the real source's playback-end acknowledgement. It owns
 and closes a disposable browser context; it does not need the install.
 
+The graph tap arms on an explicit future sample boundary. An a-rate automated
+sample-frame parameter with short, quantum-aligned epochs identifies each rendered
+quantum; the worklet-global clock
+is retained separately as `reportedFrame`. The automated clock rejects captures
+at or beyond 2^24 sample frames, where float32 cannot represent every integer.
+Missing or duplicate quanta, missing messages, malformed clock ramps and observer
+failures reject the recording permanently. Setup before the armed boundary is
+outside the recording. No missing samples are synthesized or discarded from the
+armed interval. `test-browser-sample-epochs.mjs CDP_URL LOOPBACK_PAGE` compares
+132 seconds of captured quanta with independently indexed offline output, including
+an audible tone at 130 seconds and every epoch boundary.
+
+`captureSampleGraph` in `dev/scripts/capture-sample-graph.mjs` freezes a requested
+window before CDP readback and writes its exact frame/sequence/clock metadata
+before admission. Rejected windows retain diagnostics and export no PCM. Admitted
+windows export interleaved stereo float32 PCM without quantization. Both boundaries
+are integer sample frames on render-quantum boundaries in the tap's audio context.
+
 
 ### Original sound-emission capture boundaries
 
