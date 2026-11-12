@@ -208,11 +208,15 @@ pub fn prepare_source(
             .iter()
             .filter(|patch| patch.applies_to(&patches.map, &name))
         {
-            let skipped = patch.apply(&mut program);
-            info!(
-                "{context}: mod patch skipped {skipped} call(s) to {:?}",
-                patch.remove
-            );
+            let decode = |offset| -> Result<BTreeMap<u32, Step>> {
+                let steps = decode_script_program(&source.bytecode, offset, &definition)
+                    .map_err(anyhow::Error::msg)?;
+                Ok(serde_json::from_value(serde_json::to_value(steps)?)?)
+            };
+            let changed = patch
+                .apply(&mut program, &decode)
+                .with_context(|| format!("{context}: mod patch"))?;
+            info!("{context}: mod patch changed {changed} statement(s)");
         }
         program.validate().with_context(|| context.clone())?;
         for step in program.steps.values() {

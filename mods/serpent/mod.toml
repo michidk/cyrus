@@ -1,10 +1,12 @@
 name = "Sea Serpent"
-description = "Experimental: tries to restore the sea serpent in the Spine that was cut from the game by removing the HideMe call from its script. Its effect in cyrus is not verified yet. Takes effect after a restart."
+description = "Restores the sea serpent in the Spine that was cut from the game: it appears when you come near and fights. Takes effect after a restart."
 version = "0.1.0"
 author = "cyrus"
 
-# The serpent actor ships in ISLAND with its combat attributes; its script only hides it.
+# ISLAND ships the serpent's whole script, but it sits behind an `End` at offset 4 that loops on
+# itself, so it never runs. Letting that End fall through runs it: the serpent stays hidden until
+# the player is near, then shows itself, fights and, when killed, sets the SerpentDead flag.
 [[script-patch]]
 world = "ISLAND"
 actor = "SERPENT"
-remove = ["HideMe"]
+fall-through = [4]

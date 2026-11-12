@@ -10,7 +10,7 @@ the Mods window that opens with F11. The browser build does not load mods.
 | `modern-water` | scene, uniforms, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
-| `serpent` | script patch (manifest only, no code) | Experimental: removes the HideMe call from the cut sea serpent in the Spine (effect not verified in cyrus yet) |
+| `serpent` | script patch (manifest only, no code) | Restores the sea serpent in the Spine that was cut from the game: its installed script is complete but sits behind an endless `End`, which the mod lets fall through |
 
 Modern movement optionally follows travel with the camera after a configurable delay.
 Mouse or right-stick camera input takes priority; standing still, jumping and armed
@@ -189,23 +189,32 @@ shader draws until it is fixed. Each shader is one slot: the first active mod in
 id order wins and a warning is logged. Turning the mod off restores the original.
 
 **Script patches** (`[[script-patch]]`). A mod can change what an actor's script does in one world
-without code and without any game data; it only says which calls to skip:
+without code and without any game data. It names the actor and what to change:
 
 ```toml
 [[script-patch]]
 world = "ISLAND"          # the map, by file stem (case does not matter)
 actor = "SERPENT"         # the actor's script name
-remove = ["HideMe"]       # natives, by their SOUP386.DEF names
+fall-through = [4]        # End statements, by offset, that no longer end the script
+remove = ["HideMe"]       # natives, by their SOUP386.DEF names, whose calls are skipped
 ```
 
-Every call statement in that actor's script to one of the named natives is skipped, as if the
-script did not make it (a native used as a value inside an expression stays, and arguments of a
-skipped call are not evaluated). A skipped call neither waits nor changes any state, so the rest of
-the script runs exactly as installed. A name that is not a SOUP native stops the mod from being
-listed. The scripts are prepared at every world load, so turning the mod off restores the original
-script; the patches are read at start-up, so a change takes effect after a restart (the Mods window
-says so for `files/` overlays too). A mod with only a `mod.toml` needs no `mod.wasm`. The bundled
-`serpent` mod is the example.
+- `remove`: every call statement in that actor's script to one of the named natives is skipped,
+  as if the script did not make it (a native used as a value inside an expression stays, and the
+  arguments of a skipped call are not evaluated). A name that is not a SOUP native stops the mod
+  from being listed.
+- `fall-through`: each offset names an `End` statement, as the `#offset` labels of a decompiled
+  listing do (in decimal). It no longer ends the script's turn: execution continues with the
+  statement after it, including code the original script never reaches because the `End` loops on
+  itself. An offset that is not an `End` is an error in the log and the world does not load.
+
+A skipped call or a fall-through jump neither waits nor changes any state, so the rest of the
+script runs exactly as installed. The scripts are prepared at every world load, so turning the mod
+off restores the original script; the patches are read at start-up, so a change takes effect after
+a restart (the Mods window says so, like for `files/` overlays). A mod with only a `mod.toml`
+needs no `mod.wasm`. The bundled `serpent` mod is the example: the installed ISLAND script of the
+sea serpent in the Spine is complete (it waits hidden, shows itself when the player is near,
+fights and sets the SerpentDead flag when killed) but sits behind an `End` that loops on itself.
 
 **Game data** (`files/`). A `files/` folder inside the mod mirrors the game install:
 `files/fxart/<name>` is read instead of the install's `fxart/<name>`, and a path the
