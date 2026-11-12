@@ -8992,7 +8992,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(id, sound)?;
-            return Ok(CallResult::Complete(0));
+            // The final channel-stop path leaves a residual, not a portable scalar result.
+            return Ok(if function == Native::StopAllSounds {
+                CallResult::CompleteWithoutValue
+            } else {
+                CallResult::Complete(0)
+            });
         }
         if self.registry.actors[self.index]
             .runtime_identifier

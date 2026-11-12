@@ -766,3 +766,9 @@ Current-schema actor snapshots validate map-light eligibility against the instal
 placement before restoration. Hidden material preparation and logical publication
 therefore use the same light owners; a saved eligibility flag cannot promote or
 suppress an installed light role.
+
+Verified: `StopAllSounds` completes its global sample-stop effect as a statement.
+It has no supported numeric result; consuming it in a formula fails after the
+single effect and retains that failure without replaying the stop. Other immediate
+sound functions retain their documented zero results. This follows preservation's
+[SOUP sound results](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).

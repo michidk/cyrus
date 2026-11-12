@@ -315,3 +315,41 @@ WebAudio quanta around the book's production input. The installed
 `test-browser-sound-reset-live.mjs` driver records cancellation, later starts
 and executed artifact hashes through CDP. Already mixed output buffers
 may drain before the silent browser observation window.
+
+The isolated `sound_callers` example drives public `ScriptWorld::update_shells`
+and `update_separate` into `SoundPlugin` and the real audio backend, without a
+renderer or game assets. Its synthetic looping PCM distinguishes active output
+from silence. Two independent callers exercise `EndMySound`, `EndMySounds`,
+`KillMe`, statement `StopAllSounds`, later playback, numeric-result rejection,
+and a second update that must not repeat the failed effect. Public integration
+tests additionally assert exact channel counts and owner isolation.
+
+Build with `cargo build -p cyrus-audio --example sound_callers` through the
+repository's Cargo wrapper. Run in the paced-audio acceptance image with a
+host-mounted `CYRUS_CONFIG_DIR`, then run
+`python3 dev/scripts/test-sound-callers-native.py CONTAINER OUTPUT_DIR` to check
+actual Pulse monitor PCM. Each caller kind admits nine nominal updates at
+three-second observation intervals and terminates automatically.
+
+For browser acceptance, build the same example for `wasm32-unknown-unknown`
+with `--features bevy/web --profile wasm-dev`, package with the matching
+`wasm-bindgen --target web`, and load it from a loopback HTTP page that calls
+its generated `init`. Enable browser autoplay for this isolated test host.
+Run `node dev/scripts/test-sound-callers-browser.mjs CDP_URL PAGE_URL WASM_FILE`.
+The driver taps the actual CPAL WebAudio graph, waits for already mixed buffers
+to drain, and asserts active/silent output for every phase. This is controlled
+backend acceptance, not an installed-game or physical-device timing comparison.
+Place `dev/fixtures/sound-callers.html` beside the generated bindings as
+`index.html`. Serve only that test output directory on a separate non-preview
+loopback test endpoint. The browser driver also checks the executed WASM bytes
+against `WASM_FILE`; a stale artifact cannot satisfy the acceptance.
+Use a secure browser origin: AudioWorklet is unavailable on an ordinary Docker
+host URL. For container Chrome, a loopback-only `socat` bridge inside that test
+container can forward its `127.0.0.1` test port to the host server. Load the
+browser-loopback URL, not the Docker host URL. The fixture rejects an unavailable
+AudioWorklet before starting the application, so the observer cannot panic the
+production CPAL buffer-start callback.
+`test-sound-callers-browser-controls.mjs CDP_URL INSECURE_PAGE LOOPBACK_PAGE`
+checks early rejection of an insecure origin and mismatched executed WASM.
+`node dev/scripts/test-browser-sound-reset.mjs` retains the output-oracle controls
+for stale sound after stop, absent continuation and missing output quanta.

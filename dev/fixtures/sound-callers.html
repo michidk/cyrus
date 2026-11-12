@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SOUP sound caller output acceptance</title>
+<p>This isolated test runs public SOUP shell and code-object callers through the audio backend.</p>
+<script type="module">
+import init from './sound_callers.js';
+if (!isSecureContext || !globalThis.AudioWorkletNode) {
+  throw Error('sound caller acceptance requires a secure context with AudioWorklet; use a browser-loopback URL');
+}
+await init();
+</script>
