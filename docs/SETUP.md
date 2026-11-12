@@ -1074,6 +1074,18 @@ Acceptance rejects gaps, generation changes, early falling, missing falling entr
 and a missing health decrease followed by a nonfalling continuation boundary.
 The raw response is retained as `<out>.raw.json` even when validation fails;
 accepted JSONL is written only after validation, replacing any previous result.
+`native-trace.py` waits for the first admitted ordinary update as well as loaded
+scripts, avoiding placement in the initial Loaded-before-update window.
+
+Use `--place X,Y,Z --heading H --settle-updates N` to restore a verified
+floor position through public logical placement before arming input. The driver
+first requests an observation-only sequence, retaining it as
+`<out>.support.raw.json`. Its final three consecutive boundaries must have a
+valid stable position, no rope attachment, ordinary nonfalling controls, unchanged
+positive health and identical position. Failure stops before the input schedule.
+Choose the floor and approach from installed geometry and original evidence;
+placement alone does not establish support.
+
 This verifies acquisition completeness, not original parity or edge-service
 attribution. Compare the retained clocks and actor states against original evidence
 before accepting gameplay behavior. Schedules retain the public service's bounded

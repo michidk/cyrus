@@ -18,6 +18,15 @@ class AtomicTrace(unittest.TestCase):
                 attributes=[0,0,0,90], animation=dict(current_group=73),
                 spatial=dict(effective=dict(position=[256,512,768])))]))
 
+    def test_loaded_world_waits_for_first_ordinary_update_before_placement(self):
+        state = dict(state='InGame', scene_ready=True, scripts=dict(state='Loaded', ordinary_updates=0))
+        ready = dict(state, scripts=dict(state='Loaded', ordinary_updates=1))
+        with patch.object(trace, 'call', side_effect=[state, ready]) as call, \
+             patch.object(trace.time, 'sleep') as sleep:
+            trace.wait_live('unused', 10)
+        self.assertEqual(call.call_count, 2)
+        sleep.assert_called_once_with(3)
+
     def test_health_pose_and_clock_are_from_one_public_boundary(self):
         def call(addr, cmd):
             self.assertEqual(cmd,dict(type='schedule_input',events=[dict(after_updates=0)]))

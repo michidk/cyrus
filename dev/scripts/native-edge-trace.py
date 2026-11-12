@@ -59,6 +59,38 @@ def validate(response, events):
     return rows
 
 
+def prepare(addr, placement, heading, updates, out):
+    """Restore logical placement, then prove stationary support before any input."""
+    if updates < 3 or updates > 255:
+        raise ValueError('support observation requires 3..255 updates')
+    x, y, z = placement
+    trace.call(addr, dict(type='place_player', x=x, y=y, z=z, heading=heading))
+    events = [dict(after_updates=i) for i in range(updates + 1)]
+    response = trace.call(addr, dict(type='schedule_input', events=events))
+    Path(out + '.support.raw.json').write_text(json.dumps(response) + '\n')
+    boundaries = response.get('boundaries', [])
+    if len(boundaries) != len(events):
+        raise ValueError('incomplete support observation')
+    rows = []
+    for event, boundary in zip(events, boundaries):
+        if boundary.get('after_updates') != event['after_updates']:
+            raise ValueError('missing support boundary')
+        row = trace.boundary_sample(boundary, 'support')
+        if rows:
+            trace.validate_continuation(rows[-1], row)
+            if row['frame'] != rows[-1]['frame'] + 1:
+                raise ValueError('support observation gap')
+        rows.append(row)
+    settled = rows[-3:]
+    for row in settled:
+        if (row['stable'] is not True or row['rope_attached'] is not False
+                or any(row[field] != 0 for field in ('falling', 'queued', 'sliding', 'living'))
+                or row['health'] is None or row['health'] <= 0
+                or row['health'] != settled[0]['health'] or row['pos'] != settled[0]['pos']):
+            raise ValueError('placement did not establish stationary ordinary support')
+    return settled[-1]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--addr', default=os.environ.get('CYRUS_CONTROL_ADDR', '127.0.0.1:7167'))
@@ -67,15 +99,32 @@ def main():
     parser.add_argument('--press-update', type=int, default=1)
     parser.add_argument('--release-update', type=int, required=True)
     parser.add_argument('--updates', type=int, required=True)
+    parser.add_argument('--place', help='verified floor position X,Y,Z in map units')
+    parser.add_argument('--heading', type=int, default=0)
+    parser.add_argument('--settle-updates', type=int, default=8)
     args = parser.parse_args()
+    placement = [int(value) for value in args.place.split(',')] if args.place else None
+    if placement is not None and len(placement) != 3:
+        parser.error('--place requires X,Y,Z')
+    if placement is not None and not 3 <= args.settle_updates <= 255:
+        parser.error('--settle-updates requires 3..255')
     events = schedule(args.key, args.press_update, args.release_update, args.updates)
     Path(args.out).unlink(missing_ok=True)
     Path(args.out + '.raw.json').unlink(missing_ok=True)
+    Path(args.out + '.support.raw.json').unlink(missing_ok=True)
     trace.wait_live(args.addr, 180)
+    prepared = None
+    if placement is not None:
+        prepared = prepare(args.addr, placement, args.heading, args.settle_updates, args.out)
     response = trace.call(args.addr, dict(type='schedule_input', events=events))
     # Preserve rejected acquisition too, without presenting it as accepted JSONL.
     Path(args.out + '.raw.json').write_text(json.dumps(response) + '\n')
     rows = validate(response, events)
+    if prepared is not None and (rows[0]['generation'] != prepared['generation']
+            or rows[0]['frame'] <= prepared['frame'] or rows[0]['g'] <= prepared['g']
+            or rows[0]['pos'] != prepared['pos'] or rows[0]['health'] != prepared['health']
+            or rows[0]['stable'] is not True or rows[0]['rope_attached'] is not False):
+        raise ValueError('supported placement changed before input schedule')
     Path(args.out).write_text(''.join(json.dumps(row) + '\n' for row in rows))
 
 

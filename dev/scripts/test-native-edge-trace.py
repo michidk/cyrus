@@ -80,6 +80,77 @@ class EdgeCapture(unittest.TestCase):
             self.assertFalse(out.exists())
             self.assertTrue(Path(str(out)+'.raw.json').exists())
 
+    def support_fixture(self):
+        _, response = self.fixture()
+        for i, boundary in enumerate(response['boundaries']):
+            boundary.pop('key', None)
+            boundary.pop('action', None)
+            actor = boundary['player']['actors'][0]
+            actor['control'].update(falling_state=0, stable_position_valid=True, rope_attached=False)
+            actor['attributes'][3] = 100
+            actor['spatial']['effective']['position'] = [256, 512, 768]
+        return response
+
+    def test_public_placement_proves_three_stationary_supported_boundaries_before_input(self):
+        response = self.support_fixture()
+        with tempfile.TemporaryDirectory() as directory, patch.object(edge.trace, 'call', side_effect=[{}, response]) as call:
+            row = edge.prepare('unused', [1, 2, 3], 512, 5, str(Path(directory)/'trace'))
+            self.assertEqual(call.call_args_list[0].args[1],
+                             dict(type='place_player', x=1, y=2, z=3, heading=512))
+            self.assertEqual(call.call_args_list[1].args[1], dict(type='schedule_input',
+                             events=[dict(after_updates=i) for i in range(6)]))
+            self.assertEqual((row['stable'], row['rope_attached'], row['pos']), (True, False, [1, 2, 3]))
+
+    def test_supported_setup_is_linked_to_the_armed_schedule(self):
+        for moved in (False, True):
+            _, response = self.fixture()
+            for boundary in response['boundaries']:
+                boundary['update'] += 10
+                boundary['game_seconds'] += 1
+                boundary['player']['actors'][0]['control'].update(stable_position_valid=True, rope_attached=False)
+            for boundary in response['boundaries'][:2]:
+                boundary['player']['actors'][0]['spatial']['effective']['position'] = [256, 512, 768]
+            if moved:
+                response['boundaries'][0]['player']['actors'][0]['spatial']['effective']['position'][0] += 1
+            with tempfile.TemporaryDirectory() as directory:
+                out = str(Path(directory)/'trace')
+                with patch.object(sys, 'argv', ['edge', '--out', out, '--place', '1,2,3',
+                                  '--release-update', '3', '--updates', '5', '--settle-updates', '5']), \
+                     patch.object(edge.trace, 'wait_live'), \
+                     patch.object(edge.trace, 'call', side_effect=[{}, self.support_fixture(), response]) as call:
+                    if moved:
+                        with self.assertRaisesRegex(ValueError, 'placement changed'): edge.main()
+                        self.assertFalse(Path(out).exists())
+                    else:
+                        edge.main()
+                        self.assertTrue(Path(out).exists())
+                    self.assertEqual(call.call_count, 3)
+                    self.assertNotIn('key', call.call_args_list[1].args[1]['events'][0])
+                    self.assertEqual(call.call_args_list[2].args[1]['events'][1]['action'], 'press')
+
+    def test_bad_supported_setup_never_arms_trigger(self):
+        for change in ('unsupported', 'rope', 'moving', 'falling', 'gap', 'health'):
+            response = self.support_fixture()
+            boundary = response['boundaries'][-1]
+            actor = boundary['player']['actors'][0]
+            if change == 'unsupported': actor['control']['stable_position_valid'] = False
+            elif change == 'rope': actor['control']['rope_attached'] = True
+            elif change == 'moving': actor['spatial']['effective']['position'][0] += 1
+            elif change == 'falling': actor['control']['falling_state'] = 1
+            elif change == 'gap': boundary['update'] += 1
+            else: actor['attributes'][3] = 90
+            with tempfile.TemporaryDirectory() as directory:
+                out = str(Path(directory)/'trace')
+                with self.subTest(change=change), \
+                     patch.object(sys, 'argv', ['edge', '--out', out, '--place', '1,2,3',
+                                  '--release-update', '3', '--updates', '5', '--settle-updates', '5']), \
+                     patch.object(edge.trace, 'wait_live'), \
+                     patch.object(edge.trace, 'call', side_effect=[{}, response]) as call:
+                    with self.assertRaises(ValueError): edge.main()
+                    self.assertEqual(call.call_count, 2)
+                    self.assertTrue(Path(out+'.support.raw.json').exists())
+                    self.assertFalse(Path(out).exists())
+
     def test_invalid_schedule_never_initiates_input(self):
         for press, release, updates in ((0, 2, 5), (3, 2, 5), (1, 5, 5), (1, 2, 256)):
             with self.assertRaises(ValueError): edge.schedule('ArrowUp', press, release, updates)

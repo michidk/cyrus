@@ -51,7 +51,8 @@ def wait_live(addr, patience):
         try:
             s = call(addr, {"type": "state"})
             scripts = s.get("scripts") or {}
-            if s.get("state") == "InGame" and s.get("scene_ready") and scripts.get("state") == "Loaded":
+            if (s.get("state") == "InGame" and s.get("scene_ready")
+                    and scripts.get("state") == "Loaded" and scripts.get("ordinary_updates", 0) > 0):
                 return
         except (OSError, RuntimeError, ValueError):
             pass
@@ -113,6 +114,8 @@ def boundary_sample(boundary, ev, expected_input=(None, None)):
         "queued": control.get("queued_motion"),
         "sliding": control.get("sliding_state"),
         "living": control.get("living_state"),
+        "stable": control.get("stable_position_valid"),
+        "rope_attached": control.get("rope_attached"),
         "error": None,
     }
 
