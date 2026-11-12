@@ -76,6 +76,8 @@ fn carrying_weapon_attribute_admits_armed_forward_control() {
                         walk_mode,
                         auto_defend: false,
                         steer: None,
+                        claim: None,
+                        probes: None,
                     }),
                     hud: Some(&hud),
                     shell_execution: Some(false),

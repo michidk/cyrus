@@ -7432,6 +7432,14 @@ fn animated_model_selection_retains_radius_when_hidden_and_clears_missing_geomet
     })
     .unwrap();
     world.prepare_model_resources(&data, &empty).unwrap();
+    let groups: Vec<u8> = world
+        .actors()
+        .iter()
+        .filter(|actor| actor.placement().is_some())
+        .map(|actor| actor.attributes()[Attribute::MessGroup])
+        .collect();
+    assert!(!groups.is_empty());
+    assert_eq!(groups, (0..groups.len() as u8).collect::<Vec<_>>());
     let id = world.id(0).unwrap();
     world.refresh_model_presentations(&data, &[id]).unwrap();
     assert!(world.model_presentation(id).unwrap().is_none());
