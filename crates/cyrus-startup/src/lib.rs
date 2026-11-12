@@ -156,7 +156,7 @@ impl Plugin for StartupPlugin {
 
 fn sync_audio(
     startup: Res<StartupPresentation>,
-    menu: Option<Res<MenuState>>,
+    preferences: Option<Res<cyrus_game::preferences::Preferences>>,
     mut readiness: ResMut<cyrus_audio::AudioReadiness>,
     settings: Option<ResMut<cyrus_audio::sound::SoundSettings>>,
 ) {
@@ -164,7 +164,9 @@ fn sync_audio(
     // otherwise run without audio settings (the torch sound then fails the script world).
     readiness.prepare = startup.skip || startup.title_visible;
     if let (Some(preferences), Some(mut settings)) = (
-        menu.as_ref().and_then(|menu| menu.preferences.as_ref()),
+        preferences
+            .as_ref()
+            .and_then(|preferences| preferences.menu().as_ref().ok().and_then(Option::as_ref)),
         settings,
     ) {
         let mut next = settings.clone();
@@ -383,6 +385,56 @@ mod tests {
         app.update();
         assert!(app.world().resource::<AudioReadiness>().prepare);
     }
+    struct MemoryPreferences;
+
+    impl cyrus_game::preferences::PreferenceStore for MemoryPreferences {
+        fn load(
+            &self,
+            _: cyrus_game::preferences::PreferenceKey,
+        ) -> anyhow::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _: cyrus_game::preferences::PreferenceKey, _: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn opening_book_does_not_round_trip_installed_audio_through_display_sliders() {
+        use cyrus_assets::{preferences::MenuPreferences, sound::SoundSettings};
+        use cyrus_game::preferences::Preferences;
+        let displayed = MenuPreferences {
+            values: [(601, 19), (602, 15), (603, 1), (504, 1), (505, 0)].into(),
+            bindings: [0; 15],
+        };
+        let mut app = App::new();
+        app.init_resource::<StartupPresentation>()
+            .init_resource::<cyrus_audio::AudioReadiness>()
+            .insert_resource(SoundSettings::parse(
+                "[system]\nvolume=255\nredbook_volume=200",
+            ))
+            .insert_resource(Preferences::new(MemoryPreferences))
+            .init_resource::<MenuState>()
+            .add_systems(Update, sync_audio);
+        app.world_mut().resource_mut::<MenuState>().preferences = Some(displayed.clone());
+        app.update();
+        let settings = app.world().resource::<SoundSettings>();
+        assert_eq!(
+            (settings.master_volume, settings.redbook_volume),
+            (255, 200)
+        );
+        app.world_mut()
+            .resource_mut::<Preferences>()
+            .save_menu(displayed)
+            .unwrap();
+        app.update();
+        let settings = app.world().resource::<SoundSettings>();
+        assert_eq!(
+            (settings.master_volume, settings.redbook_volume),
+            (243, 192)
+        );
+    }
+
     #[test]
     fn audio_host_copies_committed_preferences_before_cues() {
         use cyrus_assets::{preferences::MenuPreferences, sound::SoundSettings};
@@ -396,11 +448,16 @@ mod tests {
         app.update();
         assert!(!app.world().resource::<AudioReadiness>().prepare);
         app.init_resource::<MenuState>();
+        app.insert_resource(cyrus_game::preferences::Preferences::new(MemoryPreferences));
         let preferences = MenuPreferences {
             values: [(601, 0), (602, 0), (603, 0), (504, 0), (505, 0)].into(),
             bindings: [0; 15],
         };
-        app.world_mut().resource_mut::<MenuState>().preferences = Some(preferences);
+        app.world_mut().resource_mut::<MenuState>().preferences = Some(preferences.clone());
+        app.world_mut()
+            .resource_mut::<cyrus_game::preferences::Preferences>()
+            .save_menu(preferences)
+            .unwrap();
         app.world_mut()
             .resource_mut::<StartupPresentation>()
             .title_visible = true;
@@ -433,6 +490,16 @@ mod tests {
             .unwrap()
             .values
             .insert(504, 1);
+        let preferences = app
+            .world()
+            .resource::<MenuState>()
+            .preferences
+            .clone()
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<cyrus_game::preferences::Preferences>()
+            .save_menu(preferences)
+            .unwrap();
         app.update();
     }
 

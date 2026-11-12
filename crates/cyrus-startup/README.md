@@ -201,3 +201,7 @@ completion or the release of Escape. Waiting for release keeps the return key
 from also opening the gameplay book. Neither screen enters the book or plays the ending movie.
 Both suspend simulation and rebase its clock before returning.
 The behavior follows preservation's [fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c908f03bb1c67974bb83b24cecfa59b17bc9330b/docs/config/keys-ini.md#fixed-gameplay-shortcuts).
+
+Audio synchronization applies committed local preferences before playing cues.
+Opening the book preserves raw installed sound and music volumes; initializing
+the displayed sliders does not write their rounded values back to the mixer.
