@@ -1691,3 +1691,48 @@ cue timing or gain to compensate for an emulator delivery fault.
 ```sh
 python3 dev/scripts/test-paced-monitor-check.py
 ```
+
+### Non-stalling gameplay media capture
+
+The minimal `dev/docker/retro/Dockerfile.contact` runtime includes raster and
+PulseAudio capture tools. Its entrypoint defaults to dummy audio and preserves
+an explicit `SDL_AUDIODRIVER=pulseaudio`. Run the entrypoint through
+`dev/docker/dev/paced-audio.sh` to create the real sink monitor before launch.
+Mount a writable host `CYRUS_CONFIG_DIR` and an evidence directory, keeping the
+install read-only. The entrypoint creates the configured directory and stores
+its Xvfb framebuffer there, with `/config` as the fallback. Use an exclusive lock for the writable run.
+
+Inside that runtime, `dev/scripts/gameplay-media-capture.py` records real monitor
+PCM and screenshot windows without stepping or stopping gameplay:
+
+```sh
+python3 gameplay-media-capture.py /evidence/new-capture \
+  --observe 'python3 /local/observe.py' \
+  --trigger 'python3 /local/trigger.py' \
+  --screenshot scrot --game-seconds 3 --timeout 90
+```
+
+The local observation adapter returns JSON with `ready: true`, `scene`, integer
+`frame`, finite `game_seconds`, `execution: "running"`, and selected `player`
+state. It must observe without stopping execution. The trigger adapter returns
+`{"acknowledged":true}` only after admitting the prepared fixture. A single
+setup boundary may precede running capture; per-update debugger stops cannot
+establish natural cadence. The screenshot command receives its output path as
+its last argument. Keep executable-specific adapters outside the tracked tree.
+
+The recorder admits PCM and a baseline raster before the trigger, then captures
+until the requested game-clock progress after acknowledgement. Each raster
+retains both surrounding actor observations and wall/game-clock bounds. A window
+is explicitly non-atomic. Gaps stay visible and are never admitted as exact
+update coverage. Scene changes, clock reversal, stopped execution, unavailable
+actors, silent audio and monitor pacing failure reject capture. Partial media,
+adapter diagnostics and failure results survive rejection; retries require a new
+evidence directory. These observations support natural-cadence investigation;
+they do not replace the exact update oracle or establish pose/pixel/audio parity.
+
+Run the capture and explicit-audio failure controls without an install:
+
+```sh
+python3 dev/scripts/test-gameplay-media-capture.py
+python3 dev/scripts/test-contact-entrypoint.py
+```
