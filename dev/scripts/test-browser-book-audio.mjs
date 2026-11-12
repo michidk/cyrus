@@ -1,16 +1,17 @@
 // Installed public Options-to-Main PCM acceptance; no submitted-buffer substitution.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {setTimeout as delay} from 'node:timers/promises';
 import {connectCdp} from './capture-cdp.mjs';
 import {observeBrowserBuild} from './browser-provenance.mjs';
+import {pinBookAudioReferences} from './book-audio-references.mjs';
 
-const [endpoint, page, install, reference, output] = process.argv.slice(2);
+const [endpoint, page, install, reference, output, ...overlapReferences] = process.argv.slice(2);
 assert(endpoint && page && install && reference && output,
-  'usage: node dev/scripts/test-browser-book-audio.mjs CDP_URL PAGE_URL INSTALL_URL EFFECT_WAV OUTPUT');
+  'usage: node dev/scripts/test-browser-book-audio.mjs CDP_URL PAGE_URL INSTALL_URL EFFECT_WAV OUTPUT [OVERLAPPING_EFFECT_WAV...]');
 assert(!existsSync(output), 'output exists; preserve evidence and choose a new directory');
-mkdirSync(output, {recursive: true});
+const [pinnedReference, ...pinnedOverlaps] = pinBookAudioReferences([reference, ...overlapReferences], output);
 const cdp = await connectCdp(endpoint);
 const url = new URL(page);
 url.search = new URLSearchParams({install: new URL(install).href, capture: '1', 'skip-startup': '1'});
@@ -125,8 +126,16 @@ try {
   writeFileSync(`${output}/main.png`, Buffer.from(screenshot.data, 'base64'));
   execFileSync(process.env.CYRUS_ANALYSIS_PYTHON ?? 'python3', [
     new URL('./book-audio-continuity.py', import.meta.url).pathname,
-    `${output}/audio.wav`, `${output}/continuity.json`, '--reference', reference,
+    `${output}/audio.wav`, `${output}/continuity.json`, '--reference', pinnedReference,
   ], {stdio: 'inherit'});
+  if (overlapReferences.length) {
+    execFileSync(process.env.CYRUS_ANALYSIS_PYTHON ?? 'python3', [
+      new URL('./book-audio-normalize.py', import.meta.url).pathname,
+      `${output}/audio.wav`, `${output}/normalized.json`,
+      '--input-seconds', String((record.transition.input.frame - record.start) / record.rate),
+      ...[pinnedReference, ...pinnedOverlaps].flatMap(path => ['--reference', path]),
+    ], {stdio: 'inherit'});
+  }
   console.log(JSON.stringify({frames: record.frames, rate: record.rate, inputToReady: (record.transition.ack.wall - record.transition.input.wall) / 1000}));
 } catch (error) {
   writeFileSync(`${output}/failure.json`, JSON.stringify({error: String(error), events: cdp.events}, null, 2));

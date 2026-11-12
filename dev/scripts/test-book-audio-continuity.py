@@ -57,6 +57,9 @@ class Continuity(unittest.TestCase):
         self.assertTrue(result['success'])
         self.assertAlmostEqual(result['onset_seconds'], .2)
         self.assertTrue(all(a['gain'] > .5 for a in result['anchors']))
+        refined = module.normalize(recording, reference)
+        self.assertTrue(refined['success'])
+        self.assertTrue(all(a['gain'] > .5 for a in refined['anchors']))
 
     def test_exact_three_hundred_ms_span_uses_sample_units(self):
         recording = np.zeros(len(self.reference))
@@ -64,6 +67,76 @@ class Continuity(unittest.TestCase):
         result = module.analyze(recording, self.reference)
         self.assertTrue(result['success'])
         self.assertEqual(len(result['anchors']), 4)
+
+    def test_fractional_sample_alignment_recovers_gain(self):
+        reference = module.resample_poly(module.resample_poly(self.reference, 1, 2), 2, 1)
+        fine = module.resample_poly(reference, 16, 1)
+        delayed = np.concatenate((np.zeros(1600 * 16 + 5), fine * .65, np.zeros(1600 * 16)))
+        recording = module.resample_poly(delayed, 1, 16)
+        coarse = module.analyze(recording, reference)
+        result = module.normalize(recording, reference)
+        self.assertTrue(result['success'])
+        self.assertLess(coarse['median_gain'], result['median_gain'] - .01)
+        self.assertAlmostEqual(result['median_gain'], .65, delta=.01)
+        self.assertAlmostEqual(result['onset_seconds'], .2 + 5 / 128000, delta=1 / 128000)
+
+    def test_overlapping_cues_keep_their_independent_anchors(self):
+        other = np.random.default_rng(9).normal(0, 1000, 8000)
+        recording = np.zeros(16000)
+        recording[1600:9600] += self.reference * .5
+        recording[5600:13600] += other * .5
+        for reference, onset in [(self.reference, .2), (other, .7)]:
+            result = module.normalize(recording, reference)
+            self.assertTrue(result['success'])
+            self.assertAlmostEqual(result['onset_seconds'], onset)
+            self.assertAlmostEqual(result['median_gain'], .5, delta=.03)
+
+    def test_normalized_report_marks_overlapping_continuation(self):
+        spec = importlib.util.spec_from_file_location('normalized', Path(__file__).with_name('book-audio-normalize.py'))
+        normalized = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(normalized)
+        other = np.random.default_rng(9).normal(0, 1000, 8000)
+        recording = np.zeros(16000)
+        recording[1600:9600] += self.reference * .5
+        recording[5600:13600] += other * .5
+        result = normalized.report(recording, [self.reference, other], .1)
+        self.assertTrue(result['success'])
+        self.assertAlmostEqual(result['references'][0]['input_relative_onset_seconds'], .1)
+        # Stronger first cue preserves admitted anchors after the second starts.
+        recording[1600:9600] += self.reference
+        result = normalized.report(recording, [self.reference, other], .1)
+        first = result['references'][0]
+        self.assertTrue(first['success'])
+        self.assertTrue(any(a['overlaps'] == [1] for a in first['anchors']))
+
+    def test_refinement_does_not_admit_a_gap_or_wrong_cue(self):
+        gap = np.concatenate((self.padding, self.reference[:4000], np.zeros(400), self.reference[4000:]))
+        for recording in (gap, np.zeros(16000), np.random.default_rng(8).normal(0, 1000, 16000)):
+            result = module.normalize(recording, self.reference)
+            self.assertFalse(result['success'])
+            self.assertIsNone(result['median_gain'])
+
+    def test_normalized_cli_preserves_reports_and_rejects_missing_continuation(self):
+        import json
+        import subprocess
+        import sys
+        script = Path(__file__).with_name('book-audio-normalize.py')
+        with tempfile.TemporaryDirectory() as temp:
+            temp = Path(temp)
+            reference, monitor, output = (temp / name for name in ('ref.wav', 'monitor.wav', 'report.json'))
+            module.wavfile.write(reference, 8000, self.reference.astype(np.int16))
+            module.wavfile.write(monitor, 8000, np.concatenate((self.padding, self.reference * .5)).astype(np.int16))
+            command = [sys.executable, str(script), str(monitor), str(output),
+                       '--reference', str(reference), '--input-seconds', '.1']
+            subprocess.run(command, check=True, capture_output=True)
+            before = output.read_bytes()
+            self.assertTrue(json.loads(before)['success'])
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 2)
+            self.assertEqual(output.read_bytes(), before)
+            module.wavfile.write(monitor, 8000, np.concatenate((self.reference[:4000], np.zeros(400), self.reference[4000:])).astype(np.int16))
+            command[3] = str(temp / 'rejected.json')
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+            self.assertFalse(json.loads((temp / 'rejected.json').read_text())['success'])
 
     def test_silence_and_wrong_sound_are_not_continuity(self):
         for recording in (np.zeros(12000), np.random.default_rng(7).normal(0, 1000, 12000)):

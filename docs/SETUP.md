@@ -1519,6 +1519,27 @@ readiness failure and reference discontinuity reject acceptance. The output
 folder must be new so a retry cannot overwrite evidence. Run the continuity
 failure controls with `dev/scripts/test-book-audio-continuity.py` in the same
 analysis environment. This harness does not start or restart managed previews.
+Append another installed WAV after the output path to require both cues, for
+example effect 67 alongside effect 66. This also writes `normalized.json`.
+The driver reads all references before connecting, retains exact copies and source
+hashes in the evidence directory, and analyzes those copies. Runtime cache
+invalidation cannot remove a reference after recording. Missing sources fail
+before browser work; existing evidence is never overwritten. Run
+`node dev/scripts/test-book-audio-references.mjs` for retention failure controls.
+
+`book-audio-normalize.py` accepts the same monitor/output/reference paths plus
+`--input-seconds`, the acknowledged input epoch measured from the recording's
+PCM start. It refines the common 8 kHz analysis grid by sixteenfold polyphase
+interpolation, giving 7.8125 microsecond alignment resolution. Integer-grid
+alignment can underestimate fitted gain or reject an overlapping cue when the
+true onset lies between samples. The original coarse result is retained beside
+the refined anchors. Correlation 0.8, three independent windows spanning 300 ms,
+and the 10 ms drift limit are unchanged. Overlap annotations show where an
+admitted cue continues while another plays; they do not subtract another cue or
+admit obscured windows. These are window-continuity observations, not proof of
+every tail sample. Fitted gain describes the shared analysis band, not a
+calibrated output device or a recovered engine volume constant. Compare measured
+input-relative onsets separately from game-clock scheduling and rendering pace.
 
 Use the same transition direction and selection, explicit input epoch and
 bounded audio window on both platforms. Check every expected rustle reference

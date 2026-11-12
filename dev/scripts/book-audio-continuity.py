@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from scipy.io import wavfile
-from scipy.signal import correlate, resample_poly
+from scipy.signal import correlate, fftconvolve, resample_poly
 
 RATE = 8000
 
@@ -31,13 +31,13 @@ def load(path):
     return resample_poly(samples, RATE // divisor, rate // divisor)
 
 
-def analyze(monitor, reference, minimum=.8, tolerance=.01):
+def analyze(monitor, reference, minimum=.8, tolerance=.01, *, rate=RATE):
     """Find independent 100ms anchors and reject relative delay variation.
 
     Correlation admits anchors; it is not a fidelity score. The 10ms default
     drift limit is an analysis allowance, not an engine timing constant.
     """
-    size = RATE // 10
+    size = rate // 10
     anchors = []
     for offset in range(0, len(reference) - size + 1, size):
         block = reference[offset:offset + size]
@@ -46,18 +46,23 @@ def analyze(monitor, reference, minimum=.8, tolerance=.01):
             continue
         dots = correlate(monitor, block, mode='valid', method='fft')
         # Local positive sums avoid catastrophic prefix subtraction in silent tails.
-        local = np.convolve(monitor * monitor, np.ones(size), mode='valid')
+        if rate == RATE:
+            local = np.convolve(monitor * monitor, np.ones(size), mode='valid')
+        else:
+            # Fine alignment has long windows. FFT sums retain the same
+            # sub-unit-energy exclusion and clamp negative roundoff at silence.
+            local = np.maximum(0, fftconvolve(monitor * monitor, np.ones(size), mode='valid'))
         # Sub-unit PCM energy cannot establish a waveform anchor. Resampler/FFT
         # roundoff in digital silence must not compete with an audible match.
         scores = np.divide(dots, np.sqrt(local * energy),
                            out=np.zeros_like(dots), where=local >= 1)
         index = int(np.argmax(scores))
         if scores[index] >= minimum:
-            anchors.append(dict(reference_seconds=offset / RATE,
-                                monitor_seconds=index / RATE,
+            anchors.append(dict(reference_seconds=offset / rate,
+                                monitor_seconds=index / rate,
                                 correlation=float(scores[index]),
                                 gain=float(dots[index] / energy)))
-    enough = len(anchors) >= 3 and round((anchors[-1]['reference_seconds'] - anchors[0]['reference_seconds']) * RATE) >= 3 * size
+    enough = len(anchors) >= 3 and round((anchors[-1]['reference_seconds'] - anchors[0]['reference_seconds']) * rate) >= 3 * size
     delays = [a['monitor_seconds'] - a['reference_seconds'] for a in anchors]
     drift = max(delays) - min(delays) if delays else None
     continuous = enough and drift <= tolerance
@@ -67,6 +72,23 @@ def analyze(monitor, reference, minimum=.8, tolerance=.01):
                 # Only continuous evidence can support a shared onset/gain estimate.
                 onset_seconds=float(np.median(delays)) if continuous else None,
                 median_gain=float(np.median([a['gain'] for a in anchors])) if continuous else None)
+
+
+def normalize(monitor, reference, subdivisions=16):
+    """Refine fractional-sample alignment before estimating shared onset/gain.
+
+    Both inputs already share the 8 kHz analysis band. Polyphase interpolation
+    refines its 125 us grid without changing the correlation, independent-window
+    span or drift requirements. It does not calibrate a device's frequency
+    response, remove overlapping cues, or establish whole-waveform fidelity.
+    """
+    if subdivisions not in (2, 4, 8, 16, 32):
+        raise ValueError('subdivisions must be 2, 4, 8, 16 or 32')
+    result = analyze(resample_poly(monitor, subdivisions, 1),
+                     resample_poly(reference, subdivisions, 1), rate=RATE * subdivisions)
+    result['analysis_rate'] = RATE * subdivisions
+    result['coarse'] = analyze(monitor, reference)
+    return result
 
 
 def main():
