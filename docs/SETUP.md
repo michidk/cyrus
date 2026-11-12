@@ -647,8 +647,8 @@ and returns Fog to Faithful. Sky is unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
 bias, spatial phase, and BIOS-rate clock. The `modern-water` mod keeps the same selected
-vertices and installed texture, with crossing waves, ripples, shore foam, wet sand and
-reflections. These are optional artistic effects, not recovered engine behavior. Turning
+vertices and installed texture, with crossing waves, ripples, shore foam and wet sand. Water
+reflections belong to Modern Lighting in the base game and need no mod. These are optional artistic effects, not recovered engine behavior. Turning
 the mod off restores the original wave at the current clock tick. Terrain placement, base heights, and lighting
 retain the existing export limitations.
 
