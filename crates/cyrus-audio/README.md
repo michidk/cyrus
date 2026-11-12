@@ -477,3 +477,10 @@ optional example argument `--stale-record-control` restores the old inactive-slo
 state through the public snapshot interface and must fail the skip-continuity PCM
 stage. Output is local game data and must remain untracked. This isolated scene
 check does not establish physical-speaker parity or full story-dialogue acceptance.
+
+Browser music resolves both numeric WORLD.INI identities and installed map stems
+before destination preparation. A different track retires at the load request;
+the prepared world starts its configured track. Requests for the current track,
+missing assignments and `-1` retain the live source, following preservation's
+[world-load CD contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/music.md#track-selection).
+Map stems use the first authored variant; numeric identities preserve variants.

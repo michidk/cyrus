@@ -1973,3 +1973,17 @@ preservation's [dialogue and teardown rules](https://github.com/michidk/redguard
 
 Run `node --test dev/scripts/test-browser-authored-speech.mjs` for stale-owner,
 retained-sample, stale-presentation, generation and insecure-origin failure controls.
+
+Pass `--driver music` to the same launcher for installed world-entry CD acceptance.
+Its local fixture contains `scene` (numeric installed identity), `alias` (the same
+world's map stem) and `destination` (a map stem assigned a different CD track).
+The driver holds real destination asset reads to separate request-time retirement
+from world publication. It checks uninterrupted same-track playback, retirement
+and actual graph silence while destination admission is held, then a fresh source
+whose stereo graph matches its installed CD buffer after publication. A dormant
+revisit must retire the destination source, admit fresh music and
+retain that source on another same-track visit. Each graph window contains 8,192
+consecutive frames, retained as interleaved stereo float32 little-endian `.f32le`
+files beside the source/clock metadata. Retain failed-before receipts separately;
+prior output directories cannot be reused. This tests software WebAudio output,
+not physical-speaker parity.
