@@ -316,3 +316,15 @@ and optional rate offset. It resolves one bound emitter and its current logical
 placement, then dispatches the ordinary animation sound cue. The animation bank
 acceptance driver uses this adapter to test delayed starts, remembered-handle
 cancellation and fresh owner publication through public session load.
+
+With `?capture`, `window.__cyrusCapture.boundary` publishes the logical generation,
+ordinary update and consumed Q8 clock used to arm frame acquisition. Submit a JSON
+string to `window.__cyrusFrameCaptureRequest` with `id` and `boundary` using the
+control protocol's `clock` or `wall_contact` trigger. The render-extraction owner
+waits for that boundary and freezes selected-player state and presentation before
+requesting GPU readback. `window.__cyrusFrameCaptureResult` retains its boundary,
+width, height, texture format and raw `Uint8Array` pixels after delivery. Readback
+delay never replaces the boundary with the current actor state. A pending capture
+or unread result blocks another request; clear the result explicitly after saving
+it. Missing/skipped boundaries and world replacement fail, with a bounded deadline.
+This diagnostic API does not establish original/browser pixel or PCM parity.

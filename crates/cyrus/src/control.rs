@@ -353,8 +353,8 @@ fn handle(
                     json!({"effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
-            Command::CaptureGameplayFrame { path, pcm_path } => {
-                match frame_captures.arm(id, path.into(), pcm_path.map(Into::into), reply.clone()) {
+            Command::CaptureGameplayFrame { path, pcm_path, boundary } => {
+                match frame_captures.arm(id, path.into(), pcm_path.map(Into::into), reply.clone(), boundary) {
                     Ok(()) => break,
                     Err(error) => Err(format!("{error:#}")),
                 }
@@ -1485,6 +1485,15 @@ mod tests {
         path: &std::path::Path,
         pcm_path: Option<String>,
     ) -> std::sync::mpsc::Receiver<Response> {
+        request_frame_at(app, path, pcm_path, None)
+    }
+
+    fn request_frame_at(
+        app: &mut App,
+        path: &std::path::Path,
+        pcm_path: Option<String>,
+        boundary: Option<cyrus_control::FrameBoundary>,
+    ) -> std::sync::mpsc::Receiver<Response> {
         let (tx, rx) = channel();
         let (reply, results) = channel();
         app.insert_resource(Inbox(Mutex::new(rx)));
@@ -1494,6 +1503,7 @@ mod tests {
                 cmd: Command::CaptureGameplayFrame {
                     path: path.display().to_string(),
                     pcm_path,
+                    boundary,
                 },
             },
             reply,
@@ -1501,6 +1511,75 @@ mod tests {
         .unwrap();
         app.update();
         results
+    }
+
+    #[test]
+    fn scheduled_frame_waits_for_the_observed_clock_and_rejects_skipped_clock() {
+        use bevy::render::view::screenshot::Screenshot;
+        use cyrus_control::FrameBoundary;
+        use cyrus_script::{clock::SimulationClock, script::ScriptActors};
+        let mut app = frame_app();
+        let generation = app
+            .world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .generation();
+        let scale = app
+            .world()
+            .resource::<SimulationClock>()
+            .elapsed_frame_scale();
+        let reply = request_frame_at(
+            &mut app,
+            std::path::Path::new("scheduled-frame.png"),
+            None,
+            Some(FrameBoundary::Clock {
+                generation,
+                elapsed_scale: scale + 256,
+            }),
+        );
+        assert!(reply.try_recv().is_err());
+        assert_eq!(
+            app.world_mut()
+                .query::<&Screenshot>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        app.world_mut()
+            .resource_mut::<SimulationClock>()
+            .advance(18);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&Screenshot>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert!(reply.try_recv().is_err());
+
+        let mut app = frame_app();
+        let reply = request_frame_at(
+            &mut app,
+            std::path::Path::new("skipped-frame.png"),
+            None,
+            Some(FrameBoundary::Clock {
+                generation,
+                elapsed_scale: scale - 1,
+            }),
+        );
+        let response = reply.try_recv().unwrap();
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("clock skipped"));
+        assert_eq!(
+            app.world_mut()
+                .query::<&Screenshot>()
+                .iter(app.world())
+                .count(),
+            0
+        );
     }
 
     #[test]

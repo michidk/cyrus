@@ -207,3 +207,10 @@ Native control captures can use `capture_gameplay_frame` to freeze the ready
 world clock and player presentation before the requested frame is extracted.
 Readback and PNG encoding are asynchronous and bounded to one capture. See the
 control crate README for admission failures and the PCM delivery-cursor limit.
+
+Native `capture_gameplay_frame` can wait for an exact consumed clock or the first
+admitted selected-player primary wall response after an identified ordinary update.
+The clock/actor/presentation receipt is frozen before render extraction and retained
+through asynchronous GPU readback and PNG encoding. Late or unavailable boundaries
+fail instead of silently capturing the next frame; ordinary gameplay cadence is
+unchanged. See `cyrus-control` for the trigger protocol and cursor limitations.

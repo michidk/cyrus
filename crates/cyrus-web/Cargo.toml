@@ -11,6 +11,7 @@ path = "src/main.rs"
 test = true
 
 [dependencies]
+cyrus-control.workspace = true
 cyrus-console = { workspace = true, features = ["cpf"] }
 cyrus-audio.workspace = true
 cyrus-app = { path = "../cyrus-app" }

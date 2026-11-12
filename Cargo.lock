@@ -3353,6 +3353,7 @@ dependencies = [
  "cyrus-audio",
  "cyrus-collision",
  "cyrus-console",
+ "cyrus-control",
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",

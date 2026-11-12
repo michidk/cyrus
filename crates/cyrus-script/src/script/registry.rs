@@ -761,6 +761,7 @@ pub struct ScriptWorld {
     /// Ordinary updates this logical world has executed. Observation only: never saved, and
     /// zero again after a restore.
     ordinary_updates: u64,
+    selected_wall_contacts: std::collections::VecDeque<u64>,
     actor_prelighting: Option<BTreeMap<usize, ActorPrelight>>,
     /// The model candidate list of the latest ordinary candidate gather. The original keeps one
     /// global list, so a receiver that gathers none reads its predecessor's; transient, never saved.
@@ -1748,6 +1749,7 @@ impl ScriptWorld {
             next_combat_index: 0,
             ordinary_prepared: false,
             ordinary_updates: 0,
+            selected_wall_contacts: Default::default(),
             actor_prelighting: None,
             retained_candidates: Default::default(),
             display_attachments: Vec::new(),
@@ -3606,6 +3608,28 @@ impl ScriptWorld {
     /// Ordinary updates executed by this world since it was created or restored.
     pub fn ordinary_updates(&self) -> u64 {
         self.ordinary_updates
+    }
+    /// Last ordinary update with an admitted selected-player primary wall contact.
+    /// Observation only; absent in a new/restored world and independent of later actors' queries.
+    pub fn selected_wall_contact_update(&self) -> Option<u64> {
+        self.selected_wall_contacts.back().copied()
+    }
+    /// Earliest retained wall contact after the caller's arm update. Rejects lost history.
+    pub fn first_selected_wall_contact_after(&self, after: u64) -> Result<Option<u64>> {
+        anyhow::ensure!(
+            self.selected_wall_contacts.len() < 64
+                || self
+                    .selected_wall_contacts
+                    .front()
+                    .is_none_or(|first| after >= *first),
+            "world {}: requested wall contact history expired",
+            self.world
+        );
+        Ok(self
+            .selected_wall_contacts
+            .iter()
+            .copied()
+            .find(|update| *update > after))
     }
     /// Handle for an indexed record, including records retained for diagnostics after cleanup.
     /// Operations on a retired created receiver return an unsupported error.
@@ -10267,6 +10291,7 @@ mod fighting_tests {
             ordinary_prepared: false,
             animation_strict: None,
             ordinary_updates: 0,
+            selected_wall_contacts: Default::default(),
             actor_prelighting: None,
             retained_candidates: Default::default(),
             display_attachments: Vec::new(),

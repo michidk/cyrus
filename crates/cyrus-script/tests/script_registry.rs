@@ -51858,3 +51858,140 @@ mod rope_attachment_tests;
 
 #[path = "script_registry/carrying_player.rs"]
 mod carrying_player_tests;
+
+#[test]
+fn selected_wall_contact_receipt_comes_from_admitted_primary_response_not_floor_or_other_actor() {
+    use cyrus_collision::{collision_world::RuntimeBodyContact, ground::SupportSource};
+    let mut scripts = attribute_cache(vec![Operation::End { target: 0 }]);
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.angles = [0, 344, 0];
+    }
+    add_standalone_receivers(&mut scripts);
+    let falling = scripts.definition.references.len() as u16;
+    scripts.definition.references.push(Property::FallFlag);
+    scripts.actors.get_mut("CYRUS").unwrap().program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference: falling,
+                    },
+                    formula: Formula {
+                        first: Value::Integer { value: 0x81 },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.selected_player().unwrap();
+    world
+        .initialize_player_spatial(player, [0; 3], [0, 344, 0])
+        .unwrap();
+    world
+        .advance(
+            player,
+            ScriptStage::Body(Thread::Main),
+            cyrus_script::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .falling_state,
+        JumpMotion::from_byte(0x81)
+    );
+    let settings = cyrus_script::player::data::MovementSettings {
+        standing_height: -2,
+        post_collide_height: 50,
+        slide_range: -60000,
+        slide_speed: None,
+        slide_hurt: None,
+        tap_time: None,
+        sheath_sword_delay: None,
+        defend_interval: None,
+        swim_depth: None,
+        max_remap_objects: None,
+        turn_speed: 12,
+        turn_max_speed: 48,
+        poly_push_units: 16,
+        joystick: None,
+    };
+    let mut contact = RuntimeBodyContact {
+        source: SupportSource::Model { model: 0, face: 0 },
+        point: [0; 3],
+        normal: [256, 0, 0],
+        classification: SurfaceClass::Floor,
+    };
+    world
+        .resolve_ordinary_primary_contacts(
+            player,
+            std::slice::from_ref(&contact),
+            &settings,
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.selected_wall_contact_update(), None);
+    contact.classification = SurfaceClass::Wall;
+    let other = world.id(0).unwrap();
+    world
+        .resolve_ordinary_primary_contacts(
+            other,
+            std::slice::from_ref(&contact),
+            &settings,
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.selected_wall_contact_update(), None);
+    assert!(
+        world
+            .resolve_ordinary_primary_contacts(
+                player,
+                std::slice::from_ref(&contact),
+                &settings,
+                &mut |_| anyhow::bail!("rejected transition")
+            )
+            .is_err()
+    );
+    assert_eq!(
+        world.selected_wall_contact_update(),
+        None,
+        "a failed response must not publish an accepted contact"
+    );
+    world
+        .resolve_ordinary_primary_contacts(
+            player,
+            std::slice::from_ref(&contact),
+            &settings,
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.selected_wall_contact_update(), Some(0));
+    assert_eq!(
+        world.first_selected_wall_contact_after(0).unwrap(),
+        None,
+        "a capture armed after the response cannot relabel it as a new contact"
+    );
+}
