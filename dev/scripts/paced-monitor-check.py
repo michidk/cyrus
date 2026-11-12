@@ -8,6 +8,7 @@ An explicit installed reference can replace the generated deterministic noise.
 import argparse
 import array
 import json
+import hashlib
 from pathlib import Path
 import random
 import signal
@@ -40,7 +41,7 @@ def stop(process):
             process.wait()
 
 
-def run(output, source, latency, warm=True):
+def run(output, source, latency, warm=True, playback_volume=65536):
     output.mkdir(parents=True, exist_ok=True)
     path = output / 'monitor.wav'
     if path.exists() or (output / 'result.json').exists():
@@ -48,8 +49,13 @@ def run(output, source, latency, warm=True):
     if source is None:
         source = output / 'reference.wav'
         reference(source)
-    result = {'success': False, 'reference': str(source), 'recorder_latency_ms': latency, 'warm_sink': warm}
-    keepalive = recorder = None
+    result = {'success': False, 'reference': str(source),
+              'reference_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+              'recorder_latency_ms': latency, 'warm_sink': warm,
+              'playback_volume': playback_volume}
+    if not 0 < playback_volume <= 65536:
+        raise ValueError('playback volume must be in 1..65536')
+    keepalive = recorder = player = None
     try:
         if warm:
             # A monitor alone does not lower the null sink's idle two-second clock.
@@ -69,12 +75,28 @@ def run(output, source, latency, warm=True):
                 raise RuntimeError('control recorder did not admit PCM')
             time.sleep(.01)
         result['admission_seconds'] = time.monotonic() - began
-        for kind in ('sinks', 'sources', 'sink-inputs', 'source-outputs'):
-            snapshot = subprocess.run(['pactl', 'list', kind], capture_output=True, text=True, timeout=5)
-            (output / (kind + '.log')).write_text(snapshot.stdout + snapshot.stderr)
         time.sleep(.2)
         sent = time.monotonic()
-        subprocess.run(['paplay', '--latency-msec=20', str(source)], check=True, timeout=10)
+        player = subprocess.Popen(['paplay', '--latency-msec=20',
+            f'--volume={playback_volume}', '--client-name=cyrus-gain-calibration', str(source)])
+        result['playback_pid'] = player.pid
+        deadline = sent + 5
+        while True:
+            snapshot = subprocess.run(['pactl', 'list', 'sink-inputs'],
+                                      capture_output=True, text=True, check=True, timeout=5)
+            if f'application.process.id = "{player.pid}"' in snapshot.stdout:
+                (output / 'sink-inputs.log').write_text(snapshot.stdout)
+                break
+            if player.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError('calibration playback stream not observed while active')
+            time.sleep(.01)
+        for kind in ('sinks', 'sources', 'source-outputs'):
+            snapshot = subprocess.run(['pactl', 'list', kind], capture_output=True,
+                                      text=True, check=True, timeout=5)
+            (output / (kind + '.log')).write_text(snapshot.stdout + snapshot.stderr)
+        player.wait(timeout=10)
+        if player.returncode:
+            raise RuntimeError(f'calibration playback failed: {player.returncode}')
         result['play_seconds'] = time.monotonic() - sent
         time.sleep(.2)
         ended = time.monotonic()
@@ -89,6 +111,7 @@ def run(output, source, latency, warm=True):
         result['error'] = str(error)
         raise
     finally:
+        stop(player)
         stop(recorder)
         stop(keepalive)
         (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
@@ -101,11 +124,13 @@ def main():
     parser.add_argument('--reference', type=Path)
     parser.add_argument('--recorder-latency-ms', type=int, default=20,
                         help='use 0 for the server-default delayed-drain control')
+    parser.add_argument('--playback-volume', type=int, default=65536,
+                        help='explicit PulseAudio stream volume; unity is 65536')
     parser.add_argument('--cold-sink', action='store_true', help='omit warm playback for the idle-clock failure control')
     args = parser.parse_args()
     if args.recorder_latency_ms < 0:
         parser.error('latency must be nonnegative')
-    run(args.output, args.reference, args.recorder_latency_ms, not args.cold_sink)
+    run(args.output, args.reference, args.recorder_latency_ms, not args.cold_sink, args.playback_volume)
 
 
 if __name__ == '__main__':

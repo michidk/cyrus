@@ -82,27 +82,31 @@ try {
   await select(400);
   await until('sample graph readiness', () => evaluate('window.__sessionSamples.status().ready'));
   await evaluate(`(() => {
-    window.__bookAudio = {};
+    window.__bookAudio = {clocks: []};
     __sessionSamples.blocks = []; __sessionSamples.buffers = [];
     addEventListener('keydown', e => {
       if (e.key === 'Enter' && !__bookAudio.input)
-        __bookAudio.input = {wall: performance.now(), frame: __sessionSamples.status().now, menu: structuredClone(__cyrusMenu)};
+        __bookAudio.input = {wall: performance.now(), frame: __sessionSamples.clock().now, menu: structuredClone(__cyrusMenu)};
     }, {capture: true});
     __bookAudio.timer = setInterval(() => {
+      const frame = __sessionSamples.clock().now, game = __cyrusStartup?.clock?.game_seconds;
+      if (Number.isFinite(frame) && Number.isFinite(game) && frame !== __bookAudio.clocks.at(-1)?.frame)
+        __bookAudio.clocks.push({frame, game_seconds: game});
       if (__bookAudio.input && __cyrusMenu.page === 0 && __cyrusMenu.ready && !__bookAudio.ack)
-        __bookAudio.ack = {wall: performance.now(), frame: __sessionSamples.status().now, menu: structuredClone(__cyrusMenu)};
+        __bookAudio.ack = {wall: performance.now(), frame: __sessionSamples.clock().now, menu: structuredClone(__cyrusMenu)};
     }, 10);
   })()`);
   await enter();
   await until('Main acknowledgement', () => evaluate('window.__bookAudio.ack'));
   await delay(1200);
+  writeFileSync(`${output}/clock-observations.json`, JSON.stringify(await evaluate('window.__bookAudio'), null, 2));
   const record = await evaluate(`(() => {
     clearInterval(__bookAudio.timer);
     const p = __sessionSamples, start = Math.floor(__bookAudio.input.frame / 128) * 128, end = p.status().last;
     if (p.error) throw Error(p.error);
     const blocks = p.blocks.filter(b => b.frame >= start && b.frame < end);
     let next = start;
-    for (const b of blocks) {if (b.frame !== next) throw Error('missing or duplicate graph quantum'); next += 128;}
+    for (const b of blocks) {if (b.frame !== next) throw Error('missing or duplicate graph quantum: expected ' + next + ', got ' + b.frame + ', start ' + start + ', end ' + end); next += 128;}
     if (next !== end) throw Error('incomplete graph window');
     window.__bookAudioPcm = new Int16Array((end - start) * 2);
     for (const b of blocks) for (let i = 0; i < 128; i++) for (let ch = 0; ch < 2; ch++)
@@ -133,6 +137,7 @@ try {
       new URL('./book-audio-normalize.py', import.meta.url).pathname,
       `${output}/audio.wav`, `${output}/normalized.json`,
       '--input-seconds', String((record.transition.input.frame - record.start) / record.rate),
+      '--clock-capture', `${output}/capture.json`,
       ...[pinnedReference, ...pinnedOverlaps].flatMap(path => ['--reference', path]),
     ], {stdio: 'inherit'});
   }

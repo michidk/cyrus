@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import wave
 
 spec = importlib.util.spec_from_file_location('monitor', Path(__file__).with_name('paced-monitor-check.py'))
@@ -27,6 +27,29 @@ class Controls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'evidence exists'):
                 module.run(out, None, 20)
             self.assertEqual((out/'result.json').read_text(), 'prior')
+
+    def test_missing_active_calibration_stream_is_rejected_and_reaped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            source = out / 'reference.wav'
+            module.reference(source)
+            recorder, player = Mock(), Mock()
+            recorder.poll.return_value = None
+            player.poll.return_value = 0
+            player.pid = 123
+            def launch(command, **kwargs):
+                if command[0] == 'parec':
+                    (out / 'monitor.wav').write_bytes(b'x' * 45)
+                    return recorder
+                return player
+            with patch.object(module.subprocess, 'Popen', side_effect=launch), \
+                 patch.object(module.subprocess, 'run', return_value=Mock(stdout='', stderr='')), \
+                 patch.object(module.time, 'sleep'):
+                with self.assertRaisesRegex(RuntimeError, 'stream not observed'):
+                    module.run(out, source, 20, warm=False)
+            import json
+            self.assertFalse(json.loads((out / 'result.json').read_text())['success'])
+            recorder.send_signal.assert_called_once()
 
     def test_stuck_process_is_killed_and_reaped(self):
         process = Mock()

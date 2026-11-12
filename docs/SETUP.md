@@ -1543,7 +1543,13 @@ input-relative onsets separately from game-clock scheduling and rendering pace.
 
 Use the same transition direction and selection, explicit input epoch and
 bounded audio window on both platforms. Check every expected rustle reference
-before comparing onset/gain. Acknowledged page input and paced WAV duration
+before comparing onset/gain. The browser driver retains same-epoch PCM/game-clock
+samples in `clock-observations.json` and `capture.json`. With both references,
+normalization reports enclosing observed game-clock bounds for each admitted
+onset. It rejects missing brackets, duplicate PCM timestamps and clock resets;
+it never interpolates game progress from wall time. Polling bounds do not
+establish an exact cue-dispatch update. The clock observer reads the AudioContext
+clock without scanning retained PCM buffers. Acknowledged page input and paced WAV duration
 remain separate requirements. The capture tool retains readiness stderr in
 `readiness.log` when the observer fails, so display startup failures can be
 distinguished from a missing book page.
@@ -1574,7 +1580,13 @@ python3 /host-mounted/scripts/paced-monitor-check.py /host-mounted/rustle \
 It creates a deterministic three-second stereo signal when no reference is
 supplied, warms the null sink with a low-latency silent playback client, records
 its monitor and plays the reference through PulseAudio. It retains admission,
-playback, wall and sample durations. Run `book-audio-continuity.py` on the host
+playback, wall and sample durations, the exact reference hash and an explicit
+PulseAudio playback volume. `--playback-volume 65536` is unity. The player PID
+must appear in the retained sink-input snapshot while playback is active;
+a pre-playback snapshot describes only the warmup stream and cannot establish
+calibration gain. Missing or exited playback rejects the control. This measures
+the PulseAudio capture segment only, not the emulator mixer or native application
+volume, and must not calibrate a browser graph tap taken at a different boundary. Run `book-audio-continuity.py` on the host
 against each generated monitor/reference pair to check the sample timeline.
 `--recorder-latency-ms 0 --cold-sink` selects server defaults without warmup
 as the idle-clock/delayed-drain control;

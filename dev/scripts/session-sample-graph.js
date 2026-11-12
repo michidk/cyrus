@@ -43,6 +43,9 @@
     }
     return result;
   };
+  // Frequent clock observations must not scan every retained production buffer.
+  probe.clock = () => ({rate: context?.sampleRate,
+    now: context && Math.round(context.currentTime * context.sampleRate)});
   probe.status = () => ({error: probe.error, ready: !!tap && !probe.error, rate: context?.sampleRate,
     now: context && Math.round(context.currentTime * context.sampleRate),
     buffers: probe.buffers.map(b => ({frame: b.frame, length: b.left.length,
