@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One recoverable original-game monitor capture. Observers stay outside the tracked tree.
 set -euo pipefail
-if (( $# != 6 )); then
-    echo 'usage: original-book-audio.sh RUN GOG OUTPUT IMAGE_ARCHIVE READY.py TRANSITION.py' >&2
+if (( $# < 6 )); then
+    echo 'usage: original-book-audio.sh RUN GOG OUTPUT IMAGE_ARCHIVE READY.py TRANSITION.py [REFERENCE.wav ...]' >&2
     exit 2
 fi
 repo=$(cd "$(dirname "$0")/../.." && pwd)
@@ -44,3 +44,14 @@ docker exec -e DISPLAY=:1 -e PULSE_SERVER=unix:/run/pulse/native "$name" \
     --ready-command 'python3 /evidence/runtime/ready.py' \
     --timeout "${CYRUS_BOOK_TIMEOUT:-120}" /evidence/capture \
     python3 /evidence/runtime/transition.py
+
+# A paced monitor is insufficient evidence of uninterrupted emulator playback.
+if (( $# > 6 )); then
+    references=("${@:7}")
+    arguments=()
+    for reference in "${references[@]}"; do
+        arguments+=(--reference "$(realpath "$reference")")
+    done
+    "${CYRUS_AUDIO_ANALYSIS_PYTHON:-python3}" "$repo/dev/scripts/book-audio-continuity.py" \
+        "$out/capture/audio.wav" "$out/continuity.json" "${arguments[@]}"
+fi

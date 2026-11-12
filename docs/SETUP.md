@@ -1365,3 +1365,46 @@ and verifies the executed browser artifacts against the sealed build record.
 Use a secure origin or a loopback origin for AudioWorklet support. Its negative controls run with
 `node dev/scripts/test-browser-sound-reset.mjs`. These checks do not establish
 original output latency or physical-device parity.
+
+
+### Rustle continuity before timing or gain comparison
+
+A real-time sink can contain emulator underruns while still producing exactly
+one second of PCM per wall second. Before interpreting a book recording, check
+its sample timeline against the exported installed effects:
+
+```sh
+python3 -m venv /absolute/host/analysis-env
+/absolute/host/analysis-env/bin/pip install numpy==2.4.6 scipy==1.17.1
+/absolute/host/analysis-env/bin/python dev/scripts/book-audio-continuity.py \
+  /absolute/host/capture/audio.wav /absolute/host/continuity.json \
+  --reference /absolute/host/config/cache/sounds/066.wav \
+  --reference /absolute/host/config/cache/sounds/067.wav
+/absolute/host/analysis-env/bin/python dev/scripts/test-book-audio-continuity.py
+```
+
+Reuse an existing analysis environment when available. The tool requires signed 16-bit PCM and resamples both
+inputs to 8 kHz and locates independent 100 ms reference windows. By default,
+anchors require correlation of at least 0.8; at least three must span 300 ms.
+Their relative delay must vary by no more than 10 ms. These are configurable
+analysis admission limits, not recovered engine constants. The report retains
+individual anchor times, correlations, gains and input hashes. A discontinuity
+or insufficient reference evidence exits unsuccessfully and withholds shared
+onset/gain estimates. Output is never overwritten. Overlapping cues, noise or
+resampling can prevent enough anchors; a failure alone does not diagnose a
+production audio bug. Passing establishes timing consistency at the admitted
+windows, not every sample between them.
+
+Use the same transition direction and selection, explicit input epoch and
+bounded audio window on both platforms. Check every expected rustle reference
+before comparing onset/gain. Acknowledged page input and paced WAV duration
+remain separate requirements. The capture tool retains readiness stderr in
+`readiness.log` when the observer fails, so display startup failures can be
+distinguished from a missing book page.
+
+To make continuity part of the original launcher's exit status, append the host
+reference WAV paths after its transition driver argument and set
+`CYRUS_AUDIO_ANALYSIS_PYTHON` to the analysis environment's Python executable.
+It writes `OUTPUT/continuity.json` and propagates continuity rejection while
+preserving the paced recording and cleaning up its owned container. Omit
+references only for capture diagnostics, not for timing/gain acceptance.

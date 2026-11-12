@@ -67,22 +67,25 @@ def capture(output, command, timeout, tolerance, ready_command):
     recorder = None
     try:
         readiness = subprocess.run(ready_command, capture_output=True, text=True,
-                                   check=True, timeout=timeout)
+                                   check=False, timeout=timeout)
         (output / 'readiness.json').write_text(readiness.stdout)
+        (output / 'readiness.log').write_text(readiness.stderr)
+        readiness.check_returncode()
         result['readiness'] = require_ready(json.loads(readiness.stdout))
         began = time.monotonic()
-        recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--file-format=wav',
-            '--format=s16le', '--rate=48000', '--channels=2', str(path)],
-            stderr=(output / 'recorder.log').open('w'))
+        with (output / 'recorder.log').open('w') as recorder_log:
+            recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--file-format=wav',
+                '--format=s16le', '--rate=48000', '--channels=2', str(path)],
+                stderr=recorder_log)
         deadline = began + 5
         while not path.exists() or path.stat().st_size <= 44:
             if recorder.poll() is not None or time.monotonic() >= deadline:
                 raise RuntimeError('monitor did not admit PCM before input')
             time.sleep(.01)
         # Capture includes the recorder admission interval. Keep one clock for PCM and inputs.
-        with (output / 'driver.jsonl').open('w') as log:
+        with (output / 'driver.jsonl').open('w') as log, (output / 'driver.log').open('w') as errors:
             subprocess.run(command, env={**os.environ, 'CYRUS_CAPTURE_EPOCH': str(began)},
-                           stdout=log, stderr=(output / 'driver.log').open('w'),
+                           stdout=log, stderr=errors,
                            check=True, timeout=timeout)
         ended = time.monotonic()
         recorder.send_signal(signal.SIGINT)

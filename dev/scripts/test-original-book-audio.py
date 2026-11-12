@@ -48,5 +48,29 @@ esac
             self.assertNotEqual(repeated.returncode, 0)
             self.assertIn('preserve evidence', repeated.stderr)
 
+    def test_continuity_failure_is_not_successful_capture(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name in ['run', 'gog', 'bin']:
+                (root/name).mkdir()
+            for name in ['image.tar', 'ready.py', 'driver.py', 'reference.wav']:
+                (root/name).write_text('local fixture')
+            docker = root/'bin/docker'
+            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOCKER_LOG"\nexit 0\n')
+            docker.chmod(0o755)
+            analysis = root/'bin/analysis'
+            analysis.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$ANALYSIS_LOG"\nexit 24\n')
+            analysis.chmod(0o755)
+            result = subprocess.run(['bash', str(SCRIPT), str(root/'run'), str(root/'gog'),
+                str(root/'evidence'), str(root/'image.tar'), str(root/'ready.py'),
+                str(root/'driver.py'), str(root/'reference.wav')],
+                env={**os.environ, 'PATH': str(root/'bin')+':'+os.environ['PATH'],
+                     'DOCKER_LOG': str(root/'docker.log'),
+                     'ANALYSIS_LOG': str(root/'analysis.log'),
+                     'CYRUS_AUDIO_ANALYSIS_PYTHON': str(analysis)}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 24, result.stderr)
+            self.assertIn('--reference '+str(root/'reference.wav'), (root/'analysis.log').read_text())
+            self.assertIn('rm -f book-audio-', (root/'docker.log').read_text())
+
 if __name__ == '__main__':
     unittest.main()

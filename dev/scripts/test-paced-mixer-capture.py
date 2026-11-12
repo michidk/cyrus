@@ -58,10 +58,20 @@ class Acceptance(unittest.TestCase):
             self.assertFalse(json.loads((path / 'result.json').read_text())['success'])
             self.assertFalse((path / 'audio.wav').exists())
 
+    def test_failed_readiness_retains_diagnostic_before_recording(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            ready = capture.subprocess.CompletedProcess(['ready'], 1, '', 'display not ready')
+            with patch.object(capture.subprocess, 'run', return_value=ready), patch.object(capture.subprocess, 'Popen') as recorder:
+                with self.assertRaises(capture.subprocess.CalledProcessError):
+                    capture.capture(path, ['driver'], 1, .1, ['ready'])
+                recorder.assert_not_called()
+            self.assertEqual((path / 'readiness.log').read_text(), 'display not ready')
+
     def test_missing_monitor_preserves_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)
-            with patch.object(capture.subprocess, 'run', return_value=type('Ready', (), {'stdout': '{"ready":true,"page":0}'})()), patch.object(capture.subprocess, 'Popen', side_effect=FileNotFoundError('parec absent')):
+            with patch.object(capture.subprocess, 'run', return_value=type('Ready', (), {'stdout': '{"ready":true,"page":0}', 'stderr': '', 'check_returncode': lambda self: None})()), patch.object(capture.subprocess, 'Popen', side_effect=FileNotFoundError('parec absent')):
                 with self.assertRaises(FileNotFoundError):
                     capture.capture(path, ['driver'], 1, .1, ['ready'])
             record = json.loads((path / 'result.json').read_text())
