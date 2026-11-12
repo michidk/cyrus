@@ -121,6 +121,13 @@ skip points and timed subtitle definitions, and exposes progress through menu
 control state. Browser Movies reads installed compressed packets through the read-only install
 service. cyrus-media decodes video and first-track PCM incrementally. A bounded
 Web Audio adapter supplies the playback clock and pauses it while buffering.
+Packet starts and late-block offsets share the playback origin, so graph setup
+work cannot shift continuation audio relative to the movie clock.
+`node dev/scripts/test-movie-stream.mjs` tests this through the public movie API.
+`node dev/scripts/test-browser-movie-clock.mjs CDP_URL PAGE_URL REFERENCE_WAV RESULT_JSON`
+checks continuation timing and rendered PCM with a real WebAudio clock; supply
+a secure page and a local WAV reference. It injects graph-connection work to
+prove that continuation scheduling retains the sample origin.
 Forward skips retain decoder state; menu return cancels downloads and playback.
 Native and browser playback share skip points, subtitles, interlace and menu return.
 New Game plays installed movie zero (Introduction), then enters the installed

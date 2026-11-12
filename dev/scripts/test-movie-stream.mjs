@@ -159,3 +159,27 @@ movie.movieAudio(roundingId, new Uint8Array(4096), sampleRate, 1, 8, 53248, fals
 assert.equal(movie.movieReady(roundingId), true, 'adjacent sample blocks resume after an underrun despite fractional seconds');
 movie.closeMovie(roundingId);
 console.log('packet PCM: exact sample boundaries resume across fractional-second underruns');
+
+// AudioContext time can advance between JavaScript reads, including while a
+// decoded continuation block is being connected to the graph.
+const cadenceId = movie.openMovie('/movies/0.smk', true, 4, 0.1);
+const cadenceContext = contexts.at(-1);
+movie.movieAudio(cadenceId, new Uint8Array(2).fill(128), 2, 1, 8, 0, false);
+movie.movieVideoEnd(cadenceId, 4);
+movie.playMovie(cadenceId);
+await settle();
+let audioNow = 0.25;
+Object.defineProperty(cadenceContext, 'currentTime', {
+    get() { const sampled = audioNow; audioNow += 0.125; return sampled; },
+});
+movie.movieAudio(cadenceId, new Uint8Array(2).fill(128), 2, 1, 8, 2, false);
+assert.equal(cadenceContext.sources.at(-1).when, 1,
+    'continuation PCM must use the playback origin even if the audio clock advances during scheduling');
+// A late block must resume at the sample belonging to the same clock instant.
+audioNow = 1.75;
+movie.movieAudio(cadenceId, new Uint8Array(2).fill(128), 2, 1, 8, 3, false);
+const late = cadenceContext.sources.at(-1);
+assert.equal(late.when - late.offset, 1.5,
+    'late PCM start and offset must share one audio clock sample');
+movie.closeMovie(cadenceId);
+console.log('packet PCM: continuation and late-block scheduling retain one clock origin');
