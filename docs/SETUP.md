@@ -1561,6 +1561,27 @@ that occurred during screenshot or PCM readback. The observation expression must
 be read-only and must not poll a stateful playback clock. This does not establish
 the native admission time of a source started with a past requested timestamp.
 
+The source observer connects an already-ready tap before native source activation.
+A source can render while `start()` is still returning; attaching afterward can
+miss its onset. `test-browser-source-admission.mjs CDP_URL LOOPBACK_PAGE RESULT_JSON`
+exercises that race with a delayed native return and an exact generated waveform.
+
+`sourceAdmissions` in graph receipts records the requested time and native-call
+entry/return clocks in seconds. Its `frame` is a command lower bound for immediate
+sources, not a measured first-consumption frame. `match()` rejects a command-only
+model when an immediate source can overlap its window. An ended callback records
+a conservative end-of-quantum retirement bound; it does not rewrite PCM. Actual
+PCM export still requires every sample-frame/sequence/clock boundary to pass.
+
+`test-browser-source-render-boundary.mjs CDP_URL LOOPBACK_PAGE RESULT_JSON` records
+native source processing traces and generation-clock markers in an isolated
+24-source control. It compares independently traced first processing with exact
+PCM onset and preserves the trace beside its receipt. Concurrent new sources,
+missing native processing, missing or wrong-thread generation clocks, and altered
+waveforms reject attribution. The control observes both immediate commands and
+future scheduling. It derives no production delay, gain or timing constant.
+
+
 
 ### Original sound-emission capture boundaries
 
