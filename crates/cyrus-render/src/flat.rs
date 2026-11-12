@@ -148,7 +148,8 @@ fn prepare(
                         .map(|extra| (extra, names.get(node).ok()))
                 }),
         );
-        commands.entity(entity).insert(Inspected);
+        // Short-lived meshes, such as grass chunks dropped in this frame, may be gone when it lands.
+        commands.entity(entity).try_insert(Inspected);
         match result {
             Ok(Some((private, flat))) => {
                 mesh.0 = meshes.add(private);
@@ -230,6 +231,30 @@ mod tests {
                 assert!(app.world().get::<Flat>(entity).is_none());
             }
         }
+    }
+
+    // A mesh despawned in the frame it is inspected, as grass chunks are when grass turns off.
+    #[test]
+    fn a_mesh_despawned_while_inspected_does_not_fail() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Mesh>>();
+        let mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        let source = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let entity = app.world_mut().spawn(Mesh3d(source)).id();
+        // Its commands apply before `prepare`'s, so the despawn lands first.
+        app.add_systems(
+            Update,
+            (
+                (move |mut commands: Commands| commands.entity(entity).despawn()),
+                prepare,
+            )
+                .chain_ignore_deferred(),
+        );
+        app.update();
+        assert!(app.world().get_entity(entity).is_err());
     }
 
     #[test]
