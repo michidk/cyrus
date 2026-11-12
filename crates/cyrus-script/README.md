@@ -750,6 +750,13 @@ Verified: `id` reads the receiver's signed runtime identifier word (what `MyId` 
 identifier is installed identity that name lookup and restore validation key on. See preservation's
 [runtime identifier property](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#runtime-identifier-property).
 
+Verified: natural slope response saturates the direction's movement counter without
+marking a movement-native call. Ordinary cleanup clears an uncalled counter, so
+slide-group movement resumes with its startup acceleration after sliding ends.
+The installed production test covers natural admission, counter cleanup, presented
+pose agreement and continued movement after the slide. See preservation's
+[slide-group movement](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#slide-group-movement).
+
 Verified: a sliding actor's projected primary wall contact preserves its facing and
 marks a wall hit. Grounded heading adjustment requires sliding, falling, queued
 motion and living state all clear after the motion transition. A sliding actor's
