@@ -99,6 +99,20 @@ def anchor_window(row, origin):
     return dict(row, event_relative_scale=[value - origin['elapsed_scale'] for value in row['clock_scale']])
 
 
+def owned_frame(response, path, delivered):
+    """Use the producer's frozen frame, never the request or reply polling time."""
+    if response.get('captured') is not True or response.get('path') != str(path):
+        raise ValueError('owned frame requires a completed capture for the requested PNG')
+    boundary = require_observation(response.get('boundary', {}))
+    cursor = boundary.get('pcm_delivery_frames')
+    if (boundary.get('event') != 'render_frame' or boundary.get('phase') != 'render_extraction'
+            or boundary.get('elapsed_scale_end', boundary['elapsed_scale']) != boundary['elapsed_scale']
+            or type(boundary.get('generation')) is not int
+            or type(cursor) is not int or not 0 <= cursor <= delivered):
+        raise ValueError('owned frame requires a render-owned clock and PCM delivery cursor')
+    return boundary
+
+
 def pcm_frames(path):
     """Complete stereo s16 frames delivered to the recorder file, not mixer event time."""
     return path.stat().st_size // 4 if path.exists() else 0
@@ -177,7 +191,7 @@ def raster_metadata(path):
     return dict(width=width, height=height, sha256=hashlib.sha256(data).hexdigest())
 
 
-def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
+def capture(output, observe, trigger, screenshot, seconds, timeout, interval, owned_frames=False):
     # Exclusive evidence directory prevents a retry from overwriting admitted media.
     output.mkdir(parents=True, exist_ok=False)
     result = dict(success=False, exact_update_coverage=False)
@@ -200,15 +214,18 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
         proc.check_returncode()
         return proc.stdout
 
-    def sample():
-        started, first = time.monotonic() - epoch, pcm_frames(raw)
-        observed = require_observation(json.loads(run(observe)))
-        point = dict(observation=observed, wall_seconds=[started, time.monotonic() - epoch],
-                     epoch_monotonic_seconds=epoch, pcm_frames=[first, pcm_frames(raw)])
+    def retain(observed, started, ended, cursors):
+        point = dict(observation=observed, wall_seconds=[started, ended],
+                     epoch_monotonic_seconds=epoch, pcm_frames=cursors)
         points.append(point)
         with (output / 'observations.jsonl').open('a') as log:
             log.write(json.dumps(point) + '\n')
         persist_pcm_windows()
+
+    def sample():
+        started, first = time.monotonic() - epoch, pcm_frames(raw)
+        observed = require_observation(json.loads(run(observe)))
+        retain(observed, started, time.monotonic() - epoch, [first, pcm_frames(raw)])
         return observed
 
     def persist_windows():
@@ -242,34 +259,49 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval):
         # Retain a real raster before trigger, with the recorder already admitted.
         def raster():
             started, first = time.monotonic() - epoch, pcm_frames(raw)
-            before = sample()
             pixels = f'frame-{len(rows):04}.png'
-            run(screenshot + [str(output / pixels)])
-            after = sample()
+            path = output / pixels
+            if owned_frames:
+                response = json.loads(run(screenshot + [str(path)]))
+                before = after = owned_frame(response, path, pcm_frames(raw))
+                first = last = before['pcm_delivery_frames']
+                retain(before, started, time.monotonic() - epoch, [first, last])
+            else:
+                before = sample()
+                run(screenshot + [str(path)])
+                after = sample()
+                last = pcm_frames(raw)
             ended = time.monotonic() - epoch
-            metadata = raster_metadata(output / pixels)
+            metadata = raster_metadata(path)
             row = window(before, after, started, ended, pixels)
             row['raster'] = metadata
-            row['pcm_frames'] = [first, pcm_frames(raw)]
-            row['pcm_mapping'] = 'recorder_delivery_bracket'
+            row['pcm_frames'] = [first, last]
+            row['clock_owner'] = 'render_extraction' if owned_frames else 'observation_bracket'
+            row['pcm_mapping'] = 'recorder_delivery_cursor' if owned_frames else 'recorder_delivery_bracket'
             rows.append(row)
             persist_windows()
         raster()
         sent = time.monotonic() - epoch
         result['trigger'] = json.loads(run(trigger))
         acknowledged = time.monotonic() - epoch
-        result['trigger_observation'] = sample()
+        if owned_frames:
+            raster()
+            result['trigger_observation'] = rows[-1]['after']
+        else:
+            result['trigger_observation'] = sample()
         trigger_boundary = trigger_origin(result['trigger'], result['trigger_observation'])
         result['trigger_boundary'] = trigger_boundary
         origin = trigger_boundary
         persist_windows()
         persist_pcm_windows()
-        while True:
+        if not owned_frames:
             raster()
+        while True:
             post_trigger_progress = elapsed_from_origin(trigger_boundary, rows[-1]['after'])
             if post_trigger_progress >= seconds:
                 break
             time.sleep(min(interval, max(0, deadline - time.monotonic())))
+            raster()
         ended = time.monotonic()
         recorder.send_signal(signal.SIGINT)
         code = recorder.wait(timeout=5)
@@ -306,6 +338,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path, nargs='?')
     parser.add_argument('--compare-captures', type=Path, nargs=2)
+    parser.add_argument('--owned-frames', action='store_true', help='screenshot adapter returns capture_gameplay_frame result with a frozen render boundary')
     parser.add_argument('--observe')
     parser.add_argument('--trigger')
     parser.add_argument('--screenshot')
@@ -321,7 +354,7 @@ def main():
     if any(not math.isfinite(v) or v <= 0 for v in (args.game_seconds, args.timeout, args.interval)):
         parser.error('capture bounds must be finite and positive')
     capture(args.output, shlex.split(args.observe), shlex.split(args.trigger),
-            shlex.split(args.screenshot), args.game_seconds, args.timeout, args.interval)
+            shlex.split(args.screenshot), args.game_seconds, args.timeout, args.interval, args.owned_frames)
 
 
 if __name__ == '__main__':

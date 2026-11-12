@@ -2,6 +2,7 @@
 //! forwards each request into the ECS; one system answers them in frame order.
 
 mod effect_geometry;
+mod frame_capture;
 mod input_schedule;
 mod light_image;
 mod rendered_actor;
@@ -52,6 +53,11 @@ impl Plugin for ControlPlugin {
                 std::sync::mpsc::channel().1
             }
         };
+        app.add_systems(
+            Last,
+            frame_capture::capture.after(bevy::diagnostic::update_frame_count),
+        );
+        app.init_resource::<frame_capture::FrameCaptures>();
         app.add_systems(PostUpdate, light_image::respond);
         app.add_systems(
             PostUpdate,
@@ -145,6 +151,7 @@ struct Inspection<'w, 's> {
     rendered_actor_pending: Option<Res<'w, rendered_actor::PendingRenderedActor>>,
     effect_geometry_pending: Option<Res<'w, effect_geometry::PendingEffectGeometry>>,
     input_scheduler: ResMut<'w, input_schedule::InputScheduler>,
+    frame_captures: ResMut<'w, frame_capture::FrameCaptures>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -200,6 +207,7 @@ fn handle(
         rendered_actor_pending,
         effect_geometry_pending,
         mut input_scheduler,
+        mut frame_captures,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam): (
@@ -344,6 +352,12 @@ fn handle(
                 Ok(
                     json!({"effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
+            }
+            Command::CaptureGameplayFrame { path, pcm_path } => {
+                match frame_captures.arm(id, path.into(), pcm_path.map(Into::into), reply.clone()) {
+                    Ok(()) => break,
+                    Err(error) => Err(format!("{error:#}")),
+                }
             }
             Command::Screenshot { path } => {
                 let path = std::path::PathBuf::from(path);
@@ -1429,6 +1443,171 @@ mod tests {
                 .elapsed_frame_scale()
                 > scale
         );
+    }
+
+    fn frame_app() -> App {
+        use cyrus_script::{clock::SimulationClock, script::ScriptActors};
+        let mut app = script_app_with_player(true);
+        app.world_mut()
+            .spawn((Player, Transform::default(), GlobalTransform::default()));
+        app.insert_resource(State::new(cyrus_game::AppState::InGame));
+        let animations = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations
+            .clone();
+        app.insert_resource(cyrus_render::ReadyScene(animations));
+        app.world_mut()
+            .spawn((Window::default(), bevy::window::PrimaryWindow));
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            world.prepare_spatial().unwrap();
+            world
+                .initialize_player_spatial(world.selected_player().unwrap(), [0; 3], [0; 3])
+                .unwrap();
+        }
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        clock.advance(0);
+        app.insert_resource(clock);
+        app
+    }
+
+    fn request_frame(
+        app: &mut App,
+        path: &std::path::Path,
+        pcm_path: Option<String>,
+    ) -> std::sync::mpsc::Receiver<Response> {
+        let (tx, rx) = channel();
+        let (reply, results) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        tx.send(Pending {
+            request: Request {
+                id: 42,
+                cmd: Command::CaptureGameplayFrame {
+                    path: path.display().to_string(),
+                    pcm_path,
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        results
+    }
+
+    #[test]
+    fn gameplay_frame_clock_pose_and_pcm_cursor_survive_delayed_readback() {
+        use bevy::asset::RenderAssetUsages;
+        use bevy::render::{
+            render_resource::{Extent3d, TextureDimension, TextureFormat},
+            view::screenshot::ScreenshotCaptured,
+        };
+        let mut app = frame_app();
+        let path =
+            std::env::temp_dir().join(format!("cyrus-owned-frame-{}.png", std::process::id()));
+        let raw = path.with_extension("raw");
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(&raw, [0u8; 8]).unwrap();
+        let reply = request_frame(&mut app, &path, Some(raw.display().to_string()));
+        assert!(reply.try_recv().is_err(), "GPU completion is asynchronous");
+        let busy = request_frame(&mut app, &path.with_extension("busy.png"), None)
+            .try_recv()
+            .unwrap();
+        assert!(!busy.ok);
+        assert!(busy.error.unwrap().contains("already pending"));
+        app.world_mut()
+            .resource_mut::<cyrus_script::clock::SimulationClock>()
+            .advance(18);
+        app.world_mut()
+            .resource_mut::<cyrus_script::script::ScriptActors>()
+            .current
+            .as_mut()
+            .unwrap()
+            .place_selected_player([999; 3], 0)
+            .unwrap();
+        std::fs::write(&raw, [0u8; 40]).unwrap();
+        app.world_mut()
+            .query_filtered::<&mut Transform, With<Player>>()
+            .single_mut(app.world_mut())
+            .unwrap()
+            .translation = Vec3::splat(9.);
+        let entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<Screenshot>>()
+            .single(app.world())
+            .unwrap();
+        let image = Image::new_fill(
+            Extent3d {
+                width: 2,
+                height: 2,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            &[12, 34, 56, 255],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::MAIN_WORLD,
+        );
+        app.world_mut()
+            .trigger(ScreenshotCaptured { entity, image });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let response = loop {
+            app.update();
+            if let Ok(response) = reply.try_recv() {
+                break response;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "capture did not finish"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        assert!(response.ok, "{:?}", response.error);
+        let result = response.result.unwrap();
+        assert_eq!(result["boundary"]["elapsed_scale"], 256);
+        assert_eq!(result["boundary"]["pcm_delivery_frames"], 2);
+        assert_eq!(
+            result["boundary"]["player"]["spatial"]["local"]["position"],
+            json!([0, 0, 0])
+        );
+        assert_eq!(result["boundary"]["phase"], "render_extraction");
+        assert_eq!(
+            result["boundary"]["presentation"]["translation"],
+            json!([0., 0., 0.])
+        );
+        assert_eq!(&std::fs::read(&path).unwrap()[..8], b"\x89PNG\r\n\x1a\n");
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(raw).unwrap();
+    }
+
+    #[test]
+    fn gameplay_frame_rejects_unavailable_world_and_missing_pcm_before_readback() {
+        let path =
+            std::env::temp_dir().join(format!("cyrus-rejected-frame-{}.png", std::process::id()));
+        let mut unavailable = app();
+        let response = request_frame(&mut unavailable, &path, None)
+            .try_recv()
+            .unwrap();
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("active world"));
+        let mut ready = frame_app();
+        let response = request_frame(
+            &mut ready,
+            &path,
+            Some(path.with_extension("missing").display().to_string()),
+        )
+        .try_recv()
+        .unwrap();
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("PCM"));
+        assert!(!path.exists());
     }
 
     fn run_commands(app: &mut App, commands: Vec<Command>) -> Vec<serde_json::Value> {

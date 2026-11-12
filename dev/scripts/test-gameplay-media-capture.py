@@ -42,6 +42,20 @@ class Windows(unittest.TestCase):
         self.assertEqual(anchored['normal_frame_rate'], 12)
         self.assertFalse(anchored['atomic'])
 
+    def test_owned_frame_rejects_legacy_poll_and_wrong_artifact(self):
+        path = Path('frame.png')
+        boundary = dict(observation(), generation=1, event='render_frame',
+                        phase='render_extraction', pcm_delivery_frames=5)
+        result = dict(captured=True, path=str(path), boundary=boundary)
+        frozen = media.owned_frame(result, path, 500)
+        self.assertEqual(frozen['elapsed_scale'], 3072)
+        self.assertEqual(frozen['pcm_delivery_frames'], 5)
+        for bad in (dict(path=str(path)), dict(result, path='other.png'),
+                    dict(result, boundary=dict(boundary, phase='polled')),
+                    dict(result, boundary=dict(boundary, pcm_delivery_frames=501))):
+            with self.assertRaises(ValueError):
+                media.owned_frame(bad, path, 500)
+
     def test_delayed_poll_cannot_shift_acknowledged_trigger_origin(self):
         boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
                         event='placement_applied', phase='before_ordinary_update')
@@ -198,6 +212,12 @@ class MatchedIntervals(unittest.TestCase):
 
 class Capture(unittest.TestCase):
     def test_public_command_admits_pcm_before_trigger_and_retains_raster_windows(self):
+        self.capture_fixture(False)
+
+    def test_owned_capture_uses_render_boundary_without_per_raster_observation_requests(self):
+        self.capture_fixture(True)
+
+    def capture_fixture(self, owned):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             recorder = root / 'parec'
@@ -224,13 +244,15 @@ with open(sys.argv[-1], 'wb', buffering=0) as out:
 root = pathlib.Path(sys.argv[1])
 mode = sys.argv[2]
 if mode == 'observe':
+    observations = root / 'observation-count'
+    observations.write_text(str(int(observations.read_text()) + 1 if observations.exists() else 1))
     if (root / 'fail-observer').exists() and (root / 'triggered').exists():
         sys.stderr.write('actor observation interrupted after trigger');sys.exit(7)
     path = root / 'counter'
     count = int(path.read_text()) + 1 if path.exists() else 0
     path.write_text(str(count))
     print(json.dumps(dict(ready=True, scene='fixture', frame=count,
-        game_seconds=count / 4, elapsed_scale=count * 768, normal_frame_rate=12, execution='running', player={'health':100})))
+        game_seconds=count / 4, elapsed_scale=count * 768, normal_frame_rate=12, generation=1, execution='running', player={'health':100})))
 elif mode == 'trigger':
     assert (root / 'capture/audio.raw').stat().st_size > 44
     (root / 'triggered').touch()
@@ -243,13 +265,25 @@ else:
     import base64
     pathlib.Path(sys.argv[3]).write_bytes(base64.b64decode(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1cAAAAASUVORK5CYII='))
+    if mode == 'owned-frame':
+        path = root / 'counter'
+        count = int(path.read_text()) + 1
+        path.write_text(str(count))
+        cursor = (root / 'capture/audio.raw').stat().st_size // 4
+        print(json.dumps(dict(captured=True, path=sys.argv[3], boundary=dict(
+            ready=True, scene='fixture', frame=count, generation=1,
+            game_seconds=count / 4, elapsed_scale=count * 768, normal_frame_rate=12,
+            execution='running', player={'health':100}, event='render_frame',
+            phase='render_extraction', pcm_delivery_frames=cursor))))
 """)
             script = Path(__file__).with_name('gameplay-media-capture.py')
             import shlex
             prefix = shlex.join([sys.executable, str(adapter), str(root)])
             command = [sys.executable, str(script), str(root / 'capture'),
                 '--observe', prefix + ' observe', '--trigger', prefix + ' trigger',
-                '--screenshot', prefix + ' screenshot', '--game-seconds', '1', '--timeout', '5']
+                '--screenshot', prefix + (' owned-frame' if owned else ' screenshot'), '--game-seconds', '1', '--timeout', '5']
+            if owned:
+                command.append('--owned-frames')
             env = {**os.environ, 'PATH': str(root) + ':' + os.environ['PATH']}
             result = subprocess.run(command, env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -269,12 +303,18 @@ else:
             self.assertEqual(pcm[0]['pcm_frames'][0], 0)
             self.assertEqual(pcm[-1]['pcm_frames'][1], report['audio']['frames'])
             self.assertTrue(all('clock_scale' in row and 'event_relative_scale' in row for row in pcm))
+            if owned:
+                self.assertEqual(int((root / 'observation-count').read_text()), 2)
+                self.assertTrue(all(row['clock_owner'] == 'render_extraction' for row in rows))
+                self.assertTrue(all(row['clock_scale'][0] == row['clock_scale'][1] for row in rows))
             self.assertFalse(report['audio']['exact_pcm_event_mapping'])
             self.assertEqual(report['pcm_unobserved_tail_frames'], 0)
             repeated = subprocess.run(command, env=env, capture_output=True, text=True)
             self.assertNotEqual(repeated.returncode, 0)
             self.assertEqual(json.loads((root / 'capture/result.json').read_text()), report)
             # A later observer failure retains live PCM and the earlier clock/cursor journal.
+            if owned:
+                return
             (root / 'triggered').unlink()
             (root / 'fail-observer').touch()
             command[2] = str(root / 'interrupted')

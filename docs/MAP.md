@@ -436,6 +436,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/control/effect_geometry.rs` — Bounded read-only transient geometry acquisition after presentation publication.
+- `src/control/frame_capture.rs` — Bounded native screenshots whose clock and PCM delivery cursor belong to the extracted frame.
 - `src/control/input_schedule.rs` — Diagnostic input delivery at admitted ordinary simulation boundaries.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.

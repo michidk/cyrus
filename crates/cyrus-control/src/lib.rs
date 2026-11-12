@@ -110,6 +110,13 @@ pub enum Command {
     Screenshot {
         path: String,
     },
+    /// Freeze the clock/actor state for the frame submitted to the primary-window screenshot.
+    /// Completes asynchronously after PNG writing. Optional PCM is a raw stereo s16 delivery cursor.
+    CaptureGameplayFrame {
+        path: String,
+        #[serde(default)]
+        pcm_path: Option<String>,
+    },
     Teleport {
         x: f32,
         y: f32,
@@ -284,6 +291,18 @@ fn script_page_size() -> usize {
 #[cfg(test)]
 mod tests {
     use super::{Command, Request};
+
+    #[test]
+    fn gameplay_frame_defaults_to_no_pcm_cursor() {
+        let request: Request = serde_json::from_str(
+            r#"{"id":7,"cmd":{"type":"capture_gameplay_frame","path":"frame.png"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            request.cmd,
+            Command::CaptureGameplayFrame { pcm_path: None, .. }
+        ));
+    }
 
     #[test]
     fn script_summary_defaults_match_script_pages() {

@@ -203,3 +203,8 @@ a public session replacement or dormant-world revisit. Scene/model services and
 the generation-matching world clock sample must be ready. It preserves command order
 and reports a missing binding as an error rather than waiting for it to repair.
 `dev/scripts/native-transient-session.py` drives the installed public acceptance.
+
+Native control captures can use `capture_gameplay_frame` to freeze the ready
+world clock and player presentation before the requested frame is extracted.
+Readback and PNG encoding are asynchronous and bounded to one capture. See the
+control crate README for admission failures and the PCM delivery-cursor limit.

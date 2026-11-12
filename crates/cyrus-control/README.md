@@ -176,3 +176,16 @@ available while armed. `state.effect_geometry_pending` acknowledges admission, s
 a driver can submit a load after the probe is armed. The result includes its
 acquisition frame and CPU geometry/material/image observations. This does not
 establish GPU submission or original pixel parity.
+
+`capture_gameplay_frame {path, pcm_path?}` queues one native primary-window PNG.
+The ready world, simulation clock, selected actor and player presentation are
+frozen after transform publication, before render extraction. GPU readback and
+PNG encoding finish asynchronously; reply delivery does not supply the capture
+time. A second pending request, unavailable presentation, existing output or
+30-second deadline fails explicitly. Only one encoder may remain active, even
+after a timeout.
+
+The optional PCM path is a stereo signed-16 recorder file. Its delivery-frame
+cursor is latched with the render boundary. It is not a mixer-generation
+timestamp; `exact_pcm_event_mapping` remains false. `render_frame` identifies
+the extraction frame, while `update` identifies the ordinary simulation update.
