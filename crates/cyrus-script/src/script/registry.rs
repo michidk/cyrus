@@ -8960,20 +8960,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [effect, volume, rate] = arguments else {
                 anyhow::bail!("Sound requires three arguments")
             };
-            let spatial = self
-                .registry
-                .spatial
-                .as_ref()
-                .context("Sound receiver pose unavailable")?
-                .actor(self.index)?;
-            let position = if spatial.parent.is_some() {
-                spatial
-                    .effective
-                    .context("Sound attached receiver pose unavailable")?
-                    .position
-            } else {
-                spatial.linked_position.unwrap_or(spatial.local.position)
-            };
+            let position = self.registry.query_position(id)?;
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(

@@ -7433,3 +7433,77 @@ fn overlapping_pickups_retain_one_owner_and_removed_records_cannot_restart_after
     assert!(restored.actors()[1].control_state().unwrap().killed);
     assert_eq!(restored.activation().owner(), None);
 }
+
+#[test]
+fn positional_sound_uses_live_slave_attribute_instead_of_retained_family_membership() {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Function,
+                target: Object::Me,
+                function: Native::Sound,
+                arguments: vec![
+                    Value::Integer { value: 1 },
+                    Value::Integer { value: 0 },
+                    Value::Integer { value: 0 },
+                ],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: Native::Sound,
+        param_count: 3,
+        kind: CallKind::Function,
+    });
+    data.actors.get_mut("ACTOR").unwrap().attributes[Attribute::Slave] = 1;
+    data.actors.get_mut("OTHER").unwrap().attributes[Attribute::Master] = 1;
+    data.instances[0].map_position = [110, 0, 0];
+    data.instances[1].map_position = [100, 0, 0];
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    let id = world.id(0).unwrap();
+    assert!(world.spatial(id).unwrap().parent.is_some());
+    for slave in [1, 0, 1] {
+        world
+            .set_actor_attribute(id.index, Attribute::Slave as usize, slave)
+            .unwrap();
+        let expected = if slave != 0 {
+            world.spatial(id).unwrap().effective.unwrap().position
+        } else {
+            world.spatial(id).unwrap().local.position
+        };
+        let mut events = Vec::new();
+        world
+            .advance(
+                id,
+                BODY,
+                cyrus_script::script::ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut |_, sound| {
+                    events.push(sound);
+                    Ok(())
+                }),
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            events,
+            [ScriptSound::Positional {
+                effect: 1,
+                volume: 0,
+                rate_offset_hz: 0,
+                position: expected,
+                start_index: None
+            }],
+            "slave={slave}"
+        );
+    }
+}

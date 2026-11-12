@@ -774,3 +774,9 @@ It has no supported numeric result; consuming it in a formula fails after the
 single effect and retains that failure without replaying the stop. Other immediate
 sound functions retain their documented zero results. This follows preservation's
 [SOUP sound results](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+Verified: positional `Sound` uses the current `attr_slave` selector, then linked
+or local position, through the shared query-position rule. Retained family
+membership alone does not select an attached emitter after the attribute clears.
+The start retains its captured position; later emitter movement does not update
+an already playing `Sound` sample, following preservation's sound contract.
