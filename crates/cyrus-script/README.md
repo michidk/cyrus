@@ -8,6 +8,12 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
+The held walk modifier selects armed walking; the retained walk-mode toggle does
+not change armed dispatch. This follows preservation's
+[controller dispatch](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-controller-dispatch)
+and [weapon predicate](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playerarmed).
+
 Verified: the base selected-player controller rebuilds banked orientations, following
 preservation's [player orientation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#upright-actor-orientation).
 The transition back to zero bank also rebuilds so the last banked matrix cannot retain
