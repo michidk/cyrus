@@ -2,7 +2,7 @@
 //! markers the stand-in and light modules share.
 use super::super::modern_lighting::{CameraHandover, candle, day_night};
 use super::{
-    RayTracingReference, RayTracingSupport, StandIn,
+    RayTracing, RayTracingReference, RayTracingSupport, StandIn,
     lights::sync_lights,
     proxies::{hide_draws, sync_proxies},
     ray_traced,
@@ -28,14 +28,15 @@ use bevy::{
 };
 use cyrus_game::fidelity::Fidelity;
 
-/// Lights the world with Solari while `Area::RayTracing` is Modern and the GPU can trace. Add after
-/// `DefaultPlugins` and the world renderer.
+/// Lights the world with Solari while `Area::Lighting` is Modern, the [`RayTracing`] switch is on
+/// and the GPU can trace. Add after `DefaultPlugins` and the world renderer.
 pub struct RayTracingPlugin;
 
 impl Plugin for RayTracingPlugin {
     fn build(&self, app: &mut App) {
         CameraHandover::configure(app);
         app.add_plugins((SolariPlugins, PathtracingPlugin, super::haze::HazePlugin))
+            .init_resource::<RayTracing>()
             .init_resource::<RayTracingReference>()
             // Solari makes every opaque material deferred, which would bypass this renderer's
             // forward shaders. Only the traced stand-ins opt in.
@@ -90,12 +91,12 @@ impl Plugin for RayTracingPlugin {
         if support != RayTracingSupport::Available {
             warn!("ray tracing unavailable: {support:?}");
         }
-        app.insert_resource(support);
+        app.world_mut().resource_mut::<RayTracing>().support = support;
     }
 }
 
-pub(super) fn traced(fidelity: Res<Fidelity>, support: Res<RayTracingSupport>) -> bool {
-    ray_traced(&fidelity, &support)
+pub(super) fn traced(fidelity: Res<Fidelity>, ray_tracing: Res<RayTracing>) -> bool {
+    ray_traced(&fidelity, &ray_tracing)
 }
 
 /// A source mesh that has a stand-in; its own draw is hidden.

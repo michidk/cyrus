@@ -3,11 +3,7 @@
 //! Model color setup: <https://github.com/michidk/redguard-preservation/commit/8e504c1>.
 //! Model projection: <https://github.com/michidk/redguard-preservation/commit/c91863c>.
 //! Model clipping: <https://github.com/michidk/redguard-preservation/commit/dd8c5f8>.
-use super::{
-    ModelExtension, SceneMaterial,
-    ray_tracing::{RayTracingSupport, world_space_geometry},
-    texture::admission::Model,
-};
+use super::{ModelExtension, SceneMaterial, texture::admission::Model};
 use crate::{
     camera::ViewCamera,
     terrain::{ClipVertex, Preparation},
@@ -20,7 +16,7 @@ use bevy::{
     prelude::*,
     render::render_resource::VertexFormat,
 };
-use cyrus_game::fidelity::Fidelity;
+use cyrus_game::fidelity::{Area, Fidelity, Mode};
 use std::collections::HashSet;
 
 pub(super) const PROJECTED: MeshVertexAttribute =
@@ -67,18 +63,17 @@ pub(super) fn register(app: &mut App) {
 #[derive(Component)]
 struct ModernDrawn(RenderLayers);
 
-/// While `Area::Lighting` is Modern or Solari traces the scene, a clipped model draws its full
+/// While `Area::Lighting` is Modern, traced or not, a clipped model draws its full
 /// world-space source mesh, which can cast shadows, fill the depth prepass and be traced, and its
 /// camera-space draw stops drawing.
 /// Back in Faithful the draw returns and rebuilds its geometry on the next preparation.
 fn swap_for_modern_lighting(
     mut commands: Commands,
     fidelity: Res<Fidelity>,
-    support: Option<Res<RayTracingSupport>>,
     mut sources: Query<(Entity, &mut Source, Option<&ModernDrawn>), Without<Draw>>,
     draws: Query<Option<&RenderLayers>, With<Draw>>,
 ) {
-    let modern = world_space_geometry(&fidelity, support.as_deref());
+    let modern = fidelity.mode(Area::Lighting) == Mode::Modern;
     for (entity, mut source, drawn) in &mut sources {
         match (modern, drawn) {
             (true, None) => {
@@ -234,7 +229,6 @@ fn prepare(
     mut clip: Local<Preparation>,
     mut previous_view: Local<Option<(Mat4, Vec2, Vec2)>>,
     fidelity: Res<Fidelity>,
-    support: Option<Res<RayTracingSupport>>,
 ) {
     let changed_meshes: HashSet<_> = mesh_events
         .read()
@@ -263,7 +257,7 @@ fn prepare(
     // Modern lighting and ray tracing draw the sources themselves; see `swap_for_modern_lighting`.
     // Changes made meanwhile are not tracked, so the first faithful view afterwards re-checks every
     // source.
-    if world_space_geometry(&fidelity, support.as_deref()) {
+    if fidelity.mode(Area::Lighting) == Mode::Modern {
         *previous_view = None;
         return;
     }

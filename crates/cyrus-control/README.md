@@ -10,7 +10,7 @@ one JSON object per line over TCP, default `127.0.0.1:7117`.
 
 Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`, `flycam {enabled, position?, look_at?}`,
 `input {key, action: press|release|tap}` (Bevy `KeyCode` names),
-`set_fidelity {area, mode}`, `ray_tracing_reference {enabled}`, `skip_startup`, `load_scene {name}`, `play_sound {effect}`,
+`set_fidelity {area, mode}`, `ray_tracing {enabled}` (builds with ray tracing), `ray_tracing_reference {enabled}`, `skip_startup`, `load_scene {name}`, `play_sound {effect}`,
 `play_speech {label}`, `stop_sounds`, `queue_movie {movie}`, `script_load_world {world, marker, heading}`, `quit`.
 
 `skip_startup` goes to the book menu. `load_scene` skips presentation or

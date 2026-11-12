@@ -1,5 +1,6 @@
-//! Ray-traced lighting through Bevy Solari, selected by `Area::RayTracing` on a GPU with ray
-//! queries.
+//! Ray-traced lighting through Bevy Solari: a switch under Modern lighting, on by default, that
+//! traces on a GPU with ray queries. Builds without the `raytracing` feature have neither the
+//! switch nor the tracer.
 //!
 //! **Modern only.** Solari traces only `StandardMaterial` meshes with exactly the position, normal,
 //! UV 0 and tangent layout, and shades them in a deferred G-buffer, while the original's materials
@@ -9,15 +10,15 @@
 //! traced scene. The sun, the ambient colour and the object lights come from the world's
 //! environment, calibrated as the raster modern lighting is; object lights become small emissive
 //! spheres, since Solari lights only with the sun, the environment and emissive meshes. The traced
-//! pixels get the scene fog in a pass of their own (`haze`). Where ray tracing is unavailable, the
-//! `lighting` area applies.
+//! pixels get the scene fog in a pass of their own (`haze`). Where ray tracing is off or
+//! unavailable, the raster modern lighting applies.
 use bevy::prelude::*;
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
 
-/// Whether this build and GPU can trace rays.
-#[derive(Resource, Debug, Clone, PartialEq, Eq, Default)]
+/// Whether the GPU can trace rays.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum RayTracingSupport {
-    /// The build lacks ray tracing, or no renderer exists (headless, browser).
+    /// No renderer exists, or it has not been inspected yet.
     #[default]
     Unavailable,
     /// The adapter lacks these wgpu features.
@@ -32,6 +33,24 @@ impl RayTracingSupport {
     }
 }
 
+/// The ray-tracing switch and what the GPU supports. Present only where `RayTracingPlugin` is, so
+/// its absence means the build has no ray tracing.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+pub struct RayTracing {
+    /// Traces while `Area::Lighting` is Modern; on by default.
+    pub enabled: bool,
+    pub support: RayTracingSupport,
+}
+
+impl Default for RayTracing {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            support: RayTracingSupport::default(),
+        }
+    }
+}
+
 /// Replaces the real-time ray-traced lighting with Solari's path tracer, which accumulates a
 /// converged reference image while the camera stays still. A development aid for judging the
 /// real-time lighting and its denoiser; it has no effect unless Solari lights the scene. Present
@@ -43,29 +62,25 @@ pub struct RayTracingReference(pub bool);
 #[derive(Component)]
 pub(crate) struct StandIn;
 
-/// Whether Solari lights the scene: the area is Modern and the GPU can trace.
-pub(crate) fn ray_traced(fidelity: &Fidelity, support: &RayTracingSupport) -> bool {
-    fidelity.mode(Area::RayTracing) == Mode::Modern && support.is_available()
+/// Whether Solari lights the scene: lighting is Modern, the switch is on and the GPU can trace.
+pub fn ray_traced(fidelity: &Fidelity, ray_tracing: &RayTracing) -> bool {
+    fidelity.mode(Area::Lighting) == Mode::Modern
+        && ray_tracing.enabled
+        && ray_tracing.support.is_available()
 }
 
-/// Whether models and terrain draw their world-space meshes instead of the original's per-frame
-/// camera-space preparation. Modern lighting needs them for shadows and the depth prepass, and the
-/// traced stand-ins are built from them.
-pub(crate) fn world_space_geometry(
-    fidelity: &Fidelity,
-    support: Option<&RayTracingSupport>,
-) -> bool {
-    fidelity.mode(Area::Lighting) == Mode::Modern
-        || support.is_some_and(|support| ray_traced(fidelity, support))
+/// [`ray_traced`] for a build or app that may lack ray tracing.
+pub(crate) fn traced_if_built(fidelity: &Fidelity, ray_tracing: Option<&RayTracing>) -> bool {
+    ray_tracing.is_some_and(|ray_tracing| ray_traced(fidelity, ray_tracing))
 }
 
 /// Whether the terrain shader moves the modern waves instead of the CPU rewriting the terrain mesh.
 /// It needs the world-space terrain of modern lighting; a traced scene keeps the waves in the mesh,
 /// because its stand-ins are built from that mesh.
-pub(crate) fn shader_waves(fidelity: &Fidelity, support: Option<&RayTracingSupport>) -> bool {
+pub(crate) fn shader_waves(fidelity: &Fidelity, ray_tracing: Option<&RayTracing>) -> bool {
     fidelity.mode(Area::Water) == Mode::Modern
         && fidelity.mode(Area::Lighting) == Mode::Modern
-        && !support.is_some_and(|support| ray_traced(fidelity, support))
+        && !traced_if_built(fidelity, ray_tracing)
 }
 
 #[cfg(feature = "raytracing")]
@@ -83,48 +98,39 @@ pub use plugin::RayTracingPlugin;
 mod tests {
     use super::*;
 
-    fn fidelity(lighting: Mode, ray_tracing: Mode) -> Fidelity {
-        let mut fidelity = Fidelity::default();
-        fidelity.set(Area::Lighting, lighting);
-        fidelity.set(Area::RayTracing, ray_tracing);
-        fidelity
+    fn switch(enabled: bool, support: RayTracingSupport) -> RayTracing {
+        RayTracing { enabled, support }
     }
 
     #[test]
-    fn ray_tracing_needs_the_area_and_the_hardware() {
-        let modern = fidelity(Mode::Faithful, Mode::Modern);
-        assert!(ray_traced(&modern, &RayTracingSupport::Available));
-        assert!(!ray_traced(&modern, &RayTracingSupport::Unavailable));
+    fn ray_tracing_needs_modern_lighting_the_switch_and_the_hardware() {
+        let mut modern = Fidelity::default();
+        modern.set(Area::Lighting, Mode::Modern);
+        assert!(RayTracing::default().enabled);
+        assert!(ray_traced(
+            &modern,
+            &switch(true, RayTracingSupport::Available)
+        ));
         assert!(!ray_traced(
             &modern,
-            &RayTracingSupport::MissingFeatures("EXPERIMENTAL_RAY_QUERY".into())
+            &switch(false, RayTracingSupport::Available)
         ));
         assert!(!ray_traced(
-            &fidelity(Mode::Modern, Mode::Faithful),
-            &RayTracingSupport::Available
+            &modern,
+            &switch(true, RayTracingSupport::Unavailable)
         ));
-    }
-
-    #[test]
-    fn world_space_geometry_follows_either_modern_tier() {
-        let available = Some(&RayTracingSupport::Available);
-        let unavailable = Some(&RayTracingSupport::Unavailable);
-        assert!(!world_space_geometry(
-            &fidelity(Mode::Faithful, Mode::Faithful),
-            available
+        assert!(!ray_traced(
+            &modern,
+            &switch(
+                true,
+                RayTracingSupport::MissingFeatures("EXPERIMENTAL_RAY_QUERY".into())
+            )
         ));
-        assert!(world_space_geometry(
-            &fidelity(Mode::Modern, Mode::Faithful),
-            unavailable
+        // Faithful lighting never traces, whatever the switch says.
+        assert!(!ray_traced(
+            &Fidelity::default(),
+            &switch(true, RayTracingSupport::Available)
         ));
-        assert!(world_space_geometry(
-            &fidelity(Mode::Faithful, Mode::Modern),
-            available
-        ));
-        // Without the hardware the faithful geometry stays.
-        assert!(!world_space_geometry(
-            &fidelity(Mode::Faithful, Mode::Modern),
-            unavailable
-        ));
+        assert!(!traced_if_built(&modern, None));
     }
 }

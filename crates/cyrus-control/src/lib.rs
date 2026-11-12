@@ -151,6 +151,11 @@ pub enum Command {
         area: String,
         mode: String,
     },
+    /// Switch ray tracing, which works under `lighting` Modern on a GPU with ray queries. Fails in
+    /// builds without the `raytracing` feature.
+    RayTracing {
+        enabled: bool,
+    },
     /// Replace the ray-traced lighting with Solari's path tracer, which converges while the camera
     /// is still; a reference for judging the real-time lighting. No effect unless ray tracing runs.
     RayTracingReference {
