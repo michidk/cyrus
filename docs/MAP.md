@@ -70,10 +70,12 @@ module where it is defined and regenerate.
 - `src/sound/dialogue/export.rs` — Per-label original RTX preparation for disk caches and browser workers.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/source.rs` — Original-file access. Browser workers and native installs share the same parsers.
+- `src/splash_asset.rs` — The installed Windows 3dfx splash's meshes, textures and authored draws, exported once so the
 - `src/startup/export.rs` — (undocumented)
 - `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.
 - `src/startup/mod.rs` — Shared startup preparation and native streaming cinematic input.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
+- `src/startup/splash_data.rs` — Converts the parsed Windows 3dfx splash into the asset the game draws live.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
@@ -359,6 +361,7 @@ module where it is defined and regenerate.
 ## `cyrus-startup` — Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
+- `src/book_scene.rs` — The book menu as a real 3D scene: one mesh per model material group under a perspective camera.
 - `src/confirmation.rs` — Mini-confirmation input and pixels, following preservation's book-menu rules.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
 - `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
@@ -375,6 +378,8 @@ module where it is defined and regenerate.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the
 - `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
+- `src/splash.rs` — The installed Windows 3dfx splash, drawn live every frame as the original's Glide splash is.
+- `src/view3d.rs` — Shared GPU drawing for the screens that show textured models in the original's fixed 640 by 480
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
