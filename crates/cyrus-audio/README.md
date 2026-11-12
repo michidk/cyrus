@@ -431,3 +431,22 @@ new start/stop plus authored ambient continuation. The default scene pair is
 ISLAND/START; emitter/effect are supplied from the install. Run it in the paced
 runtime with host-mounted config and a per-run lock. `test-native-ambient-lifecycle.py`
 checks audible/silent/incomplete-window failure controls. No install data is tracked.
+
+Diagnostic sample capture rejects starts still waiting for the browser effect
+bank. Those starts have not acquired a decoder/slot and have no serialized replay
+contract. Rejection leaves the live queue and existing transports intact; after
+ordinary bank admission, the existing decoder checkpoint can be captured. This
+matches the explicit rejection policy for other in-flight audio preparation.
+
+The browser-only `deferred_sample_capture` example takes an explicit local
+installed-source fixture exported by `positional_emitters --export`. Package it
+with wasm-bindgen and serve it beside `dev/fixtures/deferred-sample-capture.html`;
+pass the fixture URL as `?fixture=...`. Run
+`node dev/scripts/test-deferred-sample-capture.mjs CDP_URL PAGE_URL WASM OUTPUT_JSON`
+against a disposable non-preview browser. It holds the normal bank-admission gate,
+sends public script sound cues, and exercises public sample capture/replacement.
+Actual graph PCM and transport counts check rejection continuity, once-only
+admission, replacement, deferred cancellation and later playback. This controlled
+audio-owner fixture does not establish full aggregate-world pending-save
+reachability or physical-output parity. Native package tests cover the capture
+boundary; bank deferral and its runtime PCM acceptance are browser-specific.

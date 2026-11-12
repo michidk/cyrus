@@ -408,6 +408,14 @@ pub(super) struct ChannelOwnershipCandidate {
 impl super::Channels {
     pub(super) fn snapshot_ownership(&self) -> anyhow::Result<ChannelOwnershipSnapshot> {
         use anyhow::ensure;
+        // Deferred browser starts have no decoder/slot or checkpoint replay contract.
+        // Reject the incomplete pool rather than silently dropping its future output.
+        #[cfg(any(target_arch = "wasm32", test))]
+        ensure!(
+            self.pending.is_empty(),
+            "audio snapshot: {} deferred sample starts await browser bank admission",
+            self.pending.len()
+        );
         let occupied = self.samples.slots.iter().flatten().count();
         ensure!(
             self.playing.len() == occupied,

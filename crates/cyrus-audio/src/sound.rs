@@ -1204,6 +1204,23 @@ mod ambient_tests {
     use bevy::ecs::world::CommandQueue;
 
     #[test]
+    fn public_capture_rejects_deferred_starts_without_consuming_them() {
+        let mut world = World::new();
+        world.init_resource::<Assets<Panned>>();
+        world.insert_resource(Channels {
+            pending: vec![PendingCue::Flat(None, (0, 0, 0))],
+            ..Default::default()
+        });
+        let error = persistence::SamplePlaybackSnapshot::capture(&world)
+            .err()
+            .expect("capture silently discarded the deferred start");
+        assert!(error.to_string().contains("deferred sample starts"));
+        assert_eq!(world.resource::<Channels>().pending.len(), 1);
+        world.resource_mut::<Channels>().pending.clear();
+        assert!(persistence::SamplePlaybackSnapshot::capture(&world).is_ok());
+    }
+
+    #[test]
     fn ambient_updates_gains_restarts_finished_slots_and_stops_excluded_emitters() {
         let world = World::new();
         let mut queue = CommandQueue::default();
