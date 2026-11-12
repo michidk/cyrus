@@ -222,7 +222,10 @@ mod tests {
         })
         .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()))
         .insert_resource(cyrus_render::camera::InitialView(Transform::IDENTITY))
-        .insert_resource(cyrus_render::camera::DetachedView { enabled: true, ..default() })
+        .insert_resource(cyrus_render::camera::DetachedView {
+            enabled: true,
+            ..default()
+        })
         .insert_resource(WorldPicker {
             pending: requested.map(str::to_owned),
             ..default()

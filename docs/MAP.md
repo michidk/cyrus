@@ -154,10 +154,6 @@ module where it is defined and regenerate.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
-- `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
-- `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
-- `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
-- `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
 - `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
 - `src/camera/projection.rs` — Original Glide horizontal field of view, independent of viewport aspect ratio.
 - `src/console.rs` — Installed paper and bitmap-font presentation for the shared console editor.
