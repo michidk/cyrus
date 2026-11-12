@@ -197,6 +197,7 @@ Introduction completion retains its documented entry heading through the loading
 Verified: F1 uses the installed mini-menu frame and font for the original version
 information. Enter or the installed action key confirms, then waits for release.
 F10 plays the installed credits directly and returns to the retained world on
-completion or Escape. Neither screen enters the book or plays the ending movie.
+completion or the release of Escape. Waiting for release keeps the return key
+from also opening the gameplay book. Neither screen enters the book or plays the ending movie.
 Both suspend simulation and rebase its clock before returning.
 The behavior follows preservation's [fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c908f03bb1c67974bb83b24cecfa59b17bc9330b/docs/config/keys-ini.md#fixed-gameplay-shortcuts).

@@ -218,6 +218,7 @@ fn execute(world: &mut World) {
         return;
     };
     let started = Instant::now();
+    let live_capture = matches!(&request, Request::CaptureLive);
     let result = match request {
         Request::CaptureLive => {
             cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
@@ -268,6 +269,14 @@ fn execute(world: &mut World) {
             result
         }
     };
+    if live_capture
+        && result
+            .as_ref()
+            .is_err_and(|error| error.is::<cyrus_render::persistence::PresentationPending>())
+    {
+        world.resource_mut::<SessionBoundary>().request = Some(Request::CaptureLive);
+        return;
+    }
     world.resource_mut::<SessionBoundary>().result = Some(result);
 }
 

@@ -23,6 +23,7 @@ use crate::camera::ViewCamera;
 use crate::environment::EnvironmentRequest;
 use bevy::{
     asset::embedded_asset,
+    camera::visibility::RenderLayers,
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
     render::render_resource::{AsBindGroup, ShaderType},
@@ -485,6 +486,7 @@ fn apply_scene_fog(
             Entity,
             &MeshMaterial3d<StandardMaterial>,
             &mut Mesh3d,
+            Option<&RenderLayers>,
             Option<&bevy::gltf::GltfExtras>,
             Option<&bevy::gltf::GltfMaterialExtras>,
             Option<&bevy::gltf::GltfMaterialName>,
@@ -643,7 +645,11 @@ fn apply_scene_fog(
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
-    for (entity, handle, mut mesh, extras, material_extras, material_name) in &mut entities {
+    for (entity, handle, mut mesh, layers, extras, material_extras, material_name) in &mut entities
+    {
+        if layers.is_some_and(|layers| !layers.intersects(&RenderLayers::default())) {
+            continue;
+        }
         if std::iter::once(entity)
             .chain(parents.iter_ancestors(entity))
             .any(|node| staged.contains(node))
@@ -1785,6 +1791,15 @@ mod tests {
         let extras = bevy::gltf::GltfExtras {
             value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
         };
+        let book_mesh = app
+            .world_mut()
+            .spawn((
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                RenderLayers::layer(5),
+                Visibility::Inherited,
+            ))
+            .id();
         let first = app
             .world_mut()
             .spawn((
@@ -1879,6 +1894,16 @@ mod tests {
                 .is_none()
         );
 
+        assert!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(book_mesh)
+                .is_some()
+        );
+        assert!(app.world().get::<RejectedLighting>(book_mesh).is_none());
+        assert_eq!(
+            app.world().get::<Visibility>(book_mesh),
+            Some(&Visibility::Inherited)
+        );
         assert!(validate_scene_materials(app.world(), &[staged_root]).is_err());
         let environments = app
             .world_mut()

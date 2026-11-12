@@ -1,7 +1,8 @@
 # cyrus-render
 
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
-camera, HUD and subtitles.
+camera, HUD and subtitles. World material preparation only handles the default
+render layer; offscreen book and reader layers keep their own materials.
 The game camera explicitly disables MSAA. Sky materials retain encoded-color
 filtering and fog. Faithful has no RGB565 framebuffer quantization or dither: see Fog.
 The game camera keeps the original horizontal field of view when its viewport

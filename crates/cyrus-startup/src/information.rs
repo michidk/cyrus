@@ -155,7 +155,8 @@ fn drive(
                 commands.insert_resource(CreditsPlaying);
                 (credits::Position::start(line), 0.0)
             });
-            let mut done = keys.just_pressed(KeyCode::Escape);
+            active.confirmed |= keys.just_pressed(KeyCode::Escape);
+            let mut done = active.confirmed && !keys.pressed(KeyCode::Escape);
             due += time.delta_secs_f64() * credits::PIXELS_PER_SECOND;
             while !done && due >= 1.0 {
                 due -= 1.0;
@@ -444,6 +445,14 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Escape);
+        app.update();
+        assert!(matches!(
+            app.world().resource::<NextState<AppState>>(),
+            NextState::Unchanged
+        ));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::Escape);
         app.update();
         assert!(matches!(
             app.world().resource::<NextState<AppState>>(),
