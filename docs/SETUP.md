@@ -158,6 +158,9 @@ Xvfb without the interactive preview services. Build it with the command above;
 `CYRUS_RETRO_IMAGE` can select an existing compatible image. The launcher passes
 `-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
 F12 for the guest console.
+The contact image includes the full Python standard library. Its build checks
+that `ctypes` can resolve the process-tracing entry point used by atomic boundary
+readers; an image with only `python3-minimal` cannot run those readers.
 Original audio capture also configures this modifier explicitly, including when
 reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
 recorder chord must not open the guest console. A local config override must place
