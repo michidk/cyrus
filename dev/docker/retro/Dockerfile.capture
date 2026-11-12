@@ -1,0 +1,12 @@
+# Independent, non-preview original capture runtime and SDL presentation interposer.
+FROM ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dosbox-x xvfb xdotool python3 python3-pil gcc libc6-dev libsdl2-dev \
+    pulseaudio pulseaudio-utils libasound2-plugins && rm -rf /var/lib/apt/lists/*
+COPY dev/scripts/sdl-frame-capture.c /tmp/sdl-frame-capture.c
+RUN cc -std=c11 -Wall -Wextra -Werror -shared -fPIC $(sdl2-config --cflags) \
+    /tmp/sdl-frame-capture.c -o /usr/local/lib/sdl-frame-capture.so -ldl -pthread -lSDL2
+COPY dev/docker/retro/contact-entrypoint.sh /usr/local/bin/contact-entrypoint.sh
+COPY dev/docker/retro/dosbox-x.conf /etc/cyrus/dosbox-x.conf
+ENTRYPOINT ["bash", "/usr/local/bin/contact-entrypoint.sh"]

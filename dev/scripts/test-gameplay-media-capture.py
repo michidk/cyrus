@@ -45,7 +45,7 @@ class Windows(unittest.TestCase):
     def test_owned_frame_rejects_legacy_poll_and_wrong_artifact(self):
         path = Path('frame.png')
         boundary = dict(observation(), generation=1, event='render_frame',
-                        phase='render_extraction', pcm_delivery_frames=5)
+                        phase='render_extraction', render_frame=1, pcm_delivery_frames=5)
         result = dict(captured=True, path=str(path), boundary=boundary)
         frozen = media.owned_frame(result, path, 500)
         self.assertEqual(frozen['elapsed_scale'], 3072)
@@ -55,6 +55,17 @@ class Windows(unittest.TestCase):
                     dict(result, boundary=dict(boundary, pcm_delivery_frames=501))):
             with self.assertRaises(ValueError):
                 media.owned_frame(bad, path, 500)
+
+    def test_surface_owned_sequence_is_admitted_and_duplicate_delivery_rejected(self):
+        path = Path('frame.png')
+        boundary = dict(observation(), generation=1, event='render_frame',
+                        phase='sdl_surface_present', render_frame=7, pcm_delivery_frames=5)
+        media.owned_frame(dict(captured=True, path=str(path), boundary=boundary), path, 5)
+        first = media.window(boundary, boundary, 0, 1, str(path))
+        first['clock_owner'] = 'sdl_surface_present'
+        second = dict(first, wall_seconds=[1, 2])
+        with self.assertRaisesRegex(ValueError, 'sequence repeated'):
+            media.summarize([first, second], 0)
 
     def test_delayed_poll_cannot_shift_acknowledged_trigger_origin(self):
         boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
@@ -274,7 +285,7 @@ else:
             ready=True, scene='fixture', frame=count, generation=1,
             game_seconds=count / 4, elapsed_scale=count * 768, normal_frame_rate=12,
             execution='running', player={'health':100}, event='render_frame',
-            phase='render_extraction', pcm_delivery_frames=cursor))))
+            phase='render_extraction', render_frame=count, pcm_delivery_frames=cursor))))
 """)
             script = Path(__file__).with_name('gameplay-media-capture.py')
             import shlex

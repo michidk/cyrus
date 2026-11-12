@@ -105,9 +105,10 @@ def owned_frame(response, path, delivered):
         raise ValueError('owned frame requires a completed capture for the requested PNG')
     boundary = require_observation(response.get('boundary', {}))
     cursor = boundary.get('pcm_delivery_frames')
-    if (boundary.get('event') != 'render_frame' or boundary.get('phase') != 'render_extraction'
+    if (boundary.get('event') != 'render_frame' or boundary.get('phase') not in ('render_extraction', 'sdl_surface_present')
             or boundary.get('elapsed_scale_end', boundary['elapsed_scale']) != boundary['elapsed_scale']
             or type(boundary.get('generation')) is not int
+            or type(boundary.get('render_frame')) is not int or boundary['render_frame'] <= 0
             or type(cursor) is not int or not 0 <= cursor <= delivered):
         raise ValueError('owned frame requires a render-owned clock and PCM delivery cursor')
     return boundary
@@ -131,6 +132,10 @@ def summarize(rows, required_progress):
     if not rows:
         raise ValueError('no raster windows')
     for previous, current in zip(rows, rows[1:]):
+        if (previous.get('clock_owner') in ('render_extraction', 'sdl_surface_present')
+                and (current.get('clock_owner') != previous['clock_owner']
+                     or current['before'].get('render_frame', 0) <= previous['after'].get('render_frame', 0))):
+            raise ValueError('presentation sequence repeated or changed owner')
         window(previous['after'], current['before'], previous['wall_seconds'][1],
                current['wall_seconds'][0], current['pixels'])
     progress = rows[-1]['after']['game_seconds'] - rows[0]['before']['game_seconds']
@@ -276,7 +281,7 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
             row = window(before, after, started, ended, pixels)
             row['raster'] = metadata
             row['pcm_frames'] = [first, last]
-            row['clock_owner'] = 'render_extraction' if owned_frames else 'observation_bracket'
+            row['clock_owner'] = before['phase'] if owned_frames else 'observation_bracket'
             row['pcm_mapping'] = 'recorder_delivery_cursor' if owned_frames else 'recorder_delivery_bracket'
             rows.append(row)
             persist_windows()
