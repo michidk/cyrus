@@ -88,6 +88,16 @@ def accepted_schedule(path, attachment=False):
             phases.setdefault(row['phase'], []).append(row)
     if set(phases) != {'placed', *names}:
         raise ValueError('original contact run is incomplete')
+    physical = [i for i, row in enumerate(rows) if row.get('phase') == 'physical-release']
+    if physical:
+        hang = [i for i, row in enumerate(rows) if row.get('phase') == 'hang' and row.get('boundary') == 'end']
+        detach = [i for i, row in enumerate(rows) if row.get('phase') == 'detach' and row.get('boundary') == 'start']
+        if (not attachment or len(physical) != 1 or len(hang) != 1 or len(detach) != 1
+                or not hang[0] < physical[0] < detach[0]):
+            raise ValueError('physical release must follow hanging and precede detach')
+        player = rows[physical[0]]['player']
+        if not valid_baseline(player, True) or not player.get('rope_attached'):
+            raise ValueError('physical release requires a retained attachment')
     schedule = {}
     for phase in names:
         edges = [row for row in phases[phase] if row.get('boundary')]
@@ -99,6 +109,8 @@ def accepted_schedule(path, attachment=False):
         if attachment:
             attachment_outcome(phase, boundaries['start']['player'], boundaries['end']['player'])
         schedule[phase] = interval(boundaries['start'], boundaries['end'])
+    if physical:
+        schedule['detach']['physical_release'] = True
     return phases['placed'][-1]['player'], schedule
 
 
@@ -367,6 +379,11 @@ class Driver:
                 phases = [('approach', 'Space'), ('hang', None), ('detach', 'Space')] if self.attachment else [
                     ('walk-in', 'ArrowUp'), ('attack', 'ControlLeft'), ('continuation', None)]
                 for phase, key in phases:
+                    if phase == 'detach' and schedule[phase].get('physical_release'):
+                        self.call('cheat', name='magiccarpet', value=0)
+                        row = self.sample('physical-release')
+                        if not valid_baseline(row['player'], True) or not row['player'].get('rope_attached'):
+                            raise RuntimeError('physical release requires a retained attachment')
                     self.timed_segment(phase, schedule[phase], key)
         finally:
             for key in tuple(self.held):

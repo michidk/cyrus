@@ -368,5 +368,50 @@ class Comparison(unittest.TestCase):
         self.assertFalse(driver.held)
 
 
+class PhysicalRelease(unittest.TestCase):
+    def test_original_marker_admits_gravity_only_between_hang_and_detach(self):
+        import copy
+        player = dict(drawn=False, falling=0, living=0, health=100, rope_attached=False, position=[1,2,3], yaw=0)
+        rows = [dict(phase='placed', player=player)]
+        for phase, flags in [('approach', [False, True]), ('hang', [True, True]), ('detach', [True, False])]:
+            if phase == 'detach': rows.append(dict(phase='physical-release', player=dict(player, rope_attached=True)))
+            for offset, flag in enumerate(flags):
+                rows.append(dict(phase=phase, boundary=['start','end'][offset], clock=[offset/2]*2, input_ack=True, player=dict(player, rope_attached=flag)))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'original.jsonl'
+            def acquire(value):
+                path.write_text(''.join(json.dumps(row)+'\n' for row in value))
+                return contact.accepted_schedule(path, attachment=True)[1]
+            self.assertTrue(acquire(rows)['detach']['physical_release'])
+            wrong=copy.deepcopy(rows); wrong[5]['player']['rope_attached']=False
+            with self.assertRaisesRegex(ValueError, 'retained attachment'): acquire(wrong)
+            wrong=copy.deepcopy(rows); wrong.insert(1, wrong.pop(5))
+            with self.assertRaisesRegex(ValueError, 'follow hanging'): acquire(wrong)
+            wrong=copy.deepcopy(rows); wrong.insert(5, wrong[5])
+            with self.assertRaisesRegex(ValueError, 'follow hanging'): acquire(wrong)
+
+    def test_native_turns_off_fly_mode_after_hang_before_detach(self):
+        driver = contact.Driver('unused', 1, io.StringIO())
+        driver.attachment = True
+        events=[]
+        driver.call = lambda kind, **args: events.append((kind,args))
+        driver.progress = lambda *args, **kwargs: None
+        driver.sample = lambda phase: events.append((phase,{})) or {'player': dict(drawn=False, falling=0, living=0, health=100, rope_attached=True)}
+        driver.timed_segment = lambda phase, expected, key: events.append((phase,{}))
+        schedule = dict(approach={}, hang={}, detach={'physical_release': True})
+        driver.run({'position':[1,2,3], 'yaw':0}, schedule)
+        off=events.index(('cheat', {'name':'magiccarpet','value':0}))
+        self.assertLess(events.index(('hang',{})), off)
+        self.assertLess(off, events.index(('detach',{})))
+        events.clear();schedule['detach']={}
+        driver.run({'position':[1,2,3], 'yaw':0}, schedule)
+        self.assertNotIn(('cheat', {'name':'magiccarpet','value':0}),events)
+        events.clear();schedule['detach']={'physical_release': True}
+        driver.sample = lambda phase: {'player': dict(drawn=False, falling=0, living=0, health=100, rope_attached=False)}
+        with self.assertRaisesRegex(RuntimeError, 'retained attachment'):
+            driver.run({'position':[1,2,3], 'yaw':0}, schedule)
+        self.assertNotIn(('detach',{}),events)
+
+
 if __name__ == '__main__':
     unittest.main()

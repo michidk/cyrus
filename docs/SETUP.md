@@ -1298,6 +1298,13 @@ reject absent or wrong attachment outcomes; airborne state is admitted only in
 this explicit unarmed scenario. The default armed/nonfalling contact guard stays
 in force. A positive diagnostic fixture does not establish natural cadence,
 weapon contact or clank parity.
+For a gravity-enabled release, add `--physical-release` to original acquisition.
+It keeps fly mode for placement and attachment, then turns it off after hanging
+and records a `physical-release` observation before the detach schedule. Native
+replay admits that observation only between the acknowledged hang and detach
+boundaries and turns fly mode off at the same phase. This prepares a physical
+fall; the observation alone does not prove landing, natural cadence, or clank
+parity. Keep the ordinary-boundary clock and outcome checks for those claims.
 
 
 ## Paced original book audio

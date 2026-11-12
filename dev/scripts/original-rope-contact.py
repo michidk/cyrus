@@ -33,6 +33,7 @@ class Driver:
         self.schedule_command = None
         self.schedule_frame_scale = None
         self.attachment = False
+        self.physical_release = False
 
     def input(self, action, key):
         subprocess.run(['xdotool', action, key], check=True, timeout=5)
@@ -93,7 +94,7 @@ class Driver:
         identity = dict(reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
                         schedule_command=self.schedule_command,
                         schedule_frame_scale=self.schedule_frame_scale,
-                        attachment=self.attachment,
+                        attachment=self.attachment, physical_release=self.physical_release,
                         schedule_sha256=(hashlib.sha256(Path(self.schedule_command).read_bytes()).hexdigest()
                             if self.schedule_command else None),
                         placement=placement, placement_files={item: hashlib.sha256(Path(item).read_bytes()).hexdigest()
@@ -331,6 +332,8 @@ def main():
     parser.add_argument('--frames', type=int, default=16)
     parser.add_argument('--attachment', action='store_true',
                         help='require an unarmed positive grab, held attachment and jump detach')
+    parser.add_argument('--physical-release', action='store_true',
+                        help='disable fly mode after hanging, before the detach schedule; requires --attachment')
     parser.add_argument('--attack-frames', type=int, default=2)
     parser.add_argument('--continuation-frames', type=int, default=12)
     parser.add_argument('--schedule-frame-scale', type=int, help='require this measured consumed scale at every instrumented update')
@@ -344,6 +347,8 @@ def main():
     args = parser.parse_args()
     if min(args.frames, args.attack_frames, args.continuation_frames) <= 0 or (args.schedule_frame_scale is not None and (args.schedule_frame_scale <= 0 or not args.schedule_command)) or args.timeout <= 0 or args.ready_timeout <= 0 or args.pulse <= 0:
         parser.error('frames, timeouts and pulse must be positive')
+    if args.physical_release and not args.attachment:
+        parser.error('--physical-release requires --attachment')
     with ExitStack() as stack:
         if args.progress:
             args.progress.parent.mkdir(parents=True, exist_ok=True)
@@ -351,6 +356,7 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         driver = Driver(args.reader, args.timeout, args.pulse)
         driver.attachment = args.attachment
+        driver.physical_release = args.physical_release
         if args.attachment and not args.schedule_command:
             parser.error('--attachment requires acknowledged --schedule-command boundaries')
         driver.schedule_command = args.schedule_command
@@ -388,6 +394,12 @@ def main():
             if args.attachment:
                 driver.segment(args.frames, 'approach', 'space')
                 driver.segment(args.continuation_frames, 'hang')
+                if args.physical_release:
+                    driver.command('magiccarpet = 0')
+                    row = driver.sample('physical-release')
+                    baseline(row, attachment=True)
+                    if not row['player'].get('rope_attached'):
+                        raise RuntimeError('physical release requires a retained attachment')
                 driver.segment(args.attack_frames, 'detach', 'space')
             else:
                 driver.segment(args.frames, 'walk-in', 'Up')

@@ -356,5 +356,46 @@ class ContactLauncher(unittest.TestCase):
             self.assertEqual((root / 'output/contact.stderr').read_text(), 'rejected\n')
 
 
+class PhysicalRelease(unittest.TestCase):
+    def test_public_cli_disables_gravity_suppression_only_after_hanging(self):
+        from unittest.mock import patch
+        module = Readiness().module()
+        events = []
+        attached = True
+        class Rig:
+            def __init__(self, *args): self.pulse = .001
+            def ready(self, timeout): return {'counters': {'fps': 12}}
+            def mark_running(self): pass
+            def progress(self, *args): return {'player': {'drawn': False, 'falling': 0, 'living': 0, 'health': 100}}
+            def command(self, command): events.append(command)
+            def segment(self, frames, phase, key=None): events.append(phase)
+            def sample(self, phase):
+                events.append(phase)
+                return {'player': {'drawn': False, 'falling': 0, 'living': 0, 'health': 100, 'rope_attached': attached}}
+            def save(self): pass
+            def release(self): events.append('released')
+            progress_record = {}
+        def run(physical):
+            events.clear()
+            with patch.object(module, 'Driver', Rig), patch.object(module.subprocess, 'check_output', return_value='1'), patch.object(module.subprocess, 'run'), patch.object(sys, 'argv', [str(DRIVER), '--reader', 'reader', '--attachment', '--schedule-command', 'backend', *(['--physical-release'] if physical else []), '--place', 'place']):
+                module.main()
+            return list(events)
+        physical = run(True)
+        self.assertLess(physical.index('hang'), physical.index('magiccarpet = 0'))
+        self.assertLess(physical.index('magiccarpet = 0'), physical.index('detach'))
+        self.assertIn('physical-release', physical)
+        self.assertNotIn('magiccarpet = 0', run(False))
+        attached = False
+        with self.assertRaisesRegex(RuntimeError, 'retained attachment'):
+            run(True)
+        self.assertNotIn('detach', events)
+        self.assertEqual(events[-1], 'released')
+
+    def test_physical_release_rejects_non_attachment_before_input(self):
+        result = subprocess.run([sys.executable, str(DRIVER), '--reader', 'absent', '--physical-release', '--place', 'absent'], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--physical-release requires --attachment', result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()
