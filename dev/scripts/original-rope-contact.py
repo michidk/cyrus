@@ -190,6 +190,8 @@ class Driver:
         request = dict(phase=phase, frames=frames, key=key)
         if self.attachment:
             request['scenario'] = 'attachment'
+        if self.physical_release:
+            request['atomic_snapshots'] = True
         if self.schedule_frame_scale is not None:
             request['frame_scale'] = self.schedule_frame_scale
         # Backend failure/timeout must not leave its scheduled gameplay key held.
@@ -260,6 +262,34 @@ class Driver:
             time.sleep(.05)
 
 
+def validate_snapshots(result, frames):
+    """Require one stopped, repeatable state at each ordinary update start.
+
+    The executable-specific backend owns stopping execution at this boundary.
+    Repeated reads while stopped must agree; a frame label alone is insufficient.
+    Clocks use the same consumed-scale units as the acknowledged input schedule.
+    """
+    snapshots = result.get('snapshots', [])
+    if len(snapshots) != frames + 1:
+        raise ValueError('atomic snapshot sequence is incomplete')
+    start = result['boundaries'][0]
+    elapsed = start['clock_scale']
+    for sequence, row in enumerate(snapshots):
+        if (type(row.get('sequence')) is not int or type(row.get('frame')) is not int
+                or type(row.get('clock_scale')) is not int or not isinstance(row.get('player'), dict)
+                or row.get('sequence') != sequence or row.get('boundary') != 'ordinary_update_start'
+                or row.get('execution') != 'stopped' or row.get('frame') != start['frame'] + sequence
+                or row.get('clock_scale') != elapsed
+                or row.get('confirmation') != dict(frame=row.get('frame'), player=row.get('player'))):
+            raise ValueError('atomic snapshot boundary is inconsistent')
+        if sequence < frames:
+            elapsed += result['steps'][sequence]['frame_scale']
+    for edge, snapshot in zip(result['boundaries'], (snapshots[0], snapshots[-1])):
+        if any(edge.get(key) != snapshot.get(key) for key in ('frame', 'clock_scale', 'player')):
+            raise ValueError('input boundary differs from atomic snapshot')
+    return snapshots
+
+
 def validate_schedule(result, request):
     """Accept exact clocks only with a contiguous consumed-step acknowledgement."""
     frames, key = request['frames'], request['key']
@@ -288,6 +318,7 @@ def validate_schedule(result, request):
     if (type(start['clock_scale']) is not int or type(end['clock_scale']) is not int
             or end['clock_scale'] - start['clock_scale'] != elapsed or elapsed <= 0):
         raise ValueError('boundary clock differs from consumed frame scales')
+    snapshots = validate_snapshots(result, frames) if request.get('atomic_snapshots') else None
     rows = []
     for edge, row, pressed in [('start', start, True), ('end', end, False)]:
         baseline(row, attachment=request.get('scenario') == 'attachment')
@@ -297,6 +328,9 @@ def validate_schedule(result, request):
         rows.append(dict(phase=request['phase'], boundary=edge, input_ack=True,
             frame=row['frame'], clock=[seconds, seconds], player=row['player'],
             timing_source='ordinary_boundary', instrumentation=result.get('instrumentation')))
+        if snapshots is not None:
+            snapshot = snapshots[0 if edge == 'start' else -1]
+            rows[-1].update(snapshot_boundary=snapshot['boundary'], snapshot_sequence=snapshot['sequence'])
     if request.get('scenario') == 'attachment':
         attachment_outcome(request['phase'], rows[0]['player'], rows[1]['player'])
     return rows

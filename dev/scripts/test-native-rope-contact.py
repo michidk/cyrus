@@ -380,9 +380,37 @@ class PhysicalRelease(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'original.jsonl'
             def acquire(value):
+                value = copy.deepcopy(value)
+                spec = importlib.util.spec_from_file_location('original_rope', Path(__file__).with_name('original-rope-contact.py'))
+                original = importlib.util.module_from_spec(spec); spec.loader.exec_module(original)
+                for phase in ('approach', 'hang', 'detach'):
+                    edges = [row for row in value if row.get('phase') == phase and row.get('boundary')]
+                    request = dict(phase=phase, frames=1, key=None, scenario='attachment', atomic_snapshots=True)
+                    boundaries = [dict(frame=i, clock_scale=i*1536, input_state={}, player=row['player']) for i,row in enumerate(edges)]
+                    result = dict(phase=phase, key=None, normal_frame_rate=12, boundaries=boundaries,
+                        steps=[dict(frame=0, frame_scale=1536, input_state={})],
+                        snapshots=[dict(sequence=i, frame=i, clock_scale=i*1536, player=row['player'], execution='stopped',
+                            boundary='ordinary_update_start', confirmation=dict(frame=i, player=row['player'])) for i,row in enumerate(edges)])
+                    validated = original.validate_schedule(result, request)
+                    for old,new in zip(edges,validated):old.update(new)
+                    value.append(dict(phase='schedule-evidence',request=request,result=result))
                 path.write_text(''.join(json.dumps(row)+'\n' for row in value))
                 return contact.accepted_schedule(path, attachment=True)[1]
             self.assertTrue(acquire(rows)['detach']['physical_release'])
+            accepted = [json.loads(line) for line in path.read_text().splitlines()]
+            for mutation in ('missing', 'duplicate', 'pose', 'published'):
+                wrong = copy.deepcopy(accepted)
+                if mutation == 'missing': wrong = [row for row in wrong if row.get('phase') != 'schedule-evidence']
+                elif mutation == 'published':
+                    next(row for row in wrong if row.get('phase') == 'detach' and row.get('boundary') == 'end')['player']['health'] = 99
+                else:
+                    evidence = next(row for row in wrong if row.get('phase') == 'schedule-evidence')
+                    snapshot = evidence['result']['snapshots'][1]
+                    if mutation == 'duplicate': snapshot['frame'] = 0
+                    else: snapshot['confirmation']['player'] = dict(snapshot['player'], health=99)
+                path.write_text(''.join(json.dumps(row)+'\n' for row in wrong))
+                with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'snapshot'):
+                    contact.accepted_schedule(path, attachment=True)
             wrong=copy.deepcopy(rows); wrong[5]['player']['rope_attached']=False
             with self.assertRaisesRegex(ValueError, 'retained attachment'): acquire(wrong)
             wrong=copy.deepcopy(rows); wrong.insert(1, wrong.pop(5))

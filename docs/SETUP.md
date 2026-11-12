@@ -1316,6 +1316,19 @@ replay admits that observation only between the acknowledged hang and detach
 boundaries and turns fly mode off at the same phase. This prepares a physical
 fall; the observation alone does not prove landing, natural cadence, or clank
 parity. Keep the ordinary-boundary clock and outcome checks for those claims.
+Physical acquisition also requests `atomic_snapshots` from the local scheduling
+backend. It must stop gameplay execution at `ordinary_update_start` and return
+one `snapshots` entry per boundary, including both endpoints. Each entry carries
+its zero-based `sequence`, global `frame`, cumulative `clock_scale`, selected
+`player`, and `execution: "stopped"`. A second read while stopped supplies
+`confirmation: {frame, player}`. The driver rejects repeated/skipped frames,
+changed confirmation state, different boundary kinds, missing entries and clocks
+that disagree with consumed scales. Input endpoint state must equal the
+corresponding snapshot. Accepted endpoint rows report `snapshot_boundary` and
+`snapshot_sequence`; raw evidence retains the entire sequence. Native physical
+replay revalidates that evidence and requires its published endpoints to agree
+before input. Backend stops can affect cadence, so atomic acquisition alone does
+not establish natural timing.
 
 
 ## Paced original book audio

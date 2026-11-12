@@ -76,6 +76,23 @@ def attachment_outcome(phase, start, end):
         raise ValueError(f'positive rope {phase} attachment outcome was rejected')
 
 
+def validate_physical_source(rows):
+    """Revalidate frozen acquisition evidence before admitting physical replay."""
+    spec = importlib.util.spec_from_file_location('original_rope', Path(__file__).with_name('original-rope-contact.py'))
+    original = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(original)
+    for phase in ('approach', 'hang', 'detach'):
+        records = [row for row in rows if row.get('phase') == 'schedule-evidence'
+                   and row.get('request', {}).get('phase') == phase]
+        if len(records) != 1 or records[0]['request'].get('atomic_snapshots') is not True:
+            raise ValueError('physical replay requires atomic snapshot evidence')
+        record = records[0]
+        validated = original.validate_schedule(record['result'], record['request'])
+        published = [row for row in rows if row.get('phase') == phase and row.get('boundary')]
+        if published != validated:
+            raise ValueError('physical replay boundaries differ from atomic snapshot evidence')
+
+
 def accepted_schedule(path, attachment=False):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     names = ('approach', 'hang', 'detach') if attachment else ('walk-in', 'attack', 'continuation')
@@ -110,6 +127,7 @@ def accepted_schedule(path, attachment=False):
             attachment_outcome(phase, boundaries['start']['player'], boundaries['end']['player'])
         schedule[phase] = interval(boundaries['start'], boundaries['end'])
     if physical:
+        validate_physical_source(rows)
         schedule['detach']['physical_release'] = True
     return phases['placed'][-1]['player'], schedule
 

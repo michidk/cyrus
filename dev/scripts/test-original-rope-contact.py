@@ -219,6 +219,49 @@ class ExactSchedule(unittest.TestCase):
             with self.subTest(wrong=wrong), self.assertRaises((ValueError, RuntimeError)):
                 module.validate_schedule(wrong, request)
 
+    def test_physical_snapshots_reject_duplicate_frames_and_inconsistent_state(self):
+        import copy
+        module = Readiness().module()
+        player = dict(drawn=False, falling=0, living=0, health=100, rope_attached=True)
+        request = dict(phase='hang', frames=2, key=None, scenario='attachment', atomic_snapshots=True)
+        snapshots = [dict(sequence=i, boundary='ordinary_update_start', execution='stopped',
+            frame=10+i, clock_scale=i*256, player=copy.deepcopy(player),
+            confirmation=dict(frame=10+i, player=copy.deepcopy(player))) for i in range(3)]
+        result = dict(phase='hang', key=None, normal_frame_rate=12,
+            snapshots=snapshots,
+            boundaries=[dict(frame=10+i, clock_scale=i*256, player=copy.deepcopy(player), input_state={}) for i in (0,2)],
+            steps=[dict(frame=10+i, frame_scale=256, input_state={}) for i in range(2)])
+        rows = module.validate_schedule(result, request)
+        mutations = [lambda r: r.pop('snapshots'),
+            lambda r: r['snapshots'][1].update(frame=10),
+            lambda r: r['snapshots'][1].update(sequence=0),
+            lambda r: r['snapshots'][1].update(execution='running'),
+            lambda r: r['snapshots'][1].update(boundary='passive_poll'),
+            lambda r: r['snapshots'][1].update(clock_scale=512),
+            lambda r: r['snapshots'][1]['confirmation']['player'].update(health=99),
+            lambda r: r['snapshots'][1]['confirmation'].update(frame=12),
+            lambda r: r['boundaries'][1]['player'].update(health=99)]
+        for mutate in mutations:
+            wrong = copy.deepcopy(result); mutate(wrong)
+            with self.subTest(wrong=wrong), self.assertRaisesRegex(ValueError, 'snapshot'):
+                module.validate_schedule(wrong, request)
+        self.assertEqual([r['snapshot_sequence'] for r in rows], [0,2])
+
+    def test_physical_backend_cannot_publish_passive_endpoints(self):
+        from unittest.mock import patch
+        module = Readiness().module()
+        driver = module.Driver('unused', 1, .001)
+        driver.physical_release = driver.attachment = True
+        player = dict(drawn=False, falling=0, living=0, health=100, rope_attached=True)
+        response = dict(phase='hang', key=None, normal_frame_rate=12,
+            boundaries=[dict(frame=i, clock_scale=i*256, input_state={}, player=player) for i in (0,1)],
+            steps=[dict(frame=0, frame_scale=256, input_state={})])
+        result = subprocess.CompletedProcess([],0,stdout=json.dumps(response))
+        with patch.object(module.subprocess, 'run', return_value=result) as backend:
+            with self.assertRaisesRegex(ValueError, 'snapshot sequence'):
+                driver.exact_segment('backend', 1, 'hang')
+        self.assertTrue(json.loads(backend.call_args.kwargs['input'])['atomic_snapshots'])
+
     def test_required_consumed_scale_cannot_be_replaced_by_same_sum(self):
         module = Readiness().module()
         player = dict(drawn=True, falling=0, living=0, health=100)
