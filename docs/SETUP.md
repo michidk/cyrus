@@ -1528,6 +1528,44 @@ worklet API and requires the real source's playback-end acknowledgement. It owns
 and closes a disposable browser context; it does not need the install.
 
 
+### Original sound-emission capture boundaries
+
+`original-audio-capture.sh` retains an optional probe's stdout, stderr and
+`hook-result.json` under the run's capture directory. A requested hook delay is
+only a request. It is recorded as `hook_requested`, never as an observed
+placement or sound emission. A nonzero probe exit fails the capture; an
+unfinished probe is terminated when the recording ends.
+
+Set `CYRUS_REQUIRE_HOOK_ACK=1` when admitting an emission comparison. The local
+probe must print exactly one JSON object with `acknowledged: true` and a
+`boundary` containing `event: "sound_emitted"`, monotonic `before` and `after`
+timestamps, observed `game_seconds`, integer `frame`, `scene`, `owner` and
+integer requested `effect`. The probe owns observing the real emission, rather
+than polling later or echoing its requested delay. The recorder rejects missing,
+failed, malformed, unfinished and post-recording acknowledgements, retaining
+their diagnostics. These structural checks do not independently prove that a
+probe observed the right engine event.
+
+`CYRUS_CAPTURE_MIN_FRAME` selects the initial world-frame readiness threshold
+(default 400). `CYRUS_CAPTURE_GAME_SECONDS` optionally stops a run after observed
+game-clock progress; the positional duration remains a wall deadline and fails
+when the requested progress is not reached. Slow movie decoding does not count
+as world-clock progress. `CYRUS_STATE_TIMEOUT` bounds each reader call in wall
+seconds (default 20); use a shorter bound for short diagnostic runs. Missing or
+timed-out clock observations cannot satisfy the requested progress. Each launcher
+invocation holds its lock for one run.
+
+The timeline identifies DOSBox's WAV as `emulated_mixer`. Probe wall bounds and
+game-clock observations remain separate from its PCM sample clock. File flush
+sizes, requested delays and wall-time scaling do not establish exact emission
+sample offsets or physical-device playback. Use an independently calibrated
+output recording and matched emission boundaries for that comparison.
+
+Run `python3 dev/scripts/test-capture-hook.py`,
+`python3 dev/scripts/test-original-capture-hook.py` and
+`python3 dev/scripts/test-original-startup-capture.py` for probe failure,
+acknowledgement, game-clock cutoff and startup controls.
+
 ### Rustle continuity before timing or gain comparison
 
 A real-time sink can contain emulator underruns while still producing exactly

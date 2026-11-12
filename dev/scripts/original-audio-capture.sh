@@ -11,6 +11,9 @@
 #           reader when the recorder starts (arguments: reader, CYRUS_HOOK_DELAY, then CYRUS_HOOK_ARGS), for timed placement; CYRUS_HOOK_ARGS are its arguments),
 #           CYRUS_SHOT_INTERVAL (seconds between framebuffer screenshots, written to
 #           <out>/shots and listed in the timeline with the wall times they were taken at).
+# Optional: CYRUS_REQUIRE_HOOK_ACK=1 requires an observed sound-emission acknowledgement.
+#           CYRUS_CAPTURE_GAME_SECONDS stops on observed game progress; duration is a deadline.
+#           CYRUS_CAPTURE_MIN_FRAME defaults to 400.
 # Optional: CYRUS_CLOCK_HELPER, a python script run in the container from the recorder start
 #           that logs "wall frame ..." lines to <out>/clock.log (kept outside the repository).
 # Optional: CYRUS_FRAME_WAIT, seconds to wait for the world loop before recording anyway
@@ -75,11 +78,12 @@ cleanup() {
 }
 trap cleanup EXIT
 docker cp "$repo/dev/scripts/original-capture-inner.py" "$name:/tmp/inner.py"
+docker cp "$repo/dev/scripts/capture-hook.py" "$name:/tmp/capture-hook.py"
 docker cp "$events" "$name:/tmp/events.json"
 [ -z "${CYRUS_CLOCK_HELPER:-}" ] || docker cp "$CYRUS_CLOCK_HELPER" "$name:/tmp/clock.py"
 [ -z "${CYRUS_CAPTURE_HOOK:-}" ] || docker cp "$CYRUS_CAPTURE_HOOK" "$name:/tmp/hook.py"
 docker cp "${CYRUS_STATE_READER:?set CYRUS_STATE_READER to original-state.py}" "$name:/tmp/original-state.py"
-docker exec -e CYRUS_CAPTURE_STARTUP="${CYRUS_CAPTURE_STARTUP:-0}" -e CYRUS_HOOK_ARGS="${CYRUS_HOOK_ARGS:-}" -e CYRUS_FRAME_WAIT="${CYRUS_FRAME_WAIT:-150}" -e CYRUS_HOOK_DELAY="${CYRUS_HOOK_DELAY:-0}" -e CYRUS_SHOT_INTERVAL="${CYRUS_SHOT_INTERVAL:-0}" "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
+docker exec -e CYRUS_STATE_TIMEOUT="${CYRUS_STATE_TIMEOUT:-20}" -e CYRUS_CAPTURE_GAME_SECONDS="${CYRUS_CAPTURE_GAME_SECONDS:-0}" -e CYRUS_CAPTURE_MIN_FRAME="${CYRUS_CAPTURE_MIN_FRAME:-400}" -e CYRUS_REQUIRE_HOOK_ACK="${CYRUS_REQUIRE_HOOK_ACK:-0}" -e CYRUS_CAPTURE_STARTUP="${CYRUS_CAPTURE_STARTUP:-0}" -e CYRUS_HOOK_ARGS="${CYRUS_HOOK_ARGS:-}" -e CYRUS_FRAME_WAIT="${CYRUS_FRAME_WAIT:-150}" -e CYRUS_HOOK_DELAY="${CYRUS_HOOK_DELAY:-0}" -e CYRUS_SHOT_INTERVAL="${CYRUS_SHOT_INTERVAL:-0}" "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
 wav=$(ls -t "$run"/capture/*.wav | head -1)
 cp "$wav" "$out/audio.wav"
 [ ! -f "$run/capture/clock.log" ] || cp "$run/capture/clock.log" "$out/clock.log"
