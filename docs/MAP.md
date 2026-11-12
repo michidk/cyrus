@@ -368,6 +368,7 @@ module where it is defined and regenerate.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
 - `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
+- `src/information.rs` — Fixed F1 information and F10 credits screens, returning to the suspended world.
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/logbook.rs` — Installed logbook paper, text and rotating scrolls over the suspended world.

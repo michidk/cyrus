@@ -225,7 +225,7 @@ sampling matches either to the last bit; it was not compared pixel by pixel.
 Dialogs over the book (delete confirmation, game description) are drawn on a transparent layer above the
 scene, where the original composited them into the same frame. **Unknown:** whether the result is pixel-identical;
 these dialogs were not compared against the previous renderer.
-The F1 flycam also flies the book's camera in the menu, which the original has no equivalent of; it is
+The F11 flycam also flies the book's camera in the menu, which the original has no equivalent of; it is
 off by default and a debug aid only.
 
 The 3dfx splash is likewise drawn live on the GPU, as the original's Glide splash is, instead of
@@ -256,7 +256,7 @@ code, so menu navigation by gamepad is not provided in Faithful mode.
 
 ## Optional anisotropic filtering
 
-F1's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+F11's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
 area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
 modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
 models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture

@@ -158,7 +158,7 @@ fn grab_cursor(
         && !suppressed.0
         && pending_world.is_none()
         && !logbook.is_some_and(|screen| screen.suspended())
-        // The F1 settings block the console while open.
+        // The F11 settings block the console while open.
         && !console.is_some_and(|console| console.open || console.blocked);
     let mode = if grab {
         CursorGrabMode::Locked

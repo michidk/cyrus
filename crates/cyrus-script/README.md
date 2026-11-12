@@ -791,3 +791,9 @@ updates the borrowed synchronous sample service before returning. The listener
 uses the published logical position/yaw independently of render gliding; failed
 camera updates do not publish a replacement. Status-only sample adapters may
 ignore listener publication.
+
+Verified: fixed gameplay shortcuts select the original book pages with F2–F6,
+request version information with F1 and credits with F10. The information screens
+retain the live player. F1, book shortcuts and F9 require `final_version`.
+Desktop and browser hosts share F9 keyboard eligibility, including console,
+reader, inspection and pending-transition gates. F11 belongs to the debugger.

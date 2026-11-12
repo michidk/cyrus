@@ -2,7 +2,7 @@
 use anyhow::{Context, Result, ensure};
 use bevy::{
     log::error,
-    prelude::{App, AssetServer, Mut, PreUpdate, Resource, World},
+    prelude::{App, AssetServer, IntoScheduleConfigs, Mut, PreUpdate, Resource, World},
 };
 use cyrus_session::{RuntimeSessionSnapshot, SessionBoundary, SessionBoundaryResult};
 use serde_json::{Value, json};
@@ -83,7 +83,7 @@ pub fn register(app: &mut App, diagnostics: bool) {
     })
     .init_resource::<cyrus_startup::LastGameLoader>()
     .init_resource::<cyrus_startup::SaveLoadHost>()
-    .add_systems(PreUpdate, update);
+    .add_systems(PreUpdate, update.after(cyrus_console::ConsoleInput));
 }
 
 fn task(future: impl Future<Output = Result<IoResult>> + 'static) -> Io {
@@ -287,15 +287,9 @@ impl Host {
 
 fn update(world: &mut World) {
     world.resource_scope(|world, mut host: Mut<Host>| {
-        let quick_save = world
-            .get_resource::<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>()
-            .is_some_and(|keys| keys.just_pressed(bevy::prelude::KeyCode::F9));
-        if quick_save
+        if cyrus_script::quick_save_pressed(world)
             && host.phase.is_none()
             && host.result.is_none()
-            && world
-                .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
-                .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
             && world.resource::<SessionBoundary>().is_idle()
         {
             let operation = SlotRequest::QuickSave;

@@ -124,6 +124,18 @@ impl LastGameConfirmation {
         )
     }
 
+    pub(super) fn paint_information(
+        artwork: &ConfirmationArtwork,
+        prompt: &str,
+    ) -> anyhow::Result<RgbaImage> {
+        Self::displayed(0, 0).paint_dialog(
+            artwork,
+            &RgbaImage::new(640, 480),
+            &format!("{prompt}\n\nOK"),
+            false,
+        )
+    }
+
     fn paint_dialog(
         &self,
         artwork: &ConfirmationArtwork,
