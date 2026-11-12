@@ -1,7 +1,8 @@
 # cyrus-debug
 
 The F11 debug menu shared by the native and browser game. It changes
-runtime fidelity individually or all at once, loads an installed world from a dropdown, and launches a separate
+runtime fidelity individually or all at once, an independent flycam toggle and
+speed, loads an installed world from a dropdown, and launches a separate
 `bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
 Resources to edit reflected resources, and Assets to inspect loaded assets.
 The inspector scrolls within its resized window. World choices show their installed

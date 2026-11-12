@@ -1,7 +1,7 @@
 //! Inspection camera, independent of gameplay pose and input.
 mod persistence;
 pub(crate) mod projection;
-use bevy::{camera::primitives::Aabb, prelude::*};
+use bevy::{camera::primitives::Aabb, input::mouse::AccumulatedMouseMotion, prelude::*};
 use cyrus_game::AppState;
 use cyrus_script::player::Player;
 use cyrus_script::player::input::InputSample;
@@ -15,9 +15,23 @@ pub struct ViewCamera;
 /// `flycam` command, an explicit inspection view), player input is suppressed and the world
 /// streams around the camera. It has no controls of its own; flying is the fly camera mod's
 /// (`mods/flycam`), which detaches the view the same way through [`CameraTakeover`].
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct DetachedView {
     pub enabled: bool,
+    pub speed: f32,
+    /// Keep sending keyboard input to the game or the book while the flycam is enabled. By default
+    /// the flycam owns the controls.
+    pub pass_input: bool,
+}
+
+impl Default for DetachedView {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            speed: 150.0,
+            pass_input: false,
+        }
+    }
 }
 
 impl DetachedView {
@@ -39,6 +53,8 @@ pub struct FrameScene(pub bool);
 /// One-shot inspection pose in exported scene coordinates, consumed on first framing.
 #[derive(Resource)]
 pub struct InitialView(pub Transform);
+
+const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 // The scene-bounds query excludes the fullscreen sky.
 #[allow(clippy::type_complexity)]
@@ -81,6 +97,60 @@ fn frame_scene(
     t.translation = center + offset;
     t.look_at(center, Vec3::Y);
     frame.0 = false;
+}
+
+/// Whether the inspection camera takes input: enabled, and no console or logbook reading input.
+fn flycam_active(
+    flycam: Res<DetachedView>,
+    console: Option<Res<cyrus_console::Console>>,
+    logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
+) -> bool {
+    flycam.enabled
+        && !console.is_some_and(|console| console.open)
+        && !logbook.is_some_and(|screen| screen.suspended())
+}
+
+/// WASD + mouse look while the right button is held, Space/Shift for up/down.
+fn flycam_controller<C: Component>(
+    keys: Res<ButtonInput<KeyCode>>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    mouse: Res<AccumulatedMouseMotion>,
+    flycam: Res<DetachedView>,
+    time: Res<Time>,
+    mut player: Query<&mut Transform, With<C>>,
+) {
+    let Ok(mut t) = player.single_mut() else {
+        return;
+    };
+    let dt = time.delta_secs();
+    if buttons.pressed(MouseButton::Right) && mouse.delta != Vec2::ZERO {
+        let (mut yaw, mut pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
+        yaw -= mouse.delta.x * MOUSE_SENSITIVITY;
+        pitch = (pitch - mouse.delta.y * MOUSE_SENSITIVITY).clamp(-1.5, 1.5);
+        t.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+    }
+    let mut dir = Vec3::ZERO;
+    if keys.pressed(KeyCode::KeyW) {
+        dir += *t.forward();
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        dir -= *t.forward();
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        dir += *t.right();
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        dir -= *t.right();
+    }
+    if keys.pressed(KeyCode::Space) {
+        dir += Vec3::Y;
+    }
+    if keys.pressed(KeyCode::ShiftLeft) {
+        dir -= Vec3::Y;
+    }
+    if dir != Vec3::ZERO {
+        t.translation += dir.normalize() * flycam.speed * dt;
+    }
 }
 
 /// Modern camera: lock and hide the cursor during gameplay that reads input, so the mouse turns
@@ -244,10 +314,16 @@ impl Plugin for CameraPlugin {
             )
             .add_systems(
                 Update,
+                (flycam_controller::<cyrus_game::BookCamera>.run_if(flycam_active),)
+                    .run_if(in_state(AppState::Menu)),
+            )
+            .add_systems(
+                Update,
                 (
                     frame_scene.run_if(|f: Res<FrameScene>, camera: Res<DetachedView>| {
                         f.0 && camera.enabled
                     }),
+                    flycam_controller::<ViewCamera>.run_if(flycam_active),
                     follow_player
                         .after(cyrus_script::player::placement::PlayerPlacement)
                         .run_if(
@@ -335,8 +411,8 @@ fn suppress(
     mut suppressed: ResMut<InputSuppressed>,
     mut engaged: ResMut<cyrus_game::FlycamEngaged>,
 ) {
-    engaged.0 = flycam.free(&takeover);
-    suppressed.0 = engaged.0;
+    engaged.0 = flycam.enabled;
+    suppressed.0 = (flycam.enabled && !flycam.pass_input) || takeover.0.is_some();
 }
 
 fn apply_takeover(
@@ -494,8 +570,12 @@ mod tests {
     #[test]
     fn entry_preserves_a_published_camera_and_controls() {
         let mut app = App::new();
-        app.insert_resource(DetachedView { enabled: false })
-            .add_systems(Update, spawn);
+        app.insert_resource(DetachedView {
+            enabled: false,
+            speed: 321.0,
+            ..default()
+        })
+        .add_systems(Update, spawn);
         let camera = app
             .world_mut()
             .spawn((ViewCamera, Transform::from_xyz(12.0, 34.0, 56.0)))
@@ -524,7 +604,11 @@ mod tests {
         app.insert_resource(AnimationRequest(source.clone()))
             .insert_resource(crate::ReadyScene(source.clone()))
             .insert_resource(FrameScene(true))
-            .insert_resource(DetachedView { enabled: true })
+            .insert_resource(DetachedView {
+                enabled: true,
+                speed: 150.0,
+                ..default()
+            })
             .init_resource::<CameraTakeover>()
             .add_systems(Update, script_view);
         app.world_mut()

@@ -12,6 +12,7 @@ use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_inspector};
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
+use cyrus_render::camera::DetachedView;
 use cyrus_render::fog::RenderDistance;
 use cyrus_script::player::Player;
 
@@ -123,6 +124,7 @@ fn debug_menu(
     mut menu: ResMut<DebugMenu>,
     mut egui_settings: ResMut<EguiGlobalSettings>,
     mut world: ResMut<WorldPicker>,
+    mut flycam: ResMut<DetachedView>,
     mut fidelity: ResMut<Fidelity>,
     mut distance: ResMut<RenderDistance>,
     mut transfers: ResMut<cyrus_game::cheats::CheatTransfer>,
@@ -184,6 +186,20 @@ fn debug_menu(
                 }
             });
         }
+        ui.checkbox(&mut flycam.enabled, "Flycam");
+        ui.horizontal(|ui| {
+            ui.label("Flycam speed");
+            ui.add(
+                egui::DragValue::new(&mut flycam.speed)
+                    .range(0.0..=f32::MAX)
+                    .speed(1.0),
+            );
+        });
+        ui.add_enabled(
+            flycam.enabled,
+            egui::Checkbox::new(&mut flycam.pass_input, "Pass input to game"),
+        );
+
         if let Some([near, original]) = distance.original {
             let mut far = distance.effective(&fidelity).unwrap()[1];
             ui.horizontal(|ui| {
@@ -360,6 +376,7 @@ mod tests {
         ))
         .init_asset::<bevy::shader::Shader>()
         .add_plugins(DebugMenuPlugin)
+        .init_resource::<DetachedView>()
         .init_resource::<Fidelity>()
         .init_resource::<RenderDistance>()
         .insert_resource(WorldPicker {
@@ -432,6 +449,7 @@ mod tests {
         ))
         .init_asset::<bevy::shader::Shader>()
         .add_plugins(DebugMenuPlugin)
+        .init_resource::<DetachedView>()
         .init_resource::<Fidelity>()
         .init_resource::<RenderDistance>()
         .init_resource::<WorldPicker>();

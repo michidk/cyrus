@@ -175,8 +175,7 @@ pub enum Command {
     ScheduleInput {
         events: Vec<InputBoundary>,
     },
-    /// Detach the view from the player, or hand it back; the camera stays where it is put and
-    /// has no controls of its own (free flight is the fly camera mod's, on the backquote key).
+    /// Turn the inspection flycam on or off; it moves with `KeyW/A/S/D`, `Space`, `ShiftLeft`.
     /// `position` places it in rendered world units and `look_at` aims it at a point.
     Flycam {
         enabled: bool,

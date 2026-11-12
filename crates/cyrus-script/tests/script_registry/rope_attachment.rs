@@ -298,6 +298,8 @@ fn directional_release_carries_the_new_speed_only_on_the_next_ordinary_update() 
                             walk_mode: true,
                             auto_defend: false,
                             steer: None,
+                            claim: None,
+                            probes: None,
                         }),
                         ..Default::default()
                     },

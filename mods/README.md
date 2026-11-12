@@ -8,7 +8,7 @@ the Mods window that opens with F11. The browser build does not load mods.
 | Mod | Hooks | Effect |
 | --- | --- | --- |
 | `modern-water` | vertices, scene, uniforms, shader replacement | Crossing waves, ripples, shore foam, wet sand and sea reflections |
-| `flycam` | camera, input, hud, settings | The game's fly camera. Backquote (`) toggles a free camera: WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
+| `flycam` | camera, input, hud, settings | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
 
 Modern movement optionally follows travel with the camera after a configurable delay.
@@ -67,7 +67,7 @@ struct Hello;
 impl Mod for Hello {
     const ID: &'static str = "hello"; // the folder name under game-config/mods
     fn frame(cx: &Cx) {
-        if cx.input.down(Key::BACKQUOTE) {
+        if cx.input.down(Key::INSERT) {
             cx.hud.show("hello");
         }
     }

@@ -742,11 +742,12 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-The view is detached from the player when `--view` or `?view=` supplies an inspection
-pose, or when the control protocol's `flycam` command asks for it; it then stays where it
-was put. Free flight is the bundled `flycam` mod: activate it under F11, then the backquote key flies
-(WASD, mouse, Space/Left Shift; the speed is a setting of the mod). Neither moves the player.
+Press F11 and use **Flycam** to switch between inspection
+and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
+an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
+and Space/Shift moves up/down; its speed is adjustable in the same menu.
 F11 world selections show the installed loading screen while the destination assets
+Free flight is also available as the bundled `flycam` mod (see `mods/README.md`), toggled with Insert.
 load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not detach the view. Detaching preserves the player
 position. Initial placement uses the installed player marker. The ordinary player

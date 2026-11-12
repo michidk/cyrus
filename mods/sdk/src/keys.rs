@@ -24,7 +24,7 @@ impl Key {
     pub const CONTROL_LEFT: Key = Key("ControlLeft");
     pub const ESCAPE: Key = Key("Escape");
     pub const F11: Key = Key("F11");
-    pub const BACKQUOTE: Key = Key("Backquote");
+    pub const INSERT: Key = Key("Insert");
     pub const F12: Key = Key("F12");
 }
 
