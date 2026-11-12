@@ -223,7 +223,8 @@ GPU's texture sampling and rounding, not different geometry. **Unknown:** whethe
 sampling matches either to the last bit; it was not compared pixel by pixel.
 
 Dialogs over the book (delete confirmation, game description) are drawn on a transparent layer above the
-scene, where the original composited them into the same frame; the result is the same picture.
+scene, where the original composited them into the same frame. **Unknown:** whether the result is pixel-identical;
+these dialogs were not compared against the previous renderer.
 The F1 flycam also flies the book's camera in the menu, which the original has no equivalent of; it is
 off by default and a debug aid only.
 

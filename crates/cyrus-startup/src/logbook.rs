@@ -1,5 +1,5 @@
 //! Installed logbook paper, text and rotating scrolls over the suspended world.
-use super::view3d::{LitAssets, LitFace, LitModel, LitScene, target_image, view_camera};
+use super::view3d::{LitAssets, LitFace, LitMesh, LitModel, LitScene, target_image, view_camera};
 use bevy::{
     asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     prelude::*,
@@ -139,10 +139,16 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut images: ResMut<As
 fn cleanup(
     mut commands: Commands,
     panels: Query<Entity, Teardown>,
+    meshes: Query<(Entity, &LitMesh)>,
     mut screen: ResMut<LogbookScreen>,
 ) {
     for entity in &panels {
         commands.entity(entity).despawn();
+    }
+    for (entity, mesh) in &meshes {
+        if mesh.0 == READER_LAYER {
+            commands.entity(entity).despawn();
+        }
     }
     // The game lifecycle releases its clock pause on the next non-game update.
     screen.ready = false;

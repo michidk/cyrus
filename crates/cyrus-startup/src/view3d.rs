@@ -30,6 +30,11 @@ pub(super) const HEIGHT: u32 = 480;
 /// Horizontal half-field tangent of the original's viewport; the vertical one follows from 4:3.
 const HALF_FIELD_TANGENT: f32 = 0.788;
 
+/// Marks a mesh that a screen's [`LitModel`] spawned, with the render layer it draws on, so the screen can
+/// remove it when it is torn down while the meshes are still shown.
+#[derive(Component)]
+pub(super) struct LitMesh(pub usize);
+
 /// Marks a camera that renders a screen's own 3D scene into an image, so the systems that pause or
 /// restore the gameplay cameras leave it alone.
 #[derive(Component)]
@@ -286,7 +291,11 @@ impl LitModel {
                 .textures
                 .iter()
                 .map(|(width, height, rgba)| {
-                    images.add(texture_image(*width, *height, rgba.clone()))
+                    images.add(raw_texture_image(
+                        u32::from(*width),
+                        u32::from(*height),
+                        rgba.clone(),
+                    ))
                 })
                 .collect();
             self.key = Some(key);
@@ -302,6 +311,7 @@ impl LitModel {
                         MeshMaterial3d(materials.add(LitMaterial {
                             texture: handle.clone(),
                         })),
+                        LitMesh(layer),
                         Transform::IDENTITY,
                         NoFrustumCulling,
                         RenderLayers::layer(layer),

@@ -49,6 +49,21 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
     );
     assert!(asset.frames.iter().all(|frame| !frame.is_empty()));
     assert!(!asset.final_draws.is_empty());
+    // The splash has something to show: the held pose and an authored frame draw meshes that have
+    // faces, and the textures they use carry visible colour.
+    let has_faces = |draws: &[cyrus_assets::splash_asset::SplashDraw]| {
+        draws
+            .iter()
+            .any(|draw| !asset.meshes[draw.mesh].faces.is_empty())
+    };
+    assert!(has_faces(&asset.final_draws));
+    assert!(has_faces(&asset.frames[asset.frames.len() / 2]));
+    assert!(asset.textures.iter().all(|texture| {
+        texture
+            .rgba
+            .chunks(4)
+            .any(|texel| texel[..3].iter().any(|c| *c > 32))
+    }));
     let modified = std::fs::metadata(&splash_path).unwrap().modified().unwrap();
     export_startup(&install, &cache).unwrap();
     assert_eq!(

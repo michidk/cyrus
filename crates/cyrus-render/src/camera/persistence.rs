@@ -57,6 +57,9 @@ pub struct CameraSnapshot {
     near_clip_plane: [f32; 4],
     flycam: bool,
     speed: f32,
+    /// Absent in snapshots saved before the option existed.
+    #[serde(default)]
+    pass_input: bool,
     frame_scene: bool,
     initial: Option<Pose>,
 }
@@ -121,6 +124,7 @@ impl CameraSnapshot {
             near_clip_plane: projection.near_clip_plane.to_array(),
             flycam: flycam.enabled,
             speed: flycam.speed,
+            pass_input: flycam.pass_input,
             frame_scene: frame.0,
             initial: world
                 .get_resource::<InitialView>()
@@ -164,7 +168,7 @@ impl CameraSnapshot {
             flycam: FlycamSettings {
                 enabled: self.flycam,
                 speed: self.speed,
-                ..Default::default()
+                pass_input: self.pass_input,
             },
             frame_scene: FrameScene(self.frame_scene),
             initial: self
@@ -215,7 +219,7 @@ mod tests {
         original.insert_resource(FlycamSettings {
             enabled: true,
             speed: 72.0,
-            ..Default::default()
+            pass_input: true,
         });
         original.insert_resource(FrameScene(true));
         original.insert_resource(InitialView(Transform::from_xyz(11.0, 22.0, 33.0)));

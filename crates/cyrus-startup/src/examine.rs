@@ -1,7 +1,7 @@
 //! The examine view's model over the suspended world. Pose, camera and lights follow
 //! preservation's `engine/hud.md` examine view and `engine/model-lighting.md`; the textures are
 //! decoded here with the loaded world's palette.
-use super::view3d::{LitAssets, LitFace, LitModel, LitScene, target_image, view_camera};
+use super::view3d::{LitAssets, LitFace, LitMesh, LitModel, LitScene, target_image, view_camera};
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
     prelude::*,
@@ -105,10 +105,16 @@ fn setup(
 fn cleanup(
     mut commands: Commands,
     panels: Query<Entity, Teardown>,
+    meshes: Query<(Entity, &LitMesh)>,
     mut screen: ResMut<ExamineScreen>,
 ) {
     for entity in &panels {
         commands.entity(entity).despawn();
+    }
+    for (entity, mesh) in &meshes {
+        if mesh.0 == EXAMINE_LAYER {
+            commands.entity(entity).despawn();
+        }
     }
     screen.enabled = false;
 }

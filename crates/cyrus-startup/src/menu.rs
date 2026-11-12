@@ -566,7 +566,13 @@ type MenuRuntime<'w, 's> = (
 fn description_text(
     mut events: MessageReader<bevy::input::keyboard::KeyboardInput>,
     mut menu: ResMut<MenuState>,
+    flying: Option<Res<cyrus_script::player::input::InputSuppressed>>,
 ) {
+    // The debug flycam owns the keyboard while it is enabled, so its keys do not type.
+    if flying.is_some_and(|flying| flying.0) {
+        events.clear();
+        return;
+    }
     for event in events.read() {
         if event.state != bevy::input::ButtonState::Pressed
             || matches!(

@@ -1,9 +1,10 @@
 // Textured models lit by per-corner levels, as the original's Glide colour combine draws them:
 // the interpolated level becomes an integer L per channel and each 8-bit texel channel T becomes
-// floor(T * (L + bias) / 256). Levels interpolate in screen space, texels in perspective.
+// floor(T * (L + bias) / 256). Levels interpolate in screen space, texels in perspective. Textures are
+// raw 8-bit values, so bilinear filtering also mixes them in that space.
 import bevy_pbr::render::mesh_view_bindings::view;
 import constants::MATERIAL_BIND_GROUP;
-import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
+import bevy_render::color_operations::srgb_to_linear;
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var lit_texture: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var lit_sampler: sampler;
@@ -34,7 +35,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     if texel.a < 0.5 / 255.0 {
         discard;
     }
-    let raw = round(linear_to_srgb(texel.rgb) * 255.0);
+    let raw = round(texel.rgb * 255.0);
     let level = floor(clamp(in.level.rgb, vec3(0.0), vec3(255.0)));
     let lit = floor(raw * (level + in.level.w) / 256.0);
     return vec4(srgb_to_linear(lit / 255.0), texel.a);

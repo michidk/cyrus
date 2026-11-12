@@ -201,6 +201,12 @@ fn bind(
                 pending: true,
             },
         ));
+        // The source can be despawned before these commands apply; its draw entity is then orphaned.
+        commands.queue(move |world: &mut World| {
+            if world.get_entity(entity).is_err() {
+                world.despawn(draw);
+            }
+        });
     }
 }
 
