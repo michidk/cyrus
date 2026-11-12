@@ -1922,6 +1922,17 @@ that BMP, never the live window. Results identify the presentation sequence and
 thread separately from the game's ordinary update counter. The request directory
 permits one caller and the producer retains at most one copied surface/worker.
 
+For an exact planned boundary, pass `--at-clock FIELD VALUE`, or supply
+`at_clock={"field": FIELD, "value": VALUE}` to the Python `capture` function.
+The field must bind an unsigned little-endian 32-bit monotonic clock. The
+presentation owner leaves the request pending while that clock is below the
+requested value. It captures only equality; a skipped value, reset followed by
+expiry, or expired deadline produces no accepted raster. The deadline uses the
+same host monotonic clock as the producer. This schedules acquisition without
+stopping or changing simulation updates. The probe must derive the absolute
+value from the acknowledged placement origin and requested event-relative scale;
+it must not round a missing boundary or reuse a late completion.
+
 The media driver's `--owned-frames` adapter may return this boundary with
 `event=render_frame`, `phase=sdl_surface_present` and its `render_frame` sequence.
 Repeated presentation sequences fail admission. An optional recorder cursor
@@ -1934,7 +1945,9 @@ The runtime control compiles `test-sdl-frame-capture.c` against SDL2 and runs
 `test-sdl-frame-capture-runtime.py FIXTURE_EXECUTABLE INTERPOSER_SO FAILED_BACKEND_SO`. It requires
 real SDL2 and Pillow. It verifies capture through the public surface API, then
 changes the clock and pixels before asynchronous delivery, and rejects unreadable
-bindings. Without the interposer, the same caller produces no accepted capture.
+bindings, skipped scheduled clocks and expired requests. The scheduled positive
+control ignores an earlier red frame and retains the green frame at the exact
+requested clock. Without the interposer, the same caller produces no accepted capture.
 
 Compile the failure backend from the same C fixture with
 `-DFAIL_PRESENT_BACKEND -shared -fPIC`. Its rejected presentation call verifies

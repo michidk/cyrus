@@ -40,10 +40,15 @@ def frozen_result(result, expected):
     return result
 
 
-def capture(directory, output, rows, timeout=30, pcm_path=None):
+def capture(directory, output, rows, timeout=30, pcm_path=None, at_clock=None):
     if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('capture deadline must be finite and positive')
     rows = bindings(rows)
+    if at_clock is not None:
+        if (not isinstance(at_clock, dict) or set(at_clock) != {'field', 'value'}
+                or not isinstance(at_clock['field'], str) or at_clock['field'] not in rows or rows[at_clock['field']]['size'] != 4
+                or type(at_clock['value']) is not int or not 0 <= at_clock['value'] < 2**32):
+            raise ValueError('scheduled capture requires a bound unsigned little-endian 32-bit clock')
     directory, output = Path(directory).resolve(), Path(output).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     if len(str(output)) >= 4095 or '\n' in str(output) or '\r' in str(output):
@@ -61,6 +66,8 @@ def capture(directory, output, rows, timeout=30, pcm_path=None):
             if len(pcm_path) > 240 or '\n' in pcm_path or '\r' in pcm_path:
                 raise ValueError('PCM path exceeds bounded request line')
             text += f'pcm {pcm_path}\n'
+        if at_clock is not None:
+            text += f'@clock {at_clock["field"]} {at_clock["value"]} {time.monotonic_ns() + int(timeout * 1e9)}\n'
         temporary.write_text(text)
         temporary.replace(request)
         deadline = time.monotonic() + timeout
@@ -71,6 +78,10 @@ def capture(directory, output, rows, timeout=30, pcm_path=None):
                 raise TimeoutError('SDL presentation capture unavailable before deadline')
             time.sleep(.01)
         result = frozen_result(json.loads(result_path.read_text()), rows)
+        if at_clock is not None:
+            actual = int.from_bytes(bytes.fromhex(result['fields'][at_clock['field']]), 'little')
+            if actual != at_clock['value']:
+                raise ValueError('scheduled presentation clock differs from requested boundary')
         # Encoding uses the worker's copied surface. It never samples the live window.
         from PIL import Image
         with Image.open(output / 'frame.bmp') as image:
@@ -83,8 +94,10 @@ def main():
     parser.add_argument('request_directory', type=Path)
     parser.add_argument('output', type=Path)
     parser.add_argument('bindings', type=Path)
+    parser.add_argument('--at-clock', nargs=2, metavar=('FIELD', 'VALUE'))
     args = parser.parse_args()
-    print(json.dumps(capture(args.request_directory, args.output, json.loads(args.bindings.read_text()))))
+    print(json.dumps(capture(args.request_directory, args.output, json.loads(args.bindings.read_text()),
+        at_clock=dict(field=args.at_clock[0], value=int(args.at_clock[1])) if args.at_clock else None)))
 
 
 if __name__ == '__main__':

@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as temporary:
              'CYRUS_FRAME_CAPTURE_DIR': str(absent)})
     assert control.returncode == 5, control.returncode
     assert not (absent_output / 'result.json').exists()
-    modes = ['valid', 'rectangles', 'invalid', 'failed']
+    modes = ['valid', 'rectangles', 'invalid', 'failed', 'scheduled', 'scheduled-skipped', 'scheduled-expired']
     if mixer:
         modes.append('generated')
     for mode in modes:
@@ -40,18 +40,22 @@ with tempfile.TemporaryDirectory() as temporary:
         result = json.loads((output / 'result.json').read_text())
         assert result['owner'] == 'sdl_surface_present'
         assert result['sequence'] > 0
-        if mode not in ('invalid', 'failed'):
+        if mode not in ('invalid', 'failed', 'scheduled-skipped', 'scheduled-expired'):
             assert result['ok'] is True, result
             if mode == 'generated':
                 assert result['pcm_generation']['frames'] > 0
                 assert result['pcm_generation']['rate'] == 48000
                 assert result['pcm_generation']['sequence'] > 0
                 assert result['pcm_delivery_frames'] == -1
-            assert int.from_bytes(bytes.fromhex(result['fields']['clock']), 'little') == 123
+            assert int.from_bytes(bytes.fromhex(result['fields']['clock']), 'little') == (125 if mode == 'scheduled' else 123)
             with Image.open(output / 'frame.bmp') as image:
-                assert image.convert('RGB').getpixel((8, 8)) == (255, 0, 0)
+                assert image.convert('RGB').getpixel((8, 8)) == ((0, 255, 0) if mode == 'scheduled' else (255, 0, 0))
         else:
             assert result['ok'] is False, result
-            if mode == 'invalid':
+            if mode == 'scheduled-skipped':
+                assert result['error'] == 'scheduled presentation clock skipped'
+            if mode == 'scheduled-expired':
+                assert result['error'] == 'scheduled presentation deadline expired'
+            if mode in ('invalid', 'scheduled-skipped', 'scheduled-expired'):
                 assert not (output / 'frame.bmp').exists()
 print('SDL presentation: frozen red pixels/clock survive subsequent blue/999 state; invalid binding rejected')
