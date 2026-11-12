@@ -1,0 +1,10 @@
+name = "Sea Serpent"
+description = "Restores the hostile sea serpent in the Spine that was cut from the game: its script hides it at the start, and this mod removes that call. Takes effect after a restart."
+version = "0.1.0"
+author = "cyrus"
+
+# The serpent actor ships in ISLAND with its combat attributes; its script only hides it.
+[[script-patch]]
+world = "ISLAND"
+actor = "SERPENT"
+remove = ["HideMe"]

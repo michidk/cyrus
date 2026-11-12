@@ -65,9 +65,9 @@ pub fn register_source(app: &mut App) {
     );
 }
 
-/// The `files/` folders of the active mods in id order, for the game-data reader to overlay on
-/// the install. Read straight from disk, so it can run before any plugin is built.
-pub fn file_overlays() -> Vec<PathBuf> {
+/// The ids of the active mods in id order, read straight from disk so it can run before any
+/// plugin is built.
+fn active_ids() -> Vec<String> {
     let active = match std::fs::read(active_file()) {
         Ok(bytes) => serde_json::from_slice::<Saved>(&bytes).map_err(anyhow::Error::from),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Saved::default()),
@@ -81,9 +81,37 @@ pub fn file_overlays() -> Vec<PathBuf> {
         .active;
     active.sort();
     active
+}
+
+/// The `files/` folders of the active mods in id order, for the game-data reader to overlay on
+/// the install.
+pub fn file_overlays() -> Vec<PathBuf> {
+    active_ids()
         .iter()
         .map(|id| mod_file(id, FILES_DIR))
         .filter(|folder| folder.is_dir())
+        .collect()
+}
+
+/// The `[[script-patch]]` entries of the active mods in id order, for the script preparation to
+/// apply. Like the file overlays they are fixed for the process, so a change applies after a
+/// restart. A manifest that does not read is skipped with an error in the log.
+pub fn script_patches() -> Vec<cyrus_assets::script_patch::ScriptPatch> {
+    active_ids()
+        .iter()
+        .flat_map(|id| {
+            let path = mod_file(id, "mod.toml");
+            match std::fs::read_to_string(&path)
+                .map_err(anyhow::Error::from)
+                .and_then(|text| toml::from_str::<Manifest>(&text).map_err(anyhow::Error::from))
+            {
+                Ok(manifest) => manifest.script_patches,
+                Err(error) => {
+                    error!("mods: {}: {error:#}", path.display());
+                    Vec::new()
+                }
+            }
+        })
         .collect()
 }
 
@@ -141,6 +169,8 @@ struct Manifest {
     settings: Vec<Setting>,
     #[serde(default, rename = "shader")]
     shaders: Vec<ShaderReplacement>,
+    #[serde(default, rename = "script-patch")]
+    script_patches: Vec<cyrus_assets::script_patch::ScriptPatch>,
 }
 
 /// One shader a mod swaps for another.
@@ -586,6 +616,9 @@ fn window(
             if entry.has_files {
                 ui.small("Replaces game files; restart to apply a change.");
             }
+            if !manifest.script_patches.is_empty() {
+                ui.small("Changes actor scripts; restart to apply a change.");
+            }
             if entry.active && !manifest.settings.is_empty() {
                 ui.indent(&entry.id, |ui| {
                     save_error = settings
@@ -628,5 +661,40 @@ mod tests {
         .unwrap();
         let files: Vec<_> = manifest.shaders.iter().map(|s| s.file.as_str()).collect();
         assert_eq!(files, ["water.wesl", "sky.wesl"]);
+    }
+
+    #[test]
+    fn a_manifest_lists_script_patches_by_installed_native_name() {
+        let manifest: Manifest = toml::from_str(
+            r#"
+            name = "Serpent"
+            [[script-patch]]
+            world = "ISLAND"
+            actor = "SERPENT"
+            remove = ["HideMe"]
+            "#,
+        )
+        .unwrap();
+        let [patch] = &manifest.script_patches[..] else {
+            panic!("one patch expected");
+        };
+        assert!(patch.applies_to("island", "serpent"));
+        assert_eq!(patch.remove, [cyrus_soup::Native::HideMe]);
+    }
+
+    #[test]
+    fn a_script_patch_naming_an_unknown_native_does_not_parse() {
+        let error = toml::from_str::<Manifest>(
+            r#"
+            name = "Bad"
+            [[script-patch]]
+            world = "ISLAND"
+            actor = "SERPENT"
+            remove = ["NoSuchNative"]
+            "#,
+        )
+        .err()
+        .expect("unknown natives are rejected");
+        assert!(error.to_string().contains("NoSuchNative"), "{error}");
     }
 }

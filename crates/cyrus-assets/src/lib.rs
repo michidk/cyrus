@@ -496,6 +496,8 @@ pub mod scene;
 pub mod script;
 #[cfg(feature = "parsers")]
 pub mod script_export;
+#[cfg(feature = "parsers")]
+pub mod script_patch;
 pub mod sound;
 #[cfg(feature = "parsers")]
 pub mod sound_export;

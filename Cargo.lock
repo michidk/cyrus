@@ -3208,6 +3208,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "bevy_egui",
+ "cyrus-assets",
  "cyrus-config",
  "cyrus-console",
  "cyrus-debug",

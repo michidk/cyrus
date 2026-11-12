@@ -3,9 +3,11 @@ use crate::script::PlacementType;
 use crate::script::{
     Actor, ClockSettings, CombatTaunt, Instance, Scripts, TauntType, UpdateSettings,
 };
+use crate::script_patch::{ScriptPatch, script_patches};
 use anyhow::{Context, Result};
 use cyrus_soup::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
 use cyrus_soup::{Attribute, Attributes, Native, Property};
+use log::info;
 use rgpre::import::{
     rgm::{
         self, RgmFile,
@@ -57,6 +59,45 @@ pub fn flat_texture_identities(scripts: &Scripts) -> std::collections::BTreeSet<
     identities
 }
 
+/// The mod patches for one world and the map stem they are matched against.
+struct WorldPatches {
+    map: String,
+    patches: Vec<&'static ScriptPatch>,
+}
+
+/// The script patches that name the map of WORLD.INI's world `world`. Without patches nothing is
+/// read.
+fn world_patches(source: &dyn crate::source::ReadAssets, world: u32) -> Result<WorldPatches> {
+    let all = script_patches();
+    if all.is_empty() {
+        return Ok(WorldPatches {
+            map: String::new(),
+            patches: Vec::new(),
+        });
+    }
+    let ini =
+        rgpre::import::world_ini::WorldIni::parse(&crate::preparation::text(source, "WORLD.INI")?);
+    let entry = ini
+        .entries
+        .iter()
+        .find(|entry| entry.index == world)
+        .with_context(|| format!("world {world}: absent from WORLD.INI"))?;
+    let map = entry
+        .map
+        .rsplit(['\\', '/'])
+        .next()
+        .and_then(|file| file.rsplit_once('.').map(|(stem, _)| stem).or(Some(file)))
+        .unwrap_or_default()
+        .to_owned();
+    Ok(WorldPatches {
+        patches: all
+            .iter()
+            .filter(|patch| patch.world.eq_ignore_ascii_case(&map))
+            .collect(),
+        map,
+    })
+}
+
 /// Decode the same actor programs and installed defaults on either target.
 /// A loaded world registry supplies weapon bytes without another source read.
 pub fn prepare_source(
@@ -82,6 +123,7 @@ pub fn prepare_source(
     let player_distance_override = player_distance_override(source)
         .with_context(|| format!("world {world} REDGUARD.CHT script query settings"))?;
     let definition = crate::preparation::soup(source)?;
+    let patches = world_patches(source, world)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
     let assets_source = source;
     let mut combat = None;
@@ -154,13 +196,24 @@ pub fn prepare_source(
                 }))
             }
         };
-        let program = Program {
+        let mut program = Program {
             version: 4,
             entry,
             variables: source.variables,
             strings: source.strings,
             steps,
         };
+        for patch in patches
+            .patches
+            .iter()
+            .filter(|patch| patch.applies_to(&patches.map, &name))
+        {
+            let skipped = patch.apply(&mut program);
+            info!(
+                "{context}: mod patch skipped {skipped} call(s) to {:?}",
+                patch.remove
+            );
+        }
         program.validate().with_context(|| context.clone())?;
         for step in program.steps.values() {
             if let Operation::Unsupported { reason } = &step.operation {

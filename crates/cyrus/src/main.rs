@@ -76,8 +76,9 @@ fn main() -> anyhow::Result<()> {
     cyrus_app::logging::attach_parent_console();
     let args = Args::parse();
     if !args.headless {
-        // Before anything scans the install: active mods may replace game files.
+        // Before anything scans the install: active mods may replace game files and patch scripts.
         cyrus_assets::native::set_overlays(cyrus_mods::file_overlays());
+        cyrus_assets::script_patch::set_script_patches(cyrus_mods::script_patches());
     }
     let mut app = App::new();
     // First, so the export and audit modes log too, and a failure reaches the log file.
