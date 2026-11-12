@@ -158,8 +158,10 @@ Xvfb without the interactive preview services. Build it with the command above;
 `CYRUS_RETRO_IMAGE` can select an existing compatible image. The launcher passes
 `-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
 F12 for the guest console.
-Other original capture workflows keep their existing modifier. For these runs,
-use Ctrl+Alt+W for the emulator recorder.
+Original audio capture also configures this modifier explicitly, including when
+reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
+recorder chord must not open the guest console. A local config override must place
+`hostkey=ctrlalt` in `[dosbox]`, not `[sdl]`.
 
 The reader and placement adapter are local diagnostics kept outside tracked
 files. The reader follows the `original-state.py` JSON contract; the placement
@@ -1310,10 +1312,23 @@ PulseAudio. No hardware renderer or host audio device is required.
 
 Use host-visible paths under `/home/vibepod/workspaces` for the writable run,
 GOG files and output. The launcher copies its small scripts into the output,
-mounts config and evidence there, holds one per-output lock and removes only
+mounts config and evidence there, holds per-output and per-run locks and removes only
 its own container. Existing capture evidence is never overwritten. An optional
 `CYRUS_DOSBOX_CONFIG` selects a local emulator configuration. The run must use
 real writable configuration files and read-only links to the shared assets.
+
+For isolated rustle measurements, set `CYRUS_BOOK_REALTIME=1` and
+`CYRUS_BOOK_ISOLATE_MUSIC=1`. The former enables DOSBox-X adaptive maximum cycles
+for this run, allowing its guest mixer to keep pace with the real sink instead
+of demanding a fixed emulated CPU budget under host contention. The latter
+copies the private run's `SYSTEM.INI` into evidence, changes its enabled
+`redbook` setting to `off`, and mounts that file over the guest configuration.
+The source configuration stays unchanged even if the runtime disappears.
+Linked configuration files, canonical installs and unsupported settings are
+rejected. This isolates overlapping music from the effect waveform; a mixer
+command before game launch is insufficient when the game subsequently sets
+its CD audio volume. These capture options do not change cyrus audio policy,
+the interactive original's defaults or the continuity rejection limits.
 
 The readiness observer must wait for an identified book page, then print one
 JSON object such as `{"ready":true,"page":"options"}`. A DOSBox window or title

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records the original's audio mixer output while replaying a key timeline, in one lock hold.
-# DOSBox-X's own WAV recorder (F12+W) records the mixer output in emulated time, so the file is
+# DOSBox-X's own WAV recorder (Ctrl+Alt+W) records the mixer output in emulated time, so the file is
 # independent of how slowly the container emulates; the inner script logs the game's loop frame
 # at the start, at each key event and at the stop so audio positions map to the state reader.
 # Usage: original-audio-capture.sh <events.json> <out-dir> [seconds]
@@ -31,6 +31,8 @@ run=${CYRUS_RETRO_RUN:?set CYRUS_RETRO_RUN to a private install copy}
 gog=${CYRUS_RETRO_GOG:?set CYRUS_RETRO_GOG to the directory holding extracted/app/game.gog}
 name=audio-capture-$$
 conf_mount=()
+# Configure the host chord even when reusing an image built before this default.
+dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
 mkdir -p "$out"
 exec 9>/tmp/cyrus-live.lock
 flock 9
@@ -66,7 +68,7 @@ rm -f "$run"/capture/*.wav "$run/capture/START.OK"
 docker run --rm --entrypoint find -v "$run:/game" cyrus-retro:dev /game/Redguard/maps -iname '*.tsg' -delete
 docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTRACE \
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
-    "${conf_mount[@]}" cyrus-retro:dev >/dev/null
+    "${conf_mount[@]}" cyrus-retro:dev "${dosbox_host_args[@]}" >/dev/null
 cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
     [ -z "${conf:-}" ] || rm -f "$conf"

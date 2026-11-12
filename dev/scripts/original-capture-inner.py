@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Runs inside the retro container: waits for the original's world loop, starts DOSBox-X's own
-WAV recorder (F12+W; it records the mixer output in emulated time), replays a key timeline with
+WAV recorder (Ctrl+Alt+W; it records the mixer output in emulated time), replays a key timeline with
 xdotool and logs the game's loop frame at the start, at every event and at the stop.
 
 Usage: original-capture-inner.py <state-reader> <events.json> <seconds-after-start>
@@ -49,7 +49,8 @@ def recorded_bytes():
 
 
 def toggle_recorder():
-    subprocess.run(["xdotool", "keydown", "F12", "key", "w", "keyup", "F12"], env=env, check=True)
+    subprocess.run(["xdotool", "keydown", "Control_L", "keydown", "Alt_L", "key", "w",
+                    "keyup", "Alt_L", "keyup", "Control_L"], env=env, check=True)
 
 
 waited = time.time()
