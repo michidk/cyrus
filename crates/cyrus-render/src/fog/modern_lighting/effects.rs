@@ -132,6 +132,11 @@ impl Effect {
             Self::MotionBlur => "Motion blur",
         }
     }
+
+    /// Whether this build has the effect: grass needs the `grass` cargo feature.
+    pub fn built(self) -> bool {
+        self != Self::Grass || cfg!(feature = "grass")
+    }
 }
 
 impl ModernEffects {

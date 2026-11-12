@@ -87,8 +87,9 @@ every value is a Modern tuning choice:
   horizon colour elsewhere;
 - swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
   about their base, while collision keeps the installed placement;
-- grass: blades stand on the terrain wherever its texture is grass, under Modern lighting and ray
-  tracing. The game has no grass class, so grass is read from the terrain textures: a pixel is grass
+- grass, in builds with the `grass` cargo feature (off by default; `cargo run -p cyrus --features
+  grass`): blades stand on the terrain wherever its texture is grass, under Modern lighting, raster
+  or ray-traced. The game has no grass class, so grass is read from the terrain textures: a pixel is grass
   when green is its strongest channel, and a blade grows only where the texel under it is. Blades
   take that texel's colour, grow denser and finer near the camera and out to 150 world units, fade
   with the scene fog, and bend in the wind the swaying plants use (the Swaying plants switch turns

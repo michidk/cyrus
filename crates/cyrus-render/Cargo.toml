@@ -4,9 +4,11 @@ description = "Shared scene, camera, HUD and subtitle presentation."
 version.workspace = true
 edition.workspace = true
 
-# Hardware ray-traced lighting through Bevy Solari; native builds only.
 [features]
+# Hardware ray-traced lighting through Bevy Solari; native builds only.
 raytracing = ["bevy/bevy_solari"]
+# Blades of grass on the terrain's grass tiles.
+grass = []
 
 [dependencies]
 redguard-preservation.workspace = true

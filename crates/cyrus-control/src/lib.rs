@@ -169,7 +169,8 @@ pub enum Command {
         running: bool,
     },
     /// Switch one of the modern lighting's optional effects: `grading`, `auto_exposure`, `god_rays`,
-    /// `lens_flare`, `sky`, `water_reflections`, `foliage`, `depth_of_field` or `motion_blur`.
+    /// `lens_flare`, `sky`, `water_reflections`, `foliage`, `grass` (builds with the `grass` feature),
+    /// `depth_of_field` or `motion_blur`.
     /// Needs `lighting` Modern to show.
     SetModernEffect {
         effect: String,

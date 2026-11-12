@@ -469,9 +469,12 @@ fn handle(
                 ) {
                     (None, _) => Err("modern lighting is unavailable".into()),
                     (Some(_), Err(_)) => Err(
-                        "effect must be grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
+                        "effect must be grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|grass|depth_of_field|motion_blur"
                             .into(),
                     ),
+                    (Some(_), Ok(effect)) if !effect.built() => Err(format!(
+                        "this build has no {effect:?} effect (cargo feature `grass`)"
+                    )),
                     (Some(effects), Ok(effect)) => {
                         *effects.switch(effect) = enabled;
                         Ok(json!(*effects))

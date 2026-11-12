@@ -79,7 +79,7 @@ struct DayNightParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ModernEffectParams {
     #[schemars(
-        description = "grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, depth_of_field or motion_blur"
+        description = "grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, grass (builds with grass only), depth_of_field or motion_blur"
     )]
     effect: String,
     enabled: bool,

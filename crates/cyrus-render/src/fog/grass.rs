@@ -1,9 +1,9 @@
 //! Grass on the terrain's grass tiles.
 //!
-//! **Modern only**, a tuning choice. The original draws the terrain as flat textured tiles with
-//! no blades. While `Area::Lighting` is Modern or ray tracing lights the scene, and the grass
-//! effect is on, blades stand on the
-//! terrain wherever its texture is grass: every terrain triangle whose tile image shows grass
+//! **Modern only**, a tuning choice, and built only with the `grass` cargo feature. The
+//! original draws the terrain as flat textured tiles with no blades. While `Area::Lighting` is
+//! Modern, raster or ray-traced, and the grass effect is on, blades stand on the terrain wherever
+//! its texture is grass: every terrain triangle whose tile image shows grass
 //! (`cyrus_assets::terrain_grass`) is sampled at random points, a blade grows where the texel
 //! there is grass, and takes that texel's colour, so the grass blends into the ground it grows
 //! from and thins out where a tile blends into sand. Blades are merged into one mesh per square
@@ -170,17 +170,9 @@ impl Plugin for GrassPlugin {
     }
 }
 
-/// Whether grass is on: the grass effect with Modern lighting, or with ray tracing, which lights
-/// the scene in its place.
-fn grassy(
-    fidelity: Res<Fidelity>,
-    ray_tracing: Option<Res<super::RayTracingSupport>>,
-    effects: Option<Res<ModernEffects>>,
-) -> bool {
-    effects.is_some_and(|effects| effects.grass)
-        && (fidelity.mode(Area::Lighting) == Mode::Modern
-            || ray_tracing
-                .is_some_and(|support| super::ray_tracing::ray_traced(&fidelity, &support)))
+/// Whether grass is on: the grass effect under Modern lighting, raster or traced.
+fn grassy(fidelity: Res<Fidelity>, effects: Option<Res<ModernEffects>>) -> bool {
+    effects.is_some_and(|effects| effects.grass) && fidelity.mode(Area::Lighting) == Mode::Modern
 }
 
 /// A terrain triangle on a grass tile, in world space, with its texture coordinates.
@@ -400,9 +392,9 @@ fn grow(
         ResMut<Assets<StandardMaterial>>,
         ResMut<Assets<GrassMaterial>>,
     ),
-    (fidelity, support, scene_fog, effects): (
+    (fidelity, ray_tracing, scene_fog, effects): (
         Res<Fidelity>,
-        Option<Res<super::RayTracingSupport>>,
+        Option<Res<super::RayTracing>>,
         Res<SceneFog>,
         Res<ModernEffects>,
     ),
@@ -413,8 +405,7 @@ fn grow(
     if !field.indexed || field.patches.is_empty() {
         return;
     }
-    let look = if support.is_some_and(|support| super::ray_tracing::ray_traced(&fidelity, &support))
-    {
+    let look = if super::ray_tracing::traced_if_built(&fidelity, ray_tracing.as_deref()) {
         Look::Traced
     } else {
         Look::Raster

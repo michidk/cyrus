@@ -33,7 +33,7 @@ pub(crate) fn effects_window(
             }
             // Greyed out, keeping their settings, while lighting is Faithful.
             ui.add_enabled_ui(modern, |ui| {
-                for effect in Effect::ALL {
+                for effect in Effect::ALL.into_iter().filter(|effect| effect.built()) {
                     ui.checkbox(effects.switch(effect), effect.label());
                     ui.indent(effect.label(), |ui| settings(ui, &mut effects, effect));
                 }

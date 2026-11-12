@@ -274,8 +274,8 @@ Bevy's sun, ambient and point lights (`fog/modern_lighting`); its
 day/night cycle, off unless turned on so the game keeps its own times of day, moves and tints those lights, lights the player with a candle while the sky is dark, the fog
 and the sky by the hour, and its
 optional effects (tonemapping and grading, auto exposure, god rays, sky glow and stars,
-water reflections, lens flare, swaying plants, grass, depth of field, motion blur) are switched in
-`ModernEffects`. Under modern lighting the terrain writes its water weight into the colour
+water reflections, lens flare, swaying plants, grass with the `grass` feature, depth of field,
+motion blur) are switched in `ModernEffects`. Under modern lighting the terrain writes its water weight into the colour
 alpha for the modern screen pass, which always restores an opaque alpha.
 Every model and terrain piece has its own material, so the sun's shadow cascades would draw
 each one alone; instead each caster gets a shadow-only twin that shares its mesh and one plain

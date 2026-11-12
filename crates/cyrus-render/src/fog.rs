@@ -2,6 +2,7 @@
 mod clipping;
 mod compositing;
 mod effects;
+#[cfg(feature = "grass")]
 mod grass;
 pub(crate) mod modern_lighting;
 mod observation;
@@ -235,6 +236,12 @@ struct FogExtension {
 #[cfg_attr(not(feature = "raytracing"), allow(dead_code))]
 struct SceneFog(Option<FogExtension>);
 
+/// Grass keeps the plain lit material it is built with, so scene materials skip its chunks.
+#[cfg(feature = "grass")]
+type NotGrass = Without<grass::GrassChunk>;
+#[cfg(not(feature = "grass"))]
+type NotGrass = ();
+
 impl FogExtension {
     fn modern_lighting(&self) -> bool {
         self.lighting.x != 0.0
@@ -407,12 +414,13 @@ impl Plugin for FogPlugin {
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");
+        #[cfg(feature = "grass")]
+        app.add_plugins(grass::GrassPlugin);
         app.init_resource::<RenderDistance>()
             .init_resource::<SceneFog>()
             .add_plugins((
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
-                grass::GrassPlugin,
             ))
             .add_systems(
                 Update,
@@ -504,8 +512,7 @@ fn apply_scene_fog(
         (
             Without<RejectedLighting>,
             Without<ray_tracing::StandIn>,
-            // Grass keeps the plain lit material it is built with.
-            Without<grass::GrassChunk>,
+            NotGrass,
         ),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
