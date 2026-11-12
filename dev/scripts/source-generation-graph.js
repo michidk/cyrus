@@ -6,7 +6,14 @@
   const nativeStart = AudioBufferSourceNode.prototype.start;
   const connect = AudioNode.prototype.connect;
   let context, ready;
-  const drains = new Map();
+  const drains = new Map(), identities = new WeakMap();
+  probe.idFor = source => identities.get(source)?.id;
+  probe.arm = candidate => {
+    if (context && context !== candidate) throw Error('multiple source generation contexts');
+    context = candidate;
+    if (!ready) ready = context.audioWorklet.addModule(module).then(() => {probe.ready = true;});
+    return ready;
+  };
   const module = URL.createObjectURL(new Blob([`
     registerProcessor('source-generation-tap', class extends AudioWorkletProcessor {
       constructor(options) {
@@ -41,7 +48,7 @@
     // drain every port through its render-thread acknowledgement. Earlier PCM
     // messages on that port must arrive before its acknowledgement.
     for (const source of sources) if (source.observed) {
-      const drain = drains.get(source.id);drain.end = end;drain.tap.port.postMessage({endpoint:end});
+      const drain = drains.get(source.id);if (!drain.closed) {drain.end = Math.min(drain.end ?? Infinity,end);drain.tap.port.postMessage({endpoint:drain.end});}
     }
     let timer;
     try {
@@ -61,18 +68,23 @@
     try {
       if ((!globalThis.__sessionSampleSourceFilter || globalThis.__sessionSampleSourceFilter(this))
           && !this.loop && this.buffer?.numberOfChannels === 2) {
-        if (context && context !== this.context) throw Error('multiple source generation contexts');
-        context = this.context;
-        if (!ready) ready = context.audioWorklet.addModule(module).then(() => {probe.ready = true;})
-          .catch(error => {probe.error = String(error);});
+        probe.arm(this.context).catch(error => {probe.error = String(error);});
         const source = {id: probe.sources.length, observed: false, blocks: [],
           requested: args[0] ?? 0, offset: args[1] ?? 0, duration: args[2] ?? null,
           rate: this.buffer.sampleRate, frames: this.buffer.length};
         this.addEventListener('ended', () => {
-          try { globalThis.__sessionSamples.retireSource(source.id); }
+          try {
+            const retirement = globalThis.__sessionSamples.retireSource(source.id);
+            if (globalThis.__cinematicRetireTaps) Promise.resolve(retirement).then(frame => {
+              const drain = drains.get(source.id);
+              if (drain && Number.isInteger(frame)) {
+                drain.end = Math.min(drain.end ?? Infinity,frame + 128); drain.tap.port.postMessage({endpoint:drain.end});
+              }
+            }).catch(error => {probe.error = String(error);});
+          }
           catch (error) { probe.error = String(error); }
         }, {once: true});
-        probe.sources.push(source);
+        probe.sources.push(source); identities.set(this, source);
         if (probe.ready && globalThis.__sessionSamples?.status().ready) {
           const tap = new AudioWorkletNode(context, 'source-generation-tap', {
             numberOfInputs: 2, channelCount: 2, channelCountMode: 'explicit',
@@ -88,6 +100,7 @@
             if (data.endpointAck) {
               if (data.error || !Number.isInteger(data.frame) || data.frame < drains.get(source.id).end)
                 probe.error ??= 'invalid source endpoint acknowledgement';
+              drains.get(source.id).closed = true;
               tap.disconnect();finish();return;
             }
             const previous = source.blocks.at(-1);
@@ -105,4 +118,13 @@
     // Observer failures never suppress activation or replace native exceptions.
     return nativeStart.apply(this, args);
   };
+  const nativeStop = AudioBufferSourceNode.prototype.stop;
+  AudioBufferSourceNode.prototype.stop = function(...args) {
+    try {
+      const source = identities.get(this);
+      if (source) { source.stopRequested = this.context.currentTime; console.timeStamp('source-stop:' + source.id); }
+    } catch (error) { probe.error = String(error); }
+    return nativeStop.apply(this, args);
+  };
+
 })();

@@ -2064,6 +2064,22 @@ progress with nonzero audio in the final observation window; a silent tail canno
 prove waveform equivalence. This tool does not start a preview. An optional skip frame sends one public Escape
 press before the later endpoint, exercising the installed forward-skip path.
 
+The diagnostic launch arms both sample and source observers and waits for a
+validated rendering quantum before invoking production playback. The real play
+call establishes the playback origin; observer failure still calls it once but
+invalidates capture. `trace-completion.json` must report no lost events, and
+`trace-coverage.json` requires creation, explicit stop, acknowledged retirement,
+seek dispatch and final graph boundaries. Missing evidence is rejected.
+Retired diagnostic branches drain through an acknowledged rendering endpoint
+and disconnect, preventing inactive taps from exhausting long-seek traces.
+A late retirement acknowledgement cannot extend an already frozen endpoint.
+
+A skip run additionally requires sources owned at actual seek dispatch, native
+stop requests within that dispatch and acknowledged retirement before new PCM.
+Obsolete source PCM at continuation rejects acceptance. An empty source bank
+rejects queued-cancellation acceptance even if continuation PCM matches exactly;
+`seeks` in `generation.json` retains the actual bank and context-clock bounds.
+
 The observer records each source's actual rendering input and native first
 processing, with shared sample-frame clocks. Initial unobserved sources and
 retired sources lacking native ownership require an acknowledged retirement

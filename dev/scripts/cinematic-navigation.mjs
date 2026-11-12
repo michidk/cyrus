@@ -89,3 +89,41 @@ export function requireMovieHorizon(reads, rate) {
     }
   }
 }
+
+// Only the diagnostic launch waits here, before production establishes its origin.
+// A failed observer records rejection and still invokes the real play exactly once.
+export function armCinematicPlayback(original) {
+  return async function(...args) {
+    try {
+      const p=globalThis.__sessionSamples, sources=globalThis.__sourceGeneration;
+      await Promise.all([p.arm(this.context),sources.arm(this.context)]);
+      await this.context.resume();
+      const deadline=performance.now()+10000;
+      while (!p.blocks.length) {
+        if(p.error||sources.error) throw Error(p.error||sources.error);
+        if(performance.now()>=deadline) throw Error('cinematic generation arming deadline');
+        await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      if (!p.playbackArmed) {console.timeStamp('cinematic-playback-armed');p.playbackArmed=true;}
+    } catch(error) {globalThis.__cinematicClockError=String(error);}
+    return original.apply(this,args);
+  };
+}
+
+// Snapshot the actual owners at the public seek dispatch, not a sampled UI frame.
+export function observeMovieSeek(original,movieForId,records) {
+ return function(...args) {
+  let boundary;
+  try {
+   const audio=movieForId(args[0])?.audio;
+   boundary={target:args[1],contextTime:audio?.context?.currentTime,
+    sourceCount:globalThis.__sourceGeneration.sources.length,
+    active:audio?.sources.map(source=>globalThis.__sourceGeneration.idFor(source))??[]};
+   console.timeStamp('cinematic-seek-begin:'+records.length);
+  } catch(error) {globalThis.__cinematicClockError=String(error);}
+  const result=original.apply(this,args);
+  try {boundary.endContextTime=movieForId(args[0])?.audio?.context?.currentTime;records.push(boundary);console.timeStamp('cinematic-seek-end:'+(records.length-1));}
+  catch(error) {globalThis.__cinematicClockError=String(error);}
+  return result;
+ };
+}

@@ -73,3 +73,60 @@ test('freeze drains delayed port delivery before cloning source PCM',async()=>{
  send(384,2);
  assert.equal(scope.__sourceGeneration.captured.sources[1].blocks.length,2,'later messages cannot extend the frozen interval');
 });
+
+test('retirement closes only after an exact rendering-thread acknowledgement and drains before freeze',async()=>{
+ let tap,ended,acknowledge;
+ class AudioNode{connect(){}disconnect(){this.disconnected=true;}}
+ const context={currentTime:1,audioWorklet:{addModule:async()=>{}}};
+ class AudioBufferSourceNode extends AudioNode{
+  constructor(){super();this.context=context;this.buffer={numberOfChannels:2,sampleRate:48000,length:256};}
+  start(){}stop(){}addEventListener(_,callback){ended=callback;}
+ }
+ class AudioWorkletNode extends AudioNode{constructor(){super();tap=this;this.port={postMessage:data=>{this.request=data;}};}}
+ const scope={AudioNode,AudioBufferSourceNode,AudioWorkletNode,Blob,URL:{createObjectURL:()=>''},
+  console:{timeStamp(){}},structuredClone,setTimeout,clearTimeout,__cinematicRetireTaps:true,
+  __sessionSamples:{status:()=>({ready:true}),connectClock(){},retirements:{},
+   retireSource:()=>new Promise(resolve=>{acknowledge=resolve;})}};
+ vm.runInNewContext(script,scope);await scope.__sourceGeneration.arm(context);
+ new AudioBufferSourceNode().start();ended();
+ assert.equal(tap.request,undefined,'an ended callback is not a generation boundary');
+ scope.__sessionSamples.retirements[0]=128;acknowledge(128);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(tap.request.endpoint,256);
+ tap.port.onmessage({data:{frame:128,sequence:0,zero:true}});
+ tap.port.onmessage({data:{endpointAck:true,frame:256,error:false}});
+ assert.equal(tap.disconnected,true);
+ await scope.__sourceGeneration.freeze(384);
+ assert.equal(tap.request.endpoint,256,'freeze must not reactivate a retired diagnostic branch');
+ assert.equal(scope.__sourceGeneration.captured.sources[0].retiredFrame,128);
+ assert.equal(scope.__sourceGeneration.captured.sources[0].blocks.length,1);
+ new AudioBufferSourceNode().start();ended();
+ const frozen=scope.__sourceGeneration.freeze(384);
+ scope.__sessionSamples.retirements[1]=512;acknowledge(512);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(tap.request.endpoint,384,'late retirement must not extend a frozen endpoint');
+ tap.port.onmessage({data:{frame:256,sequence:0,zero:true}});
+ tap.port.onmessage({data:{endpointAck:true,frame:384,error:false}});
+ await frozen;
+ assert.equal(scope.__sourceGeneration.error,null);
+});
+
+test('stop records the native source identity and preserves arguments and exceptions',()=>{
+ const stamps=[],calls=[];
+ class AudioNode{connect(){}}
+ const context={currentTime:2,audioWorklet:{addModule:async()=>{}}};
+ class AudioBufferSourceNode extends AudioNode{
+  constructor(){super();this.context=context;this.buffer={numberOfChannels:2,sampleRate:22050,length:128};}
+  start(){}addEventListener(){}
+  stop(...args){calls.push(args);if(args[0]===-1)throw Error('native stop failure');return 7;}
+ }
+ const scope={AudioNode,AudioBufferSourceNode,Blob,URL:{createObjectURL:()=>''},
+  console:{timeStamp:name=>stamps.push(name)},__sessionSamples:{status:()=>({ready:false})}};
+ vm.runInNewContext(script,scope);
+ const source=new AudioBufferSourceNode();source.start();
+ assert.equal(scope.__sourceGeneration.idFor(source),0);
+ assert.equal(source.stop(3),7);assert.deepEqual(calls,[[3]]);
+ assert.equal(scope.__sourceGeneration.sources[0].stopRequested,2);
+ assert(stamps.includes('source-stop:0'));
+ assert.throws(()=>source.stop(-1),/native stop failure/);
+ assert.deepEqual(calls,[[3],[-1]]);
+});

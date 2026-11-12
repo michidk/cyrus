@@ -6,6 +6,7 @@
   const connect = AudioNode.prototype.connect;
   let context, tap, ready;
   const pendingRetirements = [];
+  const retirementWaiters = new Map();
   probe.retirements = {};
   const accepts = source => !globalThis.__sessionSampleSourceFilter || globalThis.__sessionSampleSourceFilter(source);
   const worklet = URL.createObjectURL(new Blob([`
@@ -36,6 +37,7 @@
         const error = !length || input[1]?.length !== length || clock.length !== length
           || clock.some((value, index) => direction * (Math.round(value) - Math.round(clock[0])) !== index)
           || end !== frame + length - 1 || end >= 2 ** 24;
+        for (const id of this.retirements) console.timeStamp('source-retired:' + id + ':' + frame);
         // A separate opt-in output carries the validated generation clock to
         // source-owned diagnostic taps. The destination output stays silent.
         if (!error && outputs[1]) console.timeStamp('session-generation:' + frame);
@@ -52,27 +54,9 @@
       }
     });
   `], {type: 'text/javascript'}));
-  AudioBufferSourceNode.prototype.start = function (...args) {
-    let connected = false;
-    try {
-      // Wire a ready observer before activation. A rendering thread can consume
-      // an immediate source while the native start call is still returning.
-      if (!probe.error && tap && context === this.context && accepts(this) && !this.loop
-          && this.buffer?.numberOfChannels === 2) {
-        connect.call(this, tap);
-        connected = true;
-      }
-    } catch (error) { probe.error = String(error); }
-    let nativeBefore;
-    try { nativeBefore = this.context.currentTime; }
-    catch (error) { probe.error = String(error); }
-    const result = original.apply(this, args);
-    try {
-      const nativeAfter = this.context.currentTime;
-      if (probe.error) return result;
-      if (!accepts(this) || this.loop || this.buffer?.numberOfChannels !== 2) return result;
-      if (context && context !== this.context) { probe.error = 'multiple sample stream clocks'; return result; }
-      context = this.context;
+  function initialize(candidate) {
+      if (context && context !== candidate) throw Error('multiple sample stream clocks');
+      context = candidate;
       if (!context.audioWorklet) throw Error('AudioWorklet unavailable; capture requires a secure origin');
       if (!ready) ready = context.audioWorklet.addModule(worklet).then(() => {
         // Arm on a future render boundary after configuring both automation lanes.
@@ -95,7 +79,10 @@
             probe.error ??= data.error || 'missing or duplicate sample graph quantum: expected '
               + nextFrame + '/' + nextSequence + ', got ' + data.frame + '/' + data.sequence;
           }
-          for (const id of data.retirements ?? []) probe.retirements[id] = data.frame;
+          for (const id of data.retirements ?? []) {
+            probe.retirements[id] = data.frame;
+            retirementWaiters.get(id)?.(data.frame); retirementWaiters.delete(id);
+          }
           nextFrame = data.frame + (data.left?.length ?? 0);
           nextSequence = data.sequence + 1;
           // Keep the armed interval intact through slow seek decoding. The exact
@@ -111,6 +98,29 @@
         connect.call(silence, tap);
         silence.start();
       });
+    return ready;
+  }
+  probe.arm = initialize;
+  AudioBufferSourceNode.prototype.start = function (...args) {
+    let connected = false;
+    try {
+      // Wire a ready observer before activation. A rendering thread can consume
+      // an immediate source while the native start call is still returning.
+      if (!probe.error && tap && context === this.context && accepts(this) && !this.loop
+          && this.buffer?.numberOfChannels === 2) {
+        connect.call(this, tap);
+        connected = true;
+      }
+    } catch (error) { probe.error = String(error); }
+    let nativeBefore;
+    try { nativeBefore = this.context.currentTime; }
+    catch (error) { probe.error = String(error); }
+    const result = original.apply(this, args);
+    try {
+      const nativeAfter = this.context.currentTime;
+      if (probe.error) return result;
+      if (!accepts(this) || this.loop || this.buffer?.numberOfChannels !== 2) return result;
+      initialize(this.context);
       if (tap && !connected) connect.call(this, tap);
       else if (!tap) ready.then(() => connect.call(this, tap)).catch(error => {probe.error = String(error)});
       const requested = args[0] ?? 0;
@@ -133,7 +143,9 @@
   // quantum. A main-thread currentTime read is not a retirement sample boundary.
   probe.retireSource = id => {
     if (!Number.isInteger(id) || id < 0) throw Error('invalid source retirement identity');
+    const acknowledged = new Promise(resolve => retirementWaiters.set(id, resolve));
     if (tap) tap.port.postMessage({retire: id}); else pendingRetirements.push(id);
+    return acknowledged;
   };
   // Deliberately unavailable unless requested before installing this observer.
   // Use the native connect method, so other diagnostic wrappers cannot reroute it.

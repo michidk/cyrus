@@ -78,3 +78,37 @@ test('a clamped movie clock cannot admit audio consumed beyond decoded video',as
    assert.equal(calls,1);assert.match(globalThis.__cinematicClockError,/observer failed/);
   } finally {delete globalThis.__sourceGeneration;delete globalThis.__cinematicClockError;}
  });
+
+test('production playback starts only after an independently armed generation quantum',async()=>{
+ const {armCinematicPlayback}=await import('./cinematic-navigation.mjs');
+ const order=[],p=globalThis.__sessionSamples={blocks:[],arm:async()=>order.push('clock')};
+ globalThis.__sourceGeneration={arm:async()=>order.push('source')};
+ const receiver={context:{resume:async()=>{order.push('resume');p.blocks.push({frame:128});}}};
+ try {
+  assert.equal(await armCinematicPlayback(function(){assert.equal(this,receiver);order.push('play');return 7;}).call(receiver),7);
+  assert.deepEqual(order,['clock','source','resume','play']);
+ } finally {delete globalThis.__sessionSamples;delete globalThis.__sourceGeneration;}
+});
+
+test('arming failure cannot suppress or retry production playback',async()=>{
+ const {armCinematicPlayback}=await import('./cinematic-navigation.mjs');let calls=0;
+ globalThis.__sessionSamples={arm(){throw Error('arm failed');}};
+ globalThis.__sourceGeneration={arm:async()=>{}};
+ try {
+  assert.equal(await armCinematicPlayback(()=>{calls++;return 7;}).call({context:{}}),7);
+  assert.equal(calls,1);assert.match(globalThis.__cinematicClockError,/arm failed/);
+ } finally {delete globalThis.__sessionSamples;delete globalThis.__sourceGeneration;delete globalThis.__cinematicClockError;}
+});
+
+test('seek snapshots actual owners before native cancellation without changing dispatch',async()=>{
+ const {observeMovieSeek}=await import('./cinematic-navigation.mjs');
+ const source={},audio={context:{currentTime:2},sources:[source]},records=[];
+ globalThis.__sourceGeneration={sources:Array(8),idFor:s=>{assert.equal(s,source);return 7;}};
+ const receiver={};
+ try {
+  const wrapped=observeMovieSeek(function(id,target){assert.equal(this,receiver);assert.equal(id,3);assert.equal(target,100);audio.sources=[];return 9;},()=>({audio}),records);
+  assert.equal(wrapped.call(receiver,3,100),9);
+  assert.deepEqual(records,[{target:100,contextTime:2,endContextTime:2,sourceCount:8,active:[7]}]);
+  const error=Error('native seek failure');assert.throws(()=>observeMovieSeek(()=>{throw error;},()=>({audio}),[])(3,100),e=>e===error);
+ } finally {delete globalThis.__sourceGeneration;}
+});

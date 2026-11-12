@@ -7,7 +7,8 @@ import {join} from 'node:path';
 import {observeBrowserBuild} from './browser-provenance.mjs';
 import {connectCdp} from './capture-cdp.mjs';
 import {compareSourceGeneration} from './compare-source-generation.mjs';
-import {navigateCinematic, installCinematicEndpoint, observeMovieTime, observeMovieSchedule, requireMovieHorizon, cinematicProgress} from './cinematic-navigation.mjs';
+import {navigateCinematic, installCinematicEndpoint, observeMovieTime, observeMovieSchedule, requireMovieHorizon, armCinematicPlayback, observeMovieSeek, cinematicProgress} from './cinematic-navigation.mjs';
+import {requireCinematicTrace, requireCinematicCancellation} from './cinematic-trace.mjs';
 import {sourceGenerationBoundaries} from './source-generation-boundaries.mjs';
 
 const [endpoint, page, output, frameArgument, rateArgument, skipArgument] = process.argv.slice(2);
@@ -21,7 +22,7 @@ const build = JSON.parse(readFileSync(process.env.CYRUS_BROWSER_BUILD_RECORD, 'u
 assert(!existsSync(output), 'use a new output directory; never overwrite a retained recording');
 mkdirSync(output, {recursive:true});
 const cdp = await connectCdp(endpoint), trace = [], surfaces = [];
-let traceDone, traceEnding = false, tracing = false, recording = false, failure = null, provenance;
+let traceDone, traceEnding = false, tracing = false, recording = false, failure = null, provenance, traceCompletion;
 const ended = new Promise(resolve => {traceDone = resolve;});
 async function evaluate(expression) {
   const r = await cdp.call('Runtime.evaluate', {expression, returnByValue:true, awaitPromise:true});
@@ -38,7 +39,7 @@ async function endTrace() {
 }
 cdp.onEvent(message => {
   if (message.method === 'Tracing.dataCollected') trace.push(...message.params.value);
-  if (message.method === 'Tracing.tracingComplete') traceDone();
+  if (message.method === 'Tracing.tracingComplete') {traceCompletion=message.params;traceDone();}
   if (message.method === 'Page.screencastFrame') {
     const f = message.params, id = surfaces.length;
     writeFileSync(join(output, `surface-${id}.png`), Buffer.from(f.data, 'base64'));
@@ -55,10 +56,12 @@ try {
   // an exhausted packet stream and would change the behavior being measured.
   await cdp.call('Debugger.setBreakpointByUrl', {urlRegex:'movie_stream\\.js$',lineNumber:104,
     condition:`(()=>{if(!window.__movieTimeObserved){window.__movieTimeObserved=true;
+      seekMovie=(${observeMovieSeek.toString()})(seekMovie,id=>movies.get(id),window.__cinematicSeeks=[]);
+      PacketAudio.prototype.play=(${armCinematicPlayback.toString()})(PacketAudio.prototype.play);
       PacketAudio.prototype.schedule=(${observeMovieSchedule.toString()})(PacketAudio.prototype.schedule);
       movieTime=(${observeMovieTime.toString()})(movieTime,id=>movies.get(id),window.__returnedMovieClocks=[]);}
       return false;})()`});
-  const graph = '(' + installCinematicEndpoint.toString() + ')();' + `globalThis.__sessionSampleClockOutput=true;
+  const graph = '(' + installCinematicEndpoint.toString() + ')();' + `globalThis.__sessionSampleClockOutput=true;globalThis.__cinematicRetireTaps=true;
     globalThis.__sessionSampleSourceFilter=s=>s.buffer?.sampleRate===${audioRate};`
     + readFileSync(new URL('./session-sample-graph.js', import.meta.url), 'utf8')
     + readFileSync(new URL('./source-generation-graph.js', import.meta.url), 'utf8');
@@ -109,10 +112,13 @@ try {
     movie:window.__cyrusMenu?.movie});await drain;return true;})()`);
   await cdp.call('Page.stopScreencast');recording = false;
   await endTrace();
-  const capture = await evaluate(`({sources:__sourceGeneration.captured.sources.map(s=>({...s,
+  const capture = await evaluate(`({seeks:window.__cinematicSeeks,sources:__sourceGeneration.captured.sources.map(s=>({...s,
     blocks:s.blocks.map(b=>({...b,...(b.zero?{}:{left:Array.from(b.left),right:Array.from(b.right)})}))})),
     graph:{...__boundaryGraph,blocks:__boundaryGraph.blocks.map(b=>({...b,left:Array.from(b.left),right:Array.from(b.right)}))}})`);
   writeFileSync(join(output,'generation.json'), JSON.stringify(capture));
+  writeFileSync(join(output,'trace-completion.json'),JSON.stringify(traceCompletion,null,2));
+  const traceCoverage = requireCinematicTrace(trace,capture,traceCompletion);
+  writeFileSync(join(output,'trace-coverage.json'),JSON.stringify(traceCoverage,null,2));
   const boundaries = sourceGenerationBoundaries(trace,capture.sources);
   assert(boundaries.some(b => b.attributed), 'no source received actual native render ownership');
   writeFileSync(join(output,'boundaries.json'),JSON.stringify(boundaries,null,2));
@@ -132,6 +138,10 @@ try {
   writeFileSync(join(output,'mix-comparison.json'),JSON.stringify(comparison,null,2));
   assert(capture.graph.returnedClockReads?.length, 'production movieTime return was not observed');
   requireMovieHorizon(capture.graph.returnedClockReads,comparison.rate);
+  if (skipAt) {
+    const cancellation = requireCinematicCancellation(capture,boundaries);
+    writeFileSync(join(output,'cancellation.json'),JSON.stringify(cancellation,null,2));
+  }
   console.log(JSON.stringify({sources:boundaries.filter(b=>b.attributed).length,retiredUnattributed:boundaries.filter(b=>!b.attributed).length,surfaces:surfaces.length,movie:capture.graph.movie}));
 } catch (error) {failure = String(error.stack ?? error);throw error;}
 finally {
