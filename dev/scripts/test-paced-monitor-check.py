@@ -51,6 +51,21 @@ class Controls(unittest.TestCase):
             self.assertFalse(json.loads((out / 'result.json').read_text())['success'])
             recorder.send_signal.assert_called_once()
 
+    def test_negotiated_prebuffer_must_contain_the_whole_reference(self):
+        with self.assertRaisesRegex(RuntimeError, 'prebuffer'):
+            module.playback_buffer('tlength=768000, prebuf=1924', 576000, False)
+        with self.assertRaisesRegex(RuntimeError, 'prebuffer'):
+            module.playback_buffer('', 576000, False)
+        result = module.playback_buffer('tlength=768000, prebuf=764164', 576000, False)
+        self.assertGreaterEqual(result['negotiated_prebuffer_bytes'], 576000)
+        self.assertEqual(module.playback_buffer('tlength=2880, prebuf=1924',576000,True)['negotiated_playback_bytes'],2880)
+
+    def test_pacing_starts_at_admitted_samples_without_hiding_later_loss(self):
+        wall, pcm = module.pacing_seconds(14, 10, 4.01, 480)
+        self.assertAlmostEqual(wall, pcm)
+        wall, pcm = module.pacing_seconds(14, 10, 3.5, 480)
+        self.assertGreater(abs(wall-pcm), .25)
+
     def test_stuck_process_is_killed_and_reaped(self):
         process = Mock()
         process.poll.return_value = None

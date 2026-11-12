@@ -1595,6 +1595,30 @@ already keeps the sink active. Use a separate idle control runtime for isolation
 The warmup allows the idle null sink's existing two-second timer to expire.
 All processes are bounded and evidence is never overwritten.
 
+The finite calibration player prebuffers the complete reference. It retains
+verbose negotiated buffer metrics and rejects a prebuffer smaller than the
+reference, preventing shared-host client scheduling from inserting silence into
+an otherwise paced monitor. The recorder still requests 20 ms latency. Pacing
+compares wall/sample progress from the same admitted PCM boundary, retaining
+launch admission delay separately. The 250 ms pacing and 10 ms waveform limits
+are unchanged. `--streaming --producer-stall-ms 200` is a diagnostic failure
+control for the old 20 ms producer path; the same interruption on the default
+preloaded path must leave the waveform continuous. `--producer-stall-ms` only
+interrupts the owned signal player, never the game or other processes.
+
+For a same-rate signed16 unity calibration, run:
+
+```sh
+python3 dev/scripts/check-monitor-calibration.py CAPTURE REFERENCE.wav REPORT.json
+python3 dev/scripts/test-monitor-calibration.py
+```
+
+The unity checker requires the captured reference hash, admitted pacing,
+unchanged waveform continuity and unit fitted gain within FFT numerical
+roundoff. It rejects altered gain even when continuity passes. Different sample
+rates require a separate resampler calibration and are rejected. This strict
+signal-path control is not a production volume tolerance.
+
 This isolates server/recorder behavior from DOSBox. A clean direct reference and
 a discontinuous emulator recording locate the remaining fault upstream of the
 monitor. DOSBox mixer prebuffer, block size, emulated CPU load and host scheduling
