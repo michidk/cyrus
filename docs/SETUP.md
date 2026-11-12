@@ -1824,6 +1824,35 @@ adapter diagnostics and failure results survive rejection; retries require a new
 evidence directory. These observations support natural-cadence investigation;
 they do not replace the exact update oracle or establish pose/pixel/audio parity.
 
+For original mixer-output attribution, `Dockerfile.capture` also builds
+`sdl-mixer-capture.c`. Set `CYRUS_MIXER_CAPTURE_DIR` to a new, host-mounted evidence
+directory before starting the original. The capture entrypoint loads the optional
+tap with the presentation interposer. It supports one legacy SDL callback device
+with stereo signed 16-bit little-endian output, at the actual device rate.
+A bounded ring copies completed callback buffers; a worker writes `generated.raw`
+and `generated.jsonl`. The callback never writes files or waits for the worker.
+Overflow, unsupported formats, write failure and unavailable generation cursors
+reject capture. The output directory cannot be reused.
+
+The frozen presentation result then includes `pcm_generation`: completed `frames`,
+callback `sequence`, generation `monotonic_ns`, and `rate`. Local screenshot
+adapters pass that object into their boundary without substituting a recorder
+file length. Use `--owned-frames --generated-pcm /evidence/mixer` to select this
+source. The driver exports `audio.wav` between its first and last frozen callback
+prefixes, without resampling, and retains event-relative game-clock windows.
+It validates consecutive producer blocks, cursor identity, complete PCM,
+non-silence and the existing 0.25-second pacing bound against generation time.
+Recorder startup, filesystem latency and unobserved tail delivery do not define
+that interval. The monitor mode keeps its original pacing rejection.
+
+A completed callback prefix identifies generated output, rather than the physical
+playback instant or a sample inside a callback. It does not establish exact
+within-block game-event alignment or original/native parity. The paired
+comparison still requires identical event-relative game-clock intervals.
+`test-generated-pcm.py` checks discontinuities and generation/delivery separation;
+`test-sdl-mixer-capture-runtime.py` exercises the real SDL callback with delayed
+writing, overflow, unsupported format and missing-tap controls.
+
 To admit two captures' clock windows before interpreting their pixels or PCM:
 
 ```sh

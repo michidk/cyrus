@@ -10,4 +10,10 @@ Xvfb :1 -screen 0 "${SCREEN:-1024x768x24}" -nolisten tcp -fbdir "$framebuffer_di
 sleep 1
 cd /game
 [ -s game.cue ] || cp game.ins game.cue
+if [[ -n "${CYRUS_FRAME_CAPTURE_DIR:-}" ]]; then
+    export LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD:}/usr/local/lib/sdl-frame-capture.so"
+fi
+if [[ -n "${CYRUS_MIXER_CAPTURE_DIR:-}" ]]; then
+    export LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD:}/usr/local/lib/sdl-mixer-capture.so"
+fi
 exec dosbox-x -conf /etc/cyrus/dosbox-x.conf "$@"

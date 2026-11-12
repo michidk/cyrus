@@ -254,7 +254,20 @@ class Capture(unittest.TestCase):
     def test_public_command_normalizes_the_published_pending_step(self):
         self.capture_fixture(True, pending=True)
 
-    def capture_fixture(self, owned, pending=False):
+    def test_monitor_command_does_not_require_the_optional_generation_helper(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for name in ('gameplay-media-capture.py', 'paced-mixer-capture.py'):
+                shutil.copy2(Path(__file__).with_name(name), directory/name)
+            result = subprocess.run([sys.executable, str(directory/'gameplay-media-capture.py'), '--help'],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_public_command_uses_generation_clock_without_monitor_delivery(self):
+        self.capture_fixture(True, generated_audio=True)
+
+    def capture_fixture(self, owned, pending=False, generated_audio=False):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             recorder = root / 'parec'
@@ -313,6 +326,18 @@ else:
             execution='running', player={'health':100}, event='render_frame',
             phase='render_extraction', render_frame=count, pcm_delivery_frames=cursor))))
 """)
+            if generated_audio:
+                adapter.write_text(adapter.read_text().replace(
+                    "assert (root / 'capture/audio.raw').stat().st_size > 44",
+                    "assert (root / 'generated.raw').stat().st_size > 44").replace(
+                    "cursor = (root / 'capture/audio.raw').stat().st_size // 4",
+                    "import struct\n        cursor = count * 480\n"
+                    "        (root / 'generated.raw').write_bytes(struct.pack('<hh', 1234, -1234) * cursor)\n"
+                    "        (root / 'generated.jsonl').write_text(''.join(json.dumps(dict(sequence=i, "
+                    "first=(i-1)*480, last=i*480, monotonic_ns=i*10000000, rate=48000))+'\\n' "
+                    "for i in range(1, count+1)))").replace(
+                    "pcm_delivery_frames=cursor", "pcm_delivery_frames=-1, pcm_generation=dict("
+                    "frames=cursor, sequence=count, monotonic_ns=count*10000000, rate=48000)"))
             if pending:
                 adapter.write_text(adapter.read_text().replace(
                     "count = int((root / 'counter').read_text())",
@@ -328,11 +353,16 @@ else:
                 '--screenshot', prefix + (' owned-frame' if owned else ' screenshot'), '--game-seconds', '1', '--timeout', '30']
             if owned:
                 command.append('--owned-frames')
+            if generated_audio:
+                command += ['--generated-pcm', str(root)]
             env = {**os.environ, 'PATH': str(root) + ':' + os.environ['PATH']}
             result = subprocess.run(command, env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads((root / 'capture/result.json').read_text())
             self.assertTrue(report['success'])
+            if generated_audio:
+                self.assertTrue(report['audio']['mixer_generation_attribution'])
+                self.assertFalse((root / 'capture/audio.raw').exists())
             if pending:
                 self.assertEqual(report['trigger_boundary']['elapsed_scale'],
                                  report['trigger']['boundary']['elapsed_scale'] - 768)
@@ -344,7 +374,7 @@ else:
             self.assertTrue((root / 'triggered').exists())
             rows = [json.loads(line) for line in (root / 'capture/windows.jsonl').read_text().splitlines()]
             self.assertGreaterEqual(len(rows), 2)
-            self.assertLess(rows[0]['wall_seconds'][1], report['audio']['transitions'][0]['sent'])
+            self.assertLess(rows[0]['wall_seconds'][1], report['trigger_request_wall_seconds'][0])
             self.assertTrue(all((root / 'capture' / row['pixels']).exists() for row in rows))
             self.assertTrue(all('event_relative_scale' in row and 'pcm_frames' in row for row in rows))
             pcm = [json.loads(line) for line in (root / 'capture/pcm-windows.jsonl').read_text().splitlines()]
@@ -352,7 +382,7 @@ else:
             self.assertEqual(pcm[-1]['pcm_frames'][1], report['audio']['frames'])
             self.assertTrue(all('clock_scale' in row and 'event_relative_scale' in row for row in pcm))
             if owned:
-                self.assertEqual(int((root / 'observation-count').read_text()), 2)
+                self.assertEqual(int((root / 'observation-count').read_text()), 1 if generated_audio else 2)
                 self.assertTrue(all(row['clock_owner'] == 'render_extraction' for row in rows))
                 self.assertTrue(all(row['clock_scale'][0] == row['clock_scale'][1] for row in rows))
             self.assertFalse(report['audio']['exact_pcm_event_mapping'])

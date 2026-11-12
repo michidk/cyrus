@@ -24,6 +24,9 @@ struct capture {
     char error[160];
     char pcm_path[PATH_LIMIT];
     long long pcm_frames;
+    uint64_t generated_frames, generated_sequence, generated_ns;
+    unsigned generated_rate;
+    int generated;
     struct field fields[FIELD_LIMIT];
     size_t count;
     uint64_t sequence;
@@ -56,6 +59,10 @@ static void *write_capture(void *pointer) {
             for (size_t j = 0; j < capture->fields[i].size; j++) fprintf(result, "%02x", capture->fields[i].bytes[j]);
             fputc('"', result);
         }
+        if (capture->generated)
+            fprintf(result, "},\"pcm_generation\":{\"frames\":%llu,\"sequence\":%llu,\"monotonic_ns\":%llu,\"rate\":%u",
+                (unsigned long long)capture->generated_frames, (unsigned long long)capture->generated_sequence,
+                (unsigned long long)capture->generated_ns, capture->generated_rate);
         // Errors are fixed diagnostic messages, never raw paths or JSON text.
         fprintf(result, "},\"error\":\"%s\"}\n", capture->error[0] ? "surface or binding capture failed" : "");
         if (fclose(result) == 0) {
@@ -132,6 +139,13 @@ static struct capture *freeze_surface(SDL_Window *window) {
         if (stat(capture->pcm_path, &pcm) == 0 && S_ISREG(pcm.st_mode))
             capture->pcm_frames = pcm.st_size / 4;
         else capture->error[0] = 1;
+    }
+    int (*mixer_cursor)(uint64_t *, uint64_t *, uint64_t *, unsigned *);
+    *(void **)(&mixer_cursor) = dlsym(RTLD_DEFAULT, "cyrus_mixer_cursor");
+    if (getenv("CYRUS_MIXER_CAPTURE_DIR")) {
+        if (!mixer_cursor || mixer_cursor(&capture->generated_frames, &capture->generated_sequence,
+                &capture->generated_ns, &capture->generated_rate)) capture->error[0] = 1;
+        else capture->generated = 1;
     }
     SDL_Surface *surface = SDL_GetWindowSurface(window);
     if (!capture->error[0] && surface && surface->w > 0 && surface->h > 0 &&

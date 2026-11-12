@@ -14,6 +14,7 @@ These windows do not establish atomic pose/pixel correspondence or exact parity.
 import argparse
 import importlib.util
 import hashlib
+import functools
 from fractions import Fraction
 import json
 import math
@@ -28,6 +29,13 @@ import time
 spec = importlib.util.spec_from_file_location('mixer', Path(__file__).with_name('paced-mixer-capture.py'))
 mixer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mixer)
+@functools.cache
+def generated_pcm():
+    # Monitor-only deployments still need only the original recorder helper.
+    spec = importlib.util.spec_from_file_location('generated', Path(__file__).with_name('generated-pcm.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def require_observation(row):
@@ -114,18 +122,19 @@ def anchor_window(row, origin):
     return dict(row, event_relative_scale=[value - origin['elapsed_scale'] for value in row['clock_scale']])
 
 
-def owned_frame(response, path, delivered):
+def owned_frame(response, path, delivered, generated_audio=False):
     """Use the producer's frozen frame, never the request or reply polling time."""
     if response.get('captured') is not True or response.get('path') != str(path):
         raise ValueError('owned frame requires a completed capture for the requested PNG')
     boundary = require_observation(response.get('boundary', {}))
-    cursor = boundary.get('pcm_delivery_frames')
+    cursor = (generated_pcm().cursor(boundary.get('pcm_generation'))['frames'] if generated_audio
+              else boundary.get('pcm_delivery_frames'))
     if (boundary.get('event') != 'render_frame' or boundary.get('phase') not in ('render_extraction', 'sdl_surface_present')
             or boundary.get('elapsed_scale_end', boundary['elapsed_scale']) != boundary['elapsed_scale']
             or type(boundary.get('generation')) is not int
             or type(boundary.get('render_frame')) is not int or boundary['render_frame'] <= 0
-            or type(cursor) is not int or not 0 <= cursor <= delivered):
-        raise ValueError('owned frame requires a render-owned clock and PCM delivery cursor')
+            or type(cursor) is not int or not 0 <= cursor or (not generated_audio and cursor > delivered)):
+        raise ValueError('owned frame requires a render-owned clock and PCM cursor')
     return boundary
 
 
@@ -211,7 +220,9 @@ def raster_metadata(path):
     return dict(width=width, height=height, sha256=hashlib.sha256(data).hexdigest())
 
 
-def capture(output, observe, trigger, screenshot, seconds, timeout, interval, owned_frames=False):
+def capture(output, observe, trigger, screenshot, seconds, timeout, interval, owned_frames=False, generated_directory=None):
+    if generated_directory is not None and not owned_frames:
+        raise ValueError('generated PCM requires producer-owned frame cursors')
     # Exclusive evidence directory prevents a retry from overwriting admitted media.
     output.mkdir(parents=True, exist_ok=False)
     result = dict(success=False, exact_update_coverage=False)
@@ -219,7 +230,8 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
     rows = []
     points = []
     origin = None
-    raw = output / 'audio.raw'
+    raw = (Path(generated_directory) / 'generated.raw' if generated_directory is not None
+           else output / 'audio.raw')
     epoch = time.monotonic()
     deadline = epoch + timeout
 
@@ -245,12 +257,16 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
     def sample():
         started, first = time.monotonic() - epoch, pcm_frames(raw)
         observed = require_observation(json.loads(run(observe)))
-        retain(observed, started, time.monotonic() - epoch, [first, pcm_frames(raw)])
+        if generated_directory is None:
+            retain(observed, started, time.monotonic() - epoch, [first, pcm_frames(raw)])
         return observed
 
     def persist_windows():
         with (output / 'windows.jsonl').open('w') as log:
             for row in rows:
+                if generated_directory is not None and points:
+                    base = points[0]['pcm_frames'][0]
+                    row = dict(row, pcm_frames=[v-base for v in row['pcm_frames']])
                 log.write(json.dumps(anchor_window(row, origin) if origin else row) + '\n')
 
     def persist_pcm_windows():
@@ -260,6 +276,10 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
                              before['wall_seconds'][0], after['wall_seconds'][1], None)
                 row.update(pcm_frames=[before['pcm_frames'][0], after['pcm_frames'][1]],
                            pcm_mapping='recorder_delivery_bracket')
+                if generated_directory is not None:
+                    base = points[0]['pcm_frames'][0]
+                    row.update(pcm_frames=[v-base for v in row['pcm_frames']],
+                               pcm_mapping='completed_mixer_callbacks')
                 log.write(json.dumps(anchor_window(row, origin) if origin else row) + '\n')
 
     try:
@@ -267,24 +287,27 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
         result['baseline'] = baseline
         epoch = time.monotonic()
         result['epoch_monotonic_seconds'] = epoch
-        points[:] = [dict(observation=baseline, wall_seconds=[0, 0], pcm_frames=[0, 0])]
+        points[:] = ([] if generated_directory is not None else
+                     [dict(observation=baseline, wall_seconds=[0, 0], pcm_frames=[0, 0])])
         path = output / 'audio.wav'
-        with (output / 'recorder.log').open('w') as log:
-            recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--raw',
-                '--format=s16le', '--rate=48000', '--channels=2', '--latency-msec=20', str(raw)], stderr=log)
-        while pcm_frames(raw) == 0:
-            if recorder.poll() is not None or time.monotonic() > min(deadline, epoch + 5):
-                raise RuntimeError('monitor did not admit PCM before trigger')
-            time.sleep(.01)
-        # Retain a real raster before trigger, with the recorder already admitted.
+        if generated_directory is None:
+            with (output / 'recorder.log').open('w') as log:
+                recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--raw',
+                    '--format=s16le', '--rate=48000', '--channels=2', '--latency-msec=20', str(raw)], stderr=log)
+            while pcm_frames(raw) == 0:
+                if recorder.poll() is not None or time.monotonic() > min(deadline, epoch + 5):
+                    raise RuntimeError('monitor did not admit PCM before trigger')
+                time.sleep(.01)
+        # Retain a real raster and its admitted PCM prefix before the trigger.
         def raster():
             started, first = time.monotonic() - epoch, pcm_frames(raw)
             pixels = f'frame-{len(rows):04}.png'
             path = output / pixels
             if owned_frames:
                 response = json.loads(run(screenshot + [str(path)]))
-                before = after = owned_frame(response, path, pcm_frames(raw))
-                first = last = before['pcm_delivery_frames']
+                before = after = owned_frame(response, path, pcm_frames(raw), generated_directory is not None)
+                first = last = (before['pcm_generation']['frames'] if generated_directory is not None
+                                else before['pcm_delivery_frames'])
                 retain(before, started, time.monotonic() - epoch, [first, last])
             else:
                 before = sample()
@@ -297,13 +320,15 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
             row['raster'] = metadata
             row['pcm_frames'] = [first, last]
             row['clock_owner'] = before['phase'] if owned_frames else 'observation_bracket'
-            row['pcm_mapping'] = 'recorder_delivery_cursor' if owned_frames else 'recorder_delivery_bracket'
+            row['pcm_mapping'] = ('completed_mixer_callbacks' if generated_directory is not None else
+                                  'recorder_delivery_cursor' if owned_frames else 'recorder_delivery_bracket')
             rows.append(row)
             persist_windows()
         raster()
         sent = time.monotonic() - epoch
         result['trigger'] = json.loads(run(trigger))
         acknowledged = time.monotonic() - epoch
+        result['trigger_request_wall_seconds'] = [sent, acknowledged]
         if owned_frames:
             raster()
             result['trigger_observation'] = rows[-1]['after']
@@ -323,17 +348,22 @@ def capture(output, observe, trigger, screenshot, seconds, timeout, interval, ow
             time.sleep(min(interval, max(0, deadline - time.monotonic())))
             raster()
         ended = time.monotonic()
-        recorder.send_signal(signal.SIGINT)
-        code = recorder.wait(timeout=5)
-        if code not in (0, -signal.SIGINT):
-            raise RuntimeError(f'monitor recorder exited {code}')
-        # Bound the recorder tail with a running observation, without treating file
-        # delivery as a zero-latency mixer event or interpolating game time.
-        sample()
-        finalize_pcm(raw, path)
-        # Reuse the real monitor pacing/non-silence gate, with explicit fixture epochs.
-        audio = mixer.validate(path, ended - epoch,
-            [dict(sent=sent, acknowledged=acknowledged, **{'from': 'prepared', 'to': 'triggered'})], .25)
+        if generated_directory is not None:
+            audio = generated_pcm().extract(generated_directory, points[0]['observation']['pcm_generation'],
+                                      points[-1]['observation']['pcm_generation'], output / 'audio.wav')
+            audio['mixer_generation_attribution'] = True
+        else:
+            recorder.send_signal(signal.SIGINT)
+            code = recorder.wait(timeout=5)
+            if code not in (0, -signal.SIGINT):
+                raise RuntimeError(f'monitor recorder exited {code}')
+            # Bound the recorder tail with a running observation, without treating file
+            # delivery as a zero-latency mixer event or interpolating game time.
+            sample()
+            finalize_pcm(raw, path)
+            # Reuse the real monitor pacing/non-silence gate, with explicit fixture epochs.
+            audio = mixer.validate(path, ended - epoch,
+                [dict(sent=sent, acknowledged=acknowledged, **{'from': 'prepared', 'to': 'triggered'})], .25)
         audio.update(exact_pcm_event_mapping=False, clock_windows='pcm-windows.jsonl')
         result.update(summarize(rows, seconds), audio=audio,
                       post_trigger_game_seconds=post_trigger_progress, success=True)
@@ -359,6 +389,7 @@ def main():
     parser.add_argument('output', type=Path, nargs='?')
     parser.add_argument('--compare-captures', type=Path, nargs=2)
     parser.add_argument('--owned-frames', action='store_true', help='screenshot adapter returns capture_gameplay_frame result with a frozen render boundary')
+    parser.add_argument('--generated-pcm', type=Path, help='SDL mixer tap directory; requires --owned-frames')
     parser.add_argument('--observe')
     parser.add_argument('--trigger')
     parser.add_argument('--screenshot')
@@ -374,7 +405,7 @@ def main():
     if any(not math.isfinite(v) or v <= 0 for v in (args.game_seconds, args.timeout, args.interval)):
         parser.error('capture bounds must be finite and positive')
     capture(args.output, shlex.split(args.observe), shlex.split(args.trigger),
-            shlex.split(args.screenshot), args.game_seconds, args.timeout, args.interval, args.owned_frames)
+            shlex.split(args.screenshot), args.game_seconds, args.timeout, args.interval, args.owned_frames, args.generated_pcm)
 
 
 if __name__ == '__main__':

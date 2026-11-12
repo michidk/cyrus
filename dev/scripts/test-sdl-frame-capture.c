@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #ifdef FAIL_PRESENT_BACKEND
@@ -11,8 +12,20 @@ int SDL_UpdateWindowSurfaceRects(SDL_Window *window, const SDL_Rect *rectangles,
     return SDL_SetError("injected backend presentation failure");
 }
 #else
+static void generated_audio(void *unused, Uint8 *stream, int length) {
+    (void)unused; memset(stream, 17, length);
+}
 int main(int argc, char **argv) {
-    if (argc != 3 || SDL_Init(SDL_INIT_VIDEO) != 0) return 1;
+    if (argc != 3) return 1;
+    int audio = !strcmp(argv[2], "generated");
+    if (SDL_Init(SDL_INIT_VIDEO | (audio ? SDL_INIT_AUDIO : 0)) != 0) return 1;
+    if (audio) {
+        SDL_AudioSpec desired = {0};
+        desired.freq = 48000; desired.format = AUDIO_S16LSB; desired.channels = 2;
+        desired.samples = 512; desired.callback = generated_audio;
+        if (SDL_OpenAudio(&desired, NULL)) return 6;
+        SDL_PauseAudio(0); SDL_Delay(100);
+    }
     SDL_Window *window = SDL_CreateWindow("capture control", 0, 0, 16, 16, 0);
     SDL_Surface *surface = SDL_GetWindowSurface(window);
     if (!surface) return 2;
@@ -37,6 +50,7 @@ int main(int argc, char **argv) {
     snprintf(path, sizeof(path), "%s/result.json", argv[1]);
     for (int i = 0; i < 500 && access(path, F_OK) != 0; i++) SDL_Delay(10);
     if (access(path, F_OK) != 0) return 5;
+    if (audio) SDL_CloseAudio();
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
