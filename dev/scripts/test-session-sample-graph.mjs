@@ -182,3 +182,56 @@ test('a slow seek retains the complete armed interval beyond the former rolling 
   assert.equal(probe.blocks[0].frame, start);
   assert.equal(probe.capture(start, start + 24001 * 128).quanta.length, 24001);
 });
+
+
+test('ready observer connection failure rejects evidence without suppressing native activation', async () => {
+  const {probe, source, events, failConnection} = await receiverWithOrder();
+  events.length = 0; failConnection();
+  source.start();
+  assert.deepEqual(events, ['connect', 'start']);
+  assert.match(probe.error, /connection failed/);
+});
+
+test('ready observer connection precedes native source activation', async () => {
+  const {probe, source, events} = await receiverWithOrder();
+  events.length = 0;
+  source.start();
+  assert.deepEqual(events.slice(0, 2), ['connect', 'start']);
+  assert.equal(probe.error, null);
+});
+
+async function receiverWithOrder() {
+  const events = [];
+  const context = {currentTime: 0, sampleRate: 48000,
+    audioWorklet: {addModule: async () => {}}, createConstantSource() { return {offset: {}, start() {}}; }};
+  let fail = false;
+  class AudioNode { connect() { events.push('connect'); if (fail) throw Error('connection failed'); } }
+  class AudioBufferSourceNode extends AudioNode {
+    constructor() { super(); this.context = context; this.buffer = {numberOfChannels: 2, getChannelData: () => new Float32Array(128)}; }
+    start() { events.push('start'); }
+  }
+  class AudioWorkletNode extends AudioNode {
+    constructor() { super(); this.port = {}; this.parameters = new Map(['sampleFrame', 'coarseFrame', 'recording'].map(name =>
+      [name, {setValueAtTime() {}, linearRampToValueAtTime() {}}])); }
+  }
+  const scope = {AudioNode, AudioBufferSourceNode, AudioWorkletNode,
+    URL: {createObjectURL: () => 'blob:probe'}, Blob, Float32Array};
+  vm.runInNewContext(script, scope);
+  const source = new AudioBufferSourceNode();source.start();
+  await new Promise(resolve => setImmediate(resolve));
+  return {probe: scope.__sessionSamples, source, events, failConnection: () => { fail = true; }};
+}
+
+
+test('immediate command clocks cannot admit a source consumption model', async () => {
+  const {probe, source} = await receiverWithOrder();
+  source.start(0);
+  const admission = probe.buffers.at(-1).admission;
+  assert.equal(admission.kind, 'immediate');
+  assert.equal(admission.nativeBefore, 0);
+  assert.equal(admission.nativeAfter, 0);
+  assert.throws(() => probe.match(0, 128), /immediate source lacks render-generation admission/);
+  // Actual graph export remains governed by exact quantum continuity, independently
+  // of whether a command-only reconstruction has sufficient source attribution.
+  assert.equal(probe.error, null);
+});

@@ -74,17 +74,16 @@ impl Plugin for MusicPlugin {
                 Update,
                 (
                     stop_for_world_entry.run_if(resource_exists_and_changed::<SceneRequest>),
-                    start_world_track.run_if(
-                        resource_changed::<CurrentScene>
-                            .or_else(resource_exists_and_changed::<SoundSettings>),
-                    ),
+                    start_world_track,
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
                     credits_track,
                     finish_track,
                     pause_track,
+                    finish_restoration,
                 )
                     .chain()
-                    .after(crate::ApplyPreferences),
+                    .after(crate::ApplyPreferences)
+                    .after(cyrus_world::lifecycle::WorldChange),
             );
     }
 }
@@ -95,6 +94,8 @@ pub struct Music {
     pub track: Option<u32>,
     /// The drive's linear channel gain; it starts at full level and only accepted volumes change it.
     pub gain: f32,
+    /// A restored owner consumes the next world-publication notifications without selecting music.
+    restore_pending: bool,
     #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<Result<AudioSource, String>>>,
     #[cfg(target_arch = "wasm32")]
@@ -106,6 +107,7 @@ impl Default for Music {
         Self {
             track: None,
             gain: 1.0,
+            restore_pending: false,
             load: None,
         }
     }
@@ -244,6 +246,9 @@ fn stop_for_world_entry(
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
+    if music.restore_pending {
+        return;
+    }
     let value = install.and_then(|install| world_track(&install, &request.0).ok());
     if let Some(value) = value
         && value != -1
@@ -261,6 +266,9 @@ fn stop_for_browser_world_entry(
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
+    if music.restore_pending {
+        return;
+    }
     let value = bank.and_then(|bank| bank.track_for_scene(&request.0));
     if let Some(value) = value
         && value != -1
@@ -283,7 +291,12 @@ fn start_world_track(
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
-    if !music_enabled(&settings, &audio) || current.name.is_empty() {
+    // Observe both inputs on every update, including a restored publication. A
+    // short-circuit run condition can defer the other input's first observation.
+    if !current.is_changed() && !settings.as_ref().is_some_and(|value| value.is_changed()) {
+        return;
+    }
+    if music.restore_pending || !music_enabled(&settings, &audio) || current.name.is_empty() {
         return;
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -311,6 +324,13 @@ fn start_world_track(
         request(&install, &mut music, track);
         #[cfg(target_arch = "wasm32")]
         request(&assets, &mut music, track);
+    }
+}
+
+// WorldChange runs first, so the restored scene's notification is consumed in this update.
+fn finish_restoration(mut music: ResMut<Music>) {
+    if music.restore_pending {
+        music.restore_pending = false;
     }
 }
 

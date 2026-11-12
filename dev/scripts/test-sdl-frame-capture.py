@@ -22,6 +22,13 @@ class Capture(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'deadline'):
                 capture.capture('unused', 'unused', {}, timeout=value)
 
+    def test_scheduled_clock_requires_a_bound_u32_before_creating_output(self):
+        rows = {'clock': {'address': 16, 'size': 4}}
+        for bad in ({'field': 'absent', 'value': 1}, {'field': 'clock', 'value': True},
+                    {'field': 'clock', 'value': -1}, {'field': 'clock', 'value': 2**32}):
+            with self.assertRaisesRegex(ValueError, 'scheduled capture'):
+                capture.capture('unused', 'unused', rows, at_clock=bad)
+
     def test_polling_or_truncated_binding_cannot_claim_presentation(self):
         expected = {'clock': {'address': 16, 'size': 4}}
         good = dict(ok=True, owner='sdl_surface_present', sequence=7, thread=42,

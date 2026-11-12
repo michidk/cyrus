@@ -1562,6 +1562,27 @@ that occurred during screenshot or PCM readback. The observation expression must
 be read-only and must not poll a stateful playback clock. This does not establish
 the native admission time of a source started with a past requested timestamp.
 
+The source observer connects an already-ready tap before native source activation.
+A source can render while `start()` is still returning; attaching afterward can
+miss its onset. `test-browser-source-admission.mjs CDP_URL LOOPBACK_PAGE RESULT_JSON`
+exercises that race with a delayed native return and an exact generated waveform.
+
+`sourceAdmissions` in graph receipts records the requested time and native-call
+entry/return clocks in seconds. Its `frame` is a command lower bound for immediate
+sources, not a measured first-consumption frame. `match()` rejects a command-only
+model when an immediate source can overlap its window. An ended callback records
+a conservative end-of-quantum retirement bound; it does not rewrite PCM. Actual
+PCM export still requires every sample-frame/sequence/clock boundary to pass.
+
+`test-browser-source-render-boundary.mjs CDP_URL LOOPBACK_PAGE RESULT_JSON` records
+native source processing traces and generation-clock markers in an isolated
+24-source control. It compares independently traced first processing with exact
+PCM onset and preserves the trace beside its receipt. Concurrent new sources,
+missing native processing, missing or wrong-thread generation clocks, and altered
+waveforms reject attribution. The control observes both immediate commands and
+future scheduling. It derives no production delay, gain or timing constant.
+
+
 
 ### Original sound-emission capture boundaries
 
@@ -1923,6 +1944,34 @@ that BMP, never the live window. Results identify the presentation sequence and
 thread separately from the game's ordinary update counter. The request directory
 permits one caller and the producer retains at most one copied surface/worker.
 
+Before scheduling a counterpart, select actual retained presentation receipts:
+
+```sh
+python3 dev/scripts/gameplay-media-capture.py --plan-presentations ORIGINAL_CAPTURE COUNTERPART_CAPTURE
+```
+
+The planner normalizes each acknowledged placement origin and compares exact
+rational event-relative times. It returns shared point receipts with source
+row/pixel references and absolute counterpart clocks. Extra observations do not
+change the selected boundaries. Missing counterparts are listed explicitly;
+unrepresentable clock values are never rounded. Duplicate clocks and polling
+brackets cannot identify a presentation and are rejected. A plan with fewer
+than two shared points cannot define a paired window. Planning neither compares
+pixels nor admits PCM parity, and does not replace `--compare-captures` or its
+pacing/continuity gates. A proposed absolute clock without an observed counterpart
+is an acquisition requirement, not evidence that the counterpart presents there.
+
+For an exact planned boundary, pass `--at-clock FIELD VALUE`, or supply
+`at_clock={"field": FIELD, "value": VALUE}` to the Python `capture` function.
+The field must bind an unsigned little-endian 32-bit monotonic clock. The
+presentation owner leaves the request pending while that clock is below the
+requested value. It captures only equality; a skipped value, reset followed by
+expiry, or expired deadline produces no accepted raster. The deadline uses the
+same host monotonic clock as the producer. This schedules acquisition without
+stopping or changing simulation updates. The probe must derive the absolute
+value from the acknowledged placement origin and requested event-relative scale;
+it must not round a missing boundary or reuse a late completion.
+
 The media driver's `--owned-frames` adapter may return this boundary with
 `event=render_frame`, `phase=sdl_surface_present` and its `render_frame` sequence.
 Repeated presentation sequences fail admission. An optional recorder cursor
@@ -1935,7 +1984,9 @@ The runtime control compiles `test-sdl-frame-capture.c` against SDL2 and runs
 `test-sdl-frame-capture-runtime.py FIXTURE_EXECUTABLE INTERPOSER_SO FAILED_BACKEND_SO`. It requires
 real SDL2 and Pillow. It verifies capture through the public surface API, then
 changes the clock and pixels before asynchronous delivery, and rejects unreadable
-bindings. Without the interposer, the same caller produces no accepted capture.
+bindings, skipped scheduled clocks and expired requests. The scheduled positive
+control ignores an earlier red frame and retains the green frame at the exact
+requested clock. Without the interposer, the same caller produces no accepted capture.
 
 Compile the failure backend from the same C fixture with
 `-DFAIL_PRESENT_BACKEND -shared -fPIC`. Its rejected presentation call verifies
@@ -1988,3 +2039,14 @@ consecutive frames, retained as interleaved stereo float32 little-endian `.f32le
 files beside the source/clock metadata. Retain failed-before receipts separately;
 prior output directories cannot be reused. This tests software WebAudio output,
 not physical-speaker parity.
+
+
+Set `scenario` to `restore` in the local music fixture to exercise diagnostic CD
+ownership instead of the world-entry transition comparison. The driver enters and
+leaves installed F10 credits, saves stopped CD ownership through the public session
+API, and verifies that loading it preserves silence. It then holds destination
+reads, supersedes that request with the original world, releases the stale reads,
+and checks fresh music plus continued ownership. A final active save/load must
+retire the old output and admit the restored track. Each stage retains its PCM
+and metadata separately. These diagnostic saves restore exact runtime ownership;
+original-style book saves keep their existing world-selection policy.

@@ -22,6 +22,7 @@ struct field { char name[64]; uint64_t address; size_t size; unsigned char bytes
 struct capture {
     char output[PATH_LIMIT];
     char error[160];
+    const char *rejection;
     char pcm_path[PATH_LIMIT];
     long long pcm_frames;
     uint64_t generated_frames, generated_sequence, generated_ns;
@@ -29,6 +30,8 @@ struct capture {
     int generated;
     struct field fields[FIELD_LIMIT];
     size_t count;
+    char clock_field[64];
+    uint64_t clock_value, expires_ns;
     uint64_t sequence;
     long thread;
     struct timespec time;
@@ -64,7 +67,7 @@ static void *write_capture(void *pointer) {
                 (unsigned long long)capture->generated_frames, (unsigned long long)capture->generated_sequence,
                 (unsigned long long)capture->generated_ns, capture->generated_rate);
         // Errors are fixed diagnostic messages, never raw paths or JSON text.
-        fprintf(result, "},\"error\":\"%s\"}\n", capture->error[0] ? "surface or binding capture failed" : "");
+        fprintf(result, "},\"error\":\"%s\"}\n", capture->error[0] ? (capture->rejection ? capture->rejection : "surface or binding capture failed") : "");
         if (fclose(result) == 0) {
             char target[PATH_LIMIT + 32];
             snprintf(target, sizeof(target), "%s/result.json", capture->output);
@@ -114,6 +117,15 @@ static struct capture *freeze_surface(SDL_Window *window) {
     }
     char line[256];
     while (fgets(line, sizeof(line), input)) {
+        if (!strncmp(line, "@clock ", 7)) {
+            unsigned long long value, expires;
+            char extra;
+            if (capture->clock_field[0] || sscanf(line, "@clock %63[a-zA-Z0-9_] %llu %llu %c",
+                    capture->clock_field, &value, &expires, &extra) != 3 || value > UINT32_MAX || !expires)
+                capture->error[0] = 1;
+            else { capture->clock_value = value; capture->expires_ns = expires; }
+            continue;
+        }
         if (!strncmp(line, "pcm ", 4)) {
             line[strcspn(line, "\r\n")] = 0;
             if (capture->pcm_path[0] || line[4] != '/') capture->error[0] = 1;
@@ -132,6 +144,26 @@ static struct capture *freeze_surface(SDL_Window *window) {
         capture->count++;
     }
     fclose(input);
+    if (!capture->error[0] && capture->clock_field[0]) {
+        struct field *clock = NULL;
+        for (size_t i = 0; i < capture->count; i++)
+            if (!strcmp(capture->fields[i].name, capture->clock_field)) clock = &capture->fields[i];
+        uint64_t now = (uint64_t)capture->time.tv_sec * 1000000000ULL + capture->time.tv_nsec;
+        if (now >= capture->expires_ns) {
+            capture->error[0] = 1; capture->rejection = "scheduled presentation deadline expired";
+        } else if (!clock || clock->size != 4 || read_fields(capture, 0))
+            capture->error[0] = 1;
+        else {
+            uint64_t value = (uint64_t)clock->bytes[0] | (uint64_t)clock->bytes[1] << 8 |
+                (uint64_t)clock->bytes[2] << 16 | (uint64_t)clock->bytes[3] << 24;
+            if (value < capture->clock_value) {
+                free(capture); pthread_mutex_unlock(&owner); return NULL;
+            }
+            if (value != capture->clock_value) {
+                capture->error[0] = 1; capture->rejection = "scheduled presentation clock skipped";
+            }
+        }
+    }
     unlink(request);
     if (!capture->count) capture->error[0] = 1;
     if (capture->pcm_path[0]) {
@@ -149,7 +181,7 @@ static struct capture *freeze_surface(SDL_Window *window) {
     }
     SDL_Surface *surface = SDL_GetWindowSurface(window);
     if (!capture->error[0] && surface && surface->w > 0 && surface->h > 0 &&
-        (uint64_t)surface->w * surface->h <= 4096 * 4096 && read_fields(capture, 0) == 0) {
+        (uint64_t)surface->w * surface->h <= 4096 * 4096 && read_fields(capture, capture->clock_field[0] ? 1 : 0) == 0) {
         capture->image = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGB24, 0);
         if (!capture->image || read_fields(capture, 1) != 0) capture->error[0] = 1;
     } else capture->error[0] = 1;

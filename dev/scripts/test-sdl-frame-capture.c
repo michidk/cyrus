@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 #ifdef FAIL_PRESENT_BACKEND
 int SDL_UpdateWindowSurfaceRects(SDL_Window *window, const SDL_Rect *rectangles, int count) {
@@ -36,6 +37,12 @@ int main(int argc, char **argv) {
     if (!request) return 3;
     fprintf(request, "%s\nclock %llu 4\n", argv[1],
         argv[2][0] != 'i' ? (unsigned long long)(uintptr_t)&clock : 1ULL);
+    int scheduled = !strncmp(argv[2], "scheduled", 9);
+    if (scheduled) {
+        struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
+        unsigned long long expires = (unsigned long long)now.tv_sec * 1000000000ULL + now.tv_nsec + 5000000000ULL;
+        fprintf(request, "@clock clock %u %llu\n", 125U, !strcmp(argv[2], "scheduled-expired") ? 1ULL : expires);
+    }
     fclose(request);
     SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 255, 0, 0));
     SDL_Rect rectangle = {0, 0, 16, 16};
@@ -45,6 +52,12 @@ int main(int argc, char **argv) {
         ? SDL_UpdateWindowSurfaceRects(window, &rectangle, 1)
         : SDL_UpdateWindowSurface(window);
     if ((argv[2][0] == 'f') != (presented != 0)) return 4;
+    if (scheduled && strcmp(argv[2], "scheduled-expired")) {
+        if (access(path, F_OK) != 0) return 7;
+        clock = !strcmp(argv[2], "scheduled-skipped") ? 126 : 125;
+        SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0, 255, 0));
+        SDL_UpdateWindowSurface(window);
+    }
     clock = 999;
     SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0, 0, 255));
     snprintf(path, sizeof(path), "%s/result.json", argv[1]);

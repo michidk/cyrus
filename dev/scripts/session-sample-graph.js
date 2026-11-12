@@ -39,8 +39,22 @@
     });
   `], {type: 'text/javascript'}));
   AudioBufferSourceNode.prototype.start = function (...args) {
+    let connected = false;
+    try {
+      // Wire a ready observer before activation. A rendering thread can consume
+      // an immediate source while the native start call is still returning.
+      if (!probe.error && tap && context === this.context && !this.loop
+          && this.buffer?.numberOfChannels === 2) {
+        connect.call(this, tap);
+        connected = true;
+      }
+    } catch (error) { probe.error = String(error); }
+    let nativeBefore;
+    try { nativeBefore = this.context.currentTime; }
+    catch (error) { probe.error = String(error); }
     const result = original.apply(this, args);
     try {
+      const nativeAfter = this.context.currentTime;
       if (probe.error) return result;
       if (this.loop || this.buffer?.numberOfChannels !== 2) return result;
       if (context && context !== this.context) { probe.error = 'multiple sample stream clocks'; return result; }
@@ -80,10 +94,19 @@
         connect.call(silence, tap);
         silence.start();
       });
-      if (tap) connect.call(this, tap);
-      else ready.then(() => connect.call(this, tap)).catch(error => {probe.error = String(error)});
-      probe.buffers.push({frame: (args[0] || context.currentTime) * context.sampleRate,
-        left: new Float32Array(this.buffer.getChannelData(0)), right: new Float32Array(this.buffer.getChannelData(1))});
+      if (tap && !connected) connect.call(this, tap);
+      else if (!tap) ready.then(() => connect.call(this, tap)).catch(error => {probe.error = String(error)});
+      const requested = args[0] ?? 0;
+      const buffer = {frame: Math.max(requested, nativeBefore) * context.sampleRate,
+        admission: {requested, nativeBefore, nativeAfter,
+          kind: requested > nativeAfter ? 'scheduled' : 'immediate', endedFrame: null},
+        left: new Float32Array(this.buffer.getChannelData(0)), right: new Float32Array(this.buffer.getChannelData(1))};
+      // An immediate command may join the rendering graph in a later quantum.
+      // Its command clock is a lower bound, not a measured consumption boundary.
+      this.addEventListener?.('ended', () => {
+        buffer.admission.endedFrame = (Math.ceil(this.context.currentTime * this.context.sampleRate / 128) + 1) * 128;
+      }, {once: true});
+      probe.buffers.push(buffer);
     } catch (error) {
       probe.error = String(error);
     }
@@ -94,7 +117,7 @@
     now: context && Math.round(context.currentTime * context.sampleRate)});
   probe.status = () => ({error: probe.error, ready: !!tap && !probe.error, rate: context?.sampleRate,
     now: context && Math.round(context.currentTime * context.sampleRate),
-    buffers: probe.buffers.map(b => ({frame: b.frame, length: b.left.length,
+    buffers: probe.buffers.map(b => ({frame: b.frame, admission: {...b.admission}, length: b.left.length,
       energy: b.left.reduce((sum, x) => sum + x*x, 0) + b.right.reduce((sum, x) => sum + x*x, 0)})),
     last: probe.blocks.at(-1)?.frame});
   // Freeze the sample window before asynchronous CDP readback. Diagnostics survive
@@ -104,6 +127,7 @@
     probe.capturedPcm = null;
     const metadata = probe.lastCapture = {start, end, rate: context?.sampleRate,
       clock: probe.clock(), armed: probe.startFrame, error: probe.error,
+      sourceAdmissions: probe.buffers.map(b => ({frame: b.frame, length: b.left.length, ...b.admission})),
       quanta: blocks.map(b => ({frame: b.frame, sequence: b.sequence,
         reportedFrame: b.reportedFrame, length: b.left?.length, error: b.error, clockError: b.clockError}))};
     let next = start, sequence = blocks[0]?.sequence;
@@ -126,6 +150,10 @@
   };
   probe.match = (start, end, shift = 0) => {
     if (probe.error) throw Error(`sample graph rejected: ${probe.error}`);
+    if (probe.buffers.some(b => b.admission.kind === 'immediate' && b.frame < end
+        && (b.admission.endedFrame === null || b.admission.endedFrame > start))) {
+      throw Error('sample graph model rejected: immediate source lacks render-generation admission');
+    }
     const blocks = probe.blocks.filter(b => b.frame >= start && b.frame < end);
     let next = start;
     for (const block of blocks) { if (block.frame !== next) throw Error(`missing or duplicate sample graph quantum: expected ${next}, got ${block.frame}, window ${start}..${end}`); next += 128; }

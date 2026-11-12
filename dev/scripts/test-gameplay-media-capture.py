@@ -244,6 +244,75 @@ class MatchedIntervals(unittest.TestCase):
                 media.matching_intervals(left, right)
 
 
+class PresentationPlans(unittest.TestCase):
+    fixture = MatchedIntervals.fixture
+
+    def presentations(self, directory, offsets, rate=12):
+        result = json.loads((directory / 'result.json').read_text())
+        origin = result['trigger']['boundary']['elapsed_scale']
+        rows = []
+        for sequence, offset in enumerate(offsets, 1):
+            scale = origin + offset
+            sample = dict(observation(scale / (256 * rate), 12 + sequence),
+                elapsed_scale=scale, normal_frame_rate=rate, generation=1,
+                event='render_frame', phase='sdl_surface_present', render_frame=sequence)
+            row = media.window(sample, sample, sequence, sequence, f'{sequence}.png')
+            row.update(clock_owner='sdl_surface_present', pcm_frames=[sequence * 10] * 2,
+                       pcm_mapping='completed_mixer_callbacks')
+            rows.append(row)
+        (directory / 'windows.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+
+    def test_public_plan_selects_actual_shared_points_despite_extra_receipts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            left = self.fixture(root, 'left', 3072, 384)
+            right = self.fixture(root, 'right', 6144, 384)
+            self.presentations(left, [-192, 384, 768, 1152])
+            self.presentations(right, [384, 512, 1152])
+            with self.assertRaisesRegex(ValueError, 'intervals differ'):
+                media.matching_intervals(left, right)
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('gameplay-media-capture.py')),
+                '--plan-presentations', str(left), str(right)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            plan = json.loads(result.stdout)
+            self.assertTrue(plan['paired_window_available'])
+            self.assertEqual([p['event_seconds'] for p in plan['pairs']], ['1/8', '3/8'])
+            self.assertEqual([p['counterpart_elapsed_scale'] for p in plan['pairs']], [6528, 7296])
+            self.assertEqual(plan['missing'][0]['source']['elapsed_scale'], 3840)
+            self.assertFalse(plan['exact_pcm_event_mapping'])
+            self.assertFalse(plan['pixel_comparison_performed'])
+
+    def test_skipped_original_target_cannot_be_rounded_to_a_native_boundary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            left = self.fixture(root, 'left', 21629, 384)
+            right = self.fixture(root, 'right', 6144, 384)
+            self.presentations(left, [3180])
+            self.presentations(right, [3072, 3584])
+            plan = media.plan_presentations(left, right)
+            self.assertEqual(plan['pairs'], [])
+            self.assertFalse(plan['paired_window_available'])
+            self.assertEqual(plan['missing'][0]['counterpart_elapsed_scale'], 9324)
+            self.assertEqual(plan['missing'][0]['event_seconds'], '265/256')
+
+    def test_duplicate_or_polling_receipts_cannot_select_a_boundary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            left = self.fixture(root, 'left', 3072, 384)
+            right = self.fixture(root, 'right', 6144, 384)
+            self.presentations(left, [384, 384])
+            self.presentations(right, [384, 768])
+            with self.assertRaisesRegex(ValueError, 'duplicate presentation clock'):
+                media.plan_presentations(left, right)
+            self.presentations(left, [384, 768])
+            path = left / 'windows.jsonl'
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            rows[0]['clock_owner'] = 'observation_bracket'
+            path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            with self.assertRaisesRegex(ValueError, 'producer-owned'):
+                media.plan_presentations(left, right)
+
+
 class Capture(unittest.TestCase):
     def test_public_command_admits_pcm_before_trigger_and_retains_raster_windows(self):
         self.capture_fixture(False)
