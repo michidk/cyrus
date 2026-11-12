@@ -1,5 +1,5 @@
 name = "Sea Serpent"
-description = "Restores the hostile sea serpent in the Spine that was cut from the game: its script hides it at the start, and this mod removes that call. Takes effect after a restart."
+description = "Experimental: tries to restore the sea serpent in the Spine that was cut from the game by removing the HideMe call from its script. Its effect in cyrus is not verified yet. Takes effect after a restart."
 version = "0.1.0"
 author = "cyrus"
 
