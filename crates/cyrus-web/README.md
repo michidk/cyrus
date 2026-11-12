@@ -328,3 +328,11 @@ delay never replaces the boundary with the current actor state. A pending captur
 or unread result blocks another request; clear the result explicitly after saving
 it. Missing/skipped boundaries and world replacement fail, with a bounded deadline.
 This diagnostic API does not establish original/browser pixel or PCM parity.
+
+`exportRetainedFrame(evaluate, output)` in `dev/scripts/export-retained-frame.mjs`
+saves that retained buffer as PNG through bounded readback chunks. `evaluate`
+runs an awaited expression in the already-owned tab and returns its JSON value.
+The exporter keeps partial bytes and a receipt so interrupted transport resumes
+only against the same boundary and full GPU hash. A changed/reset result,
+truncated chunk or unsupported format cannot publish a completed image. It does
+not take a new screenshot, stop simulation or consume the retained result.
