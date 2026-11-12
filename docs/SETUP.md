@@ -2050,3 +2050,34 @@ and checks fresh music plus continued ownership. A final active save/load must
 retire the old output and admit the restored track. Each stage retains its PCM
 and metadata separately. These diagnostic saves restore exact runtime ownership;
 original-style book saves keep their existing world-selection policy.
+
+### Installed cinematic generation and presentation capture
+
+`node dev/scripts/capture-cinematic-boundaries.mjs CDP_URL EXPLICIT_INSTALL_MOVIE_URL
+NEW_OUTPUT_DIRECTORY MIN_END_FRAME INSTALLED_AUDIO_RATE` records the production browser
+path in a disposable browser context. Set `CYRUS_BROWSER_BUILD_RECORD` to the
+sealed build receipt; executed main/worker artifacts are checked against it.
+Use the movie export's audio rate and an
+explicit install URL. The caller owns runtime recovery, the host-mounted config,
+a per-run lock and container teardown. Capture ends after the requested movie
+progress with nonzero audio in the final observation window; a silent tail cannot
+prove waveform equivalence. This tool does not start a preview.
+
+The observer records each source's actual rendering input and native first
+processing, with shared sample-frame clocks. Initial unobserved sources and
+retired sources lacking native ownership require an acknowledged retirement
+before a mixed-PCM comparison. Each source port drains through the fixed endpoint
+before its PCM is copied; the requested tail is never shortened. Missing quanta remain
+errors. A source's first diagnostic input can follow its first native processing;
+those boundaries are kept separate. `generation.json`, `boundaries.json` and
+`mix-comparison.json` retain that evidence. A transparent wrapper retains actual
+returned `movieTime` values and trace brackets without adding playback-clock polls.
+
+Compositor PNGs and their swap clocks are separate from published movie status.
+Run `python dev/scripts/cinematic-presented-frames.py CAPTURE_DIRECTORY
+INSTALLED_WINDOW_DIRECTORY RESULT_JSON` with Pillow available to identify them
+against an installed `movie_window` export. Identification requires exact RGBA
+bytes after the movie's vertical bilinear expansion. Identical pictures retain
+all possible frame identities. Loading pictures or advancing status alone cannot
+admit a cinematic comparison. These tools establish capture boundaries; complete
+original/native/browser timing parity still requires matching runtime recordings.
