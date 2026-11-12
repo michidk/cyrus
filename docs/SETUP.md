@@ -1935,7 +1935,16 @@ not start a preview. OpenGL output is unsupported by this capture path.
 A local probe supplies named process-memory bindings to
 `dev/scripts/sdl-frame-capture.py REQUEST_DIRECTORY NEW_OUTPUT BINDINGS_JSON`.
 Each binding has an integer `address` and a `size` from 1 to 4096 bytes, with at
-most sixteen bindings. Bindings and raw captures remain local research files.
+most sixteen bindings. A dependent binding may instead supply a `pointer` object
+with `field` (a preceding binding), byte `offset`, little-endian `width` (4 or 8)
+and signed `addend`, alongside its target `size`. The presentation owner resolves
+that pointer from the frozen preceding bytes, then reads the target. This allows
+selected-object attributes and animation records to share the pixel boundary
+without following an earlier polled pointer. Null pointers, address overflow,
+forward references and out-of-bounds pointer slots reject capture. The complete
+chain is checked again after the surface copy. Layouts and animation labels come
+from the caller's verified bindings and installed catalog; none are built into
+the interposer. Bindings and raw captures remain local research files.
 The caller must verify its process/selected-object binding before admission.
 The producer reads the bindings, copies the surface, and verifies the bindings
 again on the presentation thread. Changed or unreadable bindings fail capture.
