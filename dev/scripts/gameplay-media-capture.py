@@ -64,6 +64,21 @@ def trigger_origin(acknowledgement, observed):
     require_observation({**boundary, 'execution': 'running'})
     if boundary['game_seconds'] != scale / (256 * rate):
         raise ValueError('fixture event clock disagrees with integer elapsed scale')
+    accounting = boundary.get('clock_accounting', 'completed_updates')
+    if accounting == 'includes_pending_update':
+        pending = boundary.get('pending_frame_scale')
+        accumulated = boundary.get('pending_accumulator_scale')
+        if (type(pending) is not int or pending < 0 or type(accumulated) is not int
+                or pending != accumulated or boundary.get('startup_remaining') != 0
+                or scale < pending):
+            raise ValueError('pending clock requires equal consumed/accumulated scale outside startup')
+        # Clock publication precedes movement. Placement has not consumed this step.
+        scale -= pending
+        boundary = dict(boundary, raw_elapsed_scale=boundary['elapsed_scale'],
+                        elapsed_scale=scale, game_seconds=scale / (256 * rate),
+                        clock_accounting='completed_updates', excluded_pending_scale=pending)
+    elif accounting != 'completed_updates':
+        raise ValueError('unsupported placement clock accounting')
     elapsed_from_origin(boundary, observed)
     return boundary
 

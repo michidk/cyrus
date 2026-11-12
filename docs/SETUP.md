@@ -1774,8 +1774,16 @@ in Q8 nominal ticks, installed `normal_frame_rate`, `event: "placement_applied"`
 and `phase: "before_ordinary_update"`. Its `execution` may be `"stopped"` for a
 single setup stop. Native `place_player` supplies this acknowledgement when its
 clock and prepared world are available. Boolean-only acknowledgements and later
-polling timestamps cannot establish the trigger origin. Per-update debugger
-stops cannot establish natural cadence. The screenshot command receives its output path as
+polling timestamps cannot establish the trigger origin. The clock at this boundary
+counts completed movement updates. An adapter whose accumulator already includes
+the forthcoming update must declare `clock_accounting: "includes_pending_update"`,
+`pending_frame_scale`, `pending_accumulator_scale`, and `startup_remaining`.
+The recorder subtracts that pending step, retains the raw acknowledgement and
+normalized origin, and rejects startup or unequal accumulated/consumed scales.
+Adapters already reporting completed updates use `"completed_updates"` (the default);
+applying the subtraction twice changes the interval and is invalid. These rules
+normalize clock phase, without changing the exact comparison tolerance.
+Per-update debugger stops cannot establish natural cadence. The screenshot command receives its output path as
 its last argument. Keep executable-specific adapters outside the tracked tree.
 
 The recorder admits PCM and a baseline raster before the trigger, then captures

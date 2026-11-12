@@ -67,6 +67,29 @@ class Windows(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'sequence repeated'):
             media.summarize([first, second], 0)
 
+    def test_published_pending_step_is_excluded_from_placement_origin(self):
+        boundary = dict(observation(1, 12), event='placement_applied',
+                        phase='before_ordinary_update', clock_accounting='includes_pending_update',
+                        pending_frame_scale=219, pending_accumulator_scale=219, startup_remaining=0)
+        ack = dict(acknowledged=True, boundary=boundary)
+        after_first_movement = observation(1, 12)
+        origin = media.trigger_origin(ack, after_first_movement)
+        self.assertEqual(origin['elapsed_scale'], 3072 - 219)
+        self.assertEqual(origin['raw_elapsed_scale'], 3072)
+        self.assertEqual((after_first_movement['elapsed_scale'] - origin['elapsed_scale']), 219)
+        self.assertEqual(ack['boundary']['elapsed_scale'], 3072, 'retain producer evidence')
+        # Native completed-update origins already exclude the forthcoming step.
+        native = dict(boundary, elapsed_scale=2853, game_seconds=2853 / 3072,
+                      clock_accounting='completed_updates')
+        self.assertEqual(media.trigger_origin(dict(acknowledged=True, boundary=native),
+                                             after_first_movement)['elapsed_scale'], 2853)
+        for bad in (dict(boundary, pending_accumulator_scale=512),
+                    dict(boundary, pending_frame_scale=True),
+                    dict(boundary, startup_remaining=1),
+                    dict(boundary, clock_accounting='unknown')):
+            with self.assertRaises(ValueError):
+                media.trigger_origin(dict(acknowledged=True, boundary=bad), after_first_movement)
+
     def test_delayed_poll_cannot_shift_acknowledged_trigger_origin(self):
         boundary = dict(observation(1, 12), elapsed_scale=3072, normal_frame_rate=12,
                         event='placement_applied', phase='before_ordinary_update')
@@ -228,7 +251,10 @@ class Capture(unittest.TestCase):
     def test_owned_capture_uses_render_boundary_without_per_raster_observation_requests(self):
         self.capture_fixture(True)
 
-    def capture_fixture(self, owned):
+    def test_public_command_normalizes_the_published_pending_step(self):
+        self.capture_fixture(True, pending=True)
+
+    def capture_fixture(self, owned, pending=False):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             recorder = root / 'parec'
@@ -287,12 +313,19 @@ else:
             execution='running', player={'health':100}, event='render_frame',
             phase='render_extraction', render_frame=count, pcm_delivery_frames=cursor))))
 """)
+            if pending:
+                adapter.write_text(adapter.read_text().replace(
+                    "count = int((root / 'counter').read_text())",
+                    "count = int((root / 'counter').read_text()) + 1").replace(
+                    "phase='before_ordinary_update',", "phase='before_ordinary_update', "
+                    "clock_accounting='includes_pending_update', pending_frame_scale=768, "
+                    "pending_accumulator_scale=768, startup_remaining=0,"))
             script = Path(__file__).with_name('gameplay-media-capture.py')
             import shlex
             prefix = shlex.join([sys.executable, str(adapter), str(root)])
             command = [sys.executable, str(script), str(root / 'capture'),
                 '--observe', prefix + ' observe', '--trigger', prefix + ' trigger',
-                '--screenshot', prefix + (' owned-frame' if owned else ' screenshot'), '--game-seconds', '1', '--timeout', '5']
+                '--screenshot', prefix + (' owned-frame' if owned else ' screenshot'), '--game-seconds', '1', '--timeout', '30']
             if owned:
                 command.append('--owned-frames')
             env = {**os.environ, 'PATH': str(root) + ':' + os.environ['PATH']}
@@ -300,6 +333,10 @@ else:
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads((root / 'capture/result.json').read_text())
             self.assertTrue(report['success'])
+            if pending:
+                self.assertEqual(report['trigger_boundary']['elapsed_scale'],
+                                 report['trigger']['boundary']['elapsed_scale'] - 768)
+                self.assertEqual(report['trigger_boundary']['excluded_pending_scale'], 768)
             self.assertGreaterEqual(report['post_trigger_game_seconds'], 1)
             self.assertGreater(report['trigger_observation']['game_seconds'],
                                report['trigger_boundary']['game_seconds'])
