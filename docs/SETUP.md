@@ -1553,6 +1553,13 @@ window before CDP readback and writes its exact frame/sequence/clock metadata
 before admission. Rejected windows retain diagnostics and export no PCM. Admitted
 windows export interleaved stereo float32 PCM without quantization. Both boundaries
 are integer sample frames on render-quantum boundaries in the tap's audio context.
+Use `captureSampleGraphAtEndpoint(cdp, output, observationExpression)` when the
+endpoint is detected live. It clones the caller's source/clock observation and
+freezes the delivered graph window in one browser task. Use the returned
+`observation` for reconstruction; a later source snapshot can include playback
+that occurred during screenshot or PCM readback. The observation expression must
+be read-only and must not poll a stateful playback clock. This does not establish
+the native admission time of a source started with a past requested timestamp.
 
 
 ### Original sound-emission capture boundaries
