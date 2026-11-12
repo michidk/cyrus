@@ -2063,6 +2063,15 @@ a per-run lock and container teardown. Capture ends after the requested movie
 progress with nonzero audio in the final observation window; a silent tail cannot
 prove waveform equivalence. This tool does not start a preview. An optional skip frame sends one public Escape
 press before the later endpoint, exercising the installed forward-skip path.
+For skip acceptance set `CYRUS_CINEMATIC_PRESENTED_WINDOW` to an independent
+`movie_window` export containing early images and the destination endpoint.
+`FRAME_COUNT` and `FIRST_FRAME` can retain a small late window after decoding the
+prefix. Combine reference windows without changing their movie frame numbers.
+The endpoint requires an exact identified compositor image at or beyond the
+requested frame; published status alone cannot finish the recording. Passing the
+last independently exported frame without identification rejects the run. The
+reference must include the selected subtitle/scanline presentation state; raw
+decoded pixels cannot establish equivalence to an image with subtitle overlays.
 
 The diagnostic launch arms both sample and source observers and waits for a
 validated rendering quantum before invoking production playback. The real play
@@ -2073,6 +2082,24 @@ seek dispatch and final graph boundaries. Missing evidence is rejected.
 Retired diagnostic branches drain through an acknowledged rendering endpoint
 and disconnect, preventing inactive taps from exhausting long-seek traces.
 A late retirement acknowledgement cannot extend an already frozen endpoint.
+
+The skip trigger waits for an actual source bank with connected rendering input
+and remaining scheduled samples. A diagnostic-only audio-context suspension holds
+those owners across public input transport. Trusted-input resume requests for
+that context are deferred until the real seek has stopped the bank; other
+contexts and production handlers are unchanged. This controlled hold is
+cancellation coverage and must not be used as normal cue-cadence evidence.
+Source taps use an independently automated clock branch and precede the mixed
+tap, so suspension cannot strand a source observation behind an already captured
+mixed quantum. Native endpoint acknowledgements are emitted once.
+
+After public seek dispatch, destination animation is held while native stops
+retire and each source port acknowledges its exact drain endpoint. The driver
+persists `cancellation-phase.json`, `cancellation-trace.json`, native boundaries
+and `cancellation-phase-result.json` before releasing destination decoding. A
+failed phase stops acceptance immediately. These short phase receipts survive a
+later runtime reset; an interrupted continuation remains unaccepted. Final
+continuation still requires continuous PCM and independently presented frames.
 
 A skip run additionally requires sources owned at actual seek dispatch, native
 stop requests within that dispatch and acknowledged retirement before new PCM.

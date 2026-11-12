@@ -36,11 +36,17 @@ def identify(surfaces, images, references):
     return result
 
 
+def require_endpoint(presentations, minimum):
+    if not any(number >= minimum for row in presentations for number in row['frames']):
+        raise ValueError('requested installed frame has not reached a compositor swap')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('capture', type=Path)
     parser.add_argument('installed_window', type=Path)
     parser.add_argument('output', type=Path)
+    parser.add_argument('--minimum-frame', type=int)
     args = parser.parse_args()
     window = json.loads((args.installed_window / 'window.json').read_text())
     references = {}
@@ -51,6 +57,8 @@ def main():
     surfaces = json.loads((args.capture / 'surfaces.json').read_text())
     images = {f['id']: Image.open(args.capture / f"surface-{f['id']}.png") for f in surfaces}
     result = identify(surfaces, images, references)
+    if args.minimum_frame is not None:
+        require_endpoint(result, args.minimum_frame)
     with args.output.open('x') as output:
         output.write(json.dumps({'frame_micros': window['metadata']['frame_micros'],
                                  'presentations': result}, indent=2) + '\n')

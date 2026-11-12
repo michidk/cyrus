@@ -7,7 +7,7 @@ function processor(){
  let Type;
  vm.runInNewContext(script.match(/registerProcessor\('source-generation-tap',[\s\S]*?\n    \}\);/)[0],{
   AudioWorkletProcessor:class{constructor(){this.messages=[];this.port={postMessage:data=>this.messages.push(data)};}},
-  registerProcessor:(_,type)=>Type=type,console:{timeStamp(){}},Float32Array,
+  registerProcessor:(_,type)=>Type=type,console:{timeStamp(){}},Float32Array,currentFrame:128,
  });
  return new Type({processorOptions:{id:7}});
 }
@@ -129,4 +129,11 @@ test('stop records the native source identity and preserves arguments and except
  assert(stamps.includes('source-stop:0'));
  assert.throws(()=>source.stop(-1),/native stop failure/);
  assert.deepEqual(calls,[[3],[-1]]);
+});
+
+test('render endpoint acknowledges once even if Chromium pulls a retired worklet again',()=>{
+ const p=processor();p.port.onmessage({data:{endpoint:128}});
+ const clock=frame=>[Float32Array.from({length:128},(_,i)=>frame+i),new Float32Array(128)];
+ p.process([[],clock(128)]);p.process([[],clock(256)]);
+ assert.equal(p.messages.length,1);assert.equal(p.messages[0].frame,128);
 });

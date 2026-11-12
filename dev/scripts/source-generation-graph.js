@@ -29,18 +29,39 @@
         const error = clock[0].some((v, i) => v !== frame + i)
           || clock[1].some(v => v !== sequence);
         if (frame >= this.endpoint) {
-          this.port.postMessage({endpointAck:true, frame, error});
+          if (!this.acknowledged) {
+            console.timeStamp('source-drained:' + this.id + ':' + frame);
+            this.port.postMessage({endpointAck:true, frame, error});this.acknowledged=true;
+          }
           return false;
         }
-        if (!this.marked) { console.timeStamp('source-generation:' + this.id + ':' + frame); this.marked = true; }
+        const connected=signal[0]?.length===128;
+        if (!this.marked || connected && !this.connectedMarked) {
+          console.timeStamp('source-generation:' + this.id + ':' + frame);this.marked=true;
+          if(connected)this.connectedMarked=true;
+        }
         const left = signal[0] ?? new Float32Array(128), right = signal[1] ?? new Float32Array(128);
         const zero = left.every(v => v === 0) && right.every(v => v === 0);
-        this.port.postMessage({frame, sequence, error, zero,
+        this.port.postMessage({frame, sequence, reportedFrame:currentFrame, error, zero, connected,
           ...(zero ? {} : {left, right})});
         return true;
       }
     });
   `], {type: 'text/javascript'}));
+  probe.retirement = async ids => {
+    const owned = ids.map(id => {
+      const drain = drains.get(id);
+      if (!drain) throw Error('retiring source lacks observed graph ownership: ' + id);
+      return {id,drain};
+    });
+    await Promise.all(owned.map(({drain}) => drain.done));
+    if (probe.error) throw Error(probe.error);
+    return owned.map(({id,drain}) => {
+      const frame = globalThis.__sessionSamples.retirements[id];
+      if (!Number.isInteger(frame) || !Number.isInteger(drain.ack)) throw Error('source retirement lacks render acknowledgement');
+      return {id,frame,end:drain.ack};
+    });
+  };
   probe.freeze = async end => {
     if (probe.error) throw Error(probe.error);
     const sources = probe.sources.slice();
@@ -91,7 +112,8 @@
             outputChannelCount: [2], processorOptions: {id: source.id}});
           connect.call(this, tap, 0, 0);
           __sessionSamples.connectClock(tap, 1);
-          connect.call(tap, context.destination);
+          if(globalThis.__cinematicOrderedTaps)__sessionSamples.connectObserver(tap);
+          else connect.call(tap, context.destination);
           source.observed = true;
           let finish;
           const done = new Promise(resolve => {finish = resolve;});
@@ -100,16 +122,17 @@
             if (data.endpointAck) {
               if (data.error || !Number.isInteger(data.frame) || data.frame < drains.get(source.id).end)
                 probe.error ??= 'invalid source endpoint acknowledgement';
-              drains.get(source.id).closed = true;
+              drains.get(source.id).closed = true;drains.get(source.id).ack = data.frame;source.drainedFrame=data.frame;
               tap.disconnect();finish();return;
             }
             const previous = source.blocks.at(-1);
             if (data.error || previous && (data.frame !== previous.frame + 128
                 || data.sequence !== previous.sequence + 1)) {
-              probe.error ??= 'discontinuous source generation quantum: ' + source.id;
+              probe.error ??= 'discontinuous source generation quantum: ' + source.id + ', previous ' + JSON.stringify({frame:previous?.frame,sequence:previous?.sequence,reportedFrame:previous?.reportedFrame}) + ', actual ' + JSON.stringify({frame:data.frame,sequence:data.sequence,reportedFrame:data.reportedFrame,error:data.error});
             }
             if (source.blocks.length >= 2 ** 24 / 128) probe.error ??= 'source generation capacity exceeded';
             else source.blocks.push(data);
+            try {globalThis.__cinematicSeekGate?.generation();}catch(error){probe.error??=String(error);}
           };
         }
         console.timeStamp('source-command:' + source.id);

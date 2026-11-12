@@ -4,7 +4,7 @@
   const probe = globalThis.__sessionSamples = { buffers: [], blocks: [], error: null, startFrame: null };
   const original = AudioBufferSourceNode.prototype.start;
   const connect = AudioNode.prototype.connect;
-  let context, tap, ready;
+  let context, tap, ready, clockTap;
   const pendingRetirements = [];
   const retirementWaiters = new Map();
   probe.retirements = {};
@@ -18,6 +18,7 @@
       ]; }
       constructor(options) {
         super(); this.armed = options?.processorOptions?.startFrame ?? 0;
+        this.clockOnly=options?.processorOptions?.clockOnly??false;
         this.retirements = [];
         this.port.onmessage = ({data}) => { this.retirements.push(data.retire); };
       }
@@ -40,11 +41,12 @@
         for (const id of this.retirements) console.timeStamp('source-retired:' + id + ':' + frame);
         // A separate opt-in output carries the validated generation clock to
         // source-owned diagnostic taps. The destination output stays silent.
-        if (!error && outputs[1]) console.timeStamp('session-generation:' + frame);
+        if (!error && outputs[1] && !this.clockOnly) console.timeStamp('session-generation:' + frame);
         if (!error && outputs[1]) for (let i = 0; i < length; i++) {
           outputs[1][0][i] = frame + i;
-          outputs[1][1][i] = this.sequence ?? 0;
+          outputs[1][1][i] = this.clockOnly ? (frame-this.armed)/128 : (this.sequence ?? 0);
         }
+        if(this.clockOnly) {if(error)this.port.postMessage({error:'invalid ordered capture clock'});return true;}
         this.port.postMessage({frame, reportedFrame: currentFrame,
           sequence: this.sequence ?? 0, retirements: this.retirements.splice(0), error: error ? 'invalid automated sample clock' : null,
           clockError: error ? {coarse: parameters.coarseFrame[0], clock: Array.from(clock)} : null,
@@ -54,6 +56,16 @@
       }
     });
   `], {type: 'text/javascript'}));
+  function configureClock(tap) {
+    tap.parameters.get('coarseFrame').setValueAtTime(probe.startFrame, probe.startFrame / context.sampleRate);
+    tap.parameters.get('coarseFrame').linearRampToValueAtTime(2 ** 24, 2 ** 24 / context.sampleRate);
+    tap.parameters.get('sampleFrame').setValueAtTime(0, probe.startFrame / context.sampleRate);
+    // Continuous alternating ramps avoid discontinuous automation endpoints.
+    for (let frame = probe.startFrame, up = true; frame < 2 ** 24; frame += 65536, up = !up) {
+      tap.parameters.get('sampleFrame').linearRampToValueAtTime(up ? 65536 : 0, (frame + 65536) / context.sampleRate);
+    }
+    tap.parameters.get('recording').setValueAtTime(1, probe.startFrame / context.sampleRate);
+  }
   function initialize(candidate) {
       if (context && context !== candidate) throw Error('multiple sample stream clocks');
       context = candidate;
@@ -65,14 +77,12 @@
         tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2,
           channelCountMode: 'explicit', numberOfOutputs: globalThis.__sessionSampleClockOutput ? 2 : 1,
           outputChannelCount: globalThis.__sessionSampleClockOutput ? [2, 2] : [2], processorOptions: {startFrame: probe.startFrame}});
-        tap.parameters.get('coarseFrame').setValueAtTime(probe.startFrame, probe.startFrame / context.sampleRate);
-        tap.parameters.get('coarseFrame').linearRampToValueAtTime(2 ** 24, 2 ** 24 / context.sampleRate);
-        tap.parameters.get('sampleFrame').setValueAtTime(0, probe.startFrame / context.sampleRate);
-        // Continuous alternating ramps avoid discontinuous automation endpoints.
-        for (let frame = probe.startFrame, up = true; frame < 2 ** 24; frame += 65536, up = !up) {
-          tap.parameters.get('sampleFrame').linearRampToValueAtTime(up ? 65536 : 0, (frame + 65536) / context.sampleRate);
+        configureClock(tap);
+        if(globalThis.__cinematicOrderedTaps) {
+          clockTap=new AudioWorkletNode(context,'session-sample-tap',{channelCount:2,channelCountMode:'explicit',
+            numberOfOutputs:2,outputChannelCount:[2,2],processorOptions:{startFrame:probe.startFrame,clockOnly:true}});
+          configureClock(clockTap);clockTap.port.onmessage=({data})=>{if(data.error)probe.error??=data.error;};
         }
-        tap.parameters.get('recording').setValueAtTime(1, probe.startFrame / context.sampleRate);
         let nextFrame = probe.startFrame, nextSequence = 0;
         tap.port.onmessage = ({data}) => {
           if (data.error || data.frame !== nextFrame || data.sequence !== nextSequence) {
@@ -96,6 +106,7 @@
         const silence = context.createConstantSource();
         silence.offset.value = 0;
         connect.call(silence, tap);
+        if(clockTap)connect.call(silence,clockTap);
         silence.start();
       });
     return ready;
@@ -151,7 +162,11 @@
   // Use the native connect method, so other diagnostic wrappers cannot reroute it.
   probe.connectClock = (node, input = 1) => {
     if (!globalThis.__sessionSampleClockOutput || !tap || probe.error) throw Error('generation clock output unavailable');
-    return connect.call(tap, node, 1, input);
+    return connect.call(clockTap??tap, node, 1, input);
+  };
+  probe.connectObserver=node=>{
+    if(!clockTap||!tap||probe.error)throw Error('ordered observer graph unavailable');
+    return connect.call(node,tap);
   };
   // Frequent clock observations must not scan every retained production buffer.
   probe.clock = () => ({rate: context?.sampleRate,

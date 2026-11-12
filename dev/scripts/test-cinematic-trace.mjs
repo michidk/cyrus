@@ -34,3 +34,18 @@ test('seek trace requires both dispatch boundaries even when no source was activ
  assert.throws(()=>requireCinematicTrace(names.map(stamp),c,{dataLossOccurred:false}),/seek-begin/);
  requireCinematicTrace([...names,'cinematic-seek-begin:0','cinematic-seek-end:0'].map(stamp),c,{dataLossOccurred:false});
 });
+
+test('short cancellation phase rejects missing adoption, drain acknowledgement and stale PCM',async()=>{
+ const {requireCancellationPhase}=await import('./cinematic-trace.mjs');
+ const phase=()=>{
+  const c=cancellation();c.sources[0].drainedFrame=384;
+  c.phase={state:'retired',retirement:[{id:0,frame:256,end:384}]};return c;
+ };
+ const b=[{id:0,attributed:true,firstProcessingFrame:128}];
+ assert.deepEqual(requireCancellationPhase(phase(),b).cancelled,[0]);
+ for(const mutate of [c=>delete c.phase,c=>delete c.sources[0].drainedFrame,
+  c=>c.sources[0].blocks.push({frame:256,left:[1],right:[0]})]) {
+  const c=phase();mutate(c);assert.throws(()=>requireCancellationPhase(c,b));
+ }
+ assert.throws(()=>requireCancellationPhase(phase(),[]),/native processing/);
+});

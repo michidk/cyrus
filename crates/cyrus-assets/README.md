@@ -385,10 +385,15 @@ fresh/autosave and installed bypass rules between native and browser hosts.
 
 The `movie_window` example exports a bounded installed cinematic window for
 browser clock acceptance, using the same preparation and packet decoder as
-playback. Run `cargo run -p cyrus-assets --features native --example movie_window -- INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT]`
+playback. Run `cargo run -p cyrus-assets --features native --example movie_window -- INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT] [FIRST_FRAME]`
 through the repository Cargo wrapper. The defaults select movie zero and 60
 frames. Use a new OUTPUT directory beneath an existing ignored local artifact directory,
 outside the read-only install. Existing outputs are rejected to preserve evidence.
 The window manifest references decoded RGBA frames and original-layout PCM;
 none of that output belongs in the tracked tree. Serve it on a secure local
 origin for `dev/scripts/test-browser-movie-seek.mjs`.
+
+For a later seek endpoint, set `FRAME_COUNT` to the final frame and `FIRST_FRAME`
+to the first frame to retain. The exporter decodes the required prefix and writes
+only the inclusive selected window. Frame numbers and audio sample positions
+remain in the original movie timeline; output must be outside the install.

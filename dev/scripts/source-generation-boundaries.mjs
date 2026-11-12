@@ -29,13 +29,14 @@ export function sourceGenerationBoundaries(trace, sources) {
     assert(source.blocks.length, 'source has no observed generation quanta');
     let previous;
     const identities = new Set(), admissions = [];
+    const attributionBlock=source.blocks.find(b=>b.connected===true)??source.blocks[0];
     for (const block of source.blocks) {
       assert(!block.error && (block.zero === true || block.left?.length === 128 && block.right?.length === 128),
         'invalid source generation quantum');
       assert(!previous || block.frame === previous.frame + 128 && block.sequence === previous.sequence + 1,
         'discontinuous source generation quantum');
       previous = block;
-      if (block !== source.blocks[0]) continue;
+      if (block !== attributionBlock) continue;
       const markers = stamps.get(`source-generation:${source.id}:${block.frame}`) ?? [];
       assert.equal(markers.length, 1, 'require one source generation marker');
       const parents = handlers.filter(e => e.args?.['node type'] === 'AudioWorkletNode' && contains(e, markers[0]));

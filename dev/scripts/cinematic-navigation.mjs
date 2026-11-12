@@ -17,9 +17,15 @@ export async function navigateCinematic(cdp, page, pause = () => wait(250), atte
 // Freeze application animation after capturing the generation endpoint. Trace
 // draining and PCM readback must not keep decoding/rendering the entire movie.
 export function installCinematicEndpoint() {
-  const schedule = globalThis.requestAnimationFrame;
+  const schedule = globalThis.requestAnimationFrame, held = [];
+  globalThis.__releaseCinematicPhase = () => {
+    globalThis.__cinematicPhaseHeld = false;
+    for (const callback of held.splice(0)) globalThis.requestAnimationFrame(callback);
+  };
   globalThis.requestAnimationFrame = callback => schedule.call(globalThis, time => {
-    if (!globalThis.__cinematicEndpointStopped) callback.call(globalThis, time);
+    if (globalThis.__cinematicEndpointStopped) return;
+    if (globalThis.__cinematicPhaseHeld) held.push(callback);
+    else callback.call(globalThis, time);
   });
 }
 
@@ -55,7 +61,7 @@ export function cinematicProgress(minimumFrame) {
     ? probe.blocks.slice(-200).reduce((sum, block) => sum
       + block.left.reduce((s, value) => s + value * value, 0)
       + block.right.reduce((s, value) => s + value * value, 0), 0) : 0;
-  return {movie, signalEnergy, error:document.getElementById('failure')?.textContent,
+  return {movie, signalEnergy, seekGate:globalThis.__cinematicSeekGate?.status(), error:document.getElementById('failure')?.textContent,
     observer:globalThis.__sourceGeneration?.error || globalThis.__cinematicClockError,
     graph:probe?.error};
 }
@@ -75,6 +81,7 @@ export function observeMovieSchedule(original) {
         source.movieEnd = source.duration === null || source.duration === undefined
           ? block.end : source.movieStart + source.duration;
       }
+      globalThis.__cinematicSeekGate?.consider(this);
     } catch (error) { globalThis.__cinematicClockError = String(error); }
     return result;
   };
@@ -97,6 +104,7 @@ export function armCinematicPlayback(original) {
     try {
       const p=globalThis.__sessionSamples, sources=globalThis.__sourceGeneration;
       await Promise.all([p.arm(this.context),sources.arm(this.context)]);
+      globalThis.__cinematicSeekGate?.beforeResume(this);
       await this.context.resume();
       const deadline=performance.now()+10000;
       while (!p.blocks.length) {
@@ -122,7 +130,7 @@ export function observeMovieSeek(original,movieForId,records) {
    console.timeStamp('cinematic-seek-begin:'+records.length);
   } catch(error) {globalThis.__cinematicClockError=String(error);}
   const result=original.apply(this,args);
-  try {boundary.endContextTime=movieForId(args[0])?.audio?.context?.currentTime;records.push(boundary);console.timeStamp('cinematic-seek-end:'+(records.length-1));}
+  try {boundary.endContextTime=movieForId(args[0])?.audio?.context?.currentTime;records.push(boundary);console.timeStamp('cinematic-seek-end:'+(records.length-1));globalThis.__cinematicSeekGate?.afterSeek(boundary);}
   catch(error) {globalThis.__cinematicClockError=String(error);}
   return result;
  };

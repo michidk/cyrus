@@ -29,6 +29,11 @@ class Presentation(unittest.TestCase):
         self.images[1].putpixel((0, 0), (254, 0, 0, 255))
         self.assertEqual(m.identify(self.surfaces, self.images, self.references)[1]['frames'], [])
 
+    def test_published_endpoint_cannot_admit_the_old_retained_image(self):
+        with self.assertRaisesRegex(ValueError, 'compositor swap'):
+            m.require_endpoint([{'frames': [10], 'published_frame': 1520}], 1520)
+        m.require_endpoint([{'frames': [1519]}, {'frames': [1520]}], 1520)
+
     def test_loading_surface_and_missing_or_reversed_swap_clocks_fail(self):
         with self.assertRaisesRegex(ValueError, 'progressing'):
             m.identify(self.surfaces, {i: self.references[1] for i in range(3)}, self.references)

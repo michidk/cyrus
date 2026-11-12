@@ -112,3 +112,19 @@ test('seek snapshots actual owners before native cancellation without changing d
   const error=Error('native seek failure');assert.throws(()=>observeMovieSeek(()=>{throw error;},()=>({audio}),[])(3,100),e=>e===error);
  } finally {delete globalThis.__sourceGeneration;}
 });
+
+test('a cancellation phase retains the pending animation until explicit release',async()=>{
+ const {installCinematicEndpoint}=await import('./cinematic-navigation.mjs');
+ const native=globalThis.requestAnimationFrame,pending=[];let calls=0;
+ globalThis.requestAnimationFrame=callback=>pending.push(callback);
+ try {
+  installCinematicEndpoint();globalThis.__cinematicPhaseHeld=true;
+  requestAnimationFrame(()=>calls++);pending.shift()(10);
+  assert.equal(calls,0);assert.equal(pending.length,0);
+  __releaseCinematicPhase();assert.equal(pending.length,1);pending.shift()(20);
+  assert.equal(calls,1);
+ } finally {
+  globalThis.requestAnimationFrame=native;
+  delete globalThis.__cinematicPhaseHeld;delete globalThis.__releaseCinematicPhase;
+ }
+});

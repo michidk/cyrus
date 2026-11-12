@@ -33,3 +33,13 @@ test('missing source quantum cannot be replaced by zeros',()=>{
   s.retiredFrame=null;
   assert.throws(()=>sourceGenerationBoundaries(trace.filter(e=>e.args?.['node type']!=='AudioBufferSourceNode'),[s]),/source identity/);
  });
+
+test('a later connected input establishes ownership without relabelling the earlier empty quantum',()=>{
+ const s=source(0);s.blocks[0].connected=false;
+ s.blocks.push({...s.blocks[0],frame:256,sequence:1,connected:true});
+ const later=[...trace,{name:'RealtimeAudioDestinationHandler::Render',pid:1,tid:2,ts:79,dur:25},
+  handler('AudioWorkletNode','tap0',80,20),handler('AudioBufferSourceNode','source0',81,3),stamp(0,256,95)];
+ const b=sourceGenerationBoundaries(later,[s])[0];
+ assert.equal(b.attributed,true);assert.equal(b.firstInputFrame,256);
+ assert.equal(b.firstProcessingFrame,128);assert.equal(b.firstObservedFrame,128);
+});
