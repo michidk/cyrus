@@ -8870,13 +8870,14 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
         player::data::MovementSettings,
         script::{ScriptInputs, ScriptStage},
     };
-    for (normals, slide_range, expected, heading, flags) in [
+    for (normals, slide_range, expected, heading, flags, sliding) in [
         (
             vec![([256, 0, 0], SurfaceClass::Wall)],
             -60000,
             [0, 0, 2019],
             Some(313),
             1,
+            0,
         ),
         (
             vec![
@@ -8887,6 +8888,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             [-3564, 0, 0],
             None,
             1,
+            0,
         ),
         (
             vec![([256, 0, 0], SurfaceClass::Wall)],
@@ -8894,6 +8896,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             [0; 3],
             Some(344),
             2,
+            0,
         ),
         (
             vec![([256, 0, 0], SurfaceClass::Floor)],
@@ -8901,6 +8904,23 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             [-3341, 0, 1893],
             Some(344),
             0,
+            0,
+        ),
+        (
+            vec![([256, 0, 0], SurfaceClass::Wall)],
+            -60000,
+            [0, 0, 2019],
+            Some(344),
+            2,
+            1,
+        ),
+        (
+            vec![([256, 0, 0], SurfaceClass::Wall)],
+            0,
+            [-3341, 0, 1893],
+            Some(344),
+            0,
+            1,
         ),
     ] {
         let mut scripts = cache();
@@ -8932,10 +8952,28 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
                 },
             );
         }
+        let slide_flag = scripts.definition.references.len() as u16;
+        scripts.definition.references.push(Property::SlideFlag);
         steps.insert(
             2,
             Step {
                 next: 3,
+                operation: Operation::Assign {
+                    destination: Place::Property {
+                        object: Object::Me,
+                        reference: slide_flag,
+                    },
+                    formula: Formula {
+                        first: Value::Integer { value: sliding },
+                        rest: vec![],
+                    },
+                },
+            },
+        );
+        steps.insert(
+            3,
+            Step {
+                next: 4,
                 operation: Operation::End { target: 0 },
             },
         );

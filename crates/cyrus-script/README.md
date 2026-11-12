@@ -750,6 +750,13 @@ Verified: `id` reads the receiver's signed runtime identifier word (what `MyId` 
 identifier is installed identity that name lookup and restore validation key on. See preservation's
 [runtime identifier property](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUPPROPS.md#runtime-identifier-property).
 
+Verified: a sliding actor's projected primary wall contact preserves its facing and
+marks a wall hit. Grounded heading adjustment requires sliding, falling, queued
+motion and living state all clear after the motion transition. A sliding actor's
+rollback contact retains its attempted position without adding a wall-hit mark.
+Public response tests cover both branches and residual separation continuation,
+following preservation's [wall-facing rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#grounded-wall-facing-adjustment).
+
 Verified: ordinary primary, residual and destination body queries select vertex-bound RAVC
 spheres instead of initial MPSZ spheres when those records exist, following preservation's
 [player collision-shape contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#actor-collision-shapes).

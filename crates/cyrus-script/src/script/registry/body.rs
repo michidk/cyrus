@@ -241,7 +241,8 @@ impl ScriptWorld {
                 .expect("validated ordinary control");
             let grounded = control.living_state == LivingState::ORDINARY
                 && control.falling_state == JumpMotion::NONE
-                && control.queued_motion == JumpMotion::NONE;
+                && control.queued_motion == JumpMotion::NONE
+                && control.sliding_state == 0;
             match contact::resolve_wall(
                 previous,
                 attempted,
