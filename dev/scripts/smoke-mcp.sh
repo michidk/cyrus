@@ -10,12 +10,11 @@ manifest() { find -L redguard -type f -printf '%p %s %T@\n' | sort | sha256sum; 
 before=$(manifest)
 cargo build -q -p cyrus -p cyrus-mcp
 log=$(mktemp)
-"${CARGO_TARGET_DIR:-target}/debug/cyrus" --headless --scene START --control "${CYRUS_CONTROL_ADDR:-127.0.0.1:7117}" >"$log" 2>&1 &
+timeout 300 "${CARGO_TARGET_DIR:-target}/debug/cyrus" --headless --scene START --control "${CYRUS_CONTROL_ADDR:-127.0.0.1:7117}" >"$log" 2>&1 &
 game=$!
 trap 'kill $game 2>/dev/null || true' EXIT
 for _ in $(seq 1 120); do grep -q 'control: listening' "$log" && break; sleep 1; done
 grep -q 'control: listening' "$log" || { echo "game did not start"; tail -20 "$log"; exit 1; }
-sleep 3
 python3 -I - <<'PY'
 import json, os, subprocess, sys, time
 p = subprocess.Popen([os.path.join(os.environ.get("CARGO_TARGET_DIR", "target"), "debug", "cyrus-mcp")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -29,12 +28,19 @@ def call(n, a={}):
     r = rpc({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":n,"arguments":a}})
     assert "error" not in r, (n, r)
     return json.loads(r["result"]["content"][0]["text"])
-deadline = time.monotonic() + 120
-initial = call("state")
-while initial["state"] != "InGame" and time.monotonic() < deadline:
-    time.sleep(0.25)
-    initial = call("state")
-assert initial["state"] == "InGame", initial
+def wait_state(predicate, description):
+    deadline = time.monotonic() + 120
+    latest = call("state")
+    while not predicate(latest) and time.monotonic() < deadline:
+        time.sleep(0.1)
+        latest = call("state")
+    assert predicate(latest), (description, latest)
+    return latest
+initial = wait_state(
+    lambda s: s["state"] == "InGame" and s["scene"] == "START"
+    and s["scripts"] is not None and s["scripts"]["state"] == "Loaded",
+    "START metadata did not load",
+)
 assert initial["cheats"]["ready"], initial["cheats"]
 original_cheats = call("cheat", {"name":"oracle"})["cheats"]
 oddjob = next(e["value"] for e in original_cheats["entries"] if e["name"] == "oddjob")
@@ -52,15 +58,14 @@ call("load_scene", {"name":"START"})
 assert initial["flycam"]["position"] is None, "headless host created a camera"
 call("set_fidelity", {"area":"player_controller","mode":"modern"})
 call("input", {"key":"KeyW","action":"press"})
-time.sleep(0.5)
-held = call("state")
-# The headless loader has no ready rendered world, so gameplay input stays suppressed.
+held = wait_state(lambda s: s["player_input"]["forward"], "held key was not sampled")
+# Export completion admits key sampling. The headless loader has no rendered
+# world, so sampling must not start the ordinary simulation or move the player.
 assert not held["scene_ready"], held
-assert not held["player_input"]["forward"], held
+assert held["scripts"]["ordinary_updates"] == 0, held
 call("input", {"key":"KeyW","action":"release"})
-time.sleep(0.1)
-final = call("state")
-assert not final["player_input"]["forward"], final
+final = wait_state(lambda s: not s["player_input"]["forward"], "released key remained held")
+assert final["scripts"]["ordinary_updates"] == 0, final
 assert initial["player"]["position"] == final["player"]["position"], "input enabled unsupported movement"
 assert call("set_fidelity", {"area":"camera","mode":"modern"})["camera"] == "modern"
 call("quit")
