@@ -1381,6 +1381,16 @@ Use a secure origin or a loopback origin for AudioWorklet support. Its negative 
 `node dev/scripts/test-browser-sound-reset.mjs`. These checks do not establish
 original output latency or physical-device parity.
 
+The sample graph observer records setup failures in `__sessionSamples.error`
+and leaves production buffer starts intact. An observer error rejects the capture;
+it does not permit substituting submitted buffers for actual output. Run
+`node --test dev/scripts/test-session-sample-graph.mjs` for missing-worklet,
+synchronous/asynchronous setup and production-start failure controls.
+`node dev/scripts/test-browser-sample-graph.mjs CDP_URL SECURE_OR_LOOPBACK_PAGE`
+checks a generated tone against actual render quanta, then removes the observer's
+worklet API and requires the real source's playback-end acknowledgement. It owns
+and closes a disposable browser context; it does not need the install.
+
 
 ### Rustle continuity before timing or gain comparison
 
