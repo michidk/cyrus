@@ -7,6 +7,10 @@ pub fn separate_sound_world_at_generation(
     shells: bool,
     generation: u64,
 ) -> cyrus_script::script::ScriptWorld {
+    cyrus_script::script::ScriptWorld::prepare(&separate_sound_scripts(shells), generation).unwrap()
+}
+
+pub fn separate_sound_scripts(shells: bool) -> cyrus_assets::script::Scripts {
     use cyrus_assets::script::{Actor, Scripts};
     use cyrus_soup::program::{
         Call, CallKind, Flag, Formula, Function, Object, Operation, Place, Program, Step, Value,
@@ -175,5 +179,5 @@ pub fn separate_sound_world_at_generation(
         }
     }
     scripts.content_id = scripts.content_identity().unwrap();
-    cyrus_script::script::ScriptWorld::prepare(&scripts, generation).unwrap()
+    scripts
 }

@@ -3687,7 +3687,7 @@ impl ScriptActors {
             // The original's world teardown clears every dialogue record, so a line active at the
             // switch must not keep a speaker from the released world.
             if let Some(dialogue) = self.globals.dialogue.as_mut() {
-                dialogue.reset_active_lines();
+                dialogue.clear_world_lines();
             }
             if !self.discard_current_on_release {
                 self.retained_flags = Some(world.snapshot_flags());

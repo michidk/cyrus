@@ -199,6 +199,25 @@ fn session_state_carries_across_world_loads_until_new_game() {
     app.insert_resource(prepared());
     app.update();
     assert!(!dialogue_line(&mut app));
+    let dialogue = app
+        .world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .globals_mut()
+        .dialogue_mut()
+        .unwrap()
+        .snapshot();
+    let dialogue = serde_json::to_value(dialogue).unwrap();
+    for record in dialogue["records"].as_array().unwrap() {
+        assert_eq!(record["active"], false);
+        assert_eq!(record["text"], "");
+        assert!(
+            record["sample"].is_null(),
+            "world teardown retained a sample in an inactive dialogue record: {record}"
+        );
+    }
     assert_eq!(health(&app), [37, 37]);
     assert_eq!(flag(&app), changed_flag);
     // Both player actors are allocated afresh with the burning-torch counter at zero.

@@ -816,3 +816,10 @@ request version information with F1 and credits with F10. The information screen
 retain the live player. F1, book shortcuts and F9 require `final_version`.
 Desktop and browser hosts share F9 keyboard eligibility, including console,
 reader, inspection and pending-transition gates. F11 belongs to the debugger.
+
+Verified: scene teardown clears all shared dialogue records and remembered sample
+handles, including inactive records initialized with slot zero, before the next
+world runs. Presentation traversal resets while the skip-input latch is retained.
+This prevents a later skip edge from stopping an unrelated replacement voice.
+Periodic maintenance retains its separate active-record cleanup contract. See
+preservation's [world teardown rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).

@@ -464,3 +464,16 @@ Pending commands remain unsupported by aggregate audio checkpoints.
 [LOOP_EFFECT] [SCENE] [EMITTER]` drives installed animation emitters through the
 opt-in browser capture adapter, real bank reads, remembered stops and public
 session replacement. It verifies actual graph PCM and executed browser provenance.
+
+`cargo run -p cyrus-audio --example speech_teardown -- INSTALL LABEL OUTPUT`
+loads one explicit installed RTX voice into a controlled script scene. It uses
+`ScriptPlugin` world release/replacement, publishes a logical subtitle, and checks
+that a subsequent skip edge cannot stop a replacement raw voice through an
+inactive record. Run it in an independent paced runtime with host-mounted config;
+`native-speech-teardown.py CONTAINER OUTPUT --binary EXECUTABLE` drives six bounded
+stages and records actual stereo mixer PCM plus logical/sample ownership. Use a
+fresh output directory for each run; prior stage receipts reject. The
+optional example argument `--stale-record-control` restores the old inactive-slot
+state through the public snapshot interface and must fail the skip-continuity PCM
+stage. Output is local game data and must remain untracked. This isolated scene
+check does not establish physical-speaker parity or full story-dialogue acceptance.
