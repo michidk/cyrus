@@ -62,13 +62,13 @@ test('production start failures retain their exception and are not retried', () 
   assert.equal(p.scope.__sessionSamples.error, null);
 });
 
-function processor() {
+function processor(options) {
   let Processor;
   const scope = {AudioWorkletProcessor: class { constructor() { this.port = {postMessage: value => this.messages.push(value)}; this.messages = []; } },
-    registerProcessor: (_, value) => { Processor = value; }, currentFrame: 0, Float32Array};
+    registerProcessor: (_, value) => { Processor = value; }, currentFrame: 0, console: {timeStamp() {}}, Float32Array};
   const body = script.match(/registerProcessor\('session-sample-tap',[\s\S]*?\n    \}\);/)[0];
   vm.runInNewContext(body, scope);
-  const node = new Processor();
+  const node = new Processor(options);
   const render = (frame, reported = frame, recording = 1, alter = () => {}) => {
     scope.currentFrame = reported;
     const input = [new Float32Array(128), new Float32Array(128)];
@@ -234,4 +234,39 @@ test('immediate command clocks cannot admit a source consumption model', async (
   // Actual graph export remains governed by exact quantum continuity, independently
   // of whether a command-only reconstruction has sufficient source attribution.
   assert.equal(probe.error, null);
+});
+
+test('optional clock output supplies the exact generated sample and sequence lanes', () => {
+  const {node} = processor();
+  const outputs = Array.from({length:2}, () => [new Float32Array(128),new Float32Array(128)]);
+  node.process([[new Float32Array(128),new Float32Array(128)]], outputs, {
+    sampleFrame:Float32Array.from({length:128},(_,i)=>128+i),
+    coarseFrame:Float32Array.of(128),recording:Float32Array.of(1),
+  });
+  assert.deepEqual(Array.from(outputs[1][0]),Array.from({length:128},(_,i)=>128+i));
+  assert(outputs[1][1].every(value=>value===0));
+  assert(outputs[0].every(channel=>channel.every(value=>value===0)), 'diagnostic output must remain silent');
+});
+
+test('native retirement is acknowledged at the generated quantum, independent of a stale global clock',()=>{
+  const {node,render}=processor();
+  node.port.onmessage({data:{retire:7}});
+  const block=render(256,128);
+  assert.equal(block.frame,256);
+  assert.deepEqual(Array.from(block.retirements),[7]);
+  assert.equal(render(384,128).retirements.length,0);
+});
+
+test('ordered clock output uses exact automated sample positions without copying audio or worklet globals',()=>{
+ const {node}=processor({processorOptions:{clockOnly:true,startFrame:0}});
+ const input=[new Float32Array(128).fill(.25),new Float32Array(128).fill(.5)];
+ const outputs=[[new Float32Array(128),new Float32Array(128)],[new Float32Array(128),new Float32Array(128)]];
+ const parameters={sampleFrame:Float32Array.from({length:128},(_,i)=>128+i),coarseFrame:Float32Array.of(128),recording:Float32Array.of(1)};
+ node.process([input],outputs,parameters);
+ assert.deepEqual(Array.from(outputs[1][0]),Array.from({length:128},(_,i)=>128+i));
+ assert(outputs[1][1].every(value=>value===1));
+ assert(outputs[0].every(channel=>channel.every(value=>value===0)));
+ assert.equal(node.messages.length,0,'clock generator cannot impersonate mixed PCM');
+ parameters.sampleFrame[10]++;
+ node.process([input],outputs,parameters);assert.match(node.messages[0].error,/invalid ordered/);
 });

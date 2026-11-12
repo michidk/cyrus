@@ -1,0 +1,137 @@
+import assert from 'node:assert/strict';
+import {setTimeout as wait} from 'node:timers/promises';
+
+// Runtime recovery starts HTTP and Chrome independently. A successful CDP
+// command can still describe a failed network navigation; inspect errorText.
+export async function navigateCinematic(cdp, page, pause = () => wait(250), attempts = 80) {
+  let error;
+  for (let i = 0; i < attempts; i++) {
+    const result = await cdp.call('Page.navigate', {url:page});
+    if (!result.errorText) return result;
+    error = result.errorText;
+    await pause();
+  }
+  assert.fail(`cinematic HTTP navigation unavailable: ${error}`);
+}
+
+// Freeze application animation after capturing the generation endpoint. Trace
+// draining and PCM readback must not keep decoding/rendering the entire movie.
+export function installCinematicEndpoint() {
+  const schedule = globalThis.requestAnimationFrame, held = [];
+  globalThis.__releaseCinematicPhase = () => {
+    globalThis.__cinematicPhaseHeld = false;
+    for (const callback of held.splice(0)) globalThis.requestAnimationFrame(callback);
+  };
+  globalThis.requestAnimationFrame = callback => schedule.call(globalThis, time => {
+    if (globalThis.__cinematicEndpointStopped) return;
+    if (globalThis.__cinematicPhaseHeld) held.push(callback);
+    else callback.call(globalThis, time);
+  });
+}
+
+// Wrap the module's real exported movieTime binding once, at movie creation.
+// Observe its returned clock, not a guessed clamp of a nested audio getter.
+export function observeMovieTime(original, movieForId, records) {
+  return function(...args) {
+    const index = records.length;
+    try { console.timeStamp('movie-time-begin:' + index); }
+    catch (error) { globalThis.__cinematicClockError = String(error); }
+    const value = original.apply(this, args);
+    try {
+      const movie = movieForId(args[0]);
+      records.push({value, id:args[0], videoEnd:movie.videoEnd,
+        position:movie.position, origin:movie.origin,
+        packetPosition:movie.audio?.position, packetOrigin:movie.audio?.origin,
+        audioContextTime:movie.audio?.context?.currentTime,
+        paused:movie.audio?.paused});
+      console.timeStamp('movie-time-end:' + index);
+    } catch (error) { globalThis.__cinematicClockError = String(error); }
+    return value;
+  };
+}
+
+// This function is injected as parsed JavaScript, avoiding separately edited
+// string fragments whose local declarations can collide after a rig change.
+export function cinematicProgress(minimumFrame) {
+  const picker = document.getElementById('install-picker');
+  if (picker && !picker.dataset.sent) {picker.dataset.sent = 1;picker.requestSubmit();}
+  const movie = globalThis.__cyrusMenu?.movie;
+  const probe = globalThis.__sessionSamples;
+  const signalEnergy = movie?.frame >= minimumFrame && probe
+    ? probe.blocks.slice(-200).reduce((sum, block) => sum
+      + block.left.reduce((s, value) => s + value * value, 0)
+      + block.right.reduce((s, value) => s + value * value, 0), 0) : 0;
+  return {movie, signalEnergy, seekGate:globalThis.__cinematicSeekGate?.status(), error:document.getElementById('failure')?.textContent,
+    observer:globalThis.__sourceGeneration?.error || globalThis.__cinematicClockError,
+    graph:probe?.error};
+}
+
+// Attach authored packet positions to the observed source, independently of its
+// later native first-processing boundary. Never promote a schedule call to PCM.
+export function observeMovieSchedule(original) {
+  return function(block, ...args) {
+    let probe, first;
+    try { probe = globalThis.__sourceGeneration; first = probe?.sources.length; }
+    catch (error) { globalThis.__cinematicClockError = String(error); }
+    const result = original.call(this, block, ...args);
+    try {
+      if (probe && first !== undefined) for (const source of probe.sources.slice(first)) {
+        source.movieStart = block.start + source.offset;
+        source.videoEnd = this.videoEnd;
+        source.movieEnd = source.duration === null || source.duration === undefined
+          ? block.end : source.movieStart + source.duration;
+      }
+      globalThis.__cinematicSeekGate?.consider(this);
+    } catch (error) { globalThis.__cinematicClockError = String(error); }
+    return result;
+  };
+}
+
+// The returned video clock must not hide an audio cursor beyond decoded video.
+// Compare integer output-sample positions rather than fitting a wall-time delay.
+export function requireMovieHorizon(reads, rate) {
+  for (const read of reads) if (read.packetPosition !== undefined) {
+    if (Math.round(read.packetPosition * rate) > Math.round(read.videoEnd * rate)) {
+      throw Error('movie audio consumed beyond decoded video');
+    }
+  }
+}
+
+// Only the diagnostic launch waits here, before production establishes its origin.
+// A failed observer records rejection and still invokes the real play exactly once.
+export function armCinematicPlayback(original) {
+  return async function(...args) {
+    try {
+      const p=globalThis.__sessionSamples, sources=globalThis.__sourceGeneration;
+      await Promise.all([p.arm(this.context),sources.arm(this.context)]);
+      globalThis.__cinematicSeekGate?.beforeResume(this);
+      await this.context.resume();
+      const deadline=performance.now()+10000;
+      while (!p.blocks.length) {
+        if(p.error||sources.error) throw Error(p.error||sources.error);
+        if(performance.now()>=deadline) throw Error('cinematic generation arming deadline');
+        await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      if (!p.playbackArmed) {console.timeStamp('cinematic-playback-armed');p.playbackArmed=true;}
+    } catch(error) {globalThis.__cinematicClockError=String(error);}
+    return original.apply(this,args);
+  };
+}
+
+// Snapshot the actual owners at the public seek dispatch, not a sampled UI frame.
+export function observeMovieSeek(original,movieForId,records) {
+ return function(...args) {
+  let boundary;
+  try {
+   const audio=movieForId(args[0])?.audio;
+   boundary={target:args[1],contextTime:audio?.context?.currentTime,
+    sourceCount:globalThis.__sourceGeneration.sources.length,
+    active:audio?.sources.map(source=>globalThis.__sourceGeneration.idFor(source))??[]};
+   console.timeStamp('cinematic-seek-begin:'+records.length);
+  } catch(error) {globalThis.__cinematicClockError=String(error);}
+  const result=original.apply(this,args);
+  try {boundary.endContextTime=movieForId(args[0])?.audio?.context?.currentTime;records.push(boundary);console.timeStamp('cinematic-seek-end:'+(records.length-1));globalThis.__cinematicSeekGate?.afterSeek(boundary);}
+  catch(error) {globalThis.__cinematicClockError=String(error);}
+  return result;
+ };
+}

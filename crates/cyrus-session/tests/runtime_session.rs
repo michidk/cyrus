@@ -228,8 +228,8 @@ impl cyrus_game::cheats::CheatStore for CheatStore {
 #[test]
 fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, false, false, false)?;
-        exercise_runtime_session(true, from_menu, false, false, false)?;
+        exercise_runtime_session(false, from_menu, false, false, false, MusicAtSave::Paused)?;
+        exercise_runtime_session(true, from_menu, false, false, false, MusicAtSave::Paused)?;
     }
     Ok(())
 }
@@ -237,23 +237,23 @@ fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Resu
 #[test]
 fn asynchronous_load_waits_for_assets_and_preserves_live_state_on_rejection() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, true, false, false)?;
-        exercise_runtime_session(true, from_menu, true, false, false)?;
+        exercise_runtime_session(false, from_menu, true, false, false, MusicAtSave::Paused)?;
+        exercise_runtime_session(true, from_menu, true, false, false, MusicAtSave::Paused)?;
     }
     Ok(())
 }
 
 #[test]
 fn environmental_effect_sources_survive_session_capture_and_load() -> Result<()> {
-    exercise_runtime_session(false, false, false, true, false)?;
-    exercise_runtime_session(false, false, true, true, false)
+    exercise_runtime_session(false, false, false, true, false, MusicAtSave::Paused)?;
+    exercise_runtime_session(false, false, true, true, false, MusicAtSave::Paused)
 }
 
 #[test]
 fn saved_game_load_clears_samples_and_keeps_the_live_cd_transport() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, true, false, true)?;
-        exercise_runtime_session(true, from_menu, true, false, true)?;
+        exercise_runtime_session(false, from_menu, true, false, true, MusicAtSave::Paused)?;
+        exercise_runtime_session(true, from_menu, true, false, true, MusicAtSave::Paused)?;
     }
     Ok(())
 }
@@ -273,12 +273,31 @@ fn check_restored_listener(app: &mut App) {
     );
 }
 
+#[derive(Clone, Copy)]
+enum MusicAtSave {
+    Paused,
+    PlayingThenMuted,
+}
+
+#[test]
+fn live_music_mute_applies_at_session_publication_before_any_update() -> Result<()> {
+    exercise_runtime_session(
+        false,
+        true,
+        false,
+        false,
+        false,
+        MusicAtSave::PlayingThenMuted,
+    )
+}
+
 fn exercise_runtime_session(
     with_camera: bool,
     from_menu: bool,
     via_load: bool,
     with_effects: bool,
     saved_game: bool,
+    music_at_save: MusicAtSave,
 ) -> Result<()> {
     let mut scripts = scripts(vec![Operation::End { target: 0 }]);
     let mut player_script = scripts.actors["ACTOR"].clone();
@@ -502,10 +521,10 @@ fn exercise_runtime_session(
             .into(),
     };
     let transport = MusicTransport::new(music_source.clone())?;
-    let settings = transport
+    let mut settings = transport
         .playback_settings()
-        .with_volume(Volume::Linear(1.0))
-        .paused();
+        .with_volume(Volume::Linear(1.0));
+    settings.paused = matches!(music_at_save, MusicAtSave::Paused);
     let mut original_music = transport.decoder();
     for _ in 0..3 {
         original_music.next().unwrap();
@@ -1048,6 +1067,11 @@ fn exercise_runtime_session(
         assert!(committed.validate_publication(app.world()).is_err());
         *app.world_mut()
             .resource_mut::<NextState<cyrus_game::AppState>>() = NextState::Unchanged;
+    }
+    if matches!(music_at_save, MusicAtSave::PlayingThenMuted) {
+        app.world_mut()
+            .resource_mut::<cyrus_assets::sound::SoundSettings>()
+            .redbook_volume = 0;
     }
     app.world_mut()
         .resource_mut::<cyrus_session::SessionBoundary>()

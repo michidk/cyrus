@@ -7,9 +7,18 @@ The WebAudio backend rebases expired buffer start times to the current audio
 clock plus its existing 25 ms preparation margin. Otherwise buffers submitted
 after main-thread delays start together and overlap. Future queued timestamps
 remain unchanged. This prevents catch-up overlap; it cannot eliminate gaps while
-the main thread is unable to produce audio. Native backends are unchanged.
+the main thread is unable to produce audio. Normal native playback follows upstream scheduling.
 
 The audio package's `browser_scheduling` integration test runs the clock contract
 on native CI. Browser verification must also exercise actual expired
-AudioBufferSourceNode starts and the production effects path. Remove this copy
-when an upstream release provides equivalent scheduling recovery.
+AudioBufferSourceNode starts and the production effects path. Replace the browser patch when an upstream release provides equivalent scheduling
+recovery; port the opt-in diagnostic adapter before removing this vendor copy.
+
+Linux acceptance runs may set `CYRUS_MIXER_CAPTURE_DIR` to an empty host-mounted
+output directory. The ALSA owner then copies completed output-callback blocks
+before device submission into a bounded asynchronous delivery queue. Receipts
+retain monotonic generation time, sequence, sample format and sample prefix.
+The public diagnostic cursor refers to generation rather than filesystem progress.
+Overflow, unsupported formats, multiple streams and writer failure invalidate the
+cursor; diagnostics do not retry, pace or modify playback. With the variable
+absent this path does not allocate or write capture data.

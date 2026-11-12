@@ -33,7 +33,7 @@ def main():
     parser.add_argument('install', type=Path)
     parser.add_argument('fixture', type=Path)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--driver', choices=['speech', 'music'], default='speech')
+    parser.add_argument('--driver', choices=['speech', 'music', 'ambient'], default='speech')
     parser.add_argument('--cdp-port', type=int, default=19361)
     parser.add_argument('--http-port', type=int, default=19362)
     args = parser.parse_args()
@@ -80,9 +80,19 @@ def main():
                     f'TCP-LISTEN:{args.http_port},bind=127.0.0.1,reuseaddr,fork',
                     f'TCP:host.docker.internal:{args.http_port}'], check=True)
                 base = f'http://127.0.0.1:{args.http_port}/'
-                subprocess.run(['node', str(ROOT / ('dev/scripts/browser-authored-speech.mjs' if args.driver == 'speech' else 'dev/scripts/browser-music-world-entry.mjs')),
-                    f'http://127.0.0.1:{args.cdp_port}', base, base + 'original/',
-                    str(args.fixture.resolve()), str(args.output.resolve())], check=True, timeout=900, cwd=ROOT)
+                if args.driver == 'ambient':
+                    fixture = json.loads(args.fixture.read_text())
+                    command = ['node', str(ROOT / 'dev/scripts/test-ambient-admission-browser.mjs'),
+                        f'http://127.0.0.1:{args.cdp_port}', base, base + 'original/',
+                        str(args.output.resolve()), fixture['emitter'], str(fixture['effect']),
+                        fixture.get('scene', 'ISLAND'), fixture.get('destination', 'START'),
+                        fixture['source_fixture'], str(fixture['emitter_index']), fixture.get('phase', 'bank'), json.dumps(fixture.get('listener_offset', [0, 0, 0]))]
+                else:
+                    command = ['node', str(ROOT / ('dev/scripts/browser-authored-speech.mjs'
+                        if args.driver == 'speech' else 'dev/scripts/browser-music-world-entry.mjs')),
+                        f'http://127.0.0.1:{args.cdp_port}', base, base + 'original/',
+                        str(args.fixture.resolve()), str(args.output.resolve())]
+                subprocess.run(command, check=True, timeout=900, cwd=ROOT)
             finally:
                 if started:
                     subprocess.run(['docker', 'rm', '-f', name], check=False)

@@ -121,6 +121,10 @@ skip points and timed subtitle definitions, and exposes progress through menu
 control state. Browser Movies reads installed compressed packets through the read-only install
 service. cyrus-media decodes video and first-track PCM incrementally. A bounded
 Web Audio adapter supplies the playback clock and pauses it while buffering.
+Scheduled source durations stop at the decoded-video boundary, including when a
+single PCM packet spans several video frames. Extending that boundary schedules
+only the new span and retains the unused packet tail. A delayed display update
+cannot advance audio into video that has not decoded.
 Packet starts and late-block offsets share the playback origin, so graph setup
 work cannot shift continuation audio relative to the movie clock.
 `node dev/scripts/test-movie-stream.mjs` tests this through the public movie API.

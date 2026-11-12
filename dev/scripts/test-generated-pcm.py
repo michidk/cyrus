@@ -79,6 +79,42 @@ class Generated(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'discontinuity'):
                 generated.extract(root, cursor(1), cursor(3), root/'bad.wav')
 
+    def test_native_float_generation_retains_exact_raw_hash_and_delivery_independence(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            rows = [dict(block(i), format='f32le') for i in range(1, 4)]
+            (root/'generated.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in rows))
+            raw = struct.pack('<ff', .5, -.5)*1440
+            (root/'generated.raw').write_bytes(raw)
+            first, last = dict(cursor(1), format='f32le'), dict(cursor(3), format='f32le')
+            result = generated.extract(root, first, last, root/'native.wav')
+            self.assertEqual(result['generated_raw_sha256'], hashlib.sha256(raw[480*8:]).hexdigest())
+            self.assertEqual(result['frames'], 960)
+            self.assertEqual(result['wav_conversion'], 'f32le_to_s16le_preview')
+            with wave.open(str(root/'native.wav')) as source:
+                self.assertEqual(source.getnframes(), 960)
+            # A changed format or a genuine producer stall must still reject.
+            rows[1]['format'] = 's16le'
+            with self.assertRaises(ValueError):
+                generated.validate(rows, first, last)
+            rows[1]['format'] = 'f32le'
+            rows[1]['monotonic_ns'] += 900000000
+            with self.assertRaises(ValueError):
+                generated.validate(rows, first, last)
+
+    def test_rejected_generation_report_identifies_callback_stall_not_delivery(self):
+        rows = [dict(block(i), delivery_monotonic_ns=i*10000000+900000000) for i in range(1,4)]
+        report = generated.pacing_report(rows, cursor(1), cursor(3))
+        self.assertFalse(report['acceptance'])
+        self.assertEqual(report['discontinuities'], [])
+        rows[2]['monotonic_ns'] += 900000000
+        report = generated.pacing_report(rows, cursor(1), dict(cursor(3), monotonic_ns=930000000))
+        self.assertEqual(report['discontinuities'][0]['sequence'], 3)
+        self.assertAlmostEqual(report['largest_difference']['difference_seconds'], .9)
+        with self.assertRaisesRegex(ValueError, 'discontinuity'):
+            generated.validate(rows, cursor(1), dict(cursor(3), monotonic_ns=930000000))
+
 
 if __name__ == '__main__':
     unittest.main()

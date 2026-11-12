@@ -8,6 +8,7 @@ class PacketAudio {
         this.sources = [];
         this.position = 0;
         this.bufferEnd = 0;
+        this.videoEnd = 0;
         this.paused = true;
         this.seeking = false;
         this.complete = false;
@@ -15,7 +16,8 @@ class PacketAudio {
     get currentTime() {
         if (this.paused) return this.position;
         const time = this.position + this.context.currentTime - this.origin;
-        if (time >= this.bufferEnd) { this.pause(this.bufferEnd); return this.position; }
+        const end = Math.min(this.bufferEnd, this.videoEnd);
+        if (time >= end) { this.pause(end); return this.position; }
         return time;
     }
     set currentTime(seconds) {
@@ -54,20 +56,31 @@ class PacketAudio {
         this.blocks.push(block);
         if (!this.paused) this.schedule(block);
     }
-    schedule(block) {
+    setVideoEnd(end) {
+        // Settle exhaustion against the old horizon before extending it.
+        // A PCM packet may contain much more audio than decoded video covers.
+        if (!this.paused) void this.currentTime;
+        const previous = this.videoEnd;
+        this.videoEnd = end;
+        if (!this.paused) for (const block of this.blocks) this.schedule(block, previous);
+    }
+    schedule(block, start = block.start) {
+        const position = this.currentTime;
+        const from = Math.max(position, block.start, start);
+        const end = Math.min(block.end, this.videoEnd);
+        if (end <= from) return;
         const source = this.context.createBufferSource();
         source.buffer = block.buffer;
         source.connect(this.context.destination);
-        const position = this.currentTime;
-        if (block.end <= position) { source.disconnect(); return; }
-        const offset = Math.max(0, position - block.start);
+        const offset = from - block.start;
         // Map both the start and offset through the established playback origin.
         // A second currentTime read can advance and delay this block independently.
-        source.start(this.origin + Math.max(block.start, position) - this.position, offset);
+        source.start(this.origin + from - this.position, offset, end - from);
         this.sources.push(source);
         source.onended = () => {
             this.sources = this.sources.filter(active => active !== source);
-            this.blocks = this.blocks.filter(pending => pending !== block);
+            // A horizon-limited source does not own the rest of its PCM packet.
+            if (end === block.end) this.blocks = this.blocks.filter(pending => pending !== block);
             source.disconnect();
         };
     }
@@ -179,6 +192,7 @@ export function movieVideoEnd(id, end) {
         movie.position = movie.videoEnd;
         movie.origin = performance.now();
     }
+    if (movie.audio instanceof PacketAudio) movie.audio.setVideoEnd(end);
     movie.videoEnd = end;
     resume(movie);
 }
@@ -206,6 +220,7 @@ export function seekMovie(id, seconds) {
     if (movie.audio) {
         movie.audio.pause();
         movie.audio.currentTime = seconds;
+        if (movie.audio instanceof PacketAudio) movie.audio.setVideoEnd(seconds);
     }
 }
 export function closeMovie(id) {

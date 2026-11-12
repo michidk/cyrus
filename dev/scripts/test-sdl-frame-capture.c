@@ -1,4 +1,5 @@
 // Synthetic public SDL caller: mutate clock and pixels immediately after present.
+#define _POSIX_C_SOURCE 200809L
 #include <SDL.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -31,12 +32,25 @@ int main(int argc, char **argv) {
     SDL_Surface *surface = SDL_GetWindowSurface(window);
     if (!surface) return 2;
     uint32_t clock = 123;
+    uint8_t stale_health = 100, health = 90;
+    int16_t stale_animation[2] = {7, -1}, animation[2] = {11, -1};
+    uintptr_t state[2] = {(uintptr_t)&stale_health, (uintptr_t)&stale_animation};
+    int indirect = !strncmp(argv[2], "indirect", 8);
     char path[4096];
     snprintf(path, sizeof(path), "%s/request", getenv("CYRUS_FRAME_CAPTURE_DIR"));
     FILE *request = fopen(path, "w");
     if (!request) return 3;
     fprintf(request, "%s\nclock %llu 4\n", argv[1],
-        argv[2][0] != 'i' ? (unsigned long long)(uintptr_t)&clock : 1ULL);
+        strcmp(argv[2], "invalid") ? (unsigned long long)(uintptr_t)&clock : 1ULL);
+    if (indirect) {
+        fprintf(request, "owner %llu %zu\n", (unsigned long long)(uintptr_t)&state, sizeof(state));
+        fprintf(request, "@pointer health owner 0 %zu 0 1\n", sizeof(uintptr_t));
+        fprintf(request, "@pointer animation owner %zu 4 %llu 4\n", sizeof(uintptr_t),
+            (unsigned long long)(uintptr_t)&animation - 256ULL);
+        // Ownership changes after request creation; following a polled old address is wrong.
+        state[0] = !strcmp(argv[2], "indirect-null") ? 0 : (uintptr_t)&health;
+        state[1] = 256;
+    }
     int scheduled = !strncmp(argv[2], "scheduled", 9);
     if (scheduled) {
         struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
@@ -59,6 +73,8 @@ int main(int argc, char **argv) {
         SDL_UpdateWindowSurface(window);
     }
     clock = 999;
+    health = 1; animation[0] = 99;
+    state[0] = (uintptr_t)&stale_health; state[1] = (uintptr_t)&stale_animation;
     SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0, 0, 255));
     snprintf(path, sizeof(path), "%s/result.json", argv[1]);
     for (int i = 0; i < 500 && access(path, F_OK) != 0; i++) SDL_Delay(10);

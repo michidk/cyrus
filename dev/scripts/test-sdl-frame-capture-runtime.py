@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as temporary:
              'CYRUS_FRAME_CAPTURE_DIR': str(absent)})
     assert control.returncode == 5, control.returncode
     assert not (absent_output / 'result.json').exists()
-    modes = ['valid', 'rectangles', 'invalid', 'failed', 'scheduled', 'scheduled-skipped', 'scheduled-expired']
+    modes = ['valid', 'rectangles', 'invalid', 'failed', 'scheduled', 'scheduled-skipped', 'scheduled-expired', 'indirect', 'indirect-null']
     if mixer:
         modes.append('generated')
     for mode in modes:
@@ -40,8 +40,11 @@ with tempfile.TemporaryDirectory() as temporary:
         result = json.loads((output / 'result.json').read_text())
         assert result['owner'] == 'sdl_surface_present'
         assert result['sequence'] > 0
-        if mode not in ('invalid', 'failed', 'scheduled-skipped', 'scheduled-expired'):
+        if mode not in ('invalid', 'failed', 'scheduled-skipped', 'scheduled-expired', 'indirect-null'):
             assert result['ok'] is True, result
+            if mode == 'indirect':
+                assert result['fields']['health'] == '5a', result
+                assert result['fields']['animation'] == '0b00ffff', result
             if mode == 'generated':
                 assert result['pcm_generation']['frames'] > 0
                 assert result['pcm_generation']['rate'] == 48000
@@ -56,6 +59,6 @@ with tempfile.TemporaryDirectory() as temporary:
                 assert result['error'] == 'scheduled presentation clock skipped'
             if mode == 'scheduled-expired':
                 assert result['error'] == 'scheduled presentation deadline expired'
-            if mode in ('invalid', 'scheduled-skipped', 'scheduled-expired'):
+            if mode in ('invalid', 'scheduled-skipped', 'scheduled-expired', 'indirect-null'):
                 assert not (output / 'frame.bmp').exists()
 print('SDL presentation: frozen red pixels/clock survive subsequent blue/999 state; invalid binding rejected')

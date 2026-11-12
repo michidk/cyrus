@@ -18,7 +18,15 @@
 #define FIELD_LIMIT 16
 #define BYTE_LIMIT 4096
 #define PATH_LIMIT 4096
-struct field { char name[64]; uint64_t address; size_t size; unsigned char bytes[BYTE_LIMIT]; };
+struct field {
+    char name[64];
+    uint64_t address;
+    size_t size;
+    int indirect;
+    size_t source, offset, width;
+    int64_t addend;
+    unsigned char bytes[BYTE_LIMIT];
+};
 struct capture {
     char output[PATH_LIMIT];
     char error[160];
@@ -85,6 +93,20 @@ static int read_fields(struct capture *capture, int verify) {
     int result = 0;
     for (size_t i = 0; i < capture->count; i++) {
         struct field *field = &capture->fields[i];
+        if (field->indirect) {
+            const unsigned char *source = capture->fields[field->source].bytes + field->offset;
+            uint64_t pointer = 0;
+            for (size_t j = 0; j < field->width; j++) pointer |= (uint64_t)source[j] << (8 * j);
+            if (!pointer || pointer > INT64_MAX) { result = -1; break; }
+            if (field->addend < 0) {
+                uint64_t magnitude = (uint64_t)(-(field->addend + 1)) + 1;
+                if (pointer <= magnitude) { result = -1; break; }
+                field->address = pointer - magnitude;
+            } else {
+                if (pointer > INT64_MAX - (uint64_t)field->addend) { result = -1; break; }
+                field->address = pointer + field->addend;
+            }
+        }
         unsigned char bytes[BYTE_LIMIT];
         if (pread(memory, bytes, field->size, (off_t)field->address) != (ssize_t)field->size ||
             (verify && memcmp(bytes, field->bytes, field->size) != 0)) { result = -1; break; }
@@ -134,11 +156,32 @@ static struct capture *freeze_surface(SDL_Window *window) {
         }
         if (capture->count == FIELD_LIMIT) { capture->error[0] = 1; break; }
         struct field *field = &capture->fields[capture->count];
-        unsigned long long address;
         char extra;
-        if (sscanf(line, "%63[a-zA-Z0-9_] %llu %zu %c", field->name, &address, &field->size, &extra) != 3 ||
-            !field->size || field->size > BYTE_LIMIT || address > INT64_MAX) { capture->error[0] = 1; break; }
-        field->address = address;
+        if (!strncmp(line, "@pointer ", 9)) {
+            char source[64];
+            long long addend;
+            if (sscanf(line, "@pointer %63[a-zA-Z0-9_] %63[a-zA-Z0-9_] %zu %zu %lld %zu %c",
+                    field->name, source, &field->offset, &field->width, &addend, &field->size, &extra) != 6 ||
+                    !field->size || field->size > BYTE_LIMIT || (field->width != 4 && field->width != 8)) {
+                capture->error[0] = 1; break;
+            }
+            field->source = capture->count;
+            for (size_t i = 0; i < capture->count; i++)
+                if (!strcmp(source, capture->fields[i].name)) field->source = i;
+            if (field->source == capture->count || field->offset > capture->fields[field->source].size ||
+                    field->width > capture->fields[field->source].size - field->offset) {
+                capture->error[0] = 1; break;
+            }
+            field->addend = addend;
+            field->indirect = 1;
+        } else {
+            unsigned long long address;
+            if (sscanf(line, "%63[a-zA-Z0-9_] %llu %zu %c", field->name, &address, &field->size, &extra) != 3 ||
+                    !field->size || field->size > BYTE_LIMIT || address > INT64_MAX) {
+                capture->error[0] = 1; break;
+            }
+            field->address = address;
+        }
         for (size_t i = 0; i < capture->count; i++)
             if (!strcmp(field->name, capture->fields[i].name)) capture->error[0] = 1;
         capture->count++;

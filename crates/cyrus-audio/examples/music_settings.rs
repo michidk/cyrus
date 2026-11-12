@@ -14,13 +14,19 @@ struct Probe {
     directory: PathBuf,
     phase: Option<u8>,
     report: Option<u8>,
+    muted_publication: bool,
 }
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<_> = std::env::args().collect();
     anyhow::ensure!(
-        args.len() == 4,
-        "usage: music_settings INSTALL TRACK OUTPUT"
+        matches!(args.len(), 4 | 5),
+        "usage: music_settings INSTALL TRACK OUTPUT [--muted-publication]"
+    );
+    let muted_publication = args.get(4).is_some_and(|arg| arg == "--muted-publication");
+    anyhow::ensure!(
+        args.len() == 4 || muted_publication,
+        "unknown publication control"
     );
     let install = GameInstall::locate(Some(args[1].as_ref()))?;
     let track = args[2].parse()?;
@@ -34,9 +40,13 @@ fn main() -> anyhow::Result<()> {
     let mut owner = Music::default();
     owner.track = Some(track);
     let saved = owner.snapshot(&[(&transport, false)])?;
-    let candidate = Music::from_snapshot(saved, Some(transport.source().clone()))?;
+    let mut candidate = Music::from_snapshot(saved, Some(transport.source().clone()))?;
     let directory = PathBuf::from(&args[3]);
     std::fs::create_dir_all(&directory)?;
+    let mut sound_settings = SoundSettings::parse("");
+    if muted_publication {
+        sound_settings.redbook_volume = 0;
+    }
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_millis(10))),
@@ -46,21 +56,34 @@ fn main() -> anyhow::Result<()> {
     ))
     .insert_state(cyrus_game::AppState::InGame)
     .insert_resource(install)
-    .insert_resource(SoundSettings::parse(""))
+    .insert_resource(sound_settings)
     .insert_resource(CurrentScene {
         name: "0".into(),
         world: Some(0),
     })
     .add_plugins(MusicPlugin)
-    .insert_resource(candidate.music)
     .insert_resource(Probe {
-        directory,
+        directory: directory.clone(),
         phase: None,
         report: None,
+        muted_publication,
     })
     .add_systems(PreUpdate, advance)
     .add_systems(Last, report);
+    if muted_publication {
+        // Establish the host preference before the replacement publication boundary.
+        app.update();
+        candidate.enforce_live_pause(app.world());
+    }
     let (transport, settings) = candidate.playback.unwrap();
+    std::fs::write(
+        directory.join("publication.json"),
+        serde_json::json!({
+            "track": candidate.music.track, "paused": settings.paused, "gain": candidate.music.gain
+        })
+        .to_string(),
+    )?;
+    app.insert_resource(candidate.music);
     let handle = app
         .world_mut()
         .resource_mut::<Assets<MusicTransport>>()
@@ -87,6 +110,7 @@ fn advance(
     }
     match phase {
         0 => {}
+        1 if probe.muted_publication => settings.redbook_volume = 64,
         1 => settings.speech = false,
         2 => settings.redbook_volume = 0,
         3 => settings.redbook_volume = 64,

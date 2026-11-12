@@ -214,12 +214,14 @@ impl ScriptWorld {
         };
         let mut current = attempted;
         let mut flags = control.last_collide;
+        let mut admitted_wall = false;
         for body in contacts {
             if body.classification == SurfaceClass::Floor
                 || contact::facing_difference(movement, body.normal).abs() >= 512
             {
                 continue;
             }
+            admitted_wall = true;
             let control = self.actors[index]
                 .control
                 .as_ref()
@@ -289,6 +291,15 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated ordinary control")
             .last_collide = flags;
+        if admitted_wall
+            && self.selected_player_index() == Some(index)
+            && self.selected_wall_contacts.back() != Some(&self.ordinary_updates)
+        {
+            if self.selected_wall_contacts.len() == 64 {
+                self.selected_wall_contacts.pop_front();
+            }
+            self.selected_wall_contacts.push_back(self.ordinary_updates);
+        }
         Ok(())
     }
 

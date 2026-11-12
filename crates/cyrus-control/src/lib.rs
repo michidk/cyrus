@@ -10,6 +10,54 @@ use std::net::{TcpStream, ToSocketAddrs};
 
 pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 
+/// A render extraction to retain without changing ordinary simulation cadence.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FrameBoundary {
+    /// Absolute consumed Q8 nominal ticks in this logical-world generation.
+    Clock { generation: u64, elapsed_scale: u64 },
+    /// First admitted selected-player wall contact strictly after this ordinary update.
+    WallContact { generation: u64, after_update: u64 },
+}
+
+impl FrameBoundary {
+    /// True only at the requested extraction. Missing an update or retiring its owner is an error.
+    pub fn reached(
+        self,
+        generation: u64,
+        scale: u64,
+        update: u64,
+        contact: Option<u64>,
+    ) -> Result<bool, &'static str> {
+        let expected = match self {
+            Self::Clock { generation, .. } | Self::WallContact { generation, .. } => generation,
+        };
+        if generation != expected {
+            return Err("frame boundary world generation changed");
+        }
+        match self {
+            Self::Clock { elapsed_scale, .. } => {
+                if scale > elapsed_scale {
+                    return Err("frame boundary clock skipped");
+                }
+                Ok(scale == elapsed_scale)
+            }
+            Self::WallContact { after_update, .. } => {
+                if update < after_update {
+                    return Err("frame boundary update precedes arm origin");
+                }
+                match contact.filter(|contact| *contact > after_update) {
+                    Some(contact) if contact < update => {
+                        Err("frame boundary contact update missed")
+                    }
+                    Some(contact) => Ok(contact == update),
+                    None => Ok(false),
+                }
+            }
+        }
+    }
+}
+
 /// One input transition relative to the next admitted ordinary update (offset zero).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -116,6 +164,8 @@ pub enum Command {
         path: String,
         #[serde(default)]
         pcm_path: Option<String>,
+        #[serde(default)]
+        boundary: Option<FrameBoundary>,
     },
     Teleport {
         x: f32,
@@ -424,3 +474,31 @@ impl Client {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
+
+#[cfg(test)]
+mod frame_boundary_tests {
+    use super::FrameBoundary;
+    #[test]
+    fn observed_clock_waits_and_rejects_a_skipped_or_retired_boundary() {
+        let target = FrameBoundary::Clock {
+            generation: 7,
+            elapsed_scale: 384,
+        };
+        assert_eq!(target.reached(7, 256, 1, None), Ok(false));
+        assert_eq!(target.reached(7, 384, 2, None), Ok(true));
+        assert!(target.reached(7, 512, 3, None).is_err());
+        assert!(target.reached(8, 384, 2, None).is_err());
+    }
+    #[test]
+    fn contact_retains_the_first_admitted_update_and_rejects_late_acquisition() {
+        let target = FrameBoundary::WallContact {
+            generation: 7,
+            after_update: 10,
+        };
+        assert_eq!(target.reached(7, 256, 10, Some(10)), Ok(false));
+        assert_eq!(target.reached(7, 512, 11, None), Ok(false));
+        assert_eq!(target.reached(7, 768, 12, Some(12)), Ok(true));
+        assert!(target.reached(7, 1024, 13, Some(12)).is_err());
+        assert!(target.reached(7, 128, 9, None).is_err());
+    }
+}

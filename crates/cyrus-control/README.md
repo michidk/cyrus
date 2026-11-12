@@ -189,3 +189,22 @@ The optional PCM path is a stereo signed-16 recorder file. Its delivery-frame
 cursor is latched with the render boundary. It is not a mixer-generation
 timestamp; `exact_pcm_event_mapping` remains false. `render_frame` identifies
 the extraction frame, while `update` identifies the ordinary simulation update.
+
+`capture_gameplay_frame` accepts an optional `boundary`: either
+`{"type":"clock","generation":1,"elapsed_scale":384}` (absolute consumed Q8
+nominal ticks), or `{"type":"wall_contact","generation":1,"after_update":10}`.
+The latter retains the first admitted selected-player primary wall response after
+that ordinary update, including responses which suppress rollback while sliding.
+It does not label floor support or another actor's query as player wall contact.
+The capture waits at render extraction without changing simulation cadence;
+a skipped clock, missed contact update, changed generation or deadline fails.
+Omitting the boundary preserves next-frame capture. PCM delivery cursors remain
+explicitly distinct from mixer generation attribution.
+
+An opt-in Linux mixer tap supplies an additional `pcm_generation` receipt when
+`CYRUS_MIXER_CAPTURE_DIR` names an empty output directory. It contains the last
+completed callback's frame prefix, sequence, monotonic nanoseconds, rate and raw
+sample format. These fields describe generation before audio-device submission,
+independently of the optional monitor delivery cursor. A missing or invalidated
+tap returns null. Producer discontinuities and recorder pacing remain separate
+gates; neither receipt alone establishes device playback or original PCM parity.

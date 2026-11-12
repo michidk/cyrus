@@ -17,6 +17,19 @@ class Capture(unittest.TestCase):
             with self.assertRaises(ValueError):
                 capture.bindings(bad)
 
+    def test_indirect_bindings_follow_only_prior_frozen_fields(self):
+        rows = {'owner': {'address': 16, 'size': 8},
+                'state': {'pointer': {'field': 'owner', 'offset': 0, 'width': 8, 'addend': 0}, 'size': 4}}
+        self.assertIs(capture.bindings(rows), rows)
+        for pointer in ({'field': 'missing', 'offset': 0, 'width': 8, 'addend': 0},
+                        {'field': 'state', 'offset': 0, 'width': 8, 'addend': 0},
+                        {'field': 'owner', 'offset': 1, 'width': 8, 'addend': 0},
+                        {'field': 'owner', 'offset': 0, 'width': 3, 'addend': 0},
+                        {'field': 'owner', 'offset': 0, 'width': True, 'addend': 0},
+                        {'field': 'owner', 'offset': 0, 'width': 8, 'addend': 2**63}):
+            with self.subTest(pointer=pointer), self.assertRaisesRegex(ValueError, 'pointer'):
+                capture.bindings(dict(owner=rows['owner'], state=dict(pointer=pointer, size=4)))
+
     def test_unbounded_deadline_is_rejected_before_request_creation(self):
         for value in (0, -1, float('inf'), float('nan'), True):
             with self.assertRaisesRegex(ValueError, 'deadline'):

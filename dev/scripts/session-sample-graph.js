@@ -4,7 +4,11 @@
   const probe = globalThis.__sessionSamples = { buffers: [], blocks: [], error: null, startFrame: null };
   const original = AudioBufferSourceNode.prototype.start;
   const connect = AudioNode.prototype.connect;
-  let context, tap, ready;
+  let context, tap, ready, clockTap;
+  const pendingRetirements = [];
+  const retirementWaiters = new Map();
+  probe.retirements = {};
+  const accepts = source => !globalThis.__sessionSampleSourceFilter || globalThis.__sessionSampleSourceFilter(source);
   const worklet = URL.createObjectURL(new Blob([`
     registerProcessor('session-sample-tap', class extends AudioWorkletProcessor {
       static get parameterDescriptors() { return [
@@ -12,7 +16,12 @@
         {name: 'coarseFrame', defaultValue: 0, automationRate: 'a-rate'},
         {name: 'recording', defaultValue: 0, automationRate: 'a-rate'},
       ]; }
-      constructor(options) { super(); this.armed = options?.processorOptions?.startFrame ?? 0; }
+      constructor(options) {
+        super(); this.armed = options?.processorOptions?.startFrame ?? 0;
+        this.clockOnly=options?.processorOptions?.clockOnly??false;
+        this.retirements = [];
+        this.port.onmessage = ({data}) => { this.retirements.push(data.retire); };
+      }
       process([input], outputs, parameters) {
         if (parameters.recording[0] !== 1) return true;
         const clock = parameters.sampleFrame;
@@ -29,8 +38,17 @@
         const error = !length || input[1]?.length !== length || clock.length !== length
           || clock.some((value, index) => direction * (Math.round(value) - Math.round(clock[0])) !== index)
           || end !== frame + length - 1 || end >= 2 ** 24;
+        for (const id of this.retirements) console.timeStamp('source-retired:' + id + ':' + frame);
+        // A separate opt-in output carries the validated generation clock to
+        // source-owned diagnostic taps. The destination output stays silent.
+        if (!error && outputs[1] && !this.clockOnly) console.timeStamp('session-generation:' + frame);
+        if (!error && outputs[1]) for (let i = 0; i < length; i++) {
+          outputs[1][0][i] = frame + i;
+          outputs[1][1][i] = this.clockOnly ? (frame-this.armed)/128 : (this.sequence ?? 0);
+        }
+        if(this.clockOnly) {if(error)this.port.postMessage({error:'invalid ordered capture clock'});return true;}
         this.port.postMessage({frame, reportedFrame: currentFrame,
-          sequence: this.sequence ?? 0, error: error ? 'invalid automated sample clock' : null,
+          sequence: this.sequence ?? 0, retirements: this.retirements.splice(0), error: error ? 'invalid automated sample clock' : null,
           clockError: error ? {coarse: parameters.coarseFrame[0], clock: Array.from(clock)} : null,
           left: input[0], right: input[1]});
         this.sequence = (this.sequence ?? 0) + 1;
@@ -38,12 +56,68 @@
       }
     });
   `], {type: 'text/javascript'}));
+  function configureClock(tap) {
+    tap.parameters.get('coarseFrame').setValueAtTime(probe.startFrame, probe.startFrame / context.sampleRate);
+    tap.parameters.get('coarseFrame').linearRampToValueAtTime(2 ** 24, 2 ** 24 / context.sampleRate);
+    tap.parameters.get('sampleFrame').setValueAtTime(0, probe.startFrame / context.sampleRate);
+    // Continuous alternating ramps avoid discontinuous automation endpoints.
+    for (let frame = probe.startFrame, up = true; frame < 2 ** 24; frame += 65536, up = !up) {
+      tap.parameters.get('sampleFrame').linearRampToValueAtTime(up ? 65536 : 0, (frame + 65536) / context.sampleRate);
+    }
+    tap.parameters.get('recording').setValueAtTime(1, probe.startFrame / context.sampleRate);
+  }
+  function initialize(candidate) {
+      if (context && context !== candidate) throw Error('multiple sample stream clocks');
+      context = candidate;
+      if (!context.audioWorklet) throw Error('AudioWorklet unavailable; capture requires a secure origin');
+      if (!ready) ready = context.audioWorklet.addModule(worklet).then(() => {
+        // Arm on a future render boundary after configuring both automation lanes.
+        // This excludes setup, while retaining every quantum in the capture interval.
+        probe.startFrame = Math.ceil((context.currentTime + 0.1) * context.sampleRate / 128) * 128;
+        tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2,
+          channelCountMode: 'explicit', numberOfOutputs: globalThis.__sessionSampleClockOutput ? 2 : 1,
+          outputChannelCount: globalThis.__sessionSampleClockOutput ? [2, 2] : [2], processorOptions: {startFrame: probe.startFrame}});
+        configureClock(tap);
+        if(globalThis.__cinematicOrderedTaps) {
+          clockTap=new AudioWorkletNode(context,'session-sample-tap',{channelCount:2,channelCountMode:'explicit',
+            numberOfOutputs:2,outputChannelCount:[2,2],processorOptions:{startFrame:probe.startFrame,clockOnly:true}});
+          configureClock(clockTap);clockTap.port.onmessage=({data})=>{if(data.error)probe.error??=data.error;};
+        }
+        let nextFrame = probe.startFrame, nextSequence = 0;
+        tap.port.onmessage = ({data}) => {
+          if (data.error || data.frame !== nextFrame || data.sequence !== nextSequence) {
+            probe.error ??= data.error || 'missing or duplicate sample graph quantum: expected '
+              + nextFrame + '/' + nextSequence + ', got ' + data.frame + '/' + data.sequence;
+          }
+          for (const id of data.retirements ?? []) {
+            probe.retirements[id] = data.frame;
+            retirementWaiters.get(id)?.(data.frame); retirementWaiters.delete(id);
+          }
+          nextFrame = data.frame + (data.left?.length ?? 0);
+          nextSequence = data.sequence + 1;
+          // Keep the armed interval intact through slow seek decoding. The exact
+          // automated clock bounds storage to at most 2^24 stereo sample frames.
+          if (probe.blocks.length < 2 ** 24 / 128) probe.blocks.push(data);
+          else probe.error ??= 'sample graph capture capacity exceeded';
+        };
+        for (const id of pendingRetirements.splice(0)) tap.port.postMessage({retire: id});
+        connect.call(tap, context.destination);
+        // Keep the observer processing silent quanta between scheduled buffers.
+        const silence = context.createConstantSource();
+        silence.offset.value = 0;
+        connect.call(silence, tap);
+        if(clockTap)connect.call(silence,clockTap);
+        silence.start();
+      });
+    return ready;
+  }
+  probe.arm = initialize;
   AudioBufferSourceNode.prototype.start = function (...args) {
     let connected = false;
     try {
       // Wire a ready observer before activation. A rendering thread can consume
       // an immediate source while the native start call is still returning.
-      if (!probe.error && tap && context === this.context && !this.loop
+      if (!probe.error && tap && context === this.context && accepts(this) && !this.loop
           && this.buffer?.numberOfChannels === 2) {
         connect.call(this, tap);
         connected = true;
@@ -56,44 +130,8 @@
     try {
       const nativeAfter = this.context.currentTime;
       if (probe.error) return result;
-      if (this.loop || this.buffer?.numberOfChannels !== 2) return result;
-      if (context && context !== this.context) { probe.error = 'multiple sample stream clocks'; return result; }
-      context = this.context;
-      if (!context.audioWorklet) throw Error('AudioWorklet unavailable; capture requires a secure origin');
-      if (!ready) ready = context.audioWorklet.addModule(worklet).then(() => {
-        // Arm on a future render boundary after configuring both automation lanes.
-        // This excludes setup, while retaining every quantum in the capture interval.
-        probe.startFrame = Math.ceil((context.currentTime + 0.1) * context.sampleRate / 128) * 128;
-        tap = new AudioWorkletNode(context, 'session-sample-tap', {channelCount: 2,
-          channelCountMode: 'explicit', processorOptions: {startFrame: probe.startFrame}});
-        tap.parameters.get('coarseFrame').setValueAtTime(probe.startFrame, probe.startFrame / context.sampleRate);
-        tap.parameters.get('coarseFrame').linearRampToValueAtTime(2 ** 24, 2 ** 24 / context.sampleRate);
-        tap.parameters.get('sampleFrame').setValueAtTime(0, probe.startFrame / context.sampleRate);
-        // Continuous alternating ramps avoid discontinuous automation endpoints.
-        for (let frame = probe.startFrame, up = true; frame < 2 ** 24; frame += 65536, up = !up) {
-          tap.parameters.get('sampleFrame').linearRampToValueAtTime(up ? 65536 : 0, (frame + 65536) / context.sampleRate);
-        }
-        tap.parameters.get('recording').setValueAtTime(1, probe.startFrame / context.sampleRate);
-        let nextFrame = probe.startFrame, nextSequence = 0;
-        tap.port.onmessage = ({data}) => {
-          if (data.error || data.frame !== nextFrame || data.sequence !== nextSequence) {
-            probe.error ??= data.error || 'missing or duplicate sample graph quantum: expected '
-              + nextFrame + '/' + nextSequence + ', got ' + data.frame + '/' + data.sequence;
-          }
-          nextFrame = data.frame + (data.left?.length ?? 0);
-          nextSequence = data.sequence + 1;
-          // Keep the armed interval intact through slow seek decoding. The exact
-          // automated clock bounds storage to at most 2^24 stereo sample frames.
-          if (probe.blocks.length < 2 ** 24 / 128) probe.blocks.push(data);
-          else probe.error ??= 'sample graph capture capacity exceeded';
-        };
-        connect.call(tap, context.destination);
-        // Keep the observer processing silent quanta between scheduled buffers.
-        const silence = context.createConstantSource();
-        silence.offset.value = 0;
-        connect.call(silence, tap);
-        silence.start();
-      });
+      if (!accepts(this) || this.loop || this.buffer?.numberOfChannels !== 2) return result;
+      initialize(this.context);
       if (tap && !connected) connect.call(this, tap);
       else if (!tap) ready.then(() => connect.call(this, tap)).catch(error => {probe.error = String(error)});
       const requested = args[0] ?? 0;
@@ -111,6 +149,24 @@
       probe.error = String(error);
     }
     return result;
+  };
+  // Retirement is acknowledged by the rendering thread at an exact generation
+  // quantum. A main-thread currentTime read is not a retirement sample boundary.
+  probe.retireSource = id => {
+    if (!Number.isInteger(id) || id < 0) throw Error('invalid source retirement identity');
+    const acknowledged = new Promise(resolve => retirementWaiters.set(id, resolve));
+    if (tap) tap.port.postMessage({retire: id}); else pendingRetirements.push(id);
+    return acknowledged;
+  };
+  // Deliberately unavailable unless requested before installing this observer.
+  // Use the native connect method, so other diagnostic wrappers cannot reroute it.
+  probe.connectClock = (node, input = 1) => {
+    if (!globalThis.__sessionSampleClockOutput || !tap || probe.error) throw Error('generation clock output unavailable');
+    return connect.call(clockTap??tap, node, 1, input);
+  };
+  probe.connectObserver=node=>{
+    if(!clockTap||!tap||probe.error)throw Error('ordered observer graph unavailable');
+    return connect.call(node,tap);
   };
   // Frequent clock observations must not scan every retained production buffer.
   probe.clock = () => ({rate: context?.sampleRate,

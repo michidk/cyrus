@@ -1,5 +1,6 @@
 //! Opt-in world/camera observation and captured sky phase for matched browser captures.
 mod audio;
+mod frame;
 mod light_image;
 
 use bevy::prelude::*;
@@ -13,6 +14,7 @@ pub fn register(app: &mut App) {
     super::session::register(app, enabled);
     if enabled {
         audio::register(app);
+        frame::register(app);
         app.add_systems(PostUpdate, (light_image::respond, publish_startup));
         app.add_systems(
             Update,
@@ -322,6 +324,7 @@ fn observe(
     scripts: Option<Res<cyrus_script::script::ScriptActors>>,
     script_hud: Option<Res<cyrus_script::script::ScriptHud>>,
     session: cyrus_session::SessionBoundaryInspection,
+    clock: Option<Res<cyrus_script::clock::SimulationClock>>,
 ) {
     let (Some(window), Ok(camera)) = (web_sys::window(), camera.single()) else {
         return;
@@ -352,6 +355,19 @@ fn observe(
             let text = serde_json::to_string(&snapshot)
                 .map_err(|error| JsValue::from_str(&error.to_string()))?;
             js_sys::Reflect::set(&record, &"session".into(), &js_sys::JSON::parse(&text)?)?;
+        }
+        if let (Some(world), Some(clock)) = (
+            scripts.as_ref().and_then(|actors| actors.current.as_ref()),
+            clock.as_ref(),
+        ) {
+            let boundary = serde_json::json!({"generation":world.generation(),"update":world.ordinary_updates(),
+                "elapsed_scale":clock.elapsed_frame_scale(),"normal_frame_rate":clock.settings().normal_frame_rate,
+                "wall_contact_update":world.selected_wall_contact_update()});
+            js_sys::Reflect::set(
+                &record,
+                &"boundary".into(),
+                &js_sys::JSON::parse(&boundary.to_string())?,
+            )?;
         }
         // At most 64 script actors, only while a driver sets `__cyrusInspectScripts`; the
         // browser has no control port, so acceptance drivers read this like the `scripts` command.

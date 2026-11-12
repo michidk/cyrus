@@ -505,3 +505,70 @@ state while CD output continues, then uses public book input to change Speech an
 mute/unmute book music after world restoration. The graph oracle checks installed CD samples at
 the live gain, silence while paused and unchanged selection through preferences.
 These checks establish mixer/graph output, not physical-speaker parity.
+
+The installed browser music driver also accepts `scenario: "book_restore"` with
+explicit conversation placement, destination stem and replacement alias. It checks
+book speech teardown, muted diagnostic restoration, rejected restoration during
+held destination preparation, superseded request retirement and later book unmute.
+Graph PCM and source-admission counts distinguish publication silence from a pause
+applied only on the following update. `isolate_publication: true` runs the narrow
+muted-publication failure control. Captures and fixture values remain local.
+
+`music_settings ... --muted-publication` and the native driver's matching flag
+check replacement pause before the first ordinary update, then capture mixer silence,
+unmute, pause and continuation without changing the restored playback entity.
+
+Browser ambient polls honor the effect-bank admission gate before allocating a new
+sample. A waiting poll remains active without queuing replay. An admitted channel
+continues to receive gain/pan and stop updates while replacement preparation is pending.
+This preserves the existing polling contract rather than replaying missed ambient polls.
+
+The recoverable installed browser launcher accepts `--driver ambient` with a local
+JSON fixture naming `emitter`, `emitter_index`, `effect`, `scene`, `source_fixture`,
+and optional `listener_offset` in world units. Select
+the exact installed actor index because several actors can share a script name.
+Choose an offset that isolates the selected source from nearby authored emitters.
+Create the local source oracle with
+`python3 dev/scripts/ambient-source-fixture.py EXPORTED_EFFECT.wav SYSTEM.INI OUTPUT.json`,
+using the selected effect WAV in the runtime sound export cache. The helper checks
+mono PCM and records source width, period, RMS and digest. No install data belongs
+in a fixture committed to this repository.
+
+The ambient driver holds a real bank read, checks live gain changes, requires
+silence after stopping while pending, then checks one freshly admitted owner and
+retains its token through subsequent polling. Other authored one-shots must retire
+before isolated PCM comparison. Public capture supplies exact sample ownership;
+only its ownership metadata crosses the browser diagnostic connection. Readiness
+advances ordinary updates within a game-clock bound rather than assuming a fixed
+short interval reaches the next authored poll. The driver checks gain over three
+source periods of submitted mixer PCM and pan in actual graph PCM using the
+shared preservation oracle.
+
+Each validated stage and the completed bank phase is flushed to a separate
+receipt with executed build, driver and source-oracle identities before the next
+stage starts. The fixture's `phase` selects `bank` (default), `save`,
+`restoration` or `dormant`; run them separately with the same explicit install.
+`save` writes a public session slot and atomically retains its exact document on
+the host. `restoration` reuses that checkpoint, validates its document digest,
+executed WASM, source oracle and selected fixture, then imports the bytes through
+the sealed production session-storage module before requesting public load.
+It queues an old-generation cue behind a held bank read, proves the queue through
+public capture rejection, and checks fresh generation/entity ownership and live
+listener gain/pan after replacement. `dormant` finalizes destination retirement
+silence before checking return playback and unchanged ownership through further
+ordinary polling. Each phase writes its own completion receipt; a later failure
+cannot replace an earlier completed receipt. Saved documents stay local.
+
+`node dev/scripts/test-ambient-session-checkpoint.mjs` checks browser expression
+syntax, literal storage round-trip and stale/corrupt checkpoint rejection without
+an install. The installed run observes submitted mixer gain and real graph PCM;
+it does not establish physical-speaker parity.
+
+`native-ambient-restoration.py PORT OUTPUT --runtime-output /mounted/output
+--container NAME --binary PATH --emitter NAME --emitter-index INDEX --effect INDEX` supplies the paced
+native continuation control through public capture/load, restored listener movement,
+stop/restart and dormant return. It binds receipts to the running executable hash. `--resume-dormant` validates
+five retained stages and their selected sample owner before rerunning the dormant
+transition and completing the final return, without repeating session publication.
+The bank-admission regression is browser-specific; the native run checks the shared
+live decoder and lifecycle contracts, without claiming physical-speaker parity.

@@ -21,6 +21,7 @@ struct Request {
     pcm_path: Option<PathBuf>,
     reply: Sender<Response>,
     deadline: Instant,
+    boundary: Option<cyrus_control::FrameBoundary>,
 }
 
 struct Active {
@@ -45,6 +46,7 @@ impl FrameCaptures {
         path: PathBuf,
         pcm_path: Option<PathBuf>,
         reply: Sender<Response>,
+        boundary: Option<cyrus_control::FrameBoundary>,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.queued.is_none() && self.active.is_none(),
@@ -65,6 +67,7 @@ impl FrameCaptures {
             pcm_path,
             reply,
             deadline: Instant::now() + Duration::from_secs(30),
+            boundary,
         });
         Ok(())
     }
@@ -146,15 +149,20 @@ fn boundary(world: &mut World, pcm_path: Option<&PathBuf>) -> anyhow::Result<Val
         .get_resource::<bevy::diagnostic::FrameCount>()
         .ok_or_else(|| anyhow::anyhow!("gameplay frame: render frame counter unavailable"))?
         .0;
+    #[cfg(target_os = "linux")]
+    let generated = cpal::diagnostic_output::cursor().map(|c| json!({"frames":c.frames,"sequence":c.sequence,"monotonic_ns":c.monotonic_ns,"rate":c.rate,"format":c.format}));
+    #[cfg(not(target_os = "linux"))]
+    let generated: Option<Value> = None;
     Ok(json!({
         "ready": true, "scene": scene, "execution": "running",
         "frame": actors.ordinary_updates(), "render_frame": frame,
         "presentation": presentation,
+        "wall_contact_update": actors.selected_wall_contact_update(),
         "update": actors.ordinary_updates(), "generation": actors.generation(),
         "elapsed_scale": clock.elapsed_frame_scale(), "normal_frame_rate": clock.settings().normal_frame_rate,
         "game_seconds": clock.game_seconds(), "player": actors.inspect(player.index, 1)["actors"][0],
         "event": "render_frame", "phase": "render_extraction",
-        "pcm_delivery_frames": pcm_frames, "exact_pcm_event_mapping": false,
+        "pcm_generation": generated, "pcm_delivery_frames": pcm_frames, "exact_pcm_event_mapping": false,
     }))
 }
 
@@ -204,6 +212,49 @@ pub(super) fn capture(world: &mut World) {
     let Some(request) = world.resource_mut::<FrameCaptures>().queued.take() else {
         return;
     };
+    let scheduled = (|| -> anyhow::Result<bool> {
+        anyhow::ensure!(
+            Instant::now() < request.deadline,
+            "gameplay frame capture deadline expired"
+        );
+        let Some(target) = request.boundary else {
+            return Ok(true);
+        };
+        let actors = world
+            .get_resource::<cyrus_script::script::ScriptActors>()
+            .and_then(|actors| actors.current.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("scheduled frame: logical world unavailable"))?;
+        let clock = world
+            .get_resource::<cyrus_script::clock::SimulationClock>()
+            .ok_or_else(|| anyhow::anyhow!("scheduled frame: clock unavailable"))?;
+        let contact = match target {
+            cyrus_control::FrameBoundary::WallContact { after_update, .. } => {
+                actors.first_selected_wall_contact_after(after_update)?
+            }
+            _ => None,
+        };
+        target
+            .reached(
+                actors.generation(),
+                clock.elapsed_frame_scale(),
+                actors.ordinary_updates(),
+                contact,
+            )
+            .map_err(anyhow::Error::msg)
+    })();
+    match scheduled {
+        Ok(false) => {
+            world.resource_mut::<FrameCaptures>().queued = Some(request);
+            return;
+        }
+        Err(error) => {
+            let _ = request
+                .reply
+                .send(Response::err(request.id, error.to_string()));
+            return;
+        }
+        Ok(true) => {}
+    }
     let result = boundary(world, request.pcm_path.as_ref());
     let snapshot = match result {
         Ok(snapshot) => snapshot,
@@ -288,6 +339,7 @@ mod tests {
                     pcm_path: None,
                     reply: reply.clone(),
                     deadline: Instant::now(),
+                    boundary: None,
                 },
                 entity,
                 completed: Mutex::new(receiver),
@@ -300,7 +352,7 @@ mod tests {
         assert!(
             world
                 .resource_mut::<FrameCaptures>()
-                .arm(10, PathBuf::from("next.png"), None, reply.clone())
+                .arm(10, PathBuf::from("next.png"), None, reply.clone(), None)
                 .is_err()
         );
         completed
@@ -311,7 +363,7 @@ mod tests {
         assert!(
             world
                 .resource_mut::<FrameCaptures>()
-                .arm(10, PathBuf::from("next.png"), None, reply)
+                .arm(10, PathBuf::from("next.png"), None, reply, None)
                 .is_ok()
         );
     }

@@ -16,12 +16,26 @@ import time
 def bindings(rows):
     if not isinstance(rows, dict) or not 1 <= len(rows) <= 16:
         raise ValueError('require one to sixteen named bindings')
+    prior = {}
     for name, row in rows.items():
         if (not isinstance(name, str) or not re.fullmatch(r'[a-zA-Z0-9_]{1,63}', name)
                 or not isinstance(row, dict)
-                or type(row.get('address')) is not int or not 0 < row['address'] < 2**63
                 or type(row.get('size')) is not int or not 1 <= row['size'] <= 4096):
             raise ValueError(f'invalid presentation binding: {name}')
+        if 'pointer' in row:
+            pointer = row['pointer']
+            if (set(row) != {'pointer', 'size'} or not isinstance(pointer, dict)
+                    or set(pointer) != {'field', 'offset', 'width', 'addend'}
+                    or not isinstance(pointer['field'], str) or pointer['field'] not in prior
+                    or type(pointer['offset']) is not int or pointer['offset'] < 0
+                    or type(pointer['width']) is not int or pointer['width'] not in (4, 8)
+                    or pointer['offset'] + pointer['width'] > prior[pointer['field']]['size']
+                    or type(pointer['addend']) is not int or not -(2**63) <= pointer['addend'] < 2**63):
+                raise ValueError(f'invalid presentation pointer binding: {name}')
+        elif (set(row) != {'address', 'size'} or type(row.get('address')) is not int
+                or not 0 < row['address'] < 2**63):
+            raise ValueError(f'invalid presentation binding: {name}')
+        prior[name] = row
     return rows
 
 
@@ -60,7 +74,14 @@ def capture(directory, output, rows, timeout=30, pcm_path=None, at_clock=None):
         if request.exists():
             raise ValueError('another presentation request is pending')
         temporary = directory / 'request.tmp'
-        text = str(output) + '\n' + ''.join(f'{name} {row["address"]} {row["size"]}\n' for name, row in rows.items())
+        text = str(output) + '\n'
+        for name, row in rows.items():
+            if 'pointer' in row:
+                pointer = row['pointer']
+                text += (f'@pointer {name} {pointer["field"]} {pointer["offset"]} '
+                         f'{pointer["width"]} {pointer["addend"]} {row["size"]}\n')
+            else:
+                text += f'{name} {row["address"]} {row["size"]}\n'
         if pcm_path is not None:
             pcm_path = str(Path(pcm_path).resolve())
             if len(pcm_path) > 240 or '\n' in pcm_path or '\r' in pcm_path:

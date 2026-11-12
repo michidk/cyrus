@@ -6,6 +6,7 @@ import {connectCdp} from './capture-cdp.mjs';
 import {captureSampleGraph} from './capture-sample-graph.mjs';
 import {observeBrowserBuild} from './browser-provenance.mjs';
 import {requireSecureOrigin} from './browser-authored-speech.mjs';
+import {runBookRestoration} from './browser-book-restoration.mjs';
 const [endpoint,page,install,fixturePath,output]=process.argv.slice(2);
 assert(endpoint&&page&&install&&fixturePath&&output,'usage: CDP PAGE INSTALL FIXTURE OUTPUT');
 requireSecureOrigin(page);mkdirSync(output,{recursive:true});
@@ -65,7 +66,9 @@ try{
   await evaluate('document.getElementById("install-picker").requestSubmit();true');await ready();
   await until('installed CD output','__sessionCd.status().ready&&__sessionCd.sources.length===1',180);
   result.initial=await outputWindow(0,true,'initial');
-  if(fixture.scenario==='settings'){
+  if(fixture.scenario==='book_restore'){
+    await runBookRestoration({cdp,evaluate,until,session,key,action,outputWindow,fixture,output,result});
+  }else if(fixture.scenario==='settings'){
     await until('first ordinary world update','__cyrusCapture.scripts.globals.world_loop_frame>2');
     await session('save',{key:'settings-world'});await session('load',{key:'settings-world'});
     await until('restored world output','__sessionCd.sources.length===2');

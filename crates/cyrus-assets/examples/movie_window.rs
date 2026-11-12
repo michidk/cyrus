@@ -3,14 +3,14 @@ use anyhow::Context;
 use std::{io::Read, path::PathBuf};
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args_os().skip(1);
-    let install = PathBuf::from(
-        args.next()
-            .context("usage: movie_window INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT]")?,
-    );
-    let output = PathBuf::from(
-        args.next()
-            .context("usage: movie_window INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT]")?,
-    );
+    let install =
+        PathBuf::from(args.next().context(
+            "usage: movie_window INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT] [FIRST_FRAME]",
+        )?);
+    let output =
+        PathBuf::from(args.next().context(
+            "usage: movie_window INSTALL OUTPUT [MOVIE_INDEX] [FRAME_COUNT] [FIRST_FRAME]",
+        )?);
     let index = args
         .next()
         .map(|v| v.to_string_lossy().parse::<usize>())
@@ -21,10 +21,15 @@ fn main() -> anyhow::Result<()> {
         .map(|v| v.to_string_lossy().parse::<u32>())
         .transpose()?
         .unwrap_or(60);
+    let first = args
+        .next()
+        .map(|v| v.to_string_lossy().parse::<u32>())
+        .transpose()?
+        .unwrap_or(1);
     let movie = cyrus_assets::startup::movie_native::prepare(&install, index)?;
     anyhow::ensure!(
-        count > 0 && count <= movie.metadata.frames,
-        "invalid movie window frame count {count}"
+        first > 0 && first <= count && count <= movie.metadata.frames,
+        "invalid movie window range {first}..={count}"
     );
     anyhow::ensure!(
         !output.exists(),
@@ -51,6 +56,10 @@ fn main() -> anyhow::Result<()> {
     let mut records = vec![];
     while stream.decoded_frames() < count {
         if let Some(frame) = stream.next_frame()? {
+            // Decode the authored prefix, retaining only the requested window.
+            if frame.number < first {
+                continue;
+            }
             let mut rgba = Vec::with_capacity(frame.indices.len() * 4);
             for index in frame.indices {
                 rgba.extend_from_slice(&frame.palette[usize::from(*index)]);

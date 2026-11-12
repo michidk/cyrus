@@ -410,6 +410,7 @@ module where it is defined and regenerate.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/capture.rs` — Opt-in world/camera observation and captured sky phase for matched browser captures.
 - `src/capture/audio.rs` — Opt-in installed audio starts through the ordinary shared sample adapters.
+- `src/capture/frame.rs` — Retained browser pixels and actor state from the requested render extraction.
 - `src/capture/light_image.rs` — One-shot browser acquisition of the actual material-bound CPU light image.
 - `src/cheats.rs` — Browser CHT storage uses the same codec and startup rules as the native host.
 - `src/console.rs` — Browser console preferences retain CPF bytes in local storage; logs download as text.
