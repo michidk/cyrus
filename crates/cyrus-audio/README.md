@@ -43,6 +43,9 @@ resampler/device buffers; complete session audio restoration remains unavailable
 decoder progress. Capture rejects in-flight track preparation or an inconsistent
 player census. `Music::from_snapshot` validates caller-prepared installed bytes
 and returns an off-live `MusicCandidate` for coordinated session publication.
+The published owner consumes the next scene-request and prepared-world
+notifications without selecting world music again. This preserves a stopped CD
+as well as a saved active track; a later ordinary world entry selects normally.
 `MusicTransport` reuses the source cursor at unity PCM gain. CD volume stays on
 the sink, and queued starts receive the current drive gain and cinematic pause.
 Browser CD playback requests the browser's playback latency policy and uses one

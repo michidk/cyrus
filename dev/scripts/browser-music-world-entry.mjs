@@ -16,6 +16,14 @@ const cdp=await connectCdp(endpoint);let provenance,id=0;const result={fixture};
 async function evaluate(expression){const {result,exceptionDetails}=await cdp.call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert(!exceptionDetails,result.description??exceptionDetails?.text);return result.value;}
 async function until(label,expression,seconds=90){const deadline=performance.now()+seconds*1000;while(performance.now()<deadline){const value=await evaluate(expression);if(value)return value;await delay(100);}throw Error(`bounded music acceptance expired: ${label}`);}
 async function action(name){const current=++id;await evaluate(`window.__cyrusAcceptanceRequest=${JSON.stringify(JSON.stringify({id:current,action:'load_scene',name}))};true`);const response=await until('scene request',`window.__cyrusAcceptanceResult?.id===${current}&&__cyrusAcceptanceResult`);assert(response.applied,response.error);}
+async function session(type,fields={}){
+  async function send(type,fields={}){const current=++id;await evaluate(`window.__cyrusSessionRequest=${JSON.stringify(JSON.stringify({id:current,type,...fields}))};true`);return until('public session response',`window.__cyrusSessionResult?.id===${current}&&__cyrusSessionResult`);}
+  let response=await send(type,fields);const deadline=performance.now()+90000;
+  while(response.pending){assert(performance.now()<deadline,'session publication deadline');await delay(100);response=await send('result');}
+  assert(!response.error,response.error);return response;
+}
+async function musicOwner(){const response=await session('capture');return JSON.parse(response.document.split('\n').slice(2).join('\n')).music;}
+async function key(code,vk){await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',code,key:code,windowsVirtualKeyCode:vk});await delay(100);await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',code,key:code,windowsVirtualKeyCode:vk});}
 async function ready(previous){await until('new prepared world',`window.__cyrusCapture?.ready&&__cyrusCapture.scripts&&${previous===undefined?'true':`__cyrusCapture.scripts.generation!==${previous}`}`,600);}
 async function outputWindow(index,present,label){
   const observation=await evaluate(`(async()=>{
@@ -43,6 +51,7 @@ async function outputWindow(index,present,label){
   observation.pcm.forEach((sample,i)=>bytes.writeFloatLE(sample,i*4));
   writeFileSync(`${output}/${label}.f32le`,bytes);
   delete observation.pcm;
+  writeFileSync(`${output}/${label}.json`,JSON.stringify(observation,null,2));
   return observation;
 }
 try{
@@ -55,6 +64,43 @@ try{
   await evaluate('document.getElementById("install-picker").requestSubmit();true');await ready();
   await until('installed CD output','__sessionCd.status().ready&&__sessionCd.sources.length===1',180);
   result.initial=await outputWindow(0,true,'initial');
+  if(fixture.scenario==='restore'){
+    result.initialMusic=await musicOwner();
+    await key('F10',121);await until('credits CD admitted','__sessionCd.sources.length===2');
+    result.credits=await outputWindow(1,true,'credits');
+    await key('Escape',27);await until('credits source retired','__sessionCd.sources[1].stopped!==null');
+    const frame=await evaluate('__cyrusCapture.scripts.globals.world_loop_frame');
+    await until('world clock resumes',`__cyrusCapture.scripts.globals.world_loop_frame>${frame}+2`);
+    result.savedMusic=await musicOwner();assert.equal(result.savedMusic.track,null,'fixture must have stopped CD after credits');
+    await session('save',{key:'stopped-cd'});await session('load',{key:'stopped-cd'});
+    await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    result.restoredMusic=await musicOwner();
+    if(result.restoredMusic.track!==null)result.unexpected=await outputWindow(await evaluate('__sessionCd.sources.length-1'),true,'unexpected-restored');
+    assert.equal(result.restoredMusic.track,null,'diagnostic restoration restarted world music instead of preserving stopped ownership');
+    result.restored=await outputWindow(1,false,'restored');
+    const generation=await evaluate('__cyrusCapture.scripts.generation');
+    const count=await evaluate('__sessionCd.sources.length');
+    await evaluate(`(()=>{const read=cyrusGameAssets.read.bind(cyrusGameAssets);window.__superseded={read,returned:0};cyrusGameAssets.read=async path=>{
+      if(path.startsWith(${JSON.stringify(fixture.destination+'.')})){__superseded.pending=true;await new Promise(resolve=>(__superseded.release??=[]).push(resolve));const bytes=await read(path);__superseded.returned++;return bytes;}return read(path);
+    };return true})()`);
+    await action(fixture.destination);await until('superseded reads held','__superseded.pending');
+    await action(fixture.alias);await ready(generation);
+    await until('latest destination music',`__sessionCd.sources.length===${count+1}`);
+    result.cancelled=await outputWindow(count,true,'latest-destination');
+    const admitted=await evaluate('__cyrusCapture.scripts.generation');
+    await evaluate('cyrusGameAssets.read=__superseded.read;__superseded.release.forEach(resolve=>resolve());true');
+    await until('stale read completed','__superseded.returned>0');
+    const settled=await evaluate('__cyrusCapture.scripts.globals.world_loop_frame');
+    await until('latest world continues',`__cyrusCapture.scripts.globals.world_loop_frame>${settled}+3`);
+    assert.equal(await evaluate('__cyrusCapture.scripts.generation'),admitted,'superseded destination replaced the admitted owner');
+    assert.equal(await evaluate('__sessionCd.sources.length'),count+1,'superseded destination admitted stale music');
+    result.afterCancellation=await musicOwner();assert.equal(result.afterCancellation.track,result.initialMusic.track);
+    await session('save',{key:'active-cd'});await session('load',{key:'active-cd'});
+    await until('active saved CD replacement',`__sessionCd.sources.length===${count+2}`);
+    assert(await evaluate(`__sessionCd.sources[${count}].stopped!==null`),'active restore retained old output');
+    result.activeRestored=await outputWindow(count+1,true,'active-restored');
+    result.activeMusic=await musicOwner();assert.equal(result.activeMusic.track,result.initialMusic.track);
+  }else{
   const originalGeneration=await evaluate('__cyrusCapture.scripts.generation');await action(fixture.alias);await ready(originalGeneration);
   assert(await evaluate('__sessionCd.sources.length===1&&__sessionCd.sources[0].stopped===null'),'same-track named entry restarted the CD');
   result.continued=await outputWindow(0,true,'continued');
@@ -89,6 +135,7 @@ try{
   })()`);
   assert(result.trackBuffers.destinationDiffers,'destination reused the old track buffer');
   assert(result.trackBuffers.revisitMatches,'revisit did not restore the installed source track');
+  }
   result.provenance=await provenance.verify();
   writeFileSync(`${output}/result.json`,JSON.stringify(result,null,2));
 }catch(error){writeFileSync(`${output}/failure.json`,JSON.stringify({error:String(error),result,status:await evaluate('window.__sessionCd?.status()').catch(()=>null),events:cdp.events},null,2));throw error;}finally{provenance?.stop();await cdp.close();}

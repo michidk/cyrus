@@ -230,6 +230,7 @@ impl Music {
             music: Music {
                 track: snapshot.track,
                 gain: snapshot.gain,
+                restore_pending: true,
                 load: None,
             },
             playback,

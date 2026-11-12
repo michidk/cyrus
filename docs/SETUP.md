@@ -2017,3 +2017,14 @@ consecutive frames, retained as interleaved stereo float32 little-endian `.f32le
 files beside the source/clock metadata. Retain failed-before receipts separately;
 prior output directories cannot be reused. This tests software WebAudio output,
 not physical-speaker parity.
+
+
+Set `scenario` to `restore` in the local music fixture to exercise diagnostic CD
+ownership instead of the world-entry transition comparison. The driver enters and
+leaves installed F10 credits, saves stopped CD ownership through the public session
+API, and verifies that loading it preserves silence. It then holds destination
+reads, supersedes that request with the original world, releases the stale reads,
+and checks fresh music plus continued ownership. A final active save/load must
+retire the old output and admit the restored track. Each stage retains its PCM
+and metadata separately. These diagnostic saves restore exact runtime ownership;
+original-style book saves keep their existing world-selection policy.
