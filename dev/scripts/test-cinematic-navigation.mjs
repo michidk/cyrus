@@ -50,3 +50,31 @@ test('progress observation waits for waveform evidence without polling the movie
   globalThis.document=originalDocument;delete globalThis.__cyrusMenu;delete globalThis.__sessionSamples;
  }
 });
+
+test('scheduled packet positions remain separate from actual native processing',async()=>{
+ const {observeMovieSchedule}=await import('./cinematic-navigation.mjs');
+ const probe=globalThis.__sourceGeneration={sources:[]};const receiver={};
+ const original=function(block){assert.equal(this,receiver);probe.sources.push({offset:.125});return 7;};
+ try {
+  assert.equal(observeMovieSchedule(original).call(receiver,{start:2,end:3}),7);
+  assert.equal(probe.sources[0].movieStart,2.125);assert.equal(probe.sources[0].movieEnd,3);
+  assert.equal(probe.sources[0].firstProcessingFrame,undefined);
+  const error=Error('native failure');assert.throws(()=>observeMovieSchedule(()=>{throw error;})({}),e=>e===error);
+ } finally {delete globalThis.__sourceGeneration;}
+});
+
+test('a clamped movie clock cannot admit audio consumed beyond decoded video',async()=>{
+ const {requireMovieHorizon}=await import('./cinematic-navigation.mjs');
+ assert.throws(()=>requireMovieHorizon([{value:.26664,videoEnd:.26664,packetPosition:.38022675736961453}],44100),/beyond decoded video/);
+ requireMovieHorizon([{value:.26664,videoEnd:.26664,packetPosition:.26664}],44100);
+});
+
+ test('a failed schedule observer cannot suppress native source scheduling',async()=>{
+  const {observeMovieSchedule}=await import('./cinematic-navigation.mjs');
+  globalThis.__sourceGeneration={get sources(){throw Error('observer failed');}};
+  let calls=0;
+  try {
+   assert.equal(observeMovieSchedule(()=>{calls++;return 7;})({}),7);
+   assert.equal(calls,1);assert.match(globalThis.__cinematicClockError,/observer failed/);
+  } finally {delete globalThis.__sourceGeneration;delete globalThis.__cinematicClockError;}
+ });

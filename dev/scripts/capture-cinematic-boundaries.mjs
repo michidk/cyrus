@@ -7,11 +7,12 @@ import {join} from 'node:path';
 import {observeBrowserBuild} from './browser-provenance.mjs';
 import {connectCdp} from './capture-cdp.mjs';
 import {compareSourceGeneration} from './compare-source-generation.mjs';
-import {navigateCinematic, installCinematicEndpoint, observeMovieTime, cinematicProgress} from './cinematic-navigation.mjs';
+import {navigateCinematic, installCinematicEndpoint, observeMovieTime, observeMovieSchedule, requireMovieHorizon, cinematicProgress} from './cinematic-navigation.mjs';
 import {sourceGenerationBoundaries} from './source-generation-boundaries.mjs';
 
-const [endpoint, page, output, frameArgument, rateArgument] = process.argv.slice(2);
-const stopFrame = Number(frameArgument), audioRate = Number(rateArgument);
+const [endpoint, page, output, frameArgument, rateArgument, skipArgument] = process.argv.slice(2);
+const stopFrame = Number(frameArgument), audioRate = Number(rateArgument), skipAt = Number(skipArgument ?? 0);
+assert(Number.isInteger(skipAt) && skipAt >= 0 && (!skipAt || stopFrame > skipAt), 'skip frame must precede endpoint');
 assert(endpoint && page && output && Number.isInteger(stopFrame) && stopFrame > 0
   && Number.isInteger(audioRate) && audioRate > 0,
 'usage: CDP_URL EXPLICIT_INSTALL_MOVIE_URL NEW_OUTPUT_DIRECTORY MIN_END_FRAME INSTALLED_AUDIO_RATE');
@@ -54,6 +55,7 @@ try {
   // an exhausted packet stream and would change the behavior being measured.
   await cdp.call('Debugger.setBreakpointByUrl', {urlRegex:'movie_stream\\.js$',lineNumber:104,
     condition:`(()=>{if(!window.__movieTimeObserved){window.__movieTimeObserved=true;
+      PacketAudio.prototype.schedule=(${observeMovieSchedule.toString()})(PacketAudio.prototype.schedule);
       movieTime=(${observeMovieTime.toString()})(movieTime,id=>movies.get(id),window.__returnedMovieClocks=[]);}
       return false;})()`});
   const graph = '(' + installCinematicEndpoint.toString() + ')();' + `globalThis.__sessionSampleClockOutput=true;
@@ -67,7 +69,7 @@ try {
   await navigateCinematic(cdp, page);
   await cdp.call('Page.bringToFront');
   const deadline = performance.now() + 240000;
-  let debuggerReleased = false;
+  let debuggerReleased = false, skipSent = false;
   let reached = false;
   while (performance.now() < deadline) {
     const state = await evaluate(`(${cinematicProgress.toString()})(${stopFrame})`);
@@ -85,6 +87,14 @@ try {
       recording = true;
       await cdp.call('Input.dispatchMouseEvent', {type:'mousePressed',x:320,y:240,button:'left',clickCount:1});
       await cdp.call('Input.dispatchMouseEvent', {type:'mouseReleased',x:320,y:240,button:'left',clickCount:1});
+    }
+    if (skipAt && !skipSent && state.movie?.frame >= skipAt && !state.movie.loading) {
+      await evaluate(`console.timeStamp('cinematic-public-skip')`);
+      await cdp.call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await wait(100);
+      await cdp.call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      skipSent = true;
+      writeFileSync(join(output,'skip.json'),JSON.stringify({from:state.movie.frame,key:'Escape'}));
     }
     if (state.movie?.frame >= stopFrame && !state.movie.loading && state.signalEnergy > 0.001) {reached = true;break;}
     await wait(100);
@@ -121,6 +131,7 @@ try {
     sha256:createHash('sha256').update(pcm).digest('hex')};
   writeFileSync(join(output,'mix-comparison.json'),JSON.stringify(comparison,null,2));
   assert(capture.graph.returnedClockReads?.length, 'production movieTime return was not observed');
+  requireMovieHorizon(capture.graph.returnedClockReads,comparison.rate);
   console.log(JSON.stringify({sources:boundaries.filter(b=>b.attributed).length,retiredUnattributed:boundaries.filter(b=>!b.attributed).length,surfaces:surfaces.length,movie:capture.graph.movie}));
 } catch (error) {failure = String(error.stack ?? error);throw error;}
 finally {

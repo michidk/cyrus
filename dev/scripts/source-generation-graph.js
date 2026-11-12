@@ -66,7 +66,7 @@
         if (!ready) ready = context.audioWorklet.addModule(module).then(() => {probe.ready = true;})
           .catch(error => {probe.error = String(error);});
         const source = {id: probe.sources.length, observed: false, blocks: [],
-          requested: args[0] ?? 0, offset: args[1] ?? 0,
+          requested: args[0] ?? 0, offset: args[1] ?? 0, duration: args[2] ?? null,
           rate: this.buffer.sampleRate, frames: this.buffer.length};
         this.addEventListener('ended', () => {
           try { globalThis.__sessionSamples.retireSource(source.id); }

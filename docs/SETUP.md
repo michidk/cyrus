@@ -2054,14 +2054,15 @@ original-style book saves keep their existing world-selection policy.
 ### Installed cinematic generation and presentation capture
 
 `node dev/scripts/capture-cinematic-boundaries.mjs CDP_URL EXPLICIT_INSTALL_MOVIE_URL
-NEW_OUTPUT_DIRECTORY MIN_END_FRAME INSTALLED_AUDIO_RATE` records the production browser
+NEW_OUTPUT_DIRECTORY MIN_END_FRAME INSTALLED_AUDIO_RATE [SKIP_AT_FRAME]` records the production browser
 path in a disposable browser context. Set `CYRUS_BROWSER_BUILD_RECORD` to the
 sealed build receipt; executed main/worker artifacts are checked against it.
 Use the movie export's audio rate and an
 explicit install URL. The caller owns runtime recovery, the host-mounted config,
 a per-run lock and container teardown. Capture ends after the requested movie
 progress with nonzero audio in the final observation window; a silent tail cannot
-prove waveform equivalence. This tool does not start a preview.
+prove waveform equivalence. This tool does not start a preview. An optional skip frame sends one public Escape
+press before the later endpoint, exercising the installed forward-skip path.
 
 The observer records each source's actual rendering input and native first
 processing, with shared sample-frame clocks. Initial unobserved sources and
@@ -2072,6 +2073,9 @@ errors. A source's first diagnostic input can follow its first native processing
 those boundaries are kept separate. `generation.json`, `boundaries.json` and
 `mix-comparison.json` retain that evidence. A transparent wrapper retains actual
 returned `movieTime` values and trace brackets without adding playback-clock polls.
+Source receipts retain packet timeline positions and explicit playback durations.
+Admission rejects an audio cursor beyond decoded video even when the returned
+movie clock was clamped to hide that overshoot.
 
 Compositor PNGs and their swap clocks are separate from published movie status.
 Run `python dev/scripts/cinematic-presented-frames.py CAPTURE_DIRECTORY

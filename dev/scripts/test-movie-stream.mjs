@@ -108,7 +108,7 @@ globalThis.AudioContext = class {
         return buffer;
     }
     createBufferSource() {
-        const source = { connect() {}, disconnect() {}, stop() { this.stopped = true; }, start(when, offset) { this.when = when; this.offset = offset; } };
+        const source = { connect() {}, disconnect() {}, stop() { this.stopped = true; }, start(when, offset, duration) { this.when = when; this.offset = offset; this.duration = duration; } };
         this.sources.push(source);
         return source;
     }
@@ -211,3 +211,30 @@ assert.equal(lateContext.sources.at(-1).offset, 0.5,
     'seek inside queued PCM resumes at the target sample');
 movie.closeMovie(lateId);
 console.log('packet PCM: unpolled late arrival, queued seek cancellation and sample continuation passed');
+
+// The first Smacker PCM packet can span many video frames. A delayed display
+// update must not consume its unpresentable tail or discard it on continuation.
+const horizonId = movie.openMovie('/movies/horizon.smk', true, 2, .1);
+const horizonContext = contexts.at(-1);
+movie.movieAudio(horizonId, new Uint8Array(40).fill(160), 10, 2, 8, 0, false);
+movie.movieVideoEnd(horizonId, .2);
+movie.playMovie(horizonId);await settle();
+const firstHorizonSource = horizonContext.sources.at(-1);
+assert.equal(firstHorizonSource.duration, .2, 'a long PCM packet must stop at the decoded video boundary');
+firstHorizonSource.onended();
+assert.equal(movie.movieReady(horizonId), true, 'a partial source completion must retain its packet tail');
+horizonContext.currentTime = .38;
+assert.equal(movie.movieTime(horizonId), .2);
+movie.movieVideoEnd(horizonId, .4);await settle();
+const resumedHorizonSource = horizonContext.sources.at(-1);
+assert(Math.abs(resumedHorizonSource.offset - .2) < 1e-12, 'continuation must retain the unused packet tail');
+assert(Math.abs(resumedHorizonSource.duration - .2) < 1e-12);
+horizonContext.currentTime = .43;
+assert(Math.abs(movie.movieTime(horizonId) - .25) < 1e-12);
+// Extending an unexhausted horizon appends only its new portion.
+movie.movieVideoEnd(horizonId, .6);
+const extension = horizonContext.sources.at(-1);
+assert.equal(extension.offset, .4);
+assert(Math.abs(extension.duration - .2) < 1e-12);
+movie.closeMovie(horizonId);
+console.log('packet PCM: decoded-video horizon bounds long packets and preserves continuation tails');
