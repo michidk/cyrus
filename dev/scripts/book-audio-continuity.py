@@ -45,16 +45,19 @@ def analyze(monitor, reference, minimum=.8, tolerance=.01):
         if energy == 0 or len(monitor) < size:
             continue
         dots = correlate(monitor, block, mode='valid', method='fft')
-        prefix = np.concatenate(([0.], np.cumsum(monitor * monitor)))
-        local = np.maximum(prefix[size:] - prefix[:-size], 0)
-        scores = dots / np.sqrt(np.maximum(local * energy, 1))
+        # Local positive sums avoid catastrophic prefix subtraction in silent tails.
+        local = np.convolve(monitor * monitor, np.ones(size), mode='valid')
+        # Sub-unit PCM energy cannot establish a waveform anchor. Resampler/FFT
+        # roundoff in digital silence must not compete with an audible match.
+        scores = np.divide(dots, np.sqrt(local * energy),
+                           out=np.zeros_like(dots), where=local >= 1)
         index = int(np.argmax(scores))
         if scores[index] >= minimum:
             anchors.append(dict(reference_seconds=offset / RATE,
                                 monitor_seconds=index / RATE,
                                 correlation=float(scores[index]),
                                 gain=float(dots[index] / energy)))
-    enough = len(anchors) >= 3 and anchors[-1]['reference_seconds'] - anchors[0]['reference_seconds'] >= .3
+    enough = len(anchors) >= 3 and round((anchors[-1]['reference_seconds'] - anchors[0]['reference_seconds']) * RATE) >= 3 * size
     delays = [a['monitor_seconds'] - a['reference_seconds'] for a in anchors]
     drift = max(delays) - min(delays) if delays else None
     continuous = enough and drift <= tolerance

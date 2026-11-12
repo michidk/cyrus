@@ -1408,3 +1408,46 @@ reference WAV paths after its transition driver argument and set
 It writes `OUTPUT/continuity.json` and propagates continuity rejection while
 preserving the paced recording and cleaning up its owned container. Omit
 references only for capture diagnostics, not for timing/gain acceptance.
+
+
+### Isolate monitor drain from emulator delivery
+
+The book recorder requests 20 ms PulseAudio latency. Default recorder buffering
+can leave a large unconsumed tail when SIGINT stops a short recording. Keep the
+existing pacing and installed-waveform rejection limits; a longer or apparently
+non-silent WAV does not establish continuous emulator output.
+
+Inside a runtime already running `paced-audio.sh`, use the independent control:
+
+```sh
+python3 /host-mounted/scripts/paced-monitor-check.py /host-mounted/control
+python3 /host-mounted/scripts/paced-monitor-check.py /host-mounted/rustle \
+  --reference /host-mounted/installed-cache/sounds/066.wav
+```
+
+It creates a deterministic three-second stereo signal when no reference is
+supplied, warms the null sink with a low-latency silent playback client, records
+its monitor and plays the reference through PulseAudio. It retains admission,
+playback, wall and sample durations. Run `book-audio-continuity.py` on the host
+against each generated monitor/reference pair to check the sample timeline.
+`--recorder-latency-ms 0 --cold-sink` selects server defaults without warmup
+as the idle-clock/delayed-drain control;
+actual server latency constraints can make this control pass when another client
+already keeps the sink active. Use a separate idle control runtime for isolation.
+The warmup allows the idle null sink's existing two-second timer to expire.
+All processes are bounded and evidence is never overwritten.
+
+This isolates server/recorder behavior from DOSBox. A clean direct reference and
+a discontinuous emulator recording locate the remaining fault upstream of the
+monitor. DOSBox mixer prebuffer, block size, emulated CPU load and host scheduling
+must be evaluated separately. The continuity analyzer sums local window energy
+directly and excludes sub-unit PCM energy, so floating-point residue in a silent
+tail cannot displace an audible waveform anchor. Excessive prebuffer can prevent sound entirely
+when the mixer drops queued samples before reaching its startup watermark.
+Emulator tuning stays in explicit local capture configurations until an installed
+acknowledged recording passes both waveform and clock checks. Do not change game
+cue timing or gain to compensate for an emulator delivery fault.
+
+```sh
+python3 dev/scripts/test-paced-monitor-check.py
+```

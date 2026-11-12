@@ -75,7 +75,7 @@ def capture(output, command, timeout, tolerance, ready_command):
         began = time.monotonic()
         with (output / 'recorder.log').open('w') as recorder_log:
             recorder = subprocess.Popen(['parec', '--device=cyrus.monitor', '--file-format=wav',
-                '--format=s16le', '--rate=48000', '--channels=2', str(path)],
+                '--format=s16le', '--rate=48000', '--channels=2', '--latency-msec=20', str(path)],
                 stderr=recorder_log)
         deadline = began + 5
         while not path.exists() or path.stat().st_size <= 44:

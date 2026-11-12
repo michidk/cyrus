@@ -68,6 +68,15 @@ class Acceptance(unittest.TestCase):
                 recorder.assert_not_called()
             self.assertEqual((path / 'readiness.log').read_text(), 'display not ready')
 
+    def test_monitor_requests_bounded_drain_latency(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            ready = capture.subprocess.CompletedProcess(['ready'], 0, '{"ready":true,"page":0}', '')
+            with patch.object(capture.subprocess, 'run', return_value=ready), patch.object(capture.subprocess, 'Popen', side_effect=FileNotFoundError('control')) as start:
+                with self.assertRaises(FileNotFoundError):
+                    capture.capture(path, ['driver'], 1, .1, ['ready'])
+            self.assertIn('--latency-msec=20', start.call_args.args[0])
+
     def test_missing_monitor_preserves_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)

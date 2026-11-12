@@ -45,6 +45,26 @@ class Continuity(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'signed 16-bit PCM'):
                 module.load(reference)
 
+    def test_silent_tail_cannot_steal_a_real_anchor(self):
+        rng = np.random.default_rng(10)
+        reference = self.reference * 3
+        audible = reference * .7 + rng.normal(0, 900, len(reference))
+        # A numerically tiny delayed copy can score highly after cancellation
+        # of large cumulative energies. It must never displace audible anchors.
+        tail = reference * 1e-9
+        recording = np.concatenate((self.padding, audible, np.zeros(8000), tail))
+        result = module.analyze(recording, reference)
+        self.assertTrue(result['success'])
+        self.assertAlmostEqual(result['onset_seconds'], .2)
+        self.assertTrue(all(a['gain'] > .5 for a in result['anchors']))
+
+    def test_exact_three_hundred_ms_span_uses_sample_units(self):
+        recording = np.zeros(len(self.reference))
+        recording[3200:6400] = self.reference[3200:6400]
+        result = module.analyze(recording, self.reference)
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['anchors']), 4)
+
     def test_silence_and_wrong_sound_are_not_continuity(self):
         for recording in (np.zeros(12000), np.random.default_rng(7).normal(0, 1000, 12000)):
             self.assertFalse(module.analyze(recording, self.reference)['success'])
