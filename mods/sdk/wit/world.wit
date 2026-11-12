@@ -1,0 +1,11 @@
+package cyrus:sdk;
+
+/// The one world every SDK mod uses: all hook resources, one `frame` system that queries them.
+world guest {
+    use wasvy:ecs/app@0.0.11.{query};
+    import cyrus:mods/components@0.1.0;
+
+    export frame: func(query: query);
+
+    include wasvy:ecs/guest@0.0.11;
+}

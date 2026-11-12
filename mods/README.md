@@ -1,7 +1,7 @@
 # Bundled mods
 
-Native-only WebAssembly mods shipped with cyrus. Each folder is its own Cargo
-crate (outside the game workspace) built for `wasm32-wasip2`; `just mods` builds
+Native-only WebAssembly mods shipped with cyrus. Each folder with a `mod.toml` is its own Cargo
+crate (outside the game workspace) built for `wasm32-wasip2` against the shared SDK in `mods/sdk`; `just mods` builds
 them all and installs them into `game-config/mods/<folder>/`. Activate them in
 the Mods window that opens with F1. The browser build does not load mods.
 
@@ -55,17 +55,37 @@ A saved value that no longer fits its declaration (out of range, removed
 option, changed type) falls back to the default; a bad declaration stops the
 mod from being listed, with the error in the log.
 
-**Logic** (`mod.wasm`). The API is `crates/cyrus-mods/wit/cyrus.wit`. Declare a
-world that uses the resources you need, exports one function per system and
-includes `wasvy:ecs/guest`; `setup` registers the systems and their queries:
+**Logic** (`mod.wasm`). Rust mods use the SDK in `mods/sdk` (crate `cyrus-mod-sdk`): typed handles
+for every hook below, `Vec3`/`Pose`/`Key` types, settings and memory scoped to the mod, and one line to export it.
+Copy a bundled mod as a start (`Cargo.toml` depends on `cyrus-mod-sdk = { path = "../sdk" }`):
 
 ```rust
-fn setup(app: App) {
-    let deform = System::new("deform");
-    deform.add_query(&[QueryFor::Mut(Vertices::type_path())]);
-    app.add_systems(&Schedule::Update, &[&deform]);
+use cyrus_mod_sdk::{Cx, Key, Mod};
+
+struct Hello;
+
+impl Mod for Hello {
+    const ID: &'static str = "hello"; // the folder name under game-config/mods
+    fn frame(cx: &Cx) {
+        if cx.input.down(Key::F11) {
+            cx.hud.show("hello");
+        }
+    }
 }
+
+cyrus_mod_sdk::export_mod!(Hello);
 ```
+
+`frame` runs every `Update` with every hook in `cx` (`cx.camera`, `cx.player`, `cx.movement`, `cx.input`,
+`cx.scene`, ...). The sections below describe each hook in the host's own terms; the SDK keeps their
+units and timing and swaps the raw numbers for types: a camera `Pose`, `Vec3` positions, `Option` where
+the host answers an empty list, `Claim` for `movement.claim`, `cx.settings.flag("key")` without the mod id and
+`cx.memory.load::<T>("name")` for any type that implements `Persist`. `cargo test` in a mod folder or
+`mods/sdk` runs its pure logic on the host.
+
+The raw WIT is `crates/cyrus-mods/wit/cyrus.wit`; wasvy 0.0.11 carries only primitives, `option` and `list`
+across it, which is why the typed layer lives in the SDK. Other wasvy guest languages (Python, Go) work
+against the WIT directly.
 
 - `vertices`: vertex sets the game lets mods move, by name. `positions(set)` and
   `generation(set)` read a set; `displace(set, generation, offsets)` moves each
@@ -150,9 +170,7 @@ fn setup(app: App) {
 - `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
   `delta` (seconds).
 
-Query `vertices`, `camera`, `movement`, `collision`, `natives`, `memory` and `hud` with `QueryFor::Mut`, `input`, `settings`, `player` and `scene`
-with `QueryFor::Ref`: wasvy 0.0.11 panics the game when a method is called through
-the other mutability.
+The SDK queries each hook with the mutability wasvy needs, so a mod never sees it.
 
 Answers apply one frame after they are written. A hook a mod stops answering
 returns to the original behaviour.
@@ -180,7 +198,3 @@ the replacement is read from the mod folder, so ship only data you made yourself
 If several active mods supply a path, the first by id wins. The files are read when
 the game starts, so toggling such a mod needs a restart (the Mods window says so).
 Turning the mod off restores the original, and cached assets rebuild by content.
-
-Rust mods use `wit-bindgen` through `wasvy_macros::guest_bindings!`, at the same version as
-`crates/cyrus-mods/Cargo.toml`. Other wasvy guest languages
-(Python, Go) work against the same WIT.

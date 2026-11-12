@@ -11,6 +11,4 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.58"
-# Same version as crates/cyrus-mods.
-wasvy_macros = "=0.0.11"
+cyrus-mod-sdk = { path = "../sdk" }

@@ -1,154 +1,106 @@
 //! F11 toggles a free first-person camera. While it flies, the host suppresses player input.
 //! A line in the corner shows whether it is on.
-mod bindings {
-    wasvy_macros::guest_bindings!({
-        path: ["../../crates/cyrus-mods/wit", "wit"],
-        world: "cyrus:flycam/guest",
-        with: {
-            "wasvy:ecs/app@0.0.11": generate,
-            "cyrus:mods/components@0.1.0": generate,
-        }
-    });
-}
-
-use bindings::cyrus::mods::components::{Camera, Hud, Input, Memory, Settings};
-use bindings::wasvy::ecs::app::{App, Query, QueryFor, Schedule, System};
+use cyrus_mod_sdk::{Cx, Input, Key, Mod, Persist, Pose, Quat, Vec3};
 
 /// Radians per pixel of mouse motion.
 const SENSITIVITY: f32 = 0.0025;
-/// Where the flight is kept between frames: every system call runs in a fresh instance.
-const FLIGHT: &str = "flycam/flight";
+/// Where the flight is kept between frames.
+const FLIGHT: &str = "flight";
 
+/// A flight in progress: where the camera is and which way it looks, in radians.
 struct Fly {
-    position: [f32; 3],
+    position: Vec3,
     yaw: f32,
     pitch: f32,
 }
 
-impl Fly {
-    fn load(memory: &Memory) -> Option<Self> {
-        let &[x, y, z, yaw, pitch] = &memory.load(FLIGHT)[..] else {
+impl Persist for Fly {
+    fn pack(&self) -> Vec<f32> {
+        let Vec3 { x, y, z } = self.position;
+        vec![x, y, z, self.yaw, self.pitch]
+    }
+
+    fn unpack(values: &[f32]) -> Option<Self> {
+        let &[x, y, z, yaw, pitch] = values else {
             return None;
         };
         Some(Fly {
-            position: [x, y, z],
+            position: Vec3::new(x, y, z),
             yaw,
             pitch,
         })
     }
+}
 
-    fn save(fly: Option<&Self>, memory: &Memory) {
-        let values = fly.map_or_else(Vec::new, |fly| {
-            let [x, y, z] = fly.position;
-            vec![x, y, z, fly.yaw, fly.pitch]
-        });
-        memory.save(FLIGHT, &values);
+impl Fly {
+    /// Starts flying from `pose`.
+    fn from_pose(pose: Pose) -> Self {
+        let (yaw, pitch) = pose.rotation.yaw_pitch();
+        Fly {
+            position: pose.position,
+            yaw,
+            pitch,
+        }
+    }
+
+    fn pose(&self) -> Pose {
+        Pose {
+            position: self.position,
+            rotation: Quat::from_yaw_pitch(self.yaw, self.pitch),
+        }
+    }
+
+    /// One frame of mouse look and WASD, Space and Left Shift flight at `speed` scene units per
+    /// second.
+    fn steer(&mut self, input: &Input, speed: f32) {
+        let [dx, dy] = input.mouse();
+        self.yaw -= dx * SENSITIVITY;
+        self.pitch = (self.pitch - dy * SENSITIVITY).clamp(-1.5, 1.5);
+        let forward = self.pose().forward();
+        let right = Vec3::new(self.yaw.cos(), 0.0, -self.yaw.sin());
+        let mut direction = Vec3::ZERO;
+        for (key, axis, sign) in [
+            (Key::W, forward, 1.0),
+            (Key::S, forward, -1.0),
+            (Key::D, right, 1.0),
+            (Key::A, right, -1.0),
+            (Key::SPACE, Vec3::UP, 1.0),
+            (Key::SHIFT_LEFT, Vec3::UP, -1.0),
+        ] {
+            if input.down(key) {
+                direction += axis * sign;
+            }
+        }
+        if let Some(direction) = direction.normalized() {
+            self.position += direction * (speed * input.delta());
+        }
     }
 }
 
 struct Flycam;
 
-impl bindings::Guest for Flycam {
-    fn setup(app: App) {
-        let fly = System::new("fly");
-        fly.add_query(&[
-            QueryFor::Ref(Input::type_path()),
-            QueryFor::Mut(Camera::type_path()),
-            QueryFor::Ref(Settings::type_path()),
-            QueryFor::Mut(Hud::type_path()),
-            QueryFor::Mut(Memory::type_path()),
-        ]);
-        app.add_systems(&Schedule::Update, &[&fly]);
-    }
+impl Mod for Flycam {
+    const ID: &'static str = "flycam";
 
-    fn fly(query: Query) {
-        while let Some(row) = query.iter() {
-            let input = Input::new(row.component(0));
-            let camera = Camera::new(row.component(1));
-            // Scene units per second; the manifest's `speed` setting.
-            let speed = Settings::new(row.component(2)).number("flycam", "speed");
-            let hud = Hud::new(row.component(3));
-            let memory = Memory::new(row.component(4));
-            let mut fly = Fly::load(&memory);
-            if input.tapped("F11") {
-                fly = match fly {
-                    Some(_) => None,
-                    None => start(&camera.pose()),
-                };
-            }
-            if let Some(fly) = fly.as_mut() {
-                hud.show("Fly camera: ON (F11)");
-                steer(fly, &input, speed);
-                // Rotation = yaw about Y, then pitch about X; quaternion from half angles.
-                let (sy, cy) = (fly.yaw * 0.5).sin_cos();
-                let (sp, cp) = (fly.pitch * 0.5).sin_cos();
-                let [x, y, z] = fly.position;
-                camera.drive(&[x, y, z, cy * sp, sy * cp, -sy * sp, cy * cp]);
-            } else {
-                hud.show("Fly camera: OFF (F11)");
-            }
-            Fly::save(fly.as_ref(), &memory);
+    fn frame(cx: &Cx) {
+        let mut fly: Option<Fly> = cx.memory.load(FLIGHT);
+        if cx.input.tapped(Key::F11) {
+            fly = match fly {
+                Some(_) => None,
+                None => cx.camera.pose().map(Fly::from_pose),
+            };
         }
+        match fly.as_mut() {
+            Some(fly) => {
+                cx.hud.show("Fly camera: ON (F11)");
+                // Scene units per second; the manifest's `speed` setting.
+                fly.steer(&cx.input, cx.settings.number("speed"));
+                cx.camera.drive(fly.pose());
+            }
+            None => cx.hud.show("Fly camera: OFF (F11)"),
+        }
+        cx.memory.save(FLIGHT, fly.as_ref());
     }
 }
 
-/// One frame of mouse look and WASD, Space and Left Shift flight.
-fn steer(fly: &mut Fly, input: &Input, speed: f32) {
-    if let [dx, dy] = input.mouse()[..] {
-        fly.yaw -= dx * SENSITIVITY;
-        fly.pitch = (fly.pitch - dy * SENSITIVITY).clamp(-1.5, 1.5);
-    }
-    let (sy, cy) = fly.yaw.sin_cos();
-    let (sp, cp) = fly.pitch.sin_cos();
-    let forward = [-sy * cp, sp, -cy * cp];
-    let right = [cy, 0.0, -sy];
-    let mut direction = [0.0f32; 3];
-    for (key, axis, sign) in [
-        ("KeyW", forward, 1.0),
-        ("KeyS", forward, -1.0),
-        ("KeyD", right, 1.0),
-        ("KeyA", right, -1.0),
-        ("Space", [0.0, 1.0, 0.0], 1.0),
-        ("ShiftLeft", [0.0, 1.0, 0.0], -1.0),
-    ] {
-        if input.pressed(key) {
-            for i in 0..3 {
-                direction[i] += axis[i] * sign;
-            }
-        }
-    }
-    let length = direction.iter().map(|v| v * v).sum::<f32>().sqrt();
-    if length > 0.0 {
-        let step = speed * input.delta() / length;
-        for i in 0..3 {
-            fly.position[i] += direction[i] * step;
-        }
-    }
-}
-
-/// Starts flying from the current view pose: x, y, z, then quaternion x, y, z, w.
-fn start(pose: &[f32]) -> Option<Fly> {
-    let &[x, y, z, qx, qy, qz, qw] = pose else {
-        return None;
-    };
-    // Rotate the view direction (0, 0, -1): v + 2w(u×v) + 2u×(u×v).
-    let u = [qx, qy, qz];
-    let v = [0.0, 0.0, -1.0];
-    let cross = |a: [f32; 3], b: [f32; 3]| {
-        [
-            a[1] * b[2] - a[2] * b[1],
-            a[2] * b[0] - a[0] * b[2],
-            a[0] * b[1] - a[1] * b[0],
-        ]
-    };
-    let uv = cross(u, v);
-    let uuv = cross(u, uv);
-    let f: [f32; 3] = std::array::from_fn(|i| v[i] + 2.0 * (qw * uv[i] + uuv[i]));
-    Some(Fly {
-        position: [x, y, z],
-        yaw: (-f[0]).atan2(-f[2]),
-        pitch: f[1].clamp(-1.0, 1.0).asin(),
-    })
-}
-
-bindings::export!(Flycam with_types_in bindings);
+cyrus_mod_sdk::export_mod!(Flycam);

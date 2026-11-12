@@ -34,6 +34,16 @@ pub struct Answer {
     pub camera_turn: f32,
 }
 
+impl cyrus_mod_sdk::Persist for SteeringState {
+    fn pack(&self) -> Vec<f32> {
+        self.save()
+    }
+
+    fn unpack(values: &[f32]) -> Option<Self> {
+        Some(Self::load(values))
+    }
+}
+
 impl SteeringState {
     pub fn load(values: &[f32]) -> Self {
         match values {

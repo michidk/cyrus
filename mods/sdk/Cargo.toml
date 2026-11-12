@@ -1,0 +1,14 @@
+[package]
+name = "cyrus-mod-sdk"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Typed guest SDK for cyrus mods: wraps the raw wasvy bindings of crates/cyrus-mods/wit/cyrus.wit."
+
+# Built with the mods for wasm32-wasip2, outside the game workspace; `cargo test` runs on the host.
+[workspace]
+
+[dependencies]
+wit-bindgen = "0.58"
+# Same version as crates/cyrus-mods.
+wasvy_macros = "=0.0.11"

@@ -6,21 +6,12 @@
 //! The game's own key bindings, or WASD with Space and Shift; the walk key runs (or walks, with
 //! the `run_by_default` setting).
 mod steering;
-mod bindings {
-    wasvy_macros::guest_bindings!({
-        path: ["../../crates/cyrus-mods/wit", "wit"],
-        world: "cyrus:movement/guest",
-        with: {
-            "wasvy:ecs/app@0.0.11": generate,
-            "cyrus:mods/components@0.1.0": generate,
-        }
-    });
-}
 
-use bindings::cyrus::mods::components::{Camera, Input, Memory, Movement, Player, Settings};
-use bindings::wasvy::ecs::app::{App, Query, QueryFor, Schedule, System};
+use cyrus_mod_sdk::{Action, Claim, Cx, Key, Mod};
+use steering::SteeringState;
 
-const STEERING: &str = "movement/steering";
+/// Where the steering state is kept between frames.
+const STEERING: &str = "steering";
 
 /// Animation groups (`SOUP386.DEF` numbers) of ground movement that may be cut short: turning,
 /// running, walking and sidestepping with and without the torch, and the fight stance's run,
@@ -37,120 +28,112 @@ const JUMP_TEMPO: f32 = 1.75;
 
 struct Steering;
 
-impl bindings::Guest for Steering {
-    fn setup(app: App) {
-        let steer = System::new("steer");
-        steer.add_query(&[
-            QueryFor::Ref(Input::type_path()),
-            QueryFor::Mut(Movement::type_path()),
-            QueryFor::Ref(Settings::type_path()),
-            QueryFor::Ref(Player::type_path()),
-            QueryFor::Mut(Camera::type_path()),
-            QueryFor::Mut(Memory::type_path()),
-        ]);
-        app.add_systems(&Schedule::Update, &[&steer]);
-    }
+impl Mod for Steering {
+    const ID: &'static str = "movement";
 
-    fn steer(query: Query) {
-        while let Some(row) = query.iter() {
-            let input = Input::new(row.component(0));
-            let movement = Movement::new(row.component(1));
-            let settings = Settings::new(row.component(2));
-            let player = Player::new(row.component(3));
-            let camera = Camera::new(row.component(4));
-            let memory = Memory::new(row.component(5));
-            camera.orbit();
-            // No player yet (menus, loading): leave everything to the game.
-            if player.position().is_empty() {
-                memory.save(STEERING, &[]);
-                continue;
-            }
-            let run_by_default = settings.flag("movement", "run_by_default");
-            let wasd = settings.choice("movement", "keys") == "wasd";
-            // Either the game's own bindings (KEYS.INI), or W, A, S and D with Space and Shift.
-            let held = |action, key: &str| {
-                if wasd {
-                    input.pressed(key)
-                } else {
-                    input.held(action)
-                }
-            };
-            let axis = |plus: bool, minus: bool| f32::from(plus) - f32::from(minus);
-            let x = axis(held("right", "KeyD"), held("left", "KeyA"));
-            let y = axis(held("forward", "KeyW"), held("back", "KeyS"));
-            let modifier = if wasd {
-                input.pressed("ShiftLeft") || input.pressed("ShiftRight")
-            } else {
-                input.held("walk")
-            };
-            let run = modifier != run_by_default;
-            let jump = held("jump", "Space");
-            if let Some(current) = player.animation().first()
-                && JUMPING.iter().any(|groups| groups.contains(current))
-            {
-                movement.tempo(JUMP_TEMPO);
-            }
-            let heading = player.heading();
-            let mut state = steering::SteeringState::load(&memory.load(STEERING));
-            let answer = state.step(
-                steering::Frame {
-                    heading: heading as f32,
-                    view: player.view() as f32,
-                    direction: [x, y],
-                    armed: player.armed(),
-                    airborne: player.airborne(),
-                    manual: camera.manual(),
-                    seconds: input.delta(),
-                },
-                steering::Options {
-                    follow: settings.flag("movement", "camera_follow"),
-                    delay: settings.number("movement", "camera_follow_delay"),
-                    rate: settings.number("movement", "camera_follow_speed"),
-                },
-            );
-            memory.save(STEERING, &state.save());
-            camera.turn(answer.camera_turn);
-            if player.airborne() {
-                // A jump keeps the direction it started with.
-                movement.claim(heading, heading, 0.0, run, false);
-                continue;
-            }
-            let moving = x != 0.0 || y != 0.0;
-            let speed = if moving { player.speed(run) } else { 0.0 };
-            movement.claim(answer.facing, answer.travel, speed, run, jump);
-            cut_animation(&movement, &player, moving);
+    fn frame(cx: &Cx) {
+        cx.camera.orbit();
+        // No player yet (menus, loading): leave everything to the game.
+        if cx.player.position().is_none() {
+            cx.memory.save::<SteeringState>(STEERING, None);
+            return;
         }
+        let run_by_default = cx.settings.flag("run_by_default");
+        let wasd = cx.settings.choice("keys") == "wasd";
+        // Either the game's own bindings (KEYS.INI), or W, A, S and D with Space and Shift.
+        let held = |action, key| {
+            if wasd {
+                cx.input.down(key)
+            } else {
+                cx.input.action(action)
+            }
+        };
+        let axis = |plus: bool, minus: bool| f32::from(plus) - f32::from(minus);
+        let x = axis(held(Action::Right, Key::D), held(Action::Left, Key::A));
+        let y = axis(held(Action::Forward, Key::W), held(Action::Back, Key::S));
+        let modifier = if wasd {
+            cx.input.down(Key::SHIFT_LEFT) || cx.input.down(Key::SHIFT_RIGHT)
+        } else {
+            cx.input.action(Action::Walk)
+        };
+        let run = modifier != run_by_default;
+        let jump = held(Action::Jump, Key::SPACE);
+        if let Some(current) = cx.player.animation()
+            && JUMPING.iter().any(|groups| groups.contains(&current))
+        {
+            cx.movement.tempo(JUMP_TEMPO);
+        }
+        let heading = cx.player.heading();
+        let mut state: SteeringState = cx.memory.load(STEERING).unwrap_or_default();
+        let answer = state.step(
+            steering::Frame {
+                heading: heading as f32,
+                view: cx.player.view() as f32,
+                direction: [x, y],
+                armed: cx.player.armed(),
+                airborne: cx.player.airborne(),
+                manual: cx.camera.manual(),
+                seconds: cx.input.delta(),
+            },
+            steering::Options {
+                follow: cx.settings.flag("camera_follow"),
+                delay: cx.settings.number("camera_follow_delay"),
+                rate: cx.settings.number("camera_follow_speed"),
+            },
+        );
+        cx.memory.save(STEERING, Some(&state));
+        cx.camera.turn(answer.camera_turn);
+        if cx.player.airborne() {
+            // A jump keeps the direction it started with.
+            cx.movement.claim(Claim {
+                heading,
+                travel: heading,
+                speed: 0.0,
+                run,
+                jump: false,
+            });
+            return;
+        }
+        let moving = x != 0.0 || y != 0.0;
+        let speed = if moving { cx.player.speed(run) } else { 0.0 };
+        cx.movement.claim(Claim {
+            heading: answer.facing,
+            travel: answer.travel,
+            speed,
+            run,
+            jump,
+        });
+        cut_animation(cx, moving);
     }
 }
 
 /// The animation keeps up with the movement: a movement animation gives way to the next one at
 /// once instead of finishing its cycle, and to the idle one as soon as the player stops.
 /// Jumps, landings, combat and scripted animations are left alone.
-fn cut_animation(movement: &Movement, player: &Player, moving: bool) {
-    let first = |values: Vec<u32>| values.first().copied();
-    let Some(current) = first(player.animation()) else {
+fn cut_animation(cx: &Cx, moving: bool) {
+    let Some(current) = cx.player.animation() else {
         return;
     };
     let turning = TURNING.contains(&current);
     if !turning && !MOVING.contains(&current) {
         return;
     }
-    let idle = first(player.idle());
-    match first(player.pending()) {
+    let idle = cx.player.idle();
+    match cx.player.pending() {
         Some(next)
             if next != current
                 && (TURNING.contains(&next) || MOVING.contains(&next) || Some(next) == idle) =>
         {
-            movement.play(next, true);
+            cx.movement.play(next, true);
         }
         // The idle group is the sheathed stance; a drawn weapon keeps its own.
-        None if !moving && !turning && !player.armed() => {
+        None if !moving && !turning && !cx.player.armed() => {
             if let Some(idle) = idle {
-                movement.play(idle, true);
+                cx.movement.play(idle, true);
             }
         }
         _ => {}
     }
 }
 
-bindings::export!(Steering with_types_in bindings);
+cyrus_mod_sdk::export_mod!(Steering);

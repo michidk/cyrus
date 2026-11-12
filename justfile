@@ -46,6 +46,7 @@ build:
 # build the bundled native mods (mods/*) for wasm32-wasip2 and install them into game-config/mods
 mods:
     for dir in mods/*/; do \
+        [ -f "$dir/mod.toml" ] || continue; \
         id="$(basename "$dir")"; \
         (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../target/mods" cargo build --release --target wasm32-wasip2); \
         mkdir -p "game-config/mods/$id"; \
