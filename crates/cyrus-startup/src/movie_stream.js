@@ -32,6 +32,9 @@ class PacketAudio {
         const samples = pcm.length / alignment;
         const start = startSample / rate;
         const end = (startSample + samples) / rate;
+        // Observe exhaustion against the old boundary before admitting new PCM.
+        // Otherwise an unpolled underrun becomes elapsed movie time on arrival.
+        if (!this.paused) void this.currentTime;
         this.bufferEnd = Math.max(this.bufferEnd, end);
         if (last) {
             this.complete = true;

@@ -128,6 +128,16 @@ work cannot shift continuation audio relative to the movie clock.
 checks continuation timing and rendered PCM with a real WebAudio clock; supply
 a secure page and a local WAV reference. It injects graph-connection work to
 prove that continuation scheduling retains the sample origin.
+Late PCM admission observes the exhausted boundary before extending lookahead,
+so an unpolled producer stall cannot become skipped movie time. The public
+`test-movie-stream.mjs` regression also covers seeking inside queued PCM and
+cancelling obsolete source completion callbacks.
+`node dev/scripts/test-browser-movie-seek.mjs CDP_URL PAGE_URL WINDOW_URL RESULT_JSON`
+uses an installed decoded window from the assets `movie_window` example. It
+presents those frames on the movie clock, admits a late continuation, pauses
+and seeks with queued audio, and compares post-seek graph PCM with an offline
+render of the scheduled sources and cancellations. This isolated adapter check
+complements full native/browser cinematic comparisons.
 Forward skips retain decoder state; menu return cancels downloads and playback.
 Native and browser playback share skip points, subtitles, interlace and menu return.
 New Game plays installed movie zero (Introduction), then enters the installed

@@ -183,3 +183,31 @@ assert.equal(late.when - late.offset, 1.5,
     'late PCM start and offset must share one audio clock sample');
 movie.closeMovie(cadenceId);
 console.log('packet PCM: continuation and late-block scheduling retain one clock origin');
+
+const lateId = movie.openMovie('/movies/0.smk', true, 3, 0.1);
+const lateContext = contexts.at(-1);
+movie.movieAudio(lateId, new Uint8Array(2).fill(128), 2, 1, 8, 0, false);
+movie.movieVideoEnd(lateId, 3);
+movie.playMovie(lateId);
+await settle();
+// The producer resumes before the next display poll observes the underrun.
+lateContext.currentTime = 1.5;
+movie.movieAudio(lateId, new Uint8Array(2).fill(128), 2, 1, 8, 2, false);
+assert.equal(movie.movieTime(lateId), 1,
+    'late PCM arrival must freeze at the exhausted boundary before extending the buffer');
+await settle();
+assert.equal(lateContext.sources.at(-1).offset, 0,
+    'late continuation must retain its first samples instead of skipping stalled wall time');
+lateContext.currentTime = 1.75;
+assert.equal(movie.movieTime(lateId), 1.25);
+const queued = [...lateContext.sources];
+movie.seekMovie(lateId, 1.5);
+assert(queued.every(source => source.stopped && source.onended === null),
+    'seek cancels all queued sources and their obsolete completion callbacks');
+movie.movieVideoEnd(lateId, 3);
+movie.playMovie(lateId);
+await settle();
+assert.equal(lateContext.sources.at(-1).offset, 0.5,
+    'seek inside queued PCM resumes at the target sample');
+movie.closeMovie(lateId);
+console.log('packet PCM: unpolled late arrival, queued seek cancellation and sample continuation passed');
