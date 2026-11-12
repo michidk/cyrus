@@ -64,7 +64,7 @@ editable gameplay bindings. Gameplay book shortcuts require the installed
 | Tab | Toggle walk mode |
 | F9 | Quick save, when saving is permitted |
 | F12 | Open or close the developer console |
-| F10 | Open cyrus inspection settings |
+| F11 | Open cyrus inspection settings |
 
 In the book, use Up/Down to select, Enter to activate, Left/Right to adjust an
 option, and Escape to return. Wait for a page turn to settle. Mouse clicking
@@ -72,12 +72,12 @@ book entries is not implemented. Key rebinding starts when you activate a
 Controls entry; Escape cancels capture. Browser or desktop shortcuts may
 intercept function keys before the game receives them.
 
-F10's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
+F11's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
 right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
 player control. Its camera movement does not move Cyrus through the world.
 
 Faithful controls are the default. `--controls modern` (browser
-`?controls=modern`, or F10's Player controller setting) moves Cyrus with W, A, S
+`?controls=modern`, or F11's Player controller setting) moves Cyrus with W, A, S
 and D relative to the camera: he turns toward the held direction while moving
 forward. He walks unless Shift is held, which runs; the Tab walk mode does not
 apply. Space jumps as installed. With a gamepad, the left stick moves him the
@@ -85,7 +85,7 @@ same way: a partial tilt walks, a full tilt runs. The arrow keys and the D-pad d
 not move him, and a quick sword key on W, A, S or D (S in the GOG install) moves
 instead of drawing the sword. In conversation topic menus, W and S or the left stick
 move the selection up and down. In the book menu, the D-pad or left stick acts as
-the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F10's Camera setting) turns the
+the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F11's Camera setting) turns the
 follow camera with horizontal mouse movement or the right stick and locks the
 cursor during play; in a browser, click the game to lock it, also after Escape released it. Both sticks use the installed joystick dead zone.
 Vertical mouse movement does not tilt the camera. The Faithful camera follows
