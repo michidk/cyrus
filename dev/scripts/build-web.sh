@@ -6,6 +6,8 @@ cd "$(dirname "$0")/../.."
 . dev/scripts/cargo.sh
 # CARGO_TARGET_DIR may point outside the checkout; the web root stays in target/web.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target}"
+# CLI and Rust metadata schemas must match, including after an ephemeral reset.
+bindgen=$(python3 dev/scripts/resolve-wasm-bindgen.py Cargo.lock "$(command -v wasm-bindgen || true)" "$tools")
 apps=("${@:-cyrus-web}")
 profile="${CYRUS_WASM_PROFILE:-wasm-dev}"
 packages=(-p cyrus-assets-worker)
@@ -65,13 +67,13 @@ mkdir -p "$out"
 artifacts=()
 for app in "${apps[@]}"; do
     case "$app" in cyrus-web) page=index.html ;; cyrus-viewer) page=viewer.html ;; esac
-    wasm-bindgen "${keep_debug[@]}" --target web --no-typescript --out-dir "$out/pkg" --out-name "$app" \
+    "$bindgen" "${keep_debug[@]}" --target web --no-typescript --out-dir "$out/pkg" --out-name "$app" \
         "$CARGO_TARGET_DIR/wasm32-unknown-unknown/$profile/$app.wasm"
     cp "crates/$app/web/index.html" "$out/$page"
     artifacts+=("$out/$page" "$out/pkg/$app.js" "$out/pkg/${app}_bg.wasm")
     echo "built $out ($(du -h "$out/pkg/${app}_bg.wasm" | cut -f1) wasm)"
 done
-wasm-bindgen "${keep_debug[@]}" --target web --no-typescript --out-dir "$out/pkg" --out-name cyrus-assets-worker \
+"$bindgen" "${keep_debug[@]}" --target web --no-typescript --out-dir "$out/pkg" --out-name cyrus-assets-worker \
     "$CARGO_TARGET_DIR/wasm32-unknown-unknown/$profile/cyrus_assets_worker.wasm"
 cp dev/web/asset-worker.js dev/web/game-assets.js "$out/"
 cp dev/web/loader.js dev/web/install.js dev/web/local-install.js dev/web/sw.js dev/web/loading.css "$out/"

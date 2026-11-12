@@ -397,6 +397,15 @@ rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # v
 just run-web --install /path/to/Redguard # supplies files automatically to game and viewer
 ```
 
+Before compiling, the browser build checks the bindgen CLI against the exact
+`wasm-bindgen` version in `Cargo.lock`. A matching CLI on PATH wins. If PATH
+contains an older CLI after a restart, the build can reuse an already retained
+`magic/build-tools/wasm-bindgen-VERSION/wasm-bindgen` executable after checking
+its reported version. If neither matches, it stops before Cargo and requests
+`just toolchain`. It does not change dependencies or replace the active CLI.
+Run `python3 dev/scripts/test-resolve-wasm-bindgen.py` for selection and
+wrong-schema failure controls.
+
 Local browser builds use the `wasm-dev` profile, which inherits `wasm-release`.
 Both use 16 codegen units and thin LTO. Releases trade a larger download for
 shorter compilation compared with the former single-unit profile.
