@@ -333,6 +333,7 @@ module where it is defined and regenerate.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
 - `src/script/registry/weapon.rs` — Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 - `src/script/sound.rs` — Immediate script sound commands follow preservation's channel ownership rules.
+- `src/script/sound_dispatch.rs` — Ordered animation sound admission while logical actors await presentation bindings.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.

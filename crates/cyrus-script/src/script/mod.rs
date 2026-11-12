@@ -78,6 +78,7 @@
 mod activation;
 /// Equipped weapon poses and retained combat endpoints.
 pub mod attachment;
+pub mod sound_dispatch;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
     GameplayGlobals, HostRequests, ItemViewerRequest,

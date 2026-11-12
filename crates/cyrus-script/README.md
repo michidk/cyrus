@@ -845,3 +845,11 @@ after `HideMe`, before reading spatial state. `PlayerMovementSpeed` returns zero
 without animation state and otherwise reads the current group independently of
 model presence, following preservation
 [player motion queries](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#player-movement-turn-speed-arctangent-and-location-distance-queries).
+
+Verified: authored animation sounds waiting for a scene binding obey logical
+`EndMySounds`/`KillMe`, effect-specific stops and `StopAllSounds` before admission.
+A stopped start cannot reappear when a node is subsequently bound or recreated.
+Unrelated owners and requested effects survive; animation Stop/Forget commands
+keep their per-actor order. `sound_dispatch::AnimationSoundQueue` owns this
+pre-binding routing, while the audio service owns playback and remembered slots.
+The stop rules follow preservation's [sample ownership](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).

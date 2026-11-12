@@ -572,3 +572,15 @@ five retained stages and their selected sample owner before rerunning the dorman
 transition and completing the final return, without repeating session publication.
 The bank-admission regression is browser-specific; the native run checks the shared
 live decoder and lifecycle contracts, without claiming physical-speaker parity.
+
+The `animation_binding` example isolates the production script-side sound router
+before scene binding. Supply `CYRUS_AUDIO_FIXTURE` on native, or browser
+`captureFixture()`, with a local installed fixture exported by `positional_emitters`.
+The fixture includes installed effect WAV, loop flag, sample rate/width, requested
+index and `SYSTEM.INI`. Seven nominal stages exercise owned/effect/global
+cancellation before binding, other-owner continuation and fresh-node playback.
+`test-animation-binding-native.py` observes paced Pulse output;
+`test-animation-binding-browser.mjs` observes actual graph PCM and executed WASM.
+The example checks actual transport counts before admitting its next stage.
+It establishes the controlled public routing/output contract, not physical output
+or arbitrary natural animation timing. No fixture or game data is tracked.

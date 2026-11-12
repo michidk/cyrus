@@ -1257,9 +1257,9 @@ fn queued_step(
 /// Animation sounds an actor emitted before its scene node was bound, in emission order. The
 /// original plays them at the actor's position at once; here they wait for the node, which the
 /// scene binds a few frames after the world's first update.
-type DeferredSounds = Vec<(ScriptActorId, super::super::ScriptSound)>;
+type DeferredSounds = super::super::sound_dispatch::AnimationSoundQueue;
 
-/// Most sounds held for unbound actors; more means a node that never appears.
+#[cfg(test)]
 const DEFERRED_SOUND_LIMIT: usize = 64;
 
 /// The scene node an actor's animation sounds belong to: none before the scene binds it.
@@ -1290,37 +1290,11 @@ fn release_deferred_sounds(
     bindings: &Query<(Entity, &super::super::ScriptBinding)>,
     emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
-    let mut waiting: DeferredSounds = Vec::new();
-    for (actor, sound) in std::mem::take(deferred) {
-        if actor.generation != generation {
-            continue;
-        }
-        if waiting.iter().any(|(held, _)| *held == actor) {
-            waiting.push((actor, sound));
-            continue;
-        }
-        match animation_node(actor, source, bindings)? {
-            Some(entity) => {
-                let super::super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                } = sound
-                else {
-                    anyhow::bail!("only animation sounds are deferred");
-                };
-                emit(SoundCue::Animation {
-                    actor: entity,
-                    sound,
-                    surface,
-                    position,
-                })?;
-            }
-            None => waiting.push((actor, sound)),
-        }
-    }
-    *deferred = waiting;
-    Ok(())
+    deferred.release(
+        generation,
+        &mut |actor| animation_node(actor, source, bindings),
+        emit,
+    )
 }
 
 fn send_actor_sound(
@@ -1331,52 +1305,12 @@ fn send_actor_sound(
     deferred: &mut DeferredSounds,
     emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
-    let cue = match sound {
-        super::super::ScriptSound::Animation {
-            sound:
-                cyrus_world::animation::AnimationSound::Event { .. }
-                | cyrus_world::animation::AnimationSound::Transition { .. },
-            ..
-        } => anyhow::bail!(
-            "animation actor event or transition outside an ordinary update is unsupported"
-        ),
-        super::super::ScriptSound::Animation {
-            sound,
-            surface,
-            position,
-        } => {
-            let node = animation_node(actor, source, bindings)?;
-            let held = deferred.iter().any(|(held, _)| *held == actor);
-            let Some(entity) = node.filter(|_| !held) else {
-                anyhow::ensure!(
-                    deferred.len() < DEFERRED_SOUND_LIMIT,
-                    "animation sound scene binding unavailable: {} sounds already wait for a node",
-                    deferred.len()
-                );
-                deferred.push((
-                    actor,
-                    super::super::ScriptSound::Animation {
-                        sound,
-                        surface,
-                        position,
-                    },
-                ));
-                return Ok(());
-            };
-            SoundCue::Animation {
-                actor: entity,
-                sound,
-                surface,
-                position,
-            }
-        }
-        sound => SoundCue::Script {
-            generation: actor.generation,
-            index: actor.index,
-            sound,
-        },
+    let node = if matches!(sound, super::super::ScriptSound::Animation { .. }) {
+        animation_node(actor, source, bindings)?
+    } else {
+        None
     };
-    emit(cue)
+    deferred.send(actor, sound, node, emit)
 }
 
 /// The entry position, settled against the live actor models when the host's static pass could
@@ -1967,7 +1901,7 @@ mod deferred_sound_tests {
         // played and nothing fails.
         let (result, deferred, cues) = pass(
             &mut world,
-            Vec::new(),
+            DeferredSounds::default(),
             1,
             vec![
                 (actor(0), play(1)),
@@ -2022,11 +1956,47 @@ mod deferred_sound_tests {
     }
 
     #[test]
+    fn owned_stop_cancels_animation_starts_waiting_for_a_scene_binding() {
+        let mut world = World::new();
+        let (result, deferred, _) = pass(
+            &mut world,
+            DeferredSounds::default(),
+            1,
+            vec![
+                (actor(0), play(1)),
+                (actor(1), play(2)),
+                (actor(0), super::super::super::ScriptSound::StopOwned),
+            ],
+        );
+        result.unwrap();
+        for index in 0..2 {
+            world.spawn(super::super::super::ScriptBinding {
+                actor: actor(index),
+                source: Handle::default(),
+            });
+        }
+        let (result, _, cues) = pass(&mut world, deferred, 1, vec![]);
+        result.unwrap();
+        assert_eq!(
+            cues.len(),
+            1,
+            "stopped unbound emitter started after recreation"
+        );
+        assert!(matches!(
+            &cues[0],
+            SoundCue::Animation {
+                sound: AnimationSound::Play { effect: 2, .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn deferral_is_bounded_and_two_nodes_for_one_actor_stay_an_error() {
         let mut world = World::new();
         let (result, deferred, _) = pass(
             &mut world,
-            Vec::new(),
+            DeferredSounds::default(),
             1,
             (0..DEFERRED_SOUND_LIMIT)
                 .map(|n| (actor(0), play(n as i16)))
@@ -2042,7 +2012,12 @@ mod deferred_sound_tests {
                 source: Handle::default(),
             });
         }
-        let (result, _, _) = pass(&mut world, Vec::new(), 1, vec![(actor(7), play(1))]);
+        let (result, _, _) = pass(
+            &mut world,
+            DeferredSounds::default(),
+            1,
+            vec![(actor(7), play(1))],
+        );
         assert!(format!("{:#}", result.unwrap_err()).contains("ambiguous"));
     }
 }
