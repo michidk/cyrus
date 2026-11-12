@@ -1903,3 +1903,37 @@ bindings. Without the interposer, the same caller produces no accepted capture.
 Compile the failure backend from the same C fixture with
 `-DFAIL_PRESENT_BACKEND -shared -fPIC`. Its rejected presentation call verifies
 that a copied surface cannot acknowledge a failed backend presentation.
+
+
+### Authored browser speech lifecycle
+
+`dev/scripts/run-authored-speech-browser.py RUNTIME INSTALL FIXTURE OUTPUT`
+runs the installed browser game in an isolated headless context without starting a
+managed preview or invoking Cargo. Build and seal `cyrus-web` first through the
+shared queue. `RUNTIME` must be a host directory under `/home/vibepod/workspaces`;
+it retains the per-run lock, configuration mount and server log. After an image
+reset the launcher restores `chrome-image.tar` there, or pulls the pinned image
+when no archive exists. It never removes an unowned container.
+
+Keep the fixture and all results local. Its JSON fields are `scene`,
+`destination`, `placement` (`x`, `y`, `z`, `heading`, in public placement units)
+and `minimum_lines`. Select two distinct installed worlds and an authored
+conversation whose initial exchange reaches a topic menu; derive the placement
+and expected line count from that install and existing original observations.
+The driver uses ordinary Use and walk/run skip input, public scene admission,
+script inspection, public session capture and actual WebAudio graph quanta.
+New-world ambience remains valid: retirement checks compare old playback entities
+and the interrupted source identity, rather than requiring global silence. It records the initial
+exchange, interruption, world teardown and fresh speech ownership, with subtitle
+screenshots at 640 by 480. Output directories cannot reuse prior run receipts.
+
+The launcher relays the installed service to browser loopback. A bridged HTTP
+URL can lack secure-context AudioWorklet support even when Chromium accepts an
+insecure-origin launch flag; the driver rejects that setup before installation.
+The graph tap and PCM checks are shared with the session/sample acceptance tools.
+Already mixed buffers may drain after retirement. A software WebAudio graph is
+not physical-speaker parity. The dialogue ownership assertions follow
+preservation's [dialogue and teardown rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).
+
+Run `node --test dev/scripts/test-browser-authored-speech.mjs` for stale-owner,
+retained-sample, stale-presentation, generation and insecure-origin failure controls.
