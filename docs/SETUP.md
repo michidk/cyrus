@@ -1065,6 +1065,20 @@ Held trace inputs are released on failure. These observations do not establish
 exact input timing: `--key` still uses asynchronous public input requests. Use an
 acknowledged schedule for a matched input comparison.
 
+`dev/scripts/native-edge-trace.py --out <ignored-path> --release-update <N>
+--updates <M>` captures one scheduled edge attempt from an externally established
+alive, ordinary, nonfalling pose with no queued motion or sliding. Observation zero precedes the default ArrowUp press at
+update one; `--key` and `--press-update` select the trigger. Every boundary through
+M is requested in the same schedule, including the acknowledged release at N.
+Acceptance rejects gaps, generation changes, early falling, missing falling entry,
+and a missing health decrease followed by a nonfalling continuation boundary.
+The raw response is retained as `<out>.raw.json` even when validation fails;
+accepted JSONL is written only after validation, replacing any previous result.
+This verifies acquisition completeness, not original parity or edge-service
+attribution. Compare the retained clocks and actor states against original evidence
+before accepting gameplay behavior. Schedules retain the public service's bounded
+execution deadline and 256-event limit.
+
 Replay an accepted original rope schedule through a running native control port:
 
 ```sh

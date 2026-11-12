@@ -73,15 +73,20 @@ def player_index(addr):
 
 def sample(addr, ev):
     """Read clock, pose and health from one ordinary-update boundary snapshot."""
-    import math
     response = call(addr, {"type": "schedule_input", "events": [{"after_updates": 0}]})
     boundaries = response.get("boundaries", [])
     if len(boundaries) != 1:
         raise ValueError("native-trace: selected boundary snapshot unavailable")
-    boundary = boundaries[0]
+    if boundaries[0].get("after_updates") != 0:
+        raise ValueError("native-trace: inconsistent selected boundary snapshot")
+    return boundary_sample(boundaries[0], ev)
+
+
+def boundary_sample(boundary, ev, expected_input=(None, None)):
+    """Decode a selected-player snapshot with an explicitly acknowledged input."""
+    import math
     actors = boundary.get("player", {}).get("actors", [])
-    if (boundary.get("after_updates") != 0 or boundary.get("key") is not None
-            or boundary.get("action") is not None or len(actors) != 1
+    if ((boundary.get("key"), boundary.get("action")) != expected_input or len(actors) != 1
             or type(boundary.get("update")) is not int or type(boundary.get("generation")) is not int
             or not isinstance(boundary.get("game_seconds"), (int, float))
             or not math.isfinite(boundary["game_seconds"])):
