@@ -1057,6 +1057,16 @@ only after a valid placed baseline. It stops the recorder on completion or
 failure; the launcher mounts the run output's `audio/` as the capture directory.
 A recording alone does not establish which sound occurred.
 
+`dev/scripts/native-trace.py` samples the selected player through an observation-only
+`schedule_input` event at an ordinary update boundary. Pose, motion, health,
+animation, game clock and logical generation come from that single snapshot.
+`frame` is the ordinary update number. A generation change, duplicate/reversed
+update or nonadvancing clock rejects continuation, and `missed_updates` reports
+sampling gaps. Selected-actor failures are errors rather than healthy samples.
+Held trace inputs are released on failure. These observations do not establish
+exact input timing: `--key` still uses asynchronous public input requests. Use an
+acknowledged schedule for a matched input comparison.
+
 Replay an accepted original rope schedule through a running native control port:
 
 ```sh
