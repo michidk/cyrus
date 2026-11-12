@@ -1495,6 +1495,28 @@ resampling can prevent enough anchors; a failure alone does not diagnose a
 production audio bug. Passing establishes timing consistency at the admitted
 windows, not every sample between them.
 
+For browser acceptance, run `dev/scripts/test-browser-book-audio.mjs` against a
+private Chromium CDP endpoint and a sealed installed build:
+
+```sh
+CYRUS_BROWSER_BUILD_RECORD=/absolute/host/web/build-provenance.json \
+CYRUS_ANALYSIS_PYTHON=/absolute/host/analysis-env/bin/python \
+node dev/scripts/test-browser-book-audio.mjs \
+  http://127.0.0.1:9228 http://localhost:36084/ \
+  http://localhost:36084/original/ /absolute/host/066.wav \
+  /absolute/host/new-capture
+```
+
+The install service must expose the player's install explicitly. The driver uses
+public keyboard input to open Options and return to Main, waiting for acknowledged
+selection and page readiness. It records stereo PCM from consecutive AudioWorklet
+quanta, the input and ready epochs, executed application/worker hashes, and the
+unchanged continuity analysis. Missing graph quanta, stale build artifacts,
+readiness failure and reference discontinuity reject acceptance. The output
+folder must be new so a retry cannot overwrite evidence. Run the continuity
+failure controls with `dev/scripts/test-book-audio-continuity.py` in the same
+analysis environment. This harness does not start or restart managed previews.
+
 Use the same transition direction and selection, explicit input epoch and
 bounded audio window on both platforms. Check every expected rustle reference
 before comparing onset/gain. Acknowledged page input and paced WAV duration
