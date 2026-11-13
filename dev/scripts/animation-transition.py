@@ -3,7 +3,10 @@
 
 The executable adapter takes one JSON request on stdin and returns one JSON reply.
 observe returns frame, cumulative game_seconds, unique world/player owner, group,
-and observed events (sequence, owner, kind=play/stop, effect for play, slot).
+and sound_overflow=False plus observed play/remember/stop/complete/forget events.
+Every event has a contiguous sequence and atomic snapshot with frame,
+game_seconds, selected owner, animation, group and 16-slot mixer_generation.
+Play/remember/stop carry slot and generation; remember binds owner and effect.
 arm acknowledges armed/event_cursor/pcm_cursor; key receives the installed scan
 code and held state; finish finalizes PCM and returns frames and sample_rate.
 The adapter owns real event observation and PCM capture. A group crossing alone
@@ -13,11 +16,18 @@ import argparse
 import configparser
 import fcntl
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
 import subprocess
 import time
+
+
+_observer_spec = importlib.util.spec_from_file_location(
+    'sound_service_observer', Path(__file__).with_name('original-sound-observer.py'))
+_observer = importlib.util.module_from_spec(_observer_spec)
+_observer_spec.loader.exec_module(_observer)
 
 
 def capture(observe, arm, key, finish, group, effect, game_limit, wall_limit, persist):
@@ -55,6 +65,7 @@ def capture(observe, arm, key, finish, group, effect, game_limit, wall_limit, pe
     receipt.update(status='armed', armed=armed, baseline=baseline)
     persist(receipt)
     entered = None
+    completed = None
     held = False
     events = {}
     try:
@@ -62,11 +73,20 @@ def capture(observe, arm, key, finish, group, effect, game_limit, wall_limit, pe
         key(True)
         while True:
             row = sample()
+            if row.get('sound_overflow') is not False:
+                raise ValueError('sound-service observation missing or overflowed')
             for event in row.get('events', []):
                 sequence = event.get('sequence')
                 if type(sequence) is not int:
                     raise ValueError('observed event sequence absent')
                 if sequence > armed['event_cursor']:
+                    _observer.validate_event(event)
+                    snapshot = event['snapshot']
+                    if (snapshot['owner'] != baseline['owner']
+                            or snapshot['animation'] != baseline.get('animation')
+                            or not baseline['frame'] <= snapshot['frame'] <= row['frame']
+                            or not baseline['game_seconds'] <= snapshot['game_seconds'] <= row['game_seconds']):
+                        raise ValueError('sound event is outside the atomic selected-player capture')
                     if sequence in events and events[sequence] != event:
                         raise ValueError('observed event identity changed')
                     events[sequence] = event
@@ -75,7 +95,10 @@ def capture(observe, arm, key, finish, group, effect, game_limit, wall_limit, pe
                 receipt.update(status='entered', entered=row)
                 key(False)
                 held = False
-            if entered is not None and row['group'] != group:
+            if entered is not None and row['group'] != group and completed is None:
+                completed = row
+                receipt['completion_boundary'] = row
+            if completed is not None and row['frame'] > completed['frame']:
                 receipt['completed'] = row
                 break
             if row['game_seconds'] - baseline['game_seconds'] >= game_limit:
@@ -84,16 +107,29 @@ def capture(observe, arm, key, finish, group, effect, game_limit, wall_limit, pe
     finally:
         if held:
             key(False)
-        receipt['pcm'] = finish()
-        receipt['events'] = [events[index] for index in sorted(events)]
-        persist(receipt)
-    owned = [event for event in receipt['events'] if event.get('owner') == baseline['owner']]
-    plays = [event for event in owned if event.get('kind') == 'play' and event.get('effect') == effect]
-    stops = [event for event in owned if event.get('kind') == 'stop']
-    if (len(plays) != 1 or len(stops) != 1 or plays[0].get('slot') is None
-            or plays[0]['slot'] != stops[0].get('slot')
-            or plays[0]['sequence'] >= stops[0]['sequence']):
+        try:
+            receipt['pcm'] = finish()
+        finally:
+            receipt['events'] = [events[index] for index in sorted(events)]
+            persist(receipt)
+    if sorted(events) != list(range(armed['event_cursor'] + 1,
+                                    max(events, default=armed['event_cursor']) + 1)):
+        raise ValueError('sound-service event sequence is incomplete')
+    remembered = [event for event in receipt['events']
+                  if event.get('kind') == 'remember' and event.get('owner') == baseline['owner']
+                  and event.get('effect') == effect]
+    if len(remembered) != 1:
         raise ValueError('selected transition lacks ordered observed emission/stop evidence')
+    remembered = remembered[0]
+    identity = (remembered['slot'], remembered['generation'])
+    plays = [event for event in receipt['events'] if event['kind'] == 'play'
+             and (event.get('slot'), event.get('generation')) == identity]
+    stops = [event for event in receipt['events'] if event['kind'] in ('stop', 'complete')
+             and (event.get('slot'), event.get('generation')) == identity]
+    if (len(plays) != 1 or len(stops) != 1
+            or not plays[0]['sequence'] < remembered['sequence'] < stops[0]['sequence']):
+        raise ValueError('selected transition lacks ordered observed emission/stop evidence')
+    receipt['sample_terminal'] = stops[0]['kind']
     pcm = receipt['pcm']
     if type(pcm.get('frames')) is not int or pcm['frames'] <= 0 or pcm.get('sample_rate', 0) <= 0:
         raise ValueError('transition PCM capture incomplete')
@@ -125,7 +161,9 @@ def main():
     scan_code = binding(args.keys_ini)
     def request(action, **fields):
         result = subprocess.run([str(args.adapter.resolve())], input=json.dumps(dict(action=action, **fields)),
-                                capture_output=True, text=True, check=True, timeout=5)
+                                capture_output=True, text=True, timeout=5)
+        if result.returncode:
+            raise RuntimeError(f'{action} adapter failed: {result.stderr.strip()}')
         return json.loads(result.stdout)
     latest = {}
     def persist(receipt):

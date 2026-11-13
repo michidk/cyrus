@@ -687,12 +687,35 @@ and PCM observation before input. The driver waits for ordinary progress,
 releases input on observed group entry to prevent held-key retriggering, and
 stops at observed group completion or bounded game progress. A wall deadline
 limits a stalled observer. Changed player/world identity, missing emission/stop
-ordering or incomplete PCM reject the receipt. Every observation is saved
+ordering or incomplete PCM reject the receipt. A sample that finishes before
+EndAnimation may instead terminate with an observed mixer-completion query;
+clearing its remembered handle alone is insufficient. Starts, remembered
+ownership and terminal events match both slot and start generation, and events
+retain their original immutable snapshots. The driver drains the completed
+transition through the next ordinary frame before finalizing PCM. Every observation is saved
 atomically; only `status=captured` admits the complete contract. A group change
 without sound-service observations remains rejected. This requires an adapter
 that observes the real sound service; group/frame interpolation is insufficient.
 Run its failure/continuation controls with
 `python3 dev/scripts/test-animation-transition.py`.
+
+`python3 dev/scripts/original-sound-observer.py BINDINGS OUTPUT` records actual
+sound-service writes with Linux x86-64 hardware watchpoints. The original test
+container needs ptrace permission. Executable-specific bindings remain in ignored
+research, verify the loaded executable and relocated instructions, and supply
+`pid()`, `bind(pid)` and `capture(hit_indices)` as documented in the runner.
+Each capture runs while the emulation thread is stopped. Service events include
+the selected animation, frame/game clock, reusable sample slot and mixer start
+generation. Missing event batches, sequence gaps, invalid generation identities
+and overflow reject the stream. `status.json` records the final result separately
+from flushed `events.jsonl`; an armed or interrupted stream is not acceptance.
+Use a fresh output directory, request shutdown with its `stop` file, and retain
+both files with executable and binding hashes. The runner clears its hardware
+watches before detaching, including on failure. Bindings must observe real service
+boundaries; they cannot turn group changes or PCM energy into starts or stops.
+Run `python3 dev/scripts/test-original-sound-observer.py` for failure controls.
+Set `CYRUS_OBSERVER_HARDWARE=1` inside the original test container to also execute
+the real stopped-write and detach control.
 The disc is mounted from `game.gog` through a `game.cue` copy of `game.ins`: stock DOSBox-X
 reads a cue sheet only by its `.cue` extension, and without the disc every movie is skipped.
 The default copy keeps `final_version=0`, which makes the original skip the Introduction and start in the first
