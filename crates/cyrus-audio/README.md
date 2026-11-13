@@ -17,6 +17,18 @@ The browser sound bank retains the install's speech and subtitle switches before
 saved book preferences are applied. Speech mode controls dialogue record lifetime
 maintenance; disabling it uses nominal text countdowns on both hosts.
 
+Examine descriptions acquire their installed RTX voice through the same per-label
+preparation as scripted dialogue when it is absent from the control voice cache.
+Pending metadata or WAV dependencies retain the request. Closing the view cancels
+pending admission; a completed text-only entry keeps the existing text-only rule.
+The reply duration uses the WAV frame count and sample rate, rather than dialogue's
+quantized lifetime. This follows the released preservation
+[examine contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#examine-view).
+`tests/examine_speech.rs` exercises this through `SoundPlugin` with the legacy bank
+empty, including close/reopen and a single installed source. To exercise the real
+audio backend in a paced runtime, set `CYRUS_EXAMINE_DEVICE_ACCEPTANCE=1`; the test
+then waits for backend retirement instead of consuming the decoder itself.
+
 Original PCM width is retained through native and browser preparation. The decoder
 applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
 integer rounding before backend resampling. Rodio queue conversion starts after

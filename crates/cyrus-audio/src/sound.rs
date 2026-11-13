@@ -148,7 +148,7 @@ pub struct Speech(pub HashMap<String, VoiceClip<Handle<AudioSource>>>);
 
 use cyrus_assets::sound::VoiceClip;
 
-// shortcut: holds every voice clip's PCM in memory; read clips on demand once rgpre exposes the RTX index.
+// shortcut: legacy control requests retain the full native voice bank; examine and scripts can prepare labels on demand.
 #[cfg(not(target_arch = "wasm32"))]
 type PreparedSpeech = HashMap<String, VoiceClip<Vec<u8>>>;
 #[cfg(not(target_arch = "wasm32"))]
@@ -757,40 +757,132 @@ fn positional(
     Ok((volume, pan))
 }
 
-/// Start the examine view's next description line as speech and report the clip length, or report
-/// that the label has no speech clip. The view draws the text itself, so no dialogue subtitle is
-/// created, and shows a line without a clip as text only.
+/// Assets needed by the per-label examine reader on either host. Headless hosts
+/// without an asset server still answer that no playable clip is available.
+#[derive(bevy::ecs::system::SystemParam)]
+struct ExamineAssets<'w> {
+    server: Option<Res<'w, AssetServer>>,
+    clips: Option<Res<'w, Assets<dialogue::DialogueClip>>>,
+    sources: Option<Res<'w, Assets<AudioSource>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    install: Option<Res<'w, GameInstall>>,
+}
+
+#[derive(Default)]
+struct ExaminePreparation {
+    label: Option<[u8; 4]>,
+    reader: dialogue::DialoguePreparation,
+}
+
+impl ExaminePreparation {
+    fn clear(&mut self) {
+        if self.label.take().is_some() {
+            self.reader.clear();
+        }
+    }
+
+    fn read(
+        &mut self,
+        label: [u8; 4],
+        assets: &ExamineAssets<'_>,
+    ) -> anyhow::Result<std::task::Poll<Option<VoiceClip<Handle<AudioSource>>>>> {
+        use std::task::Poll;
+        if self.label != Some(label) {
+            self.clear();
+            self.label = Some(label);
+        }
+        let (Some(server), Some(clips), Some(sources)) =
+            (&assets.server, &assets.clips, &assets.sources)
+        else {
+            return Ok(Poll::Ready(None));
+        };
+        let clip = match self.reader.read(
+            label,
+            server,
+            clips,
+            #[cfg(not(target_arch = "wasm32"))]
+            assets.install.as_deref(),
+        )? {
+            Poll::Pending => return Ok(Poll::Pending),
+            Poll::Ready(clip) => clip,
+        };
+        let Some(voice) = clip.entry.voice else {
+            return Ok(Poll::Ready(None));
+        };
+        let audio = clip
+            .audio
+            .ok_or_else(|| anyhow::anyhow!("prepared voice has no audio handle"))?;
+        let source = sources
+            .get(&audio)
+            .ok_or_else(|| anyhow::anyhow!("prepared voice has no audio source"))?;
+        // Examine owns a real-time line duration, unlike dialogue's quantized
+        // nominal lifetime. Read the exact frame count from the prepared WAV.
+        let wav = hound::WavReader::new(std::io::Cursor::new(source.bytes.as_ref()))?;
+        Ok(Poll::Ready(Some(VoiceClip {
+            audio,
+            bits_per_sample: voice.bits_per_sample,
+            base_volume: voice.base_volume,
+            seconds: f64::from(wav.duration()) / f64::from(wav.spec().sample_rate),
+            text: clip.entry.text,
+        })))
+    }
+}
+
+/// Start an examine description without creating a dialogue subtitle. Pending
+/// per-label dependencies retain the request; only a completed text-only entry
+/// answers that no clip is available. Closing drops pending acquisition.
 fn examine_speech(
     screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
-    speech: Res<Speech>,
+    mut speech: ResMut<Speech>,
     mut requests: MessageWriter<SoundRequest>,
     mut commands: Commands,
     mut channels: ResMut<Channels>,
+    assets: ExamineAssets,
+    mut preparation: Local<ExaminePreparation>,
 ) {
     let Some(mut screen) = screen else {
+        preparation.clear();
         return;
     };
     if screen.speech_stop {
         screen.speech_stop = false;
+        preparation.clear();
         if let Some(slot) = channels.speech.take() {
             channels.stop_slot(&mut commands, slot);
         }
     }
-    if screen.speech_request.is_none() {
+    let Some(label) = screen.speech_request else {
+        preparation.clear();
         return;
-    }
-    let label = screen.speech_request.take().expect("request checked above");
+    };
     let name = String::from_utf8_lossy(&label);
-    screen.speech_reply = Some(
-        speech
-            .0
-            .iter()
-            .find(|(key, _)| key.eq_ignore_ascii_case(&name))
-            .map(|(key, clip)| {
-                requests.write(SoundRequest::Voice(key.clone()));
-                clip.seconds as f32
-            }),
-    );
+    let key = speech
+        .0
+        .keys()
+        .find(|key| key.eq_ignore_ascii_case(&name))
+        .cloned();
+    let key = match key {
+        Some(key) => Some(key),
+        None => match preparation.read(label, &assets) {
+            Ok(std::task::Poll::Pending) => return,
+            Ok(std::task::Poll::Ready(Some(clip))) => {
+                let key = name.to_ascii_lowercase();
+                speech.0.insert(key.clone(), clip);
+                Some(key)
+            }
+            Ok(std::task::Poll::Ready(None)) => None,
+            Err(error) => {
+                error!("examine speech {name}: {error:#}");
+                None
+            }
+        },
+    };
+    screen.speech_request = None;
+    preparation.clear();
+    screen.speech_reply = Some(key.map(|key| {
+        requests.write(SoundRequest::Voice(key.clone()));
+        speech.0[&key].seconds as f32
+    }));
 }
 
 #[allow(clippy::too_many_arguments)]
