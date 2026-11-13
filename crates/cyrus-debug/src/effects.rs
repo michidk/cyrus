@@ -91,7 +91,7 @@ fn settings(ui: &mut egui::Ui, effects: &mut ModernEffects, effect: Effect) {
             ui.label("Adapts within 1 stop darker to 1.5 stops brighter.");
         }
         Effect::WaterReflections => {
-            ui.label("Reflects what is on screen; the horizon colour elsewhere.");
+            ui.label("Reflects the scenery and sky on screen; the horizon colour elsewhere.");
         }
         Effect::LensFlare | Effect::Sky | Effect::Foliage | Effect::MotionBlur => {}
         Effect::Shadows

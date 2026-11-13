@@ -81,8 +81,10 @@ every value is a Modern tuning choice:
 - a lens flare and sun glare while the sun is on screen and not covered;
 - a sky glow around the sun, a warm horizon while it is low, and stars when the day/night cycle
   darkens the sky;
-- glossy water with screen-space reflections, which reflect only what is on screen and the
-  horizon colour elsewhere;
+- glossy water with screen-space reflections, which reflect the scenery on screen, else the sky
+  drawn in the reflected direction, and the horizon colour where neither is on screen; open water
+  reflects at most half its colour, so a sea seen at a grazing angle does not turn into the sky,
+  while calm water models reflect fully;
 - swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
   about their base, while collision keeps the installed placement;
 - depth of field focused on the player, and motion blur.
