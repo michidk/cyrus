@@ -50,8 +50,11 @@ rejects audio or startup dependencies in rendering.
 same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
 Script-driven actor poses retain the same scene origin as exported world placements and markers.
 The framed inspection camera supplies `ScriptView` before ordinary actor updates.
-Script visibility flags hide or restore bound scene nodes independently of actor
-update eligibility. Current model records retain the captured transform and animation frame.
+Script visibility flags hide or restore bound scene nodes. Map cell actors outside the current
+view window are hidden too: the original draws actors from the same window list that the ordinary
+update walks, so an actor whose script has not yet run (the ISLAND lighthouse beam starts with
+`HideMe`) is never drawn from afar (**Verified** from the executable). Current model records retain
+the captured transform and animation frame.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
 HUD artwork and rasterized text explicitly use nearest sampling when the
