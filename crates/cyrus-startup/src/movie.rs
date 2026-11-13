@@ -34,7 +34,7 @@ pub(super) struct MoviePlayback {
     /// Holds the `LoadWorld` destination that was waiting behind it.
     script: Option<Option<[i32; 3]>>,
     #[cfg(not(target_arch = "wasm32"))]
-    load: Option<Task<anyhow::Result<Prepared>>>,
+    load: Option<Task<anyhow::Result<(Prepared, Decoder)>>>,
     #[cfg(target_arch = "wasm32")]
     load: Option<Handle<Prepared>>,
     playing: Option<Playing>,
@@ -50,8 +50,9 @@ struct Playing {
     decoder: Decoder,
     /// One decoder per skip point, already decoded up to it and waiting on its bounded
     /// channel, so a skip swaps decoders instead of decoding every frame before it.
+    /// `None` until the first picture is shown, so they do not delay it.
     #[cfg(not(target_arch = "wasm32"))]
-    prefetched: Vec<(u32, Decoder)>,
+    prefetched: Option<Vec<(u32, Decoder)>>,
     image: Handle<Image>,
     #[cfg(not(target_arch = "wasm32"))]
     audio: Option<Handle<StreamingAudio>>,
@@ -81,6 +82,9 @@ type DecodedImage = Vec<u8>;
 struct Decoder {
     #[cfg(not(target_arch = "wasm32"))]
     frames: Mutex<mpsc::Receiver<anyhow::Result<NativeFrame>>>,
+    /// The first frame, received while the movie was still loading.
+    #[cfg(not(target_arch = "wasm32"))]
+    first: Option<anyhow::Result<NativeFrame>>,
     #[cfg(not(target_arch = "wasm32"))]
     audio: Option<StreamingAudio>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -94,16 +98,20 @@ impl Decoder {
         {
             self.requested.store(due, Ordering::Relaxed);
             let _ = next_frame;
-            match self.frames.lock().unwrap().try_recv() {
-                Ok(frame) => frame.map(|(index, pixels, audio)| {
-                    self.audio = audio;
-                    Some((index, pixels))
-                }),
-                Err(mpsc::TryRecvError::Empty) => Ok(None),
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    anyhow::bail!("Movie decoder disconnected before completion")
-                }
-            }
+            let frame = match self.first.take() {
+                Some(frame) => frame,
+                None => match self.frames.lock().unwrap().try_recv() {
+                    Ok(frame) => frame,
+                    Err(mpsc::TryRecvError::Empty) => return Ok(None),
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        anyhow::bail!("Movie decoder disconnected before completion")
+                    }
+                },
+            };
+            frame.map(|(index, pixels, audio)| {
+                self.audio = audio;
+                Some((index, pixels))
+            })
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -247,6 +255,7 @@ fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
     });
     Ok(Decoder {
         frames: Mutex::new(receiver),
+        first: None,
         audio: None,
         requested,
     })
@@ -331,7 +340,13 @@ pub(super) fn drive(
         menu.ready = false;
         #[cfg(not(target_arch = "wasm32"))]
         {
-            playback.load = Some(IoTaskPool::get().spawn(async move { prepare(&root, index) }));
+            // Decode the first frame in the same task, so it shows as soon as loading ends.
+            playback.load = Some(IoTaskPool::get().spawn(async move {
+                let movie = prepare(&root, index)?;
+                let mut decoder = decode(&movie, 1)?;
+                decoder.first = decoder.frames.get_mut().unwrap().recv().ok();
+                Ok((movie, decoder))
+            }));
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -345,35 +360,25 @@ pub(super) fn drive(
         if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(handle.id()) {
             Some(Err(anyhow::anyhow!("{error}")))
         } else {
-            prepared.remove(handle.id()).map(Ok)
+            prepared
+                .remove(handle.id())
+                .map(|movie| decode(&movie, 1).map(|decoder| (movie, decoder)))
         }
     });
     if let Some(result) = loaded {
         playback.load = None;
-        match result.and_then(|movie| {
-            let decoder = decode(&movie, 1)?;
-            // A failed prefetch only loses the shortcut: the skip decodes it again and reports.
+        match result.map(|(movie, decoder)| Playing {
+            movie,
+            decoder,
             #[cfg(not(target_arch = "wasm32"))]
-            let prefetched = movie
-                .metadata
-                .definition
-                .keys
-                .iter()
-                .filter_map(|&key| Some((key, decode(&movie, key).ok()?)))
-                .collect();
-            Ok(Playing {
-                movie,
-                decoder,
-                #[cfg(not(target_arch = "wasm32"))]
-                prefetched,
-                image: Handle::default(),
-                #[cfg(not(target_arch = "wasm32"))]
-                audio: None,
-                elapsed: 0.0,
-                next_frame: 1,
-                started: false,
-                audio_started: false,
-            })
+            prefetched: None,
+            image: Handle::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            audio: None,
+            elapsed: 0.0,
+            next_frame: 1,
+            started: false,
+            audio_started: false,
         }) {
             Ok(playing) => {
                 menu.movie = Some(MovieStatus {
@@ -434,14 +439,18 @@ pub(super) fn drive(
         let current = menu.movie.as_ref().map_or(0, |m| m.frame);
         if let Some(frame) = skip_point(&playing.movie.metadata.definition, current) {
             #[cfg(not(target_arch = "wasm32"))]
-            let sought = match playing.prefetched.iter().position(|(key, _)| *key == frame) {
-                Some(index) => Ok(playing.prefetched.remove(index).1),
-                None => decode(&playing.movie, frame),
-            }
-            .map(|decoder| {
-                playing.decoder = decoder;
-                playing.audio = None;
-            });
+            let sought = playing
+                .prefetched
+                .as_mut()
+                .and_then(|prefetched| {
+                    let index = prefetched.iter().position(|(key, _)| *key == frame)?;
+                    Some(prefetched.remove(index).1)
+                })
+                .map_or_else(|| decode(&playing.movie, frame), Ok)
+                .map(|decoder| {
+                    playing.decoder = decoder;
+                    playing.audio = None;
+                });
             #[cfg(target_arch = "wasm32")]
             let sought = playing.decoder.frames.get_mut().unwrap().seek(frame);
             match sought {
@@ -570,6 +579,20 @@ pub(super) fn drive(
         }
         if let Ok(mut sprite) = sprite.single_mut() {
             sprite.image = playing.image.clone();
+        }
+        // A failed prefetch only loses the shortcut: the skip decodes it again and reports.
+        #[cfg(not(target_arch = "wasm32"))]
+        if playing.prefetched.is_none() {
+            let movie = &playing.movie;
+            playing.prefetched = Some(
+                movie
+                    .metadata
+                    .definition
+                    .keys
+                    .iter()
+                    .filter_map(|&key| Some((key, decode(movie, key).ok()?)))
+                    .collect(),
+            );
         }
         if !playing.audio_started {
             #[cfg(not(target_arch = "wasm32"))]
@@ -742,10 +765,11 @@ mod tests {
                 },
                 decoder: Decoder {
                     frames: Mutex::new(receiver),
+                    first: None,
                     audio: None,
                     requested: Arc::new(AtomicU32::new(1)),
                 },
-                prefetched: Vec::new(),
+                prefetched: Some(Vec::new()),
                 image: default(),
                 audio: None,
                 elapsed: 0.0,
@@ -968,10 +992,11 @@ mod tests {
                     },
                     decoder: Decoder {
                         frames: Mutex::new(receiver),
+                        first: None,
                         audio: None,
                         requested: Arc::new(AtomicU32::new(1)),
                     },
-                    prefetched: Vec::new(),
+                    prefetched: Some(Vec::new()),
                     image: default(),
                     audio: None,
                     elapsed: if complete { 0.001 } else { 0.0 },
