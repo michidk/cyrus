@@ -226,28 +226,9 @@ fn decode(movie: &Prepared, _: u32) -> anyhow::Result<Decoder> {
     })
 }
 
-/// A 640×240 indexed frame as 640×480 RGBA, filtered vertically like a
-/// bilinear texture stretch (sample centres at `(y + 0.5) / 2 − 0.5`).
+/// Expand a validated indexed frame using the shared cinematic raster contract.
 pub(super) fn stretch(indices: &[u8], palette: &[[u8; 3]; 256]) -> Vec<u8> {
-    let row = |y: usize| &indices[y * 640..(y + 1) * 640];
-    let mut pixels = Vec::with_capacity(640 * 480 * 4);
-    for y in 0..480 {
-        let source = ((y as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, 239.0);
-        let (top, weight) = (source.floor() as usize, source.fract());
-        let (upper, lower) = (row(top), row((top + 1).min(239)));
-        for x in 0..640 {
-            let (a, b) = (
-                palette[usize::from(upper[x])],
-                palette[usize::from(lower[x])],
-            );
-            for c in 0..3 {
-                let mixed = f32::from(a[c]) * (1.0 - weight) + f32::from(b[c]) * weight;
-                pixels.push(mixed.round() as u8);
-            }
-            pixels.push(255);
-        }
-    }
-    pixels
+    super::movie_raster::expand(indices, palette)
 }
 
 fn skip_point(movie: &MovieDefinition, frame: u32) -> Option<u32> {
@@ -523,6 +504,7 @@ pub(super) fn drive(
         paint_subtitles(
             &mut pixels,
             &playing.movie.metadata.font,
+            &playing.movie.metadata.subtitle_palette,
             &playing.movie.metadata.definition,
             frame,
             subtitles,
@@ -610,6 +592,7 @@ const SUBTITLE_SHADOW: i32 = 2;
 fn paint_subtitles(
     pixels: &mut [u8],
     font: &cyrus_text::Font,
+    palette: &[[u8; 3]],
     movie: &MovieDefinition,
     frame: u32,
     enabled: bool,
@@ -625,7 +608,32 @@ fn paint_subtitles(
     for (row, line) in lines.iter().enumerate() {
         let x = 320 - font.width(line) / 2;
         let y = 470 - (lines.len() - row) as i32 * i32::from(font.line_height);
-        font.draw_shadowed_by(pixels, 640, line, [x, y], SUBTITLE_ALPHA, SUBTITLE_SHADOW);
+        let mut pen = x;
+        for ch in line.bytes() {
+            for (offset, alpha, shadow) in [
+                (SUBTITLE_SHADOW, SUBTITLE_ALPHA[1], true),
+                (0, SUBTITLE_ALPHA[0], false),
+            ] {
+                font.draw_char(ch, [pen + offset, y + offset], |x, y, index| {
+                    if (0..640).contains(&x) && (0..480).contains(&y) {
+                        let colour = if shadow {
+                            [0; 3]
+                        } else {
+                            palette[usize::from(index)]
+                        };
+                        let at = (y as usize * 640 + x as usize) * 4;
+                        super::movie_raster::blend(
+                            &mut pixels[at..at + 4],
+                            colour,
+                            alpha,
+                            x as usize,
+                            y as usize,
+                        );
+                    }
+                });
+            }
+            pen += font.advance(ch);
+        }
     }
 }
 
@@ -689,6 +697,7 @@ mod tests {
                         frame_micros: 1000,
                         has_audio: false,
                         font: default(),
+                        subtitle_palette: vec![[0; 3]; 256],
                     },
                 },
                 decoder: Decoder {
@@ -901,6 +910,7 @@ mod tests {
                             frame_micros: 1000,
                             has_audio: false,
                             font: default(),
+                            subtitle_palette: vec![[0; 3]; 256],
                         },
                     },
                     decoder: Decoder {
@@ -1035,6 +1045,24 @@ mod tests {
     }
 
     #[test]
+    fn cinematic_tiled_raster_matches_independent_full_image_oracle() {
+        let indices: Vec<u8> = (0..240)
+            .flat_map(|y| (0..640).map(move |x| ((x * 17 + y * 13) & 255) as u8))
+            .collect();
+        let palette = std::array::from_fn(|i| [i as u8, (i * 3) as u8, (i * 7) as u8]);
+        let pixels = stretch(&indices, &palette);
+        // Synthetic public raster oracle: complete image, including padding,
+        // tile overlaps, filter thresholds and the final populated column.
+        let fingerprint = pixels
+            .iter()
+            .fold(14_695_981_039_346_656_037_u64, |hash, byte| {
+                (hash ^ u64::from(*byte)).wrapping_mul(1_099_511_628_211)
+            });
+        assert_eq!(pixels.len(), 640 * 480 * 4);
+        assert_eq!(fingerprint, 0x9dc8_41a5_d3f4_8bf7);
+    }
+
+    #[test]
     fn subtitle_breaks_at_first_space_after_column_35() {
         assert_eq!(
             subtitle_lines("01234567890123456789012345678901234 end, Cyrus."),
@@ -1104,10 +1132,11 @@ mod tests {
             }],
         };
         let draw = |movie: &MovieDefinition, frame, enabled| {
-            let mut pixels = vec![0; 640 * 480 * 4];
+            let mut pixels = [0, 0, 0, 255].repeat(640 * 480);
             paint_subtitles(
                 &mut pixels,
                 &cyrus_text::Font::from(&font),
+                &[[253, 249, 43]; 256],
                 movie,
                 frame,
                 enabled,
@@ -1117,15 +1146,33 @@ mod tests {
         let offset = (468 * 640 + 319) * 4;
         assert_eq!(
             &draw(&movie, 10, true)[offset..offset + 4],
-            &[252, 248, 40, 180]
+            &[181, 178, 33, 255]
         );
-        assert!(draw(&movie, 9, true).iter().all(|v| *v == 0));
-        assert!(draw(&movie, 20, true).iter().all(|v| *v == 0));
-        assert!(draw(&movie, 10, false).iter().all(|v| *v == 0));
+        assert!(
+            draw(&movie, 9, true)
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|v| *v == [0, 0, 0, 255])
+        );
+        assert!(
+            draw(&movie, 20, true)
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|v| *v == [0, 0, 0, 255])
+        );
+        assert!(
+            draw(&movie, 10, false)
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|v| *v == [0, 0, 0, 255])
+        );
         movie.subtitles[0].always = true;
         assert_eq!(
             &draw(&movie, 10, false)[offset..offset + 4],
-            &[252, 248, 40, 180]
+            &[181, 178, 33, 255]
         );
 
         let mut font = font;
@@ -1137,15 +1184,16 @@ mod tests {
         font.glyphs[2].width = 3;
         font.glyphs[2].pixels = vec![0; 3];
         movie.subtitles[0].text = " A".into();
-        let mut pixels = vec![0; 640 * 480 * 4];
+        let mut pixels = [0, 0, 0, 255].repeat(640 * 480);
         paint_subtitles(
             &mut pixels,
             &cyrus_text::Font::from(&font),
+            &[[253, 249, 43]; 256],
             &movie,
             10,
             true,
         );
         let offset = (468 * 640 + 322) * 4;
-        assert_eq!(&pixels[offset..offset + 4], &[252, 248, 40, 180]);
+        assert_eq!(&pixels[offset..offset + 4], &[173, 174, 24, 255]);
     }
 }

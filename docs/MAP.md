@@ -384,6 +384,7 @@ module where it is defined and regenerate.
 - `src/menu_raster.rs` — Paint the installed book's page surfaces: labels, widgets and pictures drawn into the textures
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
+- `src/movie_raster.rs` — Cinematic texture sampling and framebuffer composition, following preservation's
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
 - `src/overlay.rs` — Installed GXA images that a running `ViewGXA` or `AnimateGXA` task draws over the world frame.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the

@@ -1,3 +1,4 @@
+#![cfg(all(feature = "native", not(target_arch = "wasm32")))]
 //! A mod's script patch against the installed ISLAND map. The patch list is fixed per process, so
 //! this lives in its own test binary.
 use cyrus_assets::script::Scripts;

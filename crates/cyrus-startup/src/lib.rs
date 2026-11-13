@@ -24,6 +24,7 @@ mod menu_raster;
 mod movie;
 #[cfg(not(target_arch = "wasm32"))]
 mod movie_native;
+mod movie_raster;
 #[cfg(target_arch = "wasm32")]
 mod movie_stream;
 #[cfg(not(target_arch = "wasm32"))]

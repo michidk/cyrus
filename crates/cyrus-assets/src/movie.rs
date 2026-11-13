@@ -28,6 +28,8 @@ pub struct MovieMetadata {
     pub frame_micros: u32,
     pub has_audio: bool,
     pub font: cyrus_text::Font,
+    /// Selected startup texture-upload palette, with all eight component bits.
+    pub subtitle_palette: Vec<[u8; 3]>,
 }
 
 /// Read-only native cinematic location. CD sector interpretation belongs to preservation.
@@ -110,7 +112,8 @@ impl MovieMetadata {
             self.definition.name
         );
         anyhow::ensure!(
-            self.font.line_height > 0
+            self.subtitle_palette.len() == 256
+                && self.font.line_height > 0
                 && self
                     .font
                     .glyphs
@@ -148,12 +151,16 @@ mod tests {
             frames: 20,
             frame_micros: 66660,
             has_audio: false,
+            subtitle_palette: vec![[0; 3]; 256],
             font: cyrus_text::Font {
                 line_height: 2,
                 ..Default::default()
             },
         };
         valid.validate().unwrap();
+        let mut bad = valid.clone();
+        bad.subtitle_palette.pop();
+        assert!(bad.validate().is_err());
         let mut bad = valid.clone();
         bad.frames = 0;
         assert!(bad.validate().is_err());

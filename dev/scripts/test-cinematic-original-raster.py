@@ -64,6 +64,25 @@ class OriginalRaster(unittest.TestCase):
             m.require_equal(m.compose_subtitles(background, metadata, 2, wrong), composed)
         self.assertEqual(m.compose_subtitles(background, metadata, 2, palette, False).tobytes(), background.tobytes())
 
+    def test_documented_setup_matches_complete_synthetic_production_contract(self):
+        yy, xx = np.indices((240, 640))
+        indices = (xx * 17 + yy * 13) & 255
+        palette = np.array([[i, (i * 3) & 255, (i * 7) & 255] for i in range(256)], dtype=np.uint8)
+        decoded = Image.fromarray(palette[indices], 'RGB')
+        expected = m.compose(decoded, palette[0], m.movie_draws())
+        fingerprint = 14695981039346656037
+        for byte in expected.tobytes():
+            fingerprint = ((fingerprint ^ byte) * 1099511628211) & ((1 << 64) - 1)
+        self.assertEqual(fingerprint, 0x9dc8_41a5_d3f4_8bf7)
+        whole = decoded.resize((640, 480), Image.Resampling.BILINEAR).convert('RGBA')
+        with self.assertRaisesRegex(ValueError, 'full raster'):
+            m.require_equal(whole, expected)
+        moved = m.movie_draws()
+        moved[0]['anchor'][0] = 0
+        moved[0]['start'][0] = 0
+        with self.assertRaisesRegex(ValueError, 'full raster'):
+            m.require_equal(m.compose(decoded, palette[0], moved), expected)
+
     def test_invalid_backing_and_unclipped_destination_are_rejected(self):
         draw = {'source': [0, 0, 1, 1], 'backing': [3, 2],
                 'destination': [0, 0, 1, 1], 'anchor': [0, 0],

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Identify compositor pixels against an explicit installed movie export.
 
-No published movie status is used as a presentation identity. The vertical
-bilinear expansion matches the movie presentation contract. Every RGBA byte
+No published movie status is used as a presentation identity. The tiled
+raster oracle follows the documented movie presentation contract. Every RGBA byte
 must match; ambiguous images retain all matching frame numbers.
 """
 import argparse
@@ -10,7 +10,7 @@ from bisect import bisect_left
 import hashlib
 import json
 import math
-import struct
+import importlib.util
 from pathlib import Path
 from PIL import Image
 
@@ -40,30 +40,20 @@ def presentation_order(surfaces):
     return sorted(surfaces, key=lambda s: s['metadata']['monotonicTimestamp']), reversals
 
 
-def compose(image, metadata, frame, subtitles, scanlines):
-    """Independent oracle for startup/movie.rs and text::Font pixel composition.
-
-    Font glyphs, palette, text and frame bounds come from installed preparation.
-    Alpha, shadow, wrapping and centring follow the production composition owner.
-    No masks or image tolerances are used.
-    """
-    image = image.convert('RGBA').copy()
-    pixels = image.load()
+def compose(image, metadata, frame, subtitles, scanlines, padding_colour):
+    """Compose a decoded frame using the independent original raster oracle."""
+    if image.size != (640, 240):
+        raise ValueError('movie oracle requires an unscaled decoded frame')
+    spec = importlib.util.spec_from_file_location('raster', Path(__file__).with_name('cinematic-original-raster.py'))
+    raster = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(raster)
+    image = raster.compose(image, padding_colour, raster.movie_draws())
     if scanlines:
+        pixels = image.load()
         for y in range(1, 480, 2):
             for x in range(640):
                 pixels[x, y] = (0, 0, 0, 255)
-    f32 = lambda v: struct.unpack('f', struct.pack('f', v))[0]
-    for x, y, index, shadow, alpha in subtitle_pixels(metadata, frame, subtitles):
-        if 0 <= x < 640 and 0 <= y < 480:
-            colour = [0, 0, 0] if shadow else [c << 2 for c in metadata['font']['palette'][index]]
-            old = pixels[x, y]
-            if old[3] != 255:
-                raise ValueError('movie oracle requires opaque decoded pixels')
-            sa = f32(alpha / 255)
-            pixels[x, y] = tuple(math.floor(f32(f32(c * sa) + f32(old[k] * f32(1 - sa))) + .5)
-                                 for k, c in enumerate(colour)) + (255,)
-    return image
+    return raster.compose_subtitles(image, metadata, frame, metadata['subtitle_palette'], subtitles)
 
 
 def subtitle_pixels(metadata, frame, subtitles):
@@ -204,8 +194,8 @@ def main():
     for frame in window['frames']:
         data = (args.installed_window / frame['picture']).read_bytes()
         image = Image.frombytes('RGBA', (640, 240), data)
-        references[frame['number']] = compose(image.resize((640, 480), Image.Resampling.BILINEAR),
-                                             metadata, frame['number'], values['504'] != 0, values['505'] != 0)
+        references[frame['number']] = compose(image, metadata, frame['number'], values['504'] != 0,
+                                             values['505'] != 0, frame['padding_colour'])
     surfaces = json.loads((args.capture / 'surfaces.json').read_text())
     images = {f['id']: Image.open(args.capture / f"surface-{f['id']}.png") for f in surfaces}
     result = identify(surfaces, images, references)

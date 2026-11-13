@@ -144,6 +144,11 @@ render of the scheduled sources and cancellations. This isolated adapter check
 complements full native/browser cinematic comparisons.
 Forward skips retain decoder state; menu return cancels downloads and playback.
 Native and browser playback share skip points, subtitles, interlace and menu return.
+Movie frames use the preservation movie-raster contract: padded 256-pixel tiles,
+clipped sampling coordinates, four-bit fractional filtering and dithered RGB565.
+Subtitle glyphs use the selected eight-bit startup upload palette and integer
+framebuffer blending. The complete 640 by 480 image is published atomically to
+the GPU sprite; unused texture backing participates in filtering.
 New Game plays installed movie zero (Introduction), then enters the installed
 starting world and marker after playback completes or advances through its skip
 points. Movie loading or playback failure returns to the menu with an error. Load restores the selected slot through the host session boundary. Shared world entry waits for preparation, required asset dependencies and

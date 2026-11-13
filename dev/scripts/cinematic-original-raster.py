@@ -67,6 +67,30 @@ def sample(texture, rectangle):
     return upper + ((lower - upper) * fy >> 8)
 
 
+def movie_draws():
+    """Derive the documented clipped movie tiles with staged f32 setup.
+
+    Normalize triangle edge deltas by area before multiplying source deltas.
+    Reassociating these operations changes filter thresholds. The production
+    viewport includes all 640 columns; emulator clipping remains explicit in
+    the separately observed draw records accepted by compose().
+    """
+    draws = []
+    for left in range(0, 640, 256):
+        width = min(256, 640 - left)
+        extent = min(width + 1, 640 - left)
+        right = np.float32(width * extent / (width + 1))
+        bottom = np.float32(240 * 480 / 481)
+        inverse = np.float32(1 / (extent * 480))
+        dx = np.float32(right * np.float32(480 * inverse))
+        dy = np.float32(bottom * np.float32(extent * inverse))
+        draws.append({'source': [left, 0, width, 240], 'backing': [256, 256],
+                      'destination': [left, 0, left + extent, 480],
+                      'anchor': [left + extent, 0], 'start': [int(right * 2**32), 0],
+                      'dx': [int(dx * 2**32), 0], 'dy': [0, int(dy * 2**32)]})
+    return draws
+
+
 def compose(decoded, padding_colour, draws, size=(640, 480)):
     """Build the full raster, including explicit source padding and draw overlap.
 
