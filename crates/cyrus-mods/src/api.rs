@@ -34,6 +34,7 @@ struct DamageHit {
     actor: String,
     loss: u32,
     position: Vec<f32>,
+    source: Vec<f32>,
 }
 
 #[wasvy::methods]
@@ -54,6 +55,12 @@ impl Damage {
         self.events
             .get(index as usize)
             .map(|e| e.position.clone())
+            .unwrap_or_default()
+    }
+    pub fn source(&self, index: u32) -> Vec<f32> {
+        self.events
+            .get(index as usize)
+            .map(|event| event.source.clone())
             .unwrap_or_default()
     }
 }
@@ -555,6 +562,7 @@ pub(crate) fn exchange(
             actor: event.name,
             loss: u32::from(event.loss),
             position: event.position.map(Vec::from).unwrap_or_default(),
+            source: event.source_position.map(Vec::from).unwrap_or_default(),
         })
         .collect();
     publish_player(&mut player, src.actors.as_deref());

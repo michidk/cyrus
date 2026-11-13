@@ -18,20 +18,24 @@ interface components {
     loss: func(index: u32) -> u32;
     /// Map-unit position in original axes, or empty if spatial state was unavailable.
     position: func(index: u32) -> list<f32>;
+    /// Known combat attacker position in map units, otherwise empty. Not a weapon trajectory.
+    source: func(index: u32) -> list<f32>;
   }
 
-  /// Transient, unlit spherical particles with no collision. Points, radii, velocities
-  /// and accelerations use scene units and axes, as camera poses do; time is seconds.
-  /// Requests are rendered after this frame's Update. Lifetime and motion use game time.
-  /// A mod's particles are removed on disable/completed reload and all particles on world replacement.
+  /// GPU particle bursts using Hanabi. Coordinates, speed and acceleration use scene
+  /// units and axes. Game time controls lifetime. No surface decals or collision.
+  /// Disable/reload removes the owner's effects; world replacement removes all effects.
   /// wasvy:type-path=cyrus_mods::particles::Particles
   resource particles {
     constructor(component: component);
-    /// owner is the mod folder id. color is sRGB RGBA in 0..=1. Position, velocity and
-    /// acceleration need three finite values, each within +/-1e6. radius is 0.001..=10,
-    /// lifetime 0.01..=10. Returns false for invalid or over-budget requests.
-    /// Queued and live limits: 256 per mod, 1024 total. Live overflow drops new requests.
-    emit: func(owner: string, position: list<f32>, velocity: list<f32>, acceleration: list<f32>, color: list<f32>, radius: f32, lifetime: f32) -> bool;
+    /// position, nonzero direction and acceleration have three finite values within +/-1e6.
+    /// color is sRGB RGBA in 0..=1. speed, radius and lifetime are ordered [min,max] pairs:
+    /// speed 0..=1000, radius 0.001..=10, lifetime 0.01..=10 seconds.
+    /// spread 0..=1 bounds lateral velocity relative to the forward velocity.
+    /// stretch 1..=8 elongates droplets along velocity. count 1..=64.
+    /// Returns false for invalid or over-budget requests. Queued/live particle limits:
+    /// 256 per owner, 1024 total. Overflow drops entire bursts.
+    burst: func(owner: string, position: list<f32>, direction: list<f32>, acceleration: list<f32>, color: list<f32>, speed: list<f32>, radius: list<f32>, lifetime: list<f32>, spread: f32, stretch: f32, count: u32) -> bool;
   }
   use wasvy:ecs/app@0.0.11.{component};
 

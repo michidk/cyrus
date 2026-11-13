@@ -15,6 +15,9 @@ pub struct DamageEvent {
     pub loss: u8,
     /// Query position in map units and original axes, if spatial state was available.
     pub position: Option<[f32; 3]>,
+    /// Attacker position in map units when a combat source is known. None for
+    /// environmental damage and health services without an attributable source.
+    pub source_position: Option<[f32; 3]>,
 }
 
 #[derive(Default)]
@@ -37,6 +40,21 @@ impl ScriptWorld {
         self.damage.0.drain(..).collect()
     }
 
+    /// Attach a known combat source only to the health reduction just observed.
+    pub(super) fn attribute_damage(&mut self, target: ScriptActorId, before: u8, source: [i32; 3]) {
+        if self.actors[target.index].attributes[Attribute::Health] >= before {
+            return;
+        }
+        if let Some(event) = self
+            .damage
+            .0
+            .back_mut()
+            .filter(|event| event.actor == target)
+        {
+            event.source_position = Some(source.map(|q8| q8 as f32 / 256.0));
+        }
+    }
+
     pub(super) fn observe_health_loss(&mut self, index: usize, before: u8) {
         let after = self.actors[index].attributes[Attribute::Health];
         if after >= before {
@@ -55,6 +73,7 @@ impl ScriptWorld {
             name: self.actors[index].name().to_owned(),
             loss: before - after,
             position,
+            source_position: None,
         });
     }
 }
@@ -75,6 +94,7 @@ mod tests {
                 name: String::new(),
                 loss: 1,
                 position: None,
+                source_position: None,
             });
         }
         assert_eq!(log.0.len(), LIMIT);
