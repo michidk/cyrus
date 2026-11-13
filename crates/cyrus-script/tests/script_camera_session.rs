@@ -1394,6 +1394,68 @@ mod live {
     }
 
     #[test]
+    fn x_reset_camera_releases_script_inhibition_without_erasing_motion_or_other_bits() {
+        use cyrus_soup::Property;
+        let mut data = function_scripts(Native::XResetCamera);
+        data.definition.references = vec![Property::DisableScript, Property::FallFlag];
+        let assign = |reference, value| Operation::Assign {
+            destination: Place::Property {
+                object: Object::Me,
+                reference,
+            },
+            formula: Formula {
+                first: Value::Integer { value },
+                rest: vec![],
+            },
+        };
+        data.actors.insert(
+            "CYRUS".into(),
+            actor(
+                vec![
+                    assign(0, 0xff),
+                    assign(1, 1),
+                    Operation::End { target: 3 },
+                    Operation::Assign {
+                        destination: Place::Flag { index: 0 },
+                        formula: Formula {
+                            first: Value::Integer { value: 9 },
+                            rest: vec![],
+                        },
+                    },
+                    Operation::End { target: 3 },
+                ],
+                100,
+            ),
+        );
+        let (mut world, service) = world_from(data);
+        let hud = ScriptHud::default();
+        run(&mut world, PLAYER, BODY, Some(&hud)).unwrap();
+        assert_eq!(
+            world.actors()[PLAYER]
+                .control_state()
+                .unwrap()
+                .script_control,
+            0xff
+        );
+        run(&mut world, PLAYER, ScriptStage::OrdinaryMain, Some(&hud)).unwrap();
+        assert_eq!(
+            world.flags(),
+            [0],
+            "inhibited ordinary continuation must not run"
+        );
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let control = world.actors()[PLAYER].control_state().unwrap();
+        assert_eq!(control.script_control, 0xe0, "ordinary stages resume");
+        assert_eq!(
+            control.falling_state.byte(),
+            1,
+            "reset preserves airborne continuation"
+        );
+        run(&mut world, PLAYER, ScriptStage::OrdinaryMain, Some(&hud)).unwrap();
+        assert_eq!(world.flags(), [9], "ordinary script continues after reset");
+    }
+
+    #[test]
     fn a_requested_camera_reset_runs_in_the_next_ordinary_update_at_the_placed_player() {
         let mut scripts = function_scripts(Native::XResetCamera);
         scripts.content_id = scripts.content_identity().unwrap();

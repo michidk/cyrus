@@ -2335,3 +2335,15 @@ Acceptance still requires an exact observed member and records
 `accepted_target_scale`. Supply `next_scale=None` only for a terminal boundary
 whose following step was not captured; another boundary cannot follow it.
 This avoids inventing a future step in a completed acknowledgement.
+
+### Retaining completed acceptance stages
+
+`dev/scripts/acceptance-stage.py` retains command logs and source-bound completion
+receipts in a host directory. Pass every source/configuration input with `--input`,
+relevant environment names with `--environment`, optional retained artifacts with
+`--output`, and the command last after `--command`. A stage is reusable only after
+successful exit with unchanged inputs and intact log/artifact hashes. Interrupted
+or failed attempts restart their setup; a retained PID or partial output is never
+evidence of success. Keep these directories under ignored local state and include
+toolchain configuration among the inputs. Run its controls with
+`python3 dev/scripts/test-acceptance-stage.py`.

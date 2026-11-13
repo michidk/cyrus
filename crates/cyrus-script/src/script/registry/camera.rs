@@ -166,9 +166,9 @@ impl ScriptWorld {
     /// zero the scripted-camera words, recompute the first published pose through `service` as
     /// setup does (limiter bypassed, current and previous equal), clear the player's and the
     /// camera actor's tasks, and rebuild the player's matrix with its retained angles set to the
-    /// current ones. The new camera state is built first, so a failure changes nothing. The
-    /// original also clears five flag bits of a per-actor task byte whose meaning cyrus does not
-    /// model; clearing the task slots is the only part applied (**Inferred** to cover it).
+    /// current ones. The new camera state is built first, so a camera-service failure changes
+    /// nothing. Task cancellation also releases script, hook, task, object and combat inhibition,
+    /// preserving the other control bits and the actor's motion state.
     pub(super) fn reset_camera_session(
         &mut self,
         player: usize,
@@ -206,6 +206,9 @@ impl ScriptWorld {
         state.reset_render();
         for index in [player, camera_actor] {
             self.cancel_actor_tasks(index)?;
+            if let Some(control) = self.actors[index].control.as_mut() {
+                control.script_control &= !0x1f;
+            }
         }
         let actor = self
             .spatial

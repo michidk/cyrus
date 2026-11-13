@@ -29,6 +29,11 @@ ground movement and collision are bypassed. Releasing a direction clears its ret
 speed before ordinary movement resumes. This follows preservation's
 [control-animation input contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#pushanimation-and-taskstop-animation-ownership).
 
+Verified: `XResetCamera` releases the selected player's script, hook, task, object
+and combat inhibition along with its tasks. Falling and queued motion remain owned
+by the ordinary controller and collision response. Unrelated control bits survive.
+This follows preservation's [camera reset contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#xresetcamera).
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
