@@ -111,38 +111,54 @@ def restore(directory, target, expected):
         if compiler_identity(record['identity']) != compiler_identity(expected):
             continue
         pack(unit)
-        with tarfile.open(unit / 'files.tar.gz', 'r:gz') as archive:
-            # Validate the entire unit before publishing any of its files.
-            members = {}
-            for name, digest in record['files'].items():
-                relative = Path(name)
-                if relative.is_absolute() or '..' in relative.parts:
-                    raise ValueError('unsafe compilation checkpoint path')
-                member = archive.getmember(name)
-                if not member.isfile():
-                    raise ValueError('invalid compilation checkpoint member: ' + name)
-                with archive.extractfile(member) as stream:
-                    if checkpoint.hashlib.file_digest(stream, 'sha256').hexdigest() != digest:
+        # Gzip random access repeatedly decompresses large compiler libraries.
+        # Validate and stage the entire unit in one forward pass before linking
+        # any member into the shared target. Staging shares the target filesystem.
+        target.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=target) as temporary:
+            staged_root = Path(temporary)
+            staged_files = []
+            seen = set()
+            with tarfile.open(unit / 'files.tar.gz', 'r|gz') as archive:
+                for member in archive:
+                    name = member.name
+                    if name not in record['files']:
+                        continue
+                    relative = Path(name)
+                    if relative.is_absolute() or '..' in relative.parts:
+                        raise ValueError('unsafe compilation checkpoint path')
+                    if name in seen or not member.isfile():
+                        raise ValueError('invalid compilation checkpoint member: ' + name)
+                    seen.add(name)
+                    output = target / relative
+                    staged = staged_root / relative
+                    write = not output.exists()
+                    if write:
+                        staged.parent.mkdir(parents=True, exist_ok=True)
+                    digest = checkpoint.hashlib.sha256()
+                    with archive.extractfile(member) as source:
+                        if write:
+                            with staged.open('wb') as destination:
+                                while block := source.read(1024 * 1024):
+                                    digest.update(block)
+                                    destination.write(block)
+                        else:
+                            while block := source.read(1024 * 1024):
+                                digest.update(block)
+                    if digest.hexdigest() != record['files'][name]:
                         raise ValueError('corrupt compilation checkpoint: ' + name)
-                members[name] = member
-            for name, member in members.items():
-                output = target / name
-                # Never replace a live shared artifact. Cargo checks its freshness.
-                if output.exists():
-                    continue
+                    if write:
+                        os.chmod(staged, member.mode)
+                        os.utime(staged, (member.mtime, member.mtime))
+                        staged_files.append((staged, output))
+            if seen != record['files'].keys():
+                raise ValueError('incomplete compilation checkpoint')
+            for staged, output in staged_files:
                 output.parent.mkdir(parents=True, exist_ok=True)
-                with archive.extractfile(member) as source, tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as temporary:
-                    staged = Path(temporary.name)
-                    shutil.copyfileobj(source, temporary)
                 try:
-                    os.chmod(staged, member.mode)
-                    os.utime(staged, (member.mtime, member.mtime))
-                    try:
-                        os.link(staged, output)
-                    except FileExistsError:
-                        continue  # Another shared-target owner published first.
-                finally:
-                    staged.unlink(missing_ok=True)
+                    os.link(staged, output)
+                except FileExistsError:
+                    continue  # Another shared-target owner published first.
                 restored += 1
     return restored
 

@@ -40,6 +40,21 @@ class Recovery(unittest.TestCase):
         self.assertEqual(self.fingerprint.read_text(), 'fingerprint')
         self.assertEqual(units.restore(self.cache, self.target, self.identity), 0)
 
+    def test_restore_streams_compressed_members_without_random_archive_seeks(self):
+        self.store()
+        units.shutil.rmtree(self.target)
+        with patch.object(units.tarfile.TarFile, 'getmember', side_effect=AssertionError('random compressed archive seek')):
+            self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+
+    def test_staging_uses_writable_target_not_its_managed_parent(self):
+        self.store()
+        temporary = units.tempfile.TemporaryDirectory
+        def inside_target(*args, **kwargs):
+            self.assertEqual(kwargs['dir'], self.target)
+            return temporary(*args, **kwargs)
+        with patch.object(units.tempfile, 'TemporaryDirectory', side_effect=inside_target):
+            units.restore(self.cache, self.target, self.identity)
+
     def test_changed_inputs_rejected_and_live_shared_files_preserved(self):
         self.store()
         self.artifact.write_bytes(b'new live compiler output')
@@ -56,7 +71,7 @@ class Recovery(unittest.TestCase):
         units.shutil.rmtree(self.target)
         with self.assertRaisesRegex(ValueError, 'corrupt compilation checkpoint'):
             units.restore(self.cache, self.target, self.identity)
-        self.assertFalse(self.target.exists())
+        self.assertEqual(list(self.target.rglob("*")), [])
 
     def test_orchestration_changes_do_not_invalidate_identical_compilation(self):
         self.identity = {'source': {'sha256': 'before', 'files': {'crates/app/lib.rs': 'same', 'dev/scripts/run.sh': 'before', 'dev/vendor/lib.rs': 'same'}}, 'configuration': 'flags'}

@@ -432,8 +432,11 @@ closed. During application compilation, completed Cargo units, dep-info,
 fingerprints and build-script outputs are retained in compressed, hashed units.
 After target-directory loss, matching units restore before Cargo resumes;
 Cargo still checks dependency freshness and finishes interrupted units. Existing
-shared artifacts are never overwritten. Build orchestration changes do not
-invalidate unchanged compiler inputs. No whole profile is copied or removed.
+shared artifacts are never overwritten. Restoration streams each compressed unit
+once and validates each recorded member before publishing any file. Temporary staging
+stays inside the writable target directory, including when its parent is managed
+and unwritable. Build orchestration changes do not invalidate unchanged compiler
+inputs. No whole profile is copied or removed.
 The checkpoint directory contains build outputs only, never installed game data,
 and does not change the inherited Cargo target directory.
 Run `python3 dev/scripts/test-web-compile-checkpoint.py` for interrupted-build,
