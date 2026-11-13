@@ -685,13 +685,7 @@ fn paint_subtitles(
                             palette[usize::from(index)]
                         };
                         let at = (y as usize * 640 + x as usize) * 4;
-                        super::movie_raster::blend(
-                            &mut pixels[at..at + 4],
-                            colour,
-                            alpha,
-                            x as usize,
-                            y as usize,
-                        );
+                        super::movie_raster::blend(&mut pixels[at..at + 4], colour, alpha);
                     }
                 });
             }
@@ -1231,7 +1225,11 @@ mod tests {
                 (hash ^ u64::from(*byte)).wrapping_mul(1_099_511_628_211)
             });
         assert_eq!(pixels.len(), 640 * 480 * 4);
-        assert_eq!(fingerprint, 0x9dc8_41a5_d3f4_8bf7);
+        assert_eq!(fingerprint, 0x6edc_009f_4bdd_c867);
+        // A flat frame stays flat: no row is darker than its neighbour.
+        let flat = stretch(&[7; 640 * 240], &palette);
+        let row = |y: usize| &flat[(y * 640 + 8) * 4..(y * 640 + 248) * 4];
+        assert!((1..479).all(|y| row(y) == row(1)));
     }
 
     #[test]
@@ -1318,7 +1316,7 @@ mod tests {
         let offset = (468 * 640 + 319) * 4;
         assert_eq!(
             &draw(&movie, 10, true)[offset..offset + 4],
-            &[181, 178, 33, 255]
+            &[178, 176, 30, 255]
         );
         assert!(
             draw(&movie, 9, true)
@@ -1344,7 +1342,7 @@ mod tests {
         movie.subtitles[0].always = true;
         assert_eq!(
             &draw(&movie, 10, false)[offset..offset + 4],
-            &[181, 178, 33, 255]
+            &[178, 176, 30, 255]
         );
 
         let mut font = font;
@@ -1366,6 +1364,6 @@ mod tests {
             true,
         );
         let offset = (468 * 640 + 322) * 4;
-        assert_eq!(&pixels[offset..offset + 4], &[173, 174, 24, 255]);
+        assert_eq!(&pixels[offset..offset + 4], &[178, 176, 30, 255]);
     }
 }

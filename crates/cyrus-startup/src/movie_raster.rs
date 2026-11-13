@@ -5,7 +5,6 @@ const WIDTH: usize = 640;
 const HEIGHT: usize = 480;
 const SOURCE_HEIGHT: usize = 240;
 const TILE: usize = 256;
-const DITHER: [[i32; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
 
 /// Expand an installed indexed movie frame with the original tiled sampling grid.
 /// The decoder validates the 640×240 input. Palette index zero fills unused
@@ -48,7 +47,7 @@ pub(super) fn expand(indices: &[u8], palette: &[[u8; 3]; 256]) -> Vec<u8> {
                     upper + (((lower - upper) * fy) >> 8)
                 });
                 let at = (y * WIDTH + left + x) * 4;
-                output[at..at + 3].copy_from_slice(&store(colour, left + x, y));
+                output[at..at + 3].copy_from_slice(&store(colour));
             }
         }
     }
@@ -59,36 +58,20 @@ fn fixed(value: f32) -> i64 {
     (f64::from(value) * 4_294_967_296.0) as i64
 }
 
-fn store(colour: [i32; 3], x: usize, y: usize) -> [u8; 3] {
-    let dither = DITHER[y & 3][x & 3];
-    std::array::from_fn(|channel| {
-        let value = colour[channel];
-        let (stored, bits) = if channel == 1 {
-            (
-                ((4 * value - (value >> 4) + (value >> 6) + dither) >> 2) >> 2,
-                6,
-            )
-        } else {
-            (
-                ((2 * value - (value >> 4) + (value >> 7) + dither) >> 1) >> 3,
-                5,
-            )
-        };
-        ((stored << (8 - bits)) | (stored >> (2 * bits - 8))) as u8
-    })
+/// The installed release renders through a 32-bit Glide wrapper, so the
+/// filtered colour is kept at full precision. The 16-bit ordered dither of
+/// period hardware made every other row visibly darker on flat areas.
+fn store(colour: [i32; 3]) -> [u8; 3] {
+    colour.map(|value| value.clamp(0, 255) as u8)
 }
 
 /// Blend a subtitle pass over an opaque movie framebuffer. Source colours are
 /// eight-bit entries from the selected upload palette, not the font's BPAL.
-pub(super) fn blend(pixel: &mut [u8], colour: [u8; 3], alpha: u8, x: usize, y: usize) {
-    let dither = DITHER[y & 3][x & 3];
+pub(super) fn blend(pixel: &mut [u8], colour: [u8; 3], alpha: u8) {
     let colour = std::array::from_fn(|channel| {
-        let (shift, scale) = if channel == 1 { (2, 2) } else { (3, 1) };
-        let stored = (i32::from(pixel[channel]) >> shift) << shift;
-        let destination = ((stored << scale) + 15 - dither) >> scale;
         ((i32::from(colour[channel]) * (i32::from(alpha) + 1)) >> 8)
-            + ((destination * (256 - i32::from(alpha))) >> 8)
+            + ((i32::from(pixel[channel]) * (256 - i32::from(alpha))) >> 8)
     });
-    pixel[..3].copy_from_slice(&store(colour, x, y));
+    pixel[..3].copy_from_slice(&store(colour));
     pixel[3] = 255;
 }
