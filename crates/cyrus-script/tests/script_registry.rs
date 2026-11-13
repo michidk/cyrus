@@ -16205,25 +16205,6 @@ fn keyboard_walk_session(verify_drno: bool) {
         .release(KeyCode::ArrowLeft);
     app.update();
     assert_eq!(heading(&app)[1], turning[1]);
-    // Modern controls steer toward the held direction relative to the camera's heading (the
-    // player's own here, with no drawn camera): left of it raises the heading. (This fixture
-    // binds Use to D.)
-    app.world_mut()
-        .resource_mut::<cyrus_game::fidelity::Fidelity>()
-        .player_controller = cyrus_game::fidelity::Mode::Modern;
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::KeyA);
-    app.update();
-    let steered = heading(&app);
-    let gained = (steered[1] + 2048 - turning[1]) % 2048;
-    assert!((1..=512).contains(&gained), "{turning:?} -> {steered:?}");
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .release(KeyCode::KeyA);
-    app.world_mut()
-        .resource_mut::<cyrus_game::fidelity::Fidelity>()
-        .player_controller = cyrus_game::fidelity::Mode::Faithful;
     for _ in 0..12 {
         app.update();
         position(&app);

@@ -157,11 +157,6 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         (cyrus_game::fidelity::Area::Fog, args.launch.fog),
         (cyrus_game::fidelity::Area::Sky, args.launch.sky),
         (cyrus_game::fidelity::Area::Music, args.launch.music),
-        (
-            cyrus_game::fidelity::Area::PlayerController,
-            args.launch.controls,
-        ),
-        (cyrus_game::fidelity::Area::Camera, args.launch.camera),
     ] {
         if let Some(value) = value {
             settings.fidelity.set(area, mode(&value));

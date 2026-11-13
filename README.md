@@ -104,7 +104,8 @@ cyrus is two applications, the game and the asset viewer, and sits beside two ot
 
 Faithful mode aims to reproduce what the player experiences: visuals, audio,
 controls, camera behavior, script and animation timing, and game outcomes.
-Modern controls, camera behavior, and graphics remain opt-in settings.
+Modern mode is an opt-in setting that changes only graphics and sound; modern controls and camera
+behavior come from the bundled `movement` mod.
 
 Technical limits are not part of that goal. cyrus can use current hardware,
 load faster, and run at a higher frame rate without changing game behavior.

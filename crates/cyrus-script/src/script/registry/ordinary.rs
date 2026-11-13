@@ -994,6 +994,7 @@ pub struct OrdinaryContext<'w, 's> {
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
+    // Present only in hosts that run the selected player's controller.
     fidelity: Option<Res<'w, cyrus_game::fidelity::Fidelity>>,
     explicit: Option<Res<'w, crate::player::runtime::PlayerRuntime>>,
     actors: ResMut<'w, ScriptActors>,
@@ -1649,13 +1650,8 @@ pub fn run_ordinary(
             return;
         }
     };
-    use cyrus_game::fidelity::Mode;
-    let modes = fidelity
-        .as_deref()
-        .map(|fidelity| (fidelity.player_controller, fidelity.camera));
-    // The Modern camera, or a mod asking for it, turns the follow camera by the look input.
-    let orbit =
-        matches!(modes, Some((_, Mode::Modern))) || look.as_deref().is_some_and(|look| look.orbit);
+    // A mod's orbit camera turns the follow camera by the look input.
+    let orbit = look.as_deref().is_some_and(|look| look.orbit);
     let follow_turn = orbit.then(|| {
         look.as_deref_mut().map_or(0, |look| {
             let turn = look.turn.trunc();
@@ -1664,12 +1660,10 @@ pub fn run_ordinary(
         })
     });
     world.turn_follow_camera(follow_turn);
-    // Modern movement reads the held directions or the left stick relative to the drawn
-    // camera's heading.
+    // A steering mod's movement reads relative to the drawn camera's heading.
     let stick = look.as_deref().and_then(|look| look.stick);
     let driven = look.as_deref().is_some_and(|look| look.driven);
-    let camera_relative = modes.is_some_and(|(controller, _)| controller == Mode::Modern || driven);
-    let modern = match (camera_relative, input.as_deref()) {
+    let modern = match (driven, input.as_deref()) {
         // A topic menu reads forward and back as up and down, not as movement.
         (true, Some(held)) if world.globals.menu_state() != 0 => {
             Some((held.menu_directions(stick), None))
@@ -1704,7 +1698,7 @@ pub fn run_ordinary(
     let player_controller = if !explicit
         .as_ref()
         .is_some_and(|runtime| runtime.explicit_updated)
-        && modes.is_some()
+        && fidelity.is_some()
     {
         input
             .as_deref()

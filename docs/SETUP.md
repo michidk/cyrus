@@ -445,7 +445,7 @@ corruption, changed-input and shared-artifact preservation controls.
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music`, `--controls`, `--camera` and `--mode` map directly
+Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music` and `--mode` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
