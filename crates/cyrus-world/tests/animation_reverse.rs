@@ -315,6 +315,9 @@ fn reverse_boundary_sound_failure_restores_its_signed_cursor_and_sticky_error() 
     actor.set_reverse(true).unwrap();
     let error = actor
         .advance_with_sounds(1, &mut |sound| {
+            if sound == AnimationSound::CheckSample {
+                return Ok(());
+            }
             assert_eq!(sound, AnimationSound::Stop);
             anyhow::bail!("sound backend unavailable")
         })

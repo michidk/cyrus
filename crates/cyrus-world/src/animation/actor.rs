@@ -859,7 +859,11 @@ impl ActorAnimation {
         sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
-        let result = self.advance_current(ticks, sounds);
+        let result = self
+            .current
+            .as_ref()
+            .map_or(Ok(()), |(_, sequence)| sequence.check_sound(sounds))
+            .and_then(|()| self.advance_current(ticks, sounds));
         if let Err(error) = &result {
             self.failure = Some(error.to_string());
         }

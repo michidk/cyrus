@@ -98,10 +98,13 @@ fn pending_default_and_sound_state_resume_without_replaying_play() {
     assert_eq!(
         restored_sounds,
         [
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
             AnimationSound::Play {
                 effect: 8,
                 rate_offset_hz: 128
             },
+            AnimationSound::CheckSample,
             AnimationSound::Stop,
         ]
     );

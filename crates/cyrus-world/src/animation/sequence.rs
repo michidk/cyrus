@@ -62,6 +62,8 @@ pub enum AnimationSound {
     Event { flags: u32 },
     /// Start the signed effect index with a signed offset in hertz, before surface remapping.
     Play { effect: i16, rate_offset_hz: i32 },
+    /// Query the remembered slot before advancement; clear it only when it is idle.
+    CheckSample,
     /// Stop the last remembered sound at EndAnimation, if its handle is valid.
     Stop,
     /// Clear the remembered handle on replacement without stopping its channel.
@@ -449,6 +451,13 @@ impl FrameSequence {
         self.motion_active = motion_active;
     }
 
+    pub(super) fn check_sound(&self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
+        if self.sound_requested {
+            self.dispatch_sound(sounds, AnimationSound::CheckSample)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn forget_sound(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
         if self.sound_requested {
             self.dispatch_sound(sounds, AnimationSound::Forget)?;
@@ -620,6 +629,13 @@ impl FrameSequence {
         exit_requested: bool,
         sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
+        if let Some(message) = &self.failure {
+            anyhow::bail!("{message}");
+        }
+        if let Err(error) = self.check_sound(sounds) {
+            self.failure = Some(error.to_string());
+            return Err(error);
+        }
         self.advance_with_progress(ticks, exit_requested, sounds, &mut 0, false)
     }
 

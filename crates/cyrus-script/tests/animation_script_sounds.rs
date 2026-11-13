@@ -77,6 +77,10 @@ fn script_requests_dispatch_authored_cues_before_the_immediate_pose() {
                 effect: -17,
                 rate_offset_hz: -64
             },
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
             AnimationSound::Stop,
             AnimationSound::Play {
                 effect: -17,

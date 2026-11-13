@@ -797,6 +797,7 @@ fn handle(
                         let event = match sound {
                             AnimationSound::Play { effect, rate_offset_hz } =>
                                 json!({"type":"play", "effect":effect, "rate_offset_hz":rate_offset_hz}),
+                            AnimationSound::CheckSample => json!({"type":"check_sample"}),
                             AnimationSound::Stop => json!({"type":"stop"}),
                             AnimationSound::Forget => json!({"type":"forget"}),
                             AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {
@@ -1849,6 +1850,25 @@ mod tests {
             }],
         );
         assert_eq!(response[0]["captured_sounds"], json!([]));
+        let response = run_commands(
+            &mut app,
+            vec![Command::StepScript {
+                generation: 1,
+                index: 0,
+                stage: cyrus_control::ScriptStage::Animation,
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                distance_override: None,
+                fallback_position: None,
+            }],
+        );
+        assert_eq!(
+            response[0]["captured_sounds"],
+            json!([{
+                "actor":{"generation":1,"index":0},
+                "sound":{"type":"check_sample"}
+            }])
+        );
         let actors = app.world().resource::<cyrus_script::script::ScriptActors>();
         assert!(
             actors.current.as_ref().unwrap().actors()[0]

@@ -247,18 +247,21 @@ fn main() -> Result<()> {
             }
             let mut events = Vec::new();
             for sound in cues {
-                events.push(
-                    play(
-                        &mut app,
-                        actor,
-                        sound,
-                        surface,
-                        step.position_q8,
-                        step.later_surface,
-                        &bank,
-                    )
-                    .with_context(|| format!("case {} step {index}", case.name))?,
-                );
+                let query = sound == AnimationSound::CheckSample;
+                let event = play(
+                    &mut app,
+                    actor,
+                    sound,
+                    surface,
+                    step.position_q8,
+                    step.later_surface,
+                    &bank,
+                )
+                .with_context(|| format!("case {} step {index}", case.name))?;
+                // Status polling changes ownership but is not an audible event.
+                if !query {
+                    events.push(event);
+                }
             }
             steps.push(json!({"position_q8": step.position_q8, "prior_surface": prior,
                 "surface": surface, "veto": veto, "support": support.map(|s| format!("{:?}", s.source())), "events": events}));
@@ -419,6 +422,7 @@ fn grounded_steps(
         }
         let mut events = Vec::new();
         for (sound, surface, position, stage) in pending.drain(..) {
+            let query = sound == AnimationSound::CheckSample;
             let mut event = play(
                 app,
                 actor,
@@ -429,8 +433,10 @@ fn grounded_steps(
                 bank,
             )
             .with_context(|| context.clone())?;
-            event["stage"] = json!(stage);
-            events.push(event);
+            if !query {
+                event["stage"] = json!(stage);
+                events.push(event);
+            }
         }
         reports.push(json!({"position_q8": walking.position, "input_position_q8": step.position_q8,
             "heading": heading, "input_heading": step.heading, "ticks": step.ticks,
@@ -515,6 +521,7 @@ fn play(
             effect,
             rate_offset_hz,
         } => json!({"kind": "play", "authored": effect, "rate_offset_hz": rate_offset_hz}),
+        AnimationSound::CheckSample => json!({"kind": "check_sample"}),
         AnimationSound::Stop => json!({"kind": "stop"}),
         AnimationSound::Forget => json!({"kind": "forget"}),
         AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {

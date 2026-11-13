@@ -584,3 +584,22 @@ cancellation before binding, other-owner continuation and fresh-node playback.
 The example checks actual transport counts before admitting its next stage.
 It establishes the controlled public routing/output contract, not physical output
 or arbitrary natural animation timing. No fixture or game data is tracked.
+
+The `natural_animation` example runs installed CYRUS draw/sheath command tables
+through `ActorAnimation` and the production sample pool at the installed nominal
+rate. It observes reusable slots, transport tokens and remembered ownership through
+public sample snapshots, and introduces another owner after sheath completion to
+check that EndAnimation cannot stop that replacement. Completed remembered samples
+are checked at animation advancement before later commands, while slots retain
+their reusable-handle semantics between animation updates.
+Prepare its local fixture with `python3 dev/scripts/prepare-natural-animation.py
+ANIMATIONS_EXPORT SOUNDS_CACHE INSTALL OUTPUT.json`; exports and audio remain
+outside tracked files. Set `CYRUS_AUDIO_FIXTURE` to that file for the native
+example. `python3 dev/scripts/test-natural-animation.py LOG PCM OUTPUT.json`
+checks its finalized 48 kHz stereo signed-16 Pulse monitor capture.
+`node dev/scripts/test-natural-animation-browser.mjs CDP_URL PAGE_URL WASM OUTPUT.json`
+checks executed WASM identity, actual sample ownership and contiguous WebAudio
+readback. The page supplies the same explicit fixture through `captureFixture()`.
+Run `python3 dev/scripts/test-natural-animation-controls.py` for rejection controls.
+These isolated command/output checks do not establish whole-scene input or
+physical-speaker parity.

@@ -68,7 +68,11 @@ with delays checked first. These rules are
 `request_with_sounds`, `force_request_with_sounds`, and `advance_with_sounds` accept a synchronous handler for
 signed effect requests, rate offsets in hertz, End stops and replacement handle
 resets. The handler owns the original surface remapping, positional gains and
-channel allocation. Without it, sound commands still fail explicitly. Audible
+channel allocation. Advancement queries a previously requested sample before
+interpreting further commands, including updates held by a delay. The audio host
+clears an idle remembered slot at that query; it retains reusable-slot semantics
+between animation updates. Query failures remain sticky across snapshots.
+Without the handler, sound commands still fail explicitly. Audible
 original walking cues and automatic runtime scheduling remain unverified. The
 [sound facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#animation-playsound)
 define this boundary.
