@@ -29,6 +29,45 @@ class Recovery(unittest.TestCase):
                 text=True, capture_output=True)
             return result, (root/'calls').read_text()
 
+    def test_retain_available_image_atomically_and_reuse_after_reset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            present = root / 'present'
+            present.touch()
+            saved = root / 'nested/runtime.tar'
+            docker = root / 'docker'
+            docker.write_text("""#!/bin/sh
+echo "$*" >> "$CALLS"
+case "$1" in
+ image) test -f "$PRESENT" ;;
+ save) printf retained > "$3"; test ! -f "$FAIL" ;;
+ load) test -s "$3" && touch "$PRESENT" ;;
+esac
+""")
+            docker.chmod(0o755)
+            env = dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
+                       PRESENT=str(present), CALLS=str(root/'calls'), FAIL=str(root/'fail'))
+            command = ['bash', str(SCRIPT), '--retain', 'fixture:1', str(saved)]
+            (root/'fail').touch()
+            failed = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse(saved.exists(), 'failed save published a reusable archive')
+            self.assertFalse(list(saved.parent.glob('*.partial.*')))
+            (root/'fail').unlink()
+            # Concurrent admissions share one archive; only one successful save runs.
+            attempts = [subprocess.Popen(command, env=env, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True) for _ in range(2)]
+            for attempt in attempts:
+                output, error = attempt.communicate(timeout=10)
+                self.assertEqual(attempt.returncode, 0, output + error)
+            self.assertEqual(saved.read_bytes(), b'retained')
+            subprocess.run(command, env=env, check=True, capture_output=True)
+            self.assertEqual((root/'calls').read_text().count('save --output'), 2)
+            present.unlink()
+            subprocess.run(command, env=env, check=True, capture_output=True)
+            self.assertTrue(present.exists())
+            self.assertEqual((root/'calls').read_text().count('load --input'), 1)
+
     def test_existing_image_needs_no_archive_or_load(self):
         result, calls = self.run_restore(present=True, archive=False)
         self.assertEqual(result.returncode, 0, result.stderr)

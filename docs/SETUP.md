@@ -1409,7 +1409,14 @@ archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
 the live-run lock, serializes concurrent restores and verifies the requested
 image exists. An existing image requires no archive load. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
-Archives remain local; recovery never removes peer images or containers.
+Pass `--retain` before `IMAGE` to save an available image when its archive is
+missing. This checkpoints setup before the next reset: concurrent calls share
+the restore lock, and only a successful nonempty Docker save is published by
+atomic rename. A failed save leaves no reusable archive. Existing nonempty
+archives are preserved. If both image and archive are absent, recreate the
+required image with its repository Dockerfile first; the helper does not guess
+a build context. Archives remain local; recovery never removes peer images or
+containers.
 
 For separate transient-geometry restoration, run the native diagnostic driver with
 an explicit installed game, the host config directory mounted into the runtime,
