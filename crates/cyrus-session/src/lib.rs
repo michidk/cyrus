@@ -378,6 +378,13 @@ impl RuntimeSessionSnapshot {
                 && current.selected_player() == Some(binding.actor),
             "session capture: presentation player is not the current logical player"
         );
+        let waiting = world
+            .get_resource::<cyrus_script::script::sound_dispatch::AnimationSoundQueue>()
+            .map_or(0, |queue| queue.waiting(current.generation()));
+        ensure!(
+            waiting == 0,
+            "session capture: {waiting} animation sounds still await scene bindings; drain them first"
+        );
         let scene = resource::<PlayerSceneRequest>(world, "player source")?;
         let animation = resource::<AnimationRequest>(world, "animation source")?;
         ensure!(

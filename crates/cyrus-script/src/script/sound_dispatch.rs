@@ -1,12 +1,12 @@
 //! Ordered animation sound admission while logical actors await presentation bindings.
 use super::{ScriptActorId, ScriptSound};
-use bevy::prelude::Entity;
+use bevy::prelude::{Entity, Resource};
 use cyrus_world::{animation::AnimationSound, sound::SoundCue};
 
 /// Script-side sound routing before a scene node exists. Stops apply before binding,
 /// just as they do in the downstream audio owner. Playback and remembered handles
 /// remain audio-owned; deferral does not turn a stopped start into later playback.
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct AnimationSoundQueue {
     pending: Vec<(ScriptActorId, ScriptSound)>,
 }
@@ -14,6 +14,13 @@ impl AnimationSoundQueue {
     /// Number of commands awaiting scene bindings, including Stop/Forget controls.
     pub fn len(&self) -> usize {
         self.pending.len()
+    }
+    /// Number of commands of `generation` awaiting scene bindings; other generations drop on release.
+    pub fn waiting(&self, generation: u64) -> usize {
+        self.pending
+            .iter()
+            .filter(|(actor, _)| actor.generation == generation)
+            .count()
     }
     /// Whether no command awaits a scene binding.
     pub fn is_empty(&self) -> bool {
