@@ -232,3 +232,5 @@ The behavior follows preservation's [fixed gameplay shortcuts](https://github.co
 Audio synchronization applies committed local preferences before playing cues.
 Opening the book preserves raw installed sound and music volumes; initializing
 the displayed sliders does not write their rounded values back to the mixer.
+
+The credits release lifecycle is documented in merged [preservation PR #319](https://github.com/michidk/redguard-preservation/pull/319).
