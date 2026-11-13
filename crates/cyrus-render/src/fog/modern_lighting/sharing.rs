@@ -117,7 +117,7 @@ pub(super) fn share(
             .chain(parents.iter_ancestors(entity))
             .any(|node| excluded.contains(node));
         let Some(key) = key(material, animation).filter(|_| !actor) else {
-            commands.entity(entity).insert(KeepsOwn);
+            commands.entity(entity).try_insert(KeepsOwn);
             continue;
         };
         let material = material.clone();
@@ -127,7 +127,7 @@ pub(super) fn share(
             .or_insert_with(|| materials.add(material))
             .clone();
         let own = std::mem::replace(&mut handle.0, target);
-        commands.entity(entity).insert(Unshared(own));
+        commands.entity(entity).try_insert(Unshared(own));
     }
 }
 
