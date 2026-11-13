@@ -9,18 +9,13 @@ use super::shadows;
 use super::sharing::{self, SharedMaterials};
 use crate::camera::ViewCamera;
 use bevy::{
-    anti_alias::smaa::Smaa,
     camera::Hdr,
     core_pipeline::{
         prepass::{DepthPrepass, NormalPrepass},
         tonemapping::Tonemapping,
     },
     light::{EnvironmentMapLight, ShadowFilteringMethod},
-    pbr::{ContactShadows, ScreenSpaceAmbientOcclusion},
-    post_process::{
-        auto_exposure::{AutoExposure, AutoExposurePlugin},
-        bloom::Bloom,
-    },
+    post_process::auto_exposure::{AutoExposure, AutoExposurePlugin},
     prelude::*,
 };
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
@@ -60,6 +55,7 @@ impl Plugin for ModernLightingPlugin {
                     )
                         .chain(),
                     (configure_camera, effects::apply_camera_effects).chain(),
+                    effects::switch_lights,
                     effects::focus,
                     effects::sun_shafts,
                     foliage::sway,
@@ -94,44 +90,31 @@ fn lit(fidelity: Res<Fidelity>) -> bool {
 #[derive(Component)]
 pub(super) struct Light;
 
-/// Camera effects that are always on. Everything is Bevy's own; a Modern tuning choice.
-/// Temporal anti-aliasing is left out because the original's mesh animation rewrites vertex
-/// positions in place without motion vectors. Tonemapping and the optional effects come from
-/// `effects`.
+/// What every modern-lit camera needs. Everything is Bevy's own; a Modern tuning choice.
+/// Ambient occlusion, contact shadows, anti-aliasing (SMAA; temporal anti-aliasing is left out
+/// because the original's mesh animation rewrites vertex positions in place without motion
+/// vectors), bloom, tonemapping and the optional effects come from `effects`.
 #[derive(Bundle)]
 struct CameraEffects {
     hdr: Hdr,
     // Screen-space ambient occlusion and contact shadows need depth, and the former normals.
     depth: DepthPrepass,
     normals: NormalPrepass,
-    ambient_occlusion: ScreenSpaceAmbientOcclusion,
-    contact_shadows: ContactShadows,
-    anti_aliasing: Smaa,
-    bloom: Bloom,
+    // Also marks the camera as configured for modern lighting.
     shadow_filtering: ShadowFilteringMethod,
-}
-
-impl Default for CameraEffects {
-    fn default() -> Self {
-        Self {
-            hdr: Hdr,
-            depth: DepthPrepass,
-            normals: NormalPrepass,
-            ambient_occlusion: ScreenSpaceAmbientOcclusion::default(),
-            contact_shadows: ContactShadows::default(),
-            anti_aliasing: Smaa::default(),
-            bloom: Bloom::NATURAL,
-            shadow_filtering: ShadowFilteringMethod::Gaussian,
-        }
-    }
 }
 
 fn configure_camera(
     mut commands: Commands,
-    cameras: Query<Entity, (With<ViewCamera>, Without<ScreenSpaceAmbientOcclusion>)>,
+    cameras: Query<Entity, (With<ViewCamera>, Without<ShadowFilteringMethod>)>,
 ) {
     for camera in &cameras {
-        commands.entity(camera).insert(CameraEffects::default());
+        commands.entity(camera).insert(CameraEffects {
+            hdr: Hdr,
+            depth: DepthPrepass,
+            normals: NormalPrepass,
+            shadow_filtering: ShadowFilteringMethod::Gaussian,
+        });
     }
 }
 
@@ -144,7 +127,7 @@ struct Modernized<'w, 's> {
         'w,
         's,
         (Entity, Option<&'static AutoExposure>),
-        (With<ViewCamera>, With<ScreenSpaceAmbientOcclusion>),
+        (With<ViewCamera>, With<ShadowFilteringMethod>),
     >,
     removed: Query<
         'w,
@@ -204,10 +187,6 @@ fn restore(mut commands: Commands, modernized: Modernized) {
                 Hdr,
                 DepthPrepass,
                 NormalPrepass,
-                ScreenSpaceAmbientOcclusion,
-                ContactShadows,
-                Smaa,
-                Bloom,
                 ShadowFilteringMethod,
                 EnvironmentMapLight,
                 ModernPost,
@@ -248,6 +227,7 @@ mod tests {
             sync_lights,
             configure_camera,
             effects::apply_camera_effects,
+            effects::switch_lights,
             effects::focus,
             effects::sun_shafts,
             effects::sky_glow,

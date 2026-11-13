@@ -128,7 +128,7 @@ module where it is defined and regenerate.
 ## `cyrus-debug` — (undocumented)
 
 - `src/day_night.rs` — The day/night panel: the modern lighting's time of day.
-- `src/effects.rs` — The effects panel: the modern lighting's optional effects.
+- `src/effects.rs` — The effects panel: the parts of the modern lighting and its optional effects.
 - `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
 
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.

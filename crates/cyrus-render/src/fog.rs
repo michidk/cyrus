@@ -227,13 +227,19 @@ struct FogExtension {
     directional: Vec4,
     direction: Vec4,
     /// x: 1 while `Area::Lighting` is Modern; y: 1 while `Area::Textures` is Modern, which
-    /// point-samples world textures. z enables optional anisotropic filtering.
+    /// point-samples world textures. z enables optional anisotropic filtering. w: 1 while
+    /// modern-lit water is glossy.
     lighting: Vec4,
 }
 
 impl FogExtension {
     fn modern_lighting(&self) -> bool {
         self.lighting.x != 0.0
+    }
+
+    /// The water gloss switch of the modern lighting; glossy without the effects resource.
+    fn set_water_gloss(&mut self, effects: Option<&ModernEffects>) {
+        self.lighting.w = f32::from(u8::from(effects.is_none_or(|effects| effects.water_gloss)));
     }
 }
 
@@ -479,10 +485,11 @@ fn apply_scene_fog(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     distance: Res<RenderDistance>,
-    (fidelity, daylight, inputs): (
+    (fidelity, daylight, inputs, effects): (
         Res<Fidelity>,
         Option<Res<Daylight>>,
         Option<Res<crate::hooks::ShaderInputs>>,
+        Option<Res<ModernEffects>>,
     ),
     mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
@@ -595,6 +602,7 @@ fn apply_scene_fog(
     extension.water = inputs
         .as_deref()
         .map_or(Vec4::ZERO, crate::hooks::ShaderInputs::water);
+    extension.set_water_gloss(effects.as_deref());
     // The modern day/night cycle tints the fog with the sky.
     if let Some(sky) = daylight.and_then(|daylight| daylight.0) {
         extension.color = (extension.color.truncate() * sky.tint).extend(extension.color.w);
@@ -973,7 +981,8 @@ fn fog_extension(
             u8::from(fidelity.mode(Area::Lighting) == Mode::Modern) as f32,
             u8::from(fidelity.mode(Area::Textures) == Mode::Modern) as f32,
             u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32,
-            0.0,
+            // Glossy water; see `FogExtension::set_water_gloss`.
+            1.0,
         ),
         table: environment
             .fog_table
