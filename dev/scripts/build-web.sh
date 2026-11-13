@@ -45,7 +45,12 @@ $(env | LC_ALL=C sort | rg '^(CARGO_PROFILE_|CARGO_BUILD_RUSTFLAGS=|CARGO_ENCODE
         else
             status=$?
             if [ "$status" != 3 ]; then exit "$status"; fi
-            cargo build -p "$package" --target wasm32-unknown-unknown --profile "$profile"
+            python3 dev/scripts/web-compile-checkpoint.py restore "$CYRUS_WEB_CHECKPOINT_DIR" \
+                "$provenance" "$configuration" "$CARGO_TARGET_DIR"
+            cargo build -p "$package" --target wasm32-unknown-unknown --profile "$profile" \
+                --message-format=json-render-diagnostics | \
+                python3 dev/scripts/web-compile-checkpoint.py record "$CYRUS_WEB_CHECKPOINT_DIR" \
+                    "$provenance" "$configuration" "$CARGO_TARGET_DIR"
             # Reject source races before preserving a reusable compiler result.
             current=$(mktemp)
             python3 dev/scripts/build-provenance.py snapshot "$current"

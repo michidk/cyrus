@@ -94,6 +94,21 @@ class Checkpoint(unittest.TestCase):
             changed['source']['files'] = {**files, 'Cargo.lock': 'changed lock'}
             self.assertFalse(self.restore(changed))
 
+    def test_application_orchestration_changes_preserve_compiled_wasm(self):
+        app = self.root / 'crates/cyrus-web'
+        app.mkdir(parents=True)
+        (app / 'Cargo.toml').write_text('[package]\nname = "cyrus-web"\n')
+        self.artifact = self.artifact.with_name('cyrus-web.wasm')
+        self.artifact.write_bytes(b'application')
+        files = {'Cargo.lock': 'lock', 'crates/cyrus-web/src/main.rs': 'app', 'dev/scripts/build-web.sh': 'before'}
+        self.expected = {'source': {'sha256': 'before', 'files': files}, 'configuration': 'flags'}
+        self.store()
+        changed = {'source': {'sha256': 'after', 'files': {**files, 'dev/scripts/build-web.sh': 'after'}}, 'configuration': 'flags'}
+        with patch.object(checkpoint.Path, 'cwd', return_value=self.root):
+            self.assertTrue(self.restore(changed))
+            changed['source']['files']['crates/cyrus-web/src/main.rs'] = 'changed application'
+            self.assertFalse(self.restore(changed))
+
     def test_manifest_records_exact_artifact_hash(self):
         self.store()
         record = json.loads((self.cache / (self.artifact.name + '.json')).read_text())

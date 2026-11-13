@@ -22,14 +22,16 @@ def identity(snapshot, configuration):
 
 
 def compiler_source(source, name):
-    """The worker is compiled alone; application-only changes cannot affect it.
+    """Raw WASM depends on its package closure, not build orchestration.
 
     Retain every manifest and build script conservatively, along with workspace
     configuration, lockfile, vendored code and the local dependency closure.
     Runtime/build orchestration scripts do not enter the standalone worker WASM.
     Historical checkpoints retain their full acquisition snapshot on disk.
     """
-    if name != 'cyrus_assets_worker.wasm' or 'files' not in source:
+    package = {'cyrus_assets_worker.wasm': 'cyrus-assets-worker',
+               'cyrus-web.wasm': 'cyrus-web', 'cyrus-viewer.wasm': 'cyrus-viewer'}.get(name)
+    if package is None or 'files' not in source:
         return source
     root = Path.cwd()
     manifests = {}
@@ -37,7 +39,7 @@ def compiler_source(source, name):
         manifest = tomllib.loads(path.read_text())
         if 'package' in manifest:
             manifests[manifest['package']['name']] = (path.parent.relative_to(root).as_posix(), manifest)
-    if 'cyrus-assets-worker' not in manifests:
+    if package not in manifests:
         return source
 
     workspace_manifest = root / "Cargo.toml"
@@ -54,7 +56,7 @@ def compiler_source(source, name):
             elif isinstance(value, dict):
                 yield from dependencies(value)
 
-    pending, included = ['cyrus-assets-worker'], set()
+    pending, included = [package], set()
     while pending:
         package = pending.pop()
         if package in included or package not in manifests:

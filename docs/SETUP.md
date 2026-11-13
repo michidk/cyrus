@@ -428,9 +428,16 @@ on a persistent host mount saves each completed raw WASM package before
 packaging. Rerunning the same command restores matching completed packages
 without Cargo, including after target-directory loss or a packaging failure.
 Source, compiler, profile and Rust flags must match; corrupt checkpoints fail
-closed. Interrupted compiler invocations still require Cargo to finish. The
-checkpoint directory contains build outputs only, never installed game data.
-It does not change the inherited Cargo target directory or retain dependencies.
+closed. During application compilation, completed Cargo units, dep-info,
+fingerprints and build-script outputs are retained in compressed, hashed units.
+After target-directory loss, matching units restore before Cargo resumes;
+Cargo still checks dependency freshness and finishes interrupted units. Existing
+shared artifacts are never overwritten. Build orchestration changes do not
+invalidate unchanged compiler inputs. No whole profile is copied or removed.
+The checkpoint directory contains build outputs only, never installed game data,
+and does not change the inherited Cargo target directory.
+Run `python3 dev/scripts/test-web-compile-checkpoint.py` for interrupted-build,
+corruption, changed-input and shared-artifact preservation controls.
 
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
