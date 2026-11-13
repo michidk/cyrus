@@ -7,6 +7,10 @@ The viewer reads your install without changing it.
 [Open in your browser](https://michidk.github.io/cyrus/viewer/) ·
 [Download native builds](https://github.com/michidk/cyrus/releases/latest)
 
+The viewer is one of two cyrus applications; the [game](../../README.md) is the other. The formats
+it opens are documented in [Redguard Preservation](https://michidk.github.io/redguard-preservation/),
+and [Maiko](https://michidk.github.io/maiko/) runs the original game natively.
+
 | Model | World | Font |
 | --- | --- | --- |
 | ![Textured character model](../../dev/pages/viewer-model.webp) | ![Island world overview](../../dev/pages/viewer-world.webp) | ![Bitmap font specimen](../../dev/pages/viewer-font.webp) |

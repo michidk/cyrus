@@ -93,6 +93,13 @@ setup. The viewer uses a modern inspection interface and generic rendering.
 | --- | --- | --- |
 | ![Textured character model](dev/pages/viewer-model.webp) | ![Island world overview](dev/pages/viewer-world.webp) | ![Bitmap font specimen](dev/pages/viewer-font.webp) |
 
+## Related projects
+
+cyrus is two applications, the game and the asset viewer, and sits beside two other Redguard projects:
+
+- [Redguard Preservation](https://github.com/michidk/redguard-preservation) ([docs](https://michidk.github.io/redguard-preservation/)): the file format, engine and configuration documentation cyrus is built from, and the `redguard-preservation` crate that parses the game's files.
+- [Maiko](https://github.com/michidk/maiko) ([site](https://michidk.github.io/maiko/)): runs the original game natively on Windows and Linux, without DOSBox, by translating the original executable. It finds the game folder the same way cyrus does.
+
 ## Faithful by default
 
 Faithful mode aims to reproduce what the player experiences: visuals, audio,
