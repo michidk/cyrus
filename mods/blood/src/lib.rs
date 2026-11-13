@@ -1,98 +1,115 @@
-//! Optional blood particles. Spray dimensions, colors and gravity are mod preferences.
-use cyrus_mod_sdk::{Cx, Mod, Particle, Vec3};
+//! Optional directional blood droplets. Appearance and fallback placement are mod preferences.
+use cyrus_mod_sdk::{Cx, DamageEvent, Mod, ParticleBurst, Vec3};
 
 struct Blood;
-
 impl Mod for Blood {
     const ID: &'static str = "blood";
-
     fn frame(cx: &Cx) {
         for event in cx.damage.events() {
-            let Some(position) = event.position else {
-                continue;
-            };
-            let seed = event
-                .actor
-                .bytes()
-                .fold(cx.scene.seconds().to_bits(), |s, b| {
-                    s.wrapping_mul(31).wrapping_add(u32::from(b))
-                });
-            for particle in spray(
-                position.map_to_scene(),
-                event.loss,
+            for burst in spray(
+                &event,
                 cx.settings.number("amount"),
                 cx.settings.number("lifetime"),
-                seed,
             ) {
-                if !cx.particles.emit(particle) {
+                if !cx.particles.burst(burst) {
                     break;
                 }
             }
         }
     }
 }
-
 cyrus_mod_sdk::export_mod!(Blood);
 
-fn spray(origin: Vec3, loss: u8, amount: f32, lifetime: f32, seed: u32) -> Vec<Particle> {
-    if loss == 0 || !amount.is_finite() || !lifetime.is_finite() {
+fn spray(event: &DamageEvent, amount: f32, lifetime: f32) -> Vec<ParticleBurst> {
+    let Some(position) = event.position else {
+        return vec![];
+    };
+    if event.loss == 0 || !amount.is_finite() || amount <= 0.0 || !lifetime.is_finite() {
         return vec![];
     }
-    let count = ((8.0 + f32::from(loss) * 0.5) * amount.clamp(0.0, 3.0))
+    let origin = position.map_to_scene();
+    // Query positions are actor anchors, not wound locations. Keep the artistic
+    // offset small; exact contact points are not supplied by every health service.
+    let position = origin + Vec3::UP * 1.6;
+    let incoming = event.source.and_then(|source| {
+        let delta = origin - source.map_to_scene();
+        Vec3::new(delta.x, 0.0, delta.z).normalized()
+    });
+    // Environmental damage has no attacker. A short downward spill avoids inventing one.
+    let direction = incoming.unwrap_or(Vec3::new(0.0, -1.0, 0.0));
+    let count = ((10.0 + f32::from(event.loss) * 0.6) * amount.clamp(0.0, 3.0))
         .round()
-        .clamp(0.0, 64.0) as usize;
-    let mut state = seed.max(1);
-    let mut random = || {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        (state >> 8) as f32 / 16_777_216.0
+        .clamp(1.0, 64.0) as u32;
+    let duration = lifetime.clamp(0.1, 2.0);
+    let droplets = ParticleBurst {
+        position,
+        direction,
+        acceleration: Vec3::new(0.0, -9.8, 0.0),
+        color: [0.52, 0.025, 0.018, 0.95],
+        speed: if incoming.is_some() {
+            [4.0, 7.0]
+        } else {
+            [0.3, 1.0]
+        },
+        radius: [0.045, 0.09],
+        lifetime: [duration * 0.6, duration],
+        spread: 0.38,
+        stretch: 2.4,
+        count,
     };
-    (0..count)
-        .map(|_| {
-            let angle = random() * std::f32::consts::TAU;
-            let speed = 0.6 + random() * 2.0;
-            Particle {
-                position: origin + Vec3::UP * (0.7 + random() * 0.6),
-                velocity: Vec3::new(
-                    angle.cos() * speed,
-                    0.5 + random() * 2.0,
-                    angle.sin() * speed,
-                ),
-                acceleration: Vec3::new(0.0, -9.8, 0.0),
-                color: [0.5 + random() * 0.15, 0.015, 0.01, 1.0],
-                radius: 0.035 + random() * 0.045,
-                lifetime: lifetime.clamp(0.1, 2.0) * (0.6 + random() * 0.4),
-            }
-        })
-        .collect()
+    let fine = ParticleBurst {
+        color: [0.48, 0.02, 0.015, 0.5],
+        radius: [0.015, 0.035],
+        speed: [2.0, 4.5],
+        lifetime: [duration * 0.2, duration * 0.45],
+        spread: 0.65,
+        stretch: 1.3,
+        count: count / 2 + 1,
+        ..droplets
+    };
+    vec![droplets, fine]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_damage_emits_and_user_amount_can_disable_it() {
-        assert!(spray(Vec3::ZERO, 0, 1.0, 0.7, 1).is_empty());
-        assert!(spray(Vec3::ZERO, 10, 0.0, 0.7, 1).is_empty());
-        assert!(spray(Vec3::ZERO, 10, f32::NAN, 0.7, 1).is_empty());
-        assert_eq!(spray(Vec3::ZERO, 10, 1.0, 0.7, 1).len(), 13);
-        assert_eq!(spray(Vec3::ZERO, 255, 3.0, 0.7, 1).len(), 64);
-    }
-
-    #[test]
-    fn spray_is_reproducible_finite_and_uses_the_requested_origin_and_lifetime() {
-        let origin = Vec3::new(2.0, 3.0, -4.0);
-        let particles = spray(origin, 10, 1.0, 0.7, 42);
-        assert_eq!(particles, spray(origin, 10, 1.0, 0.7, 42));
-        for particle in particles {
-            assert_eq!(particle.position.x, origin.x);
-            assert_eq!(particle.position.z, origin.z);
-            assert!(particle.position.y > origin.y);
-            assert!((0.42..=0.7).contains(&particle.lifetime));
-            assert!((0.035..=0.08).contains(&particle.radius));
-            assert!(particle.velocity.length().is_finite());
+    fn hit(source: Option<Vec3>) -> DamageEvent {
+        DamageEvent {
+            actor: "target".into(),
+            loss: 10,
+            position: Some(Vec3::new(0.0, 0.0, 65_535.996)),
+            source,
         }
+    }
+    #[test]
+    fn opposite_attackers_produce_opposite_sprays_in_scene_axes() {
+        let left = spray(&hit(Some(Vec3::new(100.0, 0.0, 65_535.996))), 1.0, 0.7);
+        let right = spray(&hit(Some(Vec3::new(-100.0, 0.0, 65_535.996))), 1.0, 0.7);
+        assert_eq!(left[0].direction, Vec3::new(1.0, 0.0, 0.0));
+        assert_eq!(right[0].direction, Vec3::new(-1.0, 0.0, 0.0));
+        assert!(
+            left.iter()
+                .all(|burst| burst.direction.x > 0.0 && burst.spread < 1.0)
+        );
+        assert_eq!(left[0].position, Vec3::UP * 1.6);
+    }
+    #[test]
+    fn missing_or_coincident_sources_spill_down_and_disabled_or_missing_damage_emits_nothing() {
+        assert_eq!(
+            spray(&hit(None), 1.0, 0.7)[0].direction,
+            Vec3::new(0.0, -1.0, 0.0)
+        );
+        assert_eq!(
+            spray(&hit(hit(None).position), 1.0, 0.7)[0].direction,
+            Vec3::new(0.0, -1.0, 0.0)
+        );
+        assert!(spray(&hit(None), 0.0, 0.7).is_empty());
+        assert!(spray(&hit(None), f32::NAN, 0.7).is_empty());
+        let mut event = hit(None);
+        event.loss = 0;
+        assert!(spray(&event, 1.0, 0.7).is_empty());
+        event.loss = 10;
+        event.position = None;
+        assert!(spray(&event, 1.0, 0.7).is_empty());
     }
 }

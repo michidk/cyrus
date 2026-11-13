@@ -2,16 +2,21 @@
 use super::*;
 use crate::{Catalog, Entry, add_components_to_linker, particles};
 use bevy::asset::AssetPlugin;
+use bevy_hanabi::{EffectAsset, HanabiPlugin, ParticleEffect};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+#[derive(Resource)]
+struct GuestPath(String);
+
 fn setup(
+    guest: Res<GuestPath>,
     mut mods: Mods,
     mut catalog: ResMut<Catalog>,
     mut host: Query<(&mut Settings, &mut Damage)>,
 ) {
     let entry = &mut catalog.entries[0];
-    let instance = mods.spawn("blood.wasm", Some(entry.manifest.name.clone()));
+    let instance = mods.spawn(guest.0.clone(), Some(entry.manifest.name.clone()));
     mods.enable_access(instance, ModAccess::World);
     entry.instance = Some(instance);
     let (mut settings, mut damage) = host.single_mut().unwrap();
@@ -21,6 +26,7 @@ fn setup(
         actor: "TEST".into(),
         loss: 10,
         position: vec![0.0, 0.0, 65_535.996],
+        source: vec![100.0, 0.0, 65_535.996],
     });
 }
 
@@ -50,11 +56,13 @@ fn wasm_blood_particles() {
                 })
                 .disable::<bevy::winit::WinitPlugin>()
                 .disable::<bevy::audio::AudioPlugin>(),
-        );
+        )
+        .add_plugins(HanabiPlugin);
     } else {
         app.add_plugins((MinimalPlugins, bevy::log::LogPlugin::default(), assets))
             .init_resource::<Assets<Mesh>>()
-            .init_resource::<Assets<StandardMaterial>>();
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<EffectAsset>>();
     }
     let mut actors = ScriptActors::default();
     actors.current = Some(particles::tests::world(1));
@@ -62,6 +70,9 @@ fn wasm_blood_particles() {
         .register_type::<Vec<f32>>()
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             Duration::from_millis(10),
+        ))
+        .insert_resource(GuestPath(
+            wasm.file_name().unwrap().to_string_lossy().into(),
         ))
         .insert_resource(actors)
         .insert_resource(Catalog {
@@ -73,7 +84,10 @@ fn wasm_blood_particles() {
         .add_systems(PreUpdate, particles::publish)
         .add_systems(
             PostUpdate,
-            particles::update.before(bevy::transform::TransformSystems::Propagate),
+            particles::update
+                .before(bevy::transform::TransformSystems::Propagate)
+                .before(bevy_hanabi::EffectSystems::CompileEffects)
+                .before(bevy_hanabi::EffectSystems::TickSpawners),
         );
 
     let image = capture.as_ref().map(|_| {
@@ -98,7 +112,11 @@ fn wasm_blood_particles() {
     let deadline = Instant::now() + Duration::from_secs(60);
     let count = loop {
         app.update();
-        let count = app.world_mut().query::<&Mesh3d>().iter(app.world()).count();
+        let count = app
+            .world_mut()
+            .query::<&ParticleEffect>()
+            .iter(app.world())
+            .count();
         if count > 0 {
             break count;
         }
@@ -106,8 +124,8 @@ fn wasm_blood_particles() {
         std::thread::sleep(Duration::from_millis(10));
     };
     assert_eq!(
-        count, 13,
-        "10 health loss at the default amount emits 13 droplets"
+        count, 2,
+        "10 health loss emits a droplet burst and a fine spray"
     );
     app.world_mut()
         .query::<&mut Damage>()
@@ -141,7 +159,10 @@ fn wasm_blood_particles() {
     app.world_mut().resource_mut::<Catalog>().entries[0].active = false;
     app.update();
     assert_eq!(
-        app.world_mut().query::<&Mesh3d>().iter(app.world()).count(),
+        app.world_mut()
+            .query::<&ParticleEffect>()
+            .iter(app.world())
+            .count(),
         0
     );
     assert_eq!(

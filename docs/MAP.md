@@ -150,7 +150,7 @@ module where it is defined and regenerate.
 
 - `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
 - `src/particle_runtime_test.rs` — Real WebAssembly guest/host exercise, optionally with offscreen GPU capture.
-- `src/particles.rs` — Mod-owned transient particles in scene coordinates, independent of gameplay simulation.
+- `src/particles.rs` — Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
 - `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
 
 ## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.

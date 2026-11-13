@@ -1,5 +1,5 @@
 name = "Blood particles"
-description = "A brief spray of fading red particles when a player or actor loses health."
+description = "Directional droplets and a brief fine spray on health loss, rendered with Hanabi."
 version = "0.1.0"
 author = "cyrus contributors"
 

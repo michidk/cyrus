@@ -22,7 +22,7 @@ mod keys;
 mod math;
 mod state;
 
-pub use effects::{Damage, DamageEvent, Particle, Particles};
+pub use effects::{Damage, DamageEvent, ParticleBurst, Particles};
 pub use handles::{
     Actor, Actors, Camera, Claim, Collision, Contact, Effects, Environment, Hud, Input, Lighting,
     Memory, Movement, NativeCall, Natives, Player, Settings, TerrainSurface, Water,
