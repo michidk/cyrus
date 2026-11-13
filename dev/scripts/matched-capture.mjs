@@ -119,6 +119,25 @@ async function browser(f, output, build) {
     await cdp.close();
   }
 }
+export async function captureNativeFrame(state, generation, filename, send = command) {
+  const result = await send({type: 'capture_gameplay_frame', path: filename});
+  assert(result?.captured === true && typeof result.path === 'string'
+    && path.resolve(result.path) === path.resolve(filename), 'native render capture did not complete the requested image');
+  const b = result.boundary;
+  assert(b?.ready === true && b.execution === 'running' && b.scene === state.scene,
+    'native render capture changed scene or readiness');
+  assert(Number.isSafeInteger(generation) && generation > 0 && b.generation === generation,
+    'native render capture changed generation');
+  assert(b.event === 'render_frame' && b.phase === 'render_extraction'
+    && Number.isSafeInteger(b.render_frame) && b.render_frame > 0
+    && Number.isSafeInteger(b.update) && b.update >= state.scripts.ordinary_updates,
+    'native image lacks an owning render boundary');
+  assert(Number.isSafeInteger(b.elapsed_scale) && b.elapsed_scale >= 0
+    && Number.isSafeInteger(b.normal_frame_rate) && b.normal_frame_rate > 0
+    && b.game_seconds === b.elapsed_scale / (256 * b.normal_frame_rate),
+    'native render capture has inconsistent simulation time');
+  return result;
+}
 async function original(fixture, f, directory) {
   const adapter = process.env.CYRUS_ORIGINAL_CAPTURE;
   assert(adapter, 'set CYRUS_ORIGINAL_CAPTURE to the local original-game capture adapter documented in dev/fixtures/README.md');
@@ -152,10 +171,11 @@ export async function capture(fixture, label, originalOnly = false) {
   assert.equal(state.scene.toUpperCase(), f.world, 'launch native with just run-native --fixture <fixture>');
   assert(state.flycam.enabled, 'native inspection camera is not enabled');
   checkView(f.view, [...state.flycam.position, ...state.flycam.rotation]);
+  const runtime = await command({type: 'scripts', offset: 0, limit: 1});
   await sleep(f.settle_ms);
   const nativeImage = path.join(directory, 'native.png');
   assert(!existsSync(nativeImage), 'native screenshot already exists');
-  await command({ type: 'screenshot', path: nativeImage });
+  const nativeCapture = await captureNativeFrame(state, runtime.generation, nativeImage);
   await until(() => {
     if (!existsSync(nativeImage)) return false;
     return readFileSync(nativeImage).subarray(-12).equals(Buffer.from('0000000049454e44ae426082', 'hex'));
@@ -168,10 +188,10 @@ export async function capture(fixture, label, originalOnly = false) {
   }
   writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({
     fixture: path.relative(process.cwd(), fixture), fixture_sha256: hash(fixture),
-    revision: run('git', ['rev-parse', 'HEAD']), original: observation, native: state, browser: web,
+    revision: run('git', ['rev-parse', 'HEAD']), original: observation, native: state, native_capture: nativeCapture, browser: web,
     native_provenance: nativeBuild,
     images: Object.fromEntries(['original', 'native', 'browser'].map(name => [name, hash(path.join(directory, `${name}.png`))])),
-    scope: 'Verified scene/viewpoint capture. Animation phases and gameplay timing are not synchronized.',
+    scope: 'Verified scene/viewpoint capture with native render-owned actor and clock receipt. Native state is pre-capture admission only. Animation phases and cross-host gameplay timing are not synchronized.',
   }, null, 2) + '\n');
   return directory;
 }

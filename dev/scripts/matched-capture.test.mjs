@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkView, submitCaptureInstall } from './matched-capture.mjs';
+import { checkView, submitCaptureInstall, captureNativeFrame } from './matched-capture.mjs';
 
 test('matching quaternion signs describe the same capture orientation', () => {
   checkView([1, 2, 3, 0, 0, 0, 1], [1, 2, 3, 0, 0, 0, -1]);
@@ -46,4 +46,29 @@ test('capture submits the explicitly selected server and rejects a different rem
     delete globalThis.document;
     delete globalThis.location;
   }
+});
+
+test('native image uses its owning render receipt rather than an earlier polled state', async () => {
+  const state = {scene: 'ISLAND', scripts: {ordinary_updates: 10}};
+  const boundary = {scene: 'ISLAND', ready: true, execution: 'running', generation: 1,
+    event: 'render_frame', phase: 'render_extraction', render_frame: 17, update: 13,
+    elapsed_scale: 4608, normal_frame_rate: 12, game_seconds: 1.5};
+  const response = {captured: true, path: 'frame.png', boundary};
+  const send = async request => {
+    assert.deepEqual(request, {type: 'capture_gameplay_frame', path: 'frame.png'});
+    return response;
+  };
+  assert.deepEqual(await captureNativeFrame(state, 1, 'frame.png', send), response);
+  assert.equal(response.boundary.update, 13);
+  for (const bad of [
+    {path: 'frame.png'},
+    {...response, path: 'other.png'},
+    {...response, boundary: {...boundary, scene: 'START'}},
+    {...response, boundary: {...boundary, generation: 2}},
+    {...response, boundary: {...boundary, phase: 'polled'}},
+    {...response, boundary: {...boundary, elapsed_scale: 4609}},
+    {...response, boundary: {...boundary, ready: false}},
+    {...response, boundary: {...boundary, update: 9}},
+    {...response, boundary: {...boundary, render_frame: 0}},
+  ]) await assert.rejects(captureNativeFrame(state, 1, 'frame.png', async () => bad));
 });

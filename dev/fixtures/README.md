@@ -41,7 +41,12 @@ ticks. **Unknown:** complete original/native/browser gameplay equivalence.
    shared T3 browser. The runner creates and closes its own browser tab.
 6. Run `just replay dev/fixtures/<world>.json <new-label>`. Inspect all three
    images. The manifest records image hashes, fixture hash, source/build records,
-   native state, browser version and observed camera poses.
+   native admission state, browser version and observed camera poses. Native PNGs
+   use `capture_gameplay_frame`; `native_capture.boundary` retains their owning
+   render update, simulation clock and selected actor. The earlier `native` state
+   only admits the run and must not be treated as the state of the raster. Scene
+   changes, reload generations, legacy screenshot replies and inconsistent clocks
+   reject acquisition. This does not synchronize original/browser animation or time.
 
 `just retro --fixture <fixture.json> <new-label>` runs only the original adapter.
 The native application must already be running with the fixture's view for a full
