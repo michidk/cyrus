@@ -144,6 +144,28 @@ class ProbeCheckpoint(unittest.TestCase):
         self.assertEqual(record['status'], 'rejected')
         self.assertIn('1024 skipped', record['reason'])
 
+    def test_adaptive_targets_accept_only_an_observed_member_and_terminal_unknown_step(self):
+        path = self.path.parent / 'adaptive.json'
+        self.run = probe.Run.start(path, 'container', {'target_scales':[1024,1334]})
+        self.ready()
+        self.boundary(10,0,512);self.boundary(11,512,438)
+        self.boundary(12,950,384)
+        with self.assertRaisesRegex(ValueError, 'target'):self.run.accept('climb')
+        self.boundary(13,1334,None)
+        with self.assertRaisesRegex(ValueError, 'gap'):
+            self.boundary(14,1500,256)
+        self.run.accept('climb')
+        self.assertEqual(json.loads(path.read_text())['accepted_target_scale'],1334)
+        self.assertIsNone(self.run.record['last']['next_scale'])
+
+    def test_adaptive_targets_are_bounded_exact_and_cannot_be_ambiguous(self):
+        for fixture in ({'target_scales':[]},{'target_scales':[0]},
+                        {'target_scales':[512,512]},{'target_scales':[512.0]},
+                        {'target_scale':512,'target_scales':[512]},
+                        {'target_scales':list(range(1,258))}):
+            with self.assertRaises(ValueError):
+                probe.Run.start(self.path.parent/'invalid.json','container',fixture)
+
     def test_resume_rejects_changed_fixture(self):
         with patch.object(probe, 'container_alive', return_value=False):
             probe.inspect_run(self.path)

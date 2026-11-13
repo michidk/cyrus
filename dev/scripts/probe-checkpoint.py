@@ -75,8 +75,13 @@ class Run:
     @classmethod
     def start(cls, path, container, fixture, restart=False):
         path = Path(path)
-        if type(fixture.get('target_scale')) is not int or fixture['target_scale'] <= 0:
-            raise ValueError('probe fixture needs a positive integer target_scale')
+        if 'target_scale' in fixture and 'target_scales' in fixture:
+            raise ValueError('probe fixture must choose one target policy')
+        targets = fixture.get('target_scales', [fixture.get('target_scale')])
+        if (not isinstance(targets, list) or not 1 <= len(targets) <= 256
+                or any(type(value) is not int or value <= 0 for value in targets)
+                or any(a >= b for a, b in zip(targets, targets[1:]))):
+            raise ValueError('probe fixture needs ordered positive integer target scales')
         if path.exists():
             old = json.loads(path.read_text())
             if old['fixture'] != fixture:
@@ -131,14 +136,16 @@ class Run:
             raise ValueError('probe needs a verified selected actor before input')
         if self.record['status'] not in ('waiting', 'running'):
             raise ValueError('probe is no longer running')
-        if (any(type(value) is not int for value in (generation, update, consumed_scale, next_scale))
-                or min(generation, update, consumed_scale) < 0 or next_scale <= 0):
+        if (any(type(value) is not int for value in (generation, update, consumed_scale))
+                or min(generation, update, consumed_scale) < 0
+                or (next_scale is not None and (type(next_scale) is not int or next_scale <= 0))):
             raise ValueError('invalid ordinary-boundary clock')
         row = dict(phase=phase, generation=generation, update=update,
                    consumed_scale=consumed_scale, next_scale=next_scale, player=player)
         previous = self.record.get('last')
         if previous:
-            if (phase != previous['phase'] or generation != previous['generation']
+            if (previous['next_scale'] is None
+                    or phase != previous['phase'] or generation != previous['generation']
                     or update != previous['update'] + 1
                     or consumed_scale != previous['consumed_scale'] + previous['next_scale']):
                 raise ValueError('ordinary boundary gap, lifetime or consumed-scale mismatch')
@@ -160,9 +167,9 @@ class Run:
     def accept(self, phase):
         last = self.record.get('last', {})
         if (self.record['status'] != 'running' or last.get('phase') != phase
-                or last.get('consumed_scale') != self.record['fixture']['target_scale']):
+                or last.get('consumed_scale') not in self.record['fixture'].get('target_scales', [self.record['fixture'].get('target_scale')])):
             raise ValueError('probe has not reached its exact target boundary')
-        record = dict(self.record, status='accepted')
+        record = dict(self.record, status='accepted', accepted_target_scale=last['consumed_scale'])
         save(self.path, record)
         self.record = record
 

@@ -2317,3 +2317,10 @@ actually shared endpoint at or beyond the requested duration. The native command
 records every boundary while holding the key, then releases before input sampling
 at an exact member of the supplied endpoint set. Endpoint exhaustion is a rejected
 acquisition. Do not substitute the last earlier match for a skipped later endpoint.
+
+A host checkpoint fixture may declare `target_scales` as a bounded, strictly
+increasing set of positive counterpart endpoints instead of one `target_scale`.
+Acceptance still requires an exact observed member and records
+`accepted_target_scale`. Supply `next_scale=None` only for a terminal boundary
+whose following step was not captured; another boundary cannot follow it.
+This avoids inventing a future step in a completed acknowledgement.
