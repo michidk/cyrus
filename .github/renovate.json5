@@ -5,6 +5,13 @@
   ],
   "packageRules": [
     {
+      "description": "The vendored CPAL provides browser scheduling fixes and Linux mixer diagnostics; upgrades require porting those patches.",
+      "matchPackageNames": [
+        "cpal"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Keep direct audio types compatible with Bevy and the patched Rodio backend.",
       "matchPackageNames": [
         "rodio"
