@@ -9,6 +9,7 @@ mod splash;
 mod view3d;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
+mod gamepad;
 /// Marker for installed loading and first-world black-overlay transitions.
 pub use fade::Fade as WorldEntryFade;
 mod last_game;

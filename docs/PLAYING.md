@@ -83,7 +83,11 @@ The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate
 Mods window under F11, then Insert toggles it; its speed is a setting of the mod.
 
 The controls and the follow camera are always the original's; Modern mode changes only how the
-game looks. Mouse look, camera-relative W, A, S and D movement and gamepad steering come from the
+game looks. A gamepad works in every mode: in the world its stick or D-pad and face buttons are the
+installed joystick controls (South attacks or activates, East jumps, West looks, North is the walk
+modifier; rebind them on the Controls page), Start opens the book and Back the inventory. In the book,
+the logbook and the inventory, the D-pad or left stick moves the selection, South confirms and East or
+Start goes back. Mouse look, camera-relative W, A, S and D movement and analog steering come from the
 bundled `movement` mod (see `mods/README.md`): activate it in the Mods window under F11. In a
 browser, click the game to lock the cursor for its mouse look, also after Escape released it.
 
@@ -125,7 +129,7 @@ documents the unsupported original-save scope.
   playthrough remain unaccepted. Working startup, combat or save checks do not
   establish that the game can be finished.
 - Movement, collision, follow camera, climbing and swimming still have open
-  fidelity work. Remaining mouse-bound actions are incomplete; a gamepad drives the in-game controls and can be captured on the Controls page, but does not navigate the menus.
+  fidelity work. Remaining mouse-bound actions are incomplete; the right stick and triggers do nothing without a mod.
 - Rendering, lighting, HUD, logbook, audio and movie synchronization still have
   open comparisons and defects. Faithful is the default; optional Modern settings
   do not imply that every proposed Modern control is implemented.

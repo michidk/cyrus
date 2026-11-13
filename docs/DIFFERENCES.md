@@ -243,7 +243,7 @@ buttons from the port. Each action reads its keyboard code or its joystick code,
 codes 136 to 139 and the South, East, West and North face buttons for buttons 1 to 4. **Inferred:** the loop
 count depends on the stick's resistance, which a modern gamepad does not have, so cyrus converts
 `joy_tolerance` to a fraction of the stick's range using the nominal 100 kOhm centre count of 574, a dead
-zone of about 10 %. The Controls page capture accepts a gamepad face button as joystick button 1 to 4, as the original's capture accepts joystick buttons; menus and the book do not otherwise read the gamepad. The seven other
+zone of about 10 %. The Controls page capture accepts a gamepad face button as joystick button 1 to 4, as the original's capture accepts joystick buttons. The seven other
 rebindable actions (next and previous item, inventory, log, quick sword, quick health, map) read their code the
 same way, so a mouse or joystick code bound on the Controls page works for them. **Verified:** the original
 reads every action through one shared input table (keyboard scancodes, mouse releases 128 and 129, joystick
@@ -252,7 +252,13 @@ held, with its press edge taken from the previous poll. **Verified:** the invent
 per update before waiting for the next BIOS tick, so a mouse binding there reads the release between two
 successive updates; cyrus does the same. **Unknown:** the dead zone a particular original
 joystick showed, and whether the original's menus read the joystick; no joystick read was found in the menu
-code, so menu navigation by gamepad is not provided in Faithful mode.
+code.
+
+A gamepad's other controls are an addition the game port could not offer, the same in every fidelity mode:
+they press the keys the game already reads. In the world, Start presses Escape (the book) and Back the
+installed inventory key. Outside the world, and over the logbook or the inventory, the D-pad or left stick
+holds the arrow keys (pressing past half its tilt and releasing below three eighths), South holds Enter, and
+East and Start hold Escape. The pad is read only while the window has focus.
 
 ## Optional anisotropic filtering
 

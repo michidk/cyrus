@@ -341,7 +341,11 @@ pub(super) fn register(app: &mut App) {
             )
                 .run_if(in_state(AppState::Menu)),
         )
-        .add_systems(OnExit(AppState::Menu), cleanup);
+        .add_systems(OnExit(AppState::Menu), cleanup)
+        .add_systems(
+            PreUpdate,
+            super::gamepad::gamepad_keys.after(bevy::input::InputSystems),
+        );
 }
 
 fn sync_thumbnail(capture: Option<Res<super::GameplayThumbnail>>, mut menu: ResMut<MenuState>) {
