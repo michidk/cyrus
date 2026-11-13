@@ -2,6 +2,23 @@
 //! down -Z when its rotation is the identity).
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
+#[cfg(test)]
+mod coordinates_tests {
+    use super::*;
+
+    #[test]
+    fn map_positions_match_the_world_and_camera_axes() {
+        assert_eq!(
+            Vec3::new(40.0, -60.0, 65_535.996).map_to_scene(),
+            Vec3::new(-2.0, 3.0, 0.0)
+        );
+        assert_eq!(
+            Vec3::new(0.0, 0.0, 65_515.996).map_to_scene(),
+            Vec3::new(0.0, 0.0, -1.0)
+        );
+    }
+}
+
 /// A point or direction.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Vec3 {
@@ -18,6 +35,12 @@ impl Vec3 {
 
     pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Vec3 { x, y, z }
+    }
+
+    /// Convert a map-unit point in original axes into the scene coordinates used by
+    /// the camera and particles. This includes the world origin, so do not use it for velocities.
+    pub fn map_to_scene(self) -> Self {
+        Self::new(-self.x / 20.0, -self.y / 20.0, (self.z - 65_535.996) / 20.0)
     }
 
     pub fn dot(self, other: Vec3) -> f32 {

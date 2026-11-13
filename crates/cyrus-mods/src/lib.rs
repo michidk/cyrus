@@ -20,6 +20,7 @@
 //! saved to `mods.json` there; the backtick debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
+mod particles;
 mod settings;
 
 use anyhow::{Context, ensure};
@@ -145,8 +146,13 @@ impl Plugin for ModsPlugin {
             .init_resource::<cyrus_script::player::input::PlayerRequests>()
             .init_resource::<cyrus_script::player::input::CameraOrbit>()
             .init_resource::<cyrus_script::player::input::CollisionProbes>()
+            .init_resource::<particles::ParticleState>()
+            .add_systems(
+                bevy::prelude::PostUpdate,
+                particles::update.before(bevy::transform::TransformSystems::Propagate),
+            )
             .add_systems(Startup, api::spawn_host)
-            .add_systems(PreUpdate, api::exchange)
+            .add_systems(PreUpdate, (api::exchange, particles::publish).chain())
             .add_systems(Update, (watch, apply).chain())
             .add_systems(
                 EguiPrimaryContextPass,

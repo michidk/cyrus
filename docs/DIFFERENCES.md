@@ -274,3 +274,10 @@ footprint, which also replaces the Modern `textures` point sampling. Other colou
 samplers with a hardware anisotropy limit of sixteen. The indexed world paths integrate their
 existing source textures without mipmaps, which costs GPU time. Turning it off restores the image
 samplers.
+
+## Optional blood particles
+
+The native `blood` mod adds a brief spray of red particles when health services reduce an actor's
+health. It defaults to inactive. Spray size, color, gravity and lifetime are mod preferences,
+with amount and lifetime exposed in the Mods window. Particles fade without collision or surface
+marks. See the [mod authoring example](../mods/README.md#damage-driven-particles).
