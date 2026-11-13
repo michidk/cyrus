@@ -255,7 +255,7 @@ impl super::ScriptWorld {
             .playback
             .current_group()
             .context("Jump current group unavailable")?;
-        if (selected && self.globals.conditional_ticks()? != 0)
+        let blocked = (selected && self.globals.conditional_ticks()? != 0)
             || surface.is_deep_water()
             || actor.tasks.is_active()
             || control.queued_motion != JumpMotion::NONE
@@ -272,11 +272,8 @@ impl super::ScriptWorld {
                     | AnimationGroup::FIGHT_LAND_RIGHT
                     | AnimationGroup::FIGHT_LAND_LEFT
             )
-            || (selected && actor.attributes[Attribute::PlayerType] == 1 && surface.is_water())
-        {
-            return Ok(false);
-        }
-        Ok(true)
+            || (selected && actor.attributes[Attribute::PlayerType] == 1 && surface.is_water());
+        Ok(!blocked)
     }
 
     /// Zero-argument SOUP Jump, from preservation's player.md#script-jump.
