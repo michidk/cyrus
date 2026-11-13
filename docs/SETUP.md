@@ -2269,3 +2269,25 @@ the last pixel beyond the former decoded-prefix check, fails admission.
 Run its synthetic failure controls with
 `python3 dev/scripts/test-cinematic-original-raster.py` and the existing browser
 composition controls with `python3 dev/scripts/test-cinematic-presented-frames.py`.
+
+### Interrupted runtime probes
+
+Bounded comparison drivers can use `dev/scripts/probe-checkpoint.py` to retain
+readiness, diagnostic clock progress and acknowledged ordinary boundaries in a
+host-mounted evidence directory. Hold a per-run lock while writing. Include the
+scene, input schedule, source identities and exact target scale in the fixture
+identity passed to `Run.start`; record each readiness observation before input.
+Call `register_job` with a path on that mount to retain the probe's process identity.
+
+After interruption, run `python3 dev/scripts/probe-checkpoint.py <receipt.json>
+--pidfile <container-path-to-job-receipt>`. Exit 3 identifies a missing/stopped
+container or lost probe process; Docker availability errors remain errors.
+Attach to a live attempt rather than launching another. Restart an incomplete
+lost attempt from its fixture with `restart=True`; its old receipt is preserved
+and its new clock starts at zero. This does not restore a pose into a new world.
+Reuse accepted acquisition receipts without rerunning their completed stage.
+
+Boundary receipts reject update gaps, changed generations and inconsistent
+consumed scales. Diagnostic polling cannot satisfy the target. Acquisition
+acceptance requires the exact declared scale; gameplay comparison still needs
+matched original/native inputs, placement, timing and outcome evidence.
