@@ -134,7 +134,8 @@ impl Plugin for ModsPlugin {
             error!("mods: {error:#}");
             ModSettings::default()
         });
-        app.add_plugins(ModLoaderPlugin::default().add_functionality(add_components_to_linker))
+        app.add_plugins(bevy_hanabi::HanabiPlugin)
+            .add_plugins(ModLoaderPlugin::default().add_functionality(add_components_to_linker))
             .register_type::<Vec<f32>>()
             .insert_resource(catalog)
             .insert_resource(settings)
@@ -149,7 +150,10 @@ impl Plugin for ModsPlugin {
             .init_resource::<particles::ParticleState>()
             .add_systems(
                 bevy::prelude::PostUpdate,
-                particles::update.before(bevy::transform::TransformSystems::Propagate),
+                particles::update
+                    .before(bevy::transform::TransformSystems::Propagate)
+                    .before(bevy_hanabi::EffectSystems::CompileEffects)
+                    .before(bevy_hanabi::EffectSystems::TickSpawners),
             )
             .add_systems(Startup, api::spawn_host)
             .add_systems(PreUpdate, (api::exchange, particles::publish).chain())

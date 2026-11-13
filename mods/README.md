@@ -178,12 +178,15 @@ answering returns to the original behaviour. Particle emissions run after the cu
 ## Damage-driven particles
 
 `mods/blood` is a complete example of an event-driven mod. Its `frame` reads
-`cx.damage.events()` and calls `cx.particles.emit(Particle { ... })`. The mod chooses
-spray size, red color and gravity; these are mod preferences. It needs no game assets,
+`cx.damage.events()` and calls `cx.particles.burst(ParticleBurst { ... })`. The mod chooses
+droplet sizes, red color, gravity and the spray direction; these are mod preferences. It needs no game assets,
 shader replacement, movement takeover or guest state between frames.
 
 A damage event contains the actor's script name, actual health lost and an optional
-position in map units with original axes. Names can repeat across actor instances;
+position in map units with original axes. Combat events also include `source`, the
+known attacker position in those units. This is an incoming direction, not a
+measured blade velocity or exact wound location. Environmental damage and health
+services without an attributable attacker leave it absent. Names can repeat across actor instances;
 use them to filter by actor type, not as unique handles. A missing position means
 that the health service had no spatial state to publish; skip visual effects for it.
 The host captures events when health services reduce health, including scripted,
@@ -199,32 +202,41 @@ world origin; do not use point conversion for velocities. Particle velocity is i
 scene units per second and acceleration in scene units per second squared. For example:
 
 ```rust
+use cyrus_mod_sdk::{ParticleBurst, Vec3};
 for event in cx.damage.events() {
-    if let Some(position) = event.position {
-        cx.particles.emit(cyrus_mod_sdk::Particle {
-            position: position.map_to_scene() + cyrus_mod_sdk::Vec3::UP,
-            velocity: cyrus_mod_sdk::Vec3::UP * 2.0,
-            acceleration: cyrus_mod_sdk::Vec3::new(0.0, -9.8, 0.0),
-            color: [0.6, 0.02, 0.01, 1.0],
-            radius: 0.06,
-            lifetime: 0.7,
-        });
-    }
+    let Some(position) = event.position else { continue; };
+    let origin = position.map_to_scene();
+    let direction = event.source
+        .and_then(|source| (origin - source.map_to_scene()).normalized())
+        .unwrap_or(Vec3::new(0.0, -1.0, 0.0));
+    cx.particles.burst(ParticleBurst {
+        position: origin, direction,
+        acceleration: Vec3::new(0.0, -9.8, 0.0),
+        color: [0.52, 0.025, 0.018, 0.95],
+        speed: [3.0, 6.0], radius: [0.025, 0.06], lifetime: [0.4, 0.7],
+        spread: 0.38, stretch: 2.4, count: 16,
+    });
 }
 ```
 
-The engine renders unlit spherical droplets, integrates their acceleration and fades
-alpha linearly over the lifetime. They have no collision and leave no marks. Motion
-and expiry use game time, so pausing the game pauses particles. Disable or completed
-hot reload removes that mod's particles; changing or unloading the world removes all
-particles. Queued emissions retain the world and loaded mod revision that submitted
-them, so they cannot appear under a replacement world or revision.
+The host uses [Hanabi](https://crates.io/crates/bevy_hanabi), the Bevy GPU particle
+system. Each burst shares one GPU program with other bursts; parameters are instance
+properties. Rounded droplets face the camera and stretch along their velocity.
+They retain their color initially and fade at the end. They have no collision and
+leave no marks. Motion and expiry use Bevy's virtual game time. GPU preparation does not consume
+a burst's particle lifetime. Disable or completed
+hot reload removes that mod's effects; changing or unloading the world removes all
+effects. Queued bursts retain the submitting world and loaded mod revision.
 
-`emit` returns false for an inactive owner, absent world, invalid input or exhausted
-queue. Positions, velocities and accelerations must be finite and within +/-1e6 per
-coordinate. Color is sRGB RGBA, each channel in 0..=1. Radius must be 0.001..=10 scene
-units and lifetime 0.01..=10 seconds. Queue and live limits are 256 per mod and 1024
-total; new requests beyond live capacity are dropped. The SDK supplies the mod id.
+`burst` returns false for an inactive owner, absent world, invalid input or exhausted
+queue. Position, direction and acceleration need three finite values within +/-1e6;
+direction must be nonzero and is normalized by the host. Color is sRGB RGBA in 0..=1.
+Speed, radius and lifetime are ordered min/max pairs in 0..=1000 scene units per
+second, 0.001..=10 scene units and 0.01..=10 seconds respectively. Spread is 0..=1
+and bounds each lateral velocity component relative to the forward component;
+stretch is 1..=8. Count is 1..=64 per burst. Queued and live limits count particles,
+256 per mod and 1024 total; overflow drops whole bursts. The SDK supplies the mod id.
+The mod can use two bursts for coarse droplets and a shorter, finer spray.
 
 To build and try the example:
 

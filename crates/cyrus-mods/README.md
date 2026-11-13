@@ -38,7 +38,10 @@ selected player's `Player` status), so answers apply one frame
 later. Damage batches are read-only for all mods in the current frame; particle emissions
 are consumed after Update and retain their submitting world, mod instance and loaded revision.
 Particles use scene units, expire on game time and clear on disable, completed reload or world
-replacement. Their appearance belongs to the mod, and their generic rendering lives in `src/particles.rs`.
+replacement. Their appearance belongs to the mod. Hanabi simulates and renders directional GPU
+bursts; `src/particles.rs` owns validation, instance properties and retirement.
+Known combat sources are published alongside damage so mods can direct effects away
+from the attacker. Missing sources remain explicit; they are not guessed from the camera.
 See [`mods/README.md`](../../mods/README.md#damage-driven-particles) for the complete authoring example,
 limits and coordinate conversion. Setting values come from `src/settings.rs`: mods declare them in
 `mod.toml`, the Mods window edits them and `mod-settings.json` keeps them. A hook a mod stops answering returns to the original.
