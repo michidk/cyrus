@@ -116,3 +116,30 @@ fn forget_and_latest_stop_keep_order_while_owner_stop_cancels_forgotten_starts()
     ));
     assert_eq!(cues.len(), 3);
 }
+#[test]
+fn waiting_counts_only_the_requested_generation_and_release_empties_it() {
+    let mut queue = AnimationSoundQueue::default();
+    let mut emit = |_| Ok(());
+    queue.send(actor(0), play(3), None, &mut emit).unwrap();
+    queue
+        .send(
+            ScriptActorId {
+                generation: 2,
+                index: 1,
+            },
+            play(4),
+            None,
+            &mut emit,
+        )
+        .unwrap();
+    assert_eq!(
+        (queue.waiting(1), queue.waiting(2), queue.waiting(3)),
+        (1, 1, 0)
+    );
+    let mut world = World::new();
+    let node = world.spawn_empty().id();
+    queue
+        .release(1, &mut |_| Ok(Some(node)), &mut emit)
+        .unwrap();
+    assert_eq!((queue.waiting(1), queue.waiting(2)), (0, 0));
+}

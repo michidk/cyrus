@@ -1003,7 +1003,9 @@ pub struct OrdinaryContext<'w, 's> {
     camera_frame: Option<ResMut<'w, super::CameraFrameState>>,
     bindings: Query<'w, 's, (Entity, &'static super::super::ScriptBinding)>,
     /// Animation sounds whose actor has no scene node yet, in emission order.
-    deferred_sounds: Local<'s, DeferredSounds>,
+    deferred_sounds: Option<ResMut<'w, DeferredSounds>>,
+    /// Used when no shared queue resource is installed.
+    deferred_fallback: Local<'s, DeferredSounds>,
     players:
         Query<'w, 's, &'static crate::player::placement::PlayerPose, With<crate::player::Player>>,
 }
@@ -1061,7 +1063,9 @@ impl OrdinaryContext<'_, '_> {
                     sound,
                     &request.0,
                     &self.bindings,
-                    &mut self.deferred_sounds,
+                    self.deferred_sounds
+                        .as_deref_mut()
+                        .unwrap_or(&mut self.deferred_fallback),
                     emit,
                 )
             },
@@ -1460,9 +1464,14 @@ pub fn run_ordinary(
         camera_drive,
         camera_frame,
         bindings,
-        mut deferred_sounds,
+        deferred_sounds: mut shared_sounds,
+        deferred_fallback: mut fallback_sounds,
         players,
     } = context;
+    let deferred_sounds: &mut DeferredSounds = match shared_sounds.as_deref_mut() {
+        Some(queue) => queue,
+        None => &mut fallback_sounds,
+    };
     if hud.as_ref().is_some_and(|hud| !hud.ready()) {
         return;
     }
@@ -1515,7 +1524,7 @@ pub fn run_ordinary(
     }
     let timing = clock.step();
     if let Err(error) = release_deferred_sounds(
-        &mut deferred_sounds,
+        &mut *deferred_sounds,
         world.generation(),
         &request.0,
         &bindings,
@@ -1539,7 +1548,7 @@ pub fn run_ordinary(
             sound,
             &request.0,
             &bindings,
-            &mut deferred_sounds,
+            &mut *deferred_sounds,
             emit,
         )
     };

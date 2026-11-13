@@ -236,6 +236,7 @@ impl Plugin for ScriptPlugin {
                 .before(OrdinaryUpdates),
         );
         app.init_resource::<CameraDrive>()
+            .init_resource::<sound_dispatch::AnimationSoundQueue>()
             .init_resource::<CameraFrameState>()
             .init_resource::<ScriptStatus>()
             .init_resource::<PlaybackDiagnostics>()
