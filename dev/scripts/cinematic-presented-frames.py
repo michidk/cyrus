@@ -53,10 +53,25 @@ def compose(image, metadata, frame, subtitles, scanlines):
         for y in range(1, 480, 2):
             for x in range(640):
                 pixels[x, y] = (0, 0, 0, 255)
+    f32 = lambda v: struct.unpack('f', struct.pack('f', v))[0]
+    for x, y, index, shadow, alpha in subtitle_pixels(metadata, frame, subtitles):
+        if 0 <= x < 640 and 0 <= y < 480:
+            colour = [0, 0, 0] if shadow else [c << 2 for c in metadata['font']['palette'][index]]
+            old = pixels[x, y]
+            if old[3] != 255:
+                raise ValueError('movie oracle requires opaque decoded pixels')
+            sa = f32(alpha / 255)
+            pixels[x, y] = tuple(math.floor(f32(f32(c * sa) + f32(old[k] * f32(1 - sa))) + .5)
+                                 for k, c in enumerate(colour)) + (255,)
+    return image
+
+
+def subtitle_pixels(metadata, frame, subtitles):
+    """Yield installed glyph pixels in shadow/main submission order, unclipped."""
     subtitle = next((s for s in metadata['definition']['subtitles']
                      if s['start'] <= frame < s['stop'] and (subtitles or s['always'])), None)
     if subtitle is None:
-        return image
+        return
     font = metadata['font']
     def glyph(ch):
         index = ch - font['start']
@@ -74,7 +89,6 @@ def compose(image, metadata, frame, subtitles, scanlines):
             search += 35
         search += 1
     lines.append(text[start:])
-    f32 = lambda v: struct.unpack('f', struct.pack('f', v))[0]
     for row, line in enumerate(lines):
         pen = 320 - sum(advance(ch) for ch in line) // 2
         y = 470 - (len(lines) - row) * font['line_height']
@@ -82,19 +96,12 @@ def compose(image, metadata, frame, subtitles, scanlines):
             g = glyph(ch)
             if g:
                 for offset, alpha in [(2, 140), (0, 180)]:
-                    sa = f32(alpha / 255)
                     for i, index in enumerate(g['pixels']):
                         x = pen + offset + g['offset'][0] + i % max(1, g['width'])
                         gy = y + offset + g['offset'][1] + i // max(1, g['width'])
-                        if index and 0 <= x < 640 and 0 <= gy < 480:
-                            colour = [0, 0, 0] if offset else [c << 2 for c in font['palette'][index]]
-                            old = pixels[x, gy]
-                            if old[3] != 255:
-                                raise ValueError('movie oracle requires opaque decoded pixels')
-                            pixels[x, gy] = tuple(math.floor(f32(f32(c * sa) + f32(old[k] * f32(1 - sa))) + .5)
-                                                   for k, c in enumerate(colour)) + (255,)
+                        if index:
+                            yield x, gy, index, offset != 0, alpha
             pen += advance(ch)
-    return image
 
 
 def identify(surfaces, images, references):

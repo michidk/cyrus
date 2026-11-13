@@ -2204,3 +2204,35 @@ bytes after the movie's vertical bilinear expansion. Identical pictures retain
 all possible frame identities. Loading pictures or advancing status alone cannot
 admit a cinematic comparison. These tools establish capture boundaries; complete
 original/native/browser timing parity still requires matching runtime recordings.
+
+### Original cinematic raster oracle
+
+`dev/scripts/cinematic-original-raster.py DECODED_IMAGE STATE_JSON PRESENTATION`
+compares the entire original 640×480 movie raster with an independently decoded
+installed image. It requires Pillow and NumPy. The state file supplies the
+observed texture padding colour and ordered `draws`. Each draw supplies its
+`source` rectangle `[x,y,width,height]`, power-of-two `backing` dimensions,
+exclusive clipped `destination` rectangle, integer-pixel setup `anchor`, and
+signed 32.32 texture-coordinate pairs `start`, `dx` and `dy`. Obtain this state
+from the renderer boundary independently of the image being tested. The tool
+never fits gradients, moves anchors or masks mismatching pixels.
+
+The software Voodoo profile wraps through padded texture backing, retains four
+fractional filter bits, floors both bilinear stages and stores dithered RGB565
+before expanding to the captured RGB surface. Supply the actual raster clipping
+bounds. A capture-runtime clipping defect belongs in that explicit state, not
+in cyrus's production renderer.
+
+For subtitles, pass `--subtitles INSTALLED_MOVIE_METADATA` and supply `frame`,
+`subtitles_enabled`, `subtitle_right` and the complete eight-bit
+`subtitle_palette` in the state file. Capture the selected palette during glyph
+drawing. A palette read after movie drawing has finished can already have been
+restored to the movie palette. The oracle shares installed glyph layout with
+the browser presentation observer, but applies integer source/destination
+blending, framebuffer dither subtraction and RGB565 storage independently.
+`--output IMAGE` retains the reconstructed image. Any changed pixel, including
+the last pixel beyond the former decoded-prefix check, fails admission.
+
+Run its synthetic failure controls with
+`python3 dev/scripts/test-cinematic-original-raster.py` and the existing browser
+composition controls with `python3 dev/scripts/test-cinematic-presented-frames.py`.
