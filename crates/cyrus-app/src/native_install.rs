@@ -22,15 +22,30 @@ fn remembered(path: &Path) -> anyhow::Result<Option<PathBuf>> {
         .transpose()
 }
 
+/// Explicit path, then the remembered folder if it still holds the game, then the search in
+/// [`GameInstall::locate`] (`REDGUARD_DIR`, the program's folder and the folders around it, the
+/// standard GOG folders). A remembered folder that has gone away is skipped with a warning, not an
+/// error. What the search finds is remembered for the next start.
 pub(super) fn locate(explicit: Option<&Path>, preferences: &Path) -> anyhow::Result<GameInstall> {
     if let Some(path) = explicit {
         return GameInstall::resolve(path);
     }
-    if let Some(path) = remembered(preferences)? {
-        return GameInstall::resolve(&path)
-            .context("The remembered game-files folder is no longer available");
+    match remembered(preferences) {
+        Ok(Some(path)) => match GameInstall::resolve(&path) {
+            Ok(install) => return Ok(install),
+            Err(error) => bevy::log::warn!(
+                "{}: remembered game-files folder is no longer available: {error:#}",
+                preferences.display()
+            ),
+        },
+        Ok(None) => {}
+        Err(error) => bevy::log::warn!("{error:#}"),
     }
-    GameInstall::locate(None)
+    let install = GameInstall::locate(None)?;
+    if let Err(error) = remember(&install, preferences) {
+        bevy::log::warn!("{error:#}");
+    }
+    Ok(install)
 }
 
 fn remember(install: &GameInstall, preferences: &Path) -> anyhow::Result<()> {
