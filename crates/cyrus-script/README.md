@@ -34,6 +34,11 @@ and combat inhibition along with its tasks. Falling and queued motion remain own
 by the ordinary controller and collision response. Unrelated control bits survive.
 This follows preservation's [camera reset contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#xresetcamera).
 
+Health services publish bounded, transient `DamageEvent` observations at their health writes.
+They report actual loss and the query position, including mutations retained before a later
+error. `ScriptWorld::take_damage_events` hands the batch to a presentation adapter; observations
+neither drive gameplay nor persist in snapshots. Direct attribute editing is outside this contract.
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with

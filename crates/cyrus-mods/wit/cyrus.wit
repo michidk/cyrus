@@ -1,12 +1,38 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms` and `hud` with `QueryFor::Mut` and `input`, `settings`,
-/// `player` and `scene` with `QueryFor::Ref`;
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms`, `particles` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// `player`, `damage` and `scene` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
 
 interface components {
+  /// Accepted health reductions since the previous frame, shared read-only by all mods.
+  /// Events are published in PreUpdate, including player and other actor health services.
+  /// Healing, blocked hits and direct attribute edits are not damage-service events.
+  /// wasvy:type-path=cyrus_mods::api::Damage
+  resource damage {
+    constructor(component: component);
+    count: func() -> u32;
+    actor: func(index: u32) -> string;
+    loss: func(index: u32) -> u32;
+    /// Map-unit position in original axes, or empty if spatial state was unavailable.
+    position: func(index: u32) -> list<f32>;
+  }
+
+  /// Transient, unlit spherical particles with no collision. Points, radii, velocities
+  /// and accelerations use scene units and axes, as camera poses do; time is seconds.
+  /// Requests are rendered after this frame's Update. Lifetime and motion use game time.
+  /// A mod's particles are removed on disable/completed reload and all particles on world replacement.
+  /// wasvy:type-path=cyrus_mods::particles::Particles
+  resource particles {
+    constructor(component: component);
+    /// owner is the mod folder id. color is sRGB RGBA in 0..=1. Position, velocity and
+    /// acceleration need three finite values, each within +/-1e6. radius is 0.001..=10,
+    /// lifetime 0.01..=10. Returns false for invalid or over-budget requests.
+    /// Queued and live limits: 256 per mod, 1024 total. Live overflow drops new requests.
+    emit: func(owner: string, position: list<f32>, velocity: list<f32>, acceleration: list<f32>, color: list<f32>, radius: f32, lifetime: f32) -> bool;
+  }
   use wasvy:ecs/app@0.0.11.{component};
 
   /// Values the game publishes by name, and its clock. Published today: "water-wave", the

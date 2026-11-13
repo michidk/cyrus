@@ -15,12 +15,14 @@
 //! ```
 //!
 //! `frame` runs every `Update` with every hook in the context; the host copies answers one frame
-//! later. A fresh instance of the mod runs for each call, so keep state in `Cx::memory`.
+//! later, except particle emissions, which render after the current Update. A fresh instance of the mod runs for each call, so keep state in `Cx::memory`.
+mod effects;
 mod handles;
 mod keys;
 mod math;
 mod state;
 
+pub use effects::{Damage, DamageEvent, Particle, Particles};
 pub use handles::{
     Camera, Claim, Collision, Contact, Hud, Input, Memory, Movement, NativeCall, Natives, Player,
     Scene, Settings, Uniforms, published,
@@ -68,11 +70,13 @@ pub struct Cx {
     pub scene: Scene,
     pub settings: Settings,
     pub uniforms: Uniforms,
+    pub damage: Damage,
+    pub particles: Particles,
 }
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 11] {
+fn query_for() -> [QueryFor; 13] {
     [
         QueryFor::Mut(raw::Camera::type_path()),
         QueryFor::Mut(raw::Collision::type_path()),
@@ -85,6 +89,8 @@ fn query_for() -> [QueryFor; 11] {
         QueryFor::Ref(raw::Scene::type_path()),
         QueryFor::Ref(raw::Settings::type_path()),
         QueryFor::Mut(raw::Uniforms::type_path()),
+        QueryFor::Ref(raw::Damage::type_path()),
+        QueryFor::Mut(raw::Particles::type_path()),
     ]
 }
 
@@ -116,6 +122,11 @@ pub fn run<M: Mod>(query: Query) {
                 id: M::ID,
             },
             uniforms: Uniforms(raw::Uniforms::new(row.component(10))),
+            damage: Damage(raw::Damage::new(row.component(11))),
+            particles: Particles {
+                raw: raw::Particles::new(row.component(12)),
+                id: M::ID,
+            },
         };
         M::frame(&cx);
     }

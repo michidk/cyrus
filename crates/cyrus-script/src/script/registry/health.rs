@@ -318,7 +318,9 @@ impl ScriptWorld {
             let health = i32::from(self.actors[index].attributes[Attribute::Health])
                 .wrapping_add(change)
                 .clamp(0, maximum);
+            let before = self.actors[index].attributes[Attribute::Health];
             self.actors[index].attributes[Attribute::Health] = health as u8;
+            self.observe_health_loss(index, before);
             if change < 0 {
                 let random = random.context("selected health random stream unavailable")?;
                 self.request_hurt_combat_taunt(id, inputs, random, sounds)?;
@@ -746,7 +748,9 @@ impl ScriptWorld {
                     self.detach_selected_from_rope(id, inputs)?;
                 }
             }
+            let before = self.actors[index].attributes[Attribute::Health];
             self.actors[index].attributes[Attribute::Health] = health as u8;
+            self.observe_health_loss(index, before);
             self.globals
                 .selected_health
                 .as_mut()

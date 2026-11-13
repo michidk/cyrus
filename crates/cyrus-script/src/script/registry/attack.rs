@@ -833,8 +833,10 @@ impl ScriptWorld {
             environment.selected_player != Some(id),
             "selected contact health unavailable"
         );
+        let before = actor.attributes[Attribute::Health];
         self.actors[index].attributes[Attribute::Health] =
-            super::falling::ordinary_health_value(actor.attributes[Attribute::Health], change);
+            super::falling::ordinary_health_value(before, change);
+        self.observe_health_loss(index, before);
         Ok(())
     }
 

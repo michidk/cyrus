@@ -7,6 +7,7 @@ the Mods window that opens with F11. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
+| `blood` | damage, particles, settings | A brief spray of fading red particles on actual player or actor health loss |
 | `modern-water` | scene, uniforms, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
@@ -155,8 +156,8 @@ against the WIT directly.
   claimed player then walks and runs in the fight animations and `speed` returns
   the fight speeds) and `speed(run)` (the player's own walk or run speed per
   nominal update, the base for a speed scale).
-- `settings`: `flag(id, key)`, `number(id, key)` and `choice(id, key)` read the
-  player's values; `id` is the mod's folder name. Read them every frame so a
+- `settings`: `cx.settings.flag("key")`, `number("key")` and `choice("key")` read the
+  player's values. The SDK supplies the mod id. Read settings every frame so a
   change in the window takes effect at once.
 - `memory`: `load(key)` and `save(key, values)` keep a list of numbers between
   frames for the session. wasvy starts a fresh instance of the mod for every
@@ -164,13 +165,94 @@ against the WIT directly.
   next frame; keep state here, under keys prefixed with the mod's folder name.
 - `hud`: `show(line)` draws a line of text in the top-left corner for this frame;
   call it every frame the text should stay.
-- `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
-  `delta` (seconds).
+- `input`: `cx.input.down(Key::INSERT)` and `tapped(Key::INSERT)` use SDK `Key`
+  values; `mouse()` returns pixels and `delta()` returns seconds. The raw WIT
+  calls `down` by the name `pressed` and takes Bevy `KeyCode` names.
 
 The SDK queries each hook with the mutability wasvy needs, so a mod never sees it.
 
-Answers apply one frame after they are written. A hook a mod stops answering
-returns to the original behaviour.
+Camera, movement and shader answers apply one frame after they are written. A hook a mod stops
+answering returns to the original behaviour. Particle emissions run after the current frame's
+`Update`; the engine owns their motion and lifetime after emission.
+
+## Damage-driven particles
+
+`mods/blood` is a complete example of an event-driven mod. Its `frame` reads
+`cx.damage.events()` and calls `cx.particles.emit(Particle { ... })`. The mod chooses
+spray size, red color and gravity; these are mod preferences. It needs no game assets,
+shader replacement, movement takeover or guest state between frames.
+
+A damage event contains the actor's script name, actual health lost and an optional
+position in map units with original axes. Names can repeat across actor instances;
+use them to filter by actor type, not as unique handles. A missing position means
+that the health service had no spatial state to publish; skip visual effects for it.
+The host captures events when health services reduce health, including scripted,
+contact, environmental and fatal loss. Healing, blocked hits and raw attribute edits
+are not damage-service events. A later failure does not undo health already written
+or its event. Each `PreUpdate` replaces the batch with up to 4096 recent events,
+oldest first. All mods see the same batch; reading it does not consume it. Historical
+events are not saved or replayed after loading a save.
+
+Particle geometry uses the same **scene coordinates** as camera poses, with Y up.
+`position.map_to_scene()` converts a damage event's map-unit point, including the
+world origin; do not use point conversion for velocities. Particle velocity is in
+scene units per second and acceleration in scene units per second squared. For example:
+
+```rust
+for event in cx.damage.events() {
+    if let Some(position) = event.position {
+        cx.particles.emit(cyrus_mod_sdk::Particle {
+            position: position.map_to_scene() + cyrus_mod_sdk::Vec3::UP,
+            velocity: cyrus_mod_sdk::Vec3::UP * 2.0,
+            acceleration: cyrus_mod_sdk::Vec3::new(0.0, -9.8, 0.0),
+            color: [0.6, 0.02, 0.01, 1.0],
+            radius: 0.06,
+            lifetime: 0.7,
+        });
+    }
+}
+```
+
+The engine renders unlit spherical droplets, integrates their acceleration and fades
+alpha linearly over the lifetime. They have no collision and leave no marks. Motion
+and expiry use game time, so pausing the game pauses particles. Disable or completed
+hot reload removes that mod's particles; changing or unloading the world removes all
+particles. Queued emissions retain the world and loaded mod revision that submitted
+them, so they cannot appear under a replacement world or revision.
+
+`emit` returns false for an inactive owner, absent world, invalid input or exhausted
+queue. Positions, velocities and accelerations must be finite and within +/-1e6 per
+coordinate. Color is sRGB RGBA, each channel in 0..=1. Radius must be 0.001..=10 scene
+units and lifetime 0.01..=10 seconds. Queue and live limits are 256 per mod and 1024
+total; new requests beyond live capacity are dropped. The SDK supplies the mod id.
+
+To build and try the example:
+
+```sh
+rustup target add wasm32-wasip2
+cargo test --manifest-path mods/blood/Cargo.toml
+just mods
+cargo run -p cyrus -- --scene START
+```
+
+Open F11 and enable **Blood particles** in the Mods window. Its amount and lifetime
+settings apply to new emissions immediately. Damage a combatant to exercise actual
+health-service events; setting a health attribute directly is not a substitute. Turn
+the mod off to verify cleanup. `cargo test --manifest-path mods/sdk/Cargo.toml` checks
+the SDK's pure helpers. Mods and this renderer are native-only; a `--headless` game
+run does not load mods or render particles.
+
+For an isolated guest/host check, build `mods/blood` for `wasm32-wasip2 --release`, set
+`CYRUS_BLOOD_WASM` to the resulting `blood.wasm` and run
+`cargo test -p cyrus-mods --lib wasm_blood_particles -- --ignored --nocapture`.
+The test loads the real component, supplies a damage event, checks its emissions and
+verifies disabling it removes entities and materials. It needs no game install.
+Setting `CYRUS_PARTICLE_CAPTURE` to a new PNG path also enables an offscreen GPU
+capture; this needs a Vulkan-capable runtime. Cargo reports its output root as
+`target_directory` in `cargo metadata --no-deps --format-version 1`; the component is
+under `wasm32-wasip2/release/` there. Both `just mods` and this workflow respect an
+inherited `CARGO_TARGET_DIR`.
+
 
 **Shading** (`[[shader]]`). Any shader asset can be replaced; list each one in
 `mod.toml`:
