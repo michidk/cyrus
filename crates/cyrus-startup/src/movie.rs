@@ -20,7 +20,11 @@ use {
     bevy::tasks::{IoTaskPool, Task, futures::check_ready},
     cyrus_assets::install::GameInstall,
     cyrus_assets::startup::movie_native::prepare,
-    std::sync::mpsc,
+    std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+        mpsc,
+    },
 };
 
 #[derive(Resource, Default)]
@@ -58,7 +62,20 @@ struct Playing {
 }
 use cyrus_audio::CinematicAudio;
 #[cfg(not(target_arch = "wasm32"))]
-type NativeFrame = (Vec<u8>, Option<StreamingAudio>);
+type NativeFrame = (u32, NativeImage, Option<StreamingAudio>);
+
+/// Keep delta-decoded indices until the movie clock selects a presentation.
+/// Rasterizing queued, already-late pictures makes video fall behind independent audio.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, PartialEq)]
+struct NativeImage {
+    indices: Vec<u8>,
+    palette: Box<[[u8; 3]; 256]>,
+}
+#[cfg(not(target_arch = "wasm32"))]
+type DecodedImage = NativeImage;
+#[cfg(target_arch = "wasm32")]
+type DecodedImage = Vec<u8>;
 
 /// Dropping it disconnects the channel, which stops the decoding thread.
 struct Decoder {
@@ -66,17 +83,21 @@ struct Decoder {
     frames: Mutex<mpsc::Receiver<anyhow::Result<NativeFrame>>>,
     #[cfg(not(target_arch = "wasm32"))]
     audio: Option<StreamingAudio>,
+    #[cfg(not(target_arch = "wasm32"))]
+    requested: Arc<AtomicU32>,
     #[cfg(target_arch = "wasm32")]
     frames: Mutex<super::movie_stream::BrowserMovie>,
 }
 impl Decoder {
-    fn next(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+    fn next(&mut self, due: u32, next_frame: u32) -> anyhow::Result<Option<(u32, DecodedImage)>> {
         #[cfg(not(target_arch = "wasm32"))]
         {
+            self.requested.store(due, Ordering::Relaxed);
+            let _ = next_frame;
             match self.frames.lock().unwrap().try_recv() {
-                Ok(frame) => frame.map(|(pixels, audio)| {
+                Ok(frame) => frame.map(|(index, pixels, audio)| {
                     self.audio = audio;
-                    Some(pixels)
+                    Some((index, pixels))
                 }),
                 Err(mpsc::TryRecvError::Empty) => Ok(None),
                 Err(mpsc::TryRecvError::Disconnected) => {
@@ -86,7 +107,13 @@ impl Decoder {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            Ok(self.frames.get_mut().unwrap().next())
+            let _ = due;
+            Ok(self
+                .frames
+                .get_mut()
+                .unwrap()
+                .next()
+                .map(|pixels| (next_frame, pixels)))
         }
     }
 }
@@ -171,6 +198,8 @@ fn resume_script_world(commands: &mut Commands, menu: &mut MenuState, then_load:
 fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
     let source = movie.source.clone();
     let (sender, receiver) = mpsc::sync_channel(2);
+    let requested = Arc::new(AtomicU32::new(frame));
+    let worker_requested = requested.clone();
     let frames = movie.metadata.frames;
     let name = movie.metadata.definition.name.clone();
     let start =
@@ -200,9 +229,12 @@ fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
                         .map_err(|error| anyhow::anyhow!("frame {index}: {error:#}"))?,
                     "missing frame {index}"
                 );
-                if index >= frame {
-                    let pixels = stretch(packets.codec.video_data(), packets.codec.palette());
-                    if sender.send(Ok((pixels, audio.take()))).is_err() {
+                if index >= frame && index >= worker_requested.load(Ordering::Relaxed) {
+                    let pixels = NativeImage {
+                        indices: packets.codec.video_data().to_vec(),
+                        palette: Box::new(*packets.codec.palette()),
+                    };
+                    if sender.send(Ok((index, pixels, audio.take()))).is_err() {
                         break;
                     }
                 }
@@ -216,6 +248,7 @@ fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
     Ok(Decoder {
         frames: Mutex::new(receiver),
         audio: None,
+        requested,
     })
 }
 
@@ -458,15 +491,16 @@ pub(super) fn drive(
         if decode_started.elapsed() >= BROWSER_DECODE_BUDGET {
             break;
         }
-        let result = playing.decoder.next();
+        let result = playing
+            .decoder
+            .next(due.min(playing.movie.metadata.frames), playing.next_frame);
         match result {
-            Ok(Some(frame)) => {
+            Ok(Some((index, frame))) => {
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(audio) = playing.decoder.audio.take() {
                     playing.audio = Some(sources.add(audio));
                 }
-                let index = playing.next_frame;
-                playing.next_frame += 1;
+                playing.next_frame = index + 1;
                 if let Some(status) = menu.movie.as_mut() {
                     status.frame = index;
                     status.loading = false;
@@ -481,7 +515,13 @@ pub(super) fn drive(
             Ok(None) => break,
         }
     }
-    if let Some(mut pixels) = pixels.filter(|_| failure.is_none() && !finished) {
+    if let Some(frame) = pixels.filter(|_| failure.is_none() && !finished) {
+        // Decode every delta, but expand only the latest picture selected by the
+        // audio-owned movie clock. Queued obsolete pictures need no presentation work.
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut pixels = stretch(&frame.indices, &frame.palette);
+        #[cfg(target_arch = "wasm32")]
+        let mut pixels = frame;
         if menu
             .preferences
             .as_ref()
@@ -678,7 +718,7 @@ mod tests {
         menu.movie = Some(MovieStatus {
             name: "synthetic.smk".into(),
             frame: 0,
-            frames: 3,
+            frames: 5,
             loading: true,
         });
         world.insert_resource(menu);
@@ -693,7 +733,7 @@ mod tests {
                             keys: Vec::new(),
                             subtitles: Vec::new(),
                         },
-                        frames: 3,
+                        frames: 5,
                         frame_micros: 1000,
                         has_audio: false,
                         font: default(),
@@ -703,6 +743,7 @@ mod tests {
                 decoder: Decoder {
                     frames: Mutex::new(receiver),
                     audio: None,
+                    requested: Arc::new(AtomicU32::new(1)),
                 },
                 prefetched: Vec::new(),
                 image: default(),
@@ -715,18 +756,30 @@ mod tests {
             ..default()
         });
         let mut owned = None;
-        for (index, rgba) in [[12, 34, 56, 255], [78, 90, 123, 255]]
-            .into_iter()
-            .enumerate()
+        for (index, (ordinal, rgba)) in [
+            (1, [12, 34, 56, 255]),
+            (2, [78, 90, 123, 255]),
+            (4, [210, 12, 34, 255]),
+        ]
+        .into_iter()
+        .enumerate()
         {
-            let pixels = rgba.repeat(640 * 480);
-            sender.send(Ok((pixels.clone(), None))).unwrap();
+            let frame = NativeImage {
+                indices: vec![0; 640 * 240],
+                palette: Box::new([rgba[..3].try_into().unwrap(); 256]),
+            };
+            let pixels = stretch(&frame.indices, &frame.palette);
+            sender.send(Ok((ordinal, frame, None))).unwrap();
             world
                 .resource_mut::<Time<Real>>()
                 .advance_by(Duration::from_millis(index as u64));
             world.run_system_cached(drive).unwrap();
             let playing = world.resource::<MoviePlayback>().playing.as_ref().unwrap();
-            assert_eq!(playing.next_frame, index as u32 + 2);
+            assert_eq!(playing.next_frame, ordinal + 1);
+            assert_eq!(
+                world.resource::<MenuState>().movie.as_ref().unwrap().frame,
+                ordinal
+            );
             let images = world.resource::<Assets<Image>>();
             let unchanged = images.get(&fallback).unwrap();
             assert!(
@@ -916,6 +969,7 @@ mod tests {
                     decoder: Decoder {
                         frames: Mutex::new(receiver),
                         audio: None,
+                        requested: Arc::new(AtomicU32::new(1)),
                     },
                     prefetched: Vec::new(),
                     image: default(),
@@ -976,9 +1030,99 @@ mod tests {
                 movie.metadata.definition.name,
                 started.elapsed()
             );
-            let (pixels, audio) = frame.unwrap().unwrap();
-            assert_eq!(pixels.len(), 640 * 480 * 4);
+            let (_, pixels, audio) = frame.unwrap().unwrap();
+            assert_eq!(
+                stretch(&pixels.indices, &pixels.palette).len(),
+                640 * 480 * 4
+            );
             assert_eq!(audio.is_some(), movie.metadata.has_audio);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn installed_movie_delivery_does_not_rasterize_frames_before_selection() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let movie = prepare(&install.root, 0).unwrap();
+        let receiver = decode(&movie, 1).unwrap().frames.into_inner().unwrap();
+        for _ in 1..=45 {
+            let (_, frame, _) = receiver.recv().unwrap().unwrap();
+            assert_eq!(
+                frame.indices.len(),
+                640 * 240,
+                "queued frames must retain indexed pixels until presentation selection"
+            );
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn installed_movie_catches_up_without_losing_frame_identity_or_seek_origin() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let movie = prepare(&install.root, 0).unwrap();
+        for start in [1, 30] {
+            let decoder = decode(&movie, start).unwrap();
+            decoder.requested.store(45, Ordering::Relaxed);
+            let receiver = decoder.frames.into_inner().unwrap();
+            let mut found = false;
+            let mut previous = start - 1;
+            for _ in 0..4 {
+                let (index, image, audio) = receiver.recv().unwrap().unwrap();
+                assert!(index > previous);
+                assert!(
+                    index <= 45,
+                    "delivery must not skip beyond the requested movie clock"
+                );
+                if previous == start - 1 {
+                    assert_eq!(
+                        audio.unwrap().elapsed(),
+                        Some(
+                            Duration::from_micros(
+                                u64::from(start - 1) * u64::from(movie.metadata.frame_micros)
+                            )
+                            .as_secs_f64()
+                        )
+                    );
+                }
+                previous = index;
+                if index == 45 {
+                    let expected = decode(&movie, 45)
+                        .unwrap()
+                        .frames
+                        .into_inner()
+                        .unwrap()
+                        .recv()
+                        .unwrap()
+                        .unwrap()
+                        .1;
+                    assert_eq!(
+                        image, expected,
+                        "catch-up must still decode every intervening delta"
+                    );
+                    found = true;
+                    break;
+                }
+            }
+            assert!(
+                found,
+                "obsolete queued pictures must not create an unbounded video backlog"
+            );
         }
     }
 
@@ -997,7 +1141,7 @@ mod tests {
         };
         let started = std::time::Instant::now();
         let mut movie = prepare(&install.root, 0).unwrap();
-        let (pixels, audio) = decode(&movie, 1)
+        let (_, pixels, audio) = decode(&movie, 1)
             .unwrap()
             .frames
             .into_inner()
@@ -1009,7 +1153,10 @@ mod tests {
             "installed INTRO request to first picture and audio block: {:?}",
             started.elapsed()
         );
-        assert_eq!(pixels.len(), 640 * 480 * 4);
+        assert_eq!(
+            stretch(&pixels.indices, &pixels.palette).len(),
+            640 * 480 * 4
+        );
         assert!(audio.is_some());
         drop(audio);
         let mut reader = movie.source.open().unwrap();
@@ -1030,7 +1177,7 @@ mod tests {
         let path = directory.join(format!("first-packet-{}.smk", std::process::id()));
         std::fs::write(&path, &bytes).unwrap();
         movie.source = cyrus_assets::movie::MovieInput::File(path.clone());
-        let (first, audio) = decode(&movie, 1)
+        let (_, first, audio) = decode(&movie, 1)
             .unwrap()
             .frames
             .into_inner()

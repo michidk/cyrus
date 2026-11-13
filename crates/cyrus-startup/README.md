@@ -58,7 +58,7 @@ into cyrus-audio before `ApplyPreferences`. Preferences still persist before the
 apply. Keep `ApplyPreferences -> AnimationSystems -> PlayCues`; rendering hosts
 own the optional listener pose. Cinematic entities carry audio's `CinematicAudio`
 marker so CD music pauses during playback. Native media workers and browser
-cooperative decoding retain their cancellation, seeking and menu-return behavior.
+cooperative decoding retain their cancellation, seeking and menu-return behavior. Native video workers retain indexed delta-decoded frames and their palettes in a bounded queue. The audio-owned movie clock selects the due picture before tiled expansion; obsolete pictures do not accumulate raster work. Catch-up retains frame ordinals and the sample-exact seek origin.
 
 Run `cargo test -p cyrus-startup` for startup, motion, raster, settings, movie and
 loading contracts. Runtime checks require native/browser startup, menu, movie,
