@@ -102,7 +102,7 @@ against the WIT directly.
 - `camera`: `pose()` is the current view; `drive(pose)` moves it this frame
   and suppresses player input. Stop calling it to hand control back.
   `orbit()` each frame lets the mouse and right stick turn the follow camera
-  around the player as the Modern camera does, with the cursor captured,
+  around the player, with the cursor captured,
   whatever moves the player.
   `turn(amount)` adds a yaw adjustment to the orbit camera (2048 units per turn,
   positive left), without taking over its pose or suppressing movement. Manual

@@ -51,7 +51,8 @@ printf '{"id":2,"cmd":{"type":"input","key":"ArrowUp","action":"press"}}\n' | nc
 ```
 
 Keys are Bevy `KeyCode` names. `tap` presses for one frame. Fidelity areas:
-`player_controller`, `camera`, `graphics`; modes `faithful`, `modern`.
+`fog`, `sky`, `lighting`, `textures`, `music`, `anisotropic_filtering`; modes `faithful`,
+`modern`. Modern controls and camera come only from the `movement` mod.
 
 ## Drive the original
 

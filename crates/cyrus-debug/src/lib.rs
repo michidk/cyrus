@@ -240,13 +240,6 @@ fn debug_menu(
                 }
             }
         });
-        fidelity_control(
-            ui,
-            &mut fidelity,
-            Area::PlayerController,
-            "Player controller",
-        );
-        fidelity_control(ui, &mut fidelity, Area::Camera, "Camera");
         fidelity_control(ui, &mut fidelity, Area::Fog, "Fog");
         fidelity_control(ui, &mut fidelity, Area::Sky, "Sky");
         fidelity_control(

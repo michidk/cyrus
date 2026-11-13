@@ -82,19 +82,10 @@ the **Pass input to game** option beside it is ticked.
 The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate it in the
 Mods window under F11, then Insert toggles it; its speed is a setting of the mod.
 
-Faithful controls are the default. `--controls modern` (browser
-`?controls=modern`, or F11's Player controller setting) uses the same configured
-bindings, but the movement keys move Cyrus relative to the camera: he turns toward
-the held direction while moving forward. He walks unless the walk/run key is held,
-which runs; the Tab walk mode does not apply. With a gamepad, the left stick moves
-him the same way: a partial tilt walks, a full tilt runs. In conversation topic
-menus, the forward and backward keys or the left stick move the selection up and down. In the book menu, the D-pad or left stick acts as
-the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F11's Camera setting) turns the
-follow camera with horizontal mouse movement or the right stick and locks the
-cursor during play; in a browser, click the game to lock it, also after Escape released it. Both sticks use the installed joystick dead zone.
-Vertical mouse movement does not tilt the camera. The Faithful camera follows
-Cyrus's heading, so with it A or D keeps turning him in a circle; use both Modern
-settings together.
+The controls and the follow camera are always the original's; Modern mode changes only how the
+game looks. Mouse look, camera-relative W, A, S and D movement and gamepad steering come from the
+bundled `movement` mod (see `mods/README.md`): activate it in the Mods window under F11. In a
+browser, click the game to lock the cursor for its mouse look, also after Escape released it.
 
 ## Save and resume
 

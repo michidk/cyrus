@@ -288,7 +288,7 @@ Ready text uses the installed HUD REDSEL font for wrapping. After object
 updates, the host advances game-owned dialogue records through synchronous sample
 feedback, then ages the RTX cache. The game selects the subtitle record and owns
 speaker inhibition; rendering only reads that selection. The configured keyboard
-key_a signal is sampled before Modern movement interpretation. Joystick input
+key_a signal is sampled before a movement mod interprets it. Joystick input
 remains unsupported.
 
 The ordinary host advances game-owned sound maintenance before model

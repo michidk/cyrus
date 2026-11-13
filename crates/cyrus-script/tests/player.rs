@@ -87,8 +87,8 @@ fn mouse_bindings_read_the_release_edge_not_the_held_button() {
 }
 
 #[test]
-fn modern_sticks_move_and_turn_the_camera_beyond_the_installed_dead_zone() {
-    use cyrus_script::player::input::ModernLook;
+fn a_mod_orbit_turns_with_the_right_stick_and_the_left_stick_never_moves_the_player() {
+    use cyrus_script::player::input::{CameraOrbit, ModernLook};
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
@@ -103,37 +103,30 @@ fn modern_sticks_move_and_turn_the_camera_beyond_the_installed_dead_zone() {
                 .with_joystick([138, 139, 136, 137, 135, 133, 134, 132], 60)
                 .unwrap(),
         )
+        .insert_resource(CameraOrbit {
+            enabled: true,
+            ..default()
+        })
         .add_plugins(PlayerPlugin);
-    {
-        let mut fidelity = app.world_mut().resource_mut::<Fidelity>();
-        fidelity.player_controller = Mode::Modern;
-        fidelity.camera = Mode::Modern;
-    }
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
     let mut pad = Gamepad::default();
     pad.analog_mut().set(GamepadAxis::LeftStickX, 0.9);
     pad.analog_mut().set(GamepadAxis::RightStickX, 1.0);
-    let pad = app.world_mut().spawn(pad).id();
+    app.world_mut().spawn(pad);
+    // Every area Modern changes only the looks: without a steering mod the stick does not steer.
+    for area in cyrus_game::fidelity::Area::ALL {
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(area, Mode::Modern);
+    }
     app.update();
     app.update();
     let look = app.world().resource::<ModernLook>();
-    assert_eq!(look.stick, Some(Vec2::new(0.9, 0.0)));
+    assert_eq!(look.stick, None);
     // A right-stick turn to the right lowers the heading.
     assert!(look.turn < 0.0, "{look:?}");
-    let mut stick = app.world_mut().get_mut::<Gamepad>(pad).unwrap();
-    stick.analog_mut().set(GamepadAxis::LeftStickX, 0.01);
-    app.update();
-    assert_eq!(app.world().resource::<ModernLook>().stick, None);
-    app.world_mut()
-        .get_mut::<Gamepad>(pad)
-        .unwrap()
-        .analog_mut()
-        .set(GamepadAxis::LeftStickX, 0.9);
-    app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Faithful;
-    app.update();
-    assert_eq!(app.world().resource::<ModernLook>().stick, None);
 }
 
 /// A player app that no mod answers yet, one update in.
@@ -150,7 +143,7 @@ fn mod_driven_app() -> App {
 }
 
 #[test]
-fn a_mod_wish_steers_camera_relative_whatever_the_controller_mode() {
+fn a_mod_wish_steers_camera_relative() {
     use cyrus_script::player::input::{ModernLook, MovementWish, Wish};
     let mut app = mod_driven_app();
     let look = |app: &App| {
@@ -268,7 +261,7 @@ fn a_locomotion_claim_releases_the_movement_bindings_and_menus_take_it_back() {
 }
 
 #[test]
-fn modern_reads_the_configured_bindings_and_the_walk_key_runs() {
+fn modern_mode_keeps_the_installed_bindings_and_suspension_clears_them() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
@@ -276,9 +269,12 @@ fn modern_reads_the_configured_bindings_and_the_walk_key_runs() {
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
         .add_plugins(PlayerPlugin);
-    app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Modern;
-    // Unbound keys do nothing in Modern either.
-    for key in [KeyCode::KeyW, KeyCode::KeyD, KeyCode::ShiftRight] {
+    for area in cyrus_game::fidelity::Area::ALL {
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(area, Mode::Modern);
+    }
+    for key in [KeyCode::KeyW, KeyCode::KeyD, KeyCode::Space] {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(key);
@@ -287,60 +283,14 @@ fn modern_reads_the_configured_bindings_and_the_walk_key_runs() {
     assert_eq!(
         *app.world().resource::<PlayerInput>(),
         PlayerInput {
-            walk: true,
-            ..default()
-        }
-    );
-    for key in [
-        KeyCode::ArrowUp,
-        KeyCode::ArrowRight,
-        KeyCode::Space,
-        KeyCode::ShiftLeft,
-    ] {
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(key);
-    }
-    app.update();
-    assert_eq!(
-        *app.world().resource::<PlayerInput>(),
-        PlayerInput {
-            forward: true,
-            right: true,
             jump: true,
             ..default()
-        }
-    );
-    assert!(
-        app.world()
-            .resource::<cyrus_script::player::input::DialogueSkip>()
-            .0
-    );
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .release(KeyCode::ShiftLeft);
-    app.update();
-    assert!(app.world().resource::<PlayerInput>().walk);
-    assert!(
-        !app.world()
-            .resource::<cyrus_script::player::input::DialogueSkip>()
-            .0
-    );
-    app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Faithful;
-    app.update();
-    assert_eq!(
-        *app.world().resource::<PlayerInput>(),
-        PlayerInput {
-            forward: true,
-            right: true,
-            jump: true,
-            ..default()
-        }
+        },
+        "W and D are not installed movement keys"
     );
     app.world_mut()
         .resource_mut::<cyrus_script::player::input::InputSuppressed>()
         .0 = true;
-    app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Modern;
     app.update();
     assert_eq!(
         *app.world().resource::<PlayerInput>(),
@@ -351,9 +301,6 @@ fn modern_reads_the_configured_bindings_and_the_walk_key_runs() {
     app.world_mut()
         .resource_mut::<cyrus_script::player::input::InputSuppressed>()
         .0 = false;
-    app.world_mut()
-        .resource_mut::<cyrus_game::fidelity::Fidelity>()
-        .player_controller = Mode::Faithful;
     app.update();
     assert_eq!(
         *app.world().resource::<PlayerInput>(),

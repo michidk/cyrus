@@ -67,7 +67,7 @@ call("input", {"key":"KeyW","action":"release"})
 final = wait_state(lambda s: not s["player_input"]["forward"], "released key remained held")
 assert final["scripts"]["ordinary_updates"] == 0, final
 assert initial["player"]["position"] == final["player"]["position"], "input enabled unsupported movement"
-assert call("set_fidelity", {"area":"camera","mode":"modern"})["camera"] == "modern"
+assert call("set_fidelity", {"area":"fog","mode":"modern"})["fog"] == "modern"
 call("quit")
 print("smoke-mcp: headless state/input/fidelity/cheats/quit passed")
 PY
