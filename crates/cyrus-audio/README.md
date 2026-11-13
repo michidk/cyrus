@@ -603,3 +603,24 @@ readback. The page supplies the same explicit fixture through `captureFixture()`
 Run `python3 dev/scripts/test-natural-animation-controls.py` for rejection controls.
 These isolated command/output checks do not establish whole-scene input or
 physical-speaker parity.
+
+`replacement_lifecycle` exercises installed animation replacement through the
+public deferred scene-binding queue. Supply `CYRUS_ANIMATION_FIXTURE` pointing
+to local JSON with `animations` exported by the asset pipeline, `actor`, and
+`source`/`destination` group indices. The source must reach a sound before End;
+the destination must begin with a frame. Native and browser run the same forced,
+ordinary, skipped-frame and changed-default requests. Each has an admitted
+continuation control and a full-queue rejection control, including snapshot
+restoration, no replay and exactly-once release. This checks host failure
+ownership, not original host-error policy or audible waveform parity.
+
+Build with `cargo build -p cyrus-audio --example replacement_lifecycle` and run
+the copied executable with that explicit fixture. For browser acceptance, build
+the same example for `wasm32-unknown-unknown` and package it with the exact-schema
+`wasm-bindgen --target web` selected by `dev/scripts/resolve-wasm-bindgen.py`. Put
+the bindings and `fixture.json` under a host rig's `web/` directory, then run
+`python3 dev/scripts/run-animation-replacement-browser.py /absolute/host/rig`.
+The launcher requires a rig under `/home/vibepod/workspaces`, recreates only its
+pinned headless image when absent, mounts persistent config and logs, takes a
+per-run lock, and removes its own container on completion. The driver rejects
+missing stages, runtime errors and an executed WASM hash mismatch.

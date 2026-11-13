@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Animation replacement ownership acceptance</title>
+<pre id="result">Running installed replacement lifecycle</pre>
+<script type="module">
+const fixture = await (await fetch('./fixture.json')).text();
+globalThis.captureFixture = () => fixture;
+globalThis.captureResult = text => {
+  globalThis.replacementResult = JSON.parse(text);
+  document.querySelector('#result').textContent = text;
+};
+const {default: init} = await import('./replacement_lifecycle.js');
+await init();
+</script>

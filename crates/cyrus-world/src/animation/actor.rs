@@ -829,8 +829,13 @@ impl ActorAnimation {
     }
 
     fn clear_current(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
-        if let Some((_, sequence)) = &mut self.current {
-            sequence.forget_sound(sounds)?;
+        if let Some((_, sequence)) = &mut self.current
+            && let Err(error) = sequence.forget_sound(sounds)
+        {
+            // The service may have applied effects before rejecting the replacement.
+            // Keep the receiver failed just as ordinary advancement does.
+            self.failure = Some(error.to_string());
+            return Err(error);
         }
         self.current = None;
         Ok(())

@@ -46,7 +46,10 @@ pose while its byte delay consumes supplied nominal ticks. Zero continues
 immediately and byte 255 waits until replacement. A waiting group remains current
 and does not complete its PushAnimation task. These rules are
 [published in preservation](https://github.com/michidk/redguard-preservation/blob/515e62f/docs/engine/animation.md#forward-animation-delays).
-Unsupported cues stop playback with a contextual error.
+Unsupported cues stop playback with a contextual error. A rejected synchronous
+Forget during forced, ordinary, skipped-frame or default replacement also leaves
+the receiver failed. Later requests and snapshot restoration cannot replay it;
+already dispatched services are not rolled back.
 
 `ActorAnimation` owns requests and playback direction for types zero through two.
 The caller supplies the default group and nominal ticks. Direction, timing and
