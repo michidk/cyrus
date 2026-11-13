@@ -2291,3 +2291,20 @@ Boundary receipts reject update gaps, changed generations and inconsistent
 consumed scales. Diagnostic polling cannot satisfy the target. Acquisition
 acceptance requires the exact declared scale; gameplay comparison still needs
 matched original/native inputs, placement, timing and outcome evidence.
+
+For exact counterpart acquisition, `dev/scripts/probe-clock.py` proposes a common
+integer-scale endpoint from contiguous measured original/native boundary arrays.
+Measure a steady tail before arming input; pass the installed normal frame rate
+and a bounded minimum duration in Q8 nominal ticks. The plan uses the least common
+multiple of the observed steps, rather than assuming that a fixed update count
+always consumes the same game time. A steady measurement proposes a candidate;
+`validate` must still check every executed interval and the final endpoint.
+A cadence change, update gap or skipped endpoint rejects the comparison. The tool
+never changes frame scale or interpolates an unavailable boundary.
+
+When measurements change during execution, `pair_observed` selects shared elapsed
+scales only from the two complete acknowledged receipt sequences. Both sequences
+must start at their declared zero-scale input origins. A required endpoint absent
+from either sequence stays rejected; an earlier shared point establishes only
+that shorter interval. Matching elapsed time alone does not prove matching poses,
+platform phase or complete action continuation.
