@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -113,6 +114,28 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.assertIn('/app/cyrus', calls)
         self.assertEqual(calls[-2:], ['--scene', 'TEST'])
         self.assertFalse((self.root / 'target').exists())
+
+    def test_completed_executable_is_sealed_before_slow_unit_recording(self):
+        recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'
+        original = recorder.read_text()
+        recorder.write_text("import sys,time\nfrom pathlib import Path\n"
+                            "if sys.argv[1] == 'record':\n"
+                            " while not Path('release-recorder').exists(): time.sleep(.02)\n" + original)
+        # The shim is a fixture, not a modification made during the build.
+        process = subprocess.Popen(['bash', 'dev/scripts/build-native-recovery.sh', str(self.output)],
+                                   cwd=self.root, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 4
+            record = Path(str(self.output) + '.provenance.json')
+            while not record.exists() and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertTrue(record.exists(), 'completed executable waited behind unit checkpoint recording')
+            subprocess.run(['python3', 'dev/scripts/build-provenance.py', 'verify', str(record)],
+                           cwd=self.root, check=True, capture_output=True)
+        finally:
+            (self.root / 'release-recorder').touch()
+            stdout, stderr = process.communicate(timeout=15)
+        self.assertEqual(process.returncode, 0, stdout + stderr)
 
     def test_changed_source_and_compiler_reject_reuse(self):
         self.run_build()

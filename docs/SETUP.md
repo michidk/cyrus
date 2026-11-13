@@ -2362,6 +2362,10 @@ keeping a second executable copy. The script requires hauler and preserves the
 inherited Cargo target directory. Completed Cargo units are retained as they are
 reported, using the same hashed unit recovery as browser builds. Restoration
 never replaces existing shared compilation files; Cargo checks their freshness.
+Cargo events spool to the host independently of unit compression. A successful
+Cargo exit seals the final executable before waiting for the unit archive backlog,
+so slow checkpoint compression cannot defer executable retention. The wrapper
+still waits for the recorder and reports recorder failures.
 The final executable retains its permissions and is reusable only with matching
 source, compiler, Cargo and build environment. A failed/interrupted build cannot
 publish a final executable checkpoint. Run the reset/recovery controls with
