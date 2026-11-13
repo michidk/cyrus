@@ -11,7 +11,7 @@ use serde::Serialize;
 
 /// Held player actions, before movement/animation state interpretation.
 /// Faithful walk is the held walk/run modifier, separate from the walk-mode toggle.
-/// Modern walk requests walking while neither Shift key is held.
+/// Modern walk requests walking while the walk/run modifier is not held.
 #[derive(Resource, Default, Debug, PartialEq, Eq, Serialize)]
 pub struct PlayerInput {
     pub forward: bool,
@@ -24,9 +24,8 @@ pub struct PlayerInput {
     pub walk: bool,
 }
 
-/// The keys Modern movement reads, forward, backward, left and right.
-pub const MODERN_MOVEMENT: [KeyCode; 4] =
-    [KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD];
+/// The keys a mod steering with [`Wish::wasd`] reads, forward, backward, left and right.
+pub const WASD: [KeyCode; 4] = [KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD];
 
 impl PlayerInput {
     /// Modern camera-relative movement: the held directions, or a tilted `stick` (x right,
@@ -806,7 +805,6 @@ pub fn polled_release(previous: [bool; 2], now: [bool; 2], mouse: Mouse) -> bool
 // Bevy supplies the independent input locks and output resources.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sample(
-    keys: Res<ButtonInput<KeyCode>>,
     inputs: Inputs,
     suppressed: Res<InputSuppressed>,
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
@@ -868,10 +866,8 @@ pub(super) fn sample(
     *input = inputs.bindings().sample_devices(inputs.devices());
     dialogue_skip.0 = input.walk;
     if fidelity.player_controller == Mode::Modern {
-        [input.forward, input.backward, input.left, input.right] =
-            MODERN_MOVEMENT.map(|key| keys.pressed(key));
-        input.jump |= keys.pressed(KeyCode::Space);
-        input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+        // Modern reads the same bindings; the held walk/run key runs instead of walking.
+        input.walk = !input.walk;
     }
     if claimed.0.is_some() {
         // The mod owns locomotion: the original movement bindings read as released.

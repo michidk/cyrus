@@ -83,14 +83,12 @@ The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate
 Mods window under F11, then Insert toggles it; its speed is a setting of the mod.
 
 Faithful controls are the default. `--controls modern` (browser
-`?controls=modern`, or F11's Player controller setting) moves Cyrus with W, A, S
-and D relative to the camera: he turns toward the held direction while moving
-forward. He walks unless Shift is held, which runs; the Tab walk mode does not
-apply. Space jumps as installed. With a gamepad, the left stick moves him the
-same way: a partial tilt walks, a full tilt runs. The arrow keys and the D-pad do
-not move him, and a quick sword key on W, A, S or D (S in the GOG install) moves
-instead of drawing the sword. In conversation topic menus, W and S or the left stick
-move the selection up and down. In the book menu, the D-pad or left stick acts as
+`?controls=modern`, or F11's Player controller setting) uses the same configured
+bindings, but the movement keys move Cyrus relative to the camera: he turns toward
+the held direction while moving forward. He walks unless the walk/run key is held,
+which runs; the Tab walk mode does not apply. With a gamepad, the left stick moves
+him the same way: a partial tilt walks, a full tilt runs. In conversation topic
+menus, the forward and backward keys or the left stick move the selection up and down. In the book menu, the D-pad or left stick acts as
 the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F11's Camera setting) turns the
 follow camera with horizontal mouse movement or the right stick and locks the
 cursor during play; in a browser, click the game to lock it, also after Escape released it. Both sticks use the installed joystick dead zone.

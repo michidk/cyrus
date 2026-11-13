@@ -14,7 +14,7 @@ use cyrus_script::{
     player::{
         Player, PlayerPlugin,
         data::PlayerScene,
-        input::{PlayerBindings, PlayerToggles},
+        input::{Action, PlayerBindings, PlayerToggles},
         placement::PlayerPose,
     },
     script::{ScriptActorSource, ScriptActors, ScriptPlugin, ScriptView},
@@ -155,8 +155,8 @@ fn installed_keyboard_route(modern_jump: bool, banked_turns: bool) -> Result<()>
     if banked_turns {
         banked_turn_route(&mut app, &codes)
     } else if modern_jump {
-        standing_jump_route(&mut app)?;
-        moving_jump_route(&mut app)
+        standing_jump_route(&mut app, &codes)?;
+        moving_jump_route(&mut app, &codes)
     } else {
         walk_route(&mut app, &codes)
     }
@@ -358,18 +358,19 @@ fn register_player_assets(
     })
 }
 
-fn standing_jump_route(app: &mut App) -> Result<()> {
+fn standing_jump_route(app: &mut App, codes: &[u8]) -> Result<()> {
+    let jump = bound_key(codes, Action::Jump)?;
     let ground = position(app)?;
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::Space);
+        .press(jump);
     for _ in 0..4 {
         app.update();
         position(app)?;
     }
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
-        .release(KeyCode::Space);
+        .release(jump);
     let mut highest = ground[1];
     for _ in 0..120 {
         app.update();
@@ -384,21 +385,24 @@ fn standing_jump_route(app: &mut App) -> Result<()> {
     Ok(())
 }
 
-fn moving_jump_route(app: &mut App) -> Result<()> {
+fn moving_jump_route(app: &mut App, codes: &[u8]) -> Result<()> {
+    let [forward, walk, jump] =
+        [Action::Forward, Action::Walk, Action::Jump].map(|action| bound_key(codes, action));
+    let (forward, walk, jump) = (forward?, walk?, jump?);
     for running in [false, true] {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::KeyW);
+            .press(forward);
         if running {
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
-                .press(KeyCode::ShiftLeft);
+                .press(walk);
         }
         for _ in 0..12 {
             app.update();
             position(app)?;
         }
-        // Modern walks unless Shift is held.
+        // Modern walks unless the walk/run key is held.
         let actors = app.world().resource::<ScriptActors>();
         let world = actors.current.as_ref().unwrap();
         let index = world.selected_player().unwrap().index;
@@ -414,7 +418,7 @@ fn moving_jump_route(app: &mut App) -> Result<()> {
         );
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::Space);
+            .press(jump);
         let mut entered_airborne = false;
         for _ in 0..12 {
             app.update();
@@ -426,7 +430,7 @@ fn moving_jump_route(app: &mut App) -> Result<()> {
             entered_airborne |= control.queued_motion != cyrus_script::script::JumpMotion::NONE
                 || control.falling_state != cyrus_script::script::JumpMotion::NONE;
         }
-        ensure!(entered_airborne, "moving Space input did not start a jump");
+        ensure!(entered_airborne, "moving jump input did not start a jump");
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release_all();
@@ -445,6 +449,14 @@ fn moving_jump_route(app: &mut App) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The installed keyboard key of `action`.
+fn bound_key(codes: &[u8], action: Action) -> Result<KeyCode> {
+    match cyrus_script::player::input::Input::try_from(codes[action as usize]) {
+        Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
+        other => anyhow::bail!("installed {action:?} binding is not a key: {other:?}"),
+    }
 }
 
 fn walk_route(app: &mut App, codes: &[u8]) -> Result<()> {

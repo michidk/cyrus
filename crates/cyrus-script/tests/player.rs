@@ -268,7 +268,7 @@ fn a_locomotion_claim_releases_the_movement_bindings_and_menus_take_it_back() {
 }
 
 #[test]
-fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
+fn modern_reads_the_configured_bindings_and_the_walk_key_runs() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
@@ -277,9 +277,23 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
         .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
         .add_plugins(PlayerPlugin);
     app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Modern;
+    // Unbound keys do nothing in Modern either.
+    for key in [KeyCode::KeyW, KeyCode::KeyD, KeyCode::ShiftRight] {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(key);
+    }
+    app.update();
+    assert_eq!(
+        *app.world().resource::<PlayerInput>(),
+        PlayerInput {
+            walk: true,
+            ..default()
+        }
+    );
     for key in [
-        KeyCode::KeyW,
-        KeyCode::KeyD,
+        KeyCode::ArrowUp,
+        KeyCode::ArrowRight,
         KeyCode::Space,
         KeyCode::ShiftLeft,
     ] {
@@ -312,30 +326,17 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
             .resource::<cyrus_script::player::input::DialogueSkip>()
             .0
     );
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::ShiftRight);
-    app.update();
-    assert!(!app.world().resource::<PlayerInput>().walk);
-    assert!(
-        !app.world()
-            .resource::<cyrus_script::player::input::DialogueSkip>()
-            .0
-    );
     app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Faithful;
     app.update();
     assert_eq!(
         *app.world().resource::<PlayerInput>(),
         PlayerInput {
+            forward: true,
+            right: true,
             jump: true,
             ..default()
         }
     );
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::ArrowUp);
-    app.update();
-    assert!(app.world().resource::<PlayerInput>().forward);
     app.world_mut()
         .resource_mut::<cyrus_script::player::input::InputSuppressed>()
         .0 = true;
