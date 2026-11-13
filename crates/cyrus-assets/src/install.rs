@@ -136,13 +136,17 @@ pub struct Machine {
     pub home: Option<PathBuf>,
     pub system_drive: Option<String>,
     pub program_files: Vec<PathBuf>,
+    /// The Wine prefix (`WINEPREFIX`, else `~/.wine`) where a Windows GOG install may live.
+    pub wine_prefix: Option<PathBuf>,
 }
 
 impl Machine {
     pub fn current() -> Self {
         let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
+        let home = var("HOME").or_else(|| var("USERPROFILE"));
         Self {
-            home: var("HOME").or_else(|| var("USERPROFILE")),
+            wine_prefix: var("WINEPREFIX").or_else(|| home.as_ref().map(|h| h.join(".wine"))),
+            home,
             system_drive: std::env::var("SystemDrive").ok(),
             program_files: ["ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"]
                 .iter()
@@ -168,6 +172,29 @@ pub fn search_folders(machine: &Machine, program: Option<&Path>) -> Vec<PathBuf>
     for files in &machine.program_files {
         folders.push(files.join("GOG Galaxy/Games/Redguard"));
         folders.push(files.join("GOG Galaxy/Games/Redguard/app/Redguard"));
+    }
+    // A Windows GOG install inside a Wine prefix.
+    if let Some(prefix) = &machine.wine_prefix {
+        let drive = prefix.join("drive_c");
+        for path in [
+            "GOG Games/Redguard",
+            "GOG Games/Redguard/app/Redguard",
+            "Program Files (x86)/GOG Galaxy/Games/Redguard",
+            "Program Files (x86)/GOG Galaxy/Games/Redguard/app/Redguard",
+            "Program Files/GOG Galaxy/Games/Redguard",
+        ] {
+            folders.push(drive.join(path));
+        }
+    }
+    // Default install folders of Heroic and Lutris (`~/Games/...`) on Linux.
+    if let Some(home) = &machine.home {
+        for path in [
+            "Games/Heroic/Redguard",
+            "Games/gog/redguard",
+            "Games/redguard",
+        ] {
+            folders.push(home.join(path));
+        }
     }
     folders
 }
@@ -214,8 +241,19 @@ mod tests {
             home: Some("/home/p".into()),
             system_drive: Some("C:".into()),
             program_files: vec!["C:/Program Files (x86)".into()],
+            wine_prefix: Some("/home/p/.wine".into()),
         };
         let folders = search_folders(&machine, Some(Path::new("/opt/cyrus")));
+        for expected in [
+            "/home/p/.wine/drive_c/GOG Games/Redguard",
+            "/home/p/Games/Heroic/Redguard",
+            "/home/p/Games/gog/redguard",
+        ] {
+            assert!(
+                folders.iter().any(|f| f == Path::new(expected)),
+                "{expected}"
+            );
+        }
         assert_eq!(folders[0], Path::new("/opt/cyrus"));
         let position = |expected: &str| {
             folders
