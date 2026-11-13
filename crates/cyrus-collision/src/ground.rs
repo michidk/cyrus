@@ -544,16 +544,14 @@ impl TerrainGround {
         // The original indexes the height array linearly with no bounds test, so a column past
         // either end continues into the neighbouring row; only corners outside the array itself
         // (which read unrelated memory) have no support.
-        // Engine row 256 uses source rows zero and one, both inside the height grid.
-        if !(2..=256).contains(&j) {
-            return None;
-        }
+        // A column carry can also bring corners from another cell row inside the array.
+        // Validate each combined source index, not either cell coordinate separately.
         let live = self.live.0.read().expect("live terrain lock");
         let live = live
             .as_ref()
-            .filter(|grid| (i - grid.center[0]).abs() <= 15 && (j - grid.center[1]).abs() <= 15);
+            .filter(|grid| i.abs_diff(grid.center[0]) <= 15 && j.abs_diff(grid.center[1]) <= 15);
         let corner = |column: i32, row: i32| {
-            let index = usize::try_from((256 - row) * 256 + column)
+            let index = usize::try_from((256 - i64::from(row)) * 256 + i64::from(column))
                 .ok()
                 .filter(|&index| index < self.heights.len())?;
             let height = live.map_or_else(
@@ -561,17 +559,19 @@ impl TerrainGround {
                 |grid| f64::from(grid.heights[index]),
             );
             Some(DVec3::new(
-                f64::from(column * 256),
+                f64::from(column) * 256.0,
                 height,
-                f64::from(row * 256),
+                f64::from(row) * 256.0,
             ))
         };
         let a = corner(i, j)?;
-        let diagonal = corner(i + 1, j - 1)?;
-        let (b, c) = if x - f64::from(i * 256) > f64::from(j * 256) - z {
-            (corner(i + 1, j)?, diagonal)
+        let next_column = i.checked_add(1)?;
+        let previous_row = j.checked_sub(1)?;
+        let diagonal = corner(next_column, previous_row)?;
+        let (b, c) = if x - f64::from(i) * 256.0 > f64::from(j) * 256.0 - z {
+            (corner(next_column, j)?, diagonal)
         } else {
-            (diagonal, corner(i, j - 1)?)
+            (diagonal, corner(i, previous_row)?)
         };
         let plane = (c - a).cross(b - a);
         Some((

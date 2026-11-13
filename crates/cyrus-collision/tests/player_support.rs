@@ -183,3 +183,26 @@ fn terrain_last_source_row_remains_valid_support() {
     assert!(terrain.height([1024 * 256, 0, 66048 * 256]).is_none());
     assert!(terrain.height([1024 * 256, 0, 0]).is_none());
 }
+
+#[test]
+fn terrain_support_follows_valid_linear_corner_indices_across_cell_rows() {
+    use cyrus_collision::ground::TerrainGround;
+    let mut heights = vec![0; 256 * 256];
+    heights[4] = -80;
+    heights[5] = -100;
+    heights[260] = -120;
+    heights[261] = -140;
+    let terrain = TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap();
+    // Adding one source-row width to the column and one to the engine row
+    // leaves every linear source index unchanged, including both triangles.
+    for x in [1024, 1088, 1152] {
+        let inside = [x * 256, 0, 65408 * 256];
+        let carried = [(x + 65536) * 256, 0, 65664 * 256];
+        let expected = terrain.sample(inside).expect("valid source corners");
+        assert_eq!(terrain.height(carried), Some(expected.height));
+        assert_eq!(terrain.sample(carried), Some(expected));
+    }
+    // A row number alone neither accepts nor refuses a source-array access.
+    assert!(terrain.height([1024 * 256, 0, 65664 * 256]).is_none());
+    assert!(terrain.height([i64::MAX, 0, i64::MAX]).is_none());
+}
