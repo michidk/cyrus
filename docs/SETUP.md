@@ -2166,8 +2166,12 @@ scanlines and subtitle composition using those values. Its composition hash is
 part of the receipt. Missing composition metadata cannot fall back to a bare
 video oracle. Raw capture and composed reference pixels are never masked.
 
-After completion, pass `--align` to `cinematic-presented-frames.py` to require
-native trace boundaries for the production movie-clock calls bracketing each
+The capture freezes PCM and drains tracing before running the image oracle,
+then releases the application page. Trace export uses bounded encoding rather
+than one aggregate JSON string. Presentation acceptance requires `--align`
+automatically. For offline captures, pass `--align` to
+`cinematic-presented-frames.py` to require native trace boundaries for the
+production movie-clock calls bracketing each
 identified image. The receipt records both call intervals and picture-age
 bounds. These measurements do not identify physical display or DAC latency and
 must not be converted to a compensating playback delay.
