@@ -544,7 +544,8 @@ impl TerrainGround {
         // The original indexes the height array linearly with no bounds test, so a column past
         // either end continues into the neighbouring row; only corners outside the array itself
         // (which read unrelated memory) have no support.
-        if !(2..=255).contains(&j) {
+        // Engine row 256 uses source rows zero and one, both inside the height grid.
+        if !(2..=256).contains(&j) {
             return None;
         }
         let live = self.live.0.read().expect("live terrain lock");
