@@ -531,20 +531,6 @@ pub(super) fn drive(
         let mut pixels = stretch(&frame.indices, &frame.palette);
         #[cfg(target_arch = "wasm32")]
         let mut pixels = frame;
-        if menu
-            .preferences
-            .as_ref()
-            .is_some_and(|p| p.values[&505] != 0)
-        {
-            for y in (1..480).step_by(2) {
-                for rgba in pixels[y * 640 * 4..(y + 1) * 640 * 4]
-                    .as_chunks_mut::<4>()
-                    .0
-                {
-                    *rgba = [0, 0, 0, 255];
-                }
-            }
-        }
         let frame = menu.movie.as_ref().unwrap().frame;
         let subtitles = menu
             .preferences

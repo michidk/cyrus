@@ -143,7 +143,8 @@ and seeks with queued audio, and compares post-seek graph PCM with an offline
 render of the scheduled sources and cancellations. This isolated adapter check
 complements full native/browser cinematic comparisons.
 Forward skips retain decoder state; menu return cancels downloads and playback.
-Native and browser playback share skip points, subtitles, interlace and menu return.
+Native and browser playback share skip points, subtitles and menu return.
+MOVIE INTERLACE is saved but, as in the installed release, does not change the picture.
 Movie frames use the preservation movie-raster contract: padded 256-pixel tiles,
 clipped sampling coordinates, four-bit fractional filtering and dithered RGB565.
 Subtitle glyphs use the selected eight-bit startup upload palette and integer
@@ -166,8 +167,8 @@ and progression remain incomplete.
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `menu.json` in the config directory or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
-input uses edited bindings, including direct scene launches. Subtitle and interlace
-settings apply to cinematics; saved Sound preferences apply to shared
+input uses edited bindings, including direct scene launches. The subtitle
+setting applies to cinematics; saved Sound preferences apply to shared
 effects and CD music, and native speech. Browser CD tracks use exported WAV files and
 installed world assignments; native playback reads the CD image. Book motion and
 direction/capture feedback dispatch installed effects through the shared native/browser sound path, following

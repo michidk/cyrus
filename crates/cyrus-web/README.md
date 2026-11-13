@@ -117,7 +117,7 @@ so the user never has to answer the prompt during testing.
 
 WASM downloads before Bevy starts; selected-host game assets load behind installed
 artwork. New Game and the temporary Load fallback wait for world dependencies.
-Movies read compressed Smacker ranges and play incrementally decoded first-track PCM; subtitle, interlace,
+Movies read compressed Smacker ranges and play incrementally decoded first-track PCM; subtitle,
 skip and menu-return rules share the native implementation. Quit attempts tab
 closure and keeps running when refused. F11 opens the world,
 flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and
