@@ -228,14 +228,24 @@ Neither adapter may modify installed assets. The launcher reads installed text-s
 `SYSTEM.INI` and applies them in the writable run to avoid inherited developer
 diagnostics while preserving direct-world admission and other run settings;
 `CYRUS_RETRO_SYSTEM_INI` can select an explicit baseline file.
+
+Executable-specific readers can use `dev/scripts/original-memory-region.py` to
+locate their guest region from a local signature and its offset. Supply readable
+anonymous process mapping ranges and the required region size. The helper accounts
+for a region beginning inside a coalesced mapping and rejects absent, ambiguous
+or truncated-region candidates. Keep signatures and executable bindings in the
+local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
+
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.
 The public driver requires `interactive` as well as a paused world clock;
 a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
 checks that console entry paused world updates before sending commands, grants
 and draws the sword through console/input, then invokes placement. Escape closes
-each command entry. The JSONL record includes selected-player state and world
-clock through walking, attack and continuation. A sheathed, falling or
+each command entry. Underscores in object and attribute names use a held Shift
+with the minus key through the polling interval; they are not literal xdotool
+key names. Shift is released even when character entry fails. The JSONL record
+includes selected-player state and world clock through walking, attack and continuation. A sheathed, falling or
 nonordinary living state fails before movement. Held inputs are released on
 failure, and stalled world progress has a wall-clock cutoff. Capture mixer audio
 separately to assess clank: a successful exit alone does not prove contact,
