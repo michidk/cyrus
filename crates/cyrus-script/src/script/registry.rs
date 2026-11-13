@@ -1007,6 +1007,16 @@ impl ScriptWorld {
         self.id(self.selected_player_index()?).ok()
     }
 
+    /// Whether the actor is a map cell actor outside the current view window. The world draw
+    /// traversal walks the same window list as the ordinary update, so such an actor is not drawn.
+    pub fn outside_view_window(&self, actor: ScriptActorId) -> bool {
+        actor.generation == self.generation
+            && self
+                .actor_lists
+                .as_ref()
+                .is_some_and(|lists| lists.outside_window(actor.index))
+    }
+
     /// Console `item add`: one acquisition through the session inventory, as `AddItem` does. An
     /// empty-selection repair assigns the selected player's weapon attribute.
     pub fn add_player_item(&mut self, hud: &super::ScriptHud, item: u16) -> Result<()> {
