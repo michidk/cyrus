@@ -489,6 +489,13 @@ fn handle(
                     Err(error) => Err(error),
                 }
             }
+            Command::AcquireInput { acquisition } => {
+                let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
+                match input_scheduler.arm_clock(id, reply.clone(), generation, acquisition, &keys) {
+                    Ok(()) => continue,
+                    Err(error) => Err(error),
+                }
+            }
             Command::Input { .. } if input_scheduler.pending() => Err("input schedule owns control input until completion".into()),
             Command::Input { key, action } => match parse_key(&key) {
                 Some(code) => {
@@ -1101,6 +1108,27 @@ mod tests {
         app.update();
         let response = responses.try_recv().unwrap();
         assert_eq!(response.id, 91);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("no world"));
+        assert!(
+            !app.world()
+                .resource::<ButtonInput<KeyCode>>()
+                .pressed(KeyCode::ArrowUp)
+        );
+    }
+
+    #[test]
+    fn public_clock_acquisition_rejects_unavailable_world_without_pressing() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        let request = serde_json::from_value(json!({"id":92,"cmd":{
+            "type":"acquire_input","key":"ArrowUp","endpoints":[1024,1334],"normal_frame_rate":12,"max_updates":8
+        }})).unwrap();
+        tx.send(Pending { request, reply }).unwrap();
+        app.update();
+        let response = responses.try_recv().unwrap();
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("no world"));
         assert!(

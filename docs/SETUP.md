@@ -2308,3 +2308,12 @@ must start at their declared zero-scale input origins. A required endpoint absen
 from either sequence stays rejected; an earlier shared point establishes only
 that shorter interval. Matching elapsed time alone does not prove matching poses,
 platform phase or complete action continuation.
+
+For changing cadence, use `probe-clock.py`'s `Admission` at the input-owning
+boundary or the native `acquire_input` control command. Supply actual counterpart
+endpoints rather than converting a steady measurement into a future update count.
+`Admission.observe` consumes contiguous zero-origin receipts and chooses the first
+actually shared endpoint at or beyond the requested duration. The native command
+records every boundary while holding the key, then releases before input sampling
+at an exact member of the supplied endpoint set. Endpoint exhaustion is a rejected
+acquisition. Do not substitute the last earlier match for a skipped later endpoint.

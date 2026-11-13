@@ -93,6 +93,64 @@ def pair_observed(original, native, *, original_rate, native_rate, required_scal
     return paired
 
 
+class Admission:
+    """Select a counterpart endpoint online at an actual input-owning boundary.
+
+    The counterpart must retain contiguous receipts from its input origin. Call
+    observe before sampling input, release and snapshot only when it returns
+    True. No steady-step estimate is used. Exhaustion rejects the acquisition.
+    """
+
+    def __init__(self, counterpart, *, minimum_scale, max_updates):
+        intervals(counterpart)
+        if counterpart[0]['consumed_scale'] != 0:
+            raise ValueError('counterpart input origin must have zero consumed scale')
+        if any(type(value) is not int or value <= 0 for value in (minimum_scale, max_updates)):
+            raise ValueError('minimum scale and update bound must be positive integers')
+        self.candidates = {row['consumed_scale']: index for index, row in enumerate(counterpart)
+                           if row['consumed_scale'] >= minimum_scale}
+        if not self.candidates:
+            raise ValueError('no observed counterpart endpoint at requested duration')
+        self.max_updates = max_updates
+        self.previous = None
+        self.count = 0
+        self.endpoint = None
+        self.rejected = False
+        self.counterpart_index = None
+
+    def observe(self, boundary):
+        if self.rejected:
+            raise ValueError('acquisition already rejected')
+        try:
+            return self._observe(boundary)
+        except ValueError:
+            self.rejected = True
+            raise
+
+    def _observe(self, boundary):
+        if self.endpoint is not None:
+            raise ValueError('acquisition already completed')
+        if self.previous is None:
+            # Validate integer fields even before there is a second boundary.
+            if any(type(boundary.get(key)) is not int or boundary[key] < 0
+                   for key in ('generation', 'update', 'consumed_scale')):
+                raise ValueError('ordinary boundary clock must be nonnegative integers')
+            if boundary['consumed_scale'] != 0:
+                raise ValueError('input origin must have zero consumed scale')
+        else:
+            intervals([self.previous, boundary])
+            self.count += 1
+        scale = boundary['consumed_scale']
+        self.previous = dict(boundary)
+        if scale in self.candidates:
+            self.endpoint = scale
+            self.counterpart_index = self.candidates[scale]
+            return True
+        if scale > max(self.candidates) or self.count >= self.max_updates:
+            raise ValueError('observed counterpart endpoints unavailable within acquisition bound')
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('original', type=Path, help='normalized acknowledged boundary JSON array')

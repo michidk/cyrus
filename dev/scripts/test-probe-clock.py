@@ -72,6 +72,37 @@ class ObservedClock(unittest.TestCase):
             with self.assertRaises(ValueError):
                 clock.pair_observed(rows([128]*8),rows([512]*2),original_rate=a,native_rate=b,required_scale=target)
 
+    def test_admission_uses_acknowledged_boundaries_after_cadence_changes(self):
+        counterpart = rows([512, 512, 310])
+        admission = clock.Admission(counterpart, minimum_scale=1024, max_updates=8)
+        actual = rows([512, 438, 384])
+        self.assertFalse(admission.observe(actual[0]))
+        self.assertFalse(admission.observe(actual[1]))
+        self.assertFalse(admission.observe(actual[2]))
+        self.assertTrue(admission.observe(actual[3]))
+        self.assertEqual(admission.endpoint, 1334)
+        self.assertEqual(admission.counterpart_index, 3)
+
+    def test_admission_never_rounds_a_skipped_endpoint_or_accepts_a_gap(self):
+        for actual in (rows([512, 438, 450]), rows([512, 438, 384])):
+            admission = clock.Admission(rows([512, 512, 310]), minimum_scale=1024, max_updates=8)
+            if actual[-1]['consumed_scale'] == 1334:
+                actual[-1]['update'] += 1
+            with self.assertRaises(ValueError):
+                for boundary in actual:
+                    admission.observe(boundary)
+
+    def test_rejected_acquisition_cannot_resume_by_replacing_a_missing_boundary(self):
+        admission = clock.Admission(rows([512,512,310]), minimum_scale=1024, max_updates=8)
+        actual = rows([512,438,384])
+        for row in actual[:-1]:
+            self.assertFalse(admission.observe(row))
+        gap = dict(actual[-1], update=actual[-1]['update']+1)
+        with self.assertRaises(ValueError):
+            admission.observe(gap)
+        with self.assertRaisesRegex(ValueError, 'rejected'):
+            admission.observe(actual[-1])
+
     def test_plan_is_bounded_and_has_no_installed_rate_guess(self):
         for rate, minimum in [(0,6144),(12,0),(12,1_000_000)]:
             with self.assertRaises(ValueError):
