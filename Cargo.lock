@@ -6419,7 +6419,8 @@ checksum = "a0d463f2884048e7153449a55166f91028d5b0ea53c79377099ce4e8cf0cf9bb"
 [[package]]
 name = "redguard-preservation"
 version = "0.12.4"
-source = "git+https://github.com/michidk/redguard-preservation?rev=50575a965ea2160e0b25ff0cd26f7e4daf09b8b3#50575a965ea2160e0b25ff0cd26f7e4daf09b8b3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2051f1d58502d99ffca8d1599b1e5ea4ac8e7bd8109e476c2d11f709178a51aa"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",
