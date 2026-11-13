@@ -2347,3 +2347,17 @@ or failed attempts restart their setup; a retained PID or partial output is neve
 evidence of success. Keep these directories under ignored local state and include
 toolchain configuration among the inputs. Run its controls with
 `python3 dev/scripts/test-acceptance-stage.py`.
+
+### Recovering native compilation after a reset
+
+For a full native acceptance build, set `CYRUS_NATIVE_CHECKPOINT_DIR` to an ignored
+host directory and run `dev/scripts/build-native-recovery.sh /host/path/cyrus`. The output
+must be named `cyrus`; it can live directly in the checkpoint directory to avoid
+keeping a second executable copy. The script requires hauler and preserves the
+inherited Cargo target directory. Completed Cargo units are retained as they are
+reported, using the same hashed unit recovery as browser builds. Restoration
+never replaces existing shared compilation files; Cargo checks their freshness.
+The final executable retains its permissions and is reusable only with matching
+source, compiler, Cargo and build environment. A failed/interrupted build cannot
+publish a final executable checkpoint. Run the reset/recovery controls with
+`python3 dev/scripts/test-native-build-recovery.py`.

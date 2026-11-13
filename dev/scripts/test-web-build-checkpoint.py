@@ -47,10 +47,10 @@ class Checkpoint(unittest.TestCase):
         self.store()
         retained = self.cache / self.artifact.name
         retained.write_bytes(b'truncated')
-        with self.assertRaisesRegex(ValueError, 'corrupt WASM checkpoint'):
+        with self.assertRaisesRegex(ValueError, 'corrupt build checkpoint'):
             self.restore()
         retained.unlink()
-        with self.assertRaisesRegex(ValueError, 'corrupt WASM checkpoint'):
+        with self.assertRaisesRegex(ValueError, 'corrupt build checkpoint'):
             self.restore()
 
     def test_interrupted_copy_does_not_publish_completion(self):

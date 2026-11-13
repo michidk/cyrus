@@ -30,7 +30,7 @@ def compiler_source(source, name):
     Historical checkpoints retain their full acquisition snapshot on disk.
     """
     package = {'cyrus_assets_worker.wasm': 'cyrus-assets-worker',
-               'cyrus-web.wasm': 'cyrus-web', 'cyrus-viewer.wasm': 'cyrus-viewer'}.get(name)
+               'cyrus-web.wasm': 'cyrus-web', 'cyrus-viewer.wasm': 'cyrus-viewer', 'cyrus': 'cyrus'}.get(name)
     if package is None or 'files' not in source:
         return source
     root = Path.cwd()
@@ -76,7 +76,7 @@ def store(directory, name, artifact, expected):
     # Publish the manifest last. An interrupted copy never becomes reusable.
     with tempfile.TemporaryDirectory(dir=directory) as temporary:
         staged = Path(temporary) / name
-        shutil.copyfile(artifact, staged)
+        shutil.copy2(artifact, staged)
         record = {**expected, 'sha256': digest(staged)}
         manifest = Path(temporary) / 'record.json'
         manifest.write_text(json.dumps(record, sort_keys=True) + '\n')
@@ -97,12 +97,12 @@ def restore(directory, name, artifact, expected):
     if actual != wanted:
         return False
     if not retained.is_file() or digest(retained) != record['sha256']:
-        raise ValueError(f'corrupt WASM checkpoint: {retained}')
+        raise ValueError(f'corrupt build checkpoint: {retained}')
     artifact.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=artifact.parent, delete=False) as temporary:
         staged = Path(temporary.name)
     try:
-        shutil.copyfile(retained, staged)
+        shutil.copy2(retained, staged)
         os.replace(staged, artifact)
     finally:
         staged.unlink(missing_ok=True)
