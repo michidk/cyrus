@@ -18,7 +18,7 @@ class Recovery(unittest.TestCase):
         self.root = Path(temporary.name)
         scripts = self.root / 'dev/scripts'
         scripts.mkdir(parents=True)
-        for name in ('build-native-recovery.sh', 'web-build-checkpoint.py',
+        for name in ('build-native-recovery.sh', 'build-native.sh', 'run-game.sh', 'web-build-checkpoint.py',
                      'web-compile-checkpoint.py', 'build-provenance.py'):
             shutil.copyfile(SCRIPTS / name, scripts / name)
         (scripts / 'toolchain.sh').write_text('export PATH="$PWD/bin:$PATH"\n')
@@ -80,6 +80,39 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.run_build()
         self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 2)
         self.assertTrue(os.access(self.output, os.X_OK))
+
+    def test_public_build_preserves_target_and_recovers_with_capture_provenance(self):
+        self.env['CYRUS_NATIVE_EXECUTABLE'] = str(self.output)
+        for _ in range(2):
+            result = subprocess.run(['bash', 'dev/scripts/build-native.sh'],
+                                    cwd=self.root, env=self.env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(self.output.is_file(), 'public build did not retain the executable')
+            record = Path(str(self.output) + '.provenance.json')
+            subprocess.run(['python3', 'dev/scripts/build-provenance.py', 'verify', str(record)],
+                           cwd=self.root, check=True, capture_output=True)
+            self.assertEqual(list(json.loads(record.read_text())['artifacts']), [str(self.output)])
+            shutil.rmtree(self.target, ignore_errors=True)
+            self.output.unlink()
+        self.assertEqual((self.root / 'cargo.log').read_text().splitlines(), ['build'])
+        self.assertFalse((self.root / 'target').exists(), 'public build overrode the inherited target')
+
+    def test_public_launcher_mounts_the_retained_executable(self):
+        self.env['CYRUS_NATIVE_EXECUTABLE'] = str(self.output)
+        self.env['REDGUARD_DIR'] = str(self.root / 'install')
+        (self.root / 'install').mkdir()
+        docker = self.root / 'bin/docker'
+        docker.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$PWD/docker.log\"\n")
+        docker.chmod(0o755)
+        result = subprocess.run(['bash', 'dev/scripts/run-game.sh', '--scene', 'TEST'],
+                                cwd=self.root, env={**self.env, 'PATH': str(self.root / 'bin') + ':' + os.environ['PATH']},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = (self.root / 'docker.log').read_text().splitlines()
+        self.assertIn(str(self.output) + ':/app/cyrus:ro', calls)
+        self.assertIn('/app/cyrus', calls)
+        self.assertEqual(calls[-2:], ['--scene', 'TEST'])
+        self.assertFalse((self.root / 'target').exists())
 
     def test_changed_source_and_compiler_reject_reuse(self):
         self.run_build()

@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
-# Build the capture executable and its provenance without launching a game.
+# Build a retained capture executable without changing the shared Cargo target.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-. dev/scripts/toolchain.sh
-. dev/scripts/cargo.sh
-export CARGO_TARGET_DIR="$PWD/target"
-provenance=$(mktemp)
-trap 'rm -f "$provenance"' EXIT
-python3 dev/scripts/build-provenance.py snapshot "$provenance"
-rm -f target/debug/cyrus.provenance.json
-cargo build -p cyrus
-python3 dev/scripts/build-provenance.py seal "$provenance" target/debug/cyrus
-mv "$provenance" target/debug/cyrus.provenance.json
+output=$(realpath -m "${CYRUS_NATIVE_EXECUTABLE:-magic/build-tools/native/cyrus}")
+export CYRUS_NATIVE_CHECKPOINT_DIR="${CYRUS_NATIVE_CHECKPOINT_DIR:-$(dirname "$output")}"
+bash dev/scripts/build-native-recovery.sh "$output"

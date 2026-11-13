@@ -19,3 +19,10 @@ test('a different control endpoint cannot borrow a container build identity', ()
 test('a stopped container cannot supply capture evidence', () => {
   assert.throws(() => verifyNative(record, { ...container, State: { Running: false } }, '127.0.0.1:7118', 'expected-digest'), /not running/);
 });
+
+test('a recovered executable is checked by its recorded path, not a legacy target path', () => {
+  const recovered = {version: 1, artifacts: {'/host/retained/cyrus': 'expected-digest'}};
+  assert.equal(verifyNative(recovered, container, '127.0.0.1:7118', 'expected-digest').executable_sha256, 'expected-digest');
+  assert.throws(() => verifyNative(recovered, container, '127.0.0.1:7118', 'old-digest'), /running native executable/);
+  assert.throws(() => verifyNative({...recovered, artifacts: {}}, container, '127.0.0.1:7118', 'expected-digest'), /one executable/);
+});

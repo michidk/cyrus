@@ -2364,3 +2364,10 @@ The final executable retains its permissions and is reusable only with matching
 source, compiler, Cargo and build environment. A failed/interrupted build cannot
 publish a final executable checkpoint. Run the reset/recovery controls with
 `python3 dev/scripts/test-native-build-recovery.py`.
+
+`just run-native` uses this recovery path and mounts the retained executable
+read-only. Its default is `magic/build-tools/native/cyrus`; set
+`CYRUS_NATIVE_EXECUTABLE` consistently for launch and matched capture to change
+it. Every successful build or restore writes adjacent capture provenance.
+Capture verifies the current source and executable hash against the running
+container, so an old executable cannot borrow a new build record.

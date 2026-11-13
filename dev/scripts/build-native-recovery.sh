@@ -31,6 +31,8 @@ $(cargo --version)
 $(env | LC_ALL=C sort | rg '^(CARGO_PROFILE_|CARGO_BUILD_RUSTFLAGS=|CARGO_ENCODED_RUSTFLAGS=|RUSTFLAGS=|RUSTC=|RUSTC_WRAPPER=|CARGO_TARGET_DIR=|CARGO_HOME=|RUSTUP_HOME=)' || true)"
 if python3 dev/scripts/web-build-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
     "$snapshot" "$configuration" "$output"; then
+    python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
+    mv "$snapshot" "$output.provenance.json"
     echo "restored validated native executable: $output"
     exit
 else
@@ -51,4 +53,6 @@ python3 dev/scripts/web-build-checkpoint.py store "$CYRUS_NATIVE_CHECKPOINT_DIR"
     "$snapshot" "$configuration" "$CARGO_TARGET_DIR/debug/cyrus"
 python3 dev/scripts/web-build-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
     "$snapshot" "$configuration" "$output"
+python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
+mv "$snapshot" "$output.provenance.json"
 echo "retained validated native executable: $output"
