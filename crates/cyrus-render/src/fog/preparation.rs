@@ -55,7 +55,8 @@ pub fn prepare_scene_materials(
     let images = world
         .get_resource::<Assets<Image>>()
         .context("replacement image store absent")?;
-    let extension = fog_extension(environment, fidelity, clipping);
+    let mut extension = fog_extension(environment, fidelity, clipping);
+    extension.set_water_gloss(world.get_resource::<super::ModernEffects>());
     let mut pending = roots.to_vec();
     let mut seen = HashSet::new();
     let mut prepared = Vec::new();

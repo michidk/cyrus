@@ -2,19 +2,24 @@
 //! control port.
 //!
 //! **Modern only.** None of these exist in the original, and every value here is a Modern tuning
-//! choice. They run only while `Area::Lighting` is Modern: tonemapping with colour grading,
+//! choice. They run only while `Area::Lighting` is Modern. The parts of the lighting itself:
+//! the sun's shadows, the object lights, glossy water, and ambient occlusion, contact shadows,
+//! anti-aliasing and bloom on the camera. The effects: tonemapping with colour grading,
 //! automatic exposure, sun shafts through Bevy's volumetric fog, depth of field and motion blur
 //! on the camera; the sky glow and stars (`sky.wesl`), water reflections and the lens flare
 //! (`post`), and swaying plants (`foliage`).
 use super::lights::Sun;
 use crate::{camera::ViewCamera, sky::SkyMaterial};
 use bevy::{
+    anti_alias::smaa::Smaa,
     asset::RenderAssetUsages,
     core_pipeline::{prepass::MotionVectorPrepass, tonemapping::Tonemapping},
     curve::cubic_splines::LinearSpline,
     light::{FogVolume, VolumetricFog, VolumetricLight},
+    pbr::{ContactShadows, ScreenSpaceAmbientOcclusion},
     post_process::{
         auto_exposure::{AutoExposure, AutoExposureCompensationCurve},
+        bloom::Bloom,
         dof::{DepthOfField, DepthOfFieldMode},
         motion_blur::MotionBlur,
     },
@@ -31,6 +36,20 @@ use serde::{Deserialize, Serialize};
 /// The effects and their settings.
 #[derive(Resource, Debug, Clone, PartialEq, Serialize)]
 pub struct ModernEffects {
+    /// The sun casts shadows.
+    pub shadows: bool,
+    /// Screen-space ambient occlusion darkens creases and corners.
+    pub ambient_occlusion: bool,
+    /// Short screen-space shadows where the sun's shadow maps are too coarse.
+    pub contact_shadows: bool,
+    /// SMAA smooths jagged edges.
+    pub anti_aliasing: bool,
+    /// Bright light bleeds into its surroundings.
+    pub bloom: bool,
+    /// Lamps, fires and other object lights shine as point lights.
+    pub object_lights: bool,
+    /// Water is glossy and catches the sun's highlights.
+    pub water_gloss: bool,
     /// Tonemapping and colour grading; off keeps the calibrated colours untouched.
     pub grading: bool,
     pub tonemapper: Tonemapper,
@@ -65,6 +84,13 @@ pub struct ModernEffects {
 impl Default for ModernEffects {
     fn default() -> Self {
         Self {
+            shadows: true,
+            ambient_occlusion: true,
+            contact_shadows: true,
+            anti_aliasing: true,
+            bloom: true,
+            object_lights: true,
+            water_gloss: true,
             grading: true,
             tonemapper: Tonemapper::default(),
             exposure: 0.0,
@@ -88,6 +114,13 @@ impl Default for ModernEffects {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Effect {
+    Shadows,
+    AmbientOcclusion,
+    ContactShadows,
+    AntiAliasing,
+    Bloom,
+    ObjectLights,
+    WaterGloss,
     Grading,
     AutoExposure,
     GodRays,
@@ -100,7 +133,25 @@ pub enum Effect {
 }
 
 impl Effect {
-    pub const ALL: [Self; 9] = [
+    /// The parts of the lighting itself, which the panel groups under Lighting.
+    pub const LIGHTING: [Self; 7] = [
+        Self::Shadows,
+        Self::AmbientOcclusion,
+        Self::ContactShadows,
+        Self::AntiAliasing,
+        Self::Bloom,
+        Self::ObjectLights,
+        Self::WaterGloss,
+    ];
+
+    pub const ALL: [Self; 16] = [
+        Self::Shadows,
+        Self::AmbientOcclusion,
+        Self::ContactShadows,
+        Self::AntiAliasing,
+        Self::Bloom,
+        Self::ObjectLights,
+        Self::WaterGloss,
         Self::Grading,
         Self::AutoExposure,
         Self::GodRays,
@@ -115,6 +166,13 @@ impl Effect {
     /// The panel's label.
     pub fn label(self) -> &'static str {
         match self {
+            Self::Shadows => "Sun shadows",
+            Self::AmbientOcclusion => "Ambient occlusion",
+            Self::ContactShadows => "Contact shadows",
+            Self::AntiAliasing => "Anti-aliasing (SMAA)",
+            Self::Bloom => "Bloom",
+            Self::ObjectLights => "Object lights",
+            Self::WaterGloss => "Glossy water",
             Self::Grading => "Tonemapping and colour grading",
             Self::AutoExposure => "Auto exposure",
             Self::GodRays => "God rays",
@@ -132,6 +190,13 @@ impl ModernEffects {
     /// The switch of one effect.
     pub fn switch(&mut self, effect: Effect) -> &mut bool {
         match effect {
+            Effect::Shadows => &mut self.shadows,
+            Effect::AmbientOcclusion => &mut self.ambient_occlusion,
+            Effect::ContactShadows => &mut self.contact_shadows,
+            Effect::AntiAliasing => &mut self.anti_aliasing,
+            Effect::Bloom => &mut self.bloom,
+            Effect::ObjectLights => &mut self.object_lights,
+            Effect::WaterGloss => &mut self.water_gloss,
             Effect::Grading => &mut self.grading,
             Effect::AutoExposure => &mut self.auto_exposure,
             Effect::GodRays => &mut self.god_rays,
@@ -339,6 +404,34 @@ pub(super) fn apply_camera_effects(
         if differs(old, new, |e| e.auto_exposure) {
             camera.insert(auto_exposure.auto_exposure(new.auto_exposure));
         }
+        if differs(old, new, |e| e.ambient_occlusion) {
+            if new.ambient_occlusion {
+                camera.insert(ScreenSpaceAmbientOcclusion::default());
+            } else {
+                camera.remove::<ScreenSpaceAmbientOcclusion>();
+            }
+        }
+        if differs(old, new, |e| e.contact_shadows) {
+            if new.contact_shadows {
+                camera.insert(ContactShadows::default());
+            } else {
+                camera.remove::<ContactShadows>();
+            }
+        }
+        if differs(old, new, |e| e.anti_aliasing) {
+            if new.anti_aliasing {
+                camera.insert(Smaa::default());
+            } else {
+                camera.remove::<Smaa>();
+            }
+        }
+        if differs(old, new, |e| e.bloom) {
+            if new.bloom {
+                camera.insert(Bloom::NATURAL);
+            } else {
+                camera.remove::<Bloom>();
+            }
+        }
         if differs(old, new, |e| e.god_rays) {
             if new.god_rays {
                 camera.insert(VolumetricFog {
@@ -395,6 +488,10 @@ pub(super) fn remove_camera_effects(
         .remove::<(
             Applied,
             AutoExposure,
+            ScreenSpaceAmbientOcclusion,
+            ContactShadows,
+            Smaa,
+            Bloom,
             VolumetricFog,
             DepthOfField,
             MotionBlur,
@@ -484,6 +581,27 @@ pub(super) fn sun_shafts(
     }
 }
 
+/// Switches the sun's shadow maps and the object lights' point lights.
+pub(super) fn switch_lights(
+    effects: Res<ModernEffects>,
+    mut suns: Query<&mut DirectionalLight, With<Sun>>,
+    mut object_lights: Query<&mut Visibility, (With<PointLight>, With<super::plugin::Light>)>,
+) {
+    for mut sun in &mut suns {
+        if sun.shadow_maps_enabled != effects.shadows {
+            sun.shadow_maps_enabled = effects.shadows;
+        }
+    }
+    let visibility = if effects.object_lights {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    for mut light in &mut object_lights {
+        light.set_if_neq(visibility);
+    }
+}
+
 /// Turns the sky glow and stars on and off and points the glow at the sun light; it runs in
 /// every mode, so leaving modern lighting clears it.
 pub(super) fn sky_glow(
@@ -524,7 +642,14 @@ mod tests {
             *effects.switch(effect) = false;
         }
         assert!(
-            !effects.grading
+            !effects.shadows
+                && !effects.ambient_occlusion
+                && !effects.contact_shadows
+                && !effects.anti_aliasing
+                && !effects.bloom
+                && !effects.object_lights
+                && !effects.water_gloss
+                && !effects.grading
                 && !effects.auto_exposure
                 && !effects.god_rays
                 && !effects.lens_flare

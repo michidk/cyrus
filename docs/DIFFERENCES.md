@@ -46,7 +46,9 @@ full world-space meshes instead of the original's screen-space prepared geometry
 receive shadows (each caster through a shadow-only twin that shares one material, so
 the cascades batch their draws, and static models with equal modern material values share one
 material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
-bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
+bloom. The sun's shadows, the object lights, glossy water, ambient occlusion, contact shadows,
+anti-aliasing and bloom each have a switch in the Lighting group of the debug menu's effects panel
+(and the control port's `set_modern_effect`); all are on by default. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
 measured matches. Flats keep their original shading.
 
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,

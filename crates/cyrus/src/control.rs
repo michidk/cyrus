@@ -545,7 +545,7 @@ fn handle(
                 ) {
                     (None, _) => Err("modern lighting is unavailable".into()),
                     (Some(_), Err(_)) => Err(
-                        "effect must be grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
+                        "effect must be shadows|ambient_occlusion|contact_shadows|anti_aliasing|bloom|object_lights|water_gloss|grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
                             .into(),
                     ),
                     (Some(effects), Ok(effect)) => {
