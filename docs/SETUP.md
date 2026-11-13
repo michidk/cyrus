@@ -1202,6 +1202,37 @@ Held trace inputs are released on failure. These observations do not establish
 exact input timing: `--key` still uses asynchronous public input requests. Use an
 acknowledged schedule for a matched input comparison.
 
+`dev/scripts/native-held-jump.py` compares a complete atomic original held-Space
+receipt with a native public schedule. Start both runs in the same installed world
+with the same supported, stationary player, heading, attributes and clock cadence.
+The original receipt uses the ordinary-boundary reader's `observations`, `steps`
+and explicit release `input_edges`; retain its reader, executable and scene
+provenance with the capture. No original memory layout is shipped with this driver.
+
+```sh
+python3 dev/scripts/native-held-jump.py --addr 127.0.0.1:7117 \
+  --original ORIGINAL/held.json --updates 32 --out NATIVE/accepted.json
+# Recheck finalized receipts without launching either game:
+python3 dev/scripts/native-held-jump.py --native NATIVE/accepted.raw.json \
+  --original ORIGINAL/held.json --updates 32 --out NATIVE/rechecked.json
+python3 dev/scripts/test-native-held-jump.py
+```
+
+The native offset-zero baseline precedes the acknowledged press at offset one.
+The driver aligns subsequent consumed Q8 clock scales, explicit release, exact Q8
+positions, animation groups, health and fall/queued/slide/living/rope state. Both
+ends must be idle at the same position. Each attempt is limited to 32 consumed
+updates plus the admission baseline so a slow rendered run can finish within the
+public scheduler's wall deadline. A deadline or incomplete sequence is rejected,
+never promoted from matching prefix evidence. The driver releases Space on
+failure, retains the complete native response before comparison, removes stale
+accepted summaries before a new attempt and hashes both receipts in a successful
+summary. The launcher must retain actual executable/source identity separately;
+a receipt hash does not establish binary provenance. Use a per-run live lock and
+host-mounted config/output directories. After a reset, reuse a verified retained
+executable and `ensure-runtime-image.sh` archive, then restart only the incomplete
+attempt. Do not treat an erased compiler ticket as a completed build.
+
 `dev/scripts/native-edge-trace.py --out <ignored-path> --release-update <N>
 --updates <M>` captures one scheduled edge attempt from an externally established
 alive, ordinary, nonfalling pose with no queued motion or sliding. Observation zero precedes the default ArrowUp press at
