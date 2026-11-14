@@ -373,22 +373,27 @@ impl Input {
 }
 
 pub(crate) fn spawn_host(mut commands: Commands) {
-    commands.spawn((
-        Name::new("cyrus mod API"),
-        Scene::default(),
-        Camera::default(),
-        Movement::default(),
-        Settings::default(),
-        Player::default(),
-        Collision::default(),
-        Natives::default(),
-        Memory::default(),
-        Uniforms::default(),
-        Hud::default(),
-        Input::default(),
-        Damage::default(),
-        crate::particles::Particles::default(),
-    ));
+    commands
+        .spawn((
+            Name::new("cyrus mod API"),
+            Scene::default(),
+            Camera::default(),
+            Movement::default(),
+            Settings::default(),
+            Player::default(),
+            Collision::default(),
+            Natives::default(),
+            Memory::default(),
+            Uniforms::default(),
+            Hud::default(),
+            Input::default(),
+            Damage::default(),
+        ))
+        .insert((
+            crate::actors::Actors::default(),
+            crate::physics::Physics::default(),
+            crate::particles::Particles::default(),
+        ));
 }
 
 /// Every component of the host entity.

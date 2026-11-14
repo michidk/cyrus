@@ -203,6 +203,17 @@ fn player_world(
         Some(&mut random),
         100,
     );
+    let deaths = world.take_death_events();
+    let committed = world.actor_snapshot(player).unwrap().dead;
+    assert_eq!(deaths.len(), usize::from(committed));
+    if let Some(death) = deaths.first() {
+        assert_eq!(death.snapshot.actor, player);
+        assert!(death.snapshot.player);
+        assert_eq!(
+            death.source_position.is_some(),
+            function == Native::ZapPlayer && !at_player
+        );
+    }
     (
         world.actors()[index].attributes()[Attribute::Health],
         world.globals().player_death_override_group(),
@@ -335,8 +346,13 @@ fn current_group(world: &ScriptWorld) -> i64 {
 fn a_zapped_nonplayer_dies_into_the_group_its_state_selects() {
     use cyrus_script::script::AiType;
     // Not holding a weapon: the explore death, or the land death from a fight-landing group.
-    let (world, result) = killed_world(false, false, AnimationGroup::IDLE_LEDGE);
+    let (mut world, result) = killed_world(false, false, AnimationGroup::IDLE_LEDGE);
     result.unwrap();
+    let deaths = world.take_death_events();
+    assert_eq!(deaths.len(), 1);
+    assert_eq!(deaths[0].snapshot.actor, world.id(0).unwrap());
+    assert!(!deaths[0].snapshot.player);
+    assert!(world.take_death_events().is_empty());
     assert_eq!(health(&world), 0);
     assert_eq!(current_group(&world), 134);
     assert_eq!(

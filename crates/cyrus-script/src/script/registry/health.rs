@@ -715,6 +715,13 @@ impl ScriptWorld {
         random: Option<&mut cyrus_game::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        let death_cursor = self.death_observation_count();
+        let source_position = match source {
+            Some(super::super::activation::NativeSource::Actor { generation, index }) => self
+                .query_position(ScriptActorId { generation, index })
+                .ok(),
+            _ => None,
+        };
         let result = (|| {
             let index = self.resolve(id)?;
             ensure!(
@@ -795,11 +802,11 @@ impl ScriptWorld {
                     .as_mut()
                     .expect("validated death")
                     .local_position = Some(position);
-                self.actors[index]
+                let _ = self.actors[index]
                     .control
                     .as_mut()
-                    .context("selected death control unavailable")?
-                    .ai_type = AiType::DEAD;
+                    .context("selected death control unavailable")?;
+                self.set_actor_ai_type(index, AiType::DEAD);
                 if self
                     .globals
                     .player_death_override_group()
@@ -956,6 +963,7 @@ impl ScriptWorld {
             }
             Ok(())
         })();
+        self.attribute_deaths(death_cursor, id, source_position);
         result.with_context(|| {
             format!(
                 "world {} instance {} selected death-owning health",

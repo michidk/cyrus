@@ -5,6 +5,8 @@ pub mod console;
 mod console_environment;
 pub mod environment;
 mod flat;
+/// Exclusive frozen-frame deformation for presentation adapters.
+pub mod pose_override;
 pub use flat::prepare_scene_flats;
 pub mod fog;
 pub mod hud;
@@ -21,7 +23,7 @@ mod terrain;
 mod weapon_model;
 pub use terrain::TextureAdmission as TerrainTextureAdmission;
 pub mod hooks;
-pub use weapon_model::inspect_actor_model;
+pub use weapon_model::{WeaponRoot, inspect_actor_model};
 mod water;
 use bevy::prelude::*;
 pub use water::{

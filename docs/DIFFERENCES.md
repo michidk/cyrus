@@ -53,6 +53,16 @@ Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colo
 which moves out to 50,000 engine units (thirteen times the island's installed 3,800), or to the world's
 installed clipping distance where that reaches farther.
 
+## Optional death presentation
+
+The native `ragdolls` Wasm mod requests articulated physical presentation after a
+committed death. Its authored rigs, gravity, joint limits and impact strength are
+mod preferences. Enable it in the Mods window; it is disabled by default.
+The host retains script state, gameplay collision and the player death controller.
+Unsupported geometry retains the installed animation and reports a diagnostic.
+See [mod authoring](../mods/README.md#death-observations-and-owned-physics) for
+source-geometry, ownership and resource limits.
+
 ## Day/night cycle
 
 **Verified:** the original has one fixed sun per world, read from its lighting data, and night is a

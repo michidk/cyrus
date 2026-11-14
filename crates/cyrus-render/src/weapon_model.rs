@@ -22,9 +22,9 @@ impl Plugin for WeaponModelPlugin {
 
 /// A weapon model owned by one bound actor; the transform is in scene axes, outside the actor.
 #[derive(Component)]
-struct WeaponRoot {
-    owner: Entity,
-    source: AssetPath<'static>,
+pub struct WeaponRoot {
+    pub owner: Entity,
+    pub source: AssetPath<'static>,
 }
 
 struct Wanted {

@@ -7,6 +7,54 @@
 package cyrus:mods@0.1.0;
 
 interface components {
+  /// Owner-scoped visual rigid assemblies. Query Mut. Scene units, Y up, seconds, radians.
+  /// No writes to gameplay actors or original collision. Exclusive claim on a visible dead actor.
+  /// wasvy:type-path=cyrus_mods::physics::Physics
+  resource physics {
+    constructor(component: component);
+    /// Current source-model vertices, xyz triples in model-local export coordinates. Empty unavailable.
+    vertices: func(actor: u64) -> list<f32>;
+    /// Frame zero of the same source topology, model-local scene axes, for fitting bindings.
+    reference: func(actor: u64) -> list<f32>;
+    /// Model and world origin of the captured death frame. Empty until bound geometry is ready.
+    model: func(actor: u64) -> string;
+    origin: func(actor: u64) -> list<f32>;
+    /// Current attachment world poses, seven values per request-local attachment index.
+    attachments: func(actor: u64) -> list<f32>;
+    /// SDK Assembly JSON, maximum 2 MB. 1..32 bodies, <=64 joints, <=20000 weighted source vertices.
+    /// 0 accepted, 1 invalid, 2 unavailable/stale/not visible dead, 3 already claimed, 4 budget.
+    /// Validation and budget checks precede all allocation. Limits 256 bodies per owner, 1024 global.
+    claim: func(owner: string, actor: u64, description: string) -> u32;
+    release: func(owner: string, actor: u64) -> bool;
+    /// Body xyz+quaternion xyzw, seven floats each, in request order. Empty stale/unowned.
+    transforms: func(owner: string, actor: u64) -> list<f32>;
+  }
+
+  /// Opaque actor tokens expire on world replacement and save load. Names are not identities.
+  /// Read-only publication in PreUpdate. Restored corpses have dead state but no new death event.
+  /// wasvy:type-path=cyrus_mods::actors::Actors
+  resource actors {
+    constructor(component: component);
+    ids: func() -> list<u64>;
+    /// 0 missing/stale, 1 alive, 2 dead, 3 hidden alive, 4 hidden dead, 5 removed.
+    state: func(id: u64) -> u32;
+    player: func(id: u64) -> bool;
+    model: func(id: u64) -> string;
+    /// One current source-model frame, or empty when geometry is unavailable.
+    frame: func(id: u64) -> list<u32>;
+    /// Scene position xyz and orientation quaternion xyzw, or empty if unavailable.
+    pose: func(id: u64) -> list<f32>;
+    count: func() -> u32;
+    /// One opaque actor token, or empty for an invalid event index. Duplicate reads are stable.
+    death: func(index: u32) -> list<u64>;
+    eventmodel: func(index: u32) -> string;
+    eventpose: func(index: u32) -> list<f32>;
+    eventframe: func(index: u32) -> list<u32>;
+    eventplayer: func(index: u32) -> bool;
+    /// Known attacker position in scene units and axes, or empty. No camera fallback.
+    source: func(index: u32) -> list<f32>;
+  }
+
   /// Accepted health reductions since the previous frame, shared read-only by all mods.
   /// Events are published in PreUpdate, including player and other actor health services.
   /// Healing, blocked hits and direct attribute edits are not damage-service events.

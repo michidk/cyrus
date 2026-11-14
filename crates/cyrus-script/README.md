@@ -870,3 +870,11 @@ Unrelated owners and requested effects survive; animation Stop/Forget commands
 keep their per-actor order. `sound_dispatch::AnimationSoundQueue` owns this
 pre-binding routing, while the audio service owns playback and remembered slots.
 The stop rules follow preservation's [sample ownership](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+`ScriptWorld::actor_snapshot` and `take_death_events` expose read-only presentation
+observations. Death events are recorded where lifecycle selector writes commit,
+independently of raw health values and selected-player `IsDead` inhibition.
+They retain captured model/frame/pose and known source attribution even when a
+later gameplay service fails. The bounded transient queue is not serialized;
+restored dead actors appear in snapshots without replayed death events.
+Presentation incarnation changes invalidate visual ownership on resurrection.

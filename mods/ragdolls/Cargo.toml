@@ -1,0 +1,16 @@
+[package]
+name = "ragdolls"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cyrus-mod-sdk = { path = "../sdk" }
+
+[dev-dependencies]
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "50575a965ea2160e0b25ff0cd26f7e4daf09b8b3" }

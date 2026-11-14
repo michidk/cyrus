@@ -19,8 +19,10 @@
 //! Without an active mod every hook keeps the original behaviour. Activation is
 //! saved to `mods.json` there; the F11 debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
+mod actors;
 mod api;
 mod particles;
+mod physics;
 mod settings;
 
 use anyhow::{Context, ensure};
@@ -155,8 +157,23 @@ impl Plugin for ModsPlugin {
                     .before(bevy_hanabi::EffectSystems::CompileEffects)
                     .before(bevy_hanabi::EffectSystems::TickSpawners),
             )
+            .add_systems(
+                bevy::prelude::PostUpdate,
+                physics::update
+                    .after(cyrus_render::script_transform::ScriptTransforms)
+                    .before(cyrus_render::animation::PoseRender),
+            )
             .add_systems(Startup, api::spawn_host)
-            .add_systems(PreUpdate, (api::exchange, particles::publish).chain())
+            .add_systems(
+                PreUpdate,
+                (
+                    api::exchange,
+                    actors::publish,
+                    physics::publish,
+                    particles::publish,
+                )
+                    .chain(),
+            )
             .add_systems(Update, (watch, apply).chain())
             .add_systems(
                 EguiPrimaryContextPass,
