@@ -65,3 +65,8 @@ policy. See the [terrain and geometry contract](../../mods/README.md#terrain-and
 for upload budgets, shader slot limits and lifecycle rules. The renderer exposes
 retained source mesh handles and a generic scene-lit material, keeping grass
 policy out of the host. This base supports raster rendering only.
+
+Geometry leases identify the current loaded mod instance and revision. Guest caches,
+including cached empty terrain regions, must reset when the lease changes after
+successful reload or reactivation. The typed SDK persists the opaque token without
+losing integer precision through the session memory API.

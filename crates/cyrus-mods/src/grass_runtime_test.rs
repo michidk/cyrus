@@ -24,13 +24,7 @@ fn setup(
     camera.pose = vec![2., 2., 2., 0., 0., 0., 1.];
     *terrain = terrain::Terrain::fixture();
 }
-#[test]
-#[ignore = "requires CYRUS_GRASS_WASM pointing to the built grass.wasm"]
-fn wasm_grass_geometry() {
-    let wasm = PathBuf::from(std::env::var_os("CYRUS_GRASS_WASM").expect("set CYRUS_GRASS_WASM"));
-    assert!(wasm.is_file());
-    let mut actors = ScriptActors::default();
-    actors.current = Some(crate::particles::tests::world(1));
+fn test_context() -> cyrus_render::fog::geometry::GeometryContext {
     let environment = cyrus_assets::environment::Environment {
         effects: None,
         texture_scale: [1, 1],
@@ -54,11 +48,17 @@ fn wasm_grass_geometry() {
         object_lights: vec![],
         water_textures: vec![],
     };
-    let context = cyrus_render::fog::geometry::GeometryContext::from_environment(
+    cyrus_render::fog::geometry::GeometryContext::from_environment(
         &environment,
         &default(),
         environment.clipping,
-    );
+    )
+}
+
+fn grass_app(wasm: &std::path::Path) -> App {
+    let mut actors = ScriptActors::default();
+    actors.current = Some(crate::particles::tests::world(1));
+    let context = test_context();
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
@@ -93,6 +93,10 @@ fn wasm_grass_geometry() {
     .add_systems(PostUpdate, geometry::update);
     app.finish();
     app.cleanup();
+    app
+}
+
+fn wait_for_chunk(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         app.update();
@@ -111,6 +115,15 @@ fn wasm_grass_geometry() {
         );
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[test]
+#[ignore = "requires CYRUS_GRASS_WASM pointing to the built grass.wasm"]
+fn wasm_grass_geometry() {
+    let wasm = PathBuf::from(std::env::var_os("CYRUS_GRASS_WASM").expect("set CYRUS_GRASS_WASM"));
+    assert!(wasm.is_file());
+    let mut app = grass_app(&wasm);
+    wait_for_chunk(&mut app);
     let first_entities: Vec<_> = app
         .world_mut()
         .query_filtered::<Entity, With<Mesh3d>>()
@@ -149,4 +162,53 @@ fn wasm_grass_geometry() {
             .resource::<Assets<cyrus_render::fog::geometry::GeometryMaterial>>()
             .is_empty()
     );
+}
+
+#[test]
+#[ignore = "requires CYRUS_GRASS_WASM pointing to the built grass.wasm"]
+fn wasm_grass_geometry_reloads_cached_empty_chunks() {
+    let wasm = PathBuf::from(std::env::var_os("CYRUS_GRASS_WASM").expect("set CYRUS_GRASS_WASM"));
+    let mut app = grass_app(&wasm);
+    wait_for_chunk(&mut app);
+    for _ in 0..3 {
+        app.update();
+    }
+    let old_lease = app
+        .world_mut()
+        .query::<&mut geometry::Geometry>()
+        .single_mut(app.world_mut())
+        .unwrap()
+        .lease("grass".into());
+    // A previous guest version classified this visible region as empty. Its cache
+    // survives reload, even though the replacement guest grows blades here.
+    app.world_mut()
+        .query::<&mut Memory>()
+        .single_mut(app.world_mut())
+        .unwrap()
+        .save("grass/chunks".into(), vec![0., 0., 0., 1.]);
+    app.world_mut()
+        .query::<&mut geometry::Geometry>()
+        .single_mut(app.world_mut())
+        .unwrap()
+        .remove("grass".into(), "chunk/0/0".into());
+    app.update();
+    assert!(
+        !app.world_mut()
+            .query::<&mut geometry::Geometry>()
+            .single_mut(app.world_mut())
+            .unwrap()
+            .contains("grass".into(), "chunk/0/0".into()),
+        "the old empty decision is retained until a lease change"
+    );
+    app.world()
+        .resource::<AssetServer>()
+        .reload(wasm.file_name().unwrap().to_string_lossy().into_owned());
+    wait_for_chunk(&mut app);
+    let new_lease = app
+        .world_mut()
+        .query::<&mut geometry::Geometry>()
+        .single_mut(app.world_mut())
+        .unwrap()
+        .lease("grass".into());
+    assert_ne!(old_lease, new_lease, "successful reload changes the lease");
 }

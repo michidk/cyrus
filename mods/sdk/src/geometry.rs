@@ -1,5 +1,5 @@
 //! Revision-scoped terrain and owner-scoped indexed scene meshes.
-use crate::{Vec3, raw};
+use crate::{Persist, Vec3, raw};
 
 /// Opaque terrain snapshot revision. Reacquire after world/binding replacement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -7,6 +7,10 @@ pub struct TerrainRevision(u64);
 /// Opaque world generation used to reject uploads prepared for a departed world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WorldGeneration(u64);
+/// Opaque loaded-instance token. Changes on successful reload or reactivation;
+/// compare it alongside terrain/world revisions when retaining geometry decisions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GeometryLease([u64; 2]);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextureId {
     index: u32,
@@ -171,6 +175,14 @@ impl Geometry {
     pub fn generation(&self) -> Option<WorldGeneration> {
         self.raw.generation().map(WorldGeneration)
     }
+    pub fn lease(&self) -> Option<GeometryLease> {
+        self.raw
+            .lease(self.id)
+            .as_slice()
+            .try_into()
+            .ok()
+            .map(GeometryLease)
+    }
     /// 1.5 million vertices and 256 keys per owner, 3 million vertices globally.
     /// Rejected replacements retain the previous mesh. Colors are linear RGBA 0..=1.
     pub fn replace(
@@ -216,25 +228,20 @@ impl Geometry {
     }
 }
 
-impl crate::Persist for TerrainRevision {
+impl Persist for TerrainRevision {
     fn pack(&self) -> Vec<f32> {
-        (0..4)
-            .map(|i| ((self.0 >> (i * 16)) & 65535) as f32)
-            .collect()
+        [self.0].pack()
     }
     fn unpack(values: &[f32]) -> Option<Self> {
-        (values.len() == 4
-            && values
-                .iter()
-                .all(|v| v.is_finite() && (0.0..=65535.0).contains(v) && v.fract() == 0.0))
-        .then(|| {
-            Self(
-                values
-                    .iter()
-                    .enumerate()
-                    .fold(0, |v, (i, n)| v | ((*n as u64) << (i * 16))),
-            )
-        })
+        <[u64; 1]>::unpack(values).map(|[value]| Self(value))
+    }
+}
+impl Persist for GeometryLease {
+    fn pack(&self) -> Vec<f32> {
+        self.0.pack()
+    }
+    fn unpack(values: &[f32]) -> Option<Self> {
+        <[u64; 2]>::unpack(values).map(Self)
     }
 }
 
@@ -242,6 +249,14 @@ impl crate::Persist for TerrainRevision {
 mod tests {
     use super::*;
     use crate::Persist;
+    #[test]
+    fn leases_roundtrip_without_truncation() {
+        let lease = GeometryLease([u64::MAX, (1 << 53) + 1]);
+        assert_eq!(GeometryLease::unpack(&lease.pack()), Some(lease));
+        assert!(GeometryLease::unpack(&[f32::NAN; 8]).is_none());
+        assert!(GeometryLease::unpack(&[1.5; 8]).is_none());
+        assert!(GeometryLease::unpack(&[0.; 4]).is_none());
+    }
     #[test]
     fn pixels_wrap_uvs_and_reject_invalid_data() {
         let image = Pixels {

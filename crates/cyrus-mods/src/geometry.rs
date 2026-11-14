@@ -27,6 +27,60 @@ struct Upload {
     lease: Lease,
     world: (u32, u64),
 }
+impl Upload {
+    fn render_mesh(&self) -> (Mesh, bevy::camera::primitives::Aabb) {
+        let mut positions = Vec::new();
+        let mut normals = Vec::new();
+        let mut uvs = Vec::new();
+        let mut colors = Vec::new();
+        for v in self.vertices.as_chunks::<12>().0 {
+            positions.push([v[0], v[1], v[2]]);
+            normals.push([v[3], v[4], v[5]]);
+            uvs.push([v[6], v[7]]);
+            colors.push([v[8], v[9], v[10], v[11]]);
+        }
+        let (low, high) = positions
+            .iter()
+            .fold((Vec3::MAX, Vec3::MIN), |(low, high), point| {
+                (low.min(Vec3::from(*point)), high.max(Vec3::from(*point)))
+            });
+        let bounds = bevy::camera::primitives::Aabb::from_min_max(
+            low - Vec3::splat(self.padding),
+            high + Vec3::splat(self.padding),
+        );
+        let mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+        .with_inserted_indices(Indices::U32(self.indices.clone()));
+        (mesh, bounds)
+    }
+}
+
+fn valid_upload(key: &str, vertices: &[f32], indices: &[u32], parameters: &[f32; 5]) -> bool {
+    // Twelve floats per vertex: position, normal, UV, linear RGBA.
+    let count = vertices.len() / 12;
+    !(key.is_empty()
+        || key.len() > 96
+        || count == 0
+        || !vertices.len().is_multiple_of(12)
+        || !indices.len().is_multiple_of(3)
+        || indices.is_empty()
+        || indices.len() > count * 6
+        || vertices.iter().any(|v| !v.is_finite() || v.abs() > 1e6)
+        || parameters.iter().any(|v| !v.is_finite() || v.abs() > 100.0)
+        || parameters[4] < 0.0
+        || indices.iter().any(|&i| i as usize >= count)
+        || vertices.as_chunks::<12>().0.iter().any(|v| {
+            Vec3::new(v[3], v[4], v[5]).length_squared() < 0.01
+                || v[8..12].iter().any(|c| !(0.0..=1.0).contains(c))
+        }))
+}
+
 /// Mesh storage keyed by owner and guest key. Uploads replace atomically before render allocation.
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
@@ -57,24 +111,8 @@ impl Geometry {
         let Ok(parameters) = <[f32; 5]>::try_from(parameters) else {
             return 2;
         };
-        // Twelve floats per vertex: position, normal, UV, linear RGBA.
         let count = vertices.len() / 12;
-        if key.is_empty()
-            || key.len() > 96
-            || count == 0
-            || !vertices.len().is_multiple_of(12)
-            || !indices.len().is_multiple_of(3)
-            || indices.is_empty()
-            || indices.len() > count * 6
-            || vertices.iter().any(|v| !v.is_finite() || v.abs() > 1e6)
-            || parameters.iter().any(|v| !v.is_finite() || v.abs() > 100.0)
-            || parameters[4] < 0.0
-            || indices.iter().any(|&i| i as usize >= count)
-            || vertices.as_chunks::<12>().0.iter().any(|v| {
-                Vec3::new(v[3], v[4], v[5]).length_squared() < 0.01
-                    || v[8..12].iter().any(|c| !(0.0..=1.0).contains(c))
-            })
-        {
+        if !valid_upload(&key, &vertices, &indices, &parameters) {
             return 2;
         }
         let id = (owner.clone(), key);
@@ -126,6 +164,15 @@ impl Geometry {
                 self.owners.get(&owner) == Some(&upload.lease) && Some(upload.world) == self.world
             })
     }
+    /// Opaque instance/revision token for invalidating guest caches, empty when unavailable.
+    pub fn lease(&mut self, owner: String) -> Vec<u64> {
+        if self.world.is_none() {
+            return vec![];
+        }
+        self.owners.get(&owner).map_or_else(Vec::new, |lease| {
+            vec![lease.instance.to_bits(), lease.revision]
+        })
+    }
     pub fn generation(&mut self) -> Option<u64> {
         self.world.map(|w| w.1)
     }
@@ -138,6 +185,30 @@ struct Live {
 #[derive(Resource, Default)]
 pub(crate) struct GeometryState {
     live: BTreeMap<(String, String), Live>,
+}
+
+impl GeometryState {
+    fn retire(
+        &mut self,
+        host: &Geometry,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<GeometryMaterial>,
+    ) {
+        let stale: Vec<_> = self
+            .live
+            .keys()
+            .filter(|key| !host.uploads.contains_key(*key) || host.dirty.contains(*key))
+            .cloned()
+            .collect();
+        for key in stale {
+            if let Some(live) = self.live.remove(&key) {
+                commands.entity(live.entity).despawn();
+                meshes.remove(live.mesh.id());
+                materials.remove(live.material.id());
+            }
+        }
+    }
 }
 
 pub(crate) fn publish(
@@ -204,19 +275,7 @@ pub(crate) fn update(
                 .iter()
                 .any(|e| &e.id == owner && e.active && !e.gone)
     });
-    let stale: Vec<_> = state
-        .live
-        .keys()
-        .filter(|key| !host.uploads.contains_key(*key) || host.dirty.contains(*key))
-        .cloned()
-        .collect();
-    for key in stale {
-        if let Some(live) = state.live.remove(&key) {
-            commands.entity(live.entity).despawn();
-            meshes.remove(live.mesh.id());
-            materials.remove(live.material.id());
-        }
-    }
+    state.retire(&host, &mut commands, &mut meshes, &mut materials);
     let pending = std::mem::take(&mut host.dirty);
     for key in pending {
         let Some(upload) = host.uploads.get(&key) else {
@@ -226,36 +285,8 @@ pub(crate) fn update(
             host.dirty.push(key);
             continue;
         };
-        let mut positions = Vec::new();
-        let mut normals = Vec::new();
-        let mut uvs = Vec::new();
-        let mut colors = Vec::new();
-        for v in upload.vertices.as_chunks::<12>().0 {
-            positions.push([v[0], v[1], v[2]]);
-            normals.push([v[3], v[4], v[5]]);
-            uvs.push([v[6], v[7]]);
-            colors.push([v[8], v[9], v[10], v[11]]);
-        }
-        let (low, high) = positions
-            .iter()
-            .fold((Vec3::MAX, Vec3::MIN), |(low, high), point| {
-                (low.min(Vec3::from(*point)), high.max(Vec3::from(*point)))
-            });
-        let bounds = bevy::camera::primitives::Aabb::from_min_max(
-            low - Vec3::splat(upload.padding),
-            high + Vec3::splat(upload.padding),
-        );
-        let mesh = meshes.add(
-            Mesh::new(
-                PrimitiveTopology::TriangleList,
-                RenderAssetUsages::default(),
-            )
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
-            .with_inserted_indices(Indices::U32(upload.indices.clone())),
-        );
+        let (mesh, bounds) = upload.render_mesh();
+        let mesh = meshes.add(mesh);
         debug!(
             "mods geometry: {}/{}: {} vertices",
             key.0,
@@ -305,6 +336,19 @@ mod tests {
             [0., 1., 0., 0., 1., 0., 0., 0., 0.2, 0.4, 0.1, 1.],
         ]
         .concat()
+    }
+    #[test]
+    fn lease_identifies_reload_and_reactivation_without_changing_world() {
+        let mut host = host();
+        let original = host.lease("test".into());
+        assert_eq!(original.len(), 2);
+        host.owners.get_mut("test").unwrap().revision += 1;
+        let reloaded = host.lease("test".into());
+        assert_ne!(original, reloaded);
+        host.owners.get_mut("test").unwrap().instance = Entity::from_bits(42);
+        assert_ne!(reloaded, host.lease("test".into()));
+        host.owners.clear();
+        assert!(host.lease("test".into()).is_empty());
     }
     #[test]
     fn invalid_uploads_preserve_previous_mesh_and_reject_stale_generation() {

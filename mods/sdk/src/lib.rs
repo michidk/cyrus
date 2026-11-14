@@ -19,8 +19,8 @@
 mod effects;
 mod geometry;
 pub use geometry::{
-    Geometry, GeometryError, Material, Mesh, Pixels, Region, Terrain, TerrainRevision,
-    TerrainTriangle, TextureId, Vertex, WorldGeneration,
+    Geometry, GeometryError, GeometryLease, Material, Mesh, Pixels, Region, Terrain,
+    TerrainRevision, TerrainTriangle, TextureId, Vertex, WorldGeneration,
 };
 mod handles;
 mod keys;

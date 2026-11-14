@@ -358,6 +358,12 @@ at most 65,536 pixels per request. The SDK assembles the full image in bounded r
 Texture IDs and triangle IDs expire with the snapshot revision. Do not persist
 installed images or mesh data into distributed mods.
 
+`cx.geometry.lease()` returns an opaque token for the current loaded mod instance.
+Persist it alongside cached placement decisions and clear those decisions when it
+changes after successful Wasm reload or reactivation. This includes cached empty
+regions, which have no mesh key for `contains` to validate. Terrain snapshot and
+world generation tokens alone do not identify the current mod code.
+
 `Mesh` contains indexed triangle vertices with positions, normals, UVs and linear
 RGBA colors. Each replacement validates all values before allocating render assets.
 Position/normal/UV values must be finite within +/-1e6, normals nonzero, colors in
