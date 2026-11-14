@@ -274,7 +274,6 @@ mod tests {
             }),
             texture_scale: [1, 1],
             sky: Some(crate::environment::SkyImage {
-                scroll_enabled: true,
                 width: 1,
                 height: 1,
                 rgba: vec![0; 4],
@@ -351,7 +350,7 @@ mod tests {
         };
         assert!(submit(&mut app, "skysp 0").is_err());
         assert_eq!(app.world().resource::<EngineRandom>().state(), 1);
-        app.world_mut().spawn(crate::sky::Sky::new(1, true));
+        app.world_mut().spawn(crate::sky::Sky::new(1));
         assert!(submit(&mut app, "skysp").is_err());
         assert_eq!(app.world().resource::<EngineRandom>().state(), 1);
         submit(&mut app, "skysp -257").unwrap();

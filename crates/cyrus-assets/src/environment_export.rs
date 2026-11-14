@@ -317,7 +317,6 @@ pub(crate) fn prepare(
                     })
                     .collect();
                 Ok(SkyImage {
-                    scroll_enabled: system_settings.xngine.sky_move.unwrap_or(true),
                     sun: sun_image(source, &ini, entry.index)?,
                     width: frame.width.into(),
                     height: frame.height.into(),

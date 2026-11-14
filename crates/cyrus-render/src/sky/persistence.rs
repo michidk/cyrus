@@ -117,10 +117,6 @@ impl SkySnapshot {
         );
         Ok(SkyCandidate {
             sky: Sky {
-                scroll_enabled: environment
-                    .sky
-                    .as_ref()
-                    .is_none_or(|sky| sky.scroll_enabled),
                 velocity: Vec2::from_array(self.velocity),
                 speed: self.speed,
                 tick: self.tick,
@@ -219,7 +215,6 @@ mod tests {
             });
         original.world_mut().spawn((
             Sky {
-                scroll_enabled: true,
                 velocity: Vec2::new(0.7, -0.3),
                 speed: -3.0,
                 tick: 179,

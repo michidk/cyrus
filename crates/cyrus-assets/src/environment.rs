@@ -75,8 +75,6 @@ pub struct LocalLight {
 #[derive(Serialize, Deserialize)]
 /// Opaque BSI sky pixels and WORLD.INI projection inputs, per preservation's sky docs.
 pub struct SkyImage {
-    /// SYSTEM.INI [xngine] sky_move; independent of authored speed and offsets.
-    pub scroll_enabled: bool,
     /// Width in pixels.
     pub width: u32,
     /// Height in pixels.

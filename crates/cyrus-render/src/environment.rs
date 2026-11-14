@@ -82,7 +82,6 @@ fn apply_sky(
     };
     {
         let background = SkyImage {
-            scroll_enabled: true,
             width: 1,
             height: 1,
             rgba: vec![0; 4],
@@ -125,7 +124,7 @@ fn apply_sky(
         active.sky = Some(
             commands
                 .spawn((
-                    Sky::new(sky.speed, sky.scroll_enabled),
+                    Sky::new(sky.speed),
                     Mesh3d(meshes.add(prepared.mesh)),
                     MeshMaterial3d(material),
                     NoFrustumCulling,
@@ -150,7 +149,6 @@ pub struct PreparedSkyAssets {
 /// Invalid dimensions or payload sizes reject before Bevy image construction.
 pub fn prepare_sky_assets(environment: &Environment) -> anyhow::Result<PreparedSkyAssets> {
     let background = SkyImage {
-        scroll_enabled: true,
         width: 1,
         height: 1,
         rgba: vec![0; 4],
@@ -242,7 +240,6 @@ mod tests {
             prelighting: Default::default(),
             model_lighting: Default::default(),
             sky: Some(SkyImage {
-                scroll_enabled: true,
                 width: 2,
                 height: 1,
                 rgba: pixels.clone(),

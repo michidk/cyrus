@@ -84,7 +84,7 @@ fn installed_world_prepares_effect_frames_and_map_drawing_attributes() -> Result
 }
 
 #[test]
-fn installed_sky_motion_switch_survives_public_world_preparation() -> Result<()> {
+fn installed_glide_sky_ignores_unused_motion_setting() -> Result<()> {
     use cyrus_assets::source::{Manifest, ReadAssets};
     struct Settings<'a>(&'a Files, Vec<u8>);
     impl ReadAssets for Settings<'_> {
@@ -129,14 +129,10 @@ fn installed_sky_motion_switch_survives_public_world_preparation() -> Result<()>
             cyrus_assets::game::prepare(&Settings(&files, settings), "START.environment")?;
         let environment: serde_json::Value =
             serde_json::from_slice(&prepared["START.environment"])?;
-        assert_eq!(
-            environment["sky"]["scroll_enabled"],
-            serde_json::json!(enabled)
-        );
         assert!(environment["sky"]["speed"].as_u64().unwrap() > 0);
         skies.push(environment["sky"].clone());
     }
-    assert_eq!(skies[0]["rgba"], skies[1]["rgba"]);
+    assert!(skies[0] == skies[1], "Glide sky does not consume sky_move");
     assert_eq!(skies[0]["rgba"].as_array().unwrap().len(), 256 * 256 * 4);
     assert_eq!(skies[0]["speed"], skies[1]["speed"]);
     assert_eq!(files.read("SYSTEM.INI")?, original);
