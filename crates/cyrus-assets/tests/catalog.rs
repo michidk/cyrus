@@ -881,3 +881,80 @@ fn installed_splash_meshes_and_textures_are_original_file_members() {
         }
     }
 }
+
+#[test]
+fn installed_palette_controls_reject_unknown_prefixes_and_retain_all_gui_colors() {
+    let installed = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !installed.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (ANM palette admission)");
+        return;
+    }
+    let original = std::fs::read(installed.join("system/gui.anm")).unwrap();
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart", "system"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    for (name, field) in [
+        ("control-0.anm", Some(0)),
+        ("control-2.anm", Some(2)),
+        ("control-4.anm", Some(4)),
+        ("static.anm", None),
+    ] {
+        let mut bytes = original.clone();
+        if let Some(field) = field {
+            bytes[128 + field..130 + field].copy_from_slice(&1_u16.to_le_bytes());
+        }
+        std::fs::write(root.join("system").join(name), bytes).unwrap();
+    }
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    for entry in library
+        .catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.path.ends_with(".anm"))
+    {
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        if entry.path.ends_with("static.anm") {
+            let Content::Images { frames } = preview.content else {
+                panic!("disabled installed ranges must remain supported")
+            };
+            assert_eq!(frames.len(), 25);
+            let expected = rgpre::import::anm::parse_anm_file(&original).unwrap();
+            let mut pixels = 0;
+            for (index, (image, source)) in frames.iter().zip(&expected.frames).enumerate() {
+                assert!(
+                    image.rgba == source.rgba(),
+                    "GUI image {index}: stored palette colors changed"
+                );
+                pixels += image.rgba.len() / 4;
+            }
+            assert_eq!(pixels, 1_600_000);
+            eprintln!(
+                "static GUI: 25 images, {pixels} decoded pixels, zero stored-palette RGBA differences"
+            );
+        } else {
+            let Content::Unavailable { reason } = preview.content else {
+                panic!(
+                    "{}: unsupported palette controls silently became static frames",
+                    entry.path
+                )
+            };
+            assert!(reason.contains(&entry.path), "{reason}");
+            assert!(reason.contains("palette cycle 0"), "{reason}");
+        }
+    }
+    assert_eq!(
+        std::fs::read(installed.join("system/gui.anm")).unwrap(),
+        original
+    );
+}

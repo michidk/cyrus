@@ -1,5 +1,10 @@
 # cyrus-assets
 
+ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
+of exposing them as static images. Zero-control authored ranges remain supported.
+Catalog version 35 invalidates image previews prepared before this admission check.
+
+
 `loading/WORLD.loading` prepares only the requested destination's full-screen
 GXA frames through preservation’s `WORLD.INI` lookup. Native export and the
 browser worker share preparation and validation; no world artwork table is
@@ -19,7 +24,7 @@ unsupported; this decoding API does not establish native/browser compositor pari
 The public preparation tests cover configured paths, cache replacement, failed
 preparation, admitted software images, unknown hotspots and contextual corruption.
 
-Catalog version 33 retains the selected eight-bit startup palette in cinematic
+Startup preparation retains the selected eight-bit startup palette in cinematic
 metadata. Older browser cinematic caches require preparation again.
 
 Catalog version 32 retains the installed map-stem aliases in music settings.
