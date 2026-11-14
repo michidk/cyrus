@@ -1051,7 +1051,9 @@ fn prepare_model_geometry<'a>(
         instance
             .filter(|_| !environment.prelighting.lights.is_empty())
             .map(|instance| (environment, instance)),
-        attributes.is_some() && flat.is_none(),
+        // The selected world palette also owns standalone actor solids; ROB
+        // provenance determines sampling flags, not palette selection.
+        flat.is_none(),
     )?;
     if let Some(brightness) = flat.and_then(|flat| flat.brightness)
         && let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) =
@@ -1786,6 +1788,15 @@ mod tests {
                 ChildOf(static_root),
             ))
             .id();
+        // Actor frame sources have no ROB attributes. Their solid palette is still
+        // the world's selected palette, independently of filtering ownership.
+        let actor_solid = app.world_mut().spawn((
+            MeshMaterial3d(base.clone()),
+            Mesh3d(mesh.clone()),
+            bevy::gltf::GltfExtras {
+                value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":[19,31,47],"vertices":[[255,1],[255,1],[255,1]]},"rgpre_solid_palette":{"version":1,"index":173}}"#.into(),
+            },
+        )).id();
         let larger = app
             .world_mut()
             .spawn((
@@ -1843,6 +1854,22 @@ mod tests {
             .spawn((MeshMaterial3d(base), Mesh3d(mesh), ChildOf(terrain_root)))
             .id();
         app.update();
+        let actor_material = &app
+            .world()
+            .get::<MeshMaterial3d<SceneMaterial>>(actor_solid)
+            .unwrap()
+            .0;
+        assert_eq!(
+            app.world()
+                .resource::<Assets<SceneMaterial>>()
+                .get(actor_material)
+                .unwrap()
+                .extension
+                .solid_color,
+            Vec4::new(16.0, 28.0, 44.0, 1.0),
+            "standalone actor solids use the converted world palette",
+        );
+
         assert!(
             app.world()
                 .get::<MeshMaterial3d<StandardMaterial>>(staged_mesh)

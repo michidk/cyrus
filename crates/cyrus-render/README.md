@@ -641,6 +641,15 @@ an isolated old-sampler control. Frame 2 mean RGB error is 0.733 native and
 by this correction. Original flame phase, cadence and full parity remain
 **Unknown**. Standalone actor sampling eligibility remains separate.
 
+**Verified:** [actor solid palette ownership](https://github.com/michidk/redguard-preservation/pull/317)
+is independent of sampling flags. Scene actor solids resolve through the converted
+world palette even when their
+frame source has no ROB sampling attributes. Palette ownership is independent
+of draw-flag provenance; standalone sampling defaults remain separate. Actor
+texture sets preserve solid faces and reserved texture banks, and replace only
+the bank of textured faces whose bank is at least two. Re-export older actor
+meshes after updating.
+
 **Verified:** world archive solid-color faces require `rgpre_solid_palette` version 1 from
 [preservation's indexed export](https://github.com/michidk/redguard-preservation/commit/395b1b3).
 Their palette conversion precedes retained lighting and unbaked corner lighting;

@@ -56,6 +56,11 @@ sound cache records. Data-only lookup and validation live with their serialized
 records. Runtime animation, collision queries, mesh bindings and audio handles
 belong to the consuming crates.
 
+**Verified:** [actor texture-set preparation](https://github.com/michidk/redguard-preservation/pull/188)
+preserves palette-colored faces instead of replacing
+them with image zero of the selected bank. Banks zero and one and every image
+index remain unchanged. Catalog version 34 invalidates older generated meshes.
+
 Collision caches retain shared authored geometry separately from static placement
 flags. Initial type-one live static models retain their MPOB bindings and model
 header radii and initial ROB collision metadata, including known zero for ordinary
