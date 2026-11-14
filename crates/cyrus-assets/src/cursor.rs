@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Cache-relative resource path, independent of the installed archive filename.
 pub const ASSET_PATH: &str = "cursor/pointers.cursor";
 
-/// Original GXA bytes. Cursor descriptors remain unsupported until their representation is resolved.
+/// Original GXA bytes, retained independently of the software descriptor representation.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CursorArchive {
     pub version: u32,
@@ -14,7 +14,51 @@ pub struct CursorArchive {
     pub bytes: Vec<u8>,
 }
 
+/// Decoded software cursor, with palette-expanded pixels and an optional authored offset.
+/// These offsets must never be used for Glide cursor preparation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SoftwareCursor {
+    /// Image width and height in pixels.
+    pub size: [u16; 2],
+    /// Top-to-bottom, straight-alpha RGBA pixels; index zero is transparent.
+    pub rgba: Vec<u8>,
+    /// Last index-16 marker coordinate, or unknown when no marker was authored.
+    pub hotspot: Option<[i16; 2]>,
+}
+
+impl SoftwareCursor {
+    /// Place the software image at pointer minus hotspot, wrapping each signed
+    /// sixteen-bit coordinate as specified by preservation's cursor draw contract.
+    /// Unknown authored offsets cannot produce an admitted placement.
+    pub fn top_left(&self, pointer: [i16; 2]) -> Option<[i16; 2]> {
+        self.hotspot.map(|hotspot| {
+            [
+                pointer[0].wrapping_sub(hotspot[0]),
+                pointer[1].wrapping_sub(hotspot[1]),
+            ]
+        })
+    }
+}
+
 impl CursorArchive {
+    /// Decode the admitted software frame pairs using preservation's cursor rules.
+    ///
+    /// The original bytes remain authoritative. Missing hotspots remain unknown;
+    /// this method neither selects a cursor nor substitutes software offsets for Glide.
+    #[cfg(feature = "parsers")]
+    pub fn software_frames(&self) -> Result<Vec<SoftwareCursor>> {
+        self.validate()?;
+        Ok(rgpre::import::gxa::parse_software_cursor_file(&self.bytes)
+            .with_context(|| format!("{}: software cursor descriptors", self.source))?
+            .into_iter()
+            .map(|cursor| SoftwareCursor {
+                size: [cursor.image.width, cursor.image.height],
+                rgba: cursor.image.rgba,
+                hotspot: cursor.hotspot,
+            })
+            .collect())
+    }
+
     /// Validate cache identity and payload presence without interpreting cursor descriptors.
     pub fn validate(&self) -> Result<()> {
         ensure!(

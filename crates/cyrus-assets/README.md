@@ -5,27 +5,19 @@ GXA frames through preservation’s `WORLD.INI` lookup. Native export and the
 browser worker share preparation and validation; no world artwork table is
 duplicated in the host.
 
-Cursor preparation is an unverified source increment for #90. The on-demand
-`cursor/pointers.cursor` group reads the `SYSTEM.INI [system] pointers` path
-through preservation, resolves DOS separators and case through the source
-manifest, and retains the exact GXA bytes in a versioned portable record.
-`cursor::export` prepares the same record for a native cache outside the install.
-It uses the existing preservation dependency. Descriptor decoding, hotspot
-derivation, cursor selection and visible host presentation remain unsupported.
-**Verified:** preservation documents that software preparation retains indexed
-pixels, while Glide preparation replaces them with texture identifiers and its
-offset scan exceeds that table's payload. The software marker rule does not
-supply Glide offsets. See the [cursor representation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/BUNDLED-RESOURCES.md#cursor-asset).
-**Unknown:** observed Glide offsets and ordinary gameplay cursor visibility.
-Package and native/browser acceptance have not run for this increment.
-The authored cursor tests also cover native cache replacement after a configured
-archive change, preservation of the prior cache on preparation failure, and
-exact-byte preparation from an available install. The WASM worker verification
-script includes the same archive-byte contract. These checks remain unrun.
-When execution is admitted, run `cargo test -p cyrus-assets --features parsers
---test cursor` for shared preparation and repeat with `--features native` for
-filesystem and installed-source coverage. The installed worker contract is in
-`node dev/scripts/test-game-worker.mjs <built-worker-package> <install>`.
+Cursor preparation reads `SYSTEM.INI [system] pointers` through preservation,
+resolves DOS separators and case, and retains the exact GXA bytes in the portable
+`cursor/pointers.cursor` record. `cursor::export` publishes the same record outside
+the install. `CursorArchive::software_frames` decodes admitted software frame pairs
+into RGBA images and optional authored hotspots using preservation. Missing markers
+remain unknown; `SoftwareCursor::top_left` refuses their placement. Known hotspots
+use signed sixteen-bit wrapping subtraction, including at coordinate boundaries. **Verified:** the installed 30-frame archive admits 14 descriptors
+under the [software cursor contract](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/BUNDLED-RESOURCES.md#cursor-asset).
+Glide preparation replaces pixels before scanning offsets, so software hotspots
+must not be used for Glide. Cursor selection and visible host presentation remain
+unsupported; this decoding API does not establish native/browser compositor parity.
+The public preparation tests cover configured paths, cache replacement, failed
+preparation, admitted software images, unknown hotspots and contextual corruption.
 
 Catalog version 33 retains the selected eight-bit startup palette in cinematic
 metadata. Older browser cinematic caches require preparation again.
