@@ -3,8 +3,9 @@
 ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
 of exposing them as static images. Zero-control authored ranges remain supported.
 [Preservation PR #325](https://github.com/michidk/redguard-preservation/pull/325)
-owns LBM static-palette admission. LBM preparation rejects malformed CRNG payloads and nonzero control
-words; preservation retains those chunks for inspection without inventing playback.
+is included in the published preservation 0.12.5 release used for LBM
+static-palette admission. LBM preparation rejects malformed CRNG payloads and
+nonzero control words; preservation retains those chunks for inspection without inventing playback.
 Catalog version 38 invalidates environment records that applied the unused
 `sky_move` setting to Glide skies. Glide preparation retains authored WORLD.INI
 speed independently of that setting, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
