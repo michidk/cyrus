@@ -17,6 +17,7 @@ rules from redguard-preservation's FNT and subtitle documentation:
   title and movie text, or RGBA overlays.
 - `draw_shadowed`: the NPC subtitle style used by dialogue and the HUD, a black
   copy at (+1, +1) beneath each glyph, alpha from `font_alpha` (`[3dfx] font_*`).
+  Alpha values below 254 blend; 254 and 255 replace the destination opaquely.
 - `colour`: palette entries shifted left by 2, matching captured original colours.
 
 Callers keep what differs between screens: justification, wrap width or the

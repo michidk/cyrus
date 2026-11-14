@@ -139,7 +139,9 @@ impl Font {
 
     /// Draws one line into straight-alpha RGBA like an NPC subtitle: per glyph a black
     /// copy at (+1, +1) with alpha `shadow`, then the glyph in its palette colours with
-    /// alpha `main`. Pixels outside `width × (rgba.len() / 4 / width)` are clipped.
+    /// alpha `main`. Alpha 254 and 255 replace the destination without blending,
+    /// following preservation's subtitle glyph rule. Pixels outside
+    /// `width × (rgba.len() / 4 / width)` are clipped.
     pub fn draw_shadowed(
         &self,
         rgba: &mut [u8],
@@ -173,7 +175,12 @@ impl Font {
                             self.colour(index)
                         };
                         let at = (y as usize * width + x as usize) * 4;
-                        blend(&mut rgba[at..at + 4], colour, alpha);
+                        if alpha >= 254 {
+                            rgba[at..at + 3].copy_from_slice(&colour);
+                            rgba[at + 3] = 255;
+                        } else {
+                            blend(&mut rgba[at..at + 4], colour, alpha);
+                        }
                     }
                 });
             }
@@ -268,6 +275,38 @@ mod tests {
         font.draw_shadowed(&mut rgba, 4, "#", [1, 1], [255, 199]);
         assert_eq!(rgba[(4 + 1) * 4..][..4], [252, 156, 4, 255]);
         assert_eq!(rgba[(2 * 4 + 2) * 4..][..4], [0, 0, 0, 199]);
+    }
+
+    #[test]
+    fn shadowed_text_disables_blending_at_the_original_alpha_boundary() {
+        let font = Font {
+            start: u16::from(b'A'),
+            glyphs: vec![Glyph {
+                enabled: true,
+                width: 1,
+                height: 1,
+                pixels: vec![1],
+                ..Default::default()
+            }],
+            palette: vec![[0; 3], [63, 0, 0]],
+            ..Default::default()
+        };
+        for (alpha, expected) in [
+            (253, [250, 0, 2, 255]),
+            (254, [252, 0, 0, 255]),
+            (255, [252, 0, 0, 255]),
+        ] {
+            let mut rgba = [0, 0, 252, 255];
+            font.draw_shadowed(&mut rgba, 1, "A", [0, 0], [alpha, 0]);
+            assert_eq!(rgba, expected, "main alpha {alpha}");
+        }
+        let mut overlay = [0; 4];
+        font.draw_shadowed(&mut overlay, 1, "A", [0, 0], [254, 0]);
+        assert_eq!(
+            overlay,
+            [252, 0, 0, 255],
+            "opaque replacement survives overlay composition"
+        );
     }
 
     #[test]
