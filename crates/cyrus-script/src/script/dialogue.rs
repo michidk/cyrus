@@ -32,6 +32,8 @@ pub struct DialogueState {
     records: Vec<DialogueRecord>,
     skip_latched: bool,
     presented: Option<usize>,
+    #[serde(skip)]
+    requested_line: Option<(usize, u64)>,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,6 +43,8 @@ struct DialogueRecord {
     active: bool,
     sample: Option<u8>,
     remaining: i32,
+    #[serde(skip)]
+    revision: u64,
 }
 
 impl Default for DialogueRecord {
@@ -51,6 +55,7 @@ impl Default for DialogueRecord {
             active: false,
             sample: Some(0),
             remaining: 0,
+            revision: 0,
         }
     }
 }
@@ -199,6 +204,7 @@ impl DialogueState {
                         active: saved.active,
                         sample,
                         remaining: saved.remaining,
+                        revision: 0,
                     })
                 };
                 prepare().with_context(|| format!("dialogue snapshot record {index}"))
@@ -209,6 +215,7 @@ impl DialogueState {
             records,
             skip_latched: snapshot.skip_latched,
             presented: snapshot.presented,
+            requested_line: None,
         })
     }
 
@@ -218,6 +225,7 @@ impl DialogueState {
             settings: settings.clone(),
             skip_latched: false,
             presented: None,
+            requested_line: None,
             records: (0..settings.max_dialog_lines)
                 .map(|_| DialogueRecord::default())
                 .collect(),
@@ -239,6 +247,7 @@ impl DialogueState {
             .enumerate()
             .skip(1)
             .find(|(_, record)| !record.active)?;
+        record.revision = record.revision.wrapping_add(1);
         record.owner = Some(owner);
         record.text = text;
         record.sample = sample;
@@ -270,6 +279,7 @@ impl DialogueState {
             self.presented = None;
         }
         self.records[0] = DialogueRecord {
+            revision: self.records[0].revision.wrapping_add(1),
             owner: Some(player),
             text,
             active: true,
@@ -322,6 +332,42 @@ impl DialogueState {
         record.active.then_some((index, record.text.as_str()))
     }
 
+    /// Transient identity of the displayed record. Reusing its slot changes the revision.
+    /// The token is meaningful only within this dialogue owner, never across session restore.
+    pub fn presented_token(&self) -> Option<(usize, u64)> {
+        let (index, _) = self.presented_line()?;
+        Some((index, self.records[index].revision))
+    }
+
+    /// Request completion of the currently displayed line on the next audio update.
+    /// Repeated requests coalesce. Choices and other records remain untouched.
+    /// Requests are transient and are discarded when restoring a session.
+    pub fn request_line_advance(&mut self) -> bool {
+        let Some((index, _)) = self.presented_line() else {
+            return false;
+        };
+        self.requested_line = Some((index, self.records[index].revision));
+        true
+    }
+
+    fn advance_requested_line(&mut self, effects: &mut dyn DialogueEffects) -> Result<()> {
+        let Some((index, revision)) = self.requested_line.take() else {
+            return Ok(());
+        };
+        if !self
+            .records
+            .get(index)
+            .is_some_and(|record| record.active && record.revision == revision)
+        {
+            return Ok(());
+        }
+        if let Some(sample) = self.records[index].sample {
+            effects.stop_sample(sample)?;
+        }
+        self.clear_line(Some(index));
+        Ok(())
+    }
+
     /// Speakers retained by active records, in record traversal order.
     pub(super) fn active_speakers(&self) -> impl Iterator<Item = super::ScriptActorId> + '_ {
         self.records
@@ -348,6 +394,7 @@ impl DialogueState {
         player_lockout: Option<u16>,
         effects: &mut dyn DialogueEffects,
     ) -> Result<()> {
+        self.advance_requested_line(effects)?;
         self.presented = None;
         if !skip_signal {
             self.skip_latched = false;

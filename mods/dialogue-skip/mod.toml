@@ -1,0 +1,11 @@
+name = "Dialogue skip"
+description = "Press Backspace to advance the current spoken line. Topic choices remain yours."
+version = "0.1.0"
+author = "cyrus contributors"
+
+[[setting]]
+key = "key"
+label = "Advance line key"
+type = "choice"
+default = "Backspace"
+options = ["Backspace", "Space"]

@@ -29,6 +29,11 @@ pub(crate) struct NativeSessionLoad {
     last_game: bool,
     book: bool,
     quick: bool,
+    mod_save: Option<ModSave>,
+}
+
+struct ModSave {
+    previous: Option<cyrus_script::script::LastSaveSelection>,
 }
 
 struct PreparedLoad {
@@ -242,6 +247,7 @@ fn start_slot_load(
 pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value> {
     let mut state = world.resource_mut::<NativeSessionLoad>();
     ensure!(!state.book, "book owns the native slot result");
+    ensure!(state.mod_save.is_none(), "mod owns the native slot result");
     ensure!(
         !acknowledge || state.slot_result.is_some(),
         "native slots have no terminal result"
@@ -267,7 +273,75 @@ pub(crate) fn slots_result(world: &mut World, acknowledge: bool) -> Result<Value
     result
 }
 
+fn restore_save_selection(
+    world: &mut World,
+    previous: Option<cyrus_script::script::LastSaveSelection>,
+) {
+    if let Some(mut dispatch) = world.get_resource_mut::<cyrus_script::script::DeathDispatch>() {
+        dispatch.last_save = previous;
+    }
+}
+
+fn mod_save_ready(world: &World) -> bool {
+    use bevy::prelude::{NextState, State};
+    use cyrus_game::AppState;
+    let gameplay = world
+        .get_resource::<State<AppState>>()
+        .is_some_and(|state| *state.get() == AppState::InGame)
+        && !world
+            .get_resource::<NextState<AppState>>()
+            .is_some_and(|next| matches!(next, NextState::Pending(_)))
+        && !world.contains_resource::<cyrus_world::lifecycle::WorldPreparationPending>()
+        && !world
+            .get_resource::<cyrus_console::Console>()
+            .is_some_and(|console| console.open || console.blocked)
+        && !world
+            .get_resource::<cyrus_script::logbook::LogbookScreen>()
+            .is_some_and(|screen| screen.suspended())
+        && !world
+            .get_resource::<cyrus_script::player::input::InputSuppressed>()
+            .is_some_and(|input| input.0);
+    gameplay
+        && world
+            .get_resource::<NativeSessionLoad>()
+            .is_some_and(|host| !host.busy() && host.result.is_none() && host.slot_result.is_none())
+        && world
+            .get_resource::<SessionBoundary>()
+            .is_some_and(SessionBoundary::is_idle)
+        && world
+            .get_resource::<cyrus_script::script::ScriptActors>()
+            .and_then(|actors| actors.current.as_ref())
+            .is_some_and(|current| {
+                let globals = current.globals();
+                globals.lockout() == Some(0)
+                    && globals.dialogue_state() == Some(0)
+                    && globals.menu_state() == 0
+                    && globals.dialogue().is_some_and(|lines| !lines.waiting())
+                    && current
+                        .locomotion_status()
+                        .is_some_and(|status| !status.airborne && !status.armed)
+                    && current.selected_player().is_some_and(|id| {
+                        current.actors()[id.index].attributes()[cyrus_soup::Attribute::Health] > 0
+                    })
+            })
+}
+
 pub(crate) fn poll(world: &mut World) {
+    let ready = mod_save_ready(world);
+    if cyrus_mods::gameplay::take_save_request(world, ready) {
+        let previous = world
+            .get_resource::<cyrus_script::script::DeathDispatch>()
+            .and_then(|dispatch| dispatch.last_save.clone());
+        match request_slots(world, SlotOperation::AutoSave) {
+            Ok(()) => {
+                world.resource_mut::<NativeSessionLoad>().mod_save = Some(ModSave { previous })
+            }
+            Err(error) => {
+                restore_save_selection(world, previous);
+                cyrus_mods::gameplay::finish_save(world, Err(format!("autosave: {error:#}")));
+            }
+        }
+    }
     if cyrus_script::quick_save_pressed(world) {
         match request_slots(world, SlotOperation::QuickSave) {
             Ok(()) => world.resource_mut::<NativeSessionLoad>().quick = true,
@@ -424,6 +498,20 @@ pub(crate) fn poll(world: &mut World) {
         } else {
             state.result = Some(result);
         }
+    }
+    if state.mod_save.is_some()
+        && let Some(result) = state.slot_result.take()
+    {
+        let previous = state.mod_save.take().expect("pending mod save");
+        if result.is_err() {
+            restore_save_selection(world, previous.previous);
+        }
+        cyrus_mods::gameplay::finish_save(
+            world,
+            result
+                .map(|_| ())
+                .map_err(|error| format!("autosave: {error:#}")),
+        );
     }
     if state.quick
         && let Some(result) = state.slot_result.take()
@@ -617,6 +705,48 @@ mod tests {
             slots_result(&mut world, false).unwrap(),
             json!({"pending":true})
         );
+    }
+
+    #[test]
+    fn mod_save_completion_is_owned_and_failure_restores_previous_reload_target() {
+        use cyrus_script::script::{DeathDispatch, LastSaveSelection};
+        for failed in [false, true] {
+            let mut world = World::new();
+            world.insert_resource(DeathDispatch {
+                last_save: Some(LastSaveSelection {
+                    slot: 1,
+                    description: "Redguard AutoSave".into(),
+                }),
+                ..Default::default()
+            });
+            world.insert_resource(NativeSessionLoad {
+                mod_save: Some(ModSave {
+                    previous: Some(LastSaveSelection {
+                        slot: 7,
+                        description: "Manual save".into(),
+                    }),
+                }),
+                slot_result: Some(if failed {
+                    Err(anyhow::anyhow!("publication failed"))
+                } else {
+                    Ok(json!({"slot":1}))
+                }),
+                ..Default::default()
+            });
+            assert_eq!(
+                slots_result(&mut world, true).unwrap_err().to_string(),
+                "mod owns the native slot result"
+            );
+            poll(&mut world);
+            assert!(world.resource::<NativeSessionLoad>().mod_save.is_none());
+            assert!(world.resource::<NativeSessionLoad>().slot_result.is_none());
+            let selection = world
+                .resource::<DeathDispatch>()
+                .last_save
+                .as_ref()
+                .unwrap();
+            assert_eq!(selection.slot, if failed { 7 } else { 1 });
+        }
     }
 
     #[test]

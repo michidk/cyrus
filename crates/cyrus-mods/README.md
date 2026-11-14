@@ -57,3 +57,9 @@ you trust.
 cargo check -p cyrus-mods
 just mods          # build mods/* and install them into game-config/mods
 ```
+
+The optional `dialogue-skip` and `autosave` Wasm guests use `gameplay` hooks. Dialogue
+advancement completes only a displayed line through synchronous audio teardown. Saves
+use the binary's existing transactional session adapter and report terminal results;
+the guests own key bindings, timing and retry policy. Both are inactive by default.
+See [the service contract](../../mods/README.md#dialogue-and-save-services).

@@ -3234,6 +3234,7 @@ dependencies = [
  "cyrus-config",
  "cyrus-console",
  "cyrus-debug",
+ "cyrus-game",
  "cyrus-render",
  "cyrus-script",
  "cyrus-soup",

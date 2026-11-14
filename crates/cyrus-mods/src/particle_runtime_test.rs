@@ -81,7 +81,11 @@ fn wasm_blood_particles() {
         })
         .init_resource::<particles::ParticleState>()
         .add_systems(Startup, (spawn_host, setup).chain())
-        .add_systems(PreUpdate, particles::publish)
+        .init_resource::<crate::ownership::Owners>()
+        .add_systems(
+            PreUpdate,
+            (crate::ownership::publish, particles::publish).chain(),
+        )
         .add_systems(
             PostUpdate,
             particles::update

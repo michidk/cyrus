@@ -407,10 +407,15 @@ pub struct Input {
     just_pressed: Vec<String>,
     mouse_delta: Vec<f32>,
     delta_seconds: f32,
+    bound_keys: Vec<String>,
 }
 
 #[wasvy::methods]
 impl Input {
+    /// Whether a key belongs to a game action, including fixed Modern controls.
+    pub fn bound(&self, key: String) -> bool {
+        self.bound_keys.contains(&key)
+    }
     pub fn held(&self, action: String) -> bool {
         self.held.contains(&action)
     }
@@ -433,6 +438,10 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Name::new("cyrus mod API"),
         Environment::default(),
         Actors::default(),
+        (
+            crate::gameplay::Dialogue::default(),
+            crate::gameplay::Saves::default(),
+        ),
         Camera::default(),
         Movement::default(),
         Settings::default(),
@@ -481,6 +490,7 @@ pub(crate) struct Sources<'w, 's> {
     values: Res<'w, ModSettings>,
     facts: Res<'w, WorldFacts>,
     look: Option<Res<'w, ModernLook>>,
+    fidelity: Option<Res<'w, cyrus_game::fidelity::Fidelity>>,
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
     view: Query<'w, 's, &'static Transform, With<ViewCamera>>,
@@ -585,6 +595,30 @@ pub(crate) fn exchange(
             u32::from(camera.view_angles[1].wrapping_neg() & 2047)
         });
 
+    input.bound_keys = src
+        .bindings
+        .bindings()
+        .keyboard_keys()
+        .map(|key| format!("{key:?}"))
+        .collect();
+    if src
+        .fidelity
+        .as_deref()
+        .is_some_and(|fidelity| fidelity.player_controller == cyrus_game::fidelity::Mode::Modern)
+    {
+        input.bound_keys.extend(
+            [
+                "Space",
+                "KeyW",
+                "KeyA",
+                "KeyS",
+                "KeyD",
+                "ShiftLeft",
+                "ShiftRight",
+            ]
+            .map(str::to_owned),
+        );
+    }
     // Keys typed into the console or read in the logbook are not the mods'.
     let typing = src.console.as_deref().is_some_and(|console| console.open)
         || src
@@ -945,3 +979,7 @@ mod tests {
 #[cfg(test)]
 #[path = "particle_runtime_test.rs"]
 mod particle_runtime_test;
+
+#[cfg(test)]
+#[path = "gameplay_runtime_test.rs"]
+mod gameplay_runtime_test;

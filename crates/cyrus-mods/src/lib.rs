@@ -20,6 +20,8 @@
 //! saved to `mods.json` there; the backtick debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
+pub mod gameplay;
+mod ownership;
 mod particles;
 mod settings;
 
@@ -148,6 +150,7 @@ impl Plugin for ModsPlugin {
             .init_resource::<cyrus_script::player::input::CameraOrbit>()
             .init_resource::<cyrus_script::player::input::CollisionProbes>()
             .init_resource::<particles::ParticleState>()
+            .init_resource::<ownership::Owners>()
             .add_systems(
                 bevy::prelude::PostUpdate,
                 particles::update
@@ -156,7 +159,16 @@ impl Plugin for ModsPlugin {
                     .before(bevy_hanabi::EffectSystems::TickSpawners),
             )
             .add_systems(Startup, api::spawn_host)
-            .add_systems(PreUpdate, (api::exchange, particles::publish).chain())
+            .add_systems(
+                PreUpdate,
+                (
+                    ownership::publish,
+                    api::exchange,
+                    particles::publish,
+                    gameplay::publish,
+                )
+                    .chain(),
+            )
             .add_systems(Update, (watch, apply).chain())
             .add_systems(
                 EguiPrimaryContextPass,

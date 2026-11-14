@@ -12,6 +12,7 @@ cyrus-debug = { path = "../cyrus-debug" }
 cyrus-config.workspace = true
 cyrus-console.workspace = true
 cyrus-script.workspace = true
+cyrus-game.workspace = true
 cyrus-assets = { workspace = true, features = ["parsers"] }
 cyrus-soup.workspace = true
 cyrus-render.workspace = true

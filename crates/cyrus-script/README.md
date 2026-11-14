@@ -898,3 +898,7 @@ Verified: selected-player water transitions retain forward swimming and exit ani
 for both running and walking motion, following preservation's
 [water transition rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#water-and-lava-transition-effects).
 Backward motion keeps its separate requests; transition sound selection is unchanged.
+
+`DialogueState::request_line_advance` queues only the displayed record for synchronous
+sample teardown on the next ordinary dialogue update. Requests coalesce, are transient,
+and do not select topic choices or alter the original configured skip signal.

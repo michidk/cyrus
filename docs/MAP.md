@@ -149,6 +149,9 @@ module where it is defined and regenerate.
 ## `cyrus-mods` — Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 
 - `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
+- `src/gameplay.rs` — Native gameplay services requested by Wasm guests; hosts own eligibility and completion.
+- `src/gameplay_runtime_test.rs` — Actual Wasm guests exercise typed gameplay hooks without a renderer or installed assets.
+- `src/ownership.rs` — Loaded guest incarnations shared by asynchronous gameplay and visual hooks.
 - `src/particle_runtime_test.rs` — Real WebAssembly guest/host exercise, optionally with offscreen GPU capture.
 - `src/particles.rs` — Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
 - `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,

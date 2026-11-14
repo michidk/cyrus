@@ -7,6 +7,8 @@ the Mods window that opens with Backtick. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
+| `dialogue-skip` | dialogue, input, settings | Advance one displayed spoken line per press, retaining topic choices |
+| `autosave` | saves, input, memory, settings, hud | Periodic transactional saves during eligible gameplay |
 | `blood` | damage, particles, settings | A brief spray of fading red particles on actual player or actor health loss |
 | `modern-water` | environment, effects, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
@@ -327,3 +329,36 @@ the replacement is read from the mod folder, so ship only data you made yourself
 If several active mods supply a path, the first by id wins. The files are read when
 the game starts, so toggling such a mod needs a restart (the Mods window says so).
 Turning the mod off restores the original, and cached assets rebuild by content.
+
+## Dialogue and save services
+
+`dialogue-skip` advances one displayed spoken line per press. Backspace is the default;
+its Mods settings can choose Space instead. A key assigned to a game action is refused with a notice,
+so it cannot also activate a topic choice or the original all-lines skip. It leaves topic choices to the
+player. Its Wasm guest owns the key binding and press-edge policy. The host queues the
+currently displayed record, stops its sample synchronously through the audio owner,
+and lets ordinary script continuation resume. It never chooses a topic or skips a
+whole conversation. Disabling the mod restores the existing controls.
+
+`autosave` counts eligible gameplay time and requests a save after 300 seconds by
+default, configurable from 60 to 1800 seconds. Menus, the console, loading, dialogue,
+drawn weapons, airborne movement and death defer the timer. A single stalled frame
+contributes at most one second, preventing a pause from immediately triggering a save. It writes reserved autosave
+slot one through the existing native session adapter, retaining manual slots and the
+quick-save slot. Quit can still replace the same reserved autosave. A successful save
+becomes the retained last-save selection for death reload. A failed save shows the
+storage error and retries after 30 eligible seconds. Notifications can be disabled.
+Both mods default to inactive and install with `just mods`.
+
+The SDK exposes `cx.dialogue.available()` and `cx.dialogue.advance()` for one-line
+advancement, and `cx.saves.ready()`, `save()`, `status()` and `error()` for storage.
+Both calls return queue acceptance; `SaveStatus::Saved` means native storage committed.
+`Failed` reports a terminal error, and `Pending` must finish before another request.
+Terminal results remain until the same guest starts another request or its loaded revision changes. The host checks
+eligibility again when consuming requests, rejects disabled guests and stale worlds,
+and serializes all saves through the existing storage boundary. Requests from expired guest
+incarnations are discarded; an eligibility change in the same incarnation reports failure. Guest owner IDs follow
+the SDK's folder name convention; they are lifecycle namespaces, not a security boundary.
+
+These hooks keep policy in the guest. A mod should own its keys, interval, retry timing
+and notifications, while the host owns speech teardown, snapshot validation and storage.

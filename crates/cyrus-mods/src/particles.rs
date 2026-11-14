@@ -1,9 +1,10 @@
 //! Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
 use crate::Catalog;
+use crate::ownership::{Owner, Owners};
 use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 use cyrus_script::script::ScriptActors;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use wasvy::prelude::*;
 
 const LIVE_LIMIT: usize = 1024;
@@ -132,12 +133,6 @@ impl Particles {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Reflect)]
-struct Owner {
-    instance: Entity,
-    revision: u64,
-}
-
 struct Live {
     emission: Emission,
     entity: Entity,
@@ -256,42 +251,12 @@ fn properties(emission: &Emission) -> EffectProperties {
 
 /// Capture the submitting mod's loaded revision and world before guest Update runs.
 /// File reload requests are asynchronous; only a completed asset load changes this lease.
-pub(crate) fn publish(
-    mut host: Query<&mut Particles>,
-    catalog: Res<Catalog>,
-    actors: Option<Res<ScriptActors>>,
-    mods: Query<&wasvy::prelude::Mod>,
-    mut events: MessageReader<AssetEvent<ModAsset>>,
-    mut revisions: Local<HashMap<AssetId<ModAsset>, u64>>,
-) {
-    for event in events.read() {
-        if let AssetEvent::LoadedWithDependencies { id } = event {
-            *revisions.entry(*id).or_default() += 1;
-        }
-    }
+pub(crate) fn publish(mut host: Query<&mut Particles>, owners: Res<Owners>) {
     let Ok(mut host) = host.single_mut() else {
         return;
     };
-    host.world = actors
-        .as_deref()
-        .and_then(|a| a.current.as_ref())
-        .map(|w| (w.world, w.generation()));
-    host.owners = catalog
-        .entries
-        .iter()
-        .filter(|e| e.active && !e.gone)
-        .filter_map(|entry| {
-            let instance = entry.instance?;
-            let asset = mods.get(instance).ok()?.asset().id();
-            Some((
-                entry.id.clone(),
-                Owner {
-                    instance,
-                    revision: revisions.get(&asset).copied().unwrap_or_default(),
-                },
-            ))
-        })
-        .collect();
+    host.world = owners.world;
+    host.owners = owners.active.clone();
 }
 
 /// CPU ownership and budgets; Hanabi integrates and renders the particles on the GPU.

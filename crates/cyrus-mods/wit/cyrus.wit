@@ -7,6 +7,28 @@
 package cyrus:mods@0.1.0;
 
 interface components {
+  /// Complete only the displayed line through the audio owner. Topic choices are never selected.
+  /// Queued requests apply next PreUpdate only while gameplay dialogue is eligible.
+  /// wasvy:type-path=cyrus_mods::gameplay::Dialogue
+  resource dialogue {
+    constructor(component: component);
+    available: func() -> bool;
+    advance: func(owner: string) -> bool;
+  }
+
+  /// Native transactional saves to reserved autosave slot one. Manual slots are untouched.
+  /// Policy (interval, retries) belongs to guests. Host revalidates gameplay and owner on consume.
+  /// Status is empty, pending, saved or failed. Saved means storage committed, not merely queued.
+  /// A completed guest reload clears the previous incarnation and its results.
+  /// wasvy:type-path=cyrus_mods::gameplay::Saves
+  resource saves {
+    constructor(component: component);
+    ready: func() -> bool;
+    save: func(owner: string) -> bool;
+    status: func(owner: string) -> string;
+    error: func(owner: string) -> string;
+  }
+
   /// Accepted health reductions since the previous frame, shared read-only by all mods.
   /// Events are published in PreUpdate, including player and other actor health services.
   /// Healing, blocked hits and direct attribute edits are not damage-service events.
@@ -243,6 +265,8 @@ interface components {
     /// Whether the player holds an action under the game's own key bindings (KEYS.INI):
     /// "forward", "back", "left", "right", "walk" (the walk/run modifier) or "jump".
     held: func(action: string) -> bool;
+    /// Whether a key is assigned to an installed/saved action or fixed Modern control.
+    bound: func(key: string) -> bool;
     pressed: func(key: string) -> bool;
     tapped: func(key: string) -> bool;
     /// Mouse motion since the last frame in pixels: x, y.
