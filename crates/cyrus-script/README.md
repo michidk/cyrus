@@ -926,3 +926,10 @@ Backward motion keeps its separate requests; transition sound selection is uncha
 `DialogueState::request_line_advance` queues only the displayed record for synchronous
 sample teardown on the next ordinary dialogue update. Requests coalesce, are transient,
 and do not select topic choices or alter the original configured skip signal.
+`ScriptWorld::actor_snapshot` and `take_death_events` expose read-only presentation
+observations. Death events are recorded where lifecycle selector writes commit,
+independently of raw health values and selected-player `IsDead` inhibition.
+They retain captured model/frame/pose and known source attribution even when a
+later gameplay service fails. The bounded transient queue is not serialized;
+restored dead actors appear in snapshots without replayed death events.
+Presentation incarnation changes invalidate visual ownership on resurrection.

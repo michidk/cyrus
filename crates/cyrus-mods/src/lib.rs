@@ -22,8 +22,10 @@
 mod api;
 pub mod gameplay;
 mod geometry;
+mod lifecycle;
 mod ownership;
 mod particles;
+mod physics;
 mod settings;
 mod terrain;
 
@@ -178,6 +180,12 @@ impl Plugin for ModsPlugin {
                     .before(bevy_hanabi::EffectSystems::CompileEffects)
                     .before(bevy_hanabi::EffectSystems::TickSpawners),
             )
+            .add_systems(
+                bevy::prelude::PostUpdate,
+                physics::update
+                    .after(cyrus_render::script_transform::ScriptTransforms)
+                    .before(cyrus_render::animation::PoseRender),
+            )
             .add_systems(Startup, api::spawn_host)
             .add_systems(
                 PreUpdate,
@@ -187,6 +195,8 @@ impl Plugin for ModsPlugin {
                     particles::publish,
                     geometry::publish,
                     terrain::publish,
+                    lifecycle::publish,
+                    physics::publish,
                 )
                     .chain(),
             )

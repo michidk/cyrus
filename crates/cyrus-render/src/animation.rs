@@ -131,15 +131,25 @@ pub(crate) fn apply_poses(
         Option<&GltfExtras>,
         Option<&mut BoundFrameMesh>,
         Option<&RejectedPose>,
+        Option<&crate::pose_override::FrozenPrimitive>,
     )>,
     nodes: Query<(&Name, &AnimationPose)>,
+    overrides: Query<(), bevy::prelude::With<crate::pose_override::PoseOverride>>,
     actors: Query<(), bevy::prelude::With<cyrus_script::script::ScriptBinding>>,
+    parents: Query<&ChildOf>,
 ) {
     let Some(mut meshes) = meshes else {
         return;
     };
     let animation = animations.get(&request.0);
-    for (entity, parent, mut mesh, extras, bound, rejected) in &mut primitives {
+    for (entity, parent, mut mesh, extras, bound, rejected, frozen) in &mut primitives {
+        if frozen.is_some()
+            || std::iter::once(parent.parent())
+                .chain(parents.iter_ancestors(parent.parent()))
+                .any(|owner| overrides.contains(owner))
+        {
+            continue;
+        }
         if let Some(mut bound) = bound {
             if bound.source != request.0.id()
                 || nodes.get(bound.node).is_err()
@@ -440,13 +450,20 @@ impl PreparedModelFrames {
     }
 }
 
+/// Presentation adapters publish deformation matrices before this set.
+#[derive(bevy::prelude::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PoseRender;
+
 /// Applies world poses to private rendered meshes after simulation.
 pub struct AnimationRenderPlugin;
 impl bevy::prelude::Plugin for AnimationRenderPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_systems(
             bevy::prelude::PostUpdate,
-            apply_poses.before(bevy::asset::AssetEventSystems),
+            (apply_poses, crate::pose_override::apply)
+                .chain()
+                .in_set(PoseRender)
+                .before(bevy::asset::AssetEventSystems),
         );
     }
 }

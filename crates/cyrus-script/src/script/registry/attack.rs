@@ -23,272 +23,286 @@ impl ScriptWorld {
         random: &mut cyrus_game::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let receiver_index = self.resolve(receiver)?;
-        let sender_index = self.resolve(sender)?;
-        let selected_player = self
-            .selected_player_index()
-            .map(|index| self.id(index))
-            .transpose()?;
-        let selected = selected_player == Some(receiver);
+        let death_cursor = self.death_observation_count();
+        let death_source = self.query_position(sender).ok();
+        let result = (|| {
+            let receiver_index = self.resolve(receiver)?;
+            let sender_index = self.resolve(sender)?;
+            let selected_player = self
+                .selected_player_index()
+                .map(|index| self.id(index))
+                .transpose()?;
+            let selected = selected_player == Some(receiver);
 
-        if !selected {
-            let required = self.actors[receiver_index].attributes[Attribute::VWeapon];
-            if required != 0 && required != self.actors[sender_index].attributes[Attribute::Weapon]
-            {
-                return Ok(());
-            }
-        }
-        if self.actors[receiver_index].attributes[Attribute::Npc] != 0 {
-            let holding = self.spacing_weapon(receiver, inputs)?.1;
-            let stance = self.actors[receiver_index]
-                .control
-                .as_ref()
-                .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
-            if !holding && !stance {
-                return Ok(());
-            }
-        }
-        let from = self.spatial(sender)?.local.position;
-        let origin = self.spatial(receiver)?.local.position;
-        let heading = super::super::spatial::query_bearing(
-            origin[0].wrapping_sub(from[0]),
-            origin[2].wrapping_sub(from[2]),
-        );
-        let moved = cyrus_world::transform::translate_forward(origin, heading, 3000)?;
-        self.spatial
-            .as_mut()
-            .context("hit response spatial state unavailable")?
-            .actor_mut(receiver_index)?
-            .local
-            .position = moved;
-        let effect = i32::from(self.actors[receiver_index].attributes[Attribute::HitSound]);
-        let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
-        sounds(
-            receiver,
-            crate::script::ScriptSound::Positional {
-                effect,
-                volume: 0,
-                rate_offset_hz,
-                position: self.sight_position(receiver_index)?,
-                start_index: Some(4),
-            },
-        )?;
-        self.request_hurt_combat_taunt(receiver, inputs, random, sounds)?;
-        if selected
-            && self
-                .globals
-                .player_death_override_group()
-                .context("hit response death-animation override unavailable")?
-                != 0
-        {
-            return Ok(());
-        }
-        let sender_action = self.actors[sender_index]
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .map(|combat| combat.action)
-            .unwrap_or(-1);
-        if sender_action == 8 {
-            let selected = selected_player.context("hit response selected player unavailable")?;
-            self.cleanup_actor_weapon(
-                receiver,
-                selected,
-                inputs
-                    .nominal_ticks
-                    .context("hit response nominal ticks unavailable")?,
-                sounds,
-            )?;
-            self.cleanup_actor_weapon(
-                sender,
-                selected,
-                inputs
-                    .nominal_ticks
-                    .context("hit response nominal ticks unavailable")?,
-                sounds,
-            )?;
-        }
-
-        let ticks = inputs
-            .nominal_ticks
-            .context("hit response nominal ticks unavailable")?;
-        let reaction_group = if !selected {
-            AnimationGroup::FIGHT_HURT_1
-        } else {
-            let holding = self.spacing_weapon(receiver, inputs)?.1;
-            let stance = self.actors[receiver_index]
-                .control
-                .as_ref()
-                .and_then(|control| control.combat.as_ref())
-                .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
-            let odd = self.globals.world_loop_frame & 1 != 0;
-            if holding || stance {
-                if odd {
-                    AnimationGroup::FIGHT_HURT_2
-                } else {
-                    AnimationGroup::FIGHT_HURT_1
+            if !selected {
+                let required = self.actors[receiver_index].attributes[Attribute::VWeapon];
+                if required != 0
+                    && required != self.actors[sender_index].attributes[Attribute::Weapon]
+                {
+                    return Ok(());
                 }
-            } else if self.actors[receiver_index]
-                .animation
-                .as_ref()
-                .is_some_and(|animation| {
-                    animation
-                        .playback
-                        .has_group(AnimationGroup::FIGHT_HURT_FRONT)
-                })
-            {
-                let own = self.spatial(receiver)?.local;
-                let target = self.spatial(sender)?.local;
-                if super::super::decision::ordinary_defence_forward_arc(
-                    own.position,
-                    target.position,
-                    own.angles[1],
-                ) {
-                    AnimationGroup::FIGHT_HURT_FRONT
-                } else {
-                    AnimationGroup::FIGHT_HURT_BACK
-                }
-            } else if odd {
-                AnimationGroup::EXPLORE_HURT_2
-            } else {
-                AnimationGroup::EXPLORE_HURT_1
             }
-        };
-        if self.actors[receiver_index].animation.is_some() {
-            self.request_ordinary_group(receiver, reaction_group, false, ticks, sounds)?;
-        }
-
-        let receiver_action = self.actors[receiver_index]
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .map(|combat| combat.action)
-            .unwrap_or(-1);
-        if !matches!(
-            receiver_action,
-            CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
-        ) {
-            self.actors[sender_index]
-                .control
-                .as_mut()
-                .and_then(|control| control.combat.as_mut())
-                .context("hit sender combat unavailable")?
-                .action = CombatControlState::NO_ACTION;
-        }
-
-        let damage_admitted = self.actors[receiver_index].attributes[Attribute::VWeapon] == 0
-            || self.actors[sender_index].attributes[Attribute::Weapon]
-                == self.actors[receiver_index].attributes[Attribute::VWeapon];
-        if !damage_admitted {
-            return Ok(());
-        }
-        // The suppressed selected player takes no damage, no death taunts and no death response
-        // from a combat hit; the sender's charged weapon is still restored below.
-        let damage_suppressed = selected
-            && inputs
-                .death_suppressed
-                .context("combat hit damage-suppression state unavailable")?;
-        if !damage_suppressed {
-            let (strength, damage) = {
-                let combat = self.actors[sender_index]
+            if self.actors[receiver_index].attributes[Attribute::Npc] != 0 {
+                let holding = self.spacing_weapon(receiver, inputs)?.1;
+                let stance = self.actors[receiver_index]
                     .control
                     .as_ref()
                     .and_then(|control| control.combat.as_ref())
-                    .context("hit sender combat unavailable")?;
-                // A negative attack slot reads damage zero, as the original's damage reader does.
-                let damage = if combat.retained_action_indices[1] < 0 {
-                    0
-                } else {
-                    self.current_combat_motion(sender)?
-                        .damage
-                        .context("hit motion damage unavailable")?
-                };
-                (combat.strength, damage)
-            };
-            let armor = self.actors[receiver_index]
+                    .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
+                if !holding && !stance {
+                    return Ok(());
+                }
+            }
+            let from = self.spatial(sender)?.local.position;
+            let origin = self.spatial(receiver)?.local.position;
+            let heading = super::super::spatial::query_bearing(
+                origin[0].wrapping_sub(from[0]),
+                origin[2].wrapping_sub(from[2]),
+            );
+            let moved = cyrus_world::transform::translate_forward(origin, heading, 3000)?;
+            self.spatial
+                .as_mut()
+                .context("hit response spatial state unavailable")?
+                .actor_mut(receiver_index)?
+                .local
+                .position = moved;
+            let effect = i32::from(self.actors[receiver_index].attributes[Attribute::HitSound]);
+            let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+            sounds(
+                receiver,
+                crate::script::ScriptSound::Positional {
+                    effect,
+                    volume: 0,
+                    rate_offset_hz,
+                    position: self.sight_position(receiver_index)?,
+                    start_index: Some(4),
+                },
+            )?;
+            self.request_hurt_combat_taunt(receiver, inputs, random, sounds)?;
+            if selected
+                && self
+                    .globals
+                    .player_death_override_group()
+                    .context("hit response death-animation override unavailable")?
+                    != 0
+            {
+                return Ok(());
+            }
+            let sender_action = self.actors[sender_index]
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
-                .context("hit receiver combat unavailable")?
-                .armor;
-            let product = (strength.wrapping_add(100)).wrapping_mul(damage);
-            let scaled = product.wrapping_div(100);
-            let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
-            let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
-            let source_position = self.query_position(sender).ok();
-            let health_before = self.actors[receiver_index].attributes[Attribute::Health];
-            if selected {
-                self.apply_selected_additive_health(
+                .map(|combat| combat.action)
+                .unwrap_or(-1);
+            if sender_action == 8 {
+                let selected =
+                    selected_player.context("hit response selected player unavailable")?;
+                self.cleanup_actor_weapon(
                     receiver,
-                    change,
-                    inputs,
-                    Some(random),
+                    selected,
+                    inputs
+                        .nominal_ticks
+                        .context("hit response nominal ticks unavailable")?,
                     sounds,
                 )?;
-            } else {
-                let environment = super::transition::ObstacleEnvironment {
-                    selected_player,
-                    auto_grab: false,
-                    item_system_ready: inputs
-                        .hud
-                        .map(|hud| hud.inventory_ready())
-                        .transpose()?
-                        .unwrap_or(false),
-                    shell_execution: inputs.shell_execution.unwrap_or(false),
-                    ticks,
-                };
-                self.apply_nonplayer_contact_health(receiver, change, environment)?;
-            }
-            if let Some(source) = source_position {
-                self.attribute_damage(receiver, health_before, source);
-            }
-            if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
-                self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
-                self.request_timed_combat_taunt(
+                self.cleanup_actor_weapon(
                     sender,
-                    TauntType::KILLED_OPPONENT,
-                    0,
-                    inputs,
-                    random,
-                    sounds,
-                )?;
-                let motion_kind = self.current_combat_motion(sender)?.kind;
-                self.dispatch_combat_death(
-                    receiver,
-                    if motion_kind == 0 { 0 } else { 1 },
-                    inputs,
-                    random,
+                    selected,
+                    inputs
+                        .nominal_ticks
+                        .context("hit response nominal ticks unavailable")?,
                     sounds,
                 )?;
             }
-        }
-        // The original restores a charged (flaming sabre) sender through the ordinary
-        // chargeWeapon(0) swap after the damage response. Keep this after health
-        // and death dispatch so a failed earlier service retains its writes.
-        if self.actors[sender_index].attributes[Attribute::Weapon] == FLAMING_SABRE as u8 {
-            self.restore_charged_sender_weapon(sender, inputs)?;
-        }
-        let combat = self.actors[receiver_index]
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .context("hit response receiver combat unavailable")?;
-        if combat.attacker_selection_state == CombatControlState::COORDINATION_WAITING
-            && !selected
-            && !self.query_is_dead(receiver, selected_player)?
-        {
-            if let Some(coordinator) = self.ordinary_waiting_coordinator(sender)? {
-                self.send_combat_message(
-                    receiver,
-                    coordinator,
-                    CombatMessageCode::SENDER_COORDINATES,
-                )?;
-            } else {
-                self.set_combat_coordination(receiver, 1)?;
+
+            let ticks = inputs
+                .nominal_ticks
+                .context("hit response nominal ticks unavailable")?;
+            let reaction_group =
+                if !selected {
+                    AnimationGroup::FIGHT_HURT_1
+                } else {
+                    let holding = self.spacing_weapon(receiver, inputs)?.1;
+                    let stance = self.actors[receiver_index]
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
+                    let odd = self.globals.world_loop_frame & 1 != 0;
+                    if holding || stance {
+                        if odd {
+                            AnimationGroup::FIGHT_HURT_2
+                        } else {
+                            AnimationGroup::FIGHT_HURT_1
+                        }
+                    } else if self.actors[receiver_index].animation.as_ref().is_some_and(
+                        |animation| {
+                            animation
+                                .playback
+                                .has_group(AnimationGroup::FIGHT_HURT_FRONT)
+                        },
+                    ) {
+                        let own = self.spatial(receiver)?.local;
+                        let target = self.spatial(sender)?.local;
+                        if super::super::decision::ordinary_defence_forward_arc(
+                            own.position,
+                            target.position,
+                            own.angles[1],
+                        ) {
+                            AnimationGroup::FIGHT_HURT_FRONT
+                        } else {
+                            AnimationGroup::FIGHT_HURT_BACK
+                        }
+                    } else if odd {
+                        AnimationGroup::EXPLORE_HURT_2
+                    } else {
+                        AnimationGroup::EXPLORE_HURT_1
+                    }
+                };
+            if self.actors[receiver_index].animation.is_some() {
+                self.request_ordinary_group(receiver, reaction_group, false, ticks, sounds)?;
             }
-        }
-        Ok(())
+
+            let receiver_action = self.actors[receiver_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .map(|combat| combat.action)
+                .unwrap_or(-1);
+            if !matches!(
+                receiver_action,
+                CombatControlState::NO_ACTION | CombatControlState::STARTING_ACTION
+            ) {
+                self.actors[sender_index]
+                    .control
+                    .as_mut()
+                    .and_then(|control| control.combat.as_mut())
+                    .context("hit sender combat unavailable")?
+                    .action = CombatControlState::NO_ACTION;
+            }
+
+            let damage_admitted = self.actors[receiver_index].attributes[Attribute::VWeapon] == 0
+                || self.actors[sender_index].attributes[Attribute::Weapon]
+                    == self.actors[receiver_index].attributes[Attribute::VWeapon];
+            if !damage_admitted {
+                return Ok(());
+            }
+            // The suppressed selected player takes no damage, no death taunts and no death response
+            // from a combat hit; the sender's charged weapon is still restored below.
+            let damage_suppressed = selected
+                && inputs
+                    .death_suppressed
+                    .context("combat hit damage-suppression state unavailable")?;
+            if !damage_suppressed {
+                let (strength, damage) = {
+                    let combat = self.actors[sender_index]
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .context("hit sender combat unavailable")?;
+                    // A negative attack slot reads damage zero, as the original's damage reader does.
+                    let damage = if combat.retained_action_indices[1] < 0 {
+                        0
+                    } else {
+                        self.current_combat_motion(sender)?
+                            .damage
+                            .context("hit motion damage unavailable")?
+                    };
+                    (combat.strength, damage)
+                };
+                let armor = self.actors[receiver_index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .context("hit receiver combat unavailable")?
+                    .armor;
+                let product = (strength.wrapping_add(100)).wrapping_mul(damage);
+                let scaled = product.wrapping_div(100);
+                let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
+                let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
+                let source_position = self.query_position(sender).ok();
+                let health_before = self.actors[receiver_index].attributes[Attribute::Health];
+                if selected {
+                    self.apply_selected_additive_health(
+                        receiver,
+                        change,
+                        inputs,
+                        Some(random),
+                        sounds,
+                    )?;
+                } else {
+                    let environment = super::transition::ObstacleEnvironment {
+                        selected_player,
+                        auto_grab: false,
+                        item_system_ready: inputs
+                            .hud
+                            .map(|hud| hud.inventory_ready())
+                            .transpose()?
+                            .unwrap_or(false),
+                        shell_execution: inputs.shell_execution.unwrap_or(false),
+                        ticks,
+                    };
+                    self.apply_nonplayer_contact_health(receiver, change, environment)?;
+                }
+                if let Some(source) = source_position {
+                    self.attribute_damage(receiver, health_before, source);
+                }
+                if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
+                    self.request_combat_taunt(
+                        receiver,
+                        TauntType::DEATH,
+                        0,
+                        inputs,
+                        random,
+                        sounds,
+                    )?;
+                    self.request_timed_combat_taunt(
+                        sender,
+                        TauntType::KILLED_OPPONENT,
+                        0,
+                        inputs,
+                        random,
+                        sounds,
+                    )?;
+                    let motion_kind = self.current_combat_motion(sender)?.kind;
+                    self.dispatch_combat_death(
+                        receiver,
+                        if motion_kind == 0 { 0 } else { 1 },
+                        inputs,
+                        random,
+                        sounds,
+                    )?;
+                }
+            }
+            // The original restores a charged (flaming sabre) sender through the ordinary
+            // chargeWeapon(0) swap after the damage response. Keep this after health
+            // and death dispatch so a failed earlier service retains its writes.
+            if self.actors[sender_index].attributes[Attribute::Weapon] == FLAMING_SABRE as u8 {
+                self.restore_charged_sender_weapon(sender, inputs)?;
+            }
+            let combat = self.actors[receiver_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("hit response receiver combat unavailable")?;
+            if combat.attacker_selection_state == CombatControlState::COORDINATION_WAITING
+                && !selected
+                && !self.query_is_dead(receiver, selected_player)?
+            {
+                if let Some(coordinator) = self.ordinary_waiting_coordinator(sender)? {
+                    self.send_combat_message(
+                        receiver,
+                        coordinator,
+                        CombatMessageCode::SENDER_COORDINATES,
+                    )?;
+                } else {
+                    self.set_combat_coordination(receiver, 1)?;
+                }
+            }
+            Ok(())
+        })();
+        self.attribute_deaths(death_cursor, receiver, death_source);
+        result
     }
 
     /// Apply the installed `chargeWeapon(0)` inventory swap for a hit sender.
@@ -337,112 +351,125 @@ impl ScriptWorld {
         random: &mut cyrus_game::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let receiver_index = self.resolve(receiver)?;
-        let sender_index = self.resolve(sender)?;
-        let selected = self.selected_player_index() == Some(receiver_index);
-        let selected_player = self
-            .selected_player_index()
-            .map(|index| self.id(index))
-            .transpose()?;
-        let from = self.spatial(sender)?.local.position;
-        let origin = self.spatial(receiver)?.local.position;
-        let heading = super::super::spatial::query_bearing(
-            origin[0].wrapping_sub(from[0]),
-            origin[2].wrapping_sub(from[2]),
-        );
-        let moved = cyrus_world::transform::translate_forward(origin, heading, 3000)?;
-        self.spatial
-            .as_mut()
-            .context("direct damage spatial state unavailable")?
-            .actor_mut(receiver_index)?
-            .local
-            .position = moved;
-        if selected
-            && self
-                .globals
-                .player_death_override_group()
-                .context("direct damage death-animation override unavailable")?
-                != 0
-        {
-            return Ok(());
-        }
-        let ticks = inputs
-            .nominal_ticks
-            .context("direct damage nominal ticks unavailable")?;
-        let group = if selected {
-            let (_, holding) = self.spacing_weapon(receiver, inputs)?;
-            let stance = holding
-                || self.actors[receiver_index]
-                    .control
-                    .as_ref()
-                    .and_then(|control| control.combat.as_ref())
-                    .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
-            let odd = self.globals.world_loop_frame & 1 != 0;
-            Some(match (stance, odd) {
-                (true, false) => AnimationGroup::FIGHT_HURT_1,
-                (true, true) => AnimationGroup::FIGHT_HURT_2,
-                (false, false) => AnimationGroup::EXPLORE_HURT_1,
-                (false, true) => AnimationGroup::EXPLORE_HURT_2,
-            })
-        } else {
-            Some(AnimationGroup::FIGHT_HURT_1)
-        };
-        if let Some(group) = group
-            && self.actors[receiver_index].animation.is_some()
-        {
-            self.request_ordinary_group(receiver, group, false, ticks, sounds)?;
-        }
-        if selected
-            && inputs
-                .death_suppressed
-                .context("direct damage damage-suppression state unavailable")?
-        {
-            return Ok(());
-        }
-        let source_position = self.query_position(sender).ok();
-        let health_before = self.actors[receiver_index].attributes[Attribute::Health];
-        let damage = i32::from(self.actors[sender_index].attributes[Attribute::Damage]);
-        if selected {
-            self.apply_selected_additive_health(
-                receiver,
-                damage.wrapping_neg(),
-                inputs,
-                Some(random),
-                sounds,
-            )?;
-        } else {
-            // d005 uses the generic mode-zero health admission. In particular, this
-            // preserves the nonzero attr-120 veto and attr-97 weapon/stance gate before
-            // changing the receiver, rather than writing the health byte directly.
-            let environment = super::transition::ObstacleEnvironment {
-                selected_player,
-                auto_grab: false,
-                item_system_ready: inputs
-                    .hud
-                    .map(|hud| hud.inventory_ready())
-                    .transpose()?
-                    .unwrap_or(false),
-                shell_execution: inputs.shell_execution.unwrap_or(false),
-                ticks,
-            };
-            self.apply_nonplayer_contact_health(receiver, damage.wrapping_neg(), environment)?;
-        }
-        if let Some(source) = source_position {
-            self.attribute_damage(receiver, health_before, source);
-        }
-        if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
-            if !selected {
-                self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
+        let death_cursor = self.death_observation_count();
+        let death_source = self.query_position(sender).ok();
+        let result = (|| {
+            let receiver_index = self.resolve(receiver)?;
+            let sender_index = self.resolve(sender)?;
+            let selected = self.selected_player_index() == Some(receiver_index);
+            let selected_player = self
+                .selected_player_index()
+                .map(|index| self.id(index))
+                .transpose()?;
+            let from = self.spatial(sender)?.local.position;
+            let origin = self.spatial(receiver)?.local.position;
+            let heading = super::super::spatial::query_bearing(
+                origin[0].wrapping_sub(from[0]),
+                origin[2].wrapping_sub(from[2]),
+            );
+            let moved = cyrus_world::transform::translate_forward(origin, heading, 3000)?;
+            self.spatial
+                .as_mut()
+                .context("direct damage spatial state unavailable")?
+                .actor_mut(receiver_index)?
+                .local
+                .position = moved;
+            if selected
+                && self
+                    .globals
+                    .player_death_override_group()
+                    .context("direct damage death-animation override unavailable")?
+                    != 0
+            {
+                return Ok(());
             }
-            self.dispatch_combat_death(receiver, 0, inputs, random, sounds)?;
-        }
-        // Direct damage uses the same post-response charged-weapon restoration
-        // as the scaled hit path. Keep it after health and death dispatch so
-        // earlier service failures retain their writes.
-        if self.actors[sender_index].attributes[Attribute::Weapon] == FLAMING_SABRE as u8 {
-            self.restore_charged_sender_weapon(sender, inputs)?;
-        }
-        Ok(())
+            let ticks = inputs
+                .nominal_ticks
+                .context("direct damage nominal ticks unavailable")?;
+            let group = if selected {
+                let (_, holding) = self.spacing_weapon(receiver, inputs)?;
+                let stance = holding
+                    || self.actors[receiver_index]
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .is_some_and(|combat| combat.flags.contains(CombatFlags::STANCE));
+                let odd = self.globals.world_loop_frame & 1 != 0;
+                Some(match (stance, odd) {
+                    (true, false) => AnimationGroup::FIGHT_HURT_1,
+                    (true, true) => AnimationGroup::FIGHT_HURT_2,
+                    (false, false) => AnimationGroup::EXPLORE_HURT_1,
+                    (false, true) => AnimationGroup::EXPLORE_HURT_2,
+                })
+            } else {
+                Some(AnimationGroup::FIGHT_HURT_1)
+            };
+            if let Some(group) = group
+                && self.actors[receiver_index].animation.is_some()
+            {
+                self.request_ordinary_group(receiver, group, false, ticks, sounds)?;
+            }
+            if selected
+                && inputs
+                    .death_suppressed
+                    .context("direct damage damage-suppression state unavailable")?
+            {
+                return Ok(());
+            }
+            let source_position = self.query_position(sender).ok();
+            let health_before = self.actors[receiver_index].attributes[Attribute::Health];
+            let damage = i32::from(self.actors[sender_index].attributes[Attribute::Damage]);
+            if selected {
+                self.apply_selected_additive_health(
+                    receiver,
+                    damage.wrapping_neg(),
+                    inputs,
+                    Some(random),
+                    sounds,
+                )?;
+            } else {
+                // d005 uses the generic mode-zero health admission. In particular, this
+                // preserves the nonzero attr-120 veto and attr-97 weapon/stance gate before
+                // changing the receiver, rather than writing the health byte directly.
+                let environment = super::transition::ObstacleEnvironment {
+                    selected_player,
+                    auto_grab: false,
+                    item_system_ready: inputs
+                        .hud
+                        .map(|hud| hud.inventory_ready())
+                        .transpose()?
+                        .unwrap_or(false),
+                    shell_execution: inputs.shell_execution.unwrap_or(false),
+                    ticks,
+                };
+                self.apply_nonplayer_contact_health(receiver, damage.wrapping_neg(), environment)?;
+            }
+            if let Some(source) = source_position {
+                self.attribute_damage(receiver, health_before, source);
+            }
+            if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
+                if !selected {
+                    self.request_combat_taunt(
+                        receiver,
+                        TauntType::DEATH,
+                        0,
+                        inputs,
+                        random,
+                        sounds,
+                    )?;
+                }
+                self.dispatch_combat_death(receiver, 0, inputs, random, sounds)?;
+            }
+            // Direct damage uses the same post-response charged-weapon restoration
+            // as the scaled hit path. Keep it after health and death dispatch so
+            // earlier service failures retain their writes.
+            if self.actors[sender_index].attributes[Attribute::Weapon] == FLAMING_SABRE as u8 {
+                self.restore_charged_sender_weapon(sender, inputs)?;
+            }
+            Ok(())
+        })();
+        self.attribute_deaths(death_cursor, receiver, death_source);
+        result
     }
 
     /// Read attack-processing admission without advancing playback or marking contact.
@@ -754,53 +781,59 @@ impl ScriptWorld {
         random: &mut cyrus_game::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let effect = i32::from(self.actors[id.index].attributes[Attribute::HitSound]);
-        let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
-        sounds(
-            id,
-            crate::script::ScriptSound::Positional {
-                effect,
-                volume: 0,
-                rate_offset_hz,
-                position: self.sight_position(id.index)?,
-                start_index: None,
-            },
-        )?;
-        if self.actors[defender.index].attributes[Attribute::Health] == 0 {
-            return Ok(());
-        }
-        let damage = if self.actors[id.index]
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .is_some_and(|combat| combat.retained_action_indices[1] < 0)
-        {
-            0
-        } else {
-            self.current_combat_motion(id)?
-                .damage
-                .context("contact motion damage unavailable")?
-        };
-        let health_before = self.actors[defender.index].attributes[Attribute::Health];
-        let source_position = self.query_position(id).ok();
-        if environment.selected_player == Some(defender) {
-            self.apply_selected_contact_health(
-                defender,
-                damage.wrapping_neg(),
-                inputs,
-                random,
-                sounds,
+        let death_cursor = self.death_observation_count();
+        let death_source = self.query_position(id).ok();
+        let result = (|| {
+            let effect = i32::from(self.actors[id.index].attributes[Attribute::HitSound]);
+            let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+            sounds(
+                id,
+                crate::script::ScriptSound::Positional {
+                    effect,
+                    volume: 0,
+                    rate_offset_hz,
+                    position: self.sight_position(id.index)?,
+                    start_index: None,
+                },
             )?;
-        } else {
-            self.apply_nonplayer_contact_health(defender, damage.wrapping_neg(), environment)?;
-        }
-        if let Some(source) = source_position {
-            self.attribute_damage(defender, health_before, source);
-        }
-        if self.actors[defender.index].attributes[Attribute::Health] == 0 {
-            self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
-        }
-        Ok(())
+            if self.actors[defender.index].attributes[Attribute::Health] == 0 {
+                return Ok(());
+            }
+            let damage = if self.actors[id.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.retained_action_indices[1] < 0)
+            {
+                0
+            } else {
+                self.current_combat_motion(id)?
+                    .damage
+                    .context("contact motion damage unavailable")?
+            };
+            let health_before = self.actors[defender.index].attributes[Attribute::Health];
+            let source_position = self.query_position(id).ok();
+            if environment.selected_player == Some(defender) {
+                self.apply_selected_contact_health(
+                    defender,
+                    damage.wrapping_neg(),
+                    inputs,
+                    random,
+                    sounds,
+                )?;
+            } else {
+                self.apply_nonplayer_contact_health(defender, damage.wrapping_neg(), environment)?;
+            }
+            if let Some(source) = source_position {
+                self.attribute_damage(defender, health_before, source);
+            }
+            if self.actors[defender.index].attributes[Attribute::Health] == 0 {
+                self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
+            }
+            Ok(())
+        })();
+        self.attribute_deaths(death_cursor, defender, death_source);
+        result
     }
 
     /// Additive contact health follows preservation's contact-health rules.
@@ -896,11 +929,11 @@ impl ScriptWorld {
                     }));
             }
         }
-        self.actors[index]
+        let _ = self.actors[index]
             .control
             .as_mut()
-            .context("contact death control unavailable")?
-            .ai_type = AiType::DEAD;
+            .context("contact death control unavailable")?;
+        self.set_actor_ai_type(index, AiType::DEAD);
         Ok(())
     }
 
@@ -969,11 +1002,11 @@ impl ScriptWorld {
                     AnimationGroup::DEATH_FIGHT_STAB_END
                 }));
         }
-        self.actors[index]
+        let _ = self.actors[index]
             .control
             .as_mut()
-            .context("zap death control unavailable")?
-            .ai_type = AiType::DEAD;
+            .context("zap death control unavailable")?;
+        self.set_actor_ai_type(index, AiType::DEAD);
         Ok(())
     }
 
@@ -1142,7 +1175,11 @@ impl ScriptWorld {
                 control.script_control &= !2;
             }
         }
-        control.ai_type = AiType::DEAD;
+        self.set_actor_ai_type(index, AiType::DEAD);
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated combat death control");
         let combat = control.combat.as_mut().expect("validated combat record");
         combat.flags.remove(CombatFlags::STANCE);
         combat.close_distance_passes = 0;

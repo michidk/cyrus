@@ -16,6 +16,7 @@ the Mods window that opens with Backtick. The browser build does not load mods.
 | --- | --- | --- |
 | `autosave` | saves, input, memory, settings, hud | Periodic transactional saves during eligible gameplay |
 | `grass` | terrain, owned geometry, settings, shader replacement | Seeded blades on green terrain texels, chunk LOD and wind |
+| `ragdolls` | lifecycle, physics, memory, settings | Articulated visual death physics with guest-authored anatomy templates |
 | `blood` | damage, particles, settings | A brief spray of fading red particles on actual player or actor health loss |
 | `modern-water` | environment, effects, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
@@ -547,3 +548,59 @@ containing `mod.toml`, `grass.wesl` and the built artifact renamed `mod.wasm`.
 The ignored host test `wasm_grass_geometry` loads the actual component when
 `CYRUS_GRASS_WASM` points to its output. Guest tests and SDK tests run with their own
 manifests. Host and browser game crates do not import guest code or installed art.
+
+## Death observations and owned physics
+
+`Cx::lifecycle` gives opaque `ActorId` values. They distinguish same-name actors
+and expire when the world or an actor's presentation incarnation changes.
+`Lifecycle::snapshot` distinguishes alive, dead, hidden and removed actors. A stale
+handle returns `None`. `Actors::deaths` is a shared read-only batch of committed
+lifecycle transitions, published before guest Update. Raw health writes and saved
+corpses do not synthesize deaths. The selected player's death inhibition does not
+hide its committed transition. Each event includes the captured model, frame,
+world pose, player flag and optional known source position. All these positions
+use scene coordinates, Y up, with twenty original map units per scene unit.
+
+`Cx::physics` fits presentation to those observations. It never writes health,
+scripts, gameplay collision, quest state or the player death controller.
+`model`, `origin`, `vertices` and `reference` describe the captured death mesh
+when its rendered binding is ready. Vertices use model-local scene coordinates;
+`reference` has the same topology in frame zero. Empty results mean unavailable.
+`attachments` returns world poses in a request-local order. Read these values
+when fitting an assembly, rather than uploading meshes every frame.
+
+Build an `Assembly` by calling `body(BodyDesc)` for each body. The returned
+`BodyIndex` can be used in `JointDesc`, source `VertexWeight` values and
+`AttachmentBinding`. Bodies use world poses, unit quaternions, scene distances,
+seconds and positive masses. The guest chooses sphere/capsule/box shapes,
+velocity, constant acceleration, impulse and damping. Joints lock linear motion
+and accept ordered angular bounds in radians about their shared world rest
+frame. Source weights contain one to four nonnegative entries, summing to one.
+The renderer freezes that exact installed frame and deforms positions and
+normals using the bodies. An attachment binding follows its assigned body while
+the original attachment still exists.
+
+`Physics::claim(actor, &assembly)` validates the whole request before allocating.
+It returns `Invalid`, `Unavailable`, `AlreadyClaimed` or `Budget`. Claims require
+a visible dead actor with prepared source geometry and a static collision world.
+The renderer waits for the captured model's GLB mapping when that asset is still loading.
+`transforms` returns body poses in insertion order; an empty batch means stale
+or unowned. `release` succeeds only for the submitting owner. Physics uses
+virtual game time, steps at 120 Hz, limits catch-up to eight steps, and sleeps
+settled bodies. Visual bodies contact static source polygons and dry terrain;
+they do not participate in original actor collision or contact each other.
+
+Limits are 32 bodies and 64 joints per assembly, 20,000 source vertices per
+actor, 256 bodies and 100,000 bound vertices per mod, and 1,024 bodies and 400,000
+bound vertices total. A serialized request is at most 2 MB. Invalid or over-budget
+requests allocate nothing. Hide, removal, revival, owner disable, successful
+component reload, save load and world replacement release claims. Releasing a
+claim restores the original mesh and animation ownership.
+
+The bundled `ragdolls` mod owns rig templates, fitting, joint limits, masses,
+gravity and impact settings. It is disabled until activated in the Mods window.
+It consumes death transitions, including the player, rather than health values
+or actor names. Unknown sources supply no directed impulse. Unsupported geometry
+retains original presentation and emits a diagnostic. Rig fitting and anatomical
+coverage are separate from the generic host contract; a successful claim alone
+does not establish the visual quality of a profile.

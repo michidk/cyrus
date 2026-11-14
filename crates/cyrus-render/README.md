@@ -727,3 +727,9 @@ allows guest-authored deformation with per-mesh parameters and conservative boun
 padding. It is stationary without an active replacement. Grass placement, image
 classification, LOD and wind equations belong to `mods/grass`, not this renderer.
 This base has no ray-tracing geometry integration.
+`pose_override` accepts an exclusive visual claim on a model node. The claim
+identifies an exact source frame and normalized source-vertex body weights.
+It clones each mapped primitive once, applies weighted body transforms to positions
+and inverse-transpose transforms to normals, and updates bounds. Ordinary animation
+writes skip claimed meshes. Claim removal restores the original mesh handle and
+reclaims the private copy. Gameplay transforms and visibility retain ownership.

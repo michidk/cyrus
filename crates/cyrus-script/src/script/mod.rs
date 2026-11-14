@@ -103,9 +103,10 @@ mod flags;
 pub use flags::GlobalFlagsSnapshot;
 mod hud;
 pub use registry::{
-    ActorEvent, ActorFlatDraw, ActorPrelight, AnimationData, CameraDrive, CameraFrameState,
-    DamageEvent, EnvironmentalEffect, EnvironmentalEffects, GroundKind, NATIVE_LOG_LIMIT,
-    NativeCall, PublishedCamera, SavedPlacement, SelectedDeathState, SelectedHealthState,
+    ActorEvent, ActorFlatDraw, ActorPrelight, ActorPresence, ActorSnapshot, AnimationData,
+    CameraDrive, CameraFrameState, DamageEvent, DeathEvent, EnvironmentalEffect,
+    EnvironmentalEffects, GroundKind, NATIVE_LOG_LIMIT, NativeCall, PublishedCamera,
+    SavedPlacement, SelectedDeathState, SelectedHealthState,
 };
 mod inventory;
 mod journal;

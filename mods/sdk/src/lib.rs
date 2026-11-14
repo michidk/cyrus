@@ -23,6 +23,13 @@ pub use geometry::{
     Geometry, GeometryError, GeometryLease, Material, Mesh, Pixels, Region, Terrain,
     TerrainRevision, TerrainTriangle, TextureId, Vertex, WorldGeneration,
 };
+mod lifecycle;
+pub use lifecycle::{ActorId, ActorSnapshot, ActorState, DeathEvent, Lifecycle};
+mod physics;
+pub use physics::{
+    Assembly, AttachmentBinding, BodyDesc, BodyIndex, ClaimError, JointDesc, Physics, Shape,
+    VertexWeight,
+};
 mod handles;
 mod keys;
 mod math;
@@ -86,6 +93,8 @@ pub struct Cx {
     pub particles: Particles,
     pub terrain: Terrain,
     pub geometry: Geometry,
+    pub lifecycle: Lifecycle,
+    pub physics: Physics,
 }
 
 /// The memory key this SDK keeps the last seen world generation under; the tilde keeps it apart
@@ -94,7 +103,7 @@ const WORLD_GENERATION: &str = "~world-generation";
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 17] {
+fn query_for() -> [QueryFor; 19] {
     [
         QueryFor::Ref(raw::Actors::type_path()),
         QueryFor::Mut(raw::Camera::type_path()),
@@ -113,6 +122,8 @@ fn query_for() -> [QueryFor; 17] {
         QueryFor::Mut(raw::Saves::type_path()),
         QueryFor::Ref(raw::Terrain::type_path()),
         QueryFor::Mut(raw::Geometry::type_path()),
+        QueryFor::Ref(raw::Lifecycle::type_path()),
+        QueryFor::Mut(raw::Physics::type_path()),
     ]
 }
 
@@ -164,6 +175,11 @@ pub fn run<M: Mod>(query: Query) {
             terrain: Terrain(raw::Terrain::new(row.component(15))),
             geometry: Geometry {
                 raw: raw::Geometry::new(row.component(16)),
+                id: M::ID,
+            },
+            lifecycle: Lifecycle(raw::Lifecycle::new(row.component(17))),
+            physics: Physics {
+                raw: raw::Physics::new(row.component(18)),
                 id: M::ID,
             },
             particles: Particles {

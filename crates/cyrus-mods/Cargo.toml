@@ -15,7 +15,9 @@ cyrus-script.workspace = true
 cyrus-game.workspace = true
 cyrus-assets = { workspace = true, features = ["parsers"] }
 cyrus-soup.workspace = true
+cyrus-world.workspace = true
 cyrus-render.workspace = true
+rapier3d = { version = "=0.32.0", features = ["enhanced-determinism"] }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

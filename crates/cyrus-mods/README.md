@@ -75,3 +75,12 @@ Geometry leases identify the current loaded mod instance and revision. Guest cac
 including cached empty terrain regions, must reset when the lease changes after
 successful reload or reactivation. The typed SDK persists the opaque token without
 losing integer precision through the session memory API.
+
+`lifecycle` publishes generation-scoped identities, snapshots and committed death
+transitions from cyrus-script. `physics` validates guest-authored rigid assemblies
+and owns a native Rapier solver, static collision copies and exclusive mesh/attachment
+bindings. It runs after authoritative script transforms and before mesh frame
+presentation. These bodies never alter gameplay collision or actor state.
+Owner instance/revision, actor incarnation and world generation bound every claim.
+The SDK contracts and resource limits are documented in
+[`mods/README.md`](../../mods/README.md#death-observations-and-owned-physics).

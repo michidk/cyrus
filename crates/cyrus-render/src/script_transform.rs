@@ -5,6 +5,10 @@ use bevy::{
 };
 use cyrus_script::script::{Pose, ScriptActors, ScriptBinding};
 
+/// Authoritative script transforms have been published to the rendered hierarchy.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ScriptTransforms;
+
 /// Applies explicit script poses after ordinary scene transform propagation.
 pub struct ScriptTransformPlugin;
 impl Plugin for ScriptTransformPlugin {
@@ -16,6 +20,7 @@ impl Plugin for ScriptTransformPlugin {
         app.add_systems(
             PostUpdate,
             apply
+                .in_set(ScriptTransforms)
                 .after(TransformSystems::Propagate)
                 .before(VisibilitySystems::CheckVisibility)
                 .before(bevy::asset::AssetEventSystems),
