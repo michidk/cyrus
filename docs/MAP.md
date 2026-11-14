@@ -34,6 +34,7 @@ module where it is defined and regenerate.
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
 - `src/hud.rs` — Installed HUD layout, item and font records.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
+- `src/ini_patch.rs` — INI patches: a mod's declared value changes in the game's INI files (`COMBAT.INI`, `MENU.INI`).
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
 - `src/loading.rs` — Native preload scan and parser coverage results.
 - `src/loading_artwork.rs` — Destination-specific loading pictures, prepared on demand from WORLD.INI.
@@ -64,6 +65,7 @@ module where it is defined and regenerate.
 - `src/script/combat.rs` — Prepared combat moves with authored omissions retained explicitly.
 - `src/script/inventory.rs` — Static SOUP census; occurrence counts do not establish runtime support or reachability.
 - `src/script/weapon.rs` — Installed weapon model identities and original signed ROB length inputs.
+- `src/script_edit.rs` — Script edits: statement-level changes to an actor's SOUP program, declared by a mod
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/script_patch.rs` — Script patches: a mod's declared edits to an actor's script in one world, applied when the
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
@@ -79,6 +81,7 @@ module where it is defined and regenerate.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/splash_data.rs` — Converts the parsed Windows 3dfx splash into the asset the game draws live.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
+- `src/text_patch.rs` — Text patches: a mod's declared corrections to the lines of the game's dialogue file
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 
@@ -149,16 +152,12 @@ module where it is defined and regenerate.
 ## `cyrus-mods` — Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 
 - `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
-- `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
-- `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
 - `src/gameplay.rs` — Native gameplay services requested by Wasm guests; hosts own eligibility and completion.
 - `src/gameplay_runtime_test.rs` — Actual Wasm guests exercise typed gameplay hooks without a renderer or installed assets.
 - `src/geometry.rs` — Validated owner-scoped raster mesh uploads. Guest code owns all placement and LOD policy.
 - `src/grass_runtime_test.rs` — Load the actual grass component against typed terrain and owned mesh hooks.
 - `src/ownership.rs` — Loaded guest incarnations shared by asynchronous gameplay and visual hooks.
 - `src/particle_runtime_test.rs` — Real WebAssembly guest/host exercise, optionally with offscreen GPU capture.
-- `src/particle_runtime_test.rs` — Real WebAssembly guest/host exercise, optionally with offscreen GPU capture.
-- `src/particles.rs` — Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
 - `src/particles.rs` — Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
 - `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
 - `src/terrain.rs` — Bounded, revision-scoped reads of retained terrain geometry and installed image pixels.
