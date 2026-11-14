@@ -34,8 +34,14 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         position: [10_448_896, -178_944, 10_502_144],
         heading: 0,
     };
-    cyrus_script::player::placement::settle_static(&scene, &mut pose).unwrap();
-    assert_eq!(pose.position, [10_448_896, -190_464, 10_502_144]);
+    // Export alone has no live actor poses; preserve placement until their owner can rank them.
+    let error = cyrus_script::player::placement::settle_static(&scene, &mut pose).unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<cyrus_script::player::placement::ActorModelSupportRequired>()
+            .is_some()
+    );
+    assert_eq!(pose.position, [10_448_896, -178_944, 10_502_144]);
     assert_eq!(pose.heading, 0);
     assert_eq!(scene.collision.placements.len(), 1691);
     assert_eq!(scene.collision.models["PLANT000"].flags, 2);
