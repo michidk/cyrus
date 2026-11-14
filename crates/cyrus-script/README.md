@@ -39,6 +39,11 @@ animation receiver. Only a current animation's suppression flag prevents transla
 stored deep-water surfaces still halve the distance. This follows preservation's
 [directional displacement rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#directional-ordinary-displacement).
 
+Verified: static slide termination applies its final displacement and health change,
+then clears sliding, even when there is no animation receiver. Only the hurt-animation
+request is skipped, following preservation's [slide termination](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#slide-termination)
+and [request receiver gate](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playanimation).
+
 Verified: static-model ground response uses `FallDamage` and `FallHold`, independently
 of `Collide`. Animated actors retain collision-mask admission. Static models run
 the support/ground stage without the animated obstacle and overlap passes, following

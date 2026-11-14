@@ -13296,6 +13296,84 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
 }
 
 #[test]
+fn static_slide_termination_applies_hurt_and_continues_without_animation() {
+    use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
+    for animation_system in [false, true] {
+        for distance in [256, 257] {
+            let mut scripts = cache();
+            scripts.updates.animation_system = animation_system;
+            scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
+                (Attribute::Collide, 0),
+                (Attribute::FallDamage, 1),
+                (Attribute::Health, 100),
+            ]);
+            for placement in &mut scripts.instances {
+                placement.active = 1;
+                placement.object_type = PlacementType::MODEL;
+                placement.map_position = [10, 20, 30];
+            }
+            scripts.content_id = scripts.content_identity().unwrap();
+            let (world, data, models) = static_model_fixture(scripts.clone());
+            let mut saved = movement_snapshot(&world, &scripts, &data);
+            saved["actors"][0]["control"]["sliding_state"] = 1.into();
+            saved["actors"][0]["control"]["sliding_distance"] = distance.into();
+            let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+            let id = world.id(0).unwrap();
+            let ids = [id, world.id(1).unwrap()];
+            world.refresh_model_presentations(&data, &ids).unwrap();
+            let before = world.spatial(id).unwrap().local.position;
+            let mut scene = ordinary_collision_scene(world.world, models);
+            scene.settings.post_collide_height = 50;
+            scene.settings.slide_hurt = Some((1, 7));
+            let mut sounds = Vec::new();
+            for update in 1..=2 {
+                world
+                    .update_ordinary(
+                        &data,
+                        [10, 30],
+                        OrdinaryInputs {
+                            scripts: ScriptInputs {
+                                nominal_ticks: Some(1),
+                                fine_ticks: Some(1),
+                                frame_scale: Some(256),
+                                ..Default::default()
+                            },
+                            scene: Some(&scene),
+                        },
+                        &mut cyrus_game::random::EngineRandom::default(),
+                        &mut |actor, sound| {
+                            sounds.push((actor, sound));
+                            Ok(())
+                        },
+                        100,
+                    )
+                    .unwrap();
+                let actor = &world.actors()[0];
+                assert!(actor.failure().is_none(), "{:?}", actor.failure());
+                assert_eq!(actor.control_state().unwrap().sliding_state, 0);
+                assert_eq!(
+                    actor.attributes()[Attribute::Health],
+                    if distance > 256 { 93 } else { 100 }
+                );
+                assert_eq!(actor.runtime().unwrap().variables(), [4 + update]);
+                assert_eq!(world.animation_frame(id).unwrap(), None);
+                let after = world.spatial(id).unwrap().local.position;
+                assert_eq!(
+                    [after[0], after[2]],
+                    [before[0], before[2] - if distance > 256 { 2048 } else { 0 }]
+                );
+                eprintln!(
+                    "static slide: animation_system={animation_system} distance={distance} update={update} position={after:?} health={} sliding={}",
+                    actor.attributes()[Attribute::Health],
+                    actor.control_state().unwrap().sliding_state
+                );
+            }
+            assert!(sounds.is_empty());
+        }
+    }
+}
+
+#[test]
 fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updates() {
     use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
     let mut scripts = cache();

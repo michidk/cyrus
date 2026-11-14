@@ -604,7 +604,7 @@ impl ScriptWorld {
             )?;
             if is_selected {
                 self.globals.set_player_death_override_group(74)?;
-            } else if self.updates.animation_system {
+            } else if self.updates.animation_system && self.actors[id.index].animation.is_some() {
                 self.request_ordinary_group(
                     id,
                     AnimationGroup::LAND_HURT,
