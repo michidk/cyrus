@@ -48,6 +48,7 @@ fn scroll_velocity(direction: u16, speed: f32) -> Vec2 {
 
 #[derive(Component)]
 pub(crate) struct Sky {
+    scroll_enabled: bool,
     velocity: Vec2,
     speed: f32,
     tick: u64,
@@ -61,9 +62,10 @@ impl Sky {
         self.velocity = scroll_velocity(direction, self.speed);
     }
 
-    pub(crate) fn new(speed: u8) -> Self {
+    pub(crate) fn new(speed: u8, scroll_enabled: bool) -> Self {
         let direction = wrap(RandomState::new().hash_one(0_u8)) as u16;
         Self {
+            scroll_enabled,
             velocity: scroll_velocity(direction, f32::from(speed)),
             speed: f32::from(speed),
             tick: 0,
@@ -206,7 +208,12 @@ fn animate_sky(
             u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32;
         material.scroll.z = modern;
         material.scroll.w = modern_fog;
-        for _ in 0..tick.saturating_sub(sky.tick).min(36) {
+        let elapsed_ticks = if sky.scroll_enabled {
+            tick.saturating_sub(sky.tick).min(36)
+        } else {
+            0
+        };
+        for _ in 0..elapsed_ticks {
             material.scroll += sky.velocity.extend(0.0).extend(0.0);
             for index in 0..2 {
                 let channel = &mut material.scroll[index];
@@ -251,6 +258,7 @@ mod tests {
             });
         app.world_mut().spawn((
             Sky {
+                scroll_enabled: true,
                 velocity: Vec2::new(1.0, -1.0),
                 speed: 16.0,
                 tick: 0,
@@ -300,8 +308,8 @@ mod tests {
                     .is_err()
             );
         }
-        assert_eq!(Sky::new(0).velocity, Vec2::ZERO);
-        assert!((Sky::new(6).velocity.length() - 0.375).abs() < 0.00001);
+        assert_eq!(Sky::new(0, true).velocity, Vec2::ZERO);
+        assert!((Sky::new(6, true).velocity.length() - 0.375).abs() < 0.00001);
 
         // Original live sky samples, with the captured direction and zero offsets.
         // A fresh trigonometric evaluation differs in both channels.
@@ -351,5 +359,38 @@ mod tests {
             .advance_by(Duration::from_millis(55));
         app.update();
         assert_eq!(scroll(&app), Vec4::new(12.0, 4.9375, 1.0, 0.0));
+        app.world_mut()
+            .get_mut::<Sky>(entity)
+            .unwrap()
+            .scroll_enabled = false;
+        let frozen = scroll(&app);
+        app.world_mut()
+            .get_mut::<Sky>(entity)
+            .unwrap()
+            .set_speed(0, 16);
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_secs(100));
+        app.update();
+        assert_eq!(
+            scroll(&app),
+            frozen,
+            "disabled motion retains offsets even after speed edits"
+        );
+        app.world_mut()
+            .get_mut::<Sky>(entity)
+            .unwrap()
+            .scroll_enabled = true;
+        app.update();
+        assert_eq!(
+            scroll(&app),
+            frozen,
+            "disabled ticks must not accumulate a backlog"
+        );
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(55));
+        app.update();
+        assert_eq!(scroll(&app), frozen + Vec4::new(0.0, 1.0, 0.0, 0.0));
     }
 }

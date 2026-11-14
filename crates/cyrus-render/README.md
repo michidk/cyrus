@@ -711,3 +711,10 @@ parity with the original.
 Mod orbit control additionally requests pointer lock. Opening the keyboard console
 releases that lock while keeping the pointer hidden; closing it restores orbit lock.
 Host settings retain a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.
+
+**Verified:** the installed `[xngine] sky_move` switch controls sky scrolling
+independently of speed, per [preservation’s sky settings](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md#global-engine-toggles).
+Disabled motion retains texture offsets while consuming presentation ticks, so
+continuation has no deferred scroll backlog. Session restoration retains the
+switch through the validated environment identity; a speed edit does not enable
+disabled motion. This state regression does not establish full pixel parity.

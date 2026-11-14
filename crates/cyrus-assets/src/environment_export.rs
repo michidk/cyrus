@@ -291,6 +291,7 @@ pub(crate) fn prepare(
 ) -> anyhow::Result<()> {
     let ini = crate::preparation::text(source, "WORLD.INI")?;
     let system = crate::preparation::text(source, "SYSTEM.INI")?;
+    let system_settings = rgpre::import::system_ini::SystemIni::parse(&system)?;
     let sky = if entry.world.is_some() && !sky_disabled(&system)? {
         value(&ini, "world_skyfx", entry.index)
             .map(|filename| -> anyhow::Result<SkyImage> {
@@ -316,6 +317,7 @@ pub(crate) fn prepare(
                     })
                     .collect();
                 Ok(SkyImage {
+                    scroll_enabled: system_settings.xngine.sky_move.unwrap_or(true),
                     sun: sun_image(source, &ini, entry.index)?,
                     width: frame.width.into(),
                     height: frame.height.into(),
@@ -383,7 +385,6 @@ pub(crate) fn prepare(
         })
         .transpose()?;
     let (prelighting, object_lights) = model_lights(source, entry, &system)?;
-    let system_settings = rgpre::import::system_ini::SystemIni::parse(&system)?;
     let texture_scale = system_settings.glide.text_scale.unwrap_or([4, 2]);
     rgpre::import::bsi::GlideTextureLayout::new([1, 1], Some(texture_scale))?;
     let terrain_heights = terrain
