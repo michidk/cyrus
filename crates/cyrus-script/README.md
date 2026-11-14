@@ -34,6 +34,11 @@ and combat inhibition along with its tasks. Falling and queued motion remain own
 by the ordinary controller and collision response. Unrelated control bits survive.
 This follows preservation's [camera reset contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#xresetcamera).
 
+Verified: directional motion publishes direction and movement counters without an
+animation receiver. Only a current animation's suppression flag prevents translation;
+stored deep-water surfaces still halve the distance. This follows preservation's
+[directional displacement rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#directional-ordinary-displacement).
+
 Verified: static-model ground response uses `FallDamage` and `FallHold`, independently
 of `Collide`. Animated actors retain collision-mask admission. Static models run
 the support/ground stage without the animated obstacle and overlap passes, following

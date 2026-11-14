@@ -12145,6 +12145,63 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
 }
 
 #[test]
+fn static_directional_motion_does_not_require_an_animation_receiver() {
+    use cyrus_script::script::MotionDirection;
+    for (surface, distance, expected) in [
+        (Surface::UNKNOWN, 4097, 4097),
+        (Surface::DEEPWATER, 4097, 2048),
+        (Surface::SCAPEDEEPWATER, 4097, 2048),
+        (Surface::SCAPEWATER, 4097, 4097),
+        (Surface::UNKNOWN, 0, 0),
+        (Surface::UNKNOWN, -1, 0),
+    ] {
+        let (mut world, _, _) = static_model_fixture(cache());
+        let id = world.id(0).unwrap();
+        world.set_actor_surface(id, surface).unwrap();
+        let before = world.spatial(id).unwrap().local;
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+        assert_eq!(
+            world
+                .apply_ordinary_directional_motion(id, 1, distance)
+                .unwrap(),
+            None
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, before.position);
+        assert_eq!(world.actors()[0].control_state().unwrap().move_counter, 0);
+        assert_eq!(
+            world
+                .apply_ordinary_directional_motion(id, 2, distance)
+                .unwrap(),
+            Some(MotionDirection::FORWARD)
+        );
+        let after = world.spatial(id).unwrap().local.position;
+        assert_eq!(
+            after,
+            cyrus_world::transform::translate_forward(
+                before.position,
+                before.wrapped_angles()[1],
+                expected
+            )
+            .unwrap()
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.motion_direction, control.move_counter),
+            (MotionDirection::FORWARD, 48)
+        );
+        assert_eq!(
+            serde_json::to_value(world.globals()).unwrap()["locomotion_called"],
+            4
+        );
+        eprintln!(
+            "static directional: surface={surface:?} distance={distance} before={:?} after={after:?} counter={}",
+            before.position, control.move_counter
+        );
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+    }
+}
+
+#[test]
 fn ordinary_directional_motion_retains_flags_when_animation_suppresses_translation() {
     use cyrus_script::script::{OrdinaryDirectionalMotion, ordinary_directional_motion};
     for (motion, direction, step, heading) in [

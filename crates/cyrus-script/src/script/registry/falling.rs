@@ -605,10 +605,10 @@ impl ScriptWorld {
             return Ok(None);
         }
         let actor = &self.actors[index];
-        let animation = actor
+        let suppressed = actor
             .animation
             .as_ref()
-            .context("ordinary directional animation unavailable")?;
+            .is_some_and(|animation| animation.playback.translation_suppressed());
         let surface = actor
             .surface
             .context("ordinary directional stored surface unavailable")?;
@@ -618,7 +618,7 @@ impl ScriptWorld {
             pose.wrapped_angles()[1],
             distance,
             surface,
-            animation.playback.translation_suppressed(),
+            suppressed,
         ) else {
             return Ok(None);
         };
