@@ -106,3 +106,49 @@ fn installed_subtitle_replacement_updates_the_public_overlay() {
         "reusing the active slot must publish the replacement installed glyphs"
     );
 }
+
+#[test]
+fn subtitle_admission_does_not_debit_the_previous_update() {
+    use bevy::prelude::*;
+    use cyrus_render::subtitles::{SubtitlePlugin, SubtitleRequest};
+    use std::time::Duration;
+
+    let Some(install) = install("subtitle admission clock") else {
+        return;
+    };
+    let mut app = App::new();
+    app.init_resource::<Time<Real>>()
+        .init_resource::<Assets<Image>>()
+        .insert_resource(install)
+        .add_plugins(SubtitlePlugin);
+    app.update();
+    app.world_mut()
+        .resource_mut::<Time<Real>>()
+        .advance_by(Duration::from_secs(2));
+    app.world_mut().write_message(SubtitleRequest::Speech {
+        text: "A".into(),
+        seconds: 2.0,
+    });
+    app.update();
+    let overlays = |app: &mut App| {
+        app.world_mut()
+            .query::<&ImageNode>()
+            .iter(app.world())
+            .count()
+    };
+    assert_eq!(overlays(&mut app), 1, "new speech has not elapsed yet");
+    app.world_mut()
+        .resource_mut::<Time<Real>>()
+        .advance_by(Duration::from_millis(1999));
+    app.update();
+    assert_eq!(
+        overlays(&mut app),
+        1,
+        "the supplied duration starts at admission"
+    );
+    app.world_mut()
+        .resource_mut::<Time<Real>>()
+        .advance_by(Duration::from_millis(1));
+    app.update();
+    assert_eq!(overlays(&mut app), 0, "the complete duration has elapsed");
+}

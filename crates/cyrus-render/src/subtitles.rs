@@ -27,6 +27,7 @@ const HEIGHT: usize = 480;
 const TICKS_PER_SECOND: f64 = 12.0 * 18.2065 / 18.0;
 
 /// Text and clip duration supplied by a host, independent of audio playback handles.
+/// The duration starts when the request is admitted, excluding the preceding update interval.
 #[derive(Message, Debug, Clone, PartialEq)]
 pub enum SubtitleRequest {
     Speech { text: String, seconds: f64 },
@@ -73,8 +74,8 @@ pub struct SubtitleFont {
 
 struct Line {
     text: String,
-    /// Seconds left; the line is freed when it reaches 0.
-    remaining: f64,
+    /// Deadline on the host's real-time clock, measured from admission.
+    expires_at: f64,
 }
 
 fn load_font(mut commands: Commands, install: Res<GameInstall>) {
@@ -127,19 +128,19 @@ fn start_lines(
                 let text = font.font.wrap(text, font.max_width);
                 // Slot 0 belongs to Cyrus; other speakers take the lowest free slot or get none.
                 if let Some(slot) = font.slots.iter_mut().skip(1).find(|s| s.is_none()) {
-                    *slot = Some(Line { text, remaining });
+                    *slot = Some(Line {
+                        text,
+                        expires_at: time.elapsed_secs_f64() + remaining,
+                    });
                 }
             }
             SubtitleRequest::StopAll => font.slots.iter_mut().for_each(|s| *s = None),
         }
     }
-    let delta = time.delta_secs_f64();
+    let now = time.elapsed_secs_f64();
     for slot in font.slots.iter_mut() {
-        if let Some(line) = slot {
-            line.remaining -= delta;
-            if line.remaining <= 0.0 {
-                *slot = None;
-            }
+        if slot.as_ref().is_some_and(|line| line.expires_at <= now) {
+            *slot = None;
         }
     }
 }
