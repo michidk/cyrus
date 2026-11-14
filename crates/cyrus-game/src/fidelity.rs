@@ -23,16 +23,18 @@ pub enum Area {
     Textures,
     Music,
     AnisotropicFiltering,
+    AudioResampling,
 }
 
 impl Area {
-    pub const ALL: [Area; 6] = [
+    pub const ALL: [Area; 7] = [
         Area::Fog,
         Area::Sky,
         Area::Lighting,
         Area::Textures,
         Area::Music,
         Area::AnisotropicFiltering,
+        Area::AudioResampling,
     ];
 }
 
@@ -49,6 +51,8 @@ pub struct Fidelity {
     pub music: Mode,
     /// Modern averages up to sixteen samples along world texture footprints.
     pub anisotropic_filtering: Mode,
+    /// Modern uses 24-tap windowed-sinc upsampling for subsequent backend source spans.
+    pub audio_resampling: Mode,
 }
 
 impl Fidelity {
@@ -60,6 +64,7 @@ impl Fidelity {
             Area::Textures => self.textures,
             Area::Music => self.music,
             Area::AnisotropicFiltering => self.anisotropic_filtering,
+            Area::AudioResampling => self.audio_resampling,
         }
     }
     pub fn set(&mut self, area: Area, mode: Mode) {
@@ -70,6 +75,7 @@ impl Fidelity {
             Area::Textures => self.textures = mode,
             Area::Music => self.music = mode,
             Area::AnisotropicFiltering => self.anisotropic_filtering = mode,
+            Area::AudioResampling => self.audio_resampling = mode,
         }
     }
 }

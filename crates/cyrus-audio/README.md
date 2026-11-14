@@ -37,6 +37,22 @@ size hints retain the complete resampling span, including a pending right channe
 The vendored dependency fix is documented in `dev/vendor/rodio/README.md`.
 Volume and pan updates keep the sample's original width and apply together at stereo-frame boundaries.
 
+The independent `audio_resampling` fidelity area selects the backend's upsampling
+filter. Faithful retains Rodio's linear conversion. Modern uses Rubato's 24-tap
+Hann-windowed sinc, with its automatic cutoff and 1024 fractional phases.
+Rubato supplies coefficient generation, CPU-specific convolution and fractional
+interpolation; the Rodio adapter retains frame alignment, source boundaries and
+exact rational output length. Coefficients are shared and prepared before selection
+reaches the audio thread. Per-source buffering is bounded to 26 source frames,
+plus one output frame; subsequent output frames allocate nothing.
+The debug menu exposes Audio resampling separately from Music. Changes apply at
+subsequent source spans, so an already playing sound can retain its filter until
+its current span ends. Equal-rate and downsampled sources retain their existing
+path. Browser streaming effects use this backend; direct browser CD playback
+continues through WebAudio's own conversion. The original reconstruction filter
+is **Unknown**; this option does not claim original waveform parity.
+
+
 `Panned::with_repetitions` validates the source and owns finite or unbounded
 repetition before gain scaling. `with_playback` selects once or unbounded playback;
 hosts use its `playback_settings()` so later loops observe live gain changes.

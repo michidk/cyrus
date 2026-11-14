@@ -21,3 +21,20 @@ The public backend contracts are tested in
 `crates/cyrus-audio/tests/backend_queue.rs`. Remove this copy when a compatible
 upstream release provides both fixes. See [LICENSE-MIT](LICENSE-MIT) and
 [LICENSE-APACHE](LICENSE-APACHE).
+
+## Optional sinc upsampling
+
+Cyrus adds an explicit `ResamplingMethod::Sinc24` path using Rubato 5.1's public
+fractional-reader API. Rubato supplies the 24-tap Hann-windowed sinc, automatic
+cutoff, convolution and fractional interpolation. FFT features are disabled.
+The bounded source adapter preserves channel ordering, queue boundaries, cloned
+continuations and the full source duration without per-frame allocations.
+`SampleRateConverter::new` remains linear. The game selects the backend default
+for subsequent source spans through its independent audio fidelity setting.
+Equal-rate and downsampled sources retain their original path.
+
+`SamplesBuffer::current_span_len` now reports its remaining samples, so a converter
+cannot prefetch the next cue under the previous cue's rate. Public mixer and
+filter contracts are tested in `crates/cyrus-audio/tests/backend_resampling.rs`.
+The optional filter integration remains a local extension until upstream provides
+an equivalent selectable streaming converter.

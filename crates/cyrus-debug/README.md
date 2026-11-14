@@ -64,3 +64,8 @@ Fog and Sky have independent Faithful/Modern buttons. Water changes only through
 Backtick's **Anisotropic filtering (up to 16×)** checkbox independently filters world
 textures at oblique angles. It defaults off and works with either lighting mode.
 **All Faithful** turns it off; **All modern** turns it on.
+
+The Fidelity section has an independent **Audio resampling** selection. Faithful
+retains linear conversion; Modern uses Rubato's 24-tap sinc upsampling. New sounds
+use the selection; an existing sound retains its current conversion span. This
+selection is separate from Music, which controls CD data-noise handling.

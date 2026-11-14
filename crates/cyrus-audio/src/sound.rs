@@ -61,6 +61,7 @@ impl Plugin for SoundPlugin {
             bevy::audio::AddAudioSource::add_audio_source::<Panned>(app);
         }
         app.init_resource::<cyrus_game::preferences::Preferences>()
+            .add_systems(Update, crate::resampling::apply.in_set(ApplyPreferences))
             .add_message::<SoundRequest>()
             .add_message::<SoundCue>()
             .configure_sets(

@@ -5,9 +5,11 @@ This includes conversion between sample formats, channels or sample rates.
 */
 
 pub use self::channels::ChannelCountConverter;
+pub use self::resampling::{set_default_resampling_method, ResamplingMethod, SampleRateConverter};
 pub use self::sample::SampleTypeConverter;
-pub use self::sample_rate::SampleRateConverter;
 
 mod channels;
+pub(crate) mod resampling;
 mod sample;
 mod sample_rate;
+mod sinc;
