@@ -216,6 +216,8 @@ impl ScriptWorld {
             let scaled = product.wrapping_div(100);
             let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
             let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
+            let source_position = self.query_position(sender).ok();
+            let health_before = self.actors[receiver_index].attributes[Attribute::Health];
             if selected {
                 self.apply_selected_additive_health(
                     receiver,
@@ -237,6 +239,9 @@ impl ScriptWorld {
                     ticks,
                 };
                 self.apply_nonplayer_contact_health(receiver, change, environment)?;
+            }
+            if let Some(source) = source_position {
+                self.attribute_damage(receiver, health_before, source);
             }
             if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
                 self.request_combat_taunt(receiver, TauntType::DEATH, 0, inputs, random, sounds)?;
@@ -394,6 +399,8 @@ impl ScriptWorld {
         {
             return Ok(());
         }
+        let source_position = self.query_position(sender).ok();
+        let health_before = self.actors[receiver_index].attributes[Attribute::Health];
         let damage = i32::from(self.actors[sender_index].attributes[Attribute::Damage]);
         if selected {
             self.apply_selected_additive_health(
@@ -419,6 +426,9 @@ impl ScriptWorld {
                 ticks,
             };
             self.apply_nonplayer_contact_health(receiver, damage.wrapping_neg(), environment)?;
+        }
+        if let Some(source) = source_position {
+            self.attribute_damage(receiver, health_before, source);
         }
         if self.actors[receiver_index].attributes[Attribute::Health] < 1 {
             if !selected {
@@ -771,6 +781,8 @@ impl ScriptWorld {
                 .damage
                 .context("contact motion damage unavailable")?
         };
+        let health_before = self.actors[defender.index].attributes[Attribute::Health];
+        let source_position = self.query_position(id).ok();
         if environment.selected_player == Some(defender) {
             self.apply_selected_contact_health(
                 defender,
@@ -781,6 +793,9 @@ impl ScriptWorld {
             )?;
         } else {
             self.apply_nonplayer_contact_health(defender, damage.wrapping_neg(), environment)?;
+        }
+        if let Some(source) = source_position {
+            self.attribute_damage(defender, health_before, source);
         }
         if self.actors[defender.index].attributes[Attribute::Health] == 0 {
             self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
@@ -833,8 +848,10 @@ impl ScriptWorld {
             environment.selected_player != Some(id),
             "selected contact health unavailable"
         );
+        let before = actor.attributes[Attribute::Health];
         self.actors[index].attributes[Attribute::Health] =
-            super::falling::ordinary_health_value(actor.attributes[Attribute::Health], change);
+            super::falling::ordinary_health_value(before, change);
+        self.observe_health_loss(index, before);
         Ok(())
     }
 
