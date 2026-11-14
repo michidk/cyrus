@@ -67,7 +67,7 @@ pub(super) fn prepare<R: ReadAssets>(
             return Ok(preview);
         }
         Source::CdTrack(track) => {
-            let pcm = super::track_pcm(&library.source, *track)?;
+            let pcm = crate::music::track_pcm(&library.source, *track)?;
             preview.content = audio(library, entry, &mut preview, &pcm, 44100, 2, 16)?;
             return Ok(preview);
         }

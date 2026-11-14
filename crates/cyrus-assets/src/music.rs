@@ -1,4 +1,4 @@
-//! Read-only CD and world track preparation.
+//! Read-only CD and world track preparation, from GOG's disc image or a CD edition's ripped soundtrack.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 use crate::{audio::pcm_wav, install::GameInstall};
 use crate::{disc::cue_track, sound::ini_value};
@@ -59,14 +59,34 @@ pub(crate) fn prepare_track(
     path: &str,
     output: &mut dyn crate::preparation::Output,
 ) -> anyhow::Result<()> {
-    use anyhow::Context;
     let track = Path::new(path)
         .file_stem()
         .and_then(|s| s.to_str())
         .context("invalid music track")?
         .parse::<u32>()?;
-    let cue = crate::preparation::text(source, "disc/game.ins")?;
+    let bytes = cyrus_media::pcm_wav(
+        &track_pcm(source, track)?,
+        RED_BOOK_RATE,
+        AudioType::Stereo16.channels(),
+        AudioType::Stereo16.bits_per_sample(),
+    )?;
+    output.publish(Path::new(path), &bytes)
+}
+
+/// Red Book PCM of one CD audio track: from the cue sheet's image (`disc/game.ins`), or,
+/// for a CD install without one, from its ripped soundtrack (`disc/trackNN.mp3`).
+pub(crate) fn track_pcm(
+    source: &dyn crate::source::ReadAssets,
+    track: u32,
+) -> anyhow::Result<Vec<u8>> {
+    let Some(cue) = source.manifest().find("disc/game.ins") else {
+        let mp3 = crate::preparation::path(source, &format!("disc/track{track:02}.mp3"))
+            .with_context(|| format!("CD track {track}: no game.ins and no soundtrack MP3"))?;
+        return mp3_pcm(source.read(&mp3)?).with_context(|| mp3);
+    };
+    let cue = source.text(&cue.path)?;
     let (name, start, end) = cue_track(&cue, track, true).map_err(anyhow::Error::msg)?;
+    crate::validate_path(&name)?;
     let image = crate::preparation::path(source, &format!("disc/{name}"))?;
     let info = source.manifest().find(&image).context("missing CD image")?;
     let end = end.unwrap_or(info.bytes);
@@ -74,14 +94,59 @@ pub(crate) fn prepare_track(
         start <= end && end <= info.bytes,
         "CD track {track}: invalid byte range"
     );
-    let pcm = source.read_range(&image, start, usize::try_from(end - start)?)?;
-    let bytes = cyrus_media::pcm_wav(
-        &pcm,
-        RED_BOOK_RATE,
-        AudioType::Stereo16.channels(),
-        AudioType::Stereo16.bits_per_sample(),
-    )?;
-    output.publish(Path::new(path), &bytes)
+    source.read_range(&image, start, usize::try_from(end - start)?)
+}
+
+/// The CD audio track a ripped soundtrack file holds: `NN Track N.mp3` is track NN+1,
+/// because CD track 1 is data. shortcut: only this naming is recognised; add others when an edition needs them.
+pub(crate) fn soundtrack_track(file_name: &str) -> Option<u32> {
+    let name = file_name.to_ascii_lowercase();
+    let number: u32 = name.strip_suffix(".mp3")?.get(..2)?.parse().ok()?;
+    (number > 0).then_some(number + 1)
+}
+
+/// Decodes a 44.1 kHz stereo MP3 to the interleaved 16-bit little-endian PCM a CD track holds.
+fn mp3_pcm(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+    use symphonia::core::{
+        audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions,
+        io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
+    };
+    let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
+    let options = FormatOptions {
+        enable_gapless: true,
+        ..Default::default()
+    };
+    let mut format = symphonia::default::get_probe()
+        .format(
+            Hint::new().with_extension("mp3"),
+            stream,
+            &options,
+            &MetadataOptions::default(),
+        )?
+        .format;
+    let params = format
+        .default_track()
+        .context("no audio stream")?
+        .codec_params
+        .clone();
+    anyhow::ensure!(
+        params.sample_rate == Some(RED_BOOK_RATE) && params.channels.map(|c| c.count()) == Some(2),
+        "not 44.1 kHz stereo"
+    );
+    let mut decoder = symphonia::default::get_codecs().make(&params, &DecoderOptions::default())?;
+    let mut pcm = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) => return Err(e.into()),
+        };
+        let decoded = decoder.decode(&packet)?;
+        let mut samples = SampleBuffer::<i16>::new(decoded.capacity() as u64, *decoded.spec());
+        samples.copy_interleaved_ref(decoded);
+        pcm.extend(samples.samples().iter().flat_map(|s| s.to_le_bytes()));
+    }
+    Ok(pcm)
 }
 
 /// `world_redbook` of the world a scene name resolves to; `-1` when absent.
@@ -126,40 +191,68 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Reads one audio track from the image a cue sheet names, as a playable WAV source.
+/// Reads one audio track from `music_source` as a playable WAV source.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-pub fn read_track(cue_path: &Path, track: u32) -> Result<Vec<u8>, String> {
-    let context = |e: &dyn std::fmt::Display| format!("{} track {track}: {e}", cue_path.display());
-    let cue = std::fs::read_to_string(cue_path).map_err(|e| context(&e))?;
-    let (name, start, end) = cue_track(&cue, track, true).map_err(|e| context(&e))?;
-    let image = cue_path.with_file_name(name);
-    let mut file = std::fs::File::open(&image).map_err(|e| context(&e))?;
+pub fn read_track(source: &Path, track: u32) -> Result<Vec<u8>, String> {
+    let context = |e: &dyn std::fmt::Display| format!("{} track {track}: {e}", source.display());
+    let pcm = if source.is_dir() {
+        let file = std::fs::read_dir(source)
+            .map_err(|e| context(&e))?
+            .filter_map(Result::ok)
+            .find(|entry| soundtrack_track(&entry.file_name().to_string_lossy()) == Some(track))
+            .ok_or_else(|| context(&"no soundtrack MP3"))?;
+        let bytes = std::fs::read(file.path()).map_err(|e| context(&e))?;
+        mp3_pcm(bytes).map_err(|e| context(&e))?
+    } else {
+        cue_pcm(source, track).map_err(|e| context(&e))?
+    };
+    pcm_wav(AudioType::Stereo16, RED_BOOK_RATE, &pcm).map_err(|e| context(&e))
+}
+
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+fn cue_pcm(cue_path: &Path, track: u32) -> anyhow::Result<Vec<u8>> {
+    let cue = std::fs::read_to_string(cue_path)?;
+    let (name, start, end) = cue_track(&cue, track, true).map_err(anyhow::Error::msg)?;
+    let mut file = std::fs::File::open(cue_path.with_file_name(name))?;
     let end = match end {
         Some(end) => end,
-        None => file.metadata().map_err(|e| context(&e))?.len(),
+        None => file.metadata()?.len(),
     };
     let len = end
         .checked_sub(start)
         .and_then(|l| usize::try_from(l).ok())
-        .ok_or_else(|| context(&"track ends before it starts"))?;
+        .context("track ends before it starts")?;
     let mut pcm = vec![0; len];
-    file.seek(SeekFrom::Start(start))
-        .and_then(|_| file.read_exact(&mut pcm))
-        .map_err(|e| context(&e))?;
-    let bytes = pcm_wav(AudioType::Stereo16, RED_BOOK_RATE, &pcm).map_err(|e| context(&e))?;
-    Ok(bytes)
+    file.seek(SeekFrom::Start(start))?;
+    file.read_exact(&mut pcm)?;
+    Ok(pcm)
 }
 
+/// Where the CD audio comes from: GOG's cue sheet `game.ins` beside the install, else the
+/// `Soundtrack/` directory of ripped MP3s that the CD-edition repack ships, placed beside it.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-pub fn cue_path(install: &GameInstall) -> Option<PathBuf> {
-    let path = install.root.parent()?.join("game.ins");
-    path.is_file().then_some(path)
+pub fn music_source(install: &GameInstall) -> Option<PathBuf> {
+    let parent = install.root.parent()?;
+    let cue = parent.join("game.ins");
+    if cue.is_file() {
+        return Some(cue);
+    }
+    let soundtrack = parent.join("Soundtrack");
+    soundtrack.is_dir().then_some(soundtrack)
 }
 
 #[cfg(all(test, feature = "native", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::disc::SECTOR_BYTES;
+    #[test]
+    fn soundtrack_files_skip_the_data_track() {
+        assert_eq!(soundtrack_track("01 Track 1.mp3"), Some(2));
+        assert_eq!(soundtrack_track("06 TRACK 6.MP3"), Some(7));
+        for other in ["00 Track 0.mp3", "Soundtrack.jpg", "1.mp3", "xx.mp3"] {
+            assert_eq!(soundtrack_track(other), None, "{other}");
+        }
+    }
     #[test]
     fn browser_export_retains_installed_settings_and_menu_and_world_audio() {
         let root = std::env::temp_dir().join(format!("cyrus-music-export-{}", std::process::id()));

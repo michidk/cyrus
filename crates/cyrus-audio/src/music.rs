@@ -1,6 +1,7 @@
 //! Background music: Red Book audio tracks of the game CD, which the GOG
 //! release ships as the cue sheet `game.ins` and image `game.gog` next to the
-//! install directory.
+//! install directory. A CD-edition install without them reads the ripped
+//! `Soundtrack/` MP3s placed beside it instead (`cyrus_assets::music::music_source`).
 //!
 //! Entering a world whose `WORLD.INI` `world_redbook` is a positive track
 //! number starts that track unless it is already playing, so worlds sharing a
@@ -40,7 +41,7 @@ use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
 #[cfg(not(target_arch = "wasm32"))]
 use cyrus_assets::install::GameInstall;
 #[cfg(not(target_arch = "wasm32"))]
-use cyrus_assets::music::{cue_path, read_track, world_track};
+use cyrus_assets::music::{music_source, read_track, world_track};
 use cyrus_assets::sound::SoundSettings;
 use cyrus_world::lifecycle::{CurrentScene, SceneRequest};
 
@@ -163,9 +164,9 @@ pub(crate) fn muted(source: &AudioSource) -> Option<AudioSource> {
 /// Starts loading `track`; the playing track is replaced once it is read.
 #[cfg(not(target_arch = "wasm32"))]
 fn request(install: &GameInstall, music: &mut Music, track: u32) {
-    let Some(cue) = cue_path(install) else {
+    let Some(cue) = music_source(install) else {
         return warn!(
-            "music: no CD image (game.ins) beside {}",
+            "music: no CD audio (game.ins or Soundtrack/) beside {}",
             install.root.display()
         );
     };
@@ -675,7 +676,9 @@ mod tests {
             return;
         };
         let source = AudioSource {
-            bytes: read_track(&cue_path(&install).unwrap(), 2).unwrap().into(),
+            bytes: read_track(&music_source(&install).unwrap(), 2)
+                .unwrap()
+                .into(),
         };
         let expected: Vec<_> = source.decoder().skip(1023).take(1024).collect();
         assert_eq!(expected.len(), 1024);

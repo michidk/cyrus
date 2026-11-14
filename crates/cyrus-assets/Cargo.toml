@@ -6,7 +6,7 @@ edition.workspace = true
 
 [features]
 # Preservation parsers on any target; the browser worker decodes original bytes with them.
-parsers = ["dep:redguard-preservation", "cyrus-text/native", "dep:image", "dep:hound"]
+parsers = ["dep:redguard-preservation", "cyrus-text/native", "dep:image", "dep:hound", "dep:symphonia"]
 native = ["parsers", "dep:walkdir"]
 
 [dependencies]
@@ -23,6 +23,8 @@ walkdir = { version = "2", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "bmp"], optional = true }
 
 hound = { version = "3.5", optional = true }
+# Pure Rust, so the browser worker can decode a ripped CD soundtrack too.
+symphonia = { version = "0.5.5", default-features = false, features = ["mp3"], optional = true }
 redguard-preservation = { workspace = true, optional = true }
 
 [dev-dependencies]

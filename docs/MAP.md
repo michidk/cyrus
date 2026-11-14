@@ -41,7 +41,7 @@ module where it is defined and regenerate.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
 - `src/movie/original.rs` — Installed cinematic metadata and bounded original-file reads on either target.
-- `src/music.rs` — Read-only CD and world track preparation.
+- `src/music.rs` — Read-only CD and world track preparation, from GOG's disc image or a CD edition's ripped soundtrack.
 - `src/native.rs` — Read-only filesystem adapter and optional disk cache for the shared runtime parsers.
 - `src/native/geometry.rs` — Shared rgpre geometry export; game sidecars and preview presentation are separate.
 - `src/overlay.rs` — Installed GXA images that scripts draw over the world frame (`ViewGXA`).

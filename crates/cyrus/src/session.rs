@@ -500,7 +500,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
         }
     }
     if let Some(track) = snapshot.music().track() {
-        let cue = cyrus_assets::music::cue_path(install).context("session CD image absent")?;
+        let cue = cyrus_assets::music::music_source(install).context("session CD audio absent")?;
         let bytes = cyrus_assets::music::read_track(&cue, track).map_err(anyhow::Error::msg)?;
         std::fs::create_dir_all(cache.join("music"))?;
         std::fs::write(cache.join(format!("music/{track:02}.wav")), bytes)?;
