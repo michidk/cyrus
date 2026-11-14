@@ -5,6 +5,10 @@ use bevy::{
 };
 use cyrus_script::script::{Pose, ScriptActors, ScriptBinding};
 
+/// Authoritative script transforms have been published to the rendered hierarchy.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ScriptTransforms;
+
 /// Applies explicit script poses after ordinary scene transform propagation.
 pub struct ScriptTransformPlugin;
 impl Plugin for ScriptTransformPlugin {
@@ -16,6 +20,7 @@ impl Plugin for ScriptTransformPlugin {
         app.add_systems(
             PostUpdate,
             apply
+                .in_set(ScriptTransforms)
                 .after(TransformSystems::Propagate)
                 .before(VisibilitySystems::CheckVisibility)
                 .before(bevy::asset::AssetEventSystems),
@@ -94,7 +99,9 @@ pub fn scene_transform(pose: Pose) -> Affine3A {
     scene_transform_at(pose, pose.position.map(|value| (value >> 8) as f32))
 }
 
-pub(crate) fn scene_transform_at(pose: Pose, model_position: [f32; 3]) -> Affine3A {
+/// Converts a captured model orientation and its displaced map-unit position to scene axes.
+/// Unlike [`scene_transform`], the supplied stored model position is already prepared.
+pub fn scene_transform_at(pose: Pose, model_position: [f32; 3]) -> Affine3A {
     let sign = [-1.0, -1.0, 1.0];
     let matrix = Mat3::from_cols_array(&std::array::from_fn::<_, 9, _>(|index| {
         let (row, column) = (index % 3, index / 3);

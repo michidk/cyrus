@@ -682,3 +682,10 @@ missing or inconsistent mesh/material bindings. Call after effect PostUpdate and
 deferred publication. Runtime identities establish replacement and retirement only
 within the process; this diagnostic does not establish GPU submission or visual
 parity with the original.
+
+`pose_override` accepts an exclusive visual claim on a model node. The claim
+identifies an exact source frame and normalized source-vertex body weights.
+It clones each mapped primitive once, applies weighted body transforms to positions
+and inverse-transpose transforms to normals, and updates bounds. Ordinary animation
+writes skip claimed meshes. Claim removal restores the original mesh handle and
+reclaims the private copy. Gameplay transforms and visibility retain ownership.

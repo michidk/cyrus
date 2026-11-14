@@ -57,3 +57,12 @@ you trust.
 cargo check -p cyrus-mods
 just mods          # build mods/* and install them into game-config/mods
 ```
+
+`actors` publishes generation-scoped identities, snapshots and committed death
+transitions from cyrus-script. `physics` validates guest-authored rigid assemblies
+and owns a native Rapier solver, static collision copies and exclusive mesh/attachment
+bindings. It runs after authoritative script transforms and before mesh frame
+presentation. These bodies never alter gameplay collision or actor state.
+Owner instance/revision, actor incarnation and world generation bound every claim.
+The SDK contracts and resource limits are documented in
+[`mods/README.md`](../../mods/README.md#death-observations-and-owned-physics).
