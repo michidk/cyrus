@@ -19,6 +19,12 @@ with the current animation frozen; noncanonical nonzero values still admit reque
 This follows preservation's [cheat switches](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
 and [slide request admission](https://github.com/michidk/redguard-preservation/blob/fd1918dad65118e05b7b1b067623b5f94d50ab91/docs/engine/player.md#slide-termination).
 
+Verified: ordinary requests leave excluded receivers' animation state and cues
+untouched. Public point-delay commands still publish their countdown, random draws
+and command bookkeeping; eligible receivers keep synchronous idle-cue dispatch and
+failure ordering. This follows the shared
+[receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility).
+
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does
 not change armed dispatch. This follows preservation's

@@ -32452,6 +32452,72 @@ fn point_delay_disabled_animation_retains_group_without_idle_sound_and_continues
 }
 
 #[test]
+fn point_delay_excluded_receiver_retains_animation_while_command_continues() {
+    use cyrus_script::script::{ScriptHud, ScriptInputs};
+    for excluded in [true, false] {
+        let (world, scripts, data) = point_delay_fixture(16, false, true, true);
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["control"]["object_update_excluded"] = excluded.into();
+        let before_animation = saved["actors"][0]["animation"].clone();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(350);
+        let mut effects = vec![];
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [1000000, 0, 1000000],
+                    0,
+                    ScriptInputs {
+                        hud: Some(&hud),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    Some(&mut random),
+                    Some(&mut |actor, sound| {
+                        assert_eq!(actor, id);
+                        if let cyrus_script::script::ScriptSound::Animation {
+                            sound: cyrus_world::animation::AnimationSound::Play { effect, .. },
+                            ..
+                        } = sound
+                        {
+                            effects.push(effect);
+                        }
+                        Ok(())
+                    }),
+                )
+                .unwrap(),
+            1
+        );
+        let saved = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            saved["actors"][0]["animation"]["playback"]["current"][0],
+            if excluded { 18 } else { 1 },
+            "excluded={excluded}: ordinary request must retain excluded receiver ownership"
+        );
+        assert_eq!(effects, if excluded { vec![] } else { vec![101] });
+        if excluded {
+            assert_eq!(saved["actors"][0]["animation"], before_animation);
+        }
+        assert_eq!(random.state(), 1391208277);
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.point_command.word, 15);
+        assert_eq!(control.point_command.phase, PointPhase::IDLE_PAUSE);
+        assert_eq!(world.spatial(id).unwrap().local.position, [513, 200, 768]);
+        assert_eq!(saved["map_updates"], serde_json::json!([0]));
+        eprintln!(
+            "point idle excluded={excluded}: group={}, cues={effects:?}, word={}, random={}",
+            saved["actors"][0]["animation"]["playback"]["current"][0],
+            control.point_command.word,
+            random.state()
+        );
+    }
+}
+
+#[test]
 fn point_delay_sound_failure_retains_consumed_random_and_stops_before_wrapper_save() {
     use cyrus_script::script::{ScriptHud, ScriptInputs};
     let (mut world, scripts, data) = point_delay_fixture(16, false, true, true);

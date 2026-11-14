@@ -382,7 +382,12 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        if !self.updates.animation_system {
+        if !self.updates.animation_system
+            || self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.object_update_excluded)
+        {
             return Ok(());
         }
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
