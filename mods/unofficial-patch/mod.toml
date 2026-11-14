@@ -751,3 +751,14 @@ condition = "var29 = 3"
 at = 1042  # 0x412
 condition = "var6 = 1"
 
+
+# Not in the original patch: reported on its bug page (after version 1.03) and fixed here. The patch now sets
+# after_iszara when Iszara is rescued, and Coyle's "Hayle" topic was also guarded by after_iszara = 0, so it
+# disappeared once she was rescued although Hayle's story is still unfinished. The guard is dropped.
+[[script-patch]]
+world = "ISLAND"
+actor = "COYLE"
+
+[[script-patch.edit]]
+at = 2231  # 0x8B7
+condition = "CyrusFriend = 0 and HayleStory = 1"

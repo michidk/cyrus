@@ -188,7 +188,11 @@ fn the_unofficial_patch_applies_to_the_installed_maps() {
                 );
                 // The reference install did not apply the patch's EXTPALAC change, though its notes
                 // list it, so there is no statement to compare that map with.
-                if let Some(reference) = references.get(map).filter(|_| map != "EXTPALAC") {
+                // COYLE is this mod's own fix, absent from the reference.
+                if let Some(reference) = references
+                    .get(map)
+                    .filter(|_| map != "EXTPALAC" && !name.eq_ignore_ascii_case("COYLE"))
+                {
                     let theirs = canonical(&reference.actors[name].program);
                     let ours = canonical(&actor.program);
                     assert_eq!(

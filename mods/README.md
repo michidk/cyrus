@@ -36,7 +36,7 @@ The Mods window offers camera follow, delay (default 0.75 seconds) and follow sp
 
 ## What the Unofficial Patch changes
 
-`unofficial-patch` ports the changes of Dillonn241's Unofficial Redguard Patch 1.01, without the Soul Sword strength fix that version 1.03 removed because it froze the amulet delivery scene. Version 1.02's changes (thirty more typos, two subtitle typos, the flagship story fix and another Gerrick line) are not ported yet. The GOG install
+`unofficial-patch` ports the changes of Dillonn241's Unofficial Redguard Patch, version 1.03, plus fixes for bugs reported on its page that it has not fixed. (Version 1.03's own change was to remove the Soul Sword strength fix, which froze the amulet delivery scene; this mod leaves it out too.) The GOG install
 is never written; each change is applied in memory, and deactivating the mod restores the original
 behaviour. The reasons below are **Inferred** from comparing the installed scripts with the
 patched ones: the patch ships no explanation, so they say what each change does, not what its
@@ -61,6 +61,7 @@ appeared.
 | --- | --- |
 | Tavern (DREEKIUS) | His reaction to the Smuggler's Den password tested the flag the wrong way round |
 | Island (CRENDAL) | The drunk's lines cycled with `<` comparisons, so several played at once and others never; they now test `=` |
+| Island (COYLE) | **Not in the original patch.** The "Hayle" topic is offered while Hayle's story is open, whether or not Iszara has been rescued: the original patch now sets `after_iszara`, and a guard on that flag hid the topic (reported on the patch's bug page) |
 | Island (SIONA) | A topic tested `DragonDead`; it now tests `after_dragon`, which the rest of the game uses |
 | Gerrick's (GERRICK) | The Rollo topic is offered only while it has not been asked |
 
