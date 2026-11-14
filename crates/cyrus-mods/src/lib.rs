@@ -169,7 +169,6 @@ impl Plugin for ModsPlugin {
                     ownership::publish,
                     api::exchange,
                     particles::publish,
-                    gameplay::publish,
                     geometry::publish,
                     terrain::publish,
                 )

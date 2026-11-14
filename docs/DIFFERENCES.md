@@ -282,12 +282,11 @@ health. It defaults to inactive. Spray size, color, gravity and lifetime are mod
 with amount and lifetime exposed in the Mods window. Particles fade without collision or surface
 marks. See the [mod authoring example](../mods/README.md#damage-driven-particles).
 
-## Optional dialogue skip and periodic autosave
+## Optional periodic autosave
 
-The native `dialogue-skip` mod offers one displayed line per press, default Backspace,
-without selecting topics. The native `autosave` mod requests a reserved-slot save after
-a configurable amount of eligible play, default 300 seconds. Both default to inactive.
-These are mod preferences. See [the mod service contract](../mods/README.md#dialogue-and-save-services).
+The native `autosave` mod requests a reserved-slot save after a configurable amount of
+eligible play, default 300 seconds. It defaults to inactive. This is a mod preference.
+See [the mod service contract](../mods/README.md#save-service).
 
 ## Optional terrain grass mod
 

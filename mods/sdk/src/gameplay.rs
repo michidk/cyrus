@@ -1,22 +1,6 @@
 //! Gameplay services retain host ownership of audio and transactional storage.
 use crate::bindings::cyrus::mods::components as raw;
 
-/// The currently displayed speech line, independently of topic selection.
-pub struct Dialogue {
-    pub(crate) raw: raw::Dialogue,
-    pub(crate) id: &'static str,
-}
-impl Dialogue {
-    /// True only during eligible gameplay dialogue with a displayed line.
-    pub fn available(&self) -> bool {
-        self.raw.available()
-    }
-    /// Queue completion of one displayed line and its audio. Repeated requests coalesce.
-    pub fn advance(&self) -> bool {
-        self.raw.advance(self.id)
-    }
-}
-
 /// Terminal results describe actual native storage completion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SaveStatus {

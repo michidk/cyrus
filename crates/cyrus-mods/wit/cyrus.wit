@@ -1,21 +1,12 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles`, `dialogue`, `saves`, `geometry` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles`, `saves`, `geometry` and `hud` with `QueryFor::Mut` and `input`, `settings`,
 /// `player`, `damage`, `terrain`, `environment` and `actors` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
 
 interface components {
-  /// Complete only the displayed line through the audio owner. Topic choices are never selected.
-  /// Queued requests apply next PreUpdate only while gameplay dialogue is eligible.
-  /// wasvy:type-path=cyrus_mods::gameplay::Dialogue
-  resource dialogue {
-    constructor(component: component);
-    available: func() -> bool;
-    advance: func(owner: string) -> bool;
-  }
-
   /// Native transactional saves to reserved autosave slot one. Manual slots are untouched.
   /// Policy (interval, retries) belongs to guests. Host revalidates gameplay and owner on consume.
   /// Status is empty, pending, saved or failed. Saved means storage committed, not merely queued.
@@ -305,8 +296,6 @@ interface components {
     /// Whether the player holds an action under the game's own key bindings (KEYS.INI):
     /// "forward", "back", "left", "right", "walk" (the walk/run modifier) or "jump".
     held: func(action: string) -> bool;
-    /// Whether a key is assigned to an installed or saved game action.
-    bound: func(key: string) -> bool;
     pressed: func(key: string) -> bool;
     tapped: func(key: string) -> bool;
     /// Mouse motion since the last frame in pixels: x, y.
