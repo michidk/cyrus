@@ -13,6 +13,12 @@ response timers, movement and combat. The selected player and camera continue;
 turning it off resumes the retained actor state. This follows preservation's
 [cheat update rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md).
 
+Verified: ordinary slope and turn requests honor the `animation` cheat's nonzero
+request gate. At zero, slope translation, orientation and sliding bookkeeping continue
+with the current animation frozen; noncanonical nonzero values still admit requests.
+This follows preservation's [cheat switches](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
+and [slide request admission](https://github.com/michidk/redguard-preservation/blob/fd1918dad65118e05b7b1b067623b5f94d50ab91/docs/engine/player.md#slide-termination).
+
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does
 not change armed dispatch. This follows preservation's

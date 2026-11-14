@@ -12764,8 +12764,30 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
 
 #[test]
 fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
+    assert_ordinary_slope_animation_switch(1);
+}
+
+#[test]
+fn ordinary_slope_respects_disabled_and_noncanonical_running_animation_switches() {
+    assert_ordinary_slope_animation_switch(0);
+    assert_ordinary_slope_animation_switch(2);
+}
+
+fn assert_ordinary_slope_animation_switch(state: u32) {
     use cyrus_collision::ground::{GroundSupport, SelectedSupport, SupportSource};
+    use cyrus_game::cheats::{CheatStore, Cheats};
     use cyrus_script::script::{OrdinaryGroundQuery, OrdinarySlopeInputs};
+    struct Memory;
+    impl CheatStore for Memory {
+        fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let mut cheats = Cheats::new(Memory);
+    cheats.execute("animation", Some(state)).unwrap();
     let mut scripts = cache();
     scripts
         .actors
@@ -12783,6 +12805,22 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
     );
     world
         .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world
+        .advance(
+            id,
+            cyrus_script::script::ScriptStage::Animation,
+            cyrus_script::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                animation_system: Some(cheats.animation_system().unwrap()),
+                animation_running: Some(cheats.animation_running().unwrap()),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
         .unwrap();
     world.refresh_model_presentations(&data, &[other]).unwrap();
     let mut scene = ordinary_collision_scene(world.world, models);
@@ -12827,7 +12865,11 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
         world.spatial(id).unwrap().local.position,
         [2560, 1536, 7936]
     );
-    assert_eq!(world.animation_frame(id).unwrap(), Some(75));
+    assert_eq!(
+        world.animation_frame(id).unwrap(),
+        Some(if state == 0 { 0 } else { 75 }),
+        "animation switch {state} must gate requests while slope translation continues"
+    );
     assert_eq!(world.model_support(id).unwrap().actor, Some(other));
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
@@ -12891,6 +12933,40 @@ fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
     assert_eq!(
         spatial.local.matrix,
         cyrus_world::transform::Matrix::orientation(spatial.local.wrapped_angles())
+    );
+    if state == 0 {
+        cheats.execute("animation", Some(1)).unwrap();
+        assert_eq!(world.animation_frame(id).unwrap(), Some(0));
+        world
+            .advance(
+                id,
+                cyrus_script::script::ScriptStage::Animation,
+                cyrus_script::script::ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    animation_system: Some(cheats.animation_system().unwrap()),
+                    animation_running: Some(cheats.animation_running().unwrap()),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        world
+            .resolve_ordinary_slope(
+                id,
+                Some(&support),
+                query(),
+                inputs(None),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(world.animation_frame(id).unwrap(), Some(75));
+    }
+    eprintln!(
+        "slope switch={state}: first z=7936, second z=8192, retained distance=512, turn published, final frame={:?}",
+        world.animation_frame(id).unwrap()
     );
 }
 
@@ -26800,7 +26876,11 @@ fn forward_amount_waits_for_current_animation_without_advancing_counter() {
         );
         assert_eq!(
             state["actors"][0]["animation"]["pending_group"],
-            AnimationGroup::RUN.index()
+            if enabled {
+                serde_json::json!(AnimationGroup::RUN.index())
+            } else {
+                serde_json::Value::Null
+            }
         );
     }
 }
@@ -32113,8 +32193,12 @@ fn point_delay_fixture(
     word: u16,
     weapon: bool,
     matching: bool,
+    animation_system: bool,
 ) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
-    let (_, scripts, mut data) = point_node_fixture(8);
+    let (_, mut scripts, mut data) = point_node_fixture(8);
+    scripts.updates.animation_system = animation_system;
+    scripts.content_id = scripts.content_identity().unwrap();
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
     for group in 1..=3 {
         let definition = serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":[
             {"opcode":4,"sound_param":100+group,"volume_shift":0},
@@ -32177,7 +32261,7 @@ fn point_delay_countdown_preserves_signed_word_comparison_and_weapon_exit() {
         (32768, u32::MAX, false, 0, 2),
         (65535, u32::MAX, false, 0, 2),
     ] {
-        let (mut world, scripts, data) = point_delay_fixture(word, weapon, false);
+        let (mut world, scripts, data) = point_delay_fixture(word, weapon, false, false);
         let id = world.id(0).unwrap();
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(42);
@@ -32241,7 +32325,7 @@ fn point_delay_idle_uses_shared_draws_rejects_three_and_dispatches_before_return
         (284, 2, 847347883),
         (416, 3, 1935068671),
     ] {
-        let (mut world, scripts, data) = point_delay_fixture(16, false, true);
+        let (mut world, scripts, data) = point_delay_fixture(16, false, true, true);
         let id = world.id(0).unwrap();
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(seed);
@@ -32331,9 +32415,46 @@ fn point_delay_idle_uses_shared_draws_rejects_three_and_dispatches_before_return
 }
 
 #[test]
+fn point_delay_disabled_animation_retains_group_without_idle_sound_and_continues() {
+    use cyrus_script::script::{ScriptHud, ScriptInputs};
+    let (mut world, scripts, data) = point_delay_fixture(16, false, true, false);
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(350);
+    assert_eq!(
+        world
+            .move_ordinary_point(
+                id,
+                [1000000, 0, 1000000],
+                0,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut random),
+                Some(&mut |_, _| panic!("disabled animation dispatched idle sound")),
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(random.state(), 1391208277);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(control.point_command.word, 15);
+    assert_eq!(control.point_command.phase, PointPhase::IDLE_PAUSE);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][0]["animation"]["playback"]["current"][0],
+        18
+    );
+    assert_eq!(saved["map_updates"], serde_json::json!([0]));
+}
+
+#[test]
 fn point_delay_sound_failure_retains_consumed_random_and_stops_before_wrapper_save() {
     use cyrus_script::script::{ScriptHud, ScriptInputs};
-    let (mut world, scripts, data) = point_delay_fixture(16, false, true);
+    let (mut world, scripts, data) = point_delay_fixture(16, false, true, true);
     let id = world.id(0).unwrap();
     let hud = ScriptHud::default();
     let mut random = cyrus_game::random::EngineRandom::from_state(350);
@@ -32398,7 +32519,7 @@ fn point_delay_sound_failure_retains_consumed_random_and_stops_before_wrapper_sa
 #[test]
 fn point_delay_snapshot_resumes_countdown_and_zero_exit_needs_no_optional_owners() {
     use cyrus_script::script::{ScriptHud, ScriptInputs};
-    let (mut world, scripts, data) = point_delay_fixture(2, false, true);
+    let (mut world, scripts, data) = point_delay_fixture(2, false, true, false);
     let id = world.id(0).unwrap();
     let hud = ScriptHud::default();
     let mut random = cyrus_game::random::EngineRandom::from_state(1);
@@ -32470,7 +32591,7 @@ fn point_delay_snapshot_resumes_countdown_and_zero_exit_needs_no_optional_owners
 fn point_delay_missing_random_or_sound_owner_preserves_failure_order() {
     use cyrus_script::script::{ScriptHud, ScriptInputs};
     for missing_random in [false, true] {
-        let (mut world, scripts, data) = point_delay_fixture(16, false, true);
+        let (mut world, scripts, data) = point_delay_fixture(16, false, true, true);
         let id = world.id(0).unwrap();
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(71);

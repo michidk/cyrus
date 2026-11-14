@@ -382,6 +382,9 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        if !self.updates.animation_system {
+            return Ok(());
+        }
         let position = super::animation_sound_position(self.spatial.as_ref(), index);
         let event_context = super::effects::ActorEventContext::capture(self, id);
         let event_camera = &mut self.camera;
