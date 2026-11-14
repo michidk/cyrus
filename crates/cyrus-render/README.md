@@ -682,3 +682,12 @@ missing or inconsistent mesh/material bindings. Call after effect PostUpdate and
 deferred publication. Runtime identities establish replacement and retirement only
 within the process; this diagnostic does not establish GPU submission or visual
 parity with the original.
+
+Native mods can read retained unclipped terrain sources through
+`WaterPlayback::source_meshes` and publish validated scene meshes through
+`cyrus-mods`. `fog::geometry` supplies their matte double-sided material, current
+scene fog and PBR bindings. A bounded shared `geometry_surface.wesl` library slot
+allows guest-authored deformation with per-mesh parameters and conservative bounds
+padding. It is stationary without an active replacement. Grass placement, image
+classification, LOD and wind equations belong to `mods/grass`, not this renderer.
+This base has no ray-tracing geometry integration.

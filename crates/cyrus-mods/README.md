@@ -30,7 +30,7 @@ changed is reloaded. A mod is just its folder; copy it in or out while the game 
 The API lives on one host entity with one component per hook (`src/api.rs`). The
 hooks are generic: named scene values and four-value shader inputs
 (cyrus-render's `hooks`, which lists the published and read names), the camera, the player's movement, animation and status,
-collision probes, script native calls, health-loss observations, transient particles, settings, memory, a text overlay and input.
+collision probes, script native calls, health-loss observations, transient particles, bounded terrain snapshots, owned indexed geometry, settings, memory, a text overlay and input.
 `PreUpdate` hands last frame's mod answers to cyrus-render's `ShaderInputs`,
 `CameraTakeover` and cyrus-script's `CameraOrbit`, `MovementWish`,
 `LocomotionClaimed` and `PlayerRequests`, and publishes this frame's state (including the
@@ -57,3 +57,11 @@ you trust.
 cargo check -p cyrus-mods
 just mods          # build mods/* and install them into game-config/mods
 ```
+
+Terrain/mesh hooks are implemented in `src/terrain.rs` and `src/geometry.rs`.
+The SDK wraps raw lists as revision/texture types, triangle pages, vertices and
+materials. `mods/grass` owns classification, seeds, camera bands and deformation
+policy. See the [terrain and geometry contract](../../mods/README.md#terrain-and-owned-geometry)
+for upload budgets, shader slot limits and lifecycle rules. The renderer exposes
+retained source mesh handles and a generic scene-lit material, keeping grass
+policy out of the host. This base supports raster rendering only.

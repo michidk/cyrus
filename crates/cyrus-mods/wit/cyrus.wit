@@ -1,12 +1,49 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms`, `particles` and `hud` with `QueryFor::Mut` and `input`, `settings`,
-/// `player`, `damage` and `scene` with `QueryFor::Ref`;
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms`, `particles`, `geometry` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// `player`, `damage`, `terrain` and `scene` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
 
 interface components {
+  /// Read-only unclipped terrain. A revision expires on world or binding replacement.
+  /// wasvy:type-path=cyrus_mods::terrain::Terrain
+  resource terrain {
+    constructor(component: component);
+    /// 0 ready, 1 loading, 2 no world/terrain, 3 stale revision, 4 unsupported, 5 over budget.
+    status: func(revision: u64) -> u32;
+    revision: func() -> option<u64>;
+    /// Half-open [min x,min z,max x,max z], maximum width/depth 512 scene units.
+    /// A triangle belongs to the region containing its centroid. Offset counts matching
+    /// triangles, limit is 1..=512. Each returned record has 17 floats: texture index,
+    /// triangle ID, then three corners [scene x,y,z,u,v]. UVs retain source rotation.
+    /// IDs expire with revision. None means invalid arguments, stale or unavailable;
+    /// status(revision) distinguishes those cases. An empty page is a successful end.
+    triangles: func(revision: u64, bounds: list<f32>, offset: u32, limit: u32) -> option<list<f32>>;
+    dimensions: func(revision: u64, texture: u32) -> option<list<u32>>;
+    /// RGBA8 rectangle, up to 65536 pixels, within the snapshot image dimensions.
+    /// Images are at most 512x512; snapshots cap 256 images and 1000000 triangles.
+    pixels: func(revision: u64, texture: u32, x: u32, y: u32, width: u32, height: u32) -> option<list<u8>>;
+  }
+  /// Owner-scoped indexed meshes in scene coordinates, Y up. All requests validate
+  /// before render allocation. Twelve floats per vertex: position, normal, UV, linear RGBA.
+  /// Disable, successful reload and world replacement remove meshes and materials.
+  /// wasvy:type-path=cyrus_mods::geometry::Geometry
+  resource geometry {
+    constructor(component: component);
+    contains: func(owner: string, key: string) -> bool;
+    generation: func() -> option<u64>;
+    /// Up to 256 keys and 1500000 vertices per owner, 3000000 vertices globally.
+    /// Nonzero finite normals; finite position/UV within +/-1e6; linear RGBA 0..=1.
+    /// Triangle indices must be in range, at most six indices per vertex.
+    /// Invalid or exhausted requests preserve the previous key atomically.
+    /// parameters are four shader values plus nonnegative bounds padding, all finite within +/-100.
+    /// 0 accepted, 1 unavailable/stale, 2 invalid, 3 budget exceeded.
+    replace: func(owner: string, key: string, revision: u64, vertices: list<f32>, indices: list<u32>, parameters: list<f32>) -> u32;
+    remove: func(owner: string, key: string);
+  }
+
   /// Accepted health reductions since the previous frame, shared read-only by all mods.
   /// Events are published in PreUpdate, including player and other actor health services.
   /// Healing, blocked hits and direct attribute edits are not damage-service events.

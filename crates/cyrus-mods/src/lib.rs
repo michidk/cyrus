@@ -20,8 +20,10 @@
 //! saved to `mods.json` there; the F11 debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
+mod geometry;
 mod particles;
 mod settings;
+mod terrain;
 
 use anyhow::{Context, ensure};
 use bevy::asset::io::AssetSourceBuilder;
@@ -148,6 +150,8 @@ impl Plugin for ModsPlugin {
             .init_resource::<cyrus_script::player::input::CameraOrbit>()
             .init_resource::<cyrus_script::player::input::CollisionProbes>()
             .init_resource::<particles::ParticleState>()
+            .init_resource::<geometry::GeometryState>()
+            .add_systems(bevy::prelude::PostUpdate, geometry::update)
             .add_systems(
                 bevy::prelude::PostUpdate,
                 particles::update
@@ -156,7 +160,16 @@ impl Plugin for ModsPlugin {
                     .before(bevy_hanabi::EffectSystems::TickSpawners),
             )
             .add_systems(Startup, api::spawn_host)
-            .add_systems(PreUpdate, (api::exchange, particles::publish).chain())
+            .add_systems(
+                PreUpdate,
+                (
+                    api::exchange,
+                    particles::publish,
+                    geometry::publish,
+                    terrain::publish,
+                )
+                    .chain(),
+            )
             .add_systems(Update, (watch, apply).chain())
             .add_systems(
                 EguiPrimaryContextPass,
