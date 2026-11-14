@@ -1,7 +1,7 @@
 //! PR255 grass policy, entirely in a downloadable guest. No installed art ships here.
 use cyrus_mod_sdk::{
-    Cx, Material, Mesh, Mod, Persist, Pixels, Region, TerrainRevision, TerrainTriangle, TextureId,
-    Vec3, Vertex,
+    Cx, GeometryLease, Material, Mesh, Mod, Persist, Pixels, Region, TerrainRevision,
+    TerrainTriangle, TextureId, Vec3, Vertex,
 };
 use std::collections::BTreeMap;
 const CHUNK: f32 = 24.0;
@@ -181,13 +181,65 @@ impl Persist for Chunks {
 fn key(x: i32, z: i32) -> String {
     format!("chunk/{x}/{z}")
 }
+fn read_patches(
+    cx: &Cx,
+    revision: TerrainRevision,
+    region: Region,
+    tiles: &mut BTreeMap<TextureId, Pixels>,
+) -> Option<Vec<TerrainTriangle>> {
+    let mut patches = Vec::new();
+    let mut offset = 0;
+    loop {
+        let Ok(page) = cx.terrain.triangles(revision, region, offset) else {
+            return None;
+        };
+        let done = page.len() < 512;
+        offset += page.len() as u32;
+        patches.extend(page);
+        if done {
+            break;
+        }
+    }
+    for patch in &patches {
+        if let std::collections::btree_map::Entry::Vacant(entry) = tiles.entry(patch.texture) {
+            let Ok(image) = cx.terrain.pixels(revision, patch.texture) else {
+                return None;
+            };
+            entry.insert(image);
+        }
+    }
+    Some(patches)
+}
+
+fn missing_chunks(
+    chunks: &Chunks,
+    camera: Vec3,
+    distance: impl Fn(i32, i32) -> f32,
+) -> Vec<(i32, i32)> {
+    let centre = (
+        (camera.x / CHUNK).floor() as i32,
+        (camera.z / CHUNK).floor() as i32,
+    );
+    let mut wanted = Vec::new();
+    for x in centre.0 - 7..=centre.0 + 7 {
+        for z in centre.1 - 7..=centre.1 + 7 {
+            if !chunks.0.iter().any(|c| c.0 == x && c.1 == z) && band_of(distance(x, z)).is_some() {
+                wanted.push((x, z));
+            }
+        }
+    }
+    wanted.sort_by(|a, b| distance(a.0, a.1).total_cmp(&distance(b.0, b.1)));
+    wanted
+}
+
 struct Grass;
 impl Mod for Grass {
     const ID: &'static str = "grass";
     fn frame(cx: &Cx) {
-        let (Some(revision), Some(generation), Some(camera)) = (
+        let (Some(revision), Some(generation), Some(lease), Some(camera)) = (
             cx.terrain.revision(),
             cx.geometry.generation(),
+            cx.geometry.lease(),
             cx.camera.pose(),
         ) else {
             return;
@@ -195,7 +247,8 @@ impl Mod for Grass {
         let density = cx.settings.number("density").clamp(0.1, 1.0);
         let wind = cx.settings.number("wind").clamp(0.0, 0.5);
         let mut chunks = cx.memory.load::<Chunks>("chunks").unwrap_or_default();
-        let reset = cx.memory.load::<TerrainRevision>("revision") != Some(revision)
+        let reset = cx.memory.load::<GeometryLease>("lease") != Some(lease)
+            || cx.memory.load::<TerrainRevision>("revision") != Some(revision)
             || cx.memory.load::<[f32; 2]>("look") != Some([density, wind]);
         let distance = |x: i32, z: i32| {
             let dx = (x as f32 + 0.5) * CHUNK - camera.position.x;
@@ -210,50 +263,16 @@ impl Mod for Grass {
             }
             retain
         });
-        let centre = (
-            (camera.position.x / CHUNK).floor() as i32,
-            (camera.position.z / CHUNK).floor() as i32,
-        );
-        let mut wanted = Vec::new();
-        for x in centre.0 - 7..=centre.0 + 7 {
-            for z in centre.1 - 7..=centre.1 + 7 {
-                if !chunks.0.iter().any(|c| c.0 == x && c.1 == z)
-                    && band_of(distance(x, z)).is_some()
-                {
-                    wanted.push((x, z));
-                }
-            }
-        }
-        wanted.sort_by(|a, b| distance(a.0, a.1).total_cmp(&distance(b.0, b.1)));
+        let wanted = missing_chunks(&chunks, camera.position, distance);
         let mut tiles = BTreeMap::new();
         for (x, z) in wanted.into_iter().take(2) {
             let region = Region {
                 min: [x as f32 * CHUNK, z as f32 * CHUNK],
                 max: [(x + 1) as f32 * CHUNK, (z + 1) as f32 * CHUNK],
             };
-            let mut patches = Vec::new();
-            let mut offset = 0;
-            loop {
-                let Ok(page) = cx.terrain.triangles(revision, region, offset) else {
-                    return;
-                };
-                let done = page.len() < 512;
-                offset += page.len() as u32;
-                patches.extend(page);
-                if done {
-                    break;
-                }
-            }
-            for patch in &patches {
-                if let std::collections::btree_map::Entry::Vacant(entry) =
-                    tiles.entry(patch.texture)
-                {
-                    let Ok(image) = cx.terrain.pixels(revision, patch.texture) else {
-                        return;
-                    };
-                    entry.insert(image);
-                }
-            }
+            let Some(patches) = read_patches(cx, revision, region, &mut tiles) else {
+                return;
+            };
             let band = band_of(distance(x, z)).unwrap_or(2);
             let mesh = blades(&patches, &tiles, &BANDS[band], density);
             let empty = mesh.vertices.is_empty();
@@ -276,6 +295,7 @@ impl Mod for Grass {
         }
         cx.memory.save("chunks", Some(&chunks));
         cx.memory.save("revision", Some(&revision));
+        cx.memory.save("lease", Some(&lease));
         cx.memory.save("look", Some(&[density, wind]));
     }
 }

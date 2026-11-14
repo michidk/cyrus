@@ -130,6 +130,110 @@ impl Terrain {
     }
 }
 
+impl Terrain {
+    fn read_tile(
+        &mut self,
+        world: &World,
+        texture: Handle<Image>,
+        handles: &mut Vec<Handle<Image>>,
+    ) -> Option<usize> {
+        if let Some(index) = handles.iter().position(|h| h == &texture) {
+            return Some(index);
+        }
+        let image = world.resource::<Assets<Image>>().get(&texture)?;
+        let size = image.size();
+        if size.x == 0 || size.y == 0 || size.x > 512 || size.y > 512 || handles.len() >= 256 {
+            self.failure = Some(SnapshotFailure::OverBudget);
+            return None;
+        }
+        let mut pixels = Vec::with_capacity((size.x * size.y * 4) as usize);
+        for y in 0..size.y {
+            for x in 0..size.x {
+                let Ok(color) = image.get_color_at(x, y) else {
+                    self.failure = Some(SnapshotFailure::Unsupported);
+                    return None;
+                };
+                pixels.extend(Srgba::from(color).to_u8_array());
+            }
+        }
+        self.tiles.push(Tile {
+            width: size.x,
+            height: size.y,
+            pixels,
+        });
+        handles.push(texture);
+        Some(handles.len() - 1)
+    }
+    fn read_mesh(
+        &mut self,
+        world: &World,
+        entity: Entity,
+        handle: Handle<Mesh>,
+        tile: usize,
+    ) -> bool {
+        let Some(mesh) = world.resource::<Assets<Mesh>>().get(&handle) else {
+            return false;
+        };
+        let Some(positions) = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|v| v.as_float3())
+        else {
+            self.failure = Some(SnapshotFailure::Unsupported);
+            return false;
+        };
+        let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+        else {
+            self.failure = Some(SnapshotFailure::Unsupported);
+            return false;
+        };
+        let transform = world
+            .get::<GlobalTransform>(entity)
+            .copied()
+            .unwrap_or_default();
+        let indices: Vec<_> = mesh
+            .indices()
+            .map(|i| i.iter().collect())
+            .unwrap_or_else(|| (0..positions.len()).collect());
+        for tri in indices.as_chunks::<3>().0 {
+            let mut record = vec![tile as f32, self.triangles.len() as f32];
+            for &index in tri {
+                let (Some(point), Some(uv)) = (positions.get(index), uvs.get(index)) else {
+                    return false;
+                };
+                record.extend(transform.transform_point(Vec3::from(*point)).to_array());
+                record.extend(uv);
+            }
+            if record.len() == 17 {
+                if self.triangles.len() >= 1_000_000 {
+                    self.failure = Some(SnapshotFailure::OverBudget);
+                    return false;
+                }
+                if record.iter().any(|v| !v.is_finite()) {
+                    self.failure = Some(SnapshotFailure::Unsupported);
+                    return false;
+                }
+                self.triangles.push(record);
+            }
+        }
+        true
+    }
+    fn read_sources(&mut self, world: &World, sources: Vec<(Entity, Handle<Mesh>)>) -> bool {
+        let mut handles = Vec::new();
+        for (entity, handle) in sources {
+            let Some(texture) = terrain_texture(world, entity) else {
+                return false;
+            };
+            let Some(tile) = self.read_tile(world, texture, &mut handles) else {
+                return false;
+            };
+            if !self.read_mesh(world, entity, handle, tile) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 /// Refresh only when the world or retained mesh bindings change. Runs before guest Update.
 pub(crate) fn publish(world: &mut World) {
     let identity = world
@@ -162,101 +266,7 @@ pub(crate) fn publish(world: &mut World) {
         ..default()
     };
     if identity.is_some() && !sources.is_empty() {
-        let mut handles = Vec::new();
-        let mut complete = true;
-        for (entity, handle) in sources {
-            let Some(texture) = terrain_texture(world, entity) else {
-                complete = false;
-                break;
-            };
-            let tile = if let Some(index) = handles.iter().position(|h| h == &texture) {
-                index
-            } else {
-                let Some(image) = world.resource::<Assets<Image>>().get(&texture) else {
-                    complete = false;
-                    break;
-                };
-                let size = image.size();
-                if size.x == 0
-                    || size.y == 0
-                    || size.x > 512
-                    || size.y > 512
-                    || handles.len() >= 256
-                {
-                    snapshot.failure = Some(SnapshotFailure::OverBudget);
-                    complete = false;
-                    break;
-                }
-                let mut pixels = Vec::with_capacity((size.x * size.y * 4) as usize);
-                for y in 0..size.y {
-                    for x in 0..size.x {
-                        let Ok(color) = image.get_color_at(x, y) else {
-                            snapshot.failure = Some(SnapshotFailure::Unsupported);
-                            complete = false;
-                            continue;
-                        };
-                        pixels.extend(Srgba::from(color).to_u8_array());
-                    }
-                }
-                snapshot.tiles.push(Tile {
-                    width: size.x,
-                    height: size.y,
-                    pixels,
-                });
-                handles.push(texture);
-                handles.len() - 1
-            };
-            let Some(mesh) = world.resource::<Assets<Mesh>>().get(&handle) else {
-                complete = false;
-                break;
-            };
-            let Some(positions) = mesh
-                .attribute(Mesh::ATTRIBUTE_POSITION)
-                .and_then(|v| v.as_float3())
-            else {
-                snapshot.failure = Some(SnapshotFailure::Unsupported);
-                complete = false;
-                break;
-            };
-            let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)
-            else {
-                snapshot.failure = Some(SnapshotFailure::Unsupported);
-                complete = false;
-                break;
-            };
-            let transform = world
-                .get::<GlobalTransform>(entity)
-                .copied()
-                .unwrap_or_default();
-            let indices: Vec<_> = mesh
-                .indices()
-                .map(|i| i.iter().collect())
-                .unwrap_or_else(|| (0..positions.len()).collect());
-            for tri in indices.as_chunks::<3>().0 {
-                let mut record = vec![tile as f32, snapshot.triangles.len() as f32];
-                for &index in tri {
-                    let (Some(point), Some(uv)) = (positions.get(index), uvs.get(index)) else {
-                        complete = false;
-                        break;
-                    };
-                    record.extend(transform.transform_point(Vec3::from(*point)).to_array());
-                    record.extend(uv);
-                }
-                if record.len() == 17 {
-                    if snapshot.triangles.len() >= 1_000_000 {
-                        snapshot.failure = Some(SnapshotFailure::OverBudget);
-                        complete = false;
-                        break;
-                    }
-                    if record.iter().any(|v| !v.is_finite()) {
-                        snapshot.failure = Some(SnapshotFailure::Unsupported);
-                        complete = false;
-                        break;
-                    }
-                    snapshot.triangles.push(record);
-                }
-            }
-        }
+        let complete = snapshot.read_sources(world, sources);
         snapshot.ready = complete && snapshot.failure.is_none();
         if snapshot.failure.is_some() {
             warn!(

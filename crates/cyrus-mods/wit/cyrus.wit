@@ -34,6 +34,9 @@ interface components {
     constructor(component: component);
     contains: func(owner: string, key: string) -> bool;
     generation: func() -> option<u64>;
+    /// Opaque instance/revision pair; empty when unavailable. Changes after successful
+    /// Wasm reload or reactivation. Persist and compare it to invalidate guest caches.
+    lease: func(owner: string) -> list<u64>;
     /// Up to 256 keys and 1500000 vertices per owner, 3000000 vertices globally.
     /// Nonzero finite normals; finite position/UV within +/-1e6; linear RGBA 0..=1.
     /// Triangle indices must be in range, at most six indices per vertex.
