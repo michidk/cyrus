@@ -44,6 +44,10 @@ that bind everyone are in `AGENTS.md`.
   work directly to `main` and push; no feature branches or pull requests
   unless asked. Other agents work in the same checkout: stage only the files
   your task touched.
+- Consume the latest stable `redguard-preservation` release from crates.io.
+  Renovate updates its exact version pin and lockfile. Local checks and CI reject
+  Git/path dependencies and source overrides. Unreleased upstream fixes are
+  dependency blockers, not a reason to switch back to a commit.
 - Find the owning issue through [delivery tracking](https://github.com/michidk/cyrus/issues/92)
   or [SOUP #4](https://github.com/michidk/cyrus/issues/4). Claim it with the
   intended scope, agent/session, worktree and shared-file ownership before
