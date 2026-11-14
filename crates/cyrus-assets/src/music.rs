@@ -116,7 +116,7 @@ fn mp3_pcm(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     };
     let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
     let mut format = symphonia::default::get_probe().probe(
-        &Hint::new().with_extension("mp3"),
+        Hint::new().with_extension("mp3"),
         stream,
         FormatOptions::default(),
         MetadataOptions::default(),
