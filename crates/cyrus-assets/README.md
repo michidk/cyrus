@@ -2,7 +2,9 @@
 
 ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
 of exposing them as static images. Zero-control authored ranges remain supported.
-Catalog version 35 invalidates image previews prepared before this admission check.
+LBM static preparation also rejects malformed CRNG payloads and nonzero control
+words; preservation retains those chunks for inspection without inventing playback.
+Catalog version 36 invalidates image previews prepared before these admission checks.
 
 
 `loading/WORLD.loading` prepares only the requested destination's full-screen

@@ -958,3 +958,79 @@ fn installed_palette_controls_reject_unknown_prefixes_and_retain_all_gui_colors(
         original
     );
 }
+
+#[test]
+fn installed_lbm_preparation_refuses_unsupported_cycles_without_losing_static_colors() {
+    let installed = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !installed.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (LBM palette admission)");
+        return;
+    }
+    let original = std::fs::read(installed.join("system/gui.lbm")).unwrap();
+    let decoded = rgpre::import::lbm::parse_lbm_file(&original).unwrap();
+    let cycle = decoded
+        .chunks
+        .iter()
+        .find(|chunk| chunk.tag == *b"CRNG")
+        .unwrap();
+    let offset = cycle.data.as_ptr() as usize - original.as_ptr() as usize;
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart", "system"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    for (name, field) in [
+        ("reserved.lbm", Some(0)),
+        ("rate.lbm", Some(2)),
+        ("flags.lbm", Some(4)),
+        ("static.lbm", None),
+    ] {
+        let mut bytes = original.clone();
+        if let Some(field) = field {
+            bytes[offset + field..offset + field + 2].copy_from_slice(&1_u16.to_be_bytes());
+        }
+        std::fs::write(root.join("system").join(name), bytes).unwrap();
+    }
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    let mut rejected = 0;
+    for entry in library
+        .catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.path.ends_with(".lbm"))
+    {
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        if entry.path.ends_with("static.lbm") {
+            let Content::Images { frames } = preview.content else {
+                panic!("zero-control ranges must remain supported")
+            };
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].rgba, decoded.image.rgba());
+            assert_eq!(frames[0].rgba.len() / 4, 307_200);
+        } else {
+            let Content::Unavailable { reason } = preview.content else {
+                panic!(
+                    "{} silently flattened unsupported palette controls",
+                    entry.path
+                )
+            };
+            assert!(reason.contains(&entry.path), "{reason}");
+            assert!(reason.contains("CRNG 0"), "{reason}");
+            rejected += 1;
+        }
+    }
+    assert_eq!(rejected, 3);
+    assert_eq!(
+        std::fs::read(installed.join("system/gui.lbm")).unwrap(),
+        original
+    );
+}

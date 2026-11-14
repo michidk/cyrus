@@ -283,6 +283,7 @@ pub(super) fn prepare<R: ReadAssets>(
             }
             Some(FileType::Lbm) => {
                 let image = import::lbm::parse_lbm_file(bytes)?;
+                image.require_static_palette()?;
                 preview.metadata = Some(
                     json!({"compression":image.compression,"masking":image.masking,"width":image.image.width,"height":image.image.height,"transparent_index":image.image.transparent_index,"palette":image.image.palette.as_slice(),"chunks":image.chunks.iter().map(|chunk|json!({"tag":String::from_utf8_lossy(&chunk.tag),"bytes":chunk.data.len()})).collect::<Vec<_>>()}),
                 );
