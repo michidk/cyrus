@@ -412,3 +412,8 @@ remain in the original movie timeline; output must be outside the install.
 and speech together. Disabled sound forces text dialogue, including after saved
 book preferences are applied. The rule follows preservation
 [`SYSTEM.INI`](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#sound-and-music).
+
+Ripped CD MP3 decoding uses Symphonia's audio-track decoder with gapless trimming
+and explicit signed 16-bit interleaving. Only 44.1 kHz stereo is admitted, matching
+the CD PCM consumer; packet and decode errors are propagated rather than treated
+as clean end-of-stream. Speech PCM and Smacker movie audio use their own readers.

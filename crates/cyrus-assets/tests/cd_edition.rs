@@ -42,3 +42,21 @@ fn cd_edition_movies_and_music_load_without_the_gog_image() {
     assert!(cache.join("music/02.wav").is_file());
     std::fs::remove_dir_all(cache).unwrap();
 }
+
+#[test]
+fn ripped_cd_pcm_keeps_frame_count_and_silence() {
+    let folder = std::env::temp_dir().join(format!("cyrus-cd-decoder-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    // Synthetic MPEG-1 Layer III, 128 kb/s, 44.1 kHz stereo, zero side/main data.
+    // Eight frames contain 8 * 1152 stereo sample frames, with no gapless tag.
+    let mut frame = vec![0; 417];
+    frame[..4].copy_from_slice(&[0xff, 0xfb, 0x90, 0x00]);
+    std::fs::write(folder.join("01 Track 1.mp3"), frame.repeat(8)).unwrap();
+    let wav = music::read_track(&folder, 2).unwrap();
+    assert_eq!(&wav[..4], b"RIFF");
+    assert_eq!(wav.len(), 44 + 8 * 1152 * 2 * 2);
+    assert!(wav[44..].iter().all(|sample| *sample == 0));
+    std::fs::write(folder.join("02 Track 2.mp3"), b"not an MP3").unwrap();
+    assert!(music::read_track(&folder, 3).is_err());
+    std::fs::remove_dir_all(folder).unwrap();
+}

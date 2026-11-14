@@ -109,43 +109,44 @@ pub(crate) fn soundtrack_track(file_name: &str) -> Option<u32> {
 /// Decodes a 44.1 kHz stereo MP3 to the interleaved 16-bit little-endian PCM a CD track holds.
 fn mp3_pcm(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     use symphonia::core::{
-        audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions,
-        io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
+        codecs::audio::AudioDecoderOptions,
+        formats::{FormatOptions, TrackType, probe::Hint},
+        io::MediaSourceStream,
+        meta::MetadataOptions,
     };
     let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
-    let options = FormatOptions {
-        enable_gapless: true,
-        ..Default::default()
-    };
-    let mut format = symphonia::default::get_probe()
-        .format(
-            Hint::new().with_extension("mp3"),
-            stream,
-            &options,
-            &MetadataOptions::default(),
-        )?
-        .format;
-    let params = format
-        .default_track()
-        .context("no audio stream")?
+    let mut format = symphonia::default::get_probe().probe(
+        &Hint::new().with_extension("mp3"),
+        stream,
+        FormatOptions::default(),
+        MetadataOptions::default(),
+    )?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .context("no audio stream")?;
+    let track_id = track.id;
+    let params = track
         .codec_params
-        .clone();
+        .as_ref()
+        .and_then(|params| params.audio())
+        .context("missing audio codec parameters")?;
     anyhow::ensure!(
-        params.sample_rate == Some(RED_BOOK_RATE) && params.channels.map(|c| c.count()) == Some(2),
+        params.sample_rate == Some(RED_BOOK_RATE)
+            && params.channels.as_ref().map(|c| c.count()) == Some(2),
         "not 44.1 kHz stereo"
     );
-    let mut decoder = symphonia::default::get_codecs().make(&params, &DecoderOptions::default())?;
+    let mut decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(params, &AudioDecoderOptions::default().gapless(true))?;
     let mut pcm = Vec::new();
-    loop {
-        let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e.into()),
-        };
+    let mut samples = Vec::<i16>::new();
+    while let Some(packet) = format.next_packet()? {
+        if packet.track_id != track_id {
+            continue;
+        }
         let decoded = decoder.decode(&packet)?;
-        let mut samples = SampleBuffer::<i16>::new(decoded.capacity() as u64, *decoded.spec());
-        samples.copy_interleaved_ref(decoded);
-        pcm.extend(samples.samples().iter().flat_map(|s| s.to_le_bytes()));
+        samples.resize(decoded.samples_interleaved(), 0);
+        decoded.copy_to_slice_interleaved(&mut samples);
+        pcm.extend(samples.iter().flat_map(|s| s.to_le_bytes()));
     }
     Ok(pcm)
 }
