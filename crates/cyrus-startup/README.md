@@ -85,6 +85,9 @@ the authored fade. The cache regenerates when the splash export changes. The [pr
 documents the DLL format. The splash draws at the physical resolution of the window's
 fitted 4:3 viewport, including display scaling, and resizes with the window.
 Its sprite retains the original logical framing without a fixed-resolution intermediate.
+WebGL reconstructs screen-space colour interpolation from perspective varyings and
+the fragment reciprocal W; native rendering uses the linear interpolation qualifier.
+The book models use the same WebGL compatibility path for their lighting levels.
 Glide edge coverage, floating-point approximations and pixel
 quantization need a hardware comparison before claiming pixel-exact rendering.
 
