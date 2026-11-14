@@ -47,6 +47,8 @@ voices and starting a replacement in the same update replaces the overlay even
 when the lowest free subtitle slot is reused.
 Each line's supplied duration starts at admission on the host's real-time clock;
 the preceding update interval does not consume the new line's display time.
+Expired lines release their slots before new requests are admitted; zero-duration
+requests are retired before the overlay is published.
 Game hosts select the view camera for audio listener updates. The isolated consumer
 check
 rejects audio or startup dependencies in rendering.

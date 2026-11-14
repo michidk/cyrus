@@ -115,6 +115,8 @@ fn start_lines(
     mut font: ResMut<SubtitleFont>,
     time: Res<Time<Real>>,
 ) {
+    let now = time.elapsed_secs_f64();
+    retire_lines(&mut font, now);
     let speaking = settings.as_ref().is_none_or(|s| s.speech);
     for request in requests.read() {
         match request {
@@ -137,7 +139,10 @@ fn start_lines(
             SubtitleRequest::StopAll => font.slots.iter_mut().for_each(|s| *s = None),
         }
     }
-    let now = time.elapsed_secs_f64();
+    retire_lines(&mut font, now);
+}
+
+fn retire_lines(font: &mut SubtitleFont, now: f64) {
     for slot in font.slots.iter_mut() {
         if slot.as_ref().is_some_and(|line| line.expires_at <= now) {
             *slot = None;

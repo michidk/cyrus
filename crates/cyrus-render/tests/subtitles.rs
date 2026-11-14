@@ -152,3 +152,65 @@ fn subtitle_admission_does_not_debit_the_previous_update() {
     app.update();
     assert_eq!(overlays(&mut app), 0, "the complete duration has elapsed");
 }
+
+#[test]
+fn expired_subtitles_release_capacity_before_new_speech_admission() {
+    use bevy::prelude::*;
+    use cyrus_render::subtitles::{SubtitlePlugin, SubtitleRequest};
+    use std::time::Duration;
+
+    let Some(install) = install("subtitle expired capacity") else {
+        return;
+    };
+    let ini = cyrus_assets::install::system_ini(&install).unwrap();
+    let slots = cyrus_assets::sound::ini_value(&ini, "dialog", "dialog_max_dialog_lines")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap()
+        .max(16);
+    let mut app = App::new();
+    app.init_resource::<Time<Real>>()
+        .init_resource::<Assets<Image>>()
+        .insert_resource(install)
+        .add_plugins(SubtitlePlugin);
+    app.update();
+    for _ in 0..slots {
+        app.world_mut().write_message(SubtitleRequest::Speech {
+            text: "A".into(),
+            seconds: 1.0,
+        });
+    }
+    app.update();
+    app.world_mut()
+        .resource_mut::<Time<Real>>()
+        .advance_by(Duration::from_secs(1));
+    app.world_mut().write_message(SubtitleRequest::Speech {
+        text: "AA".into(),
+        seconds: 1.0,
+    });
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .query::<&ImageNode>()
+            .iter(app.world())
+            .count(),
+        1,
+        "expired lines cannot reject speech admitted at their deadline"
+    );
+    app.world_mut()
+        .resource_mut::<Time<Real>>()
+        .advance_by(Duration::from_secs(1));
+    app.world_mut().write_message(SubtitleRequest::Speech {
+        text: "A".into(),
+        seconds: 0.0,
+    });
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .query::<&ImageNode>()
+            .iter(app.world())
+            .count(),
+        0,
+        "zero-duration requests are still retired before publication"
+    );
+}
