@@ -22,6 +22,18 @@ class MemoryRegion(unittest.TestCase):
             with self.subTest(ranges=ranges), self.assertRaisesRegex(ValueError, 'expected one binding'):
                 region.locate(io.BytesIO(blob), ranges, b'anchor', 3, 40)
 
+    def test_unreadable_mapping_does_not_hide_a_later_verified_region(self):
+        class ProcessMemory(io.BytesIO):
+            def read(self, size=-1):
+                if self.tell() == 0:
+                    raise OSError(5, 'mapping disappeared')
+                return super().read(size)
+
+        memory = ProcessMemory(bytes(43) + b'anchor' + bytes(35))
+        self.assertEqual(region.locate(memory, [(0, 40), (40, 80)], b'anchor', 3, 40), 40)
+        with self.assertRaisesRegex(ValueError, 'found 0'):
+            region.locate(memory, [(0, 40)], b'anchor', 3, 40)
+
     def test_absent_signature_never_falls_back_to_mapping_start(self):
         with self.assertRaisesRegex(ValueError, 'found 0'):
             region.locate(io.BytesIO(bytes(80)), [(0, 80)], b'anchor', 3, 40)
