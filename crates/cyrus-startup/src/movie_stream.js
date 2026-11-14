@@ -12,6 +12,7 @@ class PacketAudio {
         this.paused = true;
         this.seeking = false;
         this.complete = false;
+        this.activation = 0;
     }
     get currentTime() {
         if (this.paused) return this.position;
@@ -85,13 +86,16 @@ class PacketAudio {
         };
     }
     async play() {
+        const activation = this.activation;
         await this.context.resume();
+        if (activation !== this.activation) return;
         if (!this.paused) return;
         this.paused = false;
         this.origin = this.context.currentTime;
         for (const block of this.blocks) this.schedule(block);
     }
     pause(position = this.currentTime) {
+        this.activation++;
         if (this.paused) return;
         this.position = position;
         this.paused = true;

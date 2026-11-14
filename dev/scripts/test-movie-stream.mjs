@@ -238,3 +238,26 @@ assert.equal(extension.offset, .4);
 assert(Math.abs(extension.duration - .2) < 1e-12);
 movie.closeMovie(horizonId);
 console.log('packet PCM: decoded-video horizon bounds long packets and preserves continuation tails');
+
+// A browser may defer resume while permission/output activation is pending.
+const pendingId = movie.openMovie('/movies/pending.smk', true, 2, .1);
+const pendingContext = contexts.at(-1);
+let releaseResume;
+pendingContext.resume = () => new Promise(resolve => { releaseResume = resolve; });
+movie.movieAudio(pendingId, new Uint8Array(20).fill(160), 10, 1, 8, 0, false);
+movie.movieVideoEnd(pendingId, 1);
+movie.playMovie(pendingId);
+movie.seekMovie(pendingId, .5);
+movie.movieVideoEnd(pendingId, 1.5);
+releaseResume();
+await settle();
+assert.equal(pendingContext.sources.length, 0,
+    'seek must invalidate pending activation before it can create any source');
+assert.equal(movie.movieTime(pendingId), .5, 'cancelled activation cannot advance the seek origin');
+pendingContext.resume = () => Promise.resolve();
+movie.playMovie(pendingId);
+await settle();
+assert.equal(pendingContext.sources.length, 1, 'a new public play can activate the retained target PCM');
+assert.equal(pendingContext.sources[0].offset, .5);
+movie.closeMovie(pendingId);
+console.log('packet PCM: seek invalidates pending context activation before source creation');

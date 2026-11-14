@@ -140,6 +140,8 @@ Late PCM admission observes the exhausted boundary before extending lookahead,
 so an unpolled producer stall cannot become skipped movie time. The public
 `test-movie-stream.mjs` regression also covers seeking inside queued PCM and
 cancelling obsolete source completion callbacks.
+Seeking also invalidates pending output-context activation before it can create
+sources; a later play starts only from the retained seek target.
 `node dev/scripts/test-browser-movie-seek.mjs CDP_URL PAGE_URL WINDOW_URL RESULT_JSON`
 uses an installed decoded window from the assets `movie_window` example. It
 presents those frames on the movie clock, admits a late continuation, pauses
