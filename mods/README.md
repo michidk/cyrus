@@ -1,7 +1,14 @@
 # Bundled mods
 
-Native-only WebAssembly mods shipped with cyrus. Each folder with a `mod.toml` is its own Cargo
-crate (outside the game workspace) built for `wasm32-wasip2` against the shared SDK in `mods/sdk`; `just mods` builds
+Native mods shipped with cyrus. The `cyrus-with-mods-<target>` downloads from
+releases and PR artifact runs contain every mod in the built source revision.
+Extract the entire archive and run cyrus from that directory to use its included
+`game-config/mods`. `CYRUS_CONFIG_DIR` overrides that location. Mods start disabled;
+open F11 and select Mods to enable them. The plain game downloads remain available.
+
+Mods with a Cargo crate are outside the game workspace and build for
+`wasm32-wasip2` against the shared SDK in `mods/sdk`. Others contain only a
+manifest or shaders. From source, `just mods` builds
 them all and installs them into `game-config/mods/<folder>/`. Activate them in
 the Mods window that opens with Backtick. The browser build does not load mods.
 
