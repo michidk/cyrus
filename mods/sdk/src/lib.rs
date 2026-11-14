@@ -17,6 +17,11 @@
 //! `frame` runs every `Update` with every hook in the context; the host copies answers one frame
 //! later, except particle emissions, which render after the current Update. A fresh instance of the mod runs for each call, so keep state in `Cx::memory`.
 mod effects;
+mod geometry;
+pub use geometry::{
+    Geometry, GeometryError, Material, Mesh, Pixels, Region, Terrain, TerrainRevision,
+    TerrainTriangle, TextureId, Vertex, WorldGeneration,
+};
 mod handles;
 mod keys;
 mod math;
@@ -76,6 +81,8 @@ pub struct Cx {
     pub world_changed: bool,
     pub damage: Damage,
     pub particles: Particles,
+    pub terrain: Terrain,
+    pub geometry: Geometry,
 }
 
 /// The memory key this SDK keeps the last seen world generation under; the tilde keeps it apart
@@ -84,7 +91,7 @@ const WORLD_GENERATION: &str = "~world-generation";
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 14] {
+fn query_for() -> [QueryFor; 16] {
     [
         QueryFor::Ref(raw::Actors::type_path()),
         QueryFor::Mut(raw::Camera::type_path()),
@@ -100,6 +107,8 @@ fn query_for() -> [QueryFor; 14] {
         QueryFor::Ref(raw::Settings::type_path()),
         QueryFor::Ref(raw::Damage::type_path()),
         QueryFor::Mut(raw::Particles::type_path()),
+        QueryFor::Ref(raw::Terrain::type_path()),
+        QueryFor::Mut(raw::Geometry::type_path()),
     ]
 }
 
@@ -144,6 +153,11 @@ pub fn run<M: Mod>(query: Query) {
             },
             world_changed,
             damage: Damage(raw::Damage::new(row.component(12))),
+            terrain: Terrain(raw::Terrain::new(row.component(14))),
+            geometry: Geometry {
+                raw: raw::Geometry::new(row.component(15)),
+                id: M::ID,
+            },
             particles: Particles {
                 raw: raw::Particles::new(row.component(13)),
                 id: M::ID,

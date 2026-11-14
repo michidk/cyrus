@@ -718,3 +718,12 @@ when the setting is zero, per [preservation PR #329](https://github.com/michidk/
 The retained presentation interval is covered by the production scroll system
 test. This state comparison does not establish full raster parity or software
 sky acceptance.
+
+Native mods can read retained unclipped terrain sources through
+`WaterPlayback::source_meshes` and publish validated scene meshes through
+`cyrus-mods`. `fog::geometry` supplies their matte double-sided material, current
+scene fog and PBR bindings. A bounded shared `geometry_surface.wesl` library slot
+allows guest-authored deformation with per-mesh parameters and conservative bounds
+padding. It is stationary without an active replacement. Grass placement, image
+classification, LOD and wind equations belong to `mods/grass`, not this renderer.
+This base has no ray-tracing geometry integration.
