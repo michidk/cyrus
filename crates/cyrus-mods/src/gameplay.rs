@@ -243,6 +243,25 @@ pub fn finish_save(world: &mut World, result: Result<(), String>) {
 }
 
 #[cfg(test)]
+pub(crate) fn dialogue_fixture(world: &mut World) -> bool {
+    let owners = world.resource::<Owners>();
+    let active: HashMap<_, _> = owners
+        .active
+        .iter()
+        .map(|(id, owner)| (id.clone(), *owner))
+        .collect();
+    let stamp = owners.world;
+    let mut query = world.query::<&mut Dialogue>();
+    let mut hook = query.single_mut(world).unwrap();
+    let requested = hook.pending.take().is_some();
+    hook.available = true;
+    hook.world = stamp;
+    hook.owners = active;
+    hook.line = Some((1, 1));
+    requested
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     fn fixture() -> (World, Entity) {
@@ -374,23 +393,4 @@ mod tests {
         assert!(dialogue.advance("dialogue-skip".into()));
         assert!(!dialogue.advance("dialogue-skip".into()));
     }
-}
-
-#[cfg(test)]
-pub(crate) fn dialogue_fixture(world: &mut World) -> bool {
-    let owners = world.resource::<Owners>();
-    let active: HashMap<_, _> = owners
-        .active
-        .iter()
-        .map(|(id, owner)| (id.clone(), *owner))
-        .collect();
-    let stamp = owners.world;
-    let mut query = world.query::<&mut Dialogue>();
-    let mut hook = query.single_mut(world).unwrap();
-    let requested = hook.pending.take().is_some();
-    hook.available = true;
-    hook.world = stamp;
-    hook.owners = active;
-    hook.line = Some((1, 1));
-    requested
 }
