@@ -41,8 +41,16 @@ Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition
 translates speech requests into `subtitles::SubtitleRequest` before
-`UpdateSubtitles`; the renderer owns text timing, slots and drawing. Game hosts
-select the view camera for audio listener updates. The isolated consumer check
+`UpdateSubtitles`; the renderer owns text timing, slots and drawing.
+Subtitle presentation follows both the active slot and its current text. Stopping
+voices and starting a replacement in the same update replaces the overlay even
+when the lowest free subtitle slot is reused.
+Each line's supplied duration starts at admission on the host's real-time clock;
+the preceding update interval does not consume the new line's display time.
+Expired lines release their slots before new requests are admitted; zero-duration
+requests are retired before the overlay is published.
+Game hosts select the view camera for audio listener updates. The isolated consumer
+check
 rejects audio or startup dependencies in rendering.
 
 `WorldRenderPlugin` composes the shared scene-spawn path, environment,
@@ -50,10 +58,16 @@ rejects audio or startup dependencies in rendering.
 same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
 Script-driven actor poses retain the same scene origin as exported world placements and markers.
 The framed inspection camera supplies `ScriptView` before ordinary actor updates.
-Script visibility flags hide or restore bound scene nodes independently of actor
-update eligibility. Current model records retain the captured transform and animation frame.
+Script visibility flags hide or restore bound scene nodes. Map cell actors outside the current
+view window are hidden too: the original draws actors from the same window list that the ordinary
+update walks, so an actor whose script has not yet run (the ISLAND lighthouse beam starts with
+`HideMe`) is never drawn from afar (**Verified** from the executable). Current model records retain
+the captured transform and animation frame.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
+**Verified:** HUD prompt and notice text wraps whole glyphs at x = 640, returning
+to the starting x one font line lower, following preservation's
+[HUD shared rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#shared-rules).
 HUD artwork and rasterized text explicitly use nearest sampling when the
 640×480 overlay is enlarged, preserving its pixel edges instead of inheriting
 the image plugin's linear sampler. World materials retain their own sampling rules.
@@ -283,7 +297,7 @@ each one alone; instead each caster gets a shadow-only twin that shares its mesh
 material on a layer only the sun lights (`fog/modern_lighting/shadows`). The camera's passes
 batch the same way: static scene models whose material values modern lighting reads are equal
 share one material (`fog/modern_lighting/sharing`) and get their own back in Faithful. When
-a mod writes the `water-surface` shader input (`hooks::ShaderInputs`) with a wave amplitude, the terrain
+a mod fills the `terrain-surface` effect slot (`hooks::EffectSlots`) with a wave amplitude, the terrain
 shader moves its waves on the unprojected terrain and the CPU no longer rewrites the terrain mesh each
 frame; the ground heights still follow the original's waves.
 The model and terrain materials are bindless where the platform supports it, so models with
@@ -296,7 +310,7 @@ Under modern lighting the map's object and baked lights are point lights with th
 channels, and small models that hold a light glow on their bright texels
 (`fog/modern_lighting/glow`). Models whose texture SURFACE.INI marks as water write a zero alpha,
 which the screen pass reflects as calm water without ripples, on faces that face up. The terrain
-and the screen pass share the water library `water_surface.wesl`, whose built-in version has no waves, ripples, foam or wet
+and the screen pass share the water library `terrain_surface.wesl`, whose built-in version has no waves, ripples, foam or wet
 sand and which a mod replaces (the `modern-water` mod carries the modern ones); the terrain's second
 UV channel carries the water weight and, packed together, each vertex's signed distance to the
 shore in grid cells from the terrain cells whose texture SURFACE.INI marks as water and its cell's
@@ -343,15 +357,15 @@ the original camera position. This combines preservation's
 with its [sky texture mapping](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 
 Scene rendering uses the installed near/far planes, including a nonzero
-`world_back_plane` override. F11 exposes a render-distance override in game units;
+`world_back_plane` override. Backtick exposes a render-distance override in game units;
 editing it switches Fog to Modern. Faithful uses the original range and fog
 tables. Modern Fog expands the camera-centered terrain and water window to cover the
 selected far frustum. Faithful Fog retains the original terrain window.
 Modern Fog defaults to 50,000 engine units and a gradual distant
 fade. Modern Sky is camera-centered. Fog and Sky are independently switchable and default to
 Faithful. Water has no mode; mods change it through the generic `hooks` (the
-"water-wave", "water-cell" and "lighting-modern" scene values, the "water-surface" shader
-input and the `water_surface.wesl` library). Re-export environments after this change.
+`WorldFacts` it publishes, the "terrain-surface" effect slot and the `terrain_surface.wesl`
+library). Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend. The framebuffer
 keeps eight bits per channel without RGB565 quantization or ordered dither:
@@ -630,6 +644,15 @@ an isolated old-sampler control. Frame 2 mean RGB error is 0.733 native and
 by this correction. Original flame phase, cadence and full parity remain
 **Unknown**. Standalone actor sampling eligibility remains separate.
 
+**Verified:** [actor solid palette ownership](https://github.com/michidk/redguard-preservation/pull/317)
+is independent of sampling flags. Scene actor solids resolve through the converted
+world palette even when their
+frame source has no ROB sampling attributes. Palette ownership is independent
+of draw-flag provenance; standalone sampling defaults remain separate. Actor
+texture sets preserve solid faces and reserved texture banks, and replace only
+the bank of textured faces whose bank is at least two. Re-export older actor
+meshes after updating.
+
 **Verified:** world archive solid-color faces require `rgpre_solid_palette` version 1 from
 [preservation's indexed export](https://github.com/michidk/redguard-preservation/commit/395b1b3).
 Their palette conversion precedes retained lighting and unbaked corner lighting;
@@ -682,3 +705,16 @@ missing or inconsistent mesh/material bindings. Call after effect PostUpdate and
 deferred publication. Runtime identities establish replacement and retirement only
 within the process; this diagnostic does not establish GPU submission or visual
 parity with the original.
+
+**Verified:** ordinary gameplay hides the host pointer without capturing it. This follows
+[preservation’s observed gameplay cursor contract](https://github.com/michidk/redguard-preservation/blob/348982c/docs/formats/GXA.md).
+Mod orbit control additionally requests pointer lock. Opening the keyboard console
+releases that lock while keeping the pointer hidden; closing it restores orbit lock.
+Host settings retain a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.
+
+**Verified:** Glide sky scrolling ignores the installed `[xngine] sky_move`
+setting. It advances using elapsed BIOS ticks, direction and speed, including
+when the setting is zero, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
+The retained presentation interval is covered by the production scroll system
+test. This state comparison does not establish full raster parity or software
+sky acceptance.

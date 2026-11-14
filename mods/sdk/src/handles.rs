@@ -6,24 +6,6 @@ use crate::keys::{Action, Key};
 use crate::math::{Pose, Vec3};
 use crate::state::Persist;
 
-/// Names the game publishes today: scene values and shader inputs.
-pub mod published {
-    /// Scene values (`Scene`).
-    pub mod scene_value {
-        /// The loaded world's wave amplitude, speed and frequency (WLD units), while it has water.
-        pub const WATER_WAVE: &str = "water-wave";
-        /// The terrain grid cell size in scene units.
-        pub const WATER_CELL: &str = "water-cell";
-        /// 1 while the Lighting area is Modern, else 0.
-        pub const LIGHTING_MODERN: &str = "lighting-modern";
-    }
-    /// Shader inputs (`Uniforms`).
-    pub mod shader_input {
-        /// `[effects, 0, amplitude, cell]`, see `cyrus.wit`.
-        pub const WATER_SURFACE: &str = "water-surface";
-    }
-}
-
 /// The view camera.
 pub struct Camera(pub(crate) raw::Camera);
 
@@ -223,32 +205,164 @@ impl Natives {
     }
 }
 
-/// Values the game publishes by name, and its clock (`published::scene_value`).
-pub struct Scene(pub(crate) raw::Scene);
+/// Whether the Lighting area draws the original way or the modern one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lighting {
+    Faithful,
+    Modern,
+}
 
-impl Scene {
-    /// The values under `key`; empty when none are published.
-    pub fn values(&self, key: &str) -> Vec<f32> {
-        self.0.values(key)
-    }
+/// How the loaded world's water moves, as its installed environment describes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Water {
+    /// Wave amplitude, speed and frequency in the world file's units.
+    pub amplitude: f32,
+    pub speed: f32,
+    pub frequency: f32,
+    /// The terrain grid cell size in scene units.
+    pub cell: f32,
+}
 
-    /// The first value under `key`.
-    pub fn value(&self, key: &str) -> Option<f32> {
-        self.0.values(key).first().copied()
-    }
+/// Facts about the loaded world and the presentation, refreshed every frame.
+pub struct Environment(pub(crate) raw::Environment);
 
+impl Environment {
     /// Presentation clock in seconds.
     pub fn seconds(&self) -> f32 {
         self.0.seconds()
     }
+
+    /// Changes whenever a world is loaded or reloaded; 0 while none is. Prefer `Cx::world_changed`.
+    pub fn generation(&self) -> u32 {
+        self.0.generation()
+    }
+
+    /// The loaded world's WORLD.INI index; `None` while no world is loaded.
+    pub fn world(&self) -> Option<u32> {
+        self.0.index().first().copied()
+    }
+
+    pub fn lighting(&self) -> Lighting {
+        if self.0.lighting() == "modern" {
+            Lighting::Modern
+        } else {
+            Lighting::Faithful
+        }
+    }
+
+    /// The loaded world's water; `None` when it has none.
+    pub fn water(&self) -> Option<Water> {
+        let &[amplitude, speed, frequency, cell] = &self.0.water()[..] else {
+            return None;
+        };
+        Some(Water {
+            amplitude,
+            speed,
+            frequency,
+            cell,
+        })
+    }
 }
 
-/// Four-value shader inputs by name (`published::shader_input`); write every frame.
-pub struct Uniforms(pub(crate) raw::Uniforms);
+/// One actor of the loaded world.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Actor {
+    /// Valid for the current world generation only.
+    pub index: u32,
+    /// The actor's script name.
+    pub name: String,
+    /// Map units, original axes; `None` before the actor has a position.
+    pub position: Option<Vec3>,
+    pub health: u8,
+    /// A script hid the actor, so it is not drawn.
+    pub hidden: bool,
+}
 
-impl Uniforms {
-    pub fn set(&self, key: &str, values: [f32; 4]) {
-        self.0.set(key, &values);
+/// The actors of the loaded world, read-only and refreshed every frame.
+pub struct Actors(pub(crate) raw::Actors);
+
+impl Actors {
+    pub fn count(&self) -> u32 {
+        self.0.count()
+    }
+
+    pub fn get(&self, index: u32) -> Option<Actor> {
+        (index < self.0.count()).then(|| Actor {
+            index,
+            name: self.0.name(index),
+            position: match self.0.position(index)[..] {
+                [x, y, z] => Some(Vec3::new(x, y, z)),
+                _ => None,
+            },
+            health: self.0.health(index).min(255) as u8,
+            hidden: self.0.hidden(index),
+        })
+    }
+
+    /// Every actor, in actor order.
+    pub fn all(&self) -> impl Iterator<Item = Actor> + '_ {
+        (0..self.0.count()).filter_map(|index| self.get(index))
+    }
+
+    /// The nearest actor to `from` within `range` map units that `keep` accepts, with its
+    /// distance. Positions are read first and only the nearest candidates are read in full, so
+    /// this stays cheap in a world with many actors.
+    pub fn nearest(
+        &self,
+        from: Vec3,
+        range: f32,
+        keep: impl Fn(&Actor) -> bool,
+    ) -> Option<(Actor, f32)> {
+        let mut candidates: Vec<(u32, f32)> = (0..self.0.count())
+            .filter_map(|index| {
+                let &[x, y, z] = &self.0.position(index)[..] else {
+                    return None;
+                };
+                let distance = (Vec3::new(x, y, z) - from).length();
+                (distance <= range).then_some((index, distance))
+            })
+            .collect();
+        candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+        candidates.into_iter().find_map(|(index, distance)| {
+            self.get(index).filter(&keep).map(|actor| (actor, distance))
+        })
+    }
+
+    /// The first actor with this script name (case does not matter).
+    pub fn find(&self, name: &str) -> Option<Actor> {
+        (0..self.0.count())
+            .find(|&index| self.0.name(index).eq_ignore_ascii_case(name))
+            .and_then(|index| self.get(index))
+    }
+}
+
+/// The terrain surface slot: what the surface shader library does with the terrain's water.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TerrainSurface {
+    /// Turns on the library's shore foam, wet sand and ripples.
+    pub effects: bool,
+    /// Wave amplitude in scene units; above zero the terrain shader moves the waves.
+    pub amplitude: f32,
+    /// The terrain grid cell size in scene units (`Water::cell`); needed for the waves.
+    pub cell: f32,
+}
+
+/// Parameter blocks for the game's shaders. A mod replaces a shader library (`[[shader]]` in
+/// mod.toml) and fills the slot that library reads; fill it every frame, and when the mod stops
+/// the shaders return to the original.
+pub struct Effects(pub(crate) raw::Effects);
+
+impl Effects {
+    pub fn terrain_surface(&self, surface: TerrainSurface) {
+        self.0.set(
+            "terrain-surface",
+            &[
+                f32::from(u8::from(surface.effects)),
+                0.0,
+                surface.amplitude,
+                surface.cell,
+            ],
+        );
     }
 }
 

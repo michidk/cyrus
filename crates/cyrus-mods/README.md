@@ -20,7 +20,7 @@ A mod is a folder `game-config/mods/<id>/` with `mod.toml` (`name`,
   `file_overlays()` by the `cyrus` binary before anything scans the install).
   Case-insensitive match, first active mod by id wins, applied at startup only.
 
-`ModsPlugin` lists the folders in a Mods window while the F11 menu is open and saves
+`ModsPlugin` lists the folders in a Mods window while the Backtick menu is open and saves
 activation to `game-config/mods.json`. Every half second it looks again: a folder
 dropped into the mods folder appears in the list, a deleted one is stopped and
 dropped, an edited `mod.toml` is reread, and an active mod whose `mod.wasm` or shaders
@@ -28,10 +28,10 @@ changed is reloaded. A mod is just its folder; copy it in or out while the game 
 `register_source` must run before the asset plugin is added.
 
 The API lives on one host entity with one component per hook (`src/api.rs`). The
-hooks are generic: named scene values and four-value shader inputs
-(cyrus-render's `hooks`, which lists the published and read names), the camera, the player's movement, animation and status,
+hooks are generic: world facts (clock, world generation, Lighting mode, water) and named
+shader effect slots (cyrus-render's `hooks`), the loaded world's actors, the camera, the player's movement, animation and status,
 collision probes, script native calls, settings, memory, a text overlay and input.
-`PreUpdate` hands last frame's mod answers to cyrus-render's `ShaderInputs`,
+`PreUpdate` hands last frame's mod answers to cyrus-render's `EffectSlots`,
 `CameraTakeover` and cyrus-script's `CameraOrbit`, `MovementWish`,
 `LocomotionClaimed` and `PlayerRequests`, and publishes this frame's state (including the
 selected player's `Player` status), so answers apply one frame

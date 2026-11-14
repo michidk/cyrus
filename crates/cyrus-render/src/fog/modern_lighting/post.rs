@@ -3,8 +3,9 @@
 //!
 //! **Modern only**, a tuning choice throughout. Under modern lighting the terrain writes its
 //! water weight into the colour's alpha (`terrain.wesl`); this pass, after the main pass,
-//! marches each water pixel's reflected ray through the depth buffer, falls back to the horizon
-//! colour where the ray leaves the screen, adds the flare where the sun is on screen and not
+//! marches each water pixel's reflected ray through the depth buffer, reflects the sky drawn in
+//! the ray's direction where it meets no scenery, falls back to the horizon colour where that is
+//! off screen too, adds the flare where the sun is on screen and not
 //! covered, and restores an opaque alpha. It runs on every modern-lit camera, also with both
 //! effects off, so the water weight never reaches the screen.
 use super::{day_night::Daylight, effects::ModernEffects, lights::Sun};
@@ -54,11 +55,11 @@ pub(super) struct ModernPost {
     sun: Vec4,
     /// Linear sun colour.
     sun_color: Vec4,
-    /// Linear horizon colour reflected where a ray leaves the screen, and the reflections'
-    /// strength (0 turns them off).
+    /// Linear horizon colour reflected where neither scenery nor sky is on screen, and the
+    /// reflections' strength (0 turns them off).
     horizon: Vec4,
     /// Seconds as the scene shaders read them, for the water's ripples, and the modern waves'
-    /// amplitude and grid cell size in world units (both 0 without them; see `hooks::ShaderInputs`).
+    /// amplitude and grid cell size in world units (both 0 without them; see `hooks::EffectSlots`).
     time: Vec4,
 }
 
@@ -81,7 +82,7 @@ fn sun_direction(sky: Option<&SkyMaterial>, light: Option<&GlobalTransform>) -> 
 pub(super) struct PostInputs<'w, 's> {
     effects: Res<'w, ModernEffects>,
     time: Res<'w, Time>,
-    shader_inputs: Option<Res<'w, crate::hooks::ShaderInputs>>,
+    shader_inputs: Option<Res<'w, crate::hooks::EffectSlots>>,
     daylight: Res<'w, Daylight>,
     request: Option<Res<'w, EnvironmentRequest>>,
     environments: Res<'w, Assets<Environment>>,
@@ -112,7 +113,7 @@ struct FrameSky {
     visibility: f32,
     sun_color: Vec3,
     horizon: Vec3,
-    /// `crate::hooks::ShaderInputs::water`.
+    /// `crate::hooks::EffectSlots::terrain_surface`.
     waves: Vec4,
 }
 
@@ -141,7 +142,7 @@ impl PostInputs<'_, '_> {
         let waves = self
             .shader_inputs
             .as_deref()
-            .map_or(Vec4::ZERO, crate::hooks::ShaderInputs::water);
+            .map_or(Vec4::ZERO, crate::hooks::EffectSlots::terrain_surface);
         let horizon = environment.map_or(Vec3::ZERO, |environment| {
             let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;
             Vec3::from_array(

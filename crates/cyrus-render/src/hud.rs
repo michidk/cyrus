@@ -947,7 +947,7 @@ fn text_image(
     let mut rgba = vec![0; 640 * 480 * 4];
     for (text, at) in lines {
         hud.font
-            .draw_shadowed(&mut rgba, 640, text, *at, hud.text_alpha);
+            .draw_shadowed_wrapped(&mut rgba, 640, text, *at, hud.text_alpha);
     }
     if let Some((slot, text)) = dialogue {
         let alpha = if *slot == 0 {
@@ -2717,16 +2717,55 @@ mod tests {
     }
 
     #[test]
+    fn hud_prompt_wraps_whole_glyphs_before_the_viewport_edge() {
+        let mut hud = asset(2);
+        hud.font = cyrus_text::Font {
+            start: u16::from(b'A'),
+            line_height: 8,
+            glyphs: vec![cyrus_text::Glyph {
+                enabled: true,
+                width: 2,
+                height: 1,
+                pixels: vec![1, 1],
+                ..default()
+            }],
+            palette: vec![[0; 3], [63, 0, 0]],
+        };
+        hud.text_alpha = [255, 0];
+        let image = text_image(&hud, &[("AA".into(), [638, 10])], None, &[]);
+        let pixels = image.data.as_ref().unwrap();
+        let pixel = |x: usize, y: usize| &pixels[(y * 640 + x) * 4..][..4];
+        assert_eq!(pixel(638, 10), [252, 0, 0, 255], "exact edge fits");
+        assert_eq!(pixel(639, 10), [252, 0, 0, 255]);
+        assert_eq!(pixel(638, 18), [252, 0, 0, 255], "next glyph wraps");
+        assert_eq!(pixel(639, 18), [252, 0, 0, 255]);
+        assert_eq!(pixel(637, 18), [0; 4], "returns to the original pen x");
+    }
+
+    #[test]
     fn ordinary_prompt_renders_without_an_inspection_resource() {
         let mut app = compass_app();
         app.world_mut().remove_resource::<ActivationInputs>();
         let handle = app.world().resource::<HudHandle>().0.clone();
-        app.world_mut()
-            .resource_mut::<Assets<HudAsset>>()
-            .get_mut(&handle)
-            .unwrap()
-            .labels
-            .insert("#opn".into(), "Installed prompt".into());
+        {
+            let mut assets = app.world_mut().resource_mut::<Assets<HudAsset>>();
+            let mut hud = assets.get_mut(&handle).unwrap();
+            hud.labels.insert("#opn".into(), "AA".into());
+            hud.prompt = [638, 10];
+            hud.text_alpha = [255, 0];
+            hud.font = cyrus_text::Font {
+                start: u16::from(b'A'),
+                line_height: 8,
+                glyphs: vec![cyrus_text::Glyph {
+                    enabled: true,
+                    width: 2,
+                    height: 1,
+                    pixels: vec![1, 1],
+                    ..default()
+                }],
+                palette: vec![[0; 3], [63, 0, 0]],
+            };
+        }
         app.insert_resource(cyrus_script::script::ScriptHud::default());
         {
             let mut actors = app.world_mut().resource_mut::<ScriptActors>();
@@ -2777,9 +2816,29 @@ mod tests {
         app.update();
         assert_eq!(
             app.world().resource::<HudState>().prompt.as_deref(),
-            Some("Installed prompt")
+            Some("AA")
         );
         assert!(app.world().get_resource::<ActivationInputs>().is_none());
+        let image = app
+            .world_mut()
+            .query_filtered::<&ImageNode, With<HudText>>()
+            .single(app.world())
+            .unwrap()
+            .image
+            .clone();
+        let pixels = app
+            .world()
+            .resource::<Assets<Image>>()
+            .get(&image)
+            .unwrap()
+            .data
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            &pixels[(18 * 640 + 638) * 4..][..8],
+            [252, 0, 0, 255, 252, 0, 0, 255],
+            "the production HUD update publishes the wrapped prompt raster"
+        );
     }
 
     #[test]

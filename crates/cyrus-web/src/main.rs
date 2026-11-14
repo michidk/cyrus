@@ -97,8 +97,6 @@ fn run(
             fog: modern(&options.fog),
             sky: modern(&options.sky),
             music: modern(&options.music),
-            player_controller: modern(&options.controls),
-            camera: modern(&options.camera),
             ..default()
         }
     })

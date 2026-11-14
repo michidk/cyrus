@@ -77,6 +77,14 @@ impl ActorLists {
         &self.separate_selected
     }
 
+    /// A map cell actor missing from the retained view window. Before the first window selection
+    /// the load-time list still holds every cell actor, so none is outside it.
+    pub(super) fn outside_window(&self, index: usize) -> bool {
+        self.traversal_prepared
+            && self.membership.contains_key(&index)
+            && !self.selected.iter().any(|id| id.index == index)
+    }
+
     pub(super) fn rope_view(&self) -> Option<[i32; 3]> {
         self.rope_view
     }

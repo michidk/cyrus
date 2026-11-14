@@ -557,9 +557,9 @@ mod tests {
             .init_resource::<Time<Real>>()
             .add_systems(Update, animate_water);
         if surface == Surface::Shader {
-            let mut inputs = crate::hooks::ShaderInputs::default();
+            let mut inputs = crate::hooks::EffectSlots::default();
             inputs.0.insert(
-                crate::hooks::WATER_SURFACE.into(),
+                crate::hooks::TERRAIN_SURFACE.into(),
                 [1.0, 0.0, 1.2, CELL_SIZE],
             );
             app.insert_resource(inputs);

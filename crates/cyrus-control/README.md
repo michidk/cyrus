@@ -29,8 +29,8 @@ In `Menu`, `state.menu` reports the page, installed entries, current selection,
 preferences, and Controls capture action. Wait for `ready` before sending menu
 input and after each animated page change. Quit closes the book before exiting.
 Drive Options and Movies with `input`; the same saved bindings and values
-apply after a native restart. Native Movies playback uses the saved subtitle and
-interlace preferences and reports progress in `state.menu.movie`. A new key press
+apply after a native restart. Native Movies playback uses the saved subtitle
+preference and reports progress in `state.menu.movie`. A new key press
 advances to the next installed skip point, then returns to the menu. Saved Sound
 preferences apply to native effects, speech, and CD music. Browser Movies shares
 playback rules using locally exported cinematic assets; it has no control port.

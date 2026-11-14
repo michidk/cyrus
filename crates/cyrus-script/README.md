@@ -8,10 +8,34 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: actor-overlap landing requires the support's current model link, not a
+`MISC1` group in its catalogue. Bounce continuation also requires the support's
+animation association and bounce power. A missing requested group follows ordinary
+animation fallback rather than refusing the landing. This follows preservation's
+[actor landing rules](https://github.com/michidk/redguard-preservation/blob/a4d86d034c16e782309c166b28774a0f28ee8ead/docs/engine/player.md#weighted-actor-overlap-response).
+
 Verified: `drno` suspends the entire ordinary update of nonplayer actors, including
 response timers, movement and combat. The selected player and camera continue;
 turning it off resumes the retained actor state. This follows preservation's
 [cheat update rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md).
+
+Verified: ordinary slope and turn requests honor the `animation` cheat's nonzero
+request gate. At zero, slope translation, orientation and sliding bookkeeping continue
+with the current animation frozen; noncanonical nonzero values still admit requests.
+This follows preservation's [cheat switches](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
+and [slide request admission](https://github.com/michidk/redguard-preservation/blob/fd1918dad65118e05b7b1b067623b5f94d50ab91/docs/engine/player.md#slide-termination).
+
+Verified: ordinary requests leave excluded receivers' animation state and cues
+untouched. Public point-delay commands still publish their countdown, random draws
+and command bookkeeping; eligible receivers keep synchronous idle-cue dispatch and
+failure ordering. This follows the shared
+[receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility).
+
+Verified: route-link leaps retain logical start and point-command publication when
+no animation receiver exists. The shared request gate declines playback and cue
+dispatch while queued motion, fall origin, timer and sliding cleanup continue.
+This follows the same [receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility)
+and [leap-link rules](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/SOUP.md#phase-twelve-leap-link).
 
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does
@@ -33,6 +57,29 @@ Verified: `XResetCamera` releases the selected player's script, hook, task, obje
 and combat inhibition along with its tasks. Falling and queued motion remain owned
 by the ordinary controller and collision response. Unrelated control bits survive.
 This follows preservation's [camera reset contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#xresetcamera).
+
+Verified: directional motion publishes direction and movement counters without an
+animation receiver. Only a current animation's suppression flag prevents translation;
+stored deep-water surfaces still halve the distance. This follows preservation's
+[directional displacement rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#directional-ordinary-displacement).
+
+Verified: static slide termination applies its final displacement and health change,
+then clears sliding, even when there is no animation receiver. Only the hurt-animation
+request is skipped, following preservation's [slide termination](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#slide-termination)
+and [request receiver gate](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playanimation).
+
+Verified: static-model ground response uses `FallDamage` and `FallHold`, independently
+of `Collide`. Animated actors retain collision-mask admission. Static models run
+the support/ground stage without the animated obstacle and overlap passes, following
+preservation's [ground-stage rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-stage-by-model-kind).
+
+Verified: falling static models retain the full support probe distance and do not
+require a measured FPS sample. The shortened high-FPS probe belongs to animated
+falling actors, following preservation's
+[vertical-motion rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#queued-and-falling-vertical-motion). Undamaging static
+landings clear falling and publish support height without an animation receiver;
+only the animation request is skipped, following the shared
+[request receiver gate](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playanimation).
 
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
@@ -841,7 +888,7 @@ Verified: fixed gameplay shortcuts select the original book pages with F2–F6,
 request version information with F1 and credits with F10. The information screens
 retain the live player. F1, book shortcuts and F9 require `final_version`.
 Desktop and browser hosts share F9 keyboard eligibility, including console,
-reader, inspection and pending-transition gates. F11 belongs to the debugger.
+reader, inspection and pending-transition gates. Backtick belongs to the debugger.
 
 Verified: scene teardown clears all shared dialogue records and remembered sample
 handles, including inactive records initialized with slot zero, before the next
@@ -863,3 +910,8 @@ Unrelated owners and requested effects survive; animation Stop/Forget commands
 keep their per-actor order. `sound_dispatch::AnimationSoundQueue` owns this
 pre-binding routing, while the audio service owns playback and remembered slots.
 The stop rules follow preservation's [sample ownership](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+Verified: selected-player water transitions retain forward swimming and exit animation requests
+for both running and walking motion, following preservation's
+[water transition rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#water-and-lava-transition-effects).
+Backward motion keeps its separate requests; transition sound selection is unchanged.

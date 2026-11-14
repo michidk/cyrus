@@ -117,7 +117,9 @@ pub(super) fn share(
             .chain(parents.iter_ancestors(entity))
             .any(|node| excluded.contains(node));
         let Some(key) = key(material, animation).filter(|_| !actor) else {
-            commands.entity(entity).insert(KeepsOwn);
+            // A model can despawn before these commands apply (a world loading in), so the
+            // marker insert and removal tolerate a missing entity.
+            commands.entity(entity).try_insert(KeepsOwn);
             continue;
         };
         let material = material.clone();
@@ -127,7 +129,7 @@ pub(super) fn share(
             .or_insert_with(|| materials.add(material))
             .clone();
         let own = std::mem::replace(&mut handle.0, target);
-        commands.entity(entity).insert(Unshared(own));
+        commands.entity(entity).try_insert(Unshared(own));
     }
 }
 
@@ -150,10 +152,10 @@ pub(super) fn unshare(
             material.extension.lights = current.extension.lights;
         }
         handle.0 = own.clone();
-        commands.entity(entity).remove::<Unshared>();
+        commands.entity(entity).try_remove::<Unshared>();
     }
     for entity in kept {
-        commands.entity(entity).remove::<KeepsOwn>();
+        commands.entity(entity).try_remove::<KeepsOwn>();
     }
     shared.by_key.clear();
 }

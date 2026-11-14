@@ -4,10 +4,10 @@
 //! (`name`, `description`) and any of:
 //!
 //! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`
-//!   (scene values, shader inputs, camera, movement and input hooks).
+//!   (world facts, actors, effect slots, camera, movement and input hooks).
 //! - any shader files that `mod.toml` lists as `[[shader]]` replacements: `replaces` is
 //!   the asset path of the shader to swap (for example
-//!   `embedded://cyrus_render/water_surface.wesl`) and `file` is the replacement in the
+//!   `embedded://cyrus_render/terrain_surface.wesl`) and `file` is the replacement in the
 //!   mod folder. Each shader is one slot: the first active mod in id order supplies it.
 //!
 //! - a `files/` folder that mirrors the game install (`fxart/…`, `sound/…`): its files are read
@@ -17,7 +17,7 @@
 //! [`settings`]); the Mods window draws the settings of each active mod.
 //!
 //! Without an active mod every hook keeps the original behaviour. Activation is
-//! saved to `mods.json` there; the F11 debug menu lists the mods next to it.
+//! saved to `mods.json` there; the backtick debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
 mod settings;
@@ -137,8 +137,8 @@ impl Plugin for ModsPlugin {
             .register_type::<Vec<f32>>()
             .insert_resource(catalog)
             .insert_resource(settings)
-            .init_resource::<cyrus_render::hooks::SceneValues>()
-            .init_resource::<cyrus_render::hooks::ShaderInputs>()
+            .init_resource::<cyrus_render::hooks::WorldFacts>()
+            .init_resource::<cyrus_render::hooks::EffectSlots>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
             .init_resource::<cyrus_script::player::input::MovementWish>()
             .init_resource::<cyrus_script::player::input::LocomotionClaimed>()
@@ -694,7 +694,7 @@ mod tests {
             r#"
             name = "Looks"
             [[shader]]
-            replaces = "embedded://cyrus_render/water_surface.wesl"
+            replaces = "embedded://cyrus_render/terrain_surface.wesl"
             file = "water.wesl"
             [[shader]]
             replaces = "embedded://cyrus_render/sky.wesl"

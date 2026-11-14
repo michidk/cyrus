@@ -5,13 +5,11 @@
 
 use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
-use cyrus_game::fidelity::{Fidelity, Mode};
 use cyrus_soup::AnimationGroup;
 use serde::Serialize;
 
 /// Held player actions, before movement/animation state interpretation.
-/// Faithful walk is the held walk/run modifier, separate from the walk-mode toggle.
-/// Modern walk requests walking while neither Shift key is held.
+/// Walk is the held walk/run modifier, separate from the walk-mode toggle.
 #[derive(Resource, Default, Debug, PartialEq, Eq, Serialize)]
 pub struct PlayerInput {
     pub forward: bool,
@@ -24,12 +22,11 @@ pub struct PlayerInput {
     pub walk: bool,
 }
 
-/// The keys Modern movement reads, forward, backward, left and right.
-pub const MODERN_MOVEMENT: [KeyCode; 4] =
-    [KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD];
+/// The keys a mod steering with [`Wish::wasd`] reads, forward, backward, left and right.
+pub const WASD: [KeyCode; 4] = [KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD];
 
 impl PlayerInput {
-    /// Modern camera-relative movement: the held directions, or a tilted `stick` (x right,
+    /// Mod-steered camera-relative movement: the held directions, or a tilted `stick` (x right,
     /// y forward, beyond the dead zone), read relative to `view_heading`, become forward plus
     /// the heading to steer toward. Walk stays the Modern walking request, which a stick tilted
     /// less than [`RUN_TILT`] also makes, so the controller must see a cleared walk-mode toggle.
@@ -85,26 +82,24 @@ impl PlayerInput {
     }
 }
 
-/// Modern analog input not yet taken by an ordinary update.
+/// Mod-driven look and steering input not yet taken by an ordinary update.
 #[derive(Resource, Default, Debug)]
 pub struct ModernLook {
     /// Camera turn from mouse travel and the right stick, in 1/2048 turns, positive to the left
     /// as engine headings turn.
     pub turn: f32,
-    /// The left stick beyond the dead zone (x right, y forward), for Modern movement.
+    /// A steering mod's direction (x right, y forward), for camera-relative movement.
     pub stick: Option<Vec2>,
-    /// A mod's [`MovementWish`] is steering, so movement reads camera-relative whatever the
-    /// controller mode.
+    /// A mod's [`MovementWish`] is steering, so movement reads camera-relative.
     pub driven: bool,
-    /// The mouse and right stick turn the follow camera: the Modern camera, or a mod's
-    /// [`CameraOrbit`].
+    /// The mouse and right stick turn the follow camera, as a mod's [`CameraOrbit`] asks.
     pub orbit: bool,
     /// Mouse or right-stick camera input was sampled this frame.
     pub manual: bool,
 }
 
 /// Movement a mod asks for this frame, replacing the original keys. `None` leaves movement
-/// to the original controls (or Modern, when selected), so no mod active means no change.
+/// to the original controls, so no mod active means no change.
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
 pub struct MovementWish(pub Option<Wish>);
 
@@ -245,7 +240,7 @@ pub struct Wish {
 }
 
 /// A mod asks for this frame: the mouse and right stick turn the follow camera around the player
-/// as the Modern camera does, with the cursor captured. Independent of how the player moves.
+/// with the cursor captured. Independent of how the player moves.
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
 pub struct CameraOrbit {
     pub enabled: bool,
@@ -259,7 +254,7 @@ const HEADING_PER_RADIAN: f32 = 2048.0 / std::f32::consts::TAU;
 const MOUSE_TURN: f32 = 0.0025 * HEADING_PER_RADIAN;
 /// Heading units per second of a fully tilted right stick: half a turn.
 const STICK_TURN: f32 = 1024.0;
-/// Left-stick tilt from which Modern movement runs.
+/// Left-stick tilt from which mod-steered movement runs.
 pub const RUN_TILT: f32 = 0.75;
 
 /// Retained gameplay toggles, initialized from installed HUD data or saved preferences.
@@ -633,7 +628,7 @@ impl FromIterator<(Action, Input)> for PlayerBindings {
 /// to a fraction of a modern stick's half range.
 const NOMINAL_CENTER_COUNT: f32 = 574.0;
 
-/// Configured keyboard key_a before Modern movement interpretation.
+/// Configured keyboard key_a before a movement mod interprets it.
 #[derive(Resource, Default)]
 pub struct DialogueSkip(pub bool);
 
@@ -806,13 +801,11 @@ pub fn polled_release(previous: [bool; 2], now: [bool; 2], mouse: Mouse) -> bool
 // Bevy supplies the independent input locks and output resources.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sample(
-    keys: Res<ButtonInput<KeyCode>>,
     inputs: Inputs,
     suppressed: Res<InputSuppressed>,
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
-    fidelity: Res<Fidelity>,
     motion: Option<Res<bevy::input::mouse::AccumulatedMouseMotion>>,
     state: Option<Res<State<cyrus_game::AppState>>>,
     gamepads: Query<&Gamepad>,
@@ -843,7 +836,7 @@ pub(super) fn sample(
             .is_some_and(|threshold| stick.length() > threshold)
             .then_some(stick)
     };
-    look.orbit = fidelity.camera == Mode::Modern || orbit.enabled;
+    look.orbit = orbit.enabled;
     look.manual = false;
     // Mouse travel over a menu does not turn the camera on return.
     if look.orbit && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame) {
@@ -862,17 +855,9 @@ pub(super) fn sample(
             look.turn += orbit.turn.clamp(-1024.0, 1024.0);
         }
     }
-    look.stick = (fidelity.player_controller == Mode::Modern)
-        .then(|| gamepads.iter().find_map(|pad| tilted(pad.left_stick())))
-        .flatten();
+    look.stick = None;
     *input = inputs.bindings().sample_devices(inputs.devices());
     dialogue_skip.0 = input.walk;
-    if fidelity.player_controller == Mode::Modern {
-        [input.forward, input.backward, input.left, input.right] =
-            MODERN_MOVEMENT.map(|key| keys.pressed(key));
-        input.jump |= keys.pressed(KeyCode::Space);
-        input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    }
     if claimed.0.is_some() {
         // The mod owns locomotion: the original movement bindings read as released.
         let input = &mut *input;

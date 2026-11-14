@@ -17,8 +17,9 @@ Authored MPSZ bounds use the same sphere builder after validation. Gameplay owns
 selection of the original loader branch and its model-less single-sphere path.
 
 Terrain height and support queries include engine cell row 256, whose interpolation
-corners lie in source height rows zero and one. Out-of-array corners still return
-no support. This follows preservation's [linear terrain addressing rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md).
+corners lie in source height rows zero and one. A column carry can also admit
+corners from another cell row: admission checks each combined linear source index.
+Out-of-array corners still return no support. This follows preservation's [linear terrain addressing rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md).
 
 Terrain support, polygon contacts, model meshes and ordered static-world queries.
 Consumes serialized `cyrus-assets::collision` records and Bevy math, without world

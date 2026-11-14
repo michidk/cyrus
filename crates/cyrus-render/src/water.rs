@@ -122,41 +122,33 @@ enum Surface {
     /// The original's table wave, on the CPU.
     #[default]
     Original,
-    /// The terrain shader moves it, so the mesh keeps the base grid (see `hooks::ShaderInputs`).
+    /// The terrain shader moves it, so the mesh keeps the base grid (see `hooks::EffectSlots`).
     Shader,
 }
 
 /// The provider hooks water publishes to and reads from.
 type Hooks<'w> = (
-    Option<ResMut<'w, crate::hooks::SceneValues>>,
-    Option<Res<'w, crate::hooks::ShaderInputs>>,
+    Option<ResMut<'w, crate::hooks::WorldFacts>>,
+    Option<Res<'w, crate::hooks::EffectSlots>>,
 );
 
 /// Publishes the clock, the Lighting mode and the water's wave parameters for a provider.
-fn publish_values(
-    values: &mut crate::hooks::SceneValues,
+fn publish_facts(
+    facts: &mut crate::hooks::WorldFacts,
     water: Option<&Water>,
-    (seconds, lighting_modern): (f32, bool),
+    (seconds, modern_lighting): (f32, bool),
 ) {
-    values.seconds = seconds;
-    values.values.insert(
-        crate::hooks::LIGHTING_MODERN.into(),
-        vec![f32::from(u8::from(lighting_modern))],
-    );
-    match water {
-        Some(water) => {
-            values
-                .values
-                .insert(crate::hooks::WATER_WAVE.into(), water.parameters.to_vec());
-            values
-                .values
-                .insert(crate::hooks::WATER_CELL.into(), vec![CELL_SIZE]);
+    facts.seconds = seconds;
+    facts.modern_lighting = modern_lighting;
+    facts.water = water.map(|water| {
+        let [amplitude, speed, frequency] = water.parameters;
+        crate::hooks::WaterFacts {
+            amplitude,
+            speed,
+            frequency,
+            cell: CELL_SIZE,
         }
-        None => {
-            values.values.remove(crate::hooks::WATER_WAVE);
-            values.values.remove(crate::hooks::WATER_CELL);
-        }
-    }
+    });
 }
 
 /// The loaded world's player scene, whose terrain receives the live vertex heights.
@@ -218,7 +210,7 @@ pub(crate) fn animate_water(
     ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
-    (distance, (mut values, inputs)): (Option<Res<crate::fog::RenderDistance>>, Hooks),
+    (distance, (mut facts, inputs)): (Option<Res<crate::fog::RenderDistance>>, Hooks),
     (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
     let (parents, staged, material_names) = hierarchy;
@@ -332,9 +324,9 @@ pub(crate) fn animate_water(
     }
     let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
     let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
-    if let Some(values) = values.as_deref_mut() {
-        publish_values(
-            values,
+    if let Some(facts) = facts.as_deref_mut() {
+        publish_facts(
+            facts,
             water,
             (
                 elapsed.as_secs_f32(),
@@ -496,6 +488,12 @@ pub(crate) fn animate_water(
             Some(view)
         });
         let restore = view.is_none() && terrain.view.is_some();
+        if !prepare_for_camera {
+            // Modern lighting draws the whole terrain, so all of its texture animations play.
+            commands
+                .entity(terrain.entity)
+                .try_insert(crate::terrain::TextureAdmission(true));
+        }
         if !update_grid && !restore && terrain.view == view {
             continue;
         }
@@ -543,7 +541,7 @@ pub(crate) fn animate_water(
         if restore {
             commands
                 .entity(terrain.entity)
-                .insert(crate::terrain::TextureAdmission(false));
+                .insert(crate::terrain::TextureAdmission(!prepare_for_camera));
             terrain.view = None;
             commands
                 .entity(terrain.entity)
@@ -595,11 +593,11 @@ mod tests {
     fn shader_waves(app: &mut App, on: bool) {
         let mut inputs = app
             .world_mut()
-            .get_resource_or_insert_with(crate::hooks::ShaderInputs::default);
+            .get_resource_or_insert_with(crate::hooks::EffectSlots::default);
         inputs.0.clear();
         if on {
             inputs.0.insert(
-                crate::hooks::WATER_SURFACE.into(),
+                crate::hooks::TERRAIN_SURFACE.into(),
                 [1.0, 0.0, 1.2, CELL_SIZE],
             );
         }
@@ -1293,6 +1291,13 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, dry_mesh);
         assert_eq!(positions(&app, &first), a);
+        assert!(
+            app.world()
+                .get::<crate::terrain::TextureAdmission>(entity)
+                .unwrap()
+                .0,
+            "modern lighting draws the whole terrain, so its texture animations must play"
+        );
         // Modern lighting draws the unprojected terrain; the camera preparation below is Faithful's.
         app.world_mut()
             .resource_mut::<Fidelity>()

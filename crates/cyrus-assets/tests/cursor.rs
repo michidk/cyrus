@@ -1,5 +1,5 @@
 #![cfg(feature = "parsers")]
-//! Authored cursor paths reach shared preparation without inventing descriptors.
+//! Configured cursor archives reach shared preparation and software placement.
 use cyrus_assets::{
     cursor::{ASSET_PATH, CursorArchive},
     source::{FileInfo, Manifest, ReadAssets},
@@ -227,7 +227,7 @@ fn native_export_matches_portable_record_and_rejects_install_output() -> anyhow:
 
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 #[test]
-fn installed_cursor_preparation_preserves_authored_archive_without_descriptors()
+fn installed_cursor_preparation_preserves_archive_and_decodes_software_descriptors()
 -> anyhow::Result<()> {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(std::path::PathBuf::from)
@@ -255,6 +255,73 @@ fn installed_cursor_preparation_preserves_authored_archive_without_descriptors()
     record.validate()?;
     assert_eq!(record.source, expected.path);
     assert_eq!(record.bytes, original);
+    let software = record.software_frames()?;
+    assert_eq!(software.len(), 14);
+    assert!(
+        software.iter().all(|cursor| cursor.rgba.len()
+            == usize::from(cursor.size[0]) * usize::from(cursor.size[1]) * 4)
+    );
+    eprintln!("installed software cursor descriptors: {}", software.len());
     assert_eq!(source.read(&expected.path)?, original);
     Ok(())
+}
+
+#[test]
+fn software_cursor_pairs_decode_through_prepared_public_record() -> anyhow::Result<()> {
+    let bytes = cursor_gxa(&[&[17, 0, 17, 17], &[16, 0, 0, 16], &[0, 0, 0, 0]]);
+    let source = Source::new("pointers=art/custom.bmp", "art/custom.bmp", bytes);
+    let files = cyrus_assets::game::prepare(&source, ASSET_PATH)?;
+    let archive: CursorArchive = serde_json::from_slice(&files[ASSET_PATH])?;
+    let cursors = archive.software_frames()?;
+    assert_eq!(cursors.len(), 1);
+    assert_eq!(cursors[0].size, [2, 2]);
+    assert_eq!(cursors[0].hotspot, Some([1, 1]));
+    assert_eq!(cursors[0].top_left([20, 30]), Some([19, 29]));
+    assert_eq!(cursors[0].top_left([i16::MIN, 0]), Some([i16::MAX, -1]));
+    assert_eq!(cursors[0].rgba.len(), 16);
+    assert_eq!(&cursors[0].rgba[..8], &[0, 0, 0, 255, 0, 0, 0, 0]);
+    Ok(())
+}
+
+#[test]
+fn software_cursor_missing_marker_remains_unknown_and_corruption_is_contextual()
+-> anyhow::Result<()> {
+    let bytes = cursor_gxa(&[&[17; 4], &[0; 4], &[0; 4]]);
+    let mut archive = CursorArchive {
+        version: 1,
+        source: "art/custom.bmp".into(),
+        bytes,
+    };
+    assert_eq!(archive.software_frames()?[0].hotspot, None);
+    assert_eq!(archive.software_frames()?[0].top_left([20, 30]), None);
+    archive.bytes = b"corrupt".to_vec();
+    assert!(
+        format!("{:#}", archive.software_frames().unwrap_err())
+            .contains("art/custom.bmp: software cursor descriptors")
+    );
+    Ok(())
+}
+
+fn cursor_gxa(frames: &[&[u8; 4]]) -> Vec<u8> {
+    let mut header = [0_u8; 34];
+    header[32..34].copy_from_slice(&(frames.len() as i16).to_le_bytes());
+    let mut bytes = Vec::new();
+    for (tag, data) in [(b"BMHD", header.as_slice()), (b"BPAL", &[0_u8; 768])] {
+        bytes.extend_from_slice(tag);
+        bytes.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(data);
+    }
+    let mut all_frames = Vec::new();
+    for pixels in frames {
+        let mut frame = vec![0_u8; 18];
+        frame[2..4].copy_from_slice(&2_i16.to_le_bytes());
+        frame[4..6].copy_from_slice(&2_i16.to_le_bytes());
+        frame.extend_from_slice(*pixels);
+        all_frames.extend_from_slice(&frame);
+    }
+    bytes.extend_from_slice(b"BBMP");
+    bytes.extend_from_slice(&(all_frames.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(&all_frames);
+    bytes.extend_from_slice(b"END ");
+    bytes
 }

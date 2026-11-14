@@ -22,8 +22,8 @@ mod math;
 mod state;
 
 pub use handles::{
-    Camera, Claim, Collision, Contact, Hud, Input, Memory, Movement, NativeCall, Natives, Player,
-    Scene, Settings, Uniforms, published,
+    Actor, Actors, Camera, Claim, Collision, Contact, Effects, Environment, Hud, Input, Lighting,
+    Memory, Movement, NativeCall, Natives, Player, Settings, TerrainSurface, Water,
 };
 pub use keys::{Action, Key};
 pub use math::{Pose, Quat, Vec3};
@@ -57,34 +57,43 @@ pub trait Mod {
 
 /// Every hook, for one frame.
 pub struct Cx {
+    pub actors: Actors,
     pub camera: Camera,
     pub collision: Collision,
+    pub effects: Effects,
+    pub environment: Environment,
     pub hud: Hud,
     pub input: Input,
     pub memory: Memory,
     pub movement: Movement,
     pub natives: Natives,
     pub player: Player,
-    pub scene: Scene,
     pub settings: Settings,
-    pub uniforms: Uniforms,
+    /// A world was loaded or unloaded since the previous frame this mod ran, or this is the first
+    /// frame it sees a world. Reset state kept per world when it is true.
+    pub world_changed: bool,
 }
+
+/// The memory key this SDK keeps the last seen world generation under; the tilde keeps it apart
+/// from a mod's own names.
+const WORLD_GENERATION: &str = "~world-generation";
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 11] {
+fn query_for() -> [QueryFor; 12] {
     [
+        QueryFor::Ref(raw::Actors::type_path()),
         QueryFor::Mut(raw::Camera::type_path()),
         QueryFor::Mut(raw::Collision::type_path()),
+        QueryFor::Mut(raw::Effects::type_path()),
+        QueryFor::Ref(raw::Environment::type_path()),
         QueryFor::Mut(raw::Hud::type_path()),
         QueryFor::Ref(raw::Input::type_path()),
         QueryFor::Mut(raw::Memory::type_path()),
         QueryFor::Mut(raw::Movement::type_path()),
         QueryFor::Mut(raw::Natives::type_path()),
         QueryFor::Ref(raw::Player::type_path()),
-        QueryFor::Ref(raw::Scene::type_path()),
         QueryFor::Ref(raw::Settings::type_path()),
-        QueryFor::Mut(raw::Uniforms::type_path()),
     ]
 }
 
@@ -98,24 +107,36 @@ pub fn register(app: App) {
 #[doc(hidden)]
 pub fn run<M: Mod>(query: Query) {
     while let Some(row) = query.iter() {
+        let memory = Memory {
+            raw: raw::Memory::new(row.component(7)),
+            id: M::ID,
+        };
+        let environment = Environment(raw::Environment::new(row.component(4)));
+        let generation = environment.generation();
+        let last = memory
+            .load::<f32>(WORLD_GENERATION)
+            .map_or(0, |last| last as u32);
+        let world_changed = generation != last;
+        if world_changed {
+            memory.save(WORLD_GENERATION, Some(&(generation as f32)));
+        }
         let cx = Cx {
-            camera: Camera(raw::Camera::new(row.component(0))),
-            collision: Collision(raw::Collision::new(row.component(1))),
-            hud: Hud(raw::Hud::new(row.component(2))),
-            input: Input(raw::Input::new(row.component(3))),
-            memory: Memory {
-                raw: raw::Memory::new(row.component(4)),
-                id: M::ID,
-            },
-            movement: Movement(raw::Movement::new(row.component(5))),
-            natives: Natives(raw::Natives::new(row.component(6))),
-            player: Player(raw::Player::new(row.component(7))),
-            scene: Scene(raw::Scene::new(row.component(8))),
+            actors: Actors(raw::Actors::new(row.component(0))),
+            camera: Camera(raw::Camera::new(row.component(1))),
+            collision: Collision(raw::Collision::new(row.component(2))),
+            effects: Effects(raw::Effects::new(row.component(3))),
+            environment,
+            hud: Hud(raw::Hud::new(row.component(5))),
+            input: Input(raw::Input::new(row.component(6))),
+            memory,
+            movement: Movement(raw::Movement::new(row.component(8))),
+            natives: Natives(raw::Natives::new(row.component(9))),
+            player: Player(raw::Player::new(row.component(10))),
             settings: Settings {
-                raw: raw::Settings::new(row.component(9)),
+                raw: raw::Settings::new(row.component(11)),
                 id: M::ID,
             },
-            uniforms: Uniforms(raw::Uniforms::new(row.component(10))),
+            world_changed,
         };
         M::frame(&cx);
     }

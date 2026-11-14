@@ -24,11 +24,19 @@ static void sound(void *unused, Uint8 *stream, int length) {
 int main(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_AUDIO)) return 1;
     SDL_AudioSpec desired = {0}, actual;
-    desired.freq = 48000; desired.format = AUDIO_S16LSB; desired.channels = argc > 1 && !strcmp(argv[1], "unsupported") ? 1 : 2;
+    desired.freq = 48000; desired.format = AUDIO_S16LSB; desired.channels = argc > 1 && strstr(argv[1], "unsupported") != NULL ? 1 : 2;
     desired.samples = 512; desired.callback = sound;
-    if (SDL_OpenAudio(&desired, &actual)) return 2;
-    SDL_PauseAudio(0);
-    SDL_Delay(argc > 1 && !strcmp(argv[1], "overflow") ? 1500 : 300);
+    int device_api = argc > 1 && !strncmp(argv[1], "device", 6);
+    SDL_AudioDeviceID device = 0;
+    if (device_api) {
+        device = SDL_OpenAudioDevice(NULL, 0, &desired, &actual, 0);
+        if (!device) return 2;
+        SDL_PauseAudioDevice(device, 0);
+    } else {
+        if (SDL_OpenAudio(&desired, &actual)) return 2;
+        SDL_PauseAudio(0);
+    }
+    SDL_Delay(argc > 1 && strstr(argv[1], "overflow") != NULL ? 1500 : 300);
     int (*cursor)(uint64_t *, uint64_t *, uint64_t *, unsigned *);
     *(void **)(&cursor) = dlsym(RTLD_DEFAULT, "cyrus_mixer_cursor");
     uint64_t frames, sequence, ns; unsigned rate;
@@ -38,7 +46,8 @@ int main(int argc, char **argv) {
     if (stat(path, &delivered)) return 4;
     printf("{\"delivered_frames\":%llu,\"frames\":%llu,\"sequence\":%llu,\"monotonic_ns\":%llu,\"rate\":%u}\n",
         (unsigned long long)delivered.st_size / 4, (unsigned long long)frames, (unsigned long long)sequence, (unsigned long long)ns, rate);
-    SDL_CloseAudio(); SDL_Quit();
+    if (device_api) SDL_CloseAudioDevice(device); else SDL_CloseAudio();
+    SDL_Quit();
     return 0;
 }
 

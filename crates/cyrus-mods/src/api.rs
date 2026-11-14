@@ -4,15 +4,15 @@
 //! so a mod's answer takes effect one frame after it was written.
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
-//! and panics on a mismatch, so `Camera`, `Movement`, `Memory`, `Uniforms` and `Hud` (queried `Mut`) take
-//! `&mut self` throughout and `Input`, `Settings`, `Player` and `Scene` (queried `Ref`) take `&self`. Method names
+//! and panics on a mismatch, so `Camera`, `Movement`, `Memory`, `Effects`, `Natives`, `Collision` and `Hud` (queried `Mut`) take
+//! `&mut self` throughout and `Input`, `Settings`, `Player`, `Environment` and `Actors` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use crate::settings::{ModSettings, Value};
 use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_render::camera::{CameraTakeover, ViewCamera};
-use cyrus_render::hooks::{SceneValues, ShaderInputs};
+use cyrus_render::hooks::{EffectSlots, WorldFacts};
 use cyrus_script::player::input::{
     CameraOrbit, CollisionProbes, Gait, Inputs, LocomotionClaim, LocomotionClaimed, ModernLook,
     MovementWish, PlayAnimation, PlayerInput, PlayerRequests, PlayerTuning, Probe, Wish,
@@ -22,21 +22,77 @@ use cyrus_soup::{AnimationGroup, Native};
 use std::collections::{BTreeSet, HashMap};
 use wasvy::prelude::*;
 
-/// Named values the presentation publishes and its clock ([`cyrus_render::hooks`]).
+/// Facts about the loaded world and the presentation, published each frame
+/// ([`cyrus_render::hooks::WorldFacts`]).
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
-pub struct Scene {
-    values: HashMap<String, Vec<f32>>,
+pub struct Environment {
     seconds: f32,
+    generation: u32,
+    index: Vec<u32>,
+    modern_lighting: bool,
+    water: Vec<f32>,
 }
 
 #[wasvy::methods]
-impl Scene {
-    pub fn values(&self, key: String) -> Vec<f32> {
-        self.values.get(&key).cloned().unwrap_or_default()
-    }
+impl Environment {
     pub fn seconds(&self) -> f32 {
         self.seconds
+    }
+    pub fn generation(&self) -> u32 {
+        self.generation
+    }
+    pub fn index(&self) -> Vec<u32> {
+        self.index.clone()
+    }
+    pub fn lighting(&self) -> String {
+        if self.modern_lighting {
+            "modern"
+        } else {
+            "faithful"
+        }
+        .to_owned()
+    }
+    pub fn water(&self) -> Vec<f32> {
+        self.water.clone()
+    }
+}
+
+/// The actors of the loaded world as an observer sees them, in actor order, refreshed each frame.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Actors {
+    names: Vec<String>,
+    /// Position in map units, x, y, z; empty before the actor has one.
+    positions: Vec<Vec<f32>>,
+    health: Vec<u8>,
+    hidden: Vec<bool>,
+    /// The world generation `names` was read for.
+    generation: u64,
+}
+
+#[wasvy::methods]
+impl Actors {
+    pub fn count(&self) -> u32 {
+        self.names.len() as u32
+    }
+    pub fn name(&self, index: u32) -> String {
+        self.names.get(index as usize).cloned().unwrap_or_default()
+    }
+    pub fn position(&self, index: u32) -> Vec<f32> {
+        self.positions
+            .get(index as usize)
+            .cloned()
+            .unwrap_or_default()
+    }
+    pub fn health(&self, index: u32) -> u32 {
+        self.health
+            .get(index as usize)
+            .copied()
+            .map_or(0, u32::from)
+    }
+    pub fn hidden(&self, index: u32) -> bool {
+        self.hidden.get(index as usize).copied().unwrap_or(false)
     }
 }
 
@@ -265,17 +321,17 @@ impl Memory {
     }
 }
 
-/// Shader inputs mods wrote this frame; the engine takes them every frame (see [`ShaderInputs`]).
+/// Effect slots mods filled this frame; the engine takes them every frame (see [`EffectSlots`]).
 #[derive(Component, Reflect, Default, WasvyComponent)]
 #[reflect(Component)]
-pub struct Uniforms {
-    values: HashMap<String, Vec<f32>>,
+pub struct Effects {
+    slots: HashMap<String, Vec<f32>>,
 }
 
 #[wasvy::methods]
-impl Uniforms {
-    pub fn set(&mut self, key: String, values: Vec<f32>) {
-        self.values.insert(key, values);
+impl Effects {
+    pub fn set(&mut self, slot: String, params: Vec<f32>) {
+        self.slots.insert(slot, params);
     }
 }
 
@@ -332,7 +388,8 @@ impl Input {
 pub(crate) fn spawn_host(mut commands: Commands) {
     commands.spawn((
         Name::new("cyrus mod API"),
-        Scene::default(),
+        Environment::default(),
+        Actors::default(),
         Camera::default(),
         Movement::default(),
         Settings::default(),
@@ -340,7 +397,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Collision::default(),
         Natives::default(),
         Memory::default(),
-        Uniforms::default(),
+        Effects::default(),
         Hud::default(),
         Input::default(),
     ));
@@ -348,14 +405,15 @@ pub(crate) fn spawn_host(mut commands: Commands) {
 
 /// Every component of the host entity.
 type Host = (
-    &'static mut Scene,
+    &'static mut Environment,
+    &'static mut Actors,
     &'static mut Camera,
     &'static mut Movement,
     &'static mut Settings,
     &'static mut Player,
     &'static mut Collision,
     &'static mut Natives,
-    &'static mut Uniforms,
+    &'static mut Effects,
     &'static mut Input,
 );
 /// Engine-side resources the mod answers are handed to.
@@ -375,7 +433,7 @@ pub(crate) struct Sources<'w, 's> {
     actors: Option<ResMut<'w, ScriptActors>>,
     camera_frame: Option<Res<'w, CameraFrameState>>,
     values: Res<'w, ModSettings>,
-    published: Res<'w, SceneValues>,
+    facts: Res<'w, WorldFacts>,
     look: Option<Res<'w, ModernLook>>,
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
@@ -389,19 +447,20 @@ pub(crate) struct Sources<'w, 's> {
 /// Hands last frame's mod answers to the engine and publishes this frame's state.
 pub(crate) fn exchange(
     mut host: Query<Host>,
-    mut inputs: ResMut<ShaderInputs>,
+    mut slots: ResMut<EffectSlots>,
     mut out: Outputs,
     mut src: Sources,
 ) {
     let Ok((
-        mut scene,
+        mut environment,
+        mut actors,
         mut camera,
         mut steering,
         mut settings,
         mut player,
         mut collision,
         mut natives,
-        mut uniforms,
+        mut effects,
         mut input,
     )) = host.single_mut()
     else {
@@ -410,12 +469,10 @@ pub(crate) fn exchange(
     if src.values.is_changed() {
         publish_settings(&mut settings, &src.values);
     }
-    if src.published.is_changed() {
-        scene.values = src.published.values.clone();
-    }
-    scene.seconds = src.published.seconds;
-    // Shader inputs last only for the frame after they were written.
-    inputs.0 = take_shader_inputs(&mut uniforms);
+    publish_environment(&mut environment, &src.facts, src.actors.as_deref());
+    publish_actors(&mut actors, src.actors.as_deref());
+    // Effect slots last only for the frame after they were written.
+    slots.0 = take_effect_slots(&mut effects);
 
     out.takeover.0 = camera.takeover.take().and_then(|pose| match pose[..] {
         [x, y, z, qx, qy, qz, qw] => Some(
@@ -520,15 +577,68 @@ fn publish_settings(settings: &mut Settings, values: &ModSettings) {
     }
 }
 
-/// The four-value shader inputs mods wrote; any other length is dropped with a warning.
-fn take_shader_inputs(uniforms: &mut Uniforms) -> HashMap<String, [f32; 4]> {
-    std::mem::take(&mut uniforms.values)
+/// Publishes the clock, the Lighting mode, the water and which world is loaded. The generation
+/// changes whenever a world is prepared again, so a mod notices a load by comparing it with the
+/// one it saw last.
+fn publish_environment(
+    environment: &mut Environment,
+    facts: &WorldFacts,
+    actors: Option<&ScriptActors>,
+) {
+    environment.seconds = facts.seconds;
+    environment.modern_lighting = facts.modern_lighting;
+    environment.water = facts
+        .water
+        .map(|water| vec![water.amplitude, water.speed, water.frequency, water.cell])
+        .unwrap_or_default();
+    let current = actors.and_then(|actors| actors.current.as_ref());
+    environment.index = current.map(|script| script.world).into_iter().collect();
+    // A fresh script world is prepared per load, with its own generation; fold it into a counter
+    // that only moves forward and is never zero while a world is loaded.
+    environment.generation = current.map_or(0, |script| script.generation() as u32);
+}
+
+/// Refreshes the observer view of the world's actors: names only when the world changed, the rest
+/// every frame.
+fn publish_actors(view: &mut Actors, actors: Option<&ScriptActors>) {
+    let Some(current) = actors.and_then(|actors| actors.current.as_ref()) else {
+        *view = Actors::default();
+        return;
+    };
+    if view.generation != current.generation() || view.names.is_empty() {
+        view.generation = current.generation();
+        view.names = current
+            .actor_facts()
+            .map(|fact| fact.name.to_owned())
+            .collect();
+    }
+    view.positions.clear();
+    view.health.clear();
+    view.hidden.clear();
+    for fact in current.actor_facts() {
+        view.positions.push(
+            fact.position
+                .map(|q8| q8.map(|axis| axis as f32 / 256.0).to_vec())
+                .unwrap_or_default(),
+        );
+        view.health.push(fact.health);
+        view.hidden.push(fact.hidden);
+    }
+}
+
+/// The four-value parameter blocks mods wrote into effect slots; any other length is dropped
+/// with a warning.
+fn take_effect_slots(effects: &mut Effects) -> HashMap<String, [f32; 4]> {
+    std::mem::take(&mut effects.slots)
         .into_iter()
         .filter_map(
             |(key, values)| match <[f32; 4]>::try_from(values.as_slice()) {
                 Ok(values) => Some((key, values)),
                 Err(_) => {
-                    warn_once!("mods: uniforms: {key} needs 4 values, got {}", values.len());
+                    warn_once!(
+                        "mods: effects: slot {key} needs 4 values, got {}",
+                        values.len()
+                    );
                     None
                 }
             },
@@ -709,5 +819,64 @@ mod tests {
         };
         assert_eq!(held_actions(&input), ["forward", "walk"]);
         assert!(held_actions(&PlayerInput::default()).is_empty());
+    }
+
+    #[test]
+    fn actors_answer_neutral_values_outside_the_range() {
+        let actors = Actors {
+            names: vec!["SERPENT".into()],
+            positions: vec![vec![1.0, 2.0, 3.0]],
+            health: vec![20],
+            hidden: vec![true],
+            generation: 1,
+        };
+        assert_eq!(actors.count(), 1);
+        assert_eq!(actors.name(0), "SERPENT");
+        assert_eq!(actors.position(0), [1.0, 2.0, 3.0]);
+        assert_eq!(actors.health(0), 20);
+        assert!(actors.hidden(0));
+        assert_eq!(actors.name(9), "");
+        assert!(actors.position(9).is_empty());
+        assert_eq!(actors.health(9), 0);
+        assert!(!actors.hidden(9));
+    }
+
+    #[test]
+    fn the_environment_reports_what_the_presentation_published() {
+        let facts = WorldFacts {
+            seconds: 12.5,
+            modern_lighting: true,
+            water: Some(cyrus_render::hooks::WaterFacts {
+                amplitude: 24.0,
+                speed: 512.0,
+                frequency: 3.0,
+                cell: 6.4,
+            }),
+        };
+        let mut environment = Environment::default();
+        publish_environment(&mut environment, &facts, None);
+        assert_eq!(environment.seconds(), 12.5);
+        assert_eq!(environment.lighting(), "modern");
+        assert_eq!(environment.water(), [24.0, 512.0, 3.0, 6.4]);
+        // No script world is loaded: no generation, no world index.
+        assert_eq!(environment.generation(), 0);
+        assert!(environment.index().is_empty());
+        publish_environment(&mut environment, &WorldFacts::default(), None);
+        assert_eq!(environment.lighting(), "faithful");
+        assert!(environment.water().is_empty());
+    }
+
+    #[test]
+    fn effect_slots_keep_only_four_value_blocks() {
+        let mut effects = Effects::default();
+        effects.set("terrain-surface".into(), vec![1.0, 0.0, 2.0, 3.0]);
+        effects.set("too-short".into(), vec![1.0]);
+        let slots = take_effect_slots(&mut effects);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots["terrain-surface"], [1.0, 0.0, 2.0, 3.0]);
+        assert!(
+            take_effect_slots(&mut effects).is_empty(),
+            "slots last one frame"
+        );
     }
 }

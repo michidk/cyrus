@@ -393,14 +393,13 @@ impl ScriptWorld {
                         }),
                         sounds,
                     )?;
-                // An actor whose collision attribute lacks bit 0x04 never reaches the ground
-                // response that resolves queued or falling motion (preservation player.md, "Stable
-                // ordinary position" and "Terrain sink recovery"), so that motion stays as it is.
+                // Animated ground response uses Collide; static models use the fall attributes.
                 // A selected player without a controller sample still owns the
                 // ordinary script stages, but has no movement or collision query
                 // this update. Require scene data whenever collision work is
                 // actually admitted (all nonplayers and controller-driven input).
-                let collision = if self.actors[id.index].attributes[Attribute::Collide] != 0
+                let collision = if (self.ordinary_collision_admitted(id, data)?
+                    || self.actors[id.index].attributes[Attribute::Collide] != 0)
                     && (!selected_player || inputs.player_controller.is_some())
                     && !on_rope
                 {
@@ -669,7 +668,10 @@ impl ScriptWorld {
                     });
                     self.continue_ordinary_motion(id, inputs, query, sounds)?;
                 }
-                if self.actors[id.index].attributes[Attribute::Collide] != 0 && !on_rope {
+                if (self.ordinary_collision_admitted(id, data)?
+                    || self.actors[id.index].attributes[Attribute::Collide] != 0)
+                    && !on_rope
+                {
                     let scene = anyhow::Context::context(
                         scene,
                         "ordinary late collision scene unavailable",
@@ -994,6 +996,7 @@ pub struct OrdinaryContext<'w, 's> {
     quick: Option<Res<'w, super::super::QuickKeys>>,
     script_keys: Option<Res<'w, super::super::ScriptKeys>>,
     toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
+    // Present only in hosts that run the selected player's controller.
     fidelity: Option<Res<'w, cyrus_game::fidelity::Fidelity>>,
     explicit: Option<Res<'w, crate::player::runtime::PlayerRuntime>>,
     actors: ResMut<'w, ScriptActors>,
@@ -1003,7 +1006,9 @@ pub struct OrdinaryContext<'w, 's> {
     camera_frame: Option<ResMut<'w, super::CameraFrameState>>,
     bindings: Query<'w, 's, (Entity, &'static super::super::ScriptBinding)>,
     /// Animation sounds whose actor has no scene node yet, in emission order.
-    deferred_sounds: Local<'s, DeferredSounds>,
+    deferred_sounds: Option<ResMut<'w, DeferredSounds>>,
+    /// Used when no shared queue resource is installed.
+    deferred_fallback: Local<'s, DeferredSounds>,
     players:
         Query<'w, 's, &'static crate::player::placement::PlayerPose, With<crate::player::Player>>,
 }
@@ -1061,7 +1066,9 @@ impl OrdinaryContext<'_, '_> {
                     sound,
                     &request.0,
                     &self.bindings,
-                    &mut self.deferred_sounds,
+                    self.deferred_sounds
+                        .as_deref_mut()
+                        .unwrap_or(&mut self.deferred_fallback),
                     emit,
                 )
             },
@@ -1460,9 +1467,14 @@ pub fn run_ordinary(
         camera_drive,
         camera_frame,
         bindings,
-        mut deferred_sounds,
+        deferred_sounds: mut shared_sounds,
+        deferred_fallback: mut fallback_sounds,
         players,
     } = context;
+    let deferred_sounds: &mut DeferredSounds = match shared_sounds.as_deref_mut() {
+        Some(queue) => queue,
+        None => &mut fallback_sounds,
+    };
     if hud.as_ref().is_some_and(|hud| !hud.ready()) {
         return;
     }
@@ -1515,7 +1527,7 @@ pub fn run_ordinary(
     }
     let timing = clock.step();
     if let Err(error) = release_deferred_sounds(
-        &mut deferred_sounds,
+        &mut *deferred_sounds,
         world.generation(),
         &request.0,
         &bindings,
@@ -1539,7 +1551,7 @@ pub fn run_ordinary(
             sound,
             &request.0,
             &bindings,
-            &mut deferred_sounds,
+            &mut *deferred_sounds,
             emit,
         )
     };
@@ -1640,13 +1652,8 @@ pub fn run_ordinary(
             return;
         }
     };
-    use cyrus_game::fidelity::Mode;
-    let modes = fidelity
-        .as_deref()
-        .map(|fidelity| (fidelity.player_controller, fidelity.camera));
-    // The Modern camera, or a mod asking for it, turns the follow camera by the look input.
-    let orbit =
-        matches!(modes, Some((_, Mode::Modern))) || look.as_deref().is_some_and(|look| look.orbit);
+    // A mod's orbit camera turns the follow camera by the look input.
+    let orbit = look.as_deref().is_some_and(|look| look.orbit);
     let follow_turn = orbit.then(|| {
         look.as_deref_mut().map_or(0, |look| {
             let turn = look.turn.trunc();
@@ -1655,12 +1662,10 @@ pub fn run_ordinary(
         })
     });
     world.turn_follow_camera(follow_turn);
-    // Modern movement reads the held directions or the left stick relative to the drawn
-    // camera's heading.
+    // A steering mod's movement reads relative to the drawn camera's heading.
     let stick = look.as_deref().and_then(|look| look.stick);
     let driven = look.as_deref().is_some_and(|look| look.driven);
-    let camera_relative = modes.is_some_and(|(controller, _)| controller == Mode::Modern || driven);
-    let modern = match (camera_relative, input.as_deref()) {
+    let modern = match (driven, input.as_deref()) {
         // A topic menu reads forward and back as up and down, not as movement.
         (true, Some(held)) if world.globals.menu_state() != 0 => {
             Some((held.menu_directions(stick), None))
@@ -1695,7 +1700,7 @@ pub fn run_ordinary(
     let player_controller = if !explicit
         .as_ref()
         .is_some_and(|runtime| runtime.explicit_updated)
-        && modes.is_some()
+        && fidelity.is_some()
     {
         input
             .as_deref()

@@ -22,7 +22,7 @@ mod performance;
 
 pub struct DebugMenuPlugin;
 
-/// The F11 menu's visibility; other native panels open alongside it.
+/// The backtick menu's visibility; other native panels open alongside it.
 #[derive(Resource, Default)]
 pub struct DebugMenu {
     pub open: bool,
@@ -106,7 +106,9 @@ fn toggle_menu(
     mut console: Option<ResMut<cyrus_console::Console>>,
     mut egui: ResMut<EguiGlobalSettings>,
 ) {
-    if keys.just_pressed(KeyCode::F11) && !console.as_ref().is_some_and(|console| console.open) {
+    if keys.just_pressed(KeyCode::Backquote)
+        && !console.as_ref().is_some_and(|console| console.open)
+    {
         menu.open = !menu.open;
         egui.enable_absorb_bevy_input_system = menu.open || menu.inspector_open;
     }
@@ -240,13 +242,6 @@ fn debug_menu(
                 }
             }
         });
-        fidelity_control(
-            ui,
-            &mut fidelity,
-            Area::PlayerController,
-            "Player controller",
-        );
-        fidelity_control(ui, &mut fidelity, Area::Camera, "Camera");
         fidelity_control(ui, &mut fidelity, Area::Fog, "Fog");
         fidelity_control(ui, &mut fidelity, Area::Sky, "Sky");
         fidelity_control(
@@ -365,7 +360,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn f11_survives_replacing_the_startup_camera() {
+    fn backtick_survives_replacing_the_startup_camera() {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -400,8 +395,8 @@ mod tests {
         for expected_open in [true, false, true] {
             app.world_mut()
                 .write_message(bevy::input::keyboard::KeyboardInput {
-                    key_code: KeyCode::F11,
-                    logical_key: bevy::input::keyboard::Key::F11,
+                    key_code: KeyCode::Backquote,
+                    logical_key: bevy::input::keyboard::Key::Character("`".into()),
                     state: bevy::input::ButtonState::Pressed,
                     text: None,
                     repeat: false,
@@ -433,7 +428,7 @@ mod tests {
             )), expected_open);
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
-                .release(KeyCode::F11);
+                .release(KeyCode::Backquote);
         }
     }
 
@@ -649,11 +644,12 @@ mod tests {
     }
 
     #[test]
-    fn original_function_keys_do_not_open_the_debug_menu() {
+    fn function_keys_do_not_open_the_debug_menu() {
         let mut app = App::new();
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::F1);
         keys.press(KeyCode::F10);
+        keys.press(KeyCode::F11);
         app.insert_resource(keys)
             .init_resource::<DebugMenu>()
             .init_resource::<EguiGlobalSettings>()
@@ -663,10 +659,10 @@ mod tests {
     }
 
     #[test]
-    fn f11_keeps_the_independent_inspector_open() {
+    fn backtick_keeps_the_independent_inspector_open() {
         let mut app = App::new();
         let mut keys = ButtonInput::<KeyCode>::default();
-        keys.press(KeyCode::F11);
+        keys.press(KeyCode::Backquote);
         app.insert_resource(keys)
             .insert_resource(DebugMenu {
                 open: true,

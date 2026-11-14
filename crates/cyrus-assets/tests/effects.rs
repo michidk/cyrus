@@ -82,3 +82,59 @@ fn installed_world_prepares_effect_frames_and_map_drawing_attributes() -> Result
     }
     Ok(())
 }
+
+#[test]
+fn installed_glide_sky_ignores_unused_motion_setting() -> Result<()> {
+    use cyrus_assets::source::{Manifest, ReadAssets};
+    struct Settings<'a>(&'a Files, Vec<u8>);
+    impl ReadAssets for Settings<'_> {
+        fn manifest(&self) -> &Manifest {
+            self.0.manifest()
+        }
+        fn read_range(&self, path: &str, start: u64, length: usize) -> Result<Vec<u8>> {
+            self.0.read_range(path, start, length)
+        }
+        fn read(&self, path: &str) -> Result<Vec<u8>> {
+            if path.eq_ignore_ascii_case("SYSTEM.INI") {
+                Ok(self.1.clone())
+            } else {
+                self.0.read(path)
+            }
+        }
+    }
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::open(&root) else {
+        eprintln!("skipped: no install (sky motion switch)");
+        return Ok(());
+    };
+    let files = Files::open(&install)?;
+    let original = files.read("SYSTEM.INI")?;
+    let mut skies = Vec::new();
+    for enabled in [false, true] {
+        let mut settings = std::str::from_utf8(&original)?
+            .lines()
+            .filter(|line| {
+                !line
+                    .split_once('=')
+                    .is_some_and(|(key, _)| key.trim().eq_ignore_ascii_case("sky_move"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            .into_bytes();
+        settings
+            .extend_from_slice(format!("\n[xngine]\nsky_move={}\n", u8::from(enabled)).as_bytes());
+        let prepared =
+            cyrus_assets::game::prepare(&Settings(&files, settings), "START.environment")?;
+        let environment: serde_json::Value =
+            serde_json::from_slice(&prepared["START.environment"])?;
+        assert!(environment["sky"]["speed"].as_u64().unwrap() > 0);
+        skies.push(environment["sky"].clone());
+    }
+    assert!(skies[0] == skies[1], "Glide sky does not consume sky_move");
+    assert_eq!(skies[0]["rgba"].as_array().unwrap().len(), 256 * 256 * 4);
+    assert_eq!(skies[0]["speed"], skies[1]["speed"]);
+    assert_eq!(files.read("SYSTEM.INI")?, original);
+    Ok(())
+}

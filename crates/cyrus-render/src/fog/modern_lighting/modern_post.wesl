@@ -1,7 +1,7 @@
 // The modern lighting's screen pass: water reflections and the sun's lens flare; see `post.rs`.
 import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 import bevy_render::view::View;
-import package::water_surface::{water_wave, water_ripple};
+import package::terrain_surface::{water_wave, water_ripple};
 
 struct ModernPost {
     sun: vec4<f32>,
@@ -20,6 +20,9 @@ struct ModernPost {
 const MARCH_STEPS: i32 = 48;
 const FIRST_STEP: f32 = 0.5;
 const STEP_GROWTH: f32 = 1.1;
+// The most open water reflects, so a sea seen at a grazing angle keeps its own colour instead of
+// mirroring the sky outright; calm water reflects fully. A Modern tuning choice.
+const SEA_REFLECTANCE: f32 = 0.5;
 
 fn depth_at(uv: vec2<f32>) -> f32 {
     let size = vec2<i32>(textureDimensions(depth));
@@ -64,6 +67,17 @@ fn water_normal(position: vec3<f32>) -> vec3<f32> {
     return normalize(vec3(-slope.x + ripple.x * 0.05, 1.0, -slope.y + ripple.y * 0.05));
 }
 
+// The sky the screen draws in direction `ray`, with its weight fading towards the screen's edge;
+// zero weight where that direction is off screen or covered by scenery. The sky writes no depth.
+fn sky_towards(ray: vec3<f32>) -> vec4<f32> {
+    let clip = view.clip_from_world * vec4(ray, 0.0);
+    if clip.w <= 0.0 { return vec4(0.0); }
+    let uv = vec2(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5);
+    if !on_screen(uv) || depth_at(uv) > 0.0 { return vec4(0.0); }
+    let edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    return vec4(textureSampleLevel(screen, screen_sampler, uv, 0.0).rgb, smoothstep(0.0, 0.08, edge));
+}
+
 fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f32> {
     let surface_depth = depth_at(uv);
     if surface_depth <= 0.0 { return color; }
@@ -72,23 +86,28 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
     let normal = select(water_normal(origin), vec3(0.0, 1.0, 0.0), calm);
     let ray = reflect(view_direction, normal);
     let fresnel = 0.02 + 0.98 * pow(1.0 - clamp(dot(-view_direction, normal), 0.0, 1.0), 5.0);
-    // A ray that leaves the screen sees the horizon, but keeps a brighter glint of the sun.
+    // A ray that meets no scenery sees the sky drawn in its direction, or the horizon colour where
+    // that is off screen, but keeps a brighter glint of the sun.
     var reflected = max(settings.horizon.rgb, color);
     if ray.y > 0.0 {
+        let sky = sky_towards(ray);
+        reflected = mix(reflected, max(sky.rgb, color), sky.w);
         var travelled = FIRST_STEP;
         var stride = FIRST_STEP;
         for (var i = 0; i < MARCH_STEPS; i++) {
             let probe = project(origin + ray * travelled);
             if probe.z <= 0.0 || !on_screen(probe.xy) { break; }
             let scene_depth = depth_at(probe.xy);
-            // Reverse depth: the scene is in front of the ray where its depth is larger.
-            if scene_depth > probe.z {
+            // Reverse depth: the scene is in front of the ray where its depth is larger. Water,
+            // whose alpha still carries its weight, never blocks a ray that leaves it: at grazing
+            // angles the distance tolerance would otherwise find the sea itself.
+            let probe_color = textureSampleLevel(screen, screen_sampler, probe.xy, 0.0);
+            if scene_depth > probe.z && probe_color.a >= 1.0 {
                 let ray_distance = view_distance(probe.xy, probe.z);
                 let gap = ray_distance - view_distance(probe.xy, scene_depth);
                 if gap < 1.0 + ray_distance * 0.03 {
                     let edge = min(min(probe.x, 1.0 - probe.x), min(probe.y, 1.0 - probe.y));
-                    let hit = textureSampleLevel(screen, screen_sampler, probe.xy, 0.0).rgb;
-                    reflected = mix(reflected, hit, smoothstep(0.0, 0.08, edge));
+                    reflected = mix(reflected, probe_color.rgb, smoothstep(0.0, 0.08, edge));
                     break;
                 }
             }
@@ -96,7 +115,8 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
             stride *= STEP_GROWTH;
         }
     }
-    return mix(color, reflected, fresnel * water * settings.horizon.w);
+    let reflectance = select(min(fresnel, SEA_REFLECTANCE), fresnel, calm);
+    return mix(color, reflected, reflectance * water * settings.horizon.w);
 }
 
 // Fraction of the sun's neighbourhood where only the sky is drawn; the sky writes no depth.

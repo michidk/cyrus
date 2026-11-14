@@ -344,72 +344,8 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnExit(AppState::Menu), cleanup)
         .add_systems(
             PreUpdate,
-            gamepad_menu_keys.after(bevy::input::InputSystems),
+            super::gamepad::gamepad_keys.after(bevy::input::InputSystems),
         );
-}
-
-/// Modern controls: a gamepad drives the book menu through the keys it reads. The D-pad, or
-/// the left stick beyond the installed dead zone, holds the arrow of its dominant axis; South
-/// holds Enter and East holds Escape. Only keys this system pressed are released, including
-/// when the menu closes.
-fn gamepad_menu_keys(
-    state: Option<Res<State<AppState>>>,
-    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
-    bindings: Option<Res<cyrus_script::player::input::PlayerBindings>>,
-    gamepads: Query<&Gamepad>,
-    keys: Option<ResMut<ButtonInput<KeyCode>>>,
-    mut held: Local<Vec<KeyCode>>,
-) {
-    let Some(mut keys) = keys else {
-        return;
-    };
-    let active = state.is_some_and(|state| *state.get() == AppState::Menu)
-        && fidelity.is_some_and(|fidelity| {
-            fidelity.player_controller == cyrus_game::fidelity::Mode::Modern
-        });
-    let threshold = bindings.and_then(|bindings| bindings.stick_threshold());
-    let mut wanted = Vec::new();
-    for pad in gamepads.iter().filter(|_| active) {
-        let stick = threshold
-            .and_then(|threshold| Some(pad.left_stick()).filter(|s| s.length() > threshold));
-        let direction = Some(pad.dpad())
-            .filter(|dpad| *dpad != Vec2::ZERO)
-            .or(stick);
-        if let Some(direction) = direction {
-            wanted.push(if direction.y.abs() >= direction.x.abs() {
-                if direction.y > 0.0 {
-                    KeyCode::ArrowUp
-                } else {
-                    KeyCode::ArrowDown
-                }
-            } else if direction.x > 0.0 {
-                KeyCode::ArrowRight
-            } else {
-                KeyCode::ArrowLeft
-            });
-        }
-        for (button, key) in [
-            (GamepadButton::South, KeyCode::Enter),
-            (GamepadButton::East, KeyCode::Escape),
-        ] {
-            if pad.pressed(button) {
-                wanted.push(key);
-            }
-        }
-    }
-    held.retain(|key| {
-        let keep = wanted.contains(key);
-        if !keep {
-            keys.release(*key);
-        }
-        keep
-    });
-    for key in wanted {
-        if !keys.pressed(key) {
-            keys.press(key);
-            held.push(key);
-        }
-    }
 }
 
 fn sync_thumbnail(capture: Option<Res<super::GameplayThumbnail>>, mut menu: ResMut<MenuState>) {
@@ -981,7 +917,9 @@ pub(super) fn drive(
                     405..=407 => menu.open(book, (entry.action - 400) as u8),
                     500 | 600 | 700 => menu.open(book, 4),
                     504 | 505 | 603 => {
-                        adjust_value(book, &mut menu, 0, true, &mut preferences_state);
+                        if adjust_value(book, &mut menu, 0, true, &mut preferences_state) {
+                            output.2.write(flat_sound(13));
+                        }
                     }
                     601 | 602 => {}
                     301..=305 => {
@@ -1272,61 +1210,118 @@ pub(super) fn begin_world_loading(
 mod tests {
     use super::*;
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn a_modern_gamepad_holds_the_book_menu_keys_it_pressed() {
-        let mut app = App::new();
-        app.add_plugins(bevy::state::app::StatesPlugin)
-            .insert_state(AppState::Menu)
+    fn installed_settings_activation_emits_one_adjustment_cue_after_save() {
+        use cyrus_game::preferences::{PreferenceKey, PreferenceStore, Preferences};
+        struct Store(bool);
+        impl PreferenceStore for Store {
+            fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+                Ok(None)
+            }
+            fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+                anyhow::ensure!(!self.0, "test write failure");
+                Ok(())
+            }
+        }
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
+            eprintln!("skipped: no install (settings activation feedback)");
+            return;
+        };
+        let cache =
+            std::env::temp_dir().join(format!("cyrus-setting-feedback-{}", std::process::id()));
+        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let book: MenuAsset =
+            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        for (page, action, fail) in [
+            (5, 504, false),
+            (5, 505, false),
+            (6, 603, false),
+            (6, 603, true),
+        ] {
+            let mut app = App::new();
+            app.add_plugins((
+                MinimalPlugins,
+                AssetPlugin::default(),
+                bevy::state::app::StatesPlugin,
+            ))
+            .init_state::<AppState>()
+            .init_asset::<MenuAsset>()
+            .init_asset::<Image>()
+            .init_asset::<Font>()
             .init_resource::<ButtonInput<KeyCode>>()
-            .insert_resource(cyrus_game::fidelity::Fidelity {
-                player_controller: cyrus_game::fidelity::Mode::Modern,
+            .insert_resource(Preferences::new(Store(fail)))
+            .init_resource::<cyrus_script::player::input::PlayerBindings>()
+            .add_message::<AppExit>()
+            .add_message::<SoundCue>()
+            .init_resource::<crate::SaveLoadHost>()
+            .init_resource::<LaunchRequest>()
+            .insert_resource(SimulationClock::new(book.clock).unwrap())
+            .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_millis(60),
+            ))
+            .add_systems(Update, drive);
+            let handle = app.world_mut().resource_mut::<Assets<MenuAsset>>().add(
+                serde_json::from_slice::<MenuAsset>(&serde_json::to_vec(&book).unwrap()).unwrap(),
+            );
+            app.insert_resource(MenuState {
+                asset: handle,
+                context: MenuContext::InGame,
+                entry_page: page,
                 ..default()
-            })
-            .add_systems(Update, gamepad_menu_keys);
-        let mut pad = Gamepad::default();
-        pad.analog_mut().set(GamepadButton::DPadDown, 1.0);
-        pad.digital_mut().press(GamepadButton::South);
-        let pad = app.world_mut().spawn(pad).id();
-        // The keyboard already holds Escape; the pad must not release it.
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::Escape);
-        app.update();
-        let keys = app.world().resource::<ButtonInput<KeyCode>>();
-        assert!(keys.pressed(KeyCode::ArrowDown) && keys.just_pressed(KeyCode::Enter));
-        let mut gamepad = app.world_mut().get_mut::<Gamepad>(pad).unwrap();
-        gamepad.analog_mut().set(GamepadButton::DPadDown, 0.0);
-        gamepad.digital_mut().release(GamepadButton::South);
-        gamepad.digital_mut().press(GamepadButton::East);
-        app.update();
-        app.world_mut()
-            .get_mut::<Gamepad>(pad)
-            .unwrap()
-            .digital_mut()
-            .release(GamepadButton::East);
-        app.update();
-        let keys = app.world().resource::<ButtonInput<KeyCode>>();
-        assert!(!keys.pressed(KeyCode::ArrowDown));
-        assert!(!keys.pressed(KeyCode::Enter));
-        assert!(
-            keys.pressed(KeyCode::Escape),
-            "the keyboard's Escape stays held"
-        );
-        // Faithful leaves the book menu to the keyboard.
-        app.world_mut()
-            .resource_mut::<cyrus_game::fidelity::Fidelity>()
-            .player_controller = cyrus_game::fidelity::Mode::Faithful;
-        app.world_mut()
-            .get_mut::<Gamepad>(pad)
-            .unwrap()
-            .digital_mut()
-            .press(GamepadButton::South);
-        app.update();
-        assert!(
-            !app.world()
-                .resource::<ButtonInput<KeyCode>>()
-                .pressed(KeyCode::Enter)
-        );
+            });
+            for _ in 0..12 {
+                app.update();
+            }
+            let old = {
+                let mut menu = app.world_mut().resource_mut::<MenuState>();
+                assert!(menu.ready, "{:?}", menu.unavailable);
+                menu.selected = menu.entries.iter().position(|entry| entry.action == action);
+                assert!(menu.selected.is_some());
+                menu.preferences.as_ref().unwrap().values[&action]
+            };
+            app.world_mut().resource_mut::<Messages<SoundCue>>().clear();
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Enter);
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<MenuState>()
+                    .preferences
+                    .as_ref()
+                    .unwrap()
+                    .values[&action],
+                if fail { old } else { 1 - old }
+            );
+            let cues: Vec<_> = app
+                .world_mut()
+                .resource_mut::<Messages<SoundCue>>()
+                .drain()
+                .collect();
+            assert_eq!(
+                cues.len(),
+                usize::from(!fail),
+                "action {action} feedback must follow save success"
+            );
+            if fail {
+                continue;
+            }
+            assert!(matches!(
+                cues[0],
+                SoundCue::Flat {
+                    effect: 13,
+                    volume: 0,
+                    rate_offset_hz: 0
+                }
+            ));
+        }
+        std::fs::remove_dir_all(cache).unwrap();
     }
 
     #[test]

@@ -86,6 +86,29 @@ fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) {
                 paths.insert(format!("disc/{name}"), path);
             }
         }
+        // CD-edition repack: the disc's files as a plain `CDROM/` directory (movies), and
+        // its ripped `Soundtrack/` MP3s placed beside it (CD audio tracks).
+        let soundtrack = |name: &str| {
+            crate::music::soundtrack_track(name).map(|track| format!("track{track:02}.mp3"))
+        };
+        for (dir, disc_name) in [
+            (
+                "CDROM",
+                (|name: &str| Some(name.to_owned())) as fn(&str) -> Option<String>,
+            ),
+            ("Soundtrack", soundtrack),
+        ] {
+            for entry in std::fs::read_dir(parent.join(dir))
+                .into_iter()
+                .flatten()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.path().is_file())
+            {
+                if let Some(name) = disc_name(&entry.file_name().to_string_lossy()) {
+                    paths.insert(format!("disc/{name}"), entry.path());
+                }
+            }
+        }
         if let Some(path) = [
             root.join("glide2x_emu.ovl"),
             parent.join("DOSBOX/glide2x_emu.ovl"),
@@ -140,6 +163,15 @@ fn overlay_folders(paths: &mut BTreeMap<String, PathBuf>, overlays: &[PathBuf]) 
         }
     }
     Ok(())
+}
+
+impl Files {
+    /// The file on disk behind a manifest path (case-insensitive), including disc and overlay files.
+    pub fn local(&self, path: &str) -> Option<&Path> {
+        self.paths
+            .get(&self.manifest.find(path)?.path)
+            .map(PathBuf::as_path)
+    }
 }
 
 impl ReadAssets for Files {

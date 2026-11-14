@@ -33,6 +33,21 @@ class Audio(unittest.TestCase):
                 self.assertTrue((root / 'config').is_dir())
                 self.assertIn('-fbdir ' + str(root / 'config'), (root / 'xvfb.args').read_text())
 
+    def test_requested_capture_without_interposer_fails_before_starting_display(self):
+        for selected in ('CYRUS_FRAME_CAPTURE_DIR', 'CYRUS_MIXER_CAPTURE_DIR'):
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                xvfb = root / 'Xvfb'
+                xvfb.write_text('#!/bin/sh\ntouch "$CYRUS_TEST_GAME/display-started"\n')
+                xvfb.chmod(0o755)
+                env = {**os.environ, 'PATH': str(root) + ':' + os.environ['PATH'],
+                       'CYRUS_TEST_GAME': str(root), selected: str(root / 'capture')}
+                result = subprocess.run(['bash', str(SCRIPT)], env=env,
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('capture interposer unavailable', result.stderr)
+                self.assertFalse((root / 'display-started').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

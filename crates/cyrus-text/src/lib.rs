@@ -139,7 +139,9 @@ impl Font {
 
     /// Draws one line into straight-alpha RGBA like an NPC subtitle: per glyph a black
     /// copy at (+1, +1) with alpha `shadow`, then the glyph in its palette colours with
-    /// alpha `main`. Pixels outside `width × (rgba.len() / 4 / width)` are clipped.
+    /// alpha `main`. Alpha 254 and 255 replace the destination without blending,
+    /// following preservation's subtitle glyph rule. Pixels outside
+    /// `width × (rgba.len() / 4 / width)` are clipped.
     pub fn draw_shadowed(
         &self,
         rgba: &mut [u8],
@@ -158,14 +160,56 @@ impl Font {
         width: usize,
         text: &str,
         at: [i32; 2],
+        alpha: [u8; 2],
+        shadow_offset: i32,
+    ) {
+        let mut pen = at[0];
+        let glyphs = text.bytes().map(|ch| {
+            let position = [pen, at[1]];
+            pen += self.advance(ch);
+            (ch, position)
+        });
+        self.draw_shadowed_glyphs(rgba, width, glyphs, alpha, shadow_offset);
+    }
+
+    /// Draws HUD text with whole-glyph wrapping at the image width, following
+    /// preservation's HUD shared rules. Overflow returns to the initial x and
+    /// advances by the font's line height. Shadows and glyph offsets do not
+    /// contribute to the wrap test. Disabled glyphs neither draw nor advance.
+    pub fn draw_shadowed_wrapped(
+        &self,
+        rgba: &mut [u8],
+        width: usize,
+        text: &str,
+        at: [i32; 2],
+        alpha: [u8; 2],
+    ) {
+        let mut pen = at;
+        let glyphs = text.bytes().filter_map(|ch| {
+            let glyph = self.glyph(ch)?;
+            if pen[0] + i32::from(glyph.width) > width as i32 {
+                pen[0] = at[0];
+                pen[1] += i32::from(self.line_height);
+            }
+            let position = pen;
+            pen[0] += self.advance(ch);
+            Some((ch, position))
+        });
+        self.draw_shadowed_glyphs(rgba, width, glyphs, alpha, 1);
+    }
+
+    fn draw_shadowed_glyphs(
+        &self,
+        rgba: &mut [u8],
+        width: usize,
+        glyphs: impl Iterator<Item = (u8, [i32; 2])>,
         [main, shadow]: [u8; 2],
         shadow_offset: i32,
     ) {
         let height = rgba.len() / 4 / width;
-        let mut pen = at[0];
-        for ch in text.bytes() {
+        for (ch, at) in glyphs {
             for (offset, alpha, shadow_copy) in [(shadow_offset, shadow, true), (0, main, false)] {
-                self.draw_glyph(ch, [pen + offset, at[1] + offset], &mut |x, y, index| {
+                self.draw_glyph(ch, [at[0] + offset, at[1] + offset], &mut |x, y, index| {
                     if (0..width as i32).contains(&x) && (0..height as i32).contains(&y) {
                         let colour = if shadow_copy {
                             [0; 3]
@@ -173,11 +217,15 @@ impl Font {
                             self.colour(index)
                         };
                         let at = (y as usize * width + x as usize) * 4;
-                        blend(&mut rgba[at..at + 4], colour, alpha);
+                        if alpha >= 254 {
+                            rgba[at..at + 3].copy_from_slice(&colour);
+                            rgba[at + 3] = 255;
+                        } else {
+                            blend(&mut rgba[at..at + 4], colour, alpha);
+                        }
                     }
                 });
             }
-            pen += self.advance(ch);
         }
     }
 }
@@ -268,6 +316,74 @@ mod tests {
         font.draw_shadowed(&mut rgba, 4, "#", [1, 1], [255, 199]);
         assert_eq!(rgba[(4 + 1) * 4..][..4], [252, 156, 4, 255]);
         assert_eq!(rgba[(2 * 4 + 2) * 4..][..4], [0, 0, 0, 199]);
+    }
+
+    #[test]
+    fn shadowed_text_disables_blending_at_the_original_alpha_boundary() {
+        let font = Font {
+            start: u16::from(b'A'),
+            glyphs: vec![Glyph {
+                enabled: true,
+                width: 1,
+                height: 1,
+                pixels: vec![1],
+                ..Default::default()
+            }],
+            palette: vec![[0; 3], [63, 0, 0]],
+            ..Default::default()
+        };
+        for (alpha, expected) in [
+            (253, [250, 0, 2, 255]),
+            (254, [252, 0, 0, 255]),
+            (255, [252, 0, 0, 255]),
+        ] {
+            let mut rgba = [0, 0, 252, 255];
+            font.draw_shadowed(&mut rgba, 1, "A", [0, 0], [alpha, 0]);
+            assert_eq!(rgba, expected, "main alpha {alpha}");
+        }
+        let mut overlay = [0; 4];
+        font.draw_shadowed(&mut overlay, 1, "A", [0, 0], [254, 0]);
+        assert_eq!(
+            overlay,
+            [252, 0, 0, 255],
+            "opaque replacement survives overlay composition"
+        );
+    }
+
+    #[test]
+    fn wrapped_text_uses_glyph_width_without_shadow_or_advance_padding() {
+        let font = Font {
+            start: u16::from(b'A'),
+            line_height: 3,
+            glyphs: vec![
+                Glyph {
+                    enabled: true,
+                    width: 2,
+                    height: 1,
+                    pixels: vec![1, 1],
+                    ..Default::default()
+                },
+                Glyph {
+                    enabled: false,
+                    width: 20,
+                    ..Default::default()
+                },
+            ],
+            palette: vec![[0; 3], [63, 0, 0]],
+        };
+        let mut expected = vec![0; 8 * 8 * 4];
+        font.draw_shadowed(&mut expected, 8, "A", [6, 0], [255, 199]);
+        font.draw_shadowed(&mut expected, 8, "A", [6, 3], [255, 199]);
+        let mut actual = vec![0; expected.len()];
+        font.draw_shadowed_wrapped(&mut actual, 8, "ABA", [6, 0], [255, 199]);
+        assert_eq!(actual, expected);
+        let mut clipped = vec![0; 8 * 2 * 4];
+        font.draw_shadowed_wrapped(&mut clipped, 8, "AAA", [6, 0], [255, 199]);
+        assert_eq!(
+            clipped,
+            expected[..clipped.len()],
+            "rows outside the image remain clipped"
+        );
     }
 
     #[test]

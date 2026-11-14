@@ -1,6 +1,7 @@
 //! The fidelity switch. Every behaviour that may deviate from the original game
 //! is registered under an [`Area`] and runs only in the configured [`Mode`].
-//! The default of every area is `Faithful`.
+//! The default of every area is `Faithful`. Areas change only how the game looks and sounds;
+//! behaviour such as controls, movement and camera handling changes only through native mods.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -16,8 +17,6 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Area {
-    PlayerController,
-    Camera,
     Fog,
     Sky,
     Lighting,
@@ -27,9 +26,7 @@ pub enum Area {
 }
 
 impl Area {
-    pub const ALL: [Area; 8] = [
-        Area::PlayerController,
-        Area::Camera,
+    pub const ALL: [Area; 6] = [
         Area::Fog,
         Area::Sky,
         Area::Lighting,
@@ -42,8 +39,6 @@ impl Area {
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Fidelity {
-    pub player_controller: Mode,
-    pub camera: Mode,
     pub fog: Mode,
     pub sky: Mode,
     /// Modern lights the world with physically based shading, shadows and screen-space effects.
@@ -59,8 +54,6 @@ pub struct Fidelity {
 impl Fidelity {
     pub fn mode(&self, area: Area) -> Mode {
         match area {
-            Area::PlayerController => self.player_controller,
-            Area::Camera => self.camera,
             Area::Fog => self.fog,
             Area::Sky => self.sky,
             Area::Lighting => self.lighting,
@@ -71,8 +64,6 @@ impl Fidelity {
     }
     pub fn set(&mut self, area: Area, mode: Mode) {
         match area {
-            Area::PlayerController => self.player_controller = mode,
-            Area::Camera => self.camera = mode,
             Area::Fog => self.fog = mode,
             Area::Sky => self.sky = mode,
             Area::Lighting => self.lighting = mode,
@@ -83,7 +74,7 @@ impl Fidelity {
     }
 }
 
-/// Run condition: `.run_if(in_mode(Area::Camera, Mode::Modern))`.
+/// Run condition: `.run_if(in_mode(Area::Fog, Mode::Modern))`.
 pub fn in_mode(area: Area, mode: Mode) -> impl Fn(Res<Fidelity>) -> bool + Clone {
     move |fidelity: Res<Fidelity>| fidelity.mode(area) == mode
 }

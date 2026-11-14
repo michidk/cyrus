@@ -57,9 +57,7 @@ struct InputParams {
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct FidelityParams {
-    #[schemars(
-        description = "player_controller, camera, water, fog, sky, lighting, textures or music"
-    )]
+    #[schemars(description = "fog, sky, lighting, textures, music or anisotropic_filtering")]
     area: String,
     #[schemars(description = "faithful or modern")]
     mode: String,
@@ -79,7 +77,7 @@ struct DayNightParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ModernEffectParams {
     #[schemars(
-        description = "grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, depth_of_field or motion_blur"
+        description = "shadows, ambient_occlusion, contact_shadows, anti_aliasing, bloom, object_lights, water_gloss, grading, auto_exposure, god_rays, lens_flare, sky, water_reflections, foliage, depth_of_field or motion_blur"
     )]
     effect: String,
     enabled: bool,

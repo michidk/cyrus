@@ -14,8 +14,8 @@ such as DOSBox-X with `glide=emu`, runs the DOS Glide overlay and shows an older
 ([startup facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#splash-variants)).
 
 cyrus plays only the Windows splash, because it is what GOG players see, and has no option for the shield.
-Comparisons against DOSBox-X therefore show a different splash. Glide edge antialiasing is approximated by
-supersampling.
+Comparisons against DOSBox-X therefore show a different splash. The live meshes render at the
+physical resolution of the window's fitted 4:3 viewport. Glide's edge-antialiasing path is not reproduced.
 
 ## Skipped introduction movie
 
@@ -46,7 +46,9 @@ full world-space meshes instead of the original's screen-space prepared geometry
 receive shadows (each caster through a shadow-only twin that shares one material, so
 the cascades batch their draws, and static models with equal modern material values share one
 material). The camera adds screen-space ambient occlusion, contact shadows, SMAA anti-aliasing and
-bloom. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
+bloom. The sun's shadows, the object lights, glossy water, ambient occlusion, contact shadows,
+anti-aliasing and bloom each have a switch in the Lighting group of the debug menu's effects panel
+(and the control port's `set_modern_effect`); all are on by default. Brightness, shadow distances, the point lights' power and the effects are tuning choices, not
 measured matches. Flats keep their original shading.
 
 Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colour at the far plane,
@@ -79,8 +81,10 @@ every value is a Modern tuning choice:
 - a lens flare and sun glare while the sun is on screen and not covered;
 - a sky glow around the sun, a warm horizon while it is low, and stars when the day/night cycle
   darkens the sky;
-- glossy water with screen-space reflections, which reflect only what is on screen and the
-  horizon colour elsewhere;
+- glossy water with screen-space reflections, which reflect the scenery on screen, else the sky
+  drawn in the reflected direction, and the horizon colour where neither is on screen; open water
+  reflects at most half its colour, so a sea seen at a grazing angle does not turn into the sky,
+  while calm water models reflect fully;
 - swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
   about their base, while collision keeps the installed placement;
 - depth of field focused on the player, and motion blur.
@@ -225,7 +229,7 @@ sampling matches either to the last bit; it was not compared pixel by pixel.
 Dialogs over the book (delete confirmation, game description) are drawn on a transparent layer above the
 scene, where the original composited them into the same frame. **Unknown:** whether the result is pixel-identical;
 these dialogs were not compared against the previous renderer.
-The F11 flycam also flies the book's camera in the menu, which the original has no equivalent of; it is
+The Backtick flycam also flies the book's camera in the menu, which the original has no equivalent of; it is
 off by default and a debug aid only.
 
 The 3dfx splash is likewise drawn live on the GPU, as the original's Glide splash is, instead of
@@ -243,7 +247,7 @@ buttons from the port. Each action reads its keyboard code or its joystick code,
 codes 136 to 139 and the South, East, West and North face buttons for buttons 1 to 4. **Inferred:** the loop
 count depends on the stick's resistance, which a modern gamepad does not have, so cyrus converts
 `joy_tolerance` to a fraction of the stick's range using the nominal 100 kOhm centre count of 574, a dead
-zone of about 10 %. The Controls page capture accepts a gamepad face button as joystick button 1 to 4, as the original's capture accepts joystick buttons; menus and the book do not otherwise read the gamepad. The seven other
+zone of about 10 %. The Controls page capture accepts a gamepad face button as joystick button 1 to 4, as the original's capture accepts joystick buttons. The seven other
 rebindable actions (next and previous item, inventory, log, quick sword, quick health, map) read their code the
 same way, so a mouse or joystick code bound on the Controls page works for them. **Verified:** the original
 reads every action through one shared input table (keyboard scancodes, mouse releases 128 and 129, joystick
@@ -252,11 +256,17 @@ held, with its press edge taken from the previous poll. **Verified:** the invent
 per update before waiting for the next BIOS tick, so a mouse binding there reads the release between two
 successive updates; cyrus does the same. **Unknown:** the dead zone a particular original
 joystick showed, and whether the original's menus read the joystick; no joystick read was found in the menu
-code, so menu navigation by gamepad is not provided in Faithful mode.
+code.
+
+A gamepad's other controls are an addition the game port could not offer, the same in every fidelity mode:
+they press the keys the game already reads. In the world, Start presses Escape (the book) and Back the
+installed inventory key. Outside the world, and over the logbook or the inventory, the D-pad or left stick
+holds the arrow keys (pressing past half its tilt and releasing below three eighths), South holds Enter, and
+East and Start hold Escape. The pad is read only while the window has focus.
 
 ## Optional anisotropic filtering
 
-F11's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+Backtick's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
 area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
 modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
 models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture

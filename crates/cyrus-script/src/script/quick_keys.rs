@@ -132,7 +132,6 @@ pub(super) fn sample(
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
-    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
     wish: Option<Res<crate::player::input::MovementWish>>,
     mut quick: ResMut<QuickKeys>,
     mut script_keys: ResMut<ScriptKeys>,
@@ -167,16 +166,14 @@ pub(super) fn sample(
         home_pressed: keys.just_pressed(KeyCode::Home),
         insert: keys.pressed(KeyCode::Insert),
     };
-    use crate::player::input::{Action, Input, MODERN_MOVEMENT};
-    // Modern movement, or a mod steering with them, owns W, A, S and D, so an installed quick
-    // sword key among them (S by default) does not also draw the sword.
-    let sword_moves = (fidelity
-        .is_some_and(|fidelity| fidelity.player_controller == cyrus_game::fidelity::Mode::Modern)
-        || wish.is_some_and(|wish| wish.0.is_some_and(|wish| wish.wasd)))
+    use crate::player::input::{Action, Input, WASD};
+    // A mod steering with W, A, S and D owns them, so an installed quick sword key among them
+    // (S by default) does not also draw the sword.
+    let sword_moves = wish.is_some_and(|wish| wish.0.is_some_and(|wish| wish.wasd))
         && inputs
             .bindings()
             .keyboard(Action::QuickSword)
-            .is_some_and(|sword| MODERN_MOVEMENT.map(Input::try_from).contains(&Ok(sword)));
+            .is_some_and(|sword| WASD.map(Input::try_from).contains(&Ok(sword)));
     *quick = QuickKeys {
         sword: !sword_moves && inputs.pressed(Action::QuickSword),
         health: inputs.just_pressed(Action::QuickHealth),

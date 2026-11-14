@@ -41,7 +41,7 @@ module where it is defined and regenerate.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
 - `src/movie/original.rs` — Installed cinematic metadata and bounded original-file reads on either target.
-- `src/music.rs` — Read-only CD and world track preparation.
+- `src/music.rs` — Read-only CD and world track preparation, from GOG's disc image or a CD edition's ripped soundtrack.
 - `src/native.rs` — Read-only filesystem adapter and optional disk cache for the shared runtime parsers.
 - `src/native/geometry.rs` — Shared rgpre geometry export; game sidecars and preview presentation are separate.
 - `src/overlay.rs` — Installed GXA images that scripts draw over the world frame (`ViewGXA`).
@@ -128,7 +128,7 @@ module where it is defined and regenerate.
 ## `cyrus-debug` — (undocumented)
 
 - `src/day_night.rs` — The day/night panel: the modern lighting's time of day.
-- `src/effects.rs` — The effects panel: the modern lighting's optional effects.
+- `src/effects.rs` — The effects panel: the parts of the modern lighting and its optional effects.
 - `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
 
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
@@ -376,6 +376,7 @@ module where it is defined and regenerate.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
 - `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
+- `src/gamepad.rs` — Gamepad controls the original's game port does not have, pressed as keyboard keys.
 - `src/information.rs` — Fixed F1 information and F10 credits screens, returning to the suspended world.
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.

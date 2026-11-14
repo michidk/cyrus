@@ -58,8 +58,11 @@ and returns an off-live `MusicCandidate` for coordinated session publication.
 The published owner consumes the next scene-request and prepared-world
 notifications without selecting world music again. This preserves a stopped CD
 as well as a saved active track; a later ordinary world entry selects normally.
-`MusicTransport` reuses the source cursor at unity PCM gain. CD volume stays on
+`MusicTransport` admits nonempty stereo16 PCM with complete frames before native or browser playback, and reuses the source cursor at unity PCM gain. CD volume stays on
 the sink, and queued starts receive the current drive gain and cinematic pause.
+Browser CD continuation resumes the output context when starting a retained source,
+including a source first prepared while paused. Paused preparation stays silent.
+
 Browser CD playback requests the browser's playback latency policy and uses one
 retained WebAudio buffer per live player, so loading
 and rendering on the main thread do not interrupt the track. Its checkpoint maps
@@ -288,7 +291,7 @@ Ready text uses the installed HUD REDSEL font for wrapping. After object
 updates, the host advances game-owned dialogue records through synchronous sample
 feedback, then ages the RTX cache. The game selects the subtitle record and owns
 speaker inhibition; rendering only reads that selection. The configured keyboard
-key_a signal is sampled before Modern movement interpretation. Joystick input
+key_a signal is sampled before a movement mod interprets it. Joystick input
 remains unsupported.
 
 The ordinary host advances game-owned sound maintenance before model
@@ -636,3 +639,12 @@ The launcher requires a rig under `/home/vibepod/workspaces`, recreates only its
 pinned headless image when absent, mounts persistent config and logs, takes a
 per-run lock, and removes its own container on completion. The driver rejects
 missing stages, runtime errors and an executed WASM hash mismatch.
+
+CD volume clamps the engine setting to 0–255 and halves it for the Miles drive
+call before mapping that integer to the DOSBox channel gain. The shipped 200
+therefore publishes 200/255 linear gain; settings above 127 are applied.
+The released preservation [music volume rule](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/music.md#volume) owns this conversion.
+
+The public music plugin uses the prepared sound startup settings, so
+`SYSTEM.INI sound=0` admits no book CD track. Saved voice/text preferences
+retain the forced text-only dialogue state when sound startup is disabled.

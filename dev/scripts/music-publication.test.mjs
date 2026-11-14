@@ -60,3 +60,41 @@ test('prepared CD publication allocates nothing and shares the retirement clock'
   delete globalThis.AudioContext;
   delete globalThis.document;
 });
+
+test('CD continuation wakes a suspended context after paused preparation', async () => {
+  let resumes = 0, starts = 0;
+  globalThis.document = { addEventListener() {} };
+  globalThis.AudioContext = class {
+    sampleRate = 44100;
+    state = 'suspended';
+    currentTime = 0;
+    destination = {};
+    createBuffer(channels, length, sampleRate) {
+      return { length, sampleRate, copyToChannel() {} };
+    }
+    createGain() { return { gain: {}, connect() {}, disconnect() {} }; }
+    createBufferSource() {
+      return { connect() {}, disconnect() {}, stop() {}, start() { starts++; } };
+    }
+    async resume() { resumes++; this.state = 'running'; }
+  };
+  try {
+    const code = await readFile(new URL('../../crates/cyrus-audio/src/music/browser.js', import.meta.url));
+    const {createMusic, updateMusic, stopMusic} = await import(
+      'data:text/javascript;base64,' + code.toString('base64') + '#continuation');
+    const pcm = new Float32Array(44100);
+    const id = createMusic(pcm, pcm, 44100, 1, true);
+    assert.equal(starts, 0, 'paused preparation stays silent');
+    assert.equal(resumes, 0, 'paused preparation does not wake the context');
+    updateMusic(id, 1, false);
+    assert.equal(starts, 1, 'continuation starts the retained source');
+    assert.equal(resumes, 1, 'continuation must wake the output clock');
+    updateMusic(id, 1, false);
+    assert.equal(starts, 1, 'ordinary updates cannot duplicate the source');
+    assert.equal(resumes, 1, 'ordinary updates do not repeat context resume');
+    stopMusic(id);
+  } finally {
+    delete globalThis.AudioContext;
+    delete globalThis.document;
+  }
+});

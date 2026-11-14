@@ -1,7 +1,7 @@
 //! CD track decoder checkpoints and off-live music replacement construction.
 use super::Music;
 use crate::sound::{Panned, PannedDecoder, PannedGains, PannedSnapshot, PcmWidth};
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use bevy::{
     audio::{AudioSource, Decodable, PlaybackSettings, Volume},
     prelude::{Asset, TypePath},
@@ -64,6 +64,7 @@ impl MusicTransport {
 
     /// Validate a host-prepared stereo16 CD WAV without starting playback.
     pub fn new(source: AudioSource) -> Result<Self> {
+        validate_cd_layout(&source)?;
         Ok(Self::wrap(Panned::with_playback(
             source,
             PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
@@ -105,6 +106,7 @@ impl MusicTransport {
     }
 
     fn from_snapshot(source: AudioSource, snapshot: PannedSnapshot) -> Result<Self> {
+        validate_cd_layout(&source)?;
         ensure!(
             snapshot.is_unscaled_loop(),
             "CD music transport is not an unscaled normal-speed loop"
@@ -122,6 +124,23 @@ impl MusicTransport {
             snapshot,
         )?))
     }
+}
+
+fn validate_cd_layout(source: &AudioSource) -> Result<()> {
+    let reader = hound::WavReader::new(std::io::Cursor::new(&*source.bytes))
+        .context("CD music WAV metadata")?;
+    let spec = reader.spec();
+    ensure!(
+        spec.channels == 2
+            && spec.bits_per_sample == 16
+            && spec.sample_format == hound::SampleFormat::Int,
+        "CD music requires stereo16 PCM"
+    );
+    ensure!(
+        reader.len() > 0 && reader.len().is_multiple_of(2),
+        "CD music has empty or incomplete stereo frames"
+    );
+    Ok(())
 }
 impl Decodable for MusicTransport {
     type Decoder = PannedDecoder;
@@ -184,7 +203,7 @@ impl MusicCandidate {
 }
 
 fn valid_gain(gain: f32) -> bool {
-    gain == 1.0 || (0..=127).any(|volume| super::redbook_gain(volume) == Some(gain))
+    gain == 1.0 || (0..=255).any(|volume| super::redbook_gain(volume) == gain)
 }
 
 impl Music {

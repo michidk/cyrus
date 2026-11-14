@@ -10,6 +10,12 @@ For player controls, saving, resuming and current limitations, see
   with `fxart/`, `maps/`, `RGFX.EXE` and the CD image `game.gog`/`game.ins`.
   On Linux extract it with `innoextract` (also available in Docker:
   `docker run --rm -v "$PWD:/w" -w /w alpine sh -c 'apk add innoextract && innoextract -d extracted setup_*.exe'`).
+- Or the English CD edition installed with its 3dfx (Glide) files, so the
+  install folder has `fxart/`, `maps/` and `RGFX.EXE`. Without `game.gog`,
+  cyrus reads the movies from the disc's files in a `CDROM/` folder beside the
+  install folder, and the CD music from the ripped `Soundtrack/` MP3s
+  (`01 Track 1.mp3` is CD track 2) placed beside it. The CD repack's own
+  DOSBox setup mounts `CDROM/` as a plain directory and plays no music.
 - Stable Rust (`rust-toolchain.toml`), `just`, and for a window Bevy's usual
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker, for the original game and for the virtual-display runner.
@@ -445,7 +451,7 @@ corruption, changed-input and shared-artifact preservation controls.
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music`, `--controls`, `--camera` and `--mode` map directly
+Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music` and `--mode` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
@@ -551,20 +557,20 @@ under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
 Saved Sound preferences apply to effects and CD music on native and browser
-builds, and to native speech. The book menu plays its installed CD track. Cinematics consume subtitle and interlace preferences.
+builds, and to native speech. The book menu plays its installed CD track. Cinematics consume the subtitle preference; MOVIE INTERLACE does not change the picture, as in the installed release.
 
 Movies browses the initially unlocked entries and installed previews. Native
-playback reads the configured movie file or GOG `game.gog` beside the install
+playback reads the configured movie file, the CD edition's `CDROM/` file, or GOG `game.gog` beside the install
 through a bounded sequential reader; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and the REDSEL font with its shadow ([preservation#110](https://github.com/michidk/redguard-preservation/pull/110)), and applies the
-saved subtitle/interlace preferences. A key press advances to the next installed
+saved subtitle preference. A key press advances to the next installed
 skip point, or finishes after the last one. Native playback decodes toward every skip point in the background, so a skip does not wait for the frames before it. Playback returns to the same menu
 selection. Native playback does not write movie data to `cache/`. Browser movie caches exported before the REDSEL subtitle font need re-export.
 Browser playback reads the selected cinematic's compressed original ranges on
 demand. The shared codec decodes indexed frames and first-track PCM together;
 Web Audio plays bounded PCM blocks using its sample clock. Playback starts with
 the first frame and audio data, without complete media downloads. The same skip,
-subtitle, interlace and menu-return rules apply. Forward skips decode preceding
+subtitle and menu-return rules apply. Forward skips decode preceding
 delta frames. Closing playback cancels further reads and releases queued audio.
 Original-file hosts must support byte ranges. The worker also prepares CD WAV
 tracks and installed world assignments for music. A key press or pointer release
@@ -645,7 +651,7 @@ Local lights and complete static-prelighting behavior remain unsupported.
 
 ### Sky, fog, and water
 
-Re-export worlds to regenerate `.environment` sidecars. F11 provides independent
+Re-export worlds to regenerate `.environment` sidecars. Backtick provides independent
 Faithful/Modern buttons for Fog and Sky, which default to Faithful. Water changes only through the
 `modern-water` native mod.
 
@@ -662,7 +668,7 @@ cross its surface. Both retain the world's colors and horizon haze.
 **Verified:** Faithful fog uses the original tables and installed clipping
 range (7/3800 engine units in the shipped configuration). Modern fog defaults to
 four times that far distance and fades smoothly over the distant portion of
-the view. F11's distance control selects Modern Fog; Original resets the distance
+the view. Backtick's distance control selects Modern Fog; Original resets the distance
 and returns Fog to Faithful. Sky is unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
@@ -812,11 +818,11 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F11 and use **Flycam** to switch between inspection
+Press Backtick and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
-F11 world selections show the installed loading screen while the destination assets
+Backtick world selections show the installed loading screen while the destination assets
 Free flight is also available as the bundled `flycam` mod (see `mods/README.md`), toggled with Insert.
 load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not detach the view. Detaching preserves the player
@@ -936,7 +942,7 @@ game (**Verified** from preservation `engine/console.md`); none, zero or a non-n
 is refused, and the browser reports it unavailable because its wait would block the page.
 Other catalog entries report unavailable owners.
 
-Browser `savecheats` persists to localStorage `cyrus-cheats`. F11 Cheat files
+Browser `savecheats` persists to localStorage `cyrus-cheats`. Backtick Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can
 recover malformed local state; failed imports and saves retain existing state.
 
@@ -2109,7 +2115,12 @@ Never convert wall duration into a movie frame number.
 
 With both SDL probes loaded, `--require-pcm` requires a committed generated-PCM
 cursor at every presentation and rejects missing generation, backwards cursors
-or a changed sample rate. The retained cursor is a callback-generation prefix,
+or a changed sample rate. Completion also requires the generated cursor to advance.
+Use `--minimum-pcm-frames FRAMES` with `--require-pcm` to retain the sample span
+needed by the planned waveform comparison as well as the requested game-clock
+progress. The completion receipt records the actual frame span and sample rate;
+a short audio interval cannot pass merely because the game clock advanced.
+The retained cursor is a callback-generation prefix,
 not DAC position. Each result also retains the original SDL surface format,
 channel masks, pitch and dimensions before conversion to RGB24. These describe
 the capture boundary; upstream renderer quantization must be established

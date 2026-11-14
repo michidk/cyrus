@@ -262,8 +262,10 @@ pub enum Command {
         #[serde(default)]
         running: bool,
     },
-    /// Switch one of the modern lighting's optional effects: `grading`, `auto_exposure`, `god_rays`,
-    /// `lens_flare`, `sky`, `water_reflections`, `foliage`, `depth_of_field` or `motion_blur`.
+    /// Switch one part of the modern lighting (`shadows`, `ambient_occlusion`, `contact_shadows`,
+    /// `anti_aliasing`, `bloom`, `object_lights`, `water_gloss`) or one of its optional effects
+    /// (`grading`, `auto_exposure`, `god_rays`, `lens_flare`, `sky`, `water_reflections`,
+    /// `foliage`, `depth_of_field`, `motion_blur`).
     /// Needs `lighting` Modern to show.
     SetModernEffect {
         effect: String,

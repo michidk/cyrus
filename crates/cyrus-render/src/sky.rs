@@ -206,7 +206,8 @@ fn animate_sky(
             u8::from(fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern) as f32;
         material.scroll.z = modern;
         material.scroll.w = modern_fog;
-        for _ in 0..tick.saturating_sub(sky.tick).min(36) {
+        let elapsed_ticks = tick.saturating_sub(sky.tick).min(36);
+        for _ in 0..elapsed_ticks {
             material.scroll += sky.velocity.extend(0.0).extend(0.0);
             for index in 0..2 {
                 let channel = &mut material.scroll[index];
@@ -351,5 +352,21 @@ mod tests {
             .advance_by(Duration::from_millis(55));
         app.update();
         assert_eq!(scroll(&app), Vec4::new(12.0, 4.9375, 1.0, 0.0));
+        // A retained presentation interval with authored speed six consumes fifteen
+        // BIOS ticks, even when SYSTEM.INI contains sky_move=0.
+        app.world_mut()
+            .get_mut::<Sky>(entity)
+            .unwrap()
+            .set_speed(1662, 6);
+        app.world_mut()
+            .resource_mut::<SkyScrollSync>()
+            .set(1662, [-42.374_077, 17.248_077])
+            .unwrap();
+        app.update();
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_nanos(824_000_000));
+        app.update();
+        assert_eq!(scroll(&app), Vec4::new(-47.584, 19.368_753, 1.0, 0.0));
     }
 }

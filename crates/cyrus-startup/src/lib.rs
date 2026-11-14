@@ -3,12 +3,14 @@ mod book_motion;
 mod book_scene;
 mod confirmation;
 mod credits;
+pub use credits::{CreditsExit, CreditsExitState};
 mod examine;
 mod information;
 mod splash;
 mod view3d;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
+mod gamepad;
 /// Marker for installed loading and first-world black-overlay transitions.
 pub use fade::Fade as WorldEntryFade;
 mod last_game;
@@ -122,7 +124,9 @@ impl Plugin for StartupPlugin {
             .add_systems(OnEnter(AppState::Loading), setup)
             .add_systems(
                 Update,
-                (fit_image, advance).run_if(in_state(AppState::Loading)),
+                (fit_image, splash::resize, advance)
+                    .chain()
+                    .run_if(in_state(AppState::Loading)),
             )
             .add_systems(OnExit(AppState::Loading), remove_content)
             .add_systems(OnExit(AppState::Menu), remove_content);
@@ -196,6 +200,7 @@ fn setup(
     mut startup: ResMut<StartupPresentation>,
     game: Option<Res<StartGame>>,
     mut images: ResMut<Assets<Image>>,
+    windows: Query<&Window>,
 ) {
     startup.title_visible = false;
     startup.error = None;
@@ -207,7 +212,10 @@ fn setup(
     let live = (count > 0).then(|| {
         (
             assets.load("cache://startup/splash.splash"),
-            splash::SplashView::new(&mut images),
+            splash::SplashView::new(
+                &mut images,
+                windows.single().map_or(UVec2::ONE, Window::physical_size),
+            ),
         )
     });
     spawn_camera(&mut commands);
@@ -225,7 +233,7 @@ fn setup(
     commands.spawn((
         Sprite {
             image: first,
-            // The live splash renders at twice the size, for supersampling.
+            // Keep presentation coordinates independent of the live render target's resolution.
             custom_size: live.is_some().then_some(Vec2::new(640.0, 480.0)),
             ..default()
         },

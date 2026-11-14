@@ -4,8 +4,8 @@ Installed splash/title presentation, the book menu and settings, cinematic playb
 world-entry loading, and the installed logbook reader. Book motion and helpers remain internal.
 The book is a real 3D scene: its models are meshes under a perspective camera that renders into the
 640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
-Page text, widgets and pictures are painted on the CPU into the page textures. F11 Flycam also flies
-this camera in the book menu. While it is enabled the menu ignores the keyboard, unless F11's
+Page text, widgets and pictures are painted on the CPU into the page textures. Backtick Flycam also flies
+this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
 on the same kind of camera, drawn by one shared lit material that applies the original's per-channel
@@ -82,9 +82,13 @@ The bottom-right red title label reports menu/HUD preparation, menu asset loadin
 and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
 the authored fade. The cache regenerates when the splash export changes. The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
-documents the DLL format. The splash draws into a 1280 by 960 image shown at
-half size, so edges are antialiased by
-2×2 supersampling; Glide edge coverage, floating-point approximations and pixel
+documents the DLL format. The splash draws at the physical resolution of the window's
+fitted 4:3 viewport, including display scaling, and resizes with the window.
+Its sprite retains the original logical framing without a fixed-resolution intermediate.
+WebGL reconstructs screen-space colour interpolation from perspective varyings and
+the fragment reciprocal W; native rendering uses the linear interpolation qualifier.
+The book models use the same WebGL compatibility path for their lighting levels.
+Glide edge coverage, floating-point approximations and pixel
 quantization need a hardware comparison before claiming pixel-exact rendering.
 
 The book menu derives entries, layout, texture slots, widgets, and action IDs
@@ -136,6 +140,10 @@ Late PCM admission observes the exhausted boundary before extending lookahead,
 so an unpolled producer stall cannot become skipped movie time. The public
 `test-movie-stream.mjs` regression also covers seeking inside queued PCM and
 cancelling obsolete source completion callbacks.
+Seeking also invalidates pending output-context activation before it can create
+sources; a later play starts only from the retained seek target.
+Pending play promises belong to their seek generation. A new play does not wait
+for an obsolete promise, and its late failure cannot fail current playback.
 `node dev/scripts/test-browser-movie-seek.mjs CDP_URL PAGE_URL WINDOW_URL RESULT_JSON`
 uses an installed decoded window from the assets `movie_window` example. It
 presents those frames on the movie clock, admits a late continuation, pauses
@@ -143,7 +151,8 @@ and seeks with queued audio, and compares post-seek graph PCM with an offline
 render of the scheduled sources and cancellations. This isolated adapter check
 complements full native/browser cinematic comparisons.
 Forward skips retain decoder state; menu return cancels downloads and playback.
-Native and browser playback share skip points, subtitles, interlace and menu return.
+Native and browser playback share skip points, subtitles and menu return.
+MOVIE INTERLACE is saved but, as in the installed release, does not change the picture.
 Movie frames use the preservation movie-raster contract: padded 256-pixel tiles,
 clipped sampling coordinates, four-bit fractional filtering and dithered RGB565.
 Subtitle glyphs use the selected eight-bit startup upload palette and integer
@@ -166,11 +175,11 @@ and progression remain incomplete.
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `menu.json` in the config directory or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
-input uses edited bindings, including direct scene launches. Subtitle and interlace
-settings apply to cinematics; saved Sound preferences apply to shared
+input uses edited bindings, including direct scene launches. The subtitle
+setting applies to cinematics; saved Sound preferences apply to shared
 effects and CD music, and native speech. Browser CD tracks use exported WAV files and
 installed world assignments; native playback reads the CD image. Book motion and
-direction/capture feedback dispatch installed effects through the shared native/browser sound path, following
+direction/capture feedback dispatch installed effects through the shared native/browser sound path. Enter-activated settings toggles emit adjustment feedback only after a successful save, following
 preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 **Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
 rebinding, lighting and camera-plane clipping remain unsupported. Escape in a world opens the book (`MenuContext::InGame`) only with SYSTEM.INI `final_version`. Entering the book from gameplay captures a
@@ -231,3 +240,16 @@ The behavior follows preservation's [fixed gameplay shortcuts](https://github.co
 Audio synchronization applies committed local preferences before playing cues.
 Opening the book preserves raw installed sound and music volumes; initializing
 the displayed sliders does not write their rounded values back to the mixer.
+
+The credits release lifecycle is documented in merged [preservation PR #319](https://github.com/michidk/redguard-preservation/pull/319).
+**Verified:** credits Escape handling follows preservation's
+[credits scroll](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md#credits-scroll).
+Both F10 and ending credits retain the displayed frame and music owner while
+Escape is held, then consume its release before returning. `CreditsExit` exposes
+this shared input lifecycle; a movie-skip key held on entry cannot dismiss the credits.
+
+Reader paper glyphs obey the shared opaque-alpha boundary: style alpha 254 or
+255 replaces the paper colour, while values below 254 retain blending. The
+installed headless `LogbookPlugin` regression checks the published image at all
+three boundary values. The rule is documented in preservation
+[subtitle glyphs](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/subtitles.md#glyphs).

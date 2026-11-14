@@ -707,6 +707,19 @@ pub struct NativeCall {
     pub integers: Vec<i32>,
 }
 
+/// One actor as an observer sees it (`ScriptWorld::actor_facts`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActorFact<'a> {
+    /// The actor's script name.
+    pub name: &'a str,
+    /// Position in Q8 map units (256 to a map unit), original axes; none before spatial state.
+    pub position: Option<[i32; 3]>,
+    /// The `attr_health` byte.
+    pub health: u8,
+    /// A script hid it (`HideMe`), so it is not drawn.
+    pub hidden: bool,
+}
+
 pub struct ScriptWorld {
     pub world: u32,
     pub content_id: String,
@@ -1005,6 +1018,16 @@ impl ScriptWorld {
 
     pub fn selected_player(&self) -> Option<ScriptActorId> {
         self.id(self.selected_player_index()?).ok()
+    }
+
+    /// Whether the actor is a map cell actor outside the current view window. The world draw
+    /// traversal walks the same window list as the ordinary update, so such an actor is not drawn.
+    pub fn outside_view_window(&self, actor: ScriptActorId) -> bool {
+        actor.generation == self.generation
+            && self
+                .actor_lists
+                .as_ref()
+                .is_some_and(|lists| lists.outside_window(actor.index))
     }
 
     /// Console `item add`: one acquisition through the session inventory, as `AddItem` does. An
@@ -3561,6 +3584,22 @@ impl ScriptWorld {
                 })
             }).collect::<Vec<_>>()
         })
+    }
+    /// What a read-only observer such as a mod may know of each actor, in actor order.
+    pub fn actor_facts(&self) -> impl Iterator<Item = ActorFact<'_>> + '_ {
+        self.actors
+            .iter()
+            .enumerate()
+            .map(|(index, actor)| ActorFact {
+                name: actor.name(),
+                position: self
+                    .spatial
+                    .as_ref()
+                    .and_then(|spatial| spatial.actor(index).ok())
+                    .map(|pose| pose.local.position),
+                health: actor.attributes[Attribute::Health],
+                hidden: actor.control.as_ref().is_some_and(|control| control.hidden),
+            })
     }
     pub fn flags(&self) -> &[i32] {
         &self.flags

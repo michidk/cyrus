@@ -1,33 +1,35 @@
 # cyrus-assets
 
+ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
+of exposing them as static images. Zero-control authored ranges remain supported.
+[Preservation PR #325](https://github.com/michidk/redguard-preservation/pull/325)
+owns LBM static-palette admission. LBM preparation rejects malformed CRNG payloads and nonzero control
+words; preservation retains those chunks for inspection without inventing playback.
+Catalog version 38 invalidates environment records that applied the unused
+`sky_move` setting to Glide skies. Glide preparation retains authored WORLD.INI
+speed independently of that setting, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
+
+
 `loading/WORLD.loading` prepares only the requested destination's full-screen
 GXA frames through preservation’s `WORLD.INI` lookup. Native export and the
 browser worker share preparation and validation; no world artwork table is
 duplicated in the host.
 
-Cursor preparation is an unverified source increment for #90. The on-demand
-`cursor/pointers.cursor` group reads the `SYSTEM.INI [system] pointers` path
-through preservation, resolves DOS separators and case through the source
-manifest, and retains the exact GXA bytes in a versioned portable record.
-`cursor::export` prepares the same record for a native cache outside the install.
-It uses the existing preservation dependency. Descriptor decoding, hotspot
-derivation, cursor selection and visible host presentation remain unsupported.
-**Verified:** preservation documents that software preparation retains indexed
-pixels, while Glide preparation replaces them with texture identifiers and its
-offset scan exceeds that table's payload. The software marker rule does not
-supply Glide offsets. See the [cursor representation contract](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/BUNDLED-RESOURCES.md#cursor-asset).
-**Unknown:** observed Glide offsets and ordinary gameplay cursor visibility.
-Package and native/browser acceptance have not run for this increment.
-The authored cursor tests also cover native cache replacement after a configured
-archive change, preservation of the prior cache on preparation failure, and
-exact-byte preparation from an available install. The WASM worker verification
-script includes the same archive-byte contract. These checks remain unrun.
-When execution is admitted, run `cargo test -p cyrus-assets --features parsers
---test cursor` for shared preparation and repeat with `--features native` for
-filesystem and installed-source coverage. The installed worker contract is in
-`node dev/scripts/test-game-worker.mjs <built-worker-package> <install>`.
+Cursor preparation reads `SYSTEM.INI [system] pointers` through preservation,
+resolves DOS separators and case, and retains the exact GXA bytes in the portable
+`cursor/pointers.cursor` record. `cursor::export` publishes the same record outside
+the install. `CursorArchive::software_frames` decodes admitted software frame pairs
+into RGBA images and optional authored hotspots using preservation. Missing markers
+remain unknown; `SoftwareCursor::top_left` refuses their placement. Known hotspots
+use signed sixteen-bit wrapping subtraction, including at coordinate boundaries. **Verified:** the installed 30-frame archive admits 14 descriptors
+under the [software cursor contract](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/BUNDLED-RESOURCES.md#cursor-asset).
+Glide preparation replaces pixels before scanning offsets, so software hotspots
+must not be used for Glide. Cursor selection and visible host presentation remain
+unsupported; this decoding API does not establish native/browser compositor parity.
+The public preparation tests cover configured paths, cache replacement, failed
+preparation, admitted software images, unknown hotspots and contextual corruption.
 
-Catalog version 33 retains the selected eight-bit startup palette in cinematic
+Startup preparation retains the selected eight-bit startup palette in cinematic
 metadata. Older browser cinematic caches require preparation again.
 
 Catalog version 32 retains the installed map-stem aliases in music settings.
@@ -55,6 +57,11 @@ Validated portable animation, player, collision, environment, menu, HUD, movie a
 sound cache records. Data-only lookup and validation live with their serialized
 records. Runtime animation, collision queries, mesh bindings and audio handles
 belong to the consuming crates.
+
+**Verified:** [actor texture-set preparation](https://github.com/michidk/redguard-preservation/pull/188)
+preserves palette-colored faces instead of replacing
+them with image zero of the selected bank. Banks zero and one and every image
+index remain unchanged. Catalog version 34 invalidates older generated meshes.
 
 Collision caches retain shared authored geometry separately from static placement
 flags. Initial type-one live static models retain their MPOB bindings and model
@@ -400,3 +407,8 @@ For a later seek endpoint, set `FRAME_COUNT` to the final frame and `FIRST_FRAME
 to the first frame to retain. The exporter decodes the required prefix and writes
 only the inclusive selected window. Frame numbers and audio sample positions
 remain in the original movie timeline; output must be outside the install.
+
+`SoundSettings` applies the installed sound startup switch to effects, CD music
+and speech together. Disabled sound forces text dialogue, including after saved
+book preferences are applied. The rule follows preservation
+[`SYSTEM.INI`](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#sound-and-music).
