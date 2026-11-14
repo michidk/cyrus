@@ -702,3 +702,8 @@ missing or inconsistent mesh/material bindings. Call after effect PostUpdate and
 deferred publication. Runtime identities establish replacement and retirement only
 within the process; this diagnostic does not establish GPU submission or visual
 parity with the original.
+
+**Verified:** ordinary gameplay hides the host pointer without capturing it. This follows
+[preservation’s observed gameplay cursor contract](https://github.com/michidk/redguard-preservation/blob/348982c/docs/formats/GXA.md).
+Mod orbit control additionally requests pointer lock; host UI outside gameplay retains
+a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.

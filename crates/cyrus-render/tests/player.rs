@@ -95,3 +95,55 @@ fn explicit_inspection_pose_enables_flycam() {
         .unwrap();
     assert_eq!(*camera, pose);
 }
+
+#[test]
+fn ordinary_gameplay_hides_the_host_cursor_without_capturing_it() {
+    use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<AccumulatedMouseMotion>()
+        .add_plugins(cyrus_render::camera::CameraPlugin);
+    let window = app
+        .world_mut()
+        .spawn((PrimaryWindow, CursorOptions::default()))
+        .id();
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    app.update();
+    let cursor = app.world().get::<CursorOptions>(window).unwrap();
+    assert!(
+        !cursor.visible,
+        "ordinary original gameplay draws no pointer"
+    );
+    assert_eq!(cursor.grab_mode, CursorGrabMode::None);
+    app.insert_resource(cyrus_script::player::input::ModernLook {
+        orbit: true,
+        ..default()
+    });
+    app.update();
+    let cursor = app.world().get::<CursorOptions>(window).unwrap();
+    assert!(!cursor.visible);
+    assert_eq!(cursor.grab_mode, CursorGrabMode::Locked);
+    app.world_mut()
+        .remove_resource::<cyrus_script::player::input::ModernLook>();
+    app.update();
+    let cursor = app.world().get::<CursorOptions>(window).unwrap();
+    assert!(!cursor.visible);
+    assert_eq!(cursor.grab_mode, CursorGrabMode::None);
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    app.update();
+    let cursor = app.world().get::<CursorOptions>(window).unwrap();
+    assert!(
+        cursor.visible,
+        "leaving gameplay releases cursor presentation to the host UI"
+    );
+    assert_eq!(cursor.grab_mode, CursorGrabMode::None);
+}

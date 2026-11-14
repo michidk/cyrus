@@ -153,8 +153,8 @@ fn flycam_controller<C: Component>(
     }
 }
 
-/// A mod's orbit camera: lock and hide the cursor during gameplay that reads input, so the
-/// mouse turns the follow camera; release it everywhere else.
+/// Hide the host pointer during ordinary gameplay. A mod's orbit camera also locks it;
+/// host UI receives an unlocked, visible cursor outside gameplay.
 // A Bevy system: its parameters are independent resources and queries.
 #[allow(clippy::too_many_arguments)]
 fn grab_cursor(
@@ -169,13 +169,15 @@ fn grab_cursor(
 ) {
     use bevy::window::CursorGrabMode;
     // A mod's orbit camera turns with the captured mouse.
-    let grab = look.is_some_and(|look| look.orbit)
-        && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+    let gameplay = state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
         && !suppressed.0
         && pending_world.is_none()
         && !logbook.is_some_and(|screen| screen.suspended())
         // The backtick settings block the console while open.
         && !console.is_some_and(|console| console.open || console.blocked);
+    let grab = gameplay && look.is_some_and(|look| look.orbit);
+    // Ordinary gameplay has no pointer; host UI retains its cursor outside it.
+    let visible = !gameplay;
     let mode = if grab {
         CursorGrabMode::Locked
     } else {
@@ -187,7 +189,9 @@ fn grab_cursor(
     for mut cursor in &mut windows {
         if cursor.grab_mode != mode || (grab && clicked) {
             cursor.grab_mode = mode;
-            cursor.visible = !grab;
+        }
+        if cursor.visible != visible {
+            cursor.visible = visible;
         }
     }
 }
