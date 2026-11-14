@@ -24,7 +24,7 @@ image = { version = "0.25", default-features = false, features = ["png", "bmp"],
 
 hound = { version = "3.5", optional = true }
 # Pure Rust, so the browser worker can decode a ripped CD soundtrack too.
-symphonia = { version = "0.5.5", default-features = false, features = ["mp3"], optional = true }
+symphonia = { version = "0.6.0", default-features = false, features = ["mp3"], optional = true }
 redguard-preservation = { workspace = true, optional = true }
 
 [dev-dependencies]
