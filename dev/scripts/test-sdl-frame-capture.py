@@ -23,28 +23,57 @@ class Capture(unittest.TestCase):
         self.run_progress([10, 9], error=ValueError)
         self.run_progress([10, 13], error=ValueError, missing_pcm=True)
 
-    def run_progress(self, clocks, expected=None, error=None, missing_pcm=False):
+    def test_clock_progress_with_frozen_pcm_cannot_complete(self):
+        self.run_progress([10, 13], error=TimeoutError, pcm_frames=[1000, 1000])
+
+    def test_requested_pcm_span_outlives_early_clock_endpoint(self):
+        self.run_progress([10, 13, 14, 15], expected=15,
+                          pcm_frames=[1000, 1100, 1200, 1300], minimum_pcm_frames=300)
+        self.run_progress([10, 13], error=TimeoutError,
+                          pcm_frames=[1000, 1100], minimum_pcm_frames=300)
+
+    def test_invalid_pcm_span_rejects_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'series'
+            for count in (0, -1, True, 1.5):
+                with self.assertRaisesRegex(ValueError, 'minimum PCM frames'):
+                    capture.capture_progress('unused', output, {'movie': {'address': 16, 'size': 4}},
+                                             'movie', 3, require_pcm=True, minimum_pcm_frames=count)
+                self.assertFalse(output.exists())
+            with self.assertRaisesRegex(ValueError, 'minimum PCM frames'):
+                capture.capture_progress('unused', output, {'movie': {'address': 16, 'size': 4}},
+                                         'movie', 3, minimum_pcm_frames=300)
+
+    def run_progress(self, clocks, expected=None, error=None, missing_pcm=False,
+                     pcm_frames=None, minimum_pcm_frames=None):
         def sample(directory, output, rows, timeout):
             index = len(list(output.parent.glob('[0-9]*')))
             output.mkdir()
             result = dict(ok=True, owner='sdl_surface_present', sequence=index + 1,
                           monotonic_ns=100 + index, fields={'movie': clocks[index].to_bytes(4, 'little').hex()})
             if not missing_pcm:
-                result['pcm_generation'] = dict(frames=1000 + index, sequence=index + 1,
-                                                monotonic_ns=90 + index, rate=48000)
+                frames = pcm_frames[index] if pcm_frames is not None else 1000 + index
+                generation = index if pcm_frames is None else pcm_frames.index(frames)
+                result['pcm_generation'] = dict(frames=frames, sequence=generation + 1,
+                                                monotonic_ns=90 + generation, rate=48000)
             (output / 'result.json').write_text(json.dumps(result))
             return result
         with tempfile.TemporaryDirectory() as temporary, patch.object(capture, 'capture', side_effect=sample):
             output = Path(temporary) / 'series'
             args = ('unused', output, {'movie': {'address': 16, 'size': 4}}, 'movie', 3)
+            options = {} if minimum_pcm_frames is None else dict(minimum_pcm_frames=minimum_pcm_frames)
             if error:
                 with self.assertRaises(error):
-                    capture.capture_progress(*args, max_captures=len(clocks), require_pcm=True)
+                    capture.capture_progress(*args, max_captures=len(clocks), require_pcm=True, **options)
                 self.assertFalse((output / 'complete.json').exists())
                 self.assertTrue((output / '0/result.json').exists())
             else:
-                result = capture.capture_progress(*args, max_captures=len(clocks), require_pcm=True)
+                result = capture.capture_progress(*args, max_captures=len(clocks), require_pcm=True, **options)
                 self.assertEqual(result['last'], expected)
+                expected_span = (pcm_frames[-1] - pcm_frames[0]) if pcm_frames else len(clocks) - 1
+                self.assertEqual(result['pcm_frames'], expected_span)
+                self.assertEqual(result['pcm_rate'], 48000)
+                self.assertEqual(result['minimum_pcm_frames'], minimum_pcm_frames or 1)
                 self.assertEqual(json.loads((output / 'complete.json').read_text()), result)
                 self.assertEqual(len(json.loads((output / 'progress.json').read_text())), len(clocks))
 

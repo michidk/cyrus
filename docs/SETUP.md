@@ -2109,7 +2109,12 @@ Never convert wall duration into a movie frame number.
 
 With both SDL probes loaded, `--require-pcm` requires a committed generated-PCM
 cursor at every presentation and rejects missing generation, backwards cursors
-or a changed sample rate. The retained cursor is a callback-generation prefix,
+or a changed sample rate. Completion also requires the generated cursor to advance.
+Use `--minimum-pcm-frames FRAMES` with `--require-pcm` to retain the sample span
+needed by the planned waveform comparison as well as the requested game-clock
+progress. The completion receipt records the actual frame span and sample rate;
+a short audio interval cannot pass merely because the game clock advanced.
+The retained cursor is a callback-generation prefix,
 not DAC position. Each result also retains the original SDL surface format,
 channel masks, pitch and dimensions before conversion to RGB24. These describe
 the capture boundary; upstream renderer quantization must be established
