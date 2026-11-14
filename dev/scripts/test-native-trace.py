@@ -36,6 +36,50 @@ class AtomicTrace(unittest.TestCase):
         self.assertEqual((row['frame'],row['generation'],row['g'],row['health'],row['pos']),
                          (17,3,2.5,90,[1,2,3]))
 
+    def test_continuation_requests_the_next_update_instead_of_resampling_current(self):
+        boundary = self.boundary()
+        boundary.update(after_updates=1, update=18, game_seconds=3.5)
+        with patch.object(trace, 'call', return_value=dict(boundaries=[self.boundary(), boundary])) as call:
+            row = trace.sample('unused', 'continuation', after_updates=1)
+        self.assertEqual(call.call_args.args[1],
+                         dict(type='schedule_input', events=[dict(after_updates=0), dict(after_updates=1)]))
+        self.assertEqual(row['frame'], 18)
+        boundary['after_updates'] = 0
+        with patch.object(trace, 'call', return_value=dict(boundaries=[self.boundary(), boundary])):
+            with self.assertRaisesRegex(ValueError, 'inconsistent'):
+                trace.sample('unused', 'continuation', after_updates=1)
+
+    def test_fast_control_replies_do_not_resample_the_placement_update(self):
+        import copy
+        import tempfile
+        import sys
+        boundary = self.boundary()
+        def call(addr, command):
+            if command['type'] != 'schedule_input':
+                return {}
+            self.assertEqual(command['events'][0]['after_updates'], 0)
+            results = []
+            for event in command['events']:
+                offset = event['after_updates']
+                if offset:
+                    boundary['update'] += offset
+                    boundary['game_seconds'] += offset
+                result = copy.deepcopy(boundary)
+                result['after_updates'] = offset
+                results.append(result)
+            return dict(boundaries=results)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'trace.jsonl'
+            with patch.object(sys, 'argv', ['native-trace', '--out', str(output),
+                    '--place', '1,2,3', '--seconds', '2', '--keep-cheats']), \
+                 patch.object(trace, 'wait_live'), patch.object(trace, 'call', side_effect=call), \
+                 patch.object(trace.time, 'sleep'):
+                trace.main()
+            import json
+            rows = [json.loads(line) for line in output.read_text().splitlines()]
+        self.assertEqual([row['frame'] for row in rows], [17, 18, 19])
+        self.assertEqual([row.get('missed_updates') for row in rows[1:]], [0, 0])
+
     def test_unavailable_or_wrong_boundary_never_becomes_a_sample(self):
         for change in ('missing','duplicate','offset','input','actor','clock','failure'):
             boundary=self.boundary();rows=[boundary]

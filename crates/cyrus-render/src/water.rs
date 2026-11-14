@@ -488,6 +488,12 @@ pub(crate) fn animate_water(
             Some(view)
         });
         let restore = view.is_none() && terrain.view.is_some();
+        if !prepare_for_camera {
+            // Modern lighting draws the whole terrain, so all of its texture animations play.
+            commands
+                .entity(terrain.entity)
+                .try_insert(crate::terrain::TextureAdmission(true));
+        }
         if !update_grid && !restore && terrain.view == view {
             continue;
         }
@@ -535,7 +541,7 @@ pub(crate) fn animate_water(
         if restore {
             commands
                 .entity(terrain.entity)
-                .insert(crate::terrain::TextureAdmission(false));
+                .insert(crate::terrain::TextureAdmission(!prepare_for_camera));
             terrain.view = None;
             commands
                 .entity(terrain.entity)
@@ -1285,6 +1291,13 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, dry_mesh);
         assert_eq!(positions(&app, &first), a);
+        assert!(
+            app.world()
+                .get::<crate::terrain::TextureAdmission>(entity)
+                .unwrap()
+                .0,
+            "modern lighting draws the whole terrain, so its texture animations must play"
+        );
         // Modern lighting draws the unprojected terrain; the camera preparation below is Faithful's.
         app.world_mut()
             .resource_mut::<Fidelity>()

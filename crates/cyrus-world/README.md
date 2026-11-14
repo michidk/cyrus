@@ -46,7 +46,10 @@ pose while its byte delay consumes supplied nominal ticks. Zero continues
 immediately and byte 255 waits until replacement. A waiting group remains current
 and does not complete its PushAnimation task. These rules are
 [published in preservation](https://github.com/michidk/redguard-preservation/blob/515e62f/docs/engine/animation.md#forward-animation-delays).
-Unsupported cues stop playback with a contextual error.
+Unsupported cues stop playback with a contextual error. A rejected synchronous
+Forget during forced, ordinary, skipped-frame or default replacement also leaves
+the receiver failed. Later requests and snapshot restoration cannot replay it;
+already dispatched services are not rolled back.
 
 `ActorAnimation` owns requests and playback direction for types zero through two.
 The caller supplies the default group and nominal ticks. Direction, timing and
@@ -68,7 +71,11 @@ with delays checked first. These rules are
 `request_with_sounds`, `force_request_with_sounds`, and `advance_with_sounds` accept a synchronous handler for
 signed effect requests, rate offsets in hertz, End stops and replacement handle
 resets. The handler owns the original surface remapping, positional gains and
-channel allocation. Without it, sound commands still fail explicitly. Audible
+channel allocation. Advancement queries a previously requested sample before
+interpreting further commands, including updates held by a delay. The audio host
+clears an idle remembered slot at that query; it retains reusable-slot semantics
+between animation updates. Query failures remain sticky across snapshots.
+Without the handler, sound commands still fail explicitly. Audible
 original walking cues and automatic runtime scheduling remain unverified. The
 [sound facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#animation-playsound)
 define this boundary.

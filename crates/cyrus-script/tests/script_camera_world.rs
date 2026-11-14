@@ -295,9 +295,7 @@ fn world_location_reproduces_the_original_handler() {
         record.maximum_movement = 800;
         record.flags = cyrus_script::script::camera::CameraFlags::COLLISION;
         let zero = state.records[0].clone();
-        for slot in 1..9 {
-            state.records[slot] = zero.clone();
-        }
+        state.records[1..9].fill(zero.clone());
         state.current = CameraPose {
             position: [4300, 12000, -9500],
             angles: [3, 2000, 0],

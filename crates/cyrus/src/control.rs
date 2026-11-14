@@ -489,6 +489,13 @@ fn handle(
                     Err(error) => Err(error),
                 }
             }
+            Command::AcquireInput { acquisition } => {
+                let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
+                match input_scheduler.arm_clock(id, reply.clone(), generation, acquisition, &keys) {
+                    Ok(()) => continue,
+                    Err(error) => Err(error),
+                }
+            }
             Command::Input { .. } if input_scheduler.pending() => Err("input schedule owns control input until completion".into()),
             Command::Input { key, action } => match parse_key(&key) {
                 Some(code) => {
@@ -538,7 +545,7 @@ fn handle(
                 ) {
                     (None, _) => Err("modern lighting is unavailable".into()),
                     (Some(_), Err(_)) => Err(
-                        "effect must be grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
+                        "effect must be shadows|ambient_occlusion|contact_shadows|anti_aliasing|bloom|object_lights|water_gloss|grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|foliage|depth_of_field|motion_blur"
                             .into(),
                     ),
                     (Some(effects), Ok(effect)) => {
@@ -797,6 +804,7 @@ fn handle(
                         let event = match sound {
                             AnimationSound::Play { effect, rate_offset_hz } =>
                                 json!({"type":"play", "effect":effect, "rate_offset_hz":rate_offset_hz}),
+                            AnimationSound::CheckSample => json!({"type":"check_sample"}),
                             AnimationSound::Stop => json!({"type":"stop"}),
                             AnimationSound::Forget => json!({"type":"forget"}),
                             AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {
@@ -1100,6 +1108,27 @@ mod tests {
         app.update();
         let response = responses.try_recv().unwrap();
         assert_eq!(response.id, 91);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("no world"));
+        assert!(
+            !app.world()
+                .resource::<ButtonInput<KeyCode>>()
+                .pressed(KeyCode::ArrowUp)
+        );
+    }
+
+    #[test]
+    fn public_clock_acquisition_rejects_unavailable_world_without_pressing() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        let request = serde_json::from_value(json!({"id":92,"cmd":{
+            "type":"acquire_input","key":"ArrowUp","endpoints":[1024,1334],"normal_frame_rate":12,"max_updates":8
+        }})).unwrap();
+        tx.send(Pending { request, reply }).unwrap();
+        app.update();
+        let response = responses.try_recv().unwrap();
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("no world"));
         assert!(
@@ -1849,6 +1878,25 @@ mod tests {
             }],
         );
         assert_eq!(response[0]["captured_sounds"], json!([]));
+        let response = run_commands(
+            &mut app,
+            vec![Command::StepScript {
+                generation: 1,
+                index: 0,
+                stage: cyrus_control::ScriptStage::Animation,
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                distance_override: None,
+                fallback_position: None,
+            }],
+        );
+        assert_eq!(
+            response[0]["captured_sounds"],
+            json!([{
+                "actor":{"generation":1,"index":0},
+                "sound":{"type":"check_sample"}
+            }])
+        );
         let actors = app.world().resource::<cyrus_script::script::ScriptActors>();
         assert!(
             actors.current.as_ref().unwrap().actors()[0]

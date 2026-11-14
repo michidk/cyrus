@@ -34,8 +34,14 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         position: [10_448_896, -178_944, 10_502_144],
         heading: 0,
     };
-    cyrus_script::player::placement::settle_static(&scene, &mut pose).unwrap();
-    assert_eq!(pose.position, [10_448_896, -190_464, 10_502_144]);
+    // Export alone has no live actor poses; preserve placement until their owner can rank them.
+    let error = cyrus_script::player::placement::settle_static(&scene, &mut pose).unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<cyrus_script::player::placement::ActorModelSupportRequired>()
+            .is_some()
+    );
+    assert_eq!(pose.position, [10_448_896, -178_944, 10_502_144]);
     assert_eq!(pose.heading, 0);
     assert_eq!(scene.collision.placements.len(), 1691);
     assert_eq!(scene.collision.models["PLANT000"].flags, 2);
@@ -119,7 +125,12 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
     verify_walking_release(&scene, &animations);
     assert!(!scene.model_radii.contains_key("THUGA002"));
-    verify_exported_models(&path, &animations, &["CYRSA001", "CYRSA012", "THUGA002"]);
+    verify_exported_models(
+        &install.root,
+        &path,
+        &animations,
+        &["CYRSA001", "CYRSA012", "THUGA001", "THUGA002"],
+    );
     std::fs::remove_dir_all(directory).unwrap();
 }
 
@@ -142,11 +153,12 @@ fn installed_embedded_actor_model_exports_matching_frame_geometry() {
     cyrus_assets::scene::export_scene(&install, "CATACOMB", &path).unwrap();
     let animations: cyrus_assets::animation::Animations =
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
-    verify_exported_models(&path, &animations, &["RAT"]);
+    verify_exported_models(&install.root, &path, &animations, &["RAT"]);
     std::fs::remove_dir_all(directory).unwrap();
 }
 
 fn verify_exported_models(
+    install: &std::path::Path,
     path: &std::path::Path,
     animations: &cyrus_assets::animation::Animations,
     names: &[&str],
@@ -187,6 +199,50 @@ fn verify_exported_models(
         let mesh = node.mesh().unwrap();
         assert!(mesh.primitives().len() > 0);
         assert!(glb.textures().len() > 0);
+        if name == "THUGA001" {
+            let mut solids = std::collections::BTreeMap::<u8, usize>::new();
+            for primitive in mesh.primitives() {
+                let extras: serde_json::Value =
+                    serde_json::from_str(primitive.extras().as_ref().unwrap().get()).unwrap();
+                if !extras["rgpre_lighting"]["solid_rgb"].is_null() {
+                    let index =
+                        u8::try_from(extras["rgpre_solid_palette"]["index"].as_u64().unwrap())
+                            .unwrap();
+                    *solids.entry(index).or_default() += primitive.indices().unwrap().count() / 3;
+                }
+            }
+            let source = rgpre::model3d::parse_3d_file(
+                &std::fs::read(install.join("fxart/THUGA001.3DC")).unwrap(),
+            )
+            .unwrap();
+            let faces: Vec<_> = source
+                .face_data
+                .iter()
+                .filter(|face| {
+                    matches!(
+                        face.texture_data,
+                        rgpre::model3d::TextureData::SolidColor(_)
+                    )
+                })
+                .collect();
+            assert_eq!(faces.len(), 8, "installed solid-face witness");
+            let mut expected = std::collections::BTreeMap::<u8, usize>::new();
+            for face in &faces {
+                let rgpre::model3d::TextureData::SolidColor(index) = face.texture_data else {
+                    unreachable!("filtered to solid faces");
+                };
+                *expected.entry(index).or_default() += face.face_vertices.len() - 2;
+            }
+            assert_eq!(
+                solids, expected,
+                "{file}: solid palette faces survive the actor skin"
+            );
+            eprintln!(
+                "{file}: {} installed solid faces retained as {} solid triangles",
+                faces.len(),
+                solids.values().sum::<usize>()
+            );
+        }
         let mut static_positions = std::collections::BTreeSet::new();
         for primitive in mesh.primitives() {
             if animations.models[name].positions.len() == 1 {

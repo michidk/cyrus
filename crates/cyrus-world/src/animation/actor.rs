@@ -829,8 +829,13 @@ impl ActorAnimation {
     }
 
     fn clear_current(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
-        if let Some((_, sequence)) = &mut self.current {
-            sequence.forget_sound(sounds)?;
+        if let Some((_, sequence)) = &mut self.current
+            && let Err(error) = sequence.forget_sound(sounds)
+        {
+            // The service may have applied effects before rejecting the replacement.
+            // Keep the receiver failed just as ordinary advancement does.
+            self.failure = Some(error.to_string());
+            return Err(error);
         }
         self.current = None;
         Ok(())
@@ -859,7 +864,11 @@ impl ActorAnimation {
         sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
-        let result = self.advance_current(ticks, sounds);
+        let result = self
+            .current
+            .as_ref()
+            .map_or(Ok(()), |(_, sequence)| sequence.check_sound(sounds))
+            .and_then(|()| self.advance_current(ticks, sounds));
         if let Err(error) = &result {
             self.failure = Some(error.to_string());
         }

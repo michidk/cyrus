@@ -118,7 +118,7 @@ pub(crate) fn grid_face_normal(grid: &[[f32; 3]], side: usize, [a, b, c]: [usize
 }
 
 /// Prepare private face inputs and optional retained RGB for model lighting.
-/// World archive solids use the converted palette before lighting, as documented in
+/// World model solids use the converted palette before lighting, as documented in
 /// <https://github.com/michidk/redguard-preservation/commit/dd46e20>.
 /// The returned solid RGB is in encoded byte units for the unbaked path.
 #[cfg(test)]

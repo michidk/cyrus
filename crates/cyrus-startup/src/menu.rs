@@ -344,72 +344,8 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnExit(AppState::Menu), cleanup)
         .add_systems(
             PreUpdate,
-            gamepad_menu_keys.after(bevy::input::InputSystems),
+            super::gamepad::gamepad_keys.after(bevy::input::InputSystems),
         );
-}
-
-/// Modern controls: a gamepad drives the book menu through the keys it reads. The D-pad, or
-/// the left stick beyond the installed dead zone, holds the arrow of its dominant axis; South
-/// holds Enter and East holds Escape. Only keys this system pressed are released, including
-/// when the menu closes.
-fn gamepad_menu_keys(
-    state: Option<Res<State<AppState>>>,
-    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
-    bindings: Option<Res<cyrus_script::player::input::PlayerBindings>>,
-    gamepads: Query<&Gamepad>,
-    keys: Option<ResMut<ButtonInput<KeyCode>>>,
-    mut held: Local<Vec<KeyCode>>,
-) {
-    let Some(mut keys) = keys else {
-        return;
-    };
-    let active = state.is_some_and(|state| *state.get() == AppState::Menu)
-        && fidelity.is_some_and(|fidelity| {
-            fidelity.player_controller == cyrus_game::fidelity::Mode::Modern
-        });
-    let threshold = bindings.and_then(|bindings| bindings.stick_threshold());
-    let mut wanted = Vec::new();
-    for pad in gamepads.iter().filter(|_| active) {
-        let stick = threshold
-            .and_then(|threshold| Some(pad.left_stick()).filter(|s| s.length() > threshold));
-        let direction = Some(pad.dpad())
-            .filter(|dpad| *dpad != Vec2::ZERO)
-            .or(stick);
-        if let Some(direction) = direction {
-            wanted.push(if direction.y.abs() >= direction.x.abs() {
-                if direction.y > 0.0 {
-                    KeyCode::ArrowUp
-                } else {
-                    KeyCode::ArrowDown
-                }
-            } else if direction.x > 0.0 {
-                KeyCode::ArrowRight
-            } else {
-                KeyCode::ArrowLeft
-            });
-        }
-        for (button, key) in [
-            (GamepadButton::South, KeyCode::Enter),
-            (GamepadButton::East, KeyCode::Escape),
-        ] {
-            if pad.pressed(button) {
-                wanted.push(key);
-            }
-        }
-    }
-    held.retain(|key| {
-        let keep = wanted.contains(key);
-        if !keep {
-            keys.release(*key);
-        }
-        keep
-    });
-    for key in wanted {
-        if !keys.pressed(key) {
-            keys.press(key);
-            held.push(key);
-        }
-    }
 }
 
 fn sync_thumbnail(capture: Option<Res<super::GameplayThumbnail>>, mut menu: ResMut<MenuState>) {
@@ -1271,63 +1207,6 @@ pub(super) fn begin_world_loading(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_modern_gamepad_holds_the_book_menu_keys_it_pressed() {
-        let mut app = App::new();
-        app.add_plugins(bevy::state::app::StatesPlugin)
-            .insert_state(AppState::Menu)
-            .init_resource::<ButtonInput<KeyCode>>()
-            .insert_resource(cyrus_game::fidelity::Fidelity {
-                player_controller: cyrus_game::fidelity::Mode::Modern,
-                ..default()
-            })
-            .add_systems(Update, gamepad_menu_keys);
-        let mut pad = Gamepad::default();
-        pad.analog_mut().set(GamepadButton::DPadDown, 1.0);
-        pad.digital_mut().press(GamepadButton::South);
-        let pad = app.world_mut().spawn(pad).id();
-        // The keyboard already holds Escape; the pad must not release it.
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::Escape);
-        app.update();
-        let keys = app.world().resource::<ButtonInput<KeyCode>>();
-        assert!(keys.pressed(KeyCode::ArrowDown) && keys.just_pressed(KeyCode::Enter));
-        let mut gamepad = app.world_mut().get_mut::<Gamepad>(pad).unwrap();
-        gamepad.analog_mut().set(GamepadButton::DPadDown, 0.0);
-        gamepad.digital_mut().release(GamepadButton::South);
-        gamepad.digital_mut().press(GamepadButton::East);
-        app.update();
-        app.world_mut()
-            .get_mut::<Gamepad>(pad)
-            .unwrap()
-            .digital_mut()
-            .release(GamepadButton::East);
-        app.update();
-        let keys = app.world().resource::<ButtonInput<KeyCode>>();
-        assert!(!keys.pressed(KeyCode::ArrowDown));
-        assert!(!keys.pressed(KeyCode::Enter));
-        assert!(
-            keys.pressed(KeyCode::Escape),
-            "the keyboard's Escape stays held"
-        );
-        // Faithful leaves the book menu to the keyboard.
-        app.world_mut()
-            .resource_mut::<cyrus_game::fidelity::Fidelity>()
-            .player_controller = cyrus_game::fidelity::Mode::Faithful;
-        app.world_mut()
-            .get_mut::<Gamepad>(pad)
-            .unwrap()
-            .digital_mut()
-            .press(GamepadButton::South);
-        app.update();
-        assert!(
-            !app.world()
-                .resource::<ButtonInput<KeyCode>>()
-                .pressed(KeyCode::Enter)
-        );
-    }
 
     #[test]
     fn explicit_menu_skip_cancels_automatic_introduction_but_not_new_game_shortcut() {

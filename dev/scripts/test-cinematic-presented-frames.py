@@ -53,15 +53,17 @@ class Presentation(unittest.TestCase):
         glyph = {'enabled': True, 'width': 1, 'height': 1, 'offset': [0, 0], 'pixels': [1]}
         metadata = {'font': {'start': 65, 'line_height': 1, 'glyphs': [glyph],
                              'palette': [[0, 0, 0], [63, 0, 0]]},
+                    'subtitle_palette': [[0, 0, 0], [253, 0, 0]] + [[0, 0, 0]] * 254,
                     'definition': {'subtitles': [{'start': 2, 'stop': 4, 'always': False, 'text': 'A'}]}}
-        raw = Image.new('RGBA', (640, 480), (0, 0, 0, 255))
-        image = m.compose(raw, metadata, 2, subtitles=True, scanlines=False)
-        self.assertEqual(image.getpixel((319, 469)), (178, 0, 0, 255))
-        self.assertEqual(raw.getpixel((319, 469)), (0, 0, 0, 255))
-        self.assertEqual(m.compose(raw, metadata, 4, True, False).tobytes(), raw.tobytes())
-        self.assertEqual(m.compose(raw, metadata, 2, False, False).tobytes(), raw.tobytes())
+        raw = Image.new('RGBA', (640, 240), (0, 0, 0, 255))
+        blank = Image.new('RGBA', (640, 480), (0, 0, 0, 255))
+        image = m.compose(raw, metadata, 2, subtitles=True, scanlines=False, padding_colour=[0, 0, 0])
+        self.assertEqual(image.getpixel((319, 469)), (181, 0, 0, 255))
+        self.assertEqual(raw.getpixel((319, 239)), (0, 0, 0, 255))
+        self.assertEqual(m.compose(raw, metadata, 4, True, False, [0, 0, 0]).tobytes(), blank.tobytes())
+        self.assertEqual(m.compose(raw, metadata, 2, False, False, [0, 0, 0]).tobytes(), blank.tobytes())
         metadata['definition']['subtitles'][0]['always'] = True
-        self.assertEqual(m.compose(raw, metadata, 2, False, False).tobytes(), image.tobytes())
+        self.assertEqual(m.compose(raw, metadata, 2, False, False, [0, 0, 0]).tobytes(), image.tobytes())
 
     def test_alignment_requires_independently_bounded_movie_clock_returns(self):
         def stamp(message, ts):

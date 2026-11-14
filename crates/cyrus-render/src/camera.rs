@@ -153,8 +153,8 @@ fn flycam_controller<C: Component>(
     }
 }
 
-/// Modern camera: lock and hide the cursor during gameplay that reads input, so the mouse turns
-/// the follow camera; release it everywhere else.
+/// Hide the host pointer during ordinary gameplay. A mod's orbit camera also locks it;
+/// host UI receives an unlocked, visible cursor outside gameplay.
 // A Bevy system: its parameters are independent resources and queries.
 #[allow(clippy::too_many_arguments)]
 fn grab_cursor(
@@ -163,21 +163,21 @@ fn grab_cursor(
     pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<cyrus_script::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
-    fidelity: Res<cyrus_game::fidelity::Fidelity>,
     mouse: Option<Res<ButtonInput<MouseButton>>>,
     look: Option<Res<cyrus_script::player::input::ModernLook>>,
     mut windows: Query<&mut bevy::window::CursorOptions, With<bevy::window::PrimaryWindow>>,
 ) {
     use bevy::window::CursorGrabMode;
-    // The Modern camera, or a mod asking for it, turns with the captured mouse.
-    let grab = (fidelity.camera == cyrus_game::fidelity::Mode::Modern
-        || look.is_some_and(|look| look.orbit))
-        && state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+    // A mod's orbit camera turns with the captured mouse.
+    let gameplay = state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
         && !suppressed.0
         && pending_world.is_none()
         && !logbook.is_some_and(|screen| screen.suspended())
-        // The F11 settings block the console while open.
+        // The backtick settings block the console while open.
         && !console.is_some_and(|console| console.open || console.blocked);
+    let grab = gameplay && look.is_some_and(|look| look.orbit);
+    // Ordinary gameplay has no pointer; host UI retains its cursor outside it.
+    let visible = !gameplay;
     let mode = if grab {
         CursorGrabMode::Locked
     } else {
@@ -189,7 +189,9 @@ fn grab_cursor(
     for mut cursor in &mut windows {
         if cursor.grab_mode != mode || (grab && clicked) {
             cursor.grab_mode = mode;
-            cursor.visible = !grab;
+        }
+        if cursor.visible != visible {
+            cursor.visible = visible;
         }
     }
 }
@@ -449,15 +451,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_click_requests_the_modern_cursor_lock_again() {
+    fn a_click_requests_the_mod_orbit_cursor_lock_again() {
         use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
         let mut app = App::new();
         app.add_plugins(bevy::state::app::StatesPlugin)
             .insert_state(AppState::InGame)
             .init_resource::<InputSuppressed>()
             .init_resource::<ButtonInput<MouseButton>>()
-            .insert_resource(cyrus_game::fidelity::Fidelity {
-                camera: cyrus_game::fidelity::Mode::Modern,
+            .insert_resource(cyrus_script::player::input::ModernLook {
+                orbit: true,
                 ..Default::default()
             })
             .add_systems(Update, grab_cursor);

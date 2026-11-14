@@ -12,9 +12,10 @@ fn every_area_defaults_to_faithful() {
 
 #[test]
 fn settings_toml_overrides_one_area() {
-    let f: Fidelity = toml::from_str("camera = \"modern\"").unwrap();
-    assert_eq!(f.mode(Area::Camera), Mode::Modern);
-    assert_eq!(f.mode(Area::PlayerController), Mode::Faithful);
+    // A removed behaviour area in an older settings file is ignored.
+    let f: Fidelity = toml::from_str("camera = \"modern\"\nfog = \"modern\"").unwrap();
+    assert_eq!(f.mode(Area::Fog), Mode::Modern);
+    assert_eq!(f.mode(Area::Sky), Mode::Faithful);
 }
 
 #[test]

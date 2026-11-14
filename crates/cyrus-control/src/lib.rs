@@ -68,6 +68,18 @@ pub struct InputBoundary {
     pub action: Option<InputAction>,
 }
 
+/// Bounded input acquisition using counterpart receipts in Q8 nominal ticks.
+/// Endpoints are positive, strictly increasing elapsed scales from the input origin.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ClockInput {
+    pub key: String,
+    pub endpoints: Vec<u64>,
+    /// Installed normal frame rate defining the counterpart clock units.
+    pub normal_frame_rate: u32,
+    pub max_updates: u64,
+}
+
 /// Original slot identities with host revision tokens for stale-list protection.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -225,6 +237,13 @@ pub enum Command {
     ScheduleInput {
         events: Vec<InputBoundary>,
     },
+    /// Press at the next ordinary boundary, retain every boundary, and release at
+    /// the first actually consumed endpoint from the counterpart's receipt set.
+    /// Reject exhausted endpoints or the update bound without rounding or changing cadence.
+    AcquireInput {
+        #[serde(flatten)]
+        acquisition: ClockInput,
+    },
     /// Turn the inspection flycam on or off; it moves with `KeyW/A/S/D`, `Space`, `ShiftLeft`.
     /// `position` places it in rendered world units and `look_at` aims it at a point.
     Flycam {
@@ -243,8 +262,10 @@ pub enum Command {
         #[serde(default)]
         running: bool,
     },
-    /// Switch one of the modern lighting's optional effects: `grading`, `auto_exposure`, `god_rays`,
-    /// `lens_flare`, `sky`, `water_reflections`, `foliage`, `depth_of_field` or `motion_blur`.
+    /// Switch one part of the modern lighting (`shadows`, `ambient_occlusion`, `contact_shadows`,
+    /// `anti_aliasing`, `bloom`, `object_lights`, `water_gloss`) or one of its optional effects
+    /// (`grading`, `auto_exposure`, `god_rays`, `lens_flare`, `sky`, `water_reflections`,
+    /// `foliage`, `depth_of_field`, `motion_blur`).
     /// Needs `lighting` Modern to show.
     SetModernEffect {
         effect: String,

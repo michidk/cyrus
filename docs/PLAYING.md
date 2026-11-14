@@ -65,7 +65,7 @@ the installed `final_version` setting; the tested GOG install enables it.
 | Tab | Toggle walk mode |
 | F9 | Quick save, when saving is permitted |
 | F10 | Show credits; Escape returns to the world |
-| F11 | Open cyrus inspection settings |
+| Backtick (`` ` ``) | Open cyrus inspection settings |
 | F12 | Open or close the developer console |
 
 In the book, use Up/Down to select, Enter to activate, Left/Right to adjust an
@@ -74,29 +74,22 @@ book entries is not implemented. Key rebinding starts when you activate a
 Controls entry; Escape cancels capture. Browser or desktop shortcuts may
 intercept function keys before the game receives them.
 
-F11's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
+Backtick's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
 right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
 player control. Its camera movement does not move Cyrus through the world. In the book menu it
 flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
 the **Pass input to game** option beside it is ticked.
 The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate it in the
-Mods window under F11, then Insert toggles it; its speed is a setting of the mod.
+Mods window under Backtick, then Insert toggles it; its speed is a setting of the mod.
 
-Faithful controls are the default. `--controls modern` (browser
-`?controls=modern`, or F11's Player controller setting) moves Cyrus with W, A, S
-and D relative to the camera: he turns toward the held direction while moving
-forward. He walks unless Shift is held, which runs; the Tab walk mode does not
-apply. Space jumps as installed. With a gamepad, the left stick moves him the
-same way: a partial tilt walks, a full tilt runs. The arrow keys and the D-pad do
-not move him, and a quick sword key on W, A, S or D (S in the GOG install) moves
-instead of drawing the sword. In conversation topic menus, W and S or the left stick
-move the selection up and down. In the book menu, the D-pad or left stick acts as
-the arrow keys, South (A on Xbox pads) as Enter and East (B) as Escape. `--camera modern` (`?camera=modern`, or F11's Camera setting) turns the
-follow camera with horizontal mouse movement or the right stick and locks the
-cursor during play; in a browser, click the game to lock it, also after Escape released it. Both sticks use the installed joystick dead zone.
-Vertical mouse movement does not tilt the camera. The Faithful camera follows
-Cyrus's heading, so with it A or D keeps turning him in a circle; use both Modern
-settings together.
+The controls and the follow camera are always the original's; Modern mode changes only how the
+game looks. A gamepad works in every mode: in the world its stick or D-pad and face buttons are the
+installed joystick controls (South attacks or activates, East jumps, West looks, North is the walk
+modifier; rebind them on the Controls page), Start opens the book and Back the inventory. In the book,
+the logbook and the inventory, the D-pad or left stick moves the selection, South confirms and East or
+Start goes back. Mouse look, camera-relative W, A, S and D movement and analog steering come from the
+bundled `movement` mod (see `mods/README.md`): activate it in the Mods window under Backtick. In a
+browser, click the game to lock the cursor for its mouse look, also after Escape released it.
 
 ## Save and resume
 
@@ -136,7 +129,7 @@ documents the unsupported original-save scope.
   playthrough remain unaccepted. Working startup, combat or save checks do not
   establish that the game can be finished.
 - Movement, collision, follow camera, climbing and swimming still have open
-  fidelity work. Remaining mouse-bound actions are incomplete; a gamepad drives the in-game controls and can be captured on the Controls page, but does not navigate the menus.
+  fidelity work. Remaining mouse-bound actions are incomplete; the right stick and triggers do nothing without a mod.
 - Rendering, lighting, HUD, logbook, audio and movie synchronization still have
   open comparisons and defects. Faithful is the default; optional Modern settings
   do not imply that every proposed Modern control is implemented.

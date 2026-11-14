@@ -110,15 +110,80 @@ def capture(directory, output, rows, timeout=30, pcm_path=None, at_clock=None):
         return result
 
 
+def capture_progress(directory, output, rows, clock_field, progress, timeout=30,
+                     max_captures=128, require_pcm=False):
+    """Persist presented states until the caller-bound clock advances by progress.
+
+    The caller supplies the playback clock binding, never a wall-time conversion.
+    Rejected or interrupted series retain their individual captures for diagnosis.
+    """
+    rows = bindings(rows)
+    if (clock_field not in rows or rows[clock_field]['size'] != 4
+            or type(progress) is not int or not 0 < progress < 2**32
+            or type(max_captures) is not int or not 2 <= max_captures <= 4096
+            or type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError('progress requires a bound u32 clock and finite capture budget')
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=False)
+    deadline = time.monotonic() + timeout
+    samples = []
+    for index in range(max_captures):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('presentation clock did not reach requested progress')
+        result = capture(directory, output / str(index), rows, timeout=remaining)
+        clock = int.from_bytes(bytes.fromhex(result['fields'][clock_field]), 'little')
+        if samples and (clock < samples[-1]['clock']
+                or result['sequence'] <= samples[-1]['sequence']
+                or result['monotonic_ns'] < samples[-1]['monotonic_ns']):
+            raise ValueError('presentation clock or sequence reversed')
+        if require_pcm:
+            pcm = result.get('pcm_generation', {})
+            if (any(type(pcm.get(key)) is not int or pcm[key] <= 0
+                    for key in ('frames', 'sequence', 'monotonic_ns', 'rate'))
+                    or pcm['monotonic_ns'] > result['monotonic_ns']):
+                raise ValueError('presentation has no preceding generated PCM boundary')
+            if samples:
+                previous = samples[-1]['pcm_generation']
+                if (pcm['rate'] != previous['rate'] or pcm['frames'] < previous['frames']
+                        or pcm['sequence'] < previous['sequence']
+                        or pcm['monotonic_ns'] < previous['monotonic_ns']):
+                    raise ValueError('generated PCM boundary reversed or changed sample domain')
+        samples.append(dict(result, clock=clock, capture=str(index)))
+        temporary = output / 'progress.tmp'
+        temporary.write_text(json.dumps(samples, indent=2))
+        temporary.replace(output / 'progress.json')
+        if clock - samples[0]['clock'] >= progress:
+            receipt = dict(clock_field=clock_field, first=samples[0]['clock'], last=clock,
+                           captures=len(samples), progress=clock - samples[0]['clock'])
+            temporary = output / 'complete.tmp'
+            temporary.write_text(json.dumps(receipt, indent=2))
+            temporary.replace(output / 'complete.json')
+            return receipt
+    raise TimeoutError('presentation clock did not reach requested progress within capture budget')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('request_directory', type=Path)
     parser.add_argument('output', type=Path)
     parser.add_argument('bindings', type=Path)
-    parser.add_argument('--at-clock', nargs=2, metavar=('FIELD', 'VALUE'))
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--at-clock', nargs=2, metavar=('FIELD', 'VALUE'))
+    mode.add_argument('--progress', nargs=2, metavar=('FIELD', 'TICKS'))
+    parser.add_argument('--timeout', type=float, default=30)
+    parser.add_argument('--require-pcm', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(capture(args.request_directory, args.output, json.loads(args.bindings.read_text()),
-        at_clock=dict(field=args.at_clock[0], value=int(args.at_clock[1])) if args.at_clock else None)))
+    rows = json.loads(args.bindings.read_text())
+    if args.progress:
+        result = capture_progress(args.request_directory, args.output, rows,
+            args.progress[0], int(args.progress[1]), timeout=args.timeout, require_pcm=args.require_pcm)
+    else:
+        if args.require_pcm:
+            parser.error('--require-pcm requires --progress')
+        result = capture(args.request_directory, args.output, rows, timeout=args.timeout,
+            at_clock=dict(field=args.at_clock[0], value=int(args.at_clock[1])) if args.at_clock else None)
+    print(json.dumps(result))
 
 
 if __name__ == '__main__':

@@ -29,8 +29,8 @@ In `Menu`, `state.menu` reports the page, installed entries, current selection,
 preferences, and Controls capture action. Wait for `ready` before sending menu
 input and after each animated page change. Quit closes the book before exiting.
 Drive Options and Movies with `input`; the same saved bindings and values
-apply after a native restart. Native Movies playback uses the saved subtitle and
-interlace preferences and reports progress in `state.menu.movie`. A new key press
+apply after a native restart. Native Movies playback uses the saved subtitle
+preference and reports progress in `state.menu.movie`. A new key press
 advances to the next installed skip point, then returns to the menu. Saved Sound
 preferences apply to native effects, speech, and CD music. Browser Movies shares
 playback rules using locally exported cinematic assets; it has no control port.
@@ -208,3 +208,15 @@ sample format. These fields describe generation before audio-device submission,
 independently of the optional monitor delivery cursor. A missing or invalidated
 tap returns null. Producer discontinuities and recorder pacing remain separate
 gates; neither receipt alone establishes device playback or original PCM parity.
+
+`acquire_input {key, endpoints, normal_frame_rate, max_updates}` presses a released key at the next
+admitted ordinary-update boundary. `endpoints` is a strictly increasing list of
+positive elapsed Q8 nominal ticks from retained counterpart receipts, with at most
+256 entries. The owner observes every ordinary boundary and releases at the first
+endpoint actually consumed. It reports every boundary, including the press and
+release, with actual update offsets, consumed scale and installed normal frame rate.
+Changing cadence requires no predicted update count. Skipping every endpoint,
+reaching the 1..255 update bound, losing the world or changing clock units rejects
+the acquisition and releases the owned key. No timestep is changed or interpolated.
+The caller must validate counterpart receipt continuity and matching clock units;
+this command admits input timing, not placement, trajectory or rendering parity.

@@ -41,7 +41,12 @@ ticks. **Unknown:** complete original/native/browser gameplay equivalence.
    shared T3 browser. The runner creates and closes its own browser tab.
 6. Run `just replay dev/fixtures/<world>.json <new-label>`. Inspect all three
    images. The manifest records image hashes, fixture hash, source/build records,
-   native state, browser version and observed camera poses.
+   native admission state, browser version and observed camera poses. Native PNGs
+   use `capture_gameplay_frame`; `native_capture.boundary` retains their owning
+   render update, simulation clock and selected actor. The earlier `native` state
+   only admits the run and must not be treated as the state of the raster. Scene
+   changes, reload generations, legacy screenshot replies and inconsistent clocks
+   reject acquisition. This does not synchronize original/browser animation or time.
 
 `just retro --fixture <fixture.json> <new-label>` runs only the original adapter.
 The native application must already be running with the fixture's view for a full
@@ -52,7 +57,7 @@ a world. The replay validates this observation before capturing.
 ## Build records
 
 `run-game.sh` calls `build-native.sh`, which writes
-`target/debug/cyrus.provenance.json`; `build-web.sh` writes
+`magic/build-tools/native/cyrus.provenance.json`; `build-web.sh` writes
 `target/web/build-provenance.json`. Each records SHA-256 hashes of the produced
 artifacts, the Git revision, and a fingerprint of repository build inputs:
 Cargo manifests/lockfile, the toolchain file, `.cargo/`, `crates/`, and `dev/`.
@@ -63,14 +68,19 @@ The build fails if this snapshot changes during compilation.
 Check an existing record without starting a game:
 
 ```sh
-python3 dev/scripts/build-provenance.py verify target/debug/cyrus.provenance.json
+python3 dev/scripts/build-provenance.py verify magic/build-tools/native/cyrus.provenance.json
 python3 dev/scripts/build-provenance.py verify target/web/build-provenance.json
 python3 dev/scripts/test-build-provenance.py
 node --test dev/scripts/capture-provenance.test.mjs
 ```
 
 To rebuild without launching either game, run `bash dev/scripts/build-native.sh`
-and `bash dev/scripts/build-web.sh`. Both use this checkout's `target/` directory.
+and `bash dev/scripts/build-web.sh`. Native builds preserve the inherited Cargo
+target and retain the executable outside it. Set `CYRUS_NATIVE_EXECUTABLE` to
+choose another retained path (basename `cyrus`); use the same value for launch
+and capture. `CYRUS_NATIVE_CHECKPOINT_DIR` selects the recovery directory and
+defaults to the executable's parent. Native launch and capture use the adjacent
+provenance record, including after the shared target is lost.
 
 These records identify repository inputs and resulting bytes; they do not claim
 a hermetic or bit-for-bit reproducible compiler environment. Replay rejects

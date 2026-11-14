@@ -128,7 +128,7 @@ module where it is defined and regenerate.
 ## `cyrus-debug` — (undocumented)
 
 - `src/day_night.rs` — The day/night panel: the modern lighting's time of day.
-- `src/effects.rs` — The effects panel: the modern lighting's optional effects.
+- `src/effects.rs` — The effects panel: the parts of the modern lighting and its optional effects.
 - `src/performance.rs` — Frame-rate plots and render statistics for the debug menu.
 
 ## `cyrus-game` — Gameplay state shared by hosts: fidelity policy, preferences, cheats, the session random stream, application state, movie unlocks and ropes.
@@ -333,6 +333,7 @@ module where it is defined and regenerate.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
 - `src/script/registry/weapon.rs` — Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 - `src/script/sound.rs` — Immediate script sound commands follow preservation's channel ownership rules.
+- `src/script/sound_dispatch.rs` — Ordered animation sound admission while logical actors await presentation bindings.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
@@ -375,6 +376,7 @@ module where it is defined and regenerate.
 - `src/credits.rs` — The ending's credits scroll from `CREDITS.TXT`; rules live in preservation's engine/menu.md.
 - `src/examine.rs` — The examine view's model over the suspended world. Pose, camera and lights follow
 - `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
+- `src/gamepad.rs` — Gamepad controls the original's game port does not have, pressed as keyboard keys.
 - `src/information.rs` — Fixed F1 information and F10 credits screens, returning to the suspended world.
 - `src/last_game.rs` — Live death confirmation: captured world backdrop, installed dialog and host load requests.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
@@ -383,6 +385,7 @@ module where it is defined and regenerate.
 - `src/menu_raster.rs` — Paint the installed book's page surfaces: labels, widgets and pictures drawn into the textures
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
+- `src/movie_raster.rs` — Cinematic texture sampling and framebuffer composition, following preservation's
 - `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
 - `src/overlay.rs` — Installed GXA images that a running `ViewGXA` or `AnimateGXA` task draws over the world frame.
 - `src/preparation.rs` — Startup preload: scan the install and parse every known file with the

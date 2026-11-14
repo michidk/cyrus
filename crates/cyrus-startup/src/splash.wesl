@@ -12,7 +12,10 @@ import bevy_render::color_operations::srgb_to_linear;
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
+    @if(!WEBGL2)
     @location(1) @interpolate(linear) color: vec3<f32>,
+    @if(WEBGL2)
+    @location(1) color: vec3<f32>,
 };
 
 @vertex
@@ -25,12 +28,20 @@ fn vertex(
     out.position = view.clip_from_world * vec4(position, 1.0);
     out.uv = uv;
     out.color = color.rgb;
+    // Cancel perspective interpolation on WebGL, which has no noperspective qualifier.
+    @if(WEBGL2) {
+        out.color *= out.position.w;
+    }
     return out;
 }
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    var screen_color = in.color;
+    @if(WEBGL2) {
+        screen_color *= in.position.w;
+    }
     let texel = textureSample(splash_texture, splash_sampler, in.uv).rgb;
-    let mixed = clamp(in.color / 255.0 * texel * visibility.x, vec3(0.0), vec3(1.0));
+    let mixed = clamp(screen_color / 255.0 * texel * visibility.x, vec3(0.0), vec3(1.0));
     return vec4(srgb_to_linear(mixed), visibility.y);
 }

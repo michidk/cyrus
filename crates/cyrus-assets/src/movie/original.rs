@@ -127,6 +127,12 @@ pub fn prepare(source: &dyn ReadAssets, index: usize) -> Result<OriginalMovie> {
         frame_micros: header.frame_micros,
         has_audio: header.has_audio,
         font,
+        subtitle_palette: rgpre::import::palette::Palette::parse(&crate::preparation::read(
+            source,
+            "fxart/REDGUARD.COL",
+        )?)?
+        .colors
+        .to_vec(),
     };
     metadata.validate()?;
     Ok(OriginalMovie { metadata, location })

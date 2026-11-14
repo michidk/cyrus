@@ -252,7 +252,7 @@ pub struct ScriptInputs<'a> {
     /// Shared goldfinger state: the selected player's burning torch is held at a full counter.
     /// Absence is the cheat being off.
     pub torch_retained: Option<bool>,
-    /// Shared drno state: the ordinary main stage is skipped for every actor except the selected
+    /// Shared drno state: the entire ordinary update is skipped for every actor except the selected
     /// player and the camera actor. Absence is the cheat being off.
     pub actor_update_skipped: Option<bool>,
     /// Shared `task` state: whether the task scheduling system runs. Absence keeps the installed
@@ -1018,6 +1018,16 @@ impl ScriptWorld {
 
     pub fn selected_player(&self) -> Option<ScriptActorId> {
         self.id(self.selected_player_index()?).ok()
+    }
+
+    /// Whether the actor is a map cell actor outside the current view window. The world draw
+    /// traversal walks the same window list as the ordinary update, so such an actor is not drawn.
+    pub fn outside_view_window(&self, actor: ScriptActorId) -> bool {
+        actor.generation == self.generation
+            && self
+                .actor_lists
+                .as_ref()
+                .is_some_and(|lists| lists.outside_window(actor.index))
     }
 
     /// Console `item add`: one acquisition through the session inventory, as `AddItem` does. An

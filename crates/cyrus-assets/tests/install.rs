@@ -860,3 +860,19 @@ fn examine_description_labels_all_have_speech_audio() {
         "text-only description labels: {text_only:?}"
     );
 }
+
+#[test]
+fn cinematic_subtitle_preparation_preserves_selected_eight_bit_upload_palette() {
+    let Some(install) = install() else { return };
+    let prepared = cyrus_assets::startup::movie_native::prepare(&install.root, 0).unwrap();
+    let data = serde_json::to_value(prepared.metadata).unwrap();
+    let source = cyrus_assets::native::Files::open(&install).unwrap();
+    use cyrus_assets::source::ReadAssets;
+    let palette =
+        rgpre::import::palette::Palette::parse(&source.read("fxart/REDGUARD.COL").unwrap())
+            .unwrap();
+    assert_eq!(
+        data["subtitle_palette"],
+        serde_json::json!(palette.colors.as_slice())
+    );
+}

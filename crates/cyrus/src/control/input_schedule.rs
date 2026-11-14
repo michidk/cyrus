@@ -14,11 +14,22 @@ struct Attempt {
     reply: Sender<Response>,
     generation: u64,
     events: std::collections::VecDeque<(InputBoundary, Option<KeyCode>)>,
+    acquisition: Option<Acquisition>,
     first: Option<u64>,
     previous: Option<u64>,
     held: BTreeSet<KeyCode>,
     observations: Vec<serde_json::Value>,
     deadline: std::time::Instant,
+}
+
+struct Acquisition {
+    endpoints: BTreeSet<u64>,
+    key: String,
+    code: KeyCode,
+    max_updates: u64,
+    normal_frame_rate: u32,
+    origin: Option<(u64, u32)>,
+    previous_scale: Option<u64>,
 }
 
 struct Boundary {
@@ -83,12 +94,65 @@ impl InputScheduler {
             reply,
             generation,
             events: parsed,
+            acquisition: None,
             first: None,
             previous: None,
             held,
             observations: Vec::new(),
             deadline: std::time::Instant::now() + std::time::Duration::from_secs(35),
         });
+        Ok(())
+    }
+
+    pub(super) fn arm_clock(
+        &mut self,
+        id: u64,
+        reply: Sender<Response>,
+        generation: Option<u64>,
+        request: cyrus_control::ClockInput,
+        keys: &ButtonInput<KeyCode>,
+    ) -> Result<(), String> {
+        if request.normal_frame_rate == 0
+            || request.endpoints.is_empty()
+            || request.endpoints.len() > 256
+            || request.endpoints[0] == 0
+            || request.endpoints.windows(2).any(|pair| pair[0] >= pair[1])
+            || !(1..=255).contains(&request.max_updates)
+        {
+            return Err(
+                "clock acquisition needs ordered positive endpoints and 1..255 updates".into(),
+            );
+        }
+        let code = parse_key(&request.key).ok_or_else(|| format!("unknown key {}", request.key))?;
+        self.arm(
+            id,
+            reply,
+            generation,
+            vec![
+                InputBoundary {
+                    after_updates: 0,
+                    key: Some(request.key.clone()),
+                    action: Some(InputAction::Press),
+                },
+                InputBoundary {
+                    after_updates: request.max_updates,
+                    key: Some(request.key.clone()),
+                    action: Some(InputAction::Release),
+                },
+            ],
+            keys,
+        )?;
+        if let Some(attempt) = self.active.as_mut() {
+            attempt.acquisition = Some(Acquisition {
+                endpoints: request.endpoints.into_iter().collect(),
+                key: request.key,
+                code,
+                max_updates: request.max_updates,
+                normal_frame_rate: request.normal_frame_rate,
+                origin: None,
+                previous_scale: None,
+            });
+        }
         Ok(())
     }
 
@@ -121,6 +185,56 @@ impl InputScheduler {
                 .update
                 .checked_sub(first)
                 .ok_or("ordinary update counter restarted")?;
+            let mut acquired = false;
+            let mut consumed_scale = None;
+            if let Some(acquisition) = attempt.acquisition.as_mut() {
+                let (origin, rate) = *acquisition
+                    .origin
+                    .get_or_insert((boundary.elapsed_scale, boundary.normal_frame_rate));
+                if rate != acquisition.normal_frame_rate
+                    || rate != boundary.normal_frame_rate
+                    || acquisition
+                        .previous_scale
+                        .is_some_and(|previous| boundary.elapsed_scale <= previous)
+                {
+                    return Err("clock acquisition scale did not advance or rate changed".into());
+                }
+                acquisition.previous_scale = Some(boundary.elapsed_scale);
+                let consumed = boundary
+                    .elapsed_scale
+                    .checked_sub(origin)
+                    .ok_or("clock acquisition restarted")?;
+                consumed_scale = Some(consumed);
+                acquired = acquisition.endpoints.contains(&consumed);
+                if !acquired
+                    && (offset >= acquisition.max_updates
+                        || acquisition
+                            .endpoints
+                            .last()
+                            .is_some_and(|last| consumed > *last))
+                {
+                    return Err(
+                        "observed counterpart endpoints unavailable within acquisition bound"
+                            .into(),
+                    );
+                }
+                // Input and observation belong to this actual boundary, not a predicted update count.
+                attempt.events.clear();
+                attempt.events.push_back((
+                    InputBoundary {
+                        after_updates: offset,
+                        key: (offset == 0 || acquired).then(|| acquisition.key.clone()),
+                        action: if offset == 0 {
+                            Some(InputAction::Press)
+                        } else if acquired {
+                            Some(InputAction::Release)
+                        } else {
+                            None
+                        },
+                    },
+                    (offset == 0 || acquired).then_some(acquisition.code),
+                ));
+            }
             while let Some((event, key)) = attempt.events.front() {
                 if event.after_updates > offset {
                     break;
@@ -142,10 +256,15 @@ impl InputScheduler {
                     "update": boundary.update, "generation": boundary.generation,
                     "game_seconds": boundary.game_seconds, "player": boundary.player,
                     "elapsed_scale": boundary.elapsed_scale, "normal_frame_rate": boundary.normal_frame_rate,
+                    "consumed_scale": consumed_scale,
                 }));
                 attempt.events.pop_front();
             }
-            Ok(attempt.events.is_empty())
+            Ok(if attempt.acquisition.is_some() {
+                acquired
+            } else {
+                attempt.events.is_empty()
+            })
         })();
         if matches!(result, Ok(false)) {
             return;
@@ -221,6 +340,131 @@ mod tests {
             {"after_updates":2,"key":"ArrowUp","action":"release"}
         ]))
         .unwrap()
+    }
+
+    #[test]
+    fn clock_acquisition_adapts_to_cadence_after_admission() {
+        for (scales, expected) in [
+            (vec![1000, 1512, 1950, 2334], Some(1334)),
+            (vec![1000, 1512, 1950, 2400], None),
+        ] {
+            let (reply, responses) = std::sync::mpsc::channel();
+            let mut scheduler = InputScheduler::default();
+            let mut keys = ButtonInput::default();
+            scheduler
+                .arm_clock(
+                    81,
+                    reply,
+                    Some(8),
+                    cyrus_control::ClockInput {
+                        key: "ArrowUp".into(),
+                        endpoints: vec![1024, 1334],
+                        normal_frame_rate: 12,
+                        max_updates: 8,
+                    },
+                    &keys,
+                )
+                .unwrap();
+            for (index, scale) in scales.into_iter().enumerate() {
+                scheduler.advance(
+                    Some(Boundary {
+                        generation: 8,
+                        update: 20 + index as u64,
+                        game_seconds: scale as f64 / 3072.,
+                        elapsed_scale: scale,
+                        normal_frame_rate: 12,
+                        player: json!({}),
+                    }),
+                    &mut keys,
+                );
+                assert_eq!(keys.pressed(KeyCode::ArrowUp), index < 3);
+            }
+            let response = responses.try_recv().unwrap();
+            assert_eq!(response.ok, expected.is_some());
+            if let Some(expected) = expected {
+                let result = response.result.unwrap();
+                assert_eq!(result["boundaries"].as_array().unwrap().len(), 4);
+                assert_eq!(result["boundaries"][3]["consumed_scale"], expected);
+                assert_eq!(result["boundaries"][3]["action"], "release");
+                assert_eq!(result["boundaries"][3]["after_updates"], 3);
+            }
+        }
+    }
+
+    #[test]
+    fn clock_acquisition_rejects_invalid_requests_without_taking_input() {
+        for (endpoints, max_updates, rate) in [
+            (vec![], 8, 12),
+            (vec![0], 8, 12),
+            (vec![512, 512], 8, 12),
+            (vec![1024, 512], 8, 12),
+            (vec![512], 0, 12),
+            (vec![512], 256, 12),
+            (vec![512], 8, 0),
+        ] {
+            let (reply, _) = std::sync::mpsc::channel();
+            let mut scheduler = InputScheduler::default();
+            let keys = ButtonInput::default();
+            assert!(
+                scheduler
+                    .arm_clock(
+                        82,
+                        reply,
+                        Some(8),
+                        cyrus_control::ClockInput {
+                            key: "ArrowUp".into(),
+                            endpoints,
+                            normal_frame_rate: rate,
+                            max_updates,
+                        },
+                        &keys
+                    )
+                    .is_err()
+            );
+            assert!(!scheduler.pending());
+            assert!(!keys.pressed(KeyCode::ArrowUp));
+        }
+    }
+
+    #[test]
+    fn clock_acquisition_failure_releases_only_owned_input() {
+        for (update, scale, rate) in [(21, 1000, 12), (22, 1512, 12), (21, 1512, 24)] {
+            let (reply, responses) = std::sync::mpsc::channel();
+            let mut scheduler = InputScheduler::default();
+            let mut keys = ButtonInput::default();
+            keys.press(KeyCode::KeyW);
+            scheduler
+                .arm_clock(
+                    83,
+                    reply,
+                    Some(8),
+                    cyrus_control::ClockInput {
+                        key: "ArrowUp".into(),
+                        endpoints: vec![1334],
+                        normal_frame_rate: 12,
+                        max_updates: 8,
+                    },
+                    &keys,
+                )
+                .unwrap();
+            for (update, scale, rate) in [(20, 1000, 12), (update, scale, rate)] {
+                scheduler.advance(
+                    Some(Boundary {
+                        generation: 8,
+                        update,
+                        game_seconds: scale as f64 / 3072.,
+                        elapsed_scale: scale,
+                        normal_frame_rate: rate,
+                        player: json!({}),
+                    }),
+                    &mut keys,
+                );
+            }
+            assert!(!responses.try_recv().unwrap().ok);
+            assert!(!keys.pressed(KeyCode::ArrowUp));
+            assert!(keys.pressed(KeyCode::KeyW));
+            assert!(!scheduler.pending());
+        }
     }
 
     #[test]

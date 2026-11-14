@@ -77,7 +77,7 @@ fn main() -> anyhow::Result<()> {
                 None
             };
             records
-                .push(serde_json::json!({"number":frame.number,"picture":picture,"audio":audio}));
+                .push(serde_json::json!({"number":frame.number,"picture":picture,"padding_colour":frame.palette[0],"audio":audio}));
         } else {
             let mut chunk = vec![0; 65536];
             let length = input.read(&mut chunk)?;

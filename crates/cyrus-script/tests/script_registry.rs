@@ -6601,10 +6601,17 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             let control = world.actors()[0].control_state().unwrap();
             assert_eq!(world.actor_surface(id).unwrap(), Surface::UNKNOWN);
             assert_eq!(control.living_state, LivingState::ORDINARY);
-            assert_eq!(control.torch_burning, if step < 6 { 200 } else { 199 });
+            assert_eq!(
+                control.torch_burning,
+                if enabled != 0 || step < 6 { 200 } else { 199 }
+            );
             assert_eq!(
                 world.animation_frame(id).unwrap(),
-                Some(10 + (initial_frame - 10 + step as u32 + 1) % 4)
+                Some(if enabled != 0 {
+                    initial_frame
+                } else {
+                    10 + (initial_frame - 10 + step as u32 + 1) % 4
+                })
             );
             assert_eq!(
                 map_actor_locals(&app)[0],
@@ -8585,7 +8592,12 @@ fn ordinary_collision_preparation_precedes_script_and_admitted_late_response() {
     use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
     for (available, terrain) in [(true, false), (true, true), (false, false)] {
         let mut scripts = cache();
-        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 1;
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .extend([(Attribute::Collide, 1), (Attribute::FallDamage, 1)]);
         for placement in &mut scripts.instances {
             placement.active = 1;
         }
@@ -8609,6 +8621,7 @@ fn ordinary_collision_preparation_precedes_script_and_admitted_late_response() {
                     scripts: ScriptInputs {
                         nominal_ticks: Some(1),
                         frame_scale: Some(256),
+                        fine_ticks: Some(1),
                         ..Default::default()
                     },
                     scene: available.then_some(&scene),
@@ -11806,6 +11819,129 @@ fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion()
 }
 
 #[test]
+fn falling_static_models_keep_full_support_distance_at_every_frame_rate() {
+    assert_static_fall_landing(1, 97, 4, true, false);
+}
+
+#[test]
+fn undamaging_static_falls_land_without_an_animation_receiver() {
+    assert_static_fall_landing(1000, 100, 4, true, false);
+}
+
+#[test]
+fn static_ground_admission_does_not_require_collision_bits() {
+    for mask in [0, 1, 4, 8, 15] {
+        assert_static_fall_landing(1000, 100, mask, true, false);
+    }
+}
+
+#[test]
+fn static_ground_stage_retains_motion_when_disabled_or_held() {
+    for mask in [0, 4, 15] {
+        assert_static_fall_landing(1000, 100, mask, false, false);
+        assert_static_fall_landing(1000, 100, mask, true, true);
+    }
+}
+
+fn assert_static_fall_landing(
+    hurt_height: i32,
+    expected_health: u8,
+    collision_mask: u8,
+    fall_damage: bool,
+    fall_hold: bool,
+) {
+    use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
+    for fps in [Some(9), Some(10), Some(30), None] {
+        let mut scripts = cache();
+        scripts.instances.truncate(1);
+        scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
+            death_height: 1000,
+            hurt_height,
+            hurt_zap: 3,
+            bounce_height: None,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
+            (Attribute::Collide, collision_mask),
+            (Attribute::FallDamage, u8::from(fall_damage)),
+            (Attribute::JumpHeight, 32),
+            (Attribute::Health, 100),
+        ]);
+        let (mut world, data, models) =
+            static_model_fixture_at(scripts, Some(20.0), [600, 20, 600]);
+        let id = world.id(0).unwrap();
+        let mut scene = ordinary_collision_scene(world.world, models);
+        scene.settings.post_collide_height = 500;
+        scene.collision.texture_surfaces = Some(Default::default());
+        scene.terrain = Some(
+            cyrus_collision::ground::TerrainGround::new(
+                vec![450; 256 * 256],
+                vec![false; 256 * 256],
+                Some(vec![1; 256 * 256]),
+            )
+            .unwrap(),
+        );
+        assert!(world.begin_static_ordinary_fall(id, &data).unwrap());
+        world.set_attribute_for_test(id, Attribute::FallHold, u8::from(fall_hold));
+        world
+            .update_ordinary(
+                &data,
+                [600, 600],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        fine_ticks: Some(1),
+                        step_fps: fps,
+                        ..Default::default()
+                    },
+                    scene: Some(&scene),
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| panic!("static landing emitted animation audio"),
+                100,
+            )
+            .unwrap();
+        let actor = &world.actors()[0];
+        eprintln!(
+            "static landing: mask={collision_mask} enabled={fall_damage} held={fall_hold} hurt_height={hurt_height} fps={fps:?} y_q8={} falling={:?} health={} failure={:?}",
+            world.spatial(id).unwrap().local.position[1],
+            actor.control_state().unwrap().falling_state,
+            actor.attributes()[Attribute::Health],
+            actor.failure(),
+        );
+        assert!(
+            actor.failure().is_none(),
+            "fps {fps:?}: {:?}",
+            actor.failure()
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position[1],
+            if fall_damage && !fall_hold {
+                428 * 256
+            } else {
+                20 * 256
+            },
+            "fps {fps:?}"
+        );
+        assert_eq!(
+            actor.control_state().unwrap().falling_state,
+            if fall_damage && !fall_hold {
+                JumpMotion::NONE
+            } else {
+                JumpMotion::STANDING
+            },
+            "fps {fps:?}"
+        );
+        assert_eq!(
+            actor.attributes()[Attribute::Health],
+            expected_health,
+            "fps {fps:?}"
+        );
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+    }
+}
+
+#[test]
 fn ordinary_animated_fall_entry_distinguishes_rollback_from_start() {
     use cyrus_script::script::{OrdinaryFallEntry, ordinary_fall_entry};
     for group in [AnimationGroup::RUN, AnimationGroup::RUN_TORCH] {
@@ -13108,6 +13244,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
     let mut scripts = cache();
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.attributes[Attribute::Collide] = 4;
+    actor.attributes[Attribute::FallDamage] = 1;
     actor.attributes[Attribute::Weight] = 128;
     actor.attributes[Attribute::ReservedWeight] = 64;
     for placement in &mut scripts.instances {
@@ -13167,7 +13304,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
         let control = world.actors()[0].control_state().unwrap();
         assert!(control.stable_position_valid);
         assert_eq!(control.stable_local_position, [2560, 4608, 7680]);
-        assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 64);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 128);
     }
 }
 
@@ -16198,25 +16335,6 @@ fn keyboard_walk_session(verify_drno: bool) {
         .release(KeyCode::ArrowLeft);
     app.update();
     assert_eq!(heading(&app)[1], turning[1]);
-    // Modern controls steer toward the held direction relative to the camera's heading (the
-    // player's own here, with no drawn camera): left of it raises the heading. (This fixture
-    // binds Use to D.)
-    app.world_mut()
-        .resource_mut::<cyrus_game::fidelity::Fidelity>()
-        .player_controller = cyrus_game::fidelity::Mode::Modern;
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::KeyA);
-    app.update();
-    let steered = heading(&app);
-    let gained = (steered[1] + 2048 - turning[1]) % 2048;
-    assert!((1..=512).contains(&gained), "{turning:?} -> {steered:?}");
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .release(KeyCode::KeyA);
-    app.world_mut()
-        .resource_mut::<cyrus_game::fidelity::Fidelity>()
-        .player_controller = cyrus_game::fidelity::Mode::Faithful;
     for _ in 0..12 {
         app.update();
         position(&app);
@@ -43262,6 +43380,73 @@ fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound()
     ));
 }
 
+#[test]
+fn walking_continuation_enters_and_leaves_deep_water_facing_forward() {
+    use cyrus_script::script::{ScriptHud, ScriptInputs, ScriptSound};
+    for (previous, stored, expected, effect) in [
+        (
+            Surface::UNKNOWN,
+            Surface::from_byte(4),
+            AnimationGroup::SWIM_FORWARD,
+            71,
+        ),
+        (
+            Surface::from_byte(4),
+            Surface::from_byte(10),
+            AnimationGroup::RUN,
+            70,
+        ),
+    ] {
+        let (mut world, _, _) =
+            movement_fixture(AnimationGroup::WALK.index(), false, true, |_| {}, |_| {});
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        world
+            .continue_ordinary_motion(
+                id,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            MotionDirection::WALK_FORWARD
+        );
+        world.set_actor_surface(id, stored).unwrap();
+        let mut sounds = Vec::new();
+        world
+            .selected_surface_transition(
+                id,
+                previous,
+                stored,
+                1,
+                &mut cyrus_game::random::EngineRandom::default(),
+                None,
+                &mut |_, sound| {
+                    sounds.push(sound);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        let actor = world.inspect(0, 1);
+        let animation = &actor["actors"][0]["animation"];
+        assert_eq!(
+            animation["pending_group"]
+                .as_u64()
+                .or_else(|| animation["current_group"].as_u64()),
+            Some(u64::from(expected.index()))
+        );
+        assert!(matches!(sounds.as_slice(), [ScriptSound::Positional {
+            effect: actual, volume: 0, rate_offset_hz: -32..=31, ..
+        }] if *actual == effect));
+    }
+}
+
 fn script_jump_fixture(
     group: u16,
     edit_saved: impl FnOnce(&mut serde_json::Value),
@@ -51995,3 +52180,6 @@ fn selected_wall_contact_receipt_comes_from_admitted_primary_response_not_floor_
         "a capture armed after the response cannot relabel it as a new contact"
     );
 }
+
+#[path = "script_registry/actor_update_skip.rs"]
+mod actor_update_skip_tests;

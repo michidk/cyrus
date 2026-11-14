@@ -1,4 +1,4 @@
-//! The effects panel: the modern lighting's optional effects.
+//! The effects panel: the parts of the modern lighting and its optional effects.
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -30,7 +30,16 @@ pub(crate) fn effects_window(
                 }
                 ui.separator();
             }
-            for effect in Effect::ALL {
+            ui.heading("Lighting");
+            for effect in Effect::LIGHTING {
+                ui.checkbox(effects.switch(effect), effect.label());
+            }
+            ui.separator();
+            ui.heading("Effects");
+            for effect in Effect::ALL
+                .into_iter()
+                .filter(|effect| !Effect::LIGHTING.contains(effect))
+            {
                 ui.checkbox(effects.switch(effect), effect.label());
                 ui.indent(effect.label(), |ui| settings(ui, &mut effects, effect));
             }
@@ -82,8 +91,15 @@ fn settings(ui: &mut egui::Ui, effects: &mut ModernEffects, effect: Effect) {
             ui.label("Adapts within 1 stop darker to 1.5 stops brighter.");
         }
         Effect::WaterReflections => {
-            ui.label("Reflects what is on screen; the horizon colour elsewhere.");
+            ui.label("Reflects the scenery and sky on screen; the horizon colour elsewhere.");
         }
         Effect::LensFlare | Effect::Sky | Effect::Foliage | Effect::MotionBlur => {}
+        Effect::Shadows
+        | Effect::AmbientOcclusion
+        | Effect::ContactShadows
+        | Effect::AntiAliasing
+        | Effect::Bloom
+        | Effect::ObjectLights
+        | Effect::WaterGloss => {}
     });
 }

@@ -7,6 +7,7 @@ import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {setTimeout as wait} from 'node:timers/promises';
 import {join} from 'node:path';
 import {observeBrowserBuild} from './browser-provenance.mjs';
+import {writeJsonArray} from './write-json-array.mjs';
 import {connectCdp} from './capture-cdp.mjs';
 import {compareSourceGeneration} from './compare-source-generation.mjs';
 import {navigateCinematic, installCinematicEndpoint, observeMovieTime, observeMovieSchedule, requireMovieHorizon, armCinematicPlayback, observeMovieSeek, cinematicProgress} from './cinematic-navigation.mjs';
@@ -124,7 +125,7 @@ try {
   await cdp.call('Page.bringToFront');
   const deadline = performance.now() + 240000;
   let debuggerReleased = false, skipSent = false;
-  let reached = false, phaseSaved = false, presentationAttempt = 0;
+  let reached = false, phaseSaved = false;
   while (performance.now() < deadline) {
     const state = await evaluate(`(${cinematicProgress.toString()})(${stopFrame})`);
     writeFileSync(join(output, 'progress.json'), JSON.stringify(state));
@@ -168,13 +169,8 @@ try {
         const composition=await evaluate(`({metadata:__cinematicMovieMetadata[new URL(location.href).searchParams.get('movie')??'0'],preferences:__cyrusMenu.preferences})`);
         assert(composition.metadata && composition.preferences,'missing installed movie composition/settings');
         writeFileSync(join(output,'movie-composition.json'),JSON.stringify(composition));
-        const receipt=join(output,`presented-${presentationAttempt++}.json`);
-        try {
-          await promisify(execFile)(process.env.CYRUS_ANALYSIS_PYTHON??'python3',[
-            new URL('./cinematic-presented-frames.py',import.meta.url).pathname,output,presentedWindow,receipt,'--minimum-frame',String(stopFrame)]);
-        } catch(error) {writeFileSync(join(output,'presentation-pending.txt'),String(error.stderr??error));
-          assert(state.movie.frame<=presentedMaximum,'movie passed the independent reference window without a presented endpoint');
-          await wait(100);continue;}
+        // Oracle composition is offline work. Freeze the admitted endpoint and
+        // drain tracing first, so analysis cannot extend PCM or overflow tracing.
       }
       reached = true;break;
     }
@@ -196,6 +192,10 @@ try {
     graph:{...__boundaryGraph,blocks:__boundaryGraph.blocks.map(b=>({...b,left:Array.from(b.left),right:Array.from(b.right)}))}})`);
   writeFileSync(join(output,'generation.json'), JSON.stringify(capture));
   writeFileSync(join(output,'trace-completion.json'),JSON.stringify(traceCompletion,null,2));
+  // All acquisition is frozen and exported. Release the application before CPU
+  // analysis; the oracle consumes only the retained receipts and installed data.
+  provenance?.stop();
+  await cdp.call('Page.navigate',{url:'about:blank'});
   const traceCoverage = requireCinematicTrace(trace,capture,traceCompletion);
   writeFileSync(join(output,'trace-coverage.json'),JSON.stringify(traceCoverage,null,2));
   const boundaries = sourceGenerationBoundaries(trace,capture.sources);
@@ -221,6 +221,13 @@ try {
     const cancellation = requireCinematicCancellation(capture,boundaries);
     writeFileSync(join(output,'cancellation.json'),JSON.stringify(cancellation,null,2));
   }
+  if(presentedWindow) {
+    writeJsonArray(join(output,'trace.json'),trace);
+    writeFileSync(join(output,'surfaces.json'),JSON.stringify(surfaces));
+    await promisify(execFile)(process.env.CYRUS_ANALYSIS_PYTHON??'python3',[
+      new URL('./cinematic-presented-frames.py',import.meta.url).pathname,output,presentedWindow,
+      join(output,'presented.json'),'--minimum-frame',String(stopFrame),'--align']);
+  }
   console.log(JSON.stringify({sources:boundaries.filter(b=>b.attributed).length,retiredUnattributed:boundaries.filter(b=>!b.attributed).length,surfaces:surfaces.length,movie:capture.graph.movie}));
 } catch (error) {
   failure = String(error.stack ?? error);
@@ -235,7 +242,7 @@ try {
 finally {
   try {if(recording) await cdp.call('Page.stopScreencast');if(tracing) await endTrace();}
   finally {
-    writeFileSync(join(output,'trace.json'),JSON.stringify(trace));
+    writeJsonArray(join(output,'trace.json'),trace);
     writeFileSync(join(output,'surfaces.json'),JSON.stringify(surfaces,null,2));
     writeFileSync(join(output,'result.json'),JSON.stringify({failure},null,2));
     provenance?.stop();

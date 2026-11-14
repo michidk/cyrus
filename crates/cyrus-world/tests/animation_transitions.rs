@@ -86,6 +86,7 @@ fn changed_current_default_replaces_immediately_and_preserves_sound_order() {
                 effect: 8,
                 rate_offset_hz: 0
             },
+            AnimationSound::CheckSample,
         ]
     );
 }
@@ -269,6 +270,8 @@ fn authored_sounds_dispatch_once_per_command_with_rate_offsets_and_end_stop() {
                 effect: 4,
                 rate_offset_hz: -64
             },
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
             AnimationSound::Play {
                 effect: 7,
                 rate_offset_hz: 128
@@ -421,9 +424,9 @@ fn collision_checkpoint_restores_cursor_pending_and_sound_state_but_keeps_defaul
         Some(11)
     );
     assert_eq!(
-        events.len(),
-        count,
-        "restoring does not replay the earlier sound command"
+        &events[count..],
+        &[AnimationSound::CheckSample, AnimationSound::CheckSample],
+        "restoring checks the retained handle without replaying the earlier sound command"
     );
     actor
         .advance_with_sounds(1, &mut |sound| {
@@ -539,10 +542,13 @@ fn cancelling_a_pending_request_preserves_current_frame_sound_and_loop_count() {
     );
     assert_eq!(
         events,
-        vec![AnimationSound::Play {
-            effect: 7,
-            rate_offset_hz: 0
-        }]
+        vec![
+            AnimationSound::Play {
+                effect: 7,
+                rate_offset_hz: 0
+            },
+            AnimationSound::CheckSample,
+        ]
     );
 }
 
@@ -642,6 +648,121 @@ fn changed_death_override_starts_before_return_and_preserves_failed_default() {
         } else {
             assert_eq!(result.unwrap(), Some(70));
             assert_eq!(actor.current_group(), Some(AnimationGroup::from_index(7)));
+        }
+    }
+}
+
+#[test]
+fn remembered_sample_is_checked_during_delay_and_query_failure_is_sticky() {
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":7,"volume_shift":0},
+            {"opcode":0,"frame_reference":70},{"opcode":12,"value":3},
+            {"opcode":0,"frame_reference":71},{"opcode":1}]}
+    ]));
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+        &data,
+        "ACTOR",
+        AnimationGroup::from_index(7),
+    )
+    .unwrap();
+    actor.advance_with_sounds(1, &mut |_| Ok(())).unwrap();
+    let mut seen = Vec::new();
+    assert_eq!(
+        actor
+            .advance_with_sounds(1, &mut |sound| {
+                seen.push(sound);
+                Ok(())
+            })
+            .unwrap(),
+        None
+    );
+    assert_eq!(seen, [AnimationSound::CheckSample]);
+    let error = actor
+        .advance_with_sounds(1, &mut |sound| {
+            assert_eq!(sound, AnimationSound::CheckSample);
+            anyhow::bail!("sample query unavailable")
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("sample query unavailable"));
+    let restored =
+        cyrus_world::animation::ActorAnimation::from_snapshot(&data, "ACTOR", actor.snapshot())
+            .unwrap();
+    for mut failed in [actor, restored] {
+        let error = failed
+            .advance_with_sounds(1, &mut |_| panic!("failed query retried"))
+            .unwrap_err();
+        assert!(error.to_string().contains("sample query unavailable"));
+    }
+}
+
+#[test]
+fn failed_replacement_cannot_resume_or_replay_the_old_receiver() {
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":4,"volume_shift":0},
+            {"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":80}]}
+    ]));
+    #[derive(Clone, Copy, Debug)]
+    enum Replacement {
+        Forced,
+        Ordinary,
+        SkippedFrames,
+        Default,
+    }
+    for branch in [
+        Replacement::Forced,
+        Replacement::Ordinary,
+        Replacement::SkippedFrames,
+        Replacement::Default,
+    ] {
+        let mut actor = cyrus_world::animation::ActorAnimation::from_asset(
+            &data,
+            "ACTOR",
+            AnimationGroup::from_index(7),
+        )
+        .unwrap();
+        actor.advance_with_sounds(1, &mut |_| Ok(())).unwrap();
+        let mut calls = Vec::new();
+        let mut reject = |event| {
+            calls.push(event);
+            anyhow::bail!("replacement service rejected after applying Forget")
+        };
+        let group = AnimationGroup::from_index(8);
+        let error = match branch {
+            Replacement::Forced => actor.force_request_with_sounds(group, 0, 1, &mut reject),
+            Replacement::Ordinary => actor.request_with_sounds(group, 0, 1, &mut reject),
+            Replacement::SkippedFrames => {
+                actor.request_skipping_frames_with_sounds(group, 0, 0, &mut reject)
+            }
+            Replacement::Default => actor.select_default_with_sounds(group, 1, &mut reject),
+        }
+        .unwrap_err()
+        .to_string();
+        assert_eq!(calls, [AnimationSound::Forget]);
+        assert_eq!(actor.failure(), Some(error.as_str()), "branch {branch:?}");
+        let mut restored =
+            cyrus_world::animation::ActorAnimation::from_snapshot(&data, "ACTOR", actor.snapshot())
+                .unwrap();
+        for receiver in [&mut actor, &mut restored] {
+            assert_eq!(
+                receiver
+                    .advance_with_sounds(1, &mut |_| panic!("replayed failed receiver"))
+                    .unwrap_err()
+                    .to_string(),
+                error
+            );
+            assert_eq!(
+                receiver
+                    .force_request_with_sounds(group, 0, 1, &mut |_| panic!(
+                        "retried failed replacement"
+                    ))
+                    .unwrap_err()
+                    .to_string(),
+                error
+            );
         }
     }
 }

@@ -118,6 +118,39 @@ class ContactDriver(unittest.TestCase):
         self.assertNotIn('keydown F12', keys)
 
 
+class ConsoleAttributeNames(unittest.TestCase):
+    def test_underscore_is_polled_with_shift_held_and_released_on_failure(self):
+        module = Readiness().module()
+        for fail in [False, True]:
+            with self.subTest(fail=fail):
+                driver = module.Driver('unused', 1, .001)
+                driver.sample = lambda phase: {'console_mode': 'interactive', 'frame': 7}
+                events = []
+                def input(action, key):
+                    events.append((action, key))
+                    if action == 'keydown':
+                        driver.held.add(key)
+                    else:
+                        driver.held.discard(key)
+                def key(key):
+                    events.append(('key', key, set(driver.held)))
+                    if fail and key == 'minus':
+                        raise RuntimeError('injected input failure')
+                driver.input = input
+                driver.key = key
+                if fail:
+                    with self.assertRaisesRegex(RuntimeError, 'injected input failure'):
+                        driver.command('object attr no_collide = 1')
+                else:
+                    driver.command('object attr no_collide = 1')
+                self.assertIn(('key', 'minus', {'Shift_L'}), events)
+                self.assertNotIn('Shift_L', driver.held)
+                self.assertEqual(events[-1], ('key', 'Escape', set()))
+                if not fail:
+                    self.assertEqual(events[events.index(('keyup', 'Shift_L')) + 1],
+                                     ('key', 'c', set()))
+
+
 class Readiness(unittest.TestCase):
     def module(self):
         import importlib.util

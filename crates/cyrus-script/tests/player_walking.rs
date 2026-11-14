@@ -154,7 +154,19 @@ fn walking_request_reads_the_marker_after_immediate_animation_advance() {
         .unwrap()
         .unwrap();
     assert_eq!(step.distance, 682);
-    assert_eq!(cues.len(), 1);
+    use cyrus_world::animation::AnimationSound;
+    assert_eq!(
+        cues,
+        [
+            AnimationSound::Play {
+                effect: 7,
+                rate_offset_hz: 0
+            },
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
+            AnimationSound::CheckSample,
+        ]
+    );
 }
 
 #[test]

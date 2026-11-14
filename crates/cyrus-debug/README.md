@@ -1,24 +1,22 @@
 # cyrus-debug
 
-The F11 debug menu shared by the native and browser game. It changes
+The backtick (`` ` ``) debug menu shared by the native and browser game. It changes
 runtime fidelity individually or all at once, an independent flycam toggle and
 speed, loads an installed world from a dropdown, and launches a separate
 `bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
 Resources to edit reflected resources, and Assets to inspect loaded assets.
 The inspector scrolls within its resized window. World choices show their installed
 map name alongside the WORLD.INI ID, including shared-map palette variants.
-The inspector stays open independently of the F11 menu and has its own close button.
-F11 is available during startup, at the book menu, and in a world. Its overlay
+The inspector stays open independently of the Backtick menu and has its own close button.
+Backtick is available during startup, at the book menu, and in a world. Its overlay
 camera persists when startup and world cameras are replaced. Headless launches
 do not register the debug UI. F1 is reserved for the original game's version dialog
-and F10 for its credits. F11 has no fixed gameplay action in the original Glide
-executable; see [fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c91d64c19d5b38b280e8253eec3ab779fe8810fe/docs/config/keys-ini.md#fixed-gameplay-shortcuts).
-Browsers may intercept F11 for fullscreen before the game receives it.
+and F10 for its credits. See [fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c91d64c19d5b38b280e8253eec3ab779fe8810fe/docs/config/keys-ini.md#fixed-gameplay-shortcuts).
 
-Press F11, then click **Open inspector**. Click **Close inspector** or the
+Press Backtick, then click **Open inspector**. Click **Close inspector** or the
 inspector window's close button to hide it.
 
-Press F11, then click **Open performance** for a Performance window. It plots the
+Press Backtick, then click **Open performance** for a Performance window. It plots the
 frame rate and the frame time of every real-time frame over the last 30 seconds
 (newest on the right, value axis from zero to the next round number), with the
 average, 1% low (the slowest 1% of frames) and worst frame below the plots. Beneath
@@ -26,15 +24,15 @@ that it lists the GPU adapter, window resolution, entity count, visible and tota
 meshes, lights, and loaded mesh and image assets. Frames are recorded whether or not
 the window is open, so the plots are already filled in when it opens; the counts are
 only gathered while it is open. Like the inspector, the window stays open
-independently of the F11 menu and does not capture game input.
+independently of the Backtick menu and does not capture game input.
 
-Press F11, then click **Open day/night** for the modern lighting's time of day:
+Press Backtick, then click **Open day/night** for the modern lighting's time of day:
 turn the cycle on, pick the hour (12:00 is the world's installed sun) or jump to
 dawn, noon, dusk or night, and let it run at a chosen speed. It needs Modern
 lighting, and the panel offers to switch it. The browser build has no modern
 lighting and says so.
 
-Press F11, then click **Open effects** for the modern lighting's optional effects: a switch
+Press Backtick, then click **Open effects** for the modern lighting's optional effects: a switch
 for each one (tonemapping and colour grading, auto exposure, god rays, lens flare and sun
 glare, sky glow and stars, water reflections, swaying plants, depth of field, motion blur),
 with the tonemapper, exposure, saturation, contrast, haze density and aperture beneath them.
@@ -52,7 +50,7 @@ loading screen and player-entry lifecycle on native and browser hosts. It clears
 the inspection camera and enters the selected world at marker zero.
 
 The menu has no camera controls: the view is detached only by an explicit inspection view
-or the control protocol, and free flight is the `flycam` mod (F11). Neither moves the
+or the control protocol, and free flight is the `flycam` mod (Backtick). Neither moves the
 player nor changes the fidelity settings.
 
 Render distance starts at the installed game's value. Changing it selects
@@ -63,6 +61,6 @@ with a gradual distant fade.
 Fog and Sky have independent Faithful/Modern buttons. Water changes only through native mods;
 `cyrus-mods` adds its Mods window while this menu is open.
 
-F11's **Anisotropic filtering (up to 16×)** checkbox independently filters world
+Backtick's **Anisotropic filtering (up to 16×)** checkbox independently filters world
 textures at oblique angles. It defaults off and works with either lighting mode.
 **All Faithful** turns it off; **All modern** turns it on.

@@ -17,9 +17,9 @@ class Recovery(unittest.TestCase):
             root = Path(temporary)
             scripts = root / 'dev/scripts'
             scripts.mkdir(parents=True)
-            for name in ('build-web.sh', 'web-build-checkpoint.py', 'build-provenance.py'):
+            for name in ('build-web.sh', 'web-build-checkpoint.py', 'build-provenance.py', 'resolve-wasm-bindgen.py', 'web-compile-checkpoint.py'):
                 shutil.copyfile(SCRIPTS / name, scripts / name)
-            (scripts / 'toolchain.sh').write_text('export PATH="$PWD/bin:$PATH"\n')
+            (scripts / 'toolchain.sh').write_text('tools="$PWD/tools"; export PATH="$PWD/bin:$PATH"\n')
             (scripts / 'cargo.sh').write_text('cargo() { "$PWD/bin/fake-cargo" "$@"; }\n')
             (root / 'bin').mkdir()
             commands = {
@@ -35,6 +35,7 @@ if [ "$package" = cyrus-web ]; then mv "$CARGO_TARGET_DIR/wasm32-unknown-unknown
 ''',
                 'wasm-bindgen': '''#!/bin/bash
 set -eu
+if [ "$1" = --version ]; then echo 'wasm-bindgen 0.2.130'; exit; fi
 if [ -e "$PWD/fail-package" ]; then exit 8; fi
 [ "$1" = --keep-debug ] || exit 9
 while [ "$#" -gt 1 ]; do
@@ -58,6 +59,7 @@ printf 'javascript' > "$out/$name.js"
                 path = root / 'dev/web' / name
                 path.parent.mkdir(exist_ok=True)
                 path.write_text(name)
+            (root / 'Cargo.lock').write_text('[[package]]\nname = \"wasm-bindgen\"\nversion = \"0.2.130\"\n')
             subprocess.run(['git', 'init', '-q', str(root)], check=True)
             (root / '.git/HEAD').write_text('1' * 40 + '\n')
             env = {**os.environ, 'CARGO_TARGET_DIR': str(root / 'ephemeral'),

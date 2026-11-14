@@ -138,3 +138,73 @@ fn invalid_music_candidates_preserve_live_track_and_stopped_music_needs_no_sourc
     assert!(candidate.music.track.is_none());
     assert!(candidate.playback.is_none());
 }
+
+#[test]
+fn cd_transport_rejects_non_stereo_and_incomplete_frames_before_playback() {
+    for (kind, samples) in [
+        (AudioType::Mono16, vec![0i16, 1]),
+        (AudioType::Stereo16, vec![]),
+    ] {
+        let pcm: Vec<_> = samples.into_iter().flat_map(i16::to_le_bytes).collect();
+        let source = AudioSource {
+            bytes: pcm_wav(kind, 44100, &pcm).unwrap().into(),
+        };
+        assert!(
+            MusicTransport::new(source).is_err(),
+            "invalid CD layout admitted: {kind:?}"
+        );
+    }
+    let mut partial = source().bytes.to_vec();
+    partial.truncate(partial.len() - 2);
+    let riff_size = (partial.len() - 8) as u32;
+    let data_size = (partial.len() - 44) as u32;
+    partial[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    partial[40..44].copy_from_slice(&data_size.to_le_bytes());
+    assert!(
+        MusicTransport::new(AudioSource {
+            bytes: partial.into()
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn installed_cd_sectors_keep_exact_stereo_pcm_through_transport() -> anyhow::Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (CD stereo transport)");
+        return Ok(());
+    };
+    let directory = install.root.parent().unwrap();
+    let cue = std::fs::read_to_string(directory.join("game.ins"))?;
+    for track in 2..=7 {
+        let (file, start, _) =
+            cyrus_assets::disc::cue_track(&cue, track, true).map_err(anyhow::Error::msg)?;
+        let mut image = std::fs::File::open(directory.join(file))?;
+        image.seek(SeekFrom::Start(start))?;
+        let mut sector = vec![0; cyrus_assets::disc::SECTOR_BYTES as usize];
+        image.read_exact(&mut sector)?;
+        let expected: Vec<_> = sector
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|sample| f32::from(i16::from_le_bytes([sample[0], sample[1]])) / 32768.0)
+            .collect();
+        let source = AudioSource {
+            bytes: pcm_wav(AudioType::Stereo16, 44100, &sector).unwrap().into(),
+        };
+        let transport = MusicTransport::new(source)?;
+        assert_eq!(
+            transport
+                .decoder()
+                .take(expected.len() * 2)
+                .collect::<Vec<_>>(),
+            expected.repeat(2),
+            "CD track {track}"
+        );
+    }
+    Ok(())
+}

@@ -85,7 +85,15 @@ class Driver:
             if before != after:
                 raise RuntimeError('console did not pause world updates; refusing gameplay text')
             for char in text:
-                self.key({' ': 'space', '=': 'equal', ',': 'comma'}.get(char, char))
+                if char == '_':
+                    # Keep the modifier held throughout the character's polling interval.
+                    self.input('keydown', 'Shift_L')
+                    try:
+                        self.key('minus')
+                    finally:
+                        self.input('keyup', 'Shift_L')
+                else:
+                    self.key({' ': 'space', '=': 'equal', ',': 'comma'}.get(char, char))
             self.key('Return')
         finally:
             # Escape leaves the console without reopening it or requesting a load.

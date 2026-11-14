@@ -78,6 +78,7 @@
 mod activation;
 /// Equipped weapon poses and retained combat endpoints.
 pub mod attachment;
+pub mod sound_dispatch;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
     GameplayGlobals, HostRequests, ItemViewerRequest,
@@ -235,6 +236,7 @@ impl Plugin for ScriptPlugin {
                 .before(OrdinaryUpdates),
         );
         app.init_resource::<CameraDrive>()
+            .init_resource::<sound_dispatch::AnimationSoundQueue>()
             .init_resource::<CameraFrameState>()
             .init_resource::<ScriptStatus>()
             .init_resource::<PlaybackDiagnostics>()

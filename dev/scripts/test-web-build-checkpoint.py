@@ -47,10 +47,10 @@ class Checkpoint(unittest.TestCase):
         self.store()
         retained = self.cache / self.artifact.name
         retained.write_bytes(b'truncated')
-        with self.assertRaisesRegex(ValueError, 'corrupt WASM checkpoint'):
+        with self.assertRaisesRegex(ValueError, 'corrupt build checkpoint'):
             self.restore()
         retained.unlink()
-        with self.assertRaisesRegex(ValueError, 'corrupt WASM checkpoint'):
+        with self.assertRaisesRegex(ValueError, 'corrupt build checkpoint'):
             self.restore()
 
     def test_interrupted_copy_does_not_publish_completion(self):
@@ -71,6 +71,43 @@ class Checkpoint(unittest.TestCase):
         before = checkpoint.identity(snapshot, 'flags')
         snapshot.write_text(json.dumps({'revision': 'new', 'sha256': 'source'}))
         self.assertEqual(before, checkpoint.identity(snapshot, 'flags'))
+
+    def test_worker_recovery_ignores_unrelated_application_source(self):
+        worker = self.root / 'crates' / 'cyrus-assets-worker'
+        dependency = self.root / 'crates' / 'cyrus-assets'
+        startup = self.root / 'crates' / 'cyrus-startup'
+        for directory in (worker, dependency, startup):
+            directory.mkdir(parents=True)
+            (directory / 'Cargo.toml').write_text('[package]\nname = "' + directory.name + '"\n')
+        (worker / 'Cargo.toml').write_text('[package]\nname = "cyrus-assets-worker"\n[dependencies]\ncyrus-assets = { path = "../cyrus-assets" }\n')
+        self.artifact = self.artifact.with_name('cyrus_assets_worker.wasm')
+        self.artifact.write_bytes(b'worker')
+        files = {'Cargo.lock': 'lock', 'crates/cyrus-assets-worker/src/lib.rs': 'worker',
+                 'crates/cyrus-assets/src/lib.rs': 'asset', 'crates/cyrus-startup/src/movie.rs': 'old'}
+        self.expected = {'source': {'sha256': 'old-global', 'files': files}, 'configuration': 'flags'}
+        self.store()
+        changed = {'source': {'sha256': 'new-global', 'files': {**files, 'crates/cyrus-startup/src/movie.rs': 'new'}}, 'configuration': 'flags'}
+        with patch.object(checkpoint.Path, 'cwd', return_value=self.root):
+            self.assertTrue(self.restore(changed))
+            changed['source']['files']['crates/cyrus-assets/src/lib.rs'] = 'changed dependency'
+            self.assertFalse(self.restore(changed))
+            changed['source']['files'] = {**files, 'Cargo.lock': 'changed lock'}
+            self.assertFalse(self.restore(changed))
+
+    def test_application_orchestration_changes_preserve_compiled_wasm(self):
+        app = self.root / 'crates/cyrus-web'
+        app.mkdir(parents=True)
+        (app / 'Cargo.toml').write_text('[package]\nname = "cyrus-web"\n')
+        self.artifact = self.artifact.with_name('cyrus-web.wasm')
+        self.artifact.write_bytes(b'application')
+        files = {'Cargo.lock': 'lock', 'crates/cyrus-web/src/main.rs': 'app', 'dev/scripts/build-web.sh': 'before'}
+        self.expected = {'source': {'sha256': 'before', 'files': files}, 'configuration': 'flags'}
+        self.store()
+        changed = {'source': {'sha256': 'after', 'files': {**files, 'dev/scripts/build-web.sh': 'after'}}, 'configuration': 'flags'}
+        with patch.object(checkpoint.Path, 'cwd', return_value=self.root):
+            self.assertTrue(self.restore(changed))
+            changed['source']['files']['crates/cyrus-web/src/main.rs'] = 'changed application'
+            self.assertFalse(self.restore(changed))
 
     def test_manifest_records_exact_artifact_hash(self):
         self.store()

@@ -12,6 +12,7 @@ class PacketAudio {
         this.paused = true;
         this.seeking = false;
         this.complete = false;
+        this.activation = 0;
     }
     get currentTime() {
         if (this.paused) return this.position;
@@ -85,13 +86,16 @@ class PacketAudio {
         };
     }
     async play() {
+        const activation = this.activation;
         await this.context.resume();
+        if (activation !== this.activation) return;
         if (!this.paused) return;
         this.paused = false;
         this.origin = this.context.currentTime;
         for (const block of this.blocks) this.schedule(block);
     }
     pause(position = this.currentTime) {
+        this.activation++;
         if (this.paused) return;
         this.position = position;
         this.paused = true;
@@ -113,7 +117,7 @@ export function openMovie(videoUrl, hasAudio, duration, frameSeconds) {
     const movie = {
         audio, chunks: [], bytes: 0, complete: false, error: null,
         controller: new AbortController(), wake: null, disposed: false,
-        playing: false, playPending: false, position: 0, origin: 0, videoEnd: 0,
+        playing: false, playPending: false, activation: 0, position: 0, origin: 0, videoEnd: 0,
     };
     movies.set(id, movie);
     if (audio && !prepared) {
@@ -180,11 +184,15 @@ function resume(movie) {
     if (!movie.playing || !movie.audio || movie.audio.ended || movie.playPending || !movie.audio.paused ||
         movie.audio.readyState < 2 || movie.audio.seeking || movie.audio.currentTime >= movie.videoEnd) return;
     movie.playPending = true;
+    const activation = movie.activation;
     movie.audio.play().then(() => {
+        if (activation !== movie.activation) return;
         if (!movie.playing || movie.disposed) movie.audio.pause();
     }).catch(error => {
-        if (!movie.disposed && error.name !== 'AbortError') movie.error = `audio playback: ${error}`;
-    }).finally(() => { movie.playPending = false; });
+        if (activation === movie.activation && !movie.disposed && error.name !== 'AbortError') movie.error = `audio playback: ${error}`;
+    }).finally(() => {
+        if (activation === movie.activation) movie.playPending = false;
+    });
 }
 export function movieVideoEnd(id, end) {
     const movie = movies.get(id);
@@ -214,6 +222,8 @@ export function playMovie(id) {
 }
 export function seekMovie(id, seconds) {
     const movie = movies.get(id);
+    movie.activation++;
+    movie.playPending = false;
     movie.playing = false;
     movie.position = seconds;
     movie.videoEnd = seconds;
@@ -227,6 +237,7 @@ export function closeMovie(id) {
     const movie = movies.get(id);
     if (!movie) return;
     movie.disposed = true;
+    movie.activation++;
     movie.playing = false;
     movie.controller.abort();
     movie.wake?.();

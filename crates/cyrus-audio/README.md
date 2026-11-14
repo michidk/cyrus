@@ -17,6 +17,18 @@ The browser sound bank retains the install's speech and subtitle switches before
 saved book preferences are applied. Speech mode controls dialogue record lifetime
 maintenance; disabling it uses nominal text countdowns on both hosts.
 
+Examine descriptions acquire their installed RTX voice through the same per-label
+preparation as scripted dialogue when it is absent from the control voice cache.
+Pending metadata or WAV dependencies retain the request. Closing the view cancels
+pending admission; a completed text-only entry keeps the existing text-only rule.
+The reply duration uses the WAV frame count and sample rate, rather than dialogue's
+quantized lifetime. This follows the released preservation
+[examine contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#examine-view).
+`tests/examine_speech.rs` exercises this through `SoundPlugin` with the legacy bank
+empty, including close/reopen and a single installed source. To exercise the real
+audio backend in a paced runtime, set `CYRUS_EXAMINE_DEVICE_ACCEPTANCE=1`; the test
+then waits for backend retirement instead of consuming the decoder itself.
+
 Original PCM width is retained through native and browser preparation. The decoder
 applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
 integer rounding before backend resampling. Rodio queue conversion starts after
@@ -46,8 +58,11 @@ and returns an off-live `MusicCandidate` for coordinated session publication.
 The published owner consumes the next scene-request and prepared-world
 notifications without selecting world music again. This preserves a stopped CD
 as well as a saved active track; a later ordinary world entry selects normally.
-`MusicTransport` reuses the source cursor at unity PCM gain. CD volume stays on
+`MusicTransport` admits nonempty stereo16 PCM with complete frames before native or browser playback, and reuses the source cursor at unity PCM gain. CD volume stays on
 the sink, and queued starts receive the current drive gain and cinematic pause.
+Browser CD continuation resumes the output context when starting a retained source,
+including a source first prepared while paused. Paused preparation stays silent.
+
 Browser CD playback requests the browser's playback latency policy and uses one
 retained WebAudio buffer per live player, so loading
 and rendering on the main thread do not interrupt the track. Its checkpoint maps
@@ -276,7 +291,7 @@ Ready text uses the installed HUD REDSEL font for wrapping. After object
 updates, the host advances game-owned dialogue records through synchronous sample
 feedback, then ages the RTX cache. The game selects the subtitle record and owns
 speaker inhibition; rendering only reads that selection. The configured keyboard
-key_a signal is sampled before Modern movement interpretation. Joystick input
+key_a signal is sampled before a movement mod interprets it. Joystick input
 remains unsupported.
 
 The ordinary host advances game-owned sound maintenance before model
@@ -572,3 +587,55 @@ five retained stages and their selected sample owner before rerunning the dorman
 transition and completing the final return, without repeating session publication.
 The bank-admission regression is browser-specific; the native run checks the shared
 live decoder and lifecycle contracts, without claiming physical-speaker parity.
+
+The `animation_binding` example isolates the production script-side sound router
+before scene binding. Supply `CYRUS_AUDIO_FIXTURE` on native, or browser
+`captureFixture()`, with a local installed fixture exported by `positional_emitters`.
+The fixture includes installed effect WAV, loop flag, sample rate/width, requested
+index and `SYSTEM.INI`. Seven nominal stages exercise owned/effect/global
+cancellation before binding, other-owner continuation and fresh-node playback.
+`test-animation-binding-native.py` observes paced Pulse output;
+`test-animation-binding-browser.mjs` observes actual graph PCM and executed WASM.
+The example checks actual transport counts before admitting its next stage.
+It establishes the controlled public routing/output contract, not physical output
+or arbitrary natural animation timing. No fixture or game data is tracked.
+
+The `natural_animation` example runs installed CYRUS draw/sheath command tables
+through `ActorAnimation` and the production sample pool at the installed nominal
+rate. It observes reusable slots, transport tokens and remembered ownership through
+public sample snapshots, and introduces another owner after sheath completion to
+check that EndAnimation cannot stop that replacement. Completed remembered samples
+are checked at animation advancement before later commands, while slots retain
+their reusable-handle semantics between animation updates.
+Prepare its local fixture with `python3 dev/scripts/prepare-natural-animation.py
+ANIMATIONS_EXPORT SOUNDS_CACHE INSTALL OUTPUT.json`; exports and audio remain
+outside tracked files. Set `CYRUS_AUDIO_FIXTURE` to that file for the native
+example. `python3 dev/scripts/test-natural-animation.py LOG PCM OUTPUT.json`
+checks its finalized 48 kHz stereo signed-16 Pulse monitor capture.
+`node dev/scripts/test-natural-animation-browser.mjs CDP_URL PAGE_URL WASM OUTPUT.json`
+checks executed WASM identity, actual sample ownership and contiguous WebAudio
+readback. The page supplies the same explicit fixture through `captureFixture()`.
+Run `python3 dev/scripts/test-natural-animation-controls.py` for rejection controls.
+These isolated command/output checks do not establish whole-scene input or
+physical-speaker parity.
+
+`replacement_lifecycle` exercises installed animation replacement through the
+public deferred scene-binding queue. Supply `CYRUS_ANIMATION_FIXTURE` pointing
+to local JSON with `animations` exported by the asset pipeline, `actor`, and
+`source`/`destination` group indices. The source must reach a sound before End;
+the destination must begin with a frame. Native and browser run the same forced,
+ordinary, skipped-frame and changed-default requests. Each has an admitted
+continuation control and a full-queue rejection control, including snapshot
+restoration, no replay and exactly-once release. This checks host failure
+ownership, not original host-error policy or audible waveform parity.
+
+Build with `cargo build -p cyrus-audio --example replacement_lifecycle` and run
+the copied executable with that explicit fixture. For browser acceptance, build
+the same example for `wasm32-unknown-unknown` and package it with the exact-schema
+`wasm-bindgen --target web` selected by `dev/scripts/resolve-wasm-bindgen.py`. Put
+the bindings and `fixture.json` under a host rig's `web/` directory, then run
+`python3 dev/scripts/run-animation-replacement-browser.py /absolute/host/rig`.
+The launcher requires a rig under `/home/vibepod/workspaces`, recreates only its
+pinned headless image when absent, mounts persistent config and logs, takes a
+per-run lock, and removes its own container on completion. The driver rejects
+missing stages, runtime errors and an executed WASM hash mismatch.

@@ -129,8 +129,8 @@ impl Font {
         }
     }
 
-    /// 8-bit colour of a font palette index: 6-bit components shifted left by 2, which
-    /// matches the original's captured REDSEL subtitle colours.
+    /// Expand a font BPAL index by shifting its six-bit components left by two.
+    /// Callers with a separately selected upload palette must use that palette.
     pub fn colour(&self, index: u8) -> [u8; 3] {
         self.palette
             .get(usize::from(index))

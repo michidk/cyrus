@@ -108,14 +108,14 @@ fn startup_settling_ranks_water_terrain_against_static_support() {
 }
 
 #[test]
-fn startup_settling_does_not_trust_water_terrain_while_actor_models_exist() {
+fn startup_settling_waits_for_actor_models_over_water_and_dry_terrain() {
     use cyrus_assets::collision::ActorCollisionModels;
     use cyrus_script::player::data::PlayerScene;
     use cyrus_script::player::placement::{PlayerPose, settle_static};
 
-    // The original also ranks the actors' solid models (a ship deck) against the terrain; this
-    // pass does not, so water terrain support is refused while an actor model could outrank it.
-    let scene_with = |actors: Option<ActorCollisionModels>| {
+    // Live actor contacts compete with terrain regardless of its water flags.
+    // Without their poses, the static pass must preserve the marker for the live owner.
+    let scene_with = |actors: Option<ActorCollisionModels>, water: bool| {
         let collision = CollisionScene {
             actor_models: actors,
             ..Default::default()
@@ -131,7 +131,7 @@ fn startup_settling_does_not_trust_water_terrain_while_actor_models_exist() {
                     "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,11],
                         "neg_extent":[24,66,38],"center_offset":[0,0,0],"flags":0}]
                 },
-                "heights":vec![0;256*256],"water":vec![true;256*256],
+                "heights":vec![0;256*256],"water":vec![water;256*256],
                 "collision":collision
             }))
             .unwrap(),
@@ -143,10 +143,10 @@ fn startup_settling_does_not_trust_water_terrain_while_actor_models_exist() {
         heading: 0,
     };
     let mut settled = pose();
-    settle_static(&scene_with(None), &mut settled).unwrap();
+    settle_static(&scene_with(None, false), &mut settled).unwrap();
     assert_eq!(settled.position[1], -64 * 256);
 
-    let actors = ActorCollisionModels {
+    let actors = || ActorCollisionModels {
         object_count: 1,
         models: [("DECK".into(), model(0).geometry)].into(),
         instances: [(0, "DECK".to_string())].into(),
@@ -154,13 +154,56 @@ fn startup_settling_does_not_trust_water_terrain_while_actor_models_exist() {
         unsupported: Default::default(),
         ..Default::default()
     };
-    let mut kept = pose();
-    let error = settle_static(&scene_with(Some(actors)), &mut kept).unwrap_err();
-    assert!(
-        format!("{error:#}").contains("actor model support"),
-        "{error:#}"
-    );
-    assert_eq!(kept.position, pose().position);
+    for water in [true, false] {
+        for (terrain, static_floor) in [(true, false), (false, true), (false, false)] {
+            let mut scene = scene_with(Some(actors()), water);
+            if !terrain {
+                scene.terrain = None;
+            }
+            if static_floor {
+                scene.static_collision = StaticCollision::new(&CollisionScene {
+                    models: [("FLOOR".into(), model(0))].into(),
+                    placements: vec![placement(0, [5000, 0, 5000], "FLOOR")],
+                    ..Default::default()
+                })
+                .unwrap();
+            }
+            let mut kept = pose();
+            let error = settle_static(&scene, &mut kept).unwrap_err();
+            assert!(
+                error
+                    .downcast_ref::<cyrus_script::player::placement::ActorModelSupportRequired>()
+                    .is_some(),
+                "{error:#}"
+            );
+            assert_eq!(kept.position, pose().position);
+            // An observed empty candidate list is distinct from unavailable contacts.
+            cyrus_script::player::placement::settle_with_actors(&scene, &mut kept, vec![]).unwrap();
+            assert_eq!(
+                kept.position[1],
+                if terrain || static_floor {
+                    -64 * 256
+                } else {
+                    pose().position[1]
+                }
+            );
+            // Once supplied, the deck's closer contact outranks either fallback.
+            cyrus_script::player::placement::settle_with_actors(
+                &scene,
+                &mut kept,
+                vec![cyrus_collision::ground::ModelSupport {
+                    source: cyrus_collision::ground::SupportSource::Model { model: 0, face: 0 },
+                    support: cyrus_collision::ground::GroundSupport {
+                        height: -100.0,
+                        normal: [0, -256, 0],
+                    },
+                    rank: 16384,
+                }],
+            )
+            .unwrap();
+            assert_eq!(kept.position, [5000 * 256, -164 * 256, 5000 * 256]);
+        }
+    }
 }
 
 #[test]

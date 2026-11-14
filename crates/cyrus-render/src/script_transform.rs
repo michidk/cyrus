@@ -43,11 +43,13 @@ fn visibility(
     >,
 ) {
     for (entity, binding, applied, mut visibility) in &mut nodes {
+        let mut outside_window = false;
         let control = binding.and_then(|binding| {
             let world = actors.as_ref()?.current.as_ref()?;
             if binding.actor.generation != world.generation() {
                 return None;
             }
+            outside_window = world.outside_view_window(binding.actor);
             world.actors().get(binding.actor.index)?.control_state()
         });
         // With the animation cheat at zero the selected player's animated body is not drawn.
@@ -74,7 +76,7 @@ fn visibility(
                 .entity(entity)
                 .insert(AppliedScriptVisibility(*visibility));
         }
-        let next = if control.hidden || control.invisible || player_hidden {
+        let next = if control.hidden || control.invisible || player_hidden || outside_window {
             Visibility::Hidden
         } else {
             Visibility::Inherited

@@ -164,3 +164,45 @@ fn terrain_rank_truncates_height_and_equal_model_ranks_keep_last_contact() {
     assert!(GroundProbe::new([0; 3], 0, 0).is_err());
     assert!(GroundProbe::new([i64::MAX; 3], 0, 50).is_err());
 }
+
+#[test]
+fn terrain_last_source_row_remains_valid_support() {
+    use cyrus_collision::ground::TerrainGround;
+    let terrain = TerrainGround::new(vec![-64; 256 * 256], vec![false; 256 * 256], None).unwrap();
+    // Engine rows 256 and 255 select source rows zero and one. Every
+    // interpolation corner is inside the installed height array.
+    for z in [65280, 65408, 65535] {
+        let position = [1024 * 256, 0, z * 256];
+        assert_eq!(terrain.height(position), Some(-64.0), "map Z {z}");
+        let support = terrain.sample(position).expect("valid last terrain row");
+        assert_eq!(support.height, -64.0);
+        assert_eq!(support.normal, [0, -256, 0]);
+        assert_eq!(terrain.sample_dry(position), Some(support));
+    }
+    // Reading beyond the source array still has no defined support.
+    assert!(terrain.height([1024 * 256, 0, 66048 * 256]).is_none());
+    assert!(terrain.height([1024 * 256, 0, 0]).is_none());
+}
+
+#[test]
+fn terrain_support_follows_valid_linear_corner_indices_across_cell_rows() {
+    use cyrus_collision::ground::TerrainGround;
+    let mut heights = vec![0; 256 * 256];
+    heights[4] = -80;
+    heights[5] = -100;
+    heights[260] = -120;
+    heights[261] = -140;
+    let terrain = TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap();
+    // Adding one source-row width to the column and one to the engine row
+    // leaves every linear source index unchanged, including both triangles.
+    for x in [1024, 1088, 1152] {
+        let inside = [x * 256, 0, 65408 * 256];
+        let carried = [(x + 65536) * 256, 0, 65664 * 256];
+        let expected = terrain.sample(inside).expect("valid source corners");
+        assert_eq!(terrain.height(carried), Some(expected.height));
+        assert_eq!(terrain.sample(carried), Some(expected));
+    }
+    // A row number alone neither accepts nor refuses a source-array access.
+    assert!(terrain.height([1024 * 256, 0, 65664 * 256]).is_none());
+    assert!(terrain.height([i64::MAX, 0, i64::MAX]).is_none());
+}

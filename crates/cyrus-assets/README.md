@@ -27,6 +27,9 @@ When execution is admitted, run `cargo test -p cyrus-assets --features parsers
 filesystem and installed-source coverage. The installed worker contract is in
 `node dev/scripts/test-game-worker.mjs <built-worker-package> <install>`.
 
+Catalog version 33 retains the selected eight-bit startup palette in cinematic
+metadata. Older browser cinematic caches require preparation again.
+
 Catalog version 32 retains the installed map-stem aliases in music settings.
 Named browser world requests resolve the same first authored variant as scene
 loading, so a different CD track retires at the load request rather than waiting
@@ -52,6 +55,11 @@ Validated portable animation, player, collision, environment, menu, HUD, movie a
 sound cache records. Data-only lookup and validation live with their serialized
 records. Runtime animation, collision queries, mesh bindings and audio handles
 belong to the consuming crates.
+
+**Verified:** [actor texture-set preparation](https://github.com/michidk/redguard-preservation/pull/188)
+preserves palette-colored faces instead of replacing
+them with image zero of the selected bank. Banks zero and one and every image
+index remain unchanged. Catalog version 34 invalidates older generated meshes.
 
 Collision caches retain shared authored geometry separately from static placement
 flags. Initial type-one live static models retain their MPOB bindings and model

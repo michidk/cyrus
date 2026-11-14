@@ -17,12 +17,15 @@ export function verifyNative(record, container, address, executableHash) {
   const bindings = container.NetworkSettings?.Ports?.['7117/tcp'] || [];
   assert(bindings.some(binding => ['127.0.0.1', '0.0.0.0'].includes(binding.HostIp) && binding.HostPort === port),
     'native control endpoint does not belong to the capture container');
-  assert.equal(executableHash, record.artifacts['target/debug/cyrus'], 'running native executable differs from recorded build');
+  const artifacts = Object.values(record.artifacts || {});
+  assert.equal(artifacts.length, 1, 'native provenance must identify one executable');
+  assert.equal(executableHash, artifacts[0], 'running native executable differs from recorded build');
   return { build: record, container_id: container.Id, image_id: container.Image, executable_sha256: executableHash };
 }
 
 export function nativeProvenance() {
-  const filename = 'target/debug/cyrus.provenance.json';
+  const executable = process.env.CYRUS_NATIVE_EXECUTABLE || 'magic/build-tools/native/cyrus';
+  const filename = `${executable}.provenance.json`;
   run('python3', ['dev/scripts/build-provenance.py', 'verify', filename]);
   const record = JSON.parse(readFileSync(filename, 'utf8'));
   const name = process.env.CYRUS_CAPTURE_NATIVE_CONTAINER || 'cyrus-dev';

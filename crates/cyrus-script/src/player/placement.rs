@@ -57,8 +57,10 @@ impl std::fmt::Display for ActorModelSupportRequired {
 impl std::error::Error for ActorModelSupportRequired {}
 
 /// Apply startup settling against the prepared static world and terrain (water cells included).
-/// Refuses water-terrain support while the world has actor models, since a deck among them could
-/// outrank it ([`ActorModelSupportRequired`]); [`settle_with_actors`] decides those cases.
+/// Defers while actor models exist but their contacts are unavailable
+/// ([`ActorModelSupportRequired`]); [`settle_with_actors`] ranks the complete candidate set.
+/// Live actor models compete with dry terrain, water and static floors alike, following
+/// preservation's [startup support rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#startup-ground-settling).
 pub fn settle_static(
     scene: &super::data::PlayerScene,
     pose: &mut PlayerPose,
@@ -86,6 +88,17 @@ fn settle(
             scene.world
         )
     })?;
+    if actors.is_none()
+        && scene
+            .actor_collision
+            .as_ref()
+            .is_some_and(|models| models.has_models())
+    {
+        return Err(anyhow::Error::new(ActorModelSupportRequired(format!(
+            "world {} startup settling at {:?}: live actor model support required",
+            scene.world, pose.position
+        ))));
+    }
     // Startup settling reads the terrain height the clearance probe reads: water cells count, and
     // only the height ranks (the normal is unused here).
     let terrain = scene.terrain.as_ref().and_then(|terrain| {
@@ -96,29 +109,12 @@ fn settle(
                 normal: [0; 3],
             })
     });
-    let actors_known = actors.is_some();
     if let Some(support) = scene.static_collision.startup_support(
         pose.position,
         definition.positive_extent[1],
         terrain,
         actors.unwrap_or_default(),
     )? {
-        if !actors_known
-            && support.source() == cyrus_collision::ground::SupportSource::Terrain
-            && scene
-                .terrain
-                .as_ref()
-                .is_some_and(|terrain| terrain.sample_dry(pose.position).is_none())
-            && scene
-                .actor_collision
-                .as_ref()
-                .is_some_and(|models| models.has_models())
-        {
-            return Err(anyhow::Error::new(ActorModelSupportRequired(format!(
-                "world {} startup settling at {:?}: water or terrain edge unsupported without actor model support",
-                scene.world, pose.position
-            ))));
-        }
         pose.position[1] = support.actor_height(
             definition.positive_extent[1],
             scene.settings.standing_height,

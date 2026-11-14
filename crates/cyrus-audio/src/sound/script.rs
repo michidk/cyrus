@@ -413,6 +413,15 @@ impl SoundFrame<'_, '_> {
                             channels.animation.insert(*actor, sound);
                         }
                     }
+                    AnimationSound::CheckSample => {
+                        if channels
+                            .animation
+                            .get(actor)
+                            .is_some_and(|slot| channels.samples.status(Some(*slot)) == 2)
+                        {
+                            channels.animation.remove(actor);
+                        }
+                    }
                     AnimationSound::Stop => {
                         #[cfg(any(target_arch = "wasm32", test))]
                         channels.stop_pending_animation(*actor);
@@ -2308,6 +2317,61 @@ mod dialogue_tests {
         });
         app.update();
     }
+    #[test]
+    fn completed_animation_sample_cannot_stop_a_later_slot_occupant() {
+        let (mut app, actor) = pending_animation_app();
+        app.world_mut().remove_resource::<crate::SoundBankHandle>();
+        app.world_mut()
+            .entity_mut(actor)
+            .insert(cyrus_world::sound::PlayerAnimationSource);
+        animation_command(
+            &mut app,
+            actor,
+            AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+        );
+        let sound = app
+            .world()
+            .resource::<Channels>()
+            .playing
+            .values()
+            .next()
+            .unwrap()
+            .sound;
+        // The backend despawns a completed one-shot before the next ordinary drain.
+        app.world_mut().despawn(sound);
+        animation_command(&mut app, actor, AnimationSound::CheckSample);
+        let replacement = app
+            .world_mut()
+            .spawn((
+                GlobalTransform::default(),
+                cyrus_world::sound::PlayerAnimationSource,
+            ))
+            .id();
+        animation_command(
+            &mut app,
+            replacement,
+            AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+        );
+        animation_command(&mut app, actor, AnimationSound::Stop);
+        assert_eq!(
+            app.world().resource::<Channels>().playing.len(),
+            1,
+            "EndAnimation stopped the new owner of a completed sample slot"
+        );
+        assert!(
+            !app.world()
+                .resource::<Channels>()
+                .animation
+                .contains_key(&actor)
+        );
+    }
+
     #[test]
     fn pending_animation_stop_cancels_only_the_remembered_start() {
         let (mut app, actor) = pending_animation_app();

@@ -839,8 +839,12 @@ fn installed_palace_actor_is_selected_at_its_authored_world_position() {
         view.iter()
             .all(|coordinate| (9216..56319).contains(coordinate))
     );
+    // Before the first window selection every cell actor is still listed, and therefore drawn.
+    assert!(!world.outside_view_window(id));
     assert!(world.ordinary_actors(view).unwrap().contains(&id));
+    assert!(!world.outside_view_window(id));
     assert!(!world.ordinary_actors([4608, 4608]).unwrap().contains(&id));
+    assert!(world.outside_view_window(id));
 }
 
 #[test]

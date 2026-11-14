@@ -243,7 +243,8 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // Wet sand is darker; foam is near white.
     let foam_color = vec3(0.80, 0.86, 0.88);
     let albedo = srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true));
-    color = modern_lit(input, mix(albedo * (1.0 - 0.45 * wet), foam_color, foam), water_mask, wet,
+    // `fog.lighting.w`: the modern lighting's glossy water switch.
+    color = modern_lit(input, mix(albedo * (1.0 - 0.45 * wet), foam_color, foam), water_mask * fog.lighting.w, wet,
         normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * 0.05));
 }
     if water_weight > 0.0 {

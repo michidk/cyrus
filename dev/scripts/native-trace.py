@@ -72,15 +72,22 @@ def player_index(addr):
         offset += 64
 
 
-def sample(addr, ev):
-    """Read clock, pose and health from one ordinary-update boundary snapshot."""
-    response = call(addr, {"type": "schedule_input", "events": [{"after_updates": 0}]})
+def sample(addr, ev, after_updates=0):
+    """Read one boundary; continuation waits for an ordinary update to advance."""
+    offsets = [0] if after_updates == 0 else [0, after_updates]
+    response = call(addr, {"type": "schedule_input",
+                           "events": [{"after_updates": offset} for offset in offsets]})
     boundaries = response.get("boundaries", [])
-    if len(boundaries) != 1:
+    if len(boundaries) != len(offsets):
         raise ValueError("native-trace: selected boundary snapshot unavailable")
-    if boundaries[0].get("after_updates") != 0:
-        raise ValueError("native-trace: inconsistent selected boundary snapshot")
-    return boundary_sample(boundaries[0], ev)
+    rows = []
+    for boundary, offset in zip(boundaries, offsets):
+        if boundary.get("after_updates") != offset:
+            raise ValueError("native-trace: inconsistent selected boundary snapshot")
+        rows.append(boundary_sample(boundary, ev))
+    if after_updates:
+        validate_continuation(rows[0], rows[-1])
+    return rows[-1]
 
 
 def boundary_sample(boundary, ev, expected_input=(None, None)):
@@ -173,7 +180,7 @@ def main():
             stall = time.time()
             try:
                 while last < t0 + a.seconds:
-                    row = sample(a.addr, "s")
+                    row = sample(a.addr, "s", after_updates=1)
                     validate_continuation(previous, row)
                     row["missed_updates"] = row["frame"] - previous["frame"] - 1
                     previous = row

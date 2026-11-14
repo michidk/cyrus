@@ -228,14 +228,24 @@ Neither adapter may modify installed assets. The launcher reads installed text-s
 `SYSTEM.INI` and applies them in the writable run to avoid inherited developer
 diagnostics while preserving direct-world admission and other run settings;
 `CYRUS_RETRO_SYSTEM_INI` can select an explicit baseline file.
+
+Executable-specific readers can use `dev/scripts/original-memory-region.py` to
+locate their guest region from a local signature and its offset. Supply readable
+anonymous process mapping ranges and the required region size. The helper accounts
+for a region beginning inside a coalesced mapping and rejects absent, ambiguous
+or truncated-region candidates. Keep signatures and executable bindings in the
+local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
+
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.
 The public driver requires `interactive` as well as a paused world clock;
 a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
 checks that console entry paused world updates before sending commands, grants
 and draws the sword through console/input, then invokes placement. Escape closes
-each command entry. The JSONL record includes selected-player state and world
-clock through walking, attack and continuation. A sheathed, falling or
+each command entry. Underscores in object and attribute names use a held Shift
+with the minus key through the polling interval; they are not literal xdotool
+key names. Shift is released even when character entry fails. The JSONL record
+includes selected-player state and world clock through walking, attack and continuation. A sheathed, falling or
 nonordinary living state fails before movement. Held inputs are released on
 failure, and stalled world progress has a wall-clock cutoff. Capture mixer audio
 separately to assess clank: a successful exit alone does not prove contact,
@@ -418,14 +428,24 @@ on a persistent host mount saves each completed raw WASM package before
 packaging. Rerunning the same command restores matching completed packages
 without Cargo, including after target-directory loss or a packaging failure.
 Source, compiler, profile and Rust flags must match; corrupt checkpoints fail
-closed. Interrupted compiler invocations still require Cargo to finish. The
-checkpoint directory contains build outputs only, never installed game data.
-It does not change the inherited Cargo target directory or retain dependencies.
+closed. During application compilation, completed Cargo units, dep-info,
+fingerprints and build-script outputs are retained in compressed, hashed units.
+After target-directory loss, matching units restore before Cargo resumes;
+Cargo still checks dependency freshness and finishes interrupted units. Existing
+shared artifacts are never overwritten. Restoration streams each compressed unit
+once and validates each recorded member before publishing any file. Temporary staging
+stays inside the writable target directory, including when its parent is managed
+and unwritable. Build orchestration changes do not invalidate unchanged compiler
+inputs. No whole profile is copied or removed.
+The checkpoint directory contains build outputs only, never installed game data,
+and does not change the inherited Cargo target directory.
+Run `python3 dev/scripts/test-web-compile-checkpoint.py` for interrupted-build,
+corruption, changed-input and shared-artifact preservation controls.
 
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music`, `--controls`, `--camera` and `--mode` map directly
+Native `--scene`, `--skip-startup`, `--new-game`, `--movie`, `--skip-movies`, `--volume`, `--fog`, `--sky`, `--music` and `--mode` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
@@ -531,20 +551,20 @@ under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
 Saved Sound preferences apply to effects and CD music on native and browser
-builds, and to native speech. The book menu plays its installed CD track. Cinematics consume subtitle and interlace preferences.
+builds, and to native speech. The book menu plays its installed CD track. Cinematics consume the subtitle preference; MOVIE INTERLACE does not change the picture, as in the installed release.
 
 Movies browses the initially unlocked entries and installed previews. Native
 playback reads the configured movie file or GOG `game.gog` beside the install
 through a bounded sequential reader; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and the REDSEL font with its shadow ([preservation#110](https://github.com/michidk/redguard-preservation/pull/110)), and applies the
-saved subtitle/interlace preferences. A key press advances to the next installed
+saved subtitle preference. A key press advances to the next installed
 skip point, or finishes after the last one. Native playback decodes toward every skip point in the background, so a skip does not wait for the frames before it. Playback returns to the same menu
 selection. Native playback does not write movie data to `cache/`. Browser movie caches exported before the REDSEL subtitle font need re-export.
 Browser playback reads the selected cinematic's compressed original ranges on
 demand. The shared codec decodes indexed frames and first-track PCM together;
 Web Audio plays bounded PCM blocks using its sample clock. Playback starts with
 the first frame and audio data, without complete media downloads. The same skip,
-subtitle, interlace and menu-return rules apply. Forward skips decode preceding
+subtitle and menu-return rules apply. Forward skips decode preceding
 delta frames. Closing playback cancels further reads and releases queued audio.
 Original-file hosts must support byte ranges. The worker also prepares CD WAV
 tracks and installed world assignments for music. A key press or pointer release
@@ -625,7 +645,7 @@ Local lights and complete static-prelighting behavior remain unsupported.
 
 ### Sky, fog, and water
 
-Re-export worlds to regenerate `.environment` sidecars. F11 provides independent
+Re-export worlds to regenerate `.environment` sidecars. Backtick provides independent
 Faithful/Modern buttons for Fog and Sky, which default to Faithful. Water changes only through the
 `modern-water` native mod.
 
@@ -642,7 +662,7 @@ cross its surface. Both retain the world's colors and horizon haze.
 **Verified:** Faithful fog uses the original tables and installed clipping
 range (7/3800 engine units in the shipped configuration). Modern fog defaults to
 four times that far distance and fades smoothly over the distant portion of
-the view. F11's distance control selects Modern Fog; Original resets the distance
+the view. Backtick's distance control selects Modern Fog; Original resets the distance
 and returns Fog to Faithful. Sky is unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
@@ -662,6 +682,50 @@ The retro runner needs a writable copy of the GOG `app/` directory (the game
 writes saves); `dev/scripts/run-retro.sh` makes one under `magic/retro-run/` and
 copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
+For independent original audio captures, `original-audio-capture.sh` repairs missing
+`soup386` and `system` files in the writable run copy before launch, using
+`prepare-original-definitions.py INSTALLED_REDGUARD RUN_REDGUARD`. Existing
+per-run files are preserved. Linked definition destinations are rejected so
+recovery cannot write into the install.
+
+`python3 dev/scripts/animation-transition.py ADAPTER KEYS.INI OUTPUT --group GROUP
+--effect EFFECT` drives a selected-player quick-sword transition through an
+executable observation/capture adapter. Group and effect come from the selected
+actor's installed animation definition; the key binding comes from the supplied
+`KEYS.INI`. The adapter protocol is documented in the script. It must arm event
+and PCM observation before input. The driver waits for ordinary progress,
+releases input on observed group entry to prevent held-key retriggering, and
+stops at observed group completion or bounded game progress. A wall deadline
+limits a stalled observer. Changed player/world identity, missing emission/stop
+ordering or incomplete PCM reject the receipt. A sample that finishes before
+EndAnimation may instead terminate with an observed mixer-completion query;
+clearing its remembered handle alone is insufficient. Starts, remembered
+ownership and terminal events match both slot and start generation, and events
+retain their original immutable snapshots. The driver drains the completed
+transition through the next ordinary frame before finalizing PCM. Every observation is saved
+atomically; only `status=captured` admits the complete contract. A group change
+without sound-service observations remains rejected. This requires an adapter
+that observes the real sound service; group/frame interpolation is insufficient.
+Run its failure/continuation controls with
+`python3 dev/scripts/test-animation-transition.py`.
+
+`python3 dev/scripts/original-sound-observer.py BINDINGS OUTPUT` records actual
+sound-service writes with Linux x86-64 hardware watchpoints. The original test
+container needs ptrace permission. Executable-specific bindings remain in ignored
+research, verify the loaded executable and relocated instructions, and supply
+`pid()`, `bind(pid)` and `capture(hit_indices)` as documented in the runner.
+Each capture runs while the emulation thread is stopped. Service events include
+the selected animation, frame/game clock, reusable sample slot and mixer start
+generation. Missing event batches, sequence gaps, invalid generation identities
+and overflow reject the stream. `status.json` records the final result separately
+from flushed `events.jsonl`; an armed or interrupted stream is not acceptance.
+Use a fresh output directory, request shutdown with its `stop` file, and retain
+both files with executable and binding hashes. The runner clears its hardware
+watches before detaching, including on failure. Bindings must observe real service
+boundaries; they cannot turn group changes or PCM energy into starts or stops.
+Run `python3 dev/scripts/test-original-sound-observer.py` for failure controls.
+Set `CYRUS_OBSERVER_HARDWARE=1` inside the original test container to also execute
+the real stopped-write and detach control.
 The disc is mounted from `game.gog` through a `game.cue` copy of `game.ins`: stock DOSBox-X
 reads a cue sheet only by its `.cue` extension, and without the disc every movie is skipped.
 The default copy keeps `final_version=0`, which makes the original skip the Introduction and start in the first
@@ -676,6 +740,12 @@ preservation: Escape in a world opens the book after its release and gives Save,
 the paused world (**Verified** in the native build: the book opened from the first world and its
 Save page showed the 256x192 gameplay thumbnail; `--scene` launches have no book, so use
 `--new-game --skip-movies` or the menu). F2 and F3 open the Save and Load pages (same `final_version` gate; their entry camera, from the settled main page, is **Inferred**). F4, F5 and F6 open Display, Sound and Controls on the page's settled pose from preservation `engine/menu.md` (**Verified** as the documented end state; their own transition is not documented and none is played). **Verified** in the native build: each key opens its page on that pose and Escape returns through Options to the main page without leaving a depth shift behind. Quit from a world prepares the `Redguard AutoSave` slot when a gameplay snapshot exists, or removes it while the death override is active (preservation `engine/menu.md`). **Verified** in the native build: F3 opens the Load page, a save made from the open book stores its thumbnail and the Load page previews it, loading it returns to the world, and Quit wrote slot one with a thumbnail before exiting. **Verified** in the native build: a fatal death opens the Last Game dialog when a save exists, choosing Yes restores the saved world with death override and hit inhibition cleared, and controls resume; without a save it opens the death book. The original and browser both reach the inhibited death-book outcome, while retained-save browser readback remains unavailable. **Verified** in the native build: after a pirate kill in START the death book opens, and Quit from it removes the `Redguard AutoSave` slot and exits; Quit from the world book with an unwritable autosave target shows the slot path and OS error, keeps the game running, and the retry after the fault is cleared writes the slot and exits. **Verified** in the native build: a save made in START after a console `load 1,0` and `load 0,0` round trip (ISLAND visited) survives a process restart, and the restored session holds START as current with 36 actors and ISLAND as visited with 976. A save refuses with a contextual error while a dialogue speech export is still pending. **Verified** in the browser build: a save from the paused book persists in IndexedDB, and after a page reload the Load page lists it with its thumbnail and loading restores the world. **Verified** in the browser build: loading a slot whose stored document is malformed shows the decoding error on the book, stays on the Load page and leaves the running world intact.
+
+The original-runtime image includes Pillow for screenshot-based readiness and
+presentation observers. After changing that image, run
+`python3 dev/scripts/test-retro-observer-runtime.py` against the rebuilt
+`cyrus-retro:dev` image. This exercises Xvfb, an actual scrot PNG and decoded-pixel
+match/rejection controls without launching the game or a preview.
 
 ## Logs
 
@@ -742,11 +812,11 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F11 and use **Flycam** to switch between inspection
+Press Backtick and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
-F11 world selections show the installed loading screen while the destination assets
+Backtick world selections show the installed loading screen while the destination assets
 Free flight is also available as the bundled `flycam` mod (see `mods/README.md`), toggled with Insert.
 load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not detach the view. Detaching preserves the player
@@ -866,7 +936,7 @@ game (**Verified** from preservation `engine/console.md`); none, zero or a non-n
 is refused, and the browser reports it unavailable because its wait would block the page.
 Other catalog entries report unavailable owners.
 
-Browser `savecheats` persists to localStorage `cyrus-cheats`. F11 Cheat files
+Browser `savecheats` persists to localStorage `cyrus-cheats`. Backtick Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can
 recover malformed local state; failed imports and saves retain existing state.
 
@@ -1129,12 +1199,45 @@ A recording alone does not establish which sound occurred.
 `dev/scripts/native-trace.py` samples the selected player through an observation-only
 `schedule_input` event at an ordinary update boundary. Pose, motion, health,
 animation, game clock and logical generation come from that single snapshot.
-`frame` is the ordinary update number. A generation change, duplicate/reversed
+`frame` is the ordinary update number. Placement observes the current boundary;
+continuation requests the next ordinary update instead of polling the same
+boundary again on fast control replies. A generation change, duplicate/reversed
 update or nonadvancing clock rejects continuation, and `missed_updates` reports
 sampling gaps. Selected-actor failures are errors rather than healthy samples.
 Held trace inputs are released on failure. These observations do not establish
 exact input timing: `--key` still uses asynchronous public input requests. Use an
 acknowledged schedule for a matched input comparison.
+
+`dev/scripts/native-held-jump.py` compares a complete atomic original held-Space
+receipt with a native public schedule. Start both runs in the same installed world
+with the same supported, stationary player, heading, attributes and clock cadence.
+The original receipt uses the ordinary-boundary reader's `observations`, `steps`
+and explicit release `input_edges`; retain its reader, executable and scene
+provenance with the capture. No original memory layout is shipped with this driver.
+
+```sh
+python3 dev/scripts/native-held-jump.py --addr 127.0.0.1:7117 \
+  --original ORIGINAL/held.json --updates 32 --out NATIVE/accepted.json
+# Recheck finalized receipts without launching either game:
+python3 dev/scripts/native-held-jump.py --native NATIVE/accepted.raw.json \
+  --original ORIGINAL/held.json --updates 32 --out NATIVE/rechecked.json
+python3 dev/scripts/test-native-held-jump.py
+```
+
+The native offset-zero baseline precedes the acknowledged press at offset one.
+The driver aligns subsequent consumed Q8 clock scales, explicit release, exact Q8
+positions, animation groups, health and fall/queued/slide/living/rope state. Both
+ends must be idle at the same position. Each attempt is limited to 32 consumed
+updates plus the admission baseline so a slow rendered run can finish within the
+public scheduler's wall deadline. A deadline or incomplete sequence is rejected,
+never promoted from matching prefix evidence. The driver releases Space on
+failure, retains the complete native response before comparison, removes stale
+accepted summaries before a new attempt and hashes both receipts in a successful
+summary. The launcher must retain actual executable/source identity separately;
+a receipt hash does not establish binary provenance. Use a per-run live lock and
+host-mounted config/output directories. After a reset, reuse a verified retained
+executable and `ensure-runtime-image.sh` archive, then restart only the incomplete
+attempt. Do not treat an erased compiler ticket as a completed build.
 
 `dev/scripts/native-edge-trace.py --out <ignored-path> --release-update <N>
 --updates <M>` captures one scheduled edge attempt from an externally established
@@ -1306,7 +1409,14 @@ archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
 the live-run lock, serializes concurrent restores and verifies the requested
 image exists. An existing image requires no archive load. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
-Archives remain local; recovery never removes peer images or containers.
+Pass `--retain` before `IMAGE` to save an available image when its archive is
+missing. This checkpoints setup before the next reset: concurrent calls share
+the restore lock, and only a successful nonempty Docker save is published by
+atomic rename. A failed save leaves no reusable archive. Existing nonempty
+archives are preserved. If both image and archive are absent, recreate the
+required image with its repository Dockerfile first; the helper does not guess
+a build context. Archives remain local; recovery never removes peer images or
+containers.
 
 For separate transient-geometry restoration, run the native diagnostic driver with
 an explicit installed game, the host config directory mounted into the runtime,
@@ -1988,6 +2098,24 @@ counts delivered stereo signed-16 frames at presentation; it still does not map
 samples to mixer generation. Exact original/native windows must match before
 interpreting pixels or PCM as a gameplay comparison.
 
+For bounded playback acquisition, pass `--progress FIELD TICKS --timeout SECONDS`.
+This retains each owned presentation and writes `complete.json` only after the
+bound playback clock advances by the requested ticks. Frozen clocks, reversed
+clocks/sequences and exhausted budgets fail without a completion receipt. Raw
+captures and incremental `progress.json` remain available after failure. Bind the
+actual movie decoder ordinal for cinematics: the gameplay clock can remain
+stationary during playback ([playback clock](https://github.com/michidk/redguard-preservation/pull/315)).
+Never convert wall duration into a movie frame number.
+
+With both SDL probes loaded, `--require-pcm` requires a committed generated-PCM
+cursor at every presentation and rejects missing generation, backwards cursors
+or a changed sample rate. The retained cursor is a callback-generation prefix,
+not DAC position. Each result also retains the original SDL surface format,
+channel masks, pitch and dimensions before conversion to RGB24. These describe
+the capture boundary; upstream renderer quantization must be established
+separately. Converting a surface to RGB24 does not prove that its source had
+24-bit color precision.
+
 Run the binding controls with `python3 dev/scripts/test-sdl-frame-capture.py`.
 The runtime control compiles `test-sdl-frame-capture.c` against SDL2 and runs
 `test-sdl-frame-capture-runtime.py FIXTURE_EXECUTABLE INTERPOSER_SO FAILED_BACKEND_SO`. It requires
@@ -2087,8 +2215,12 @@ scanlines and subtitle composition using those values. Its composition hash is
 part of the receipt. Missing composition metadata cannot fall back to a bare
 video oracle. Raw capture and composed reference pixels are never masked.
 
-After completion, pass `--align` to `cinematic-presented-frames.py` to require
-native trace boundaries for the production movie-clock calls bracketing each
+The capture freezes PCM and drains tracing before running the image oracle,
+then releases the application page. Trace export uses bounded encoding rather
+than one aggregate JSON string. Presentation acceptance requires `--align`
+automatically. For offline captures, pass `--align` to
+`cinematic-presented-frames.py` to require native trace boundaries for the
+production movie-clock calls bracketing each
 identified image. The receipt records both call intervals and picture-age
 bounds. These measurements do not identify physical display or DAC latency and
 must not be converted to a compensating playback delay.
@@ -2165,3 +2297,127 @@ bytes after the movie's vertical bilinear expansion. Identical pictures retain
 all possible frame identities. Loading pictures or advancing status alone cannot
 admit a cinematic comparison. These tools establish capture boundaries; complete
 original/native/browser timing parity still requires matching runtime recordings.
+
+### Original cinematic raster oracle
+
+`dev/scripts/cinematic-original-raster.py DECODED_IMAGE STATE_JSON PRESENTATION`
+compares the entire original 640×480 movie raster with an independently decoded
+installed image. It requires Pillow and NumPy. The state file supplies the
+observed texture padding colour and ordered `draws`. Each draw supplies its
+`source` rectangle `[x,y,width,height]`, power-of-two `backing` dimensions,
+exclusive clipped `destination` rectangle, integer-pixel setup `anchor`, and
+signed 32.32 texture-coordinate pairs `start`, `dx` and `dy`. Obtain this state
+from the renderer boundary independently of the image being tested. The tool
+never fits gradients, moves anchors or masks mismatching pixels.
+
+The software Voodoo profile wraps through padded texture backing, retains four
+fractional filter bits, floors both bilinear stages and stores dithered RGB565
+before expanding to the captured RGB surface. Supply the actual raster clipping
+bounds. A capture-runtime clipping defect belongs in that explicit state, not
+in cyrus's production renderer.
+
+For subtitles, pass `--subtitles INSTALLED_MOVIE_METADATA` and supply `frame`,
+`subtitles_enabled`, `subtitle_right` and the complete eight-bit
+`subtitle_palette` in the state file. Capture the selected palette during glyph
+drawing. A palette read after movie drawing has finished can already have been
+restored to the movie palette. The oracle shares installed glyph layout with
+the browser presentation observer, but applies integer source/destination
+blending, framebuffer dither subtraction and RGB565 storage independently.
+`--output IMAGE` retains the reconstructed image. Any changed pixel, including
+the last pixel beyond the former decoded-prefix check, fails admission.
+
+Run its synthetic failure controls with
+`python3 dev/scripts/test-cinematic-original-raster.py` and the existing browser
+composition controls with `python3 dev/scripts/test-cinematic-presented-frames.py`.
+
+### Interrupted runtime probes
+
+Bounded comparison drivers can use `dev/scripts/probe-checkpoint.py` to retain
+readiness, diagnostic clock progress and acknowledged ordinary boundaries in a
+host-mounted evidence directory. Hold a per-run lock while writing. Include the
+scene, input schedule, source identities and exact target scale in the fixture
+identity passed to `Run.start`; record each readiness observation before input.
+Call `register_job` with a path on that mount to retain the probe's process identity.
+
+After interruption, run `python3 dev/scripts/probe-checkpoint.py <receipt.json>
+--pidfile <container-path-to-job-receipt>`. Exit 3 identifies a missing/stopped
+container or lost probe process; Docker availability errors remain errors.
+Attach to a live attempt rather than launching another. Restart an incomplete
+lost attempt from its fixture with `restart=True`; its old receipt is preserved
+and its new clock starts at zero. This does not restore a pose into a new world.
+Reuse accepted acquisition receipts without rerunning their completed stage.
+
+Boundary receipts reject update gaps, changed generations and inconsistent
+consumed scales. Diagnostic polling cannot satisfy the target. Acquisition
+acceptance requires the exact declared scale; gameplay comparison still needs
+matched original/native inputs, placement, timing and outcome evidence.
+
+For exact counterpart acquisition, `dev/scripts/probe-clock.py` proposes a common
+integer-scale endpoint from contiguous measured original/native boundary arrays.
+Measure a steady tail before arming input; pass the installed normal frame rate
+and a bounded minimum duration in Q8 nominal ticks. The plan uses the least common
+multiple of the observed steps, rather than assuming that a fixed update count
+always consumes the same game time. A steady measurement proposes a candidate;
+`validate` must still check every executed interval and the final endpoint.
+A cadence change, update gap or skipped endpoint rejects the comparison. The tool
+never changes frame scale or interpolates an unavailable boundary.
+
+When measurements change during execution, `pair_observed` selects shared elapsed
+scales only from the two complete acknowledged receipt sequences. Both sequences
+must start at their declared zero-scale input origins. A required endpoint absent
+from either sequence stays rejected; an earlier shared point establishes only
+that shorter interval. Matching elapsed time alone does not prove matching poses,
+platform phase or complete action continuation.
+
+For changing cadence, use `probe-clock.py`'s `Admission` at the input-owning
+boundary or the native `acquire_input` control command. Supply actual counterpart
+endpoints rather than converting a steady measurement into a future update count.
+`Admission.observe` consumes contiguous zero-origin receipts and chooses the first
+actually shared endpoint at or beyond the requested duration. The native command
+records every boundary while holding the key, then releases before input sampling
+at an exact member of the supplied endpoint set. Endpoint exhaustion is a rejected
+acquisition. Do not substitute the last earlier match for a skipped later endpoint.
+
+A host checkpoint fixture may declare `target_scales` as a bounded, strictly
+increasing set of positive counterpart endpoints instead of one `target_scale`.
+Acceptance still requires an exact observed member and records
+`accepted_target_scale`. Supply `next_scale=None` only for a terminal boundary
+whose following step was not captured; another boundary cannot follow it.
+This avoids inventing a future step in a completed acknowledgement.
+
+### Retaining completed acceptance stages
+
+`dev/scripts/acceptance-stage.py` retains command logs and source-bound completion
+receipts in a host directory. Pass every source/configuration input with `--input`,
+relevant environment names with `--environment`, optional retained artifacts with
+`--output`, and the command last after `--command`. A stage is reusable only after
+successful exit with unchanged inputs and intact log/artifact hashes. Interrupted
+or failed attempts restart their setup; a retained PID or partial output is never
+evidence of success. Keep these directories under ignored local state and include
+toolchain configuration among the inputs. Run its controls with
+`python3 dev/scripts/test-acceptance-stage.py`.
+
+### Recovering native compilation after a reset
+
+For a full native acceptance build, set `CYRUS_NATIVE_CHECKPOINT_DIR` to an ignored
+host directory and run `dev/scripts/build-native-recovery.sh /host/path/cyrus`. The output
+must be named `cyrus`; it can live directly in the checkpoint directory to avoid
+keeping a second executable copy. The script requires hauler and preserves the
+inherited Cargo target directory. Completed Cargo units are retained as they are
+reported, using the same hashed unit recovery as browser builds. Restoration
+never replaces existing shared compilation files; Cargo checks their freshness.
+Cargo events spool to the host independently of unit compression. A successful
+Cargo exit seals the final executable before waiting for the unit archive backlog,
+so slow checkpoint compression cannot defer executable retention. The wrapper
+still waits for the recorder and reports recorder failures.
+The final executable retains its permissions and is reusable only with matching
+source, compiler, Cargo and build environment. A failed/interrupted build cannot
+publish a final executable checkpoint. Run the reset/recovery controls with
+`python3 dev/scripts/test-native-build-recovery.py`.
+
+`just run-native` uses this recovery path and mounts the retained executable
+read-only. Its default is `magic/build-tools/native/cyrus`; set
+`CYRUS_NATIVE_EXECUTABLE` consistently for launch and matched capture to change
+it. Every successful build or restore writes adjacent capture provenance.
+Capture verifies the current source and executable hash against the running
+container, so an old executable cannot borrow a new build record.

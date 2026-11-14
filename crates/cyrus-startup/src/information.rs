@@ -25,6 +25,7 @@ struct Presentation {
     reader: Handle<LogbookArtwork>,
     image: Handle<Image>,
     scroll: Option<(credits::Position, f64)>,
+    credits_exit: credits::CreditsExit,
     confirmed: bool,
     painted: bool,
     time_was_paused: bool,
@@ -51,6 +52,7 @@ fn setup(
         reader: server.load("cache://logbook/reader.logbook"),
         image: Handle::default(),
         scroll: None,
+        credits_exit: credits::CreditsExit::default(),
         confirmed: false,
         painted: false,
         time_was_paused,
@@ -92,8 +94,7 @@ fn drive(
     mut images: ResMut<Assets<Image>>,
     mut nodes: Query<&mut ImageNode, With<Picture>>,
     time: Res<Time<Real>>,
-    keys: Res<ButtonInput<KeyCode>>,
-    input: Inputs,
+    mut input: ParamSet<(Inputs, ResMut<ButtonInput<KeyCode>>)>,
     mut next: ResMut<NextState<AppState>>,
 ) {
     let pixels = match *screen {
@@ -108,7 +109,12 @@ fn drive(
                 }
                 return;
             };
-            let confirming = keys.pressed(KeyCode::Enter) || input.pressed(Action::Use);
+            let input = input.p0();
+            let confirming = input
+                .devices()
+                .keys
+                .is_some_and(|keys| keys.pressed(KeyCode::Enter))
+                || input.pressed(Action::Use);
             if active.confirmed && !confirming {
                 next.set(AppState::InGame);
                 return;
@@ -155,8 +161,15 @@ fn drive(
                 commands.insert_resource(CreditsPlaying);
                 (credits::Position::start(line), 0.0)
             });
-            active.confirmed |= keys.just_pressed(KeyCode::Escape);
-            let mut done = active.confirmed && !keys.pressed(KeyCode::Escape);
+            match active.credits_exit.poll(&mut input.p1()) {
+                credits::CreditsExitState::Scrolling => {}
+                credits::CreditsExitState::WaitingForRelease => return,
+                credits::CreditsExitState::Finished => {
+                    next.set(AppState::InGame);
+                    return;
+                }
+            }
+            let mut done = false;
             due += time.delta_secs_f64() * credits::PIXELS_PER_SECOND;
             while !done && due >= 1.0 {
                 due -= 1.0;
@@ -328,6 +341,7 @@ mod tests {
             reader: Handle::default(),
             image: Handle::default(),
             scroll: None,
+            credits_exit: credits::CreditsExit::default(),
             confirmed: false,
             painted: false,
             time_was_paused: false,
@@ -430,6 +444,7 @@ mod tests {
             reader,
             image: Handle::default(),
             scroll: None,
+            credits_exit: credits::CreditsExit::default(),
             confirmed: false,
             painted: false,
             time_was_paused: false,
@@ -450,6 +465,17 @@ mod tests {
             app.world().resource::<NextState<AppState>>(),
             NextState::Unchanged
         ));
+        let before = app.world().resource::<Presentation>().scroll.unwrap();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_secs(2),
+        ));
+        app.update();
+        let after = app.world().resource::<Presentation>().scroll.unwrap();
+        assert_eq!(
+            before, after,
+            "Escape release wait freezes the credits scroll"
+        );
+        assert!(app.world().contains_resource::<CreditsPlaying>());
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .release(KeyCode::Escape);
