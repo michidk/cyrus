@@ -271,8 +271,13 @@ mod tests {
 
     #[test]
     fn a_game_beside_the_program_is_found_through_its_parent_folder() {
-        let root = std::env::temp_dir().join(format!("cyrus-locate-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("cyrus-locate-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
         let game = root.join("GOG Games/Redguard/app/Redguard");
         for dir in ["fxart", "maps"] {
             std::fs::create_dir_all(game.join(dir)).unwrap();

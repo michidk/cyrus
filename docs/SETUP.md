@@ -459,17 +459,21 @@ The WASM worker prepares game assets from that manifest and original bytes.
 Original reads use bounded requests, a transport retry and contextual errors.
 See the crate READMEs for the complete mappings.
 
-Both native applications discover `./redguard`, `./Redguard`,
+Without a supplied or usable remembered location, both native applications search
+beside the executable and its ancestors, then discover `./redguard`, `./Redguard`,
 `~/GOG Games/Redguard`, `~/GOG Games/Redguard/app/Redguard`, and on Windows
-`%SystemDrive%/GOG Games/Redguard`. Explicit `--install` and `REDGUARD_DIR` take
-precedence over the remembered native location in `install.json` in the config directory;
-conventional discovery follows when there is no saved location. Windowed game
+`%SystemDrive%/GOG Games/Redguard` and the Program Files GOG Galaxy folders.
+Discovery also checks a Wine prefix (`WINEPREFIX`, otherwise `~/.wine`) and
+`~/Games/Heroic/Redguard`, `~/Games/gog/redguard`, and `~/Games/redguard`.
+Explicit `--install` and `REDGUARD_DIR` take precedence over the remembered native location in `install.json` in the config directory;
+discovery follows when there is no usable saved location and remembers its result. Windowed game
 and viewer launches open a shared install-selection screen when resolution fails.
 Enter a path or choose Browse, then Continue to validate and remember the resolved
 root. The picker, loading progress and game or viewer share one window and process.
 Initial game images are prepared in the background so the window remains responsive.
 Cancel closes the application without changing preferences. A missing or
-invalid remembered folder reopens the picker. Headless, world-listing and export
+invalid remembered folder produces a warning and falls back to discovery. The
+picker opens if discovery also fails. Headless, world-listing and export
 commands report contextual command-line errors instead of opening a window.
 Linux Browse uses a desktop file portal or Zenity; manual input needs neither.
 
