@@ -224,3 +224,7 @@ and stream replacement invalidate the cursor. `generated-pcm.py` checks producer
 pacing without substituting recorder process duration. Native f32 bytes retain
 their raw hash; exported s16 WAV is explicitly a preview conversion. Generated
 samples alone do not prove device playback or original-game PCM parity.
+
+Optional Wasm save requests bridge to the same native session adapter as the book and
+quick save. The host rechecks eligibility before capture and reports completion only
+after the reserved autosave slot commits. Guest code owns periodic timing and retries.

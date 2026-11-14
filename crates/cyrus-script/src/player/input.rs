@@ -633,6 +633,17 @@ const NOMINAL_CENTER_COUNT: f32 = 574.0;
 pub struct DialogueSkip(pub bool);
 
 impl PlayerBindings {
+    /// Physical keyboard keys assigned to any installed or saved action in either slot.
+    pub fn keyboard_keys(&self) -> impl Iterator<Item = KeyCode> + '_ {
+        self.keyboard
+            .iter()
+            .chain(self.joystick.iter())
+            .filter_map(|binding| match binding {
+                Some(Input::Key(scan)) => Some(scan.key()),
+                _ => None,
+            })
+    }
+
     /// Binds the keyboard slot from stored codes in [`Action::ALL`] order; zero is unbound and
     /// any codes past the fifteenth are ignored. An unsupported code is an error naming its
     /// `KEYS.INI` key, rather than a silently substituted control scheme.
@@ -944,6 +955,20 @@ mod tests {
     const KEYBOARD: [u8; 8] = [72, 80, 75, 77, 42, 57, 56, 29];
     // The installed joystick slot: up, down, left, right, then buttons 4, 2, 3, 1.
     const JOYSTICK: [u8; 8] = [138, 139, 136, 137, 135, 133, 134, 132];
+
+    #[test]
+    fn keyboard_keys_reports_use_and_walk_remapping_for_mod_conflict_checks() {
+        for action in [Action::Use, Action::Walk] {
+            let binding = Input::try_from(KeyCode::Backspace).unwrap();
+            let bindings: PlayerBindings = [(action, binding)].into_iter().collect();
+            assert!(
+                bindings
+                    .keyboard_keys()
+                    .any(|key| key == KeyCode::Backspace)
+            );
+            assert!(!bindings.keyboard_keys().any(|key| key == KeyCode::Space));
+        }
+    }
 
     fn bindings() -> PlayerBindings {
         PlayerBindings::from_codes(KEYBOARD)

@@ -253,3 +253,58 @@ fn malformed_snapshots_and_incomplete_or_aliased_bindings_are_rejected() {
     assert_eq!(encode(&state), saved);
     assert!(state.waiting());
 }
+
+#[test]
+fn requested_advance_stops_only_the_displayed_line_and_is_not_restored() {
+    let mut state = empty();
+    let first = state.begin_line(actor(1, 1), "first".into(), Some(2), 100);
+    let second = state.begin_line(actor(1, 2), "second".into(), Some(3), 100);
+    let mut effects = Effects {
+        playing: vec![2, 3],
+        ..Default::default()
+    };
+    state.advance(0, true, false, None, &mut effects).unwrap();
+    assert!(state.request_line_advance());
+    assert!(state.request_line_advance());
+    let snapshot = encode(&state);
+    assert!(snapshot.get("requested_line").is_none());
+    state.advance(0, true, false, None, &mut effects).unwrap();
+    assert!(!state.line_active(first));
+    assert!(state.line_active(second));
+    assert_eq!(
+        effects
+            .events
+            .iter()
+            .filter(|event| *event == "stop 2")
+            .count(),
+        1
+    );
+    assert!(!effects.events.iter().any(|event| event == "stop 3"));
+    assert_eq!(state.presented_line().map(|(_, text)| text), Some("second"));
+}
+
+#[test]
+fn advancing_without_a_displayed_line_does_nothing() {
+    let mut state = empty();
+    assert!(!state.request_line_advance());
+}
+
+#[test]
+fn queued_advance_cannot_skip_a_reused_slot_with_identical_text_and_audio() {
+    let mut state = empty();
+    let first = state.begin_line(actor(1, 1), "repeat".into(), Some(2), 100);
+    let mut effects = Effects {
+        playing: vec![2],
+        ..Default::default()
+    };
+    state.advance(0, true, false, None, &mut effects).unwrap();
+    let token = state.presented_token();
+    assert!(state.request_line_advance());
+    state.clear_line(first);
+    let replacement = state.begin_line(actor(1, 1), "repeat".into(), Some(2), 100);
+    assert_eq!(first, replacement);
+    state.advance(0, true, false, None, &mut effects).unwrap();
+    assert!(state.line_active(replacement));
+    assert_ne!(state.presented_token(), token);
+    assert!(!effects.events.iter().any(|event| event == "stop 2"));
+}

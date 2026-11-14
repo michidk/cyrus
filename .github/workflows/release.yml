@@ -137,7 +137,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }}, wasm32-wasip2
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           shared-key: artifacts-${{ matrix.target }}
@@ -145,7 +145,7 @@ jobs:
       - name: Build and package
         env:
           BUILD_TARGET: ${{ matrix.target }}
-        run: bash dev/scripts/build-artifacts.sh native "$BUILD_TARGET"
+        run: bash dev/scripts/build-artifacts.sh native-mods "$BUILD_TARGET"
       - name: Smoke native executables
         env:
           BUILD_TARGET: ${{ matrix.target }}
@@ -161,6 +161,7 @@ jobs:
           name: native-${{ matrix.target }}
           path: |
             target/artifacts/cyrus-${{ matrix.target }}*
+            target/artifacts/cyrus-with-mods-${{ matrix.target }}*
             target/artifacts/cyrus-viewer-${{ matrix.target }}*
           if-no-files-found: error
           compression-level: 0

@@ -57,6 +57,13 @@ landings clear falling and publish support height without an animation receiver;
 only the animation request is skipped, following the shared
 [request receiver gate](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playanimation).
 
+Health services publish bounded, transient `DamageEvent` observations at their health writes.
+They report actual loss and the query position, including mutations retained before a later
+error. Completed combat health services also attach the attacker's query position when available;
+unattributed damage leaves the source absent. This is an incoming direction for presentation,
+not a measured weapon trajectory. `ScriptWorld::take_damage_events` hands the batch to a presentation adapter; observations
+neither drive gameplay nor persist in snapshots. Direct attribute editing is outside this contract.
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with
@@ -891,3 +898,7 @@ Verified: selected-player water transitions retain forward swimming and exit ani
 for both running and walking motion, following preservation's
 [water transition rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#water-and-lava-transition-effects).
 Backward motion keeps its separate requests; transition sound selection is unchanged.
+
+`DialogueState::request_line_advance` queues only the displayed record for synchronous
+sample teardown on the next ordinary dialogue update. Requests coalesce, are transient,
+and do not select topic choices or alter the original configured skip signal.

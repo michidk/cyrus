@@ -21,6 +21,8 @@ mod attack_input;
 mod camera;
 mod camera_drive;
 pub use camera_drive::{CameraDrive, CameraFrameState, PublishedCamera};
+mod damage;
+pub use damage::DamageEvent;
 mod death_exit;
 mod effects;
 mod health;
@@ -751,6 +753,7 @@ pub struct ScriptWorld {
     /// Natives a mod watches and the calls made to them since the log was last taken; not saved.
     native_watch: BTreeSet<Native>,
     native_calls: Vec<NativeCall>,
+    damage: damage::DamageLog,
     weapons: BTreeMap<u16, cyrus_assets::script::weapon::Weapon>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
@@ -1753,6 +1756,7 @@ impl ScriptWorld {
             player_tempo: (1.0, 0.0),
             native_watch: BTreeSet::new(),
             native_calls: Vec::new(),
+            damage: Default::default(),
             weapons: scripts.weapons.clone(),
             combat_attacks: scripts.combat_attacks.clone(),
             combat_defenses: scripts.combat_defenses.clone(),
@@ -5783,8 +5787,10 @@ impl GameHost<'_, '_, '_, '_> {
         kills: bool,
     ) -> Result<()> {
         let attributes = &mut self.registry.actors[self.index].attributes;
-        let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
+        let before = attributes[Attribute::Health];
+        let sum = i32::from(before).wrapping_add(amount);
         attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
+        self.registry.observe_health_loss(self.index, before);
         if kills && sum <= 0 {
             let holding = self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0;
             let ticks = self
@@ -10310,6 +10316,7 @@ mod fighting_tests {
             player_tempo: (1.0, 0.0),
             native_watch: BTreeSet::new(),
             native_calls: Vec::new(),
+            damage: Default::default(),
             weapons: BTreeMap::new(),
             combat_attacks: Vec::new(),
             combat_defenses: Vec::new(),

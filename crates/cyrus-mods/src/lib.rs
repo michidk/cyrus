@@ -20,6 +20,9 @@
 //! saved to `mods.json` there; the backtick debug menu lists the mods next to it.
 //! Active mod files are polled and reloaded when they change.
 mod api;
+pub mod gameplay;
+mod ownership;
+mod particles;
 mod settings;
 
 use anyhow::{Context, ensure};
@@ -133,7 +136,8 @@ impl Plugin for ModsPlugin {
             error!("mods: {error:#}");
             ModSettings::default()
         });
-        app.add_plugins(ModLoaderPlugin::default().add_functionality(add_components_to_linker))
+        app.add_plugins(bevy_hanabi::HanabiPlugin)
+            .add_plugins(ModLoaderPlugin::default().add_functionality(add_components_to_linker))
             .register_type::<Vec<f32>>()
             .insert_resource(catalog)
             .insert_resource(settings)
@@ -145,8 +149,26 @@ impl Plugin for ModsPlugin {
             .init_resource::<cyrus_script::player::input::PlayerRequests>()
             .init_resource::<cyrus_script::player::input::CameraOrbit>()
             .init_resource::<cyrus_script::player::input::CollisionProbes>()
+            .init_resource::<particles::ParticleState>()
+            .init_resource::<ownership::Owners>()
+            .add_systems(
+                bevy::prelude::PostUpdate,
+                particles::update
+                    .before(bevy::transform::TransformSystems::Propagate)
+                    .before(bevy_hanabi::EffectSystems::CompileEffects)
+                    .before(bevy_hanabi::EffectSystems::TickSpawners),
+            )
             .add_systems(Startup, api::spawn_host)
-            .add_systems(PreUpdate, api::exchange)
+            .add_systems(
+                PreUpdate,
+                (
+                    ownership::publish,
+                    api::exchange,
+                    particles::publish,
+                    gameplay::publish,
+                )
+                    .chain(),
+            )
             .add_systems(Update, (watch, apply).chain())
             .add_systems(
                 EguiPrimaryContextPass,

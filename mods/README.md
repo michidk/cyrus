@@ -1,12 +1,22 @@
 # Bundled mods
 
-Native-only WebAssembly mods shipped with cyrus. Each folder with a `mod.toml` is its own Cargo
-crate (outside the game workspace) built for `wasm32-wasip2` against the shared SDK in `mods/sdk`; `just mods` builds
+Native mods shipped with cyrus. The `cyrus-with-mods-<target>` downloads from
+releases and PR artifact runs contain every mod in the built source revision.
+Extract the entire archive and run cyrus from that directory to use its included
+`game-config/mods`. `CYRUS_CONFIG_DIR` overrides that location. Mods start disabled;
+open Backtick and select Mods to enable them. The plain game downloads remain available.
+
+Mods with a Cargo crate are outside the game workspace and build for
+`wasm32-wasip2` against the shared SDK in `mods/sdk`. Others contain only a
+manifest or shaders. From source, `just mods` builds
 them all and installs them into `game-config/mods/<folder>/`. Activate them in
 the Mods window that opens with Backtick. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
+| `dialogue-skip` | dialogue, input, settings | Advance one displayed spoken line per press, retaining topic choices |
+| `autosave` | saves, input, memory, settings, hud | Periodic transactional saves during eligible gameplay |
+| `blood` | damage, particles, settings | A brief spray of fading red particles on actual player or actor health loss |
 | `modern-water` | environment, effects, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
@@ -165,8 +175,8 @@ against the WIT directly.
   claimed player then walks and runs in the fight animations and `speed` returns
   the fight speeds) and `speed(run)` (the player's own walk or run speed per
   nominal update, the base for a speed scale).
-- `settings`: `flag(id, key)`, `number(id, key)` and `choice(id, key)` read the
-  player's values; `id` is the mod's folder name. Read them every frame so a
+- `settings`: `cx.settings.flag("key")`, `number("key")` and `choice("key")` read the
+  player's values. The SDK supplies the mod id. Read settings every frame so a
   change in the window takes effect at once.
 - `memory`: `load(key)` and `save(key, values)` keep a list of numbers between
   frames for the session. wasvy starts a fresh instance of the mod for every
@@ -174,13 +184,106 @@ against the WIT directly.
   next frame; keep state here, under keys prefixed with the mod's folder name.
 - `hud`: `show(line)` draws a line of text in the top-left corner for this frame;
   call it every frame the text should stay.
-- `input`: `pressed` and `tapped` (Bevy `KeyCode` names), `mouse` (pixels),
-  `delta` (seconds).
+- `input`: `cx.input.down(Key::INSERT)` and `tapped(Key::INSERT)` use SDK `Key`
+  values; `mouse()` returns pixels and `delta()` returns seconds. The raw WIT
+  calls `down` by the name `pressed` and takes Bevy `KeyCode` names.
 
 The SDK queries each hook with the mutability wasvy needs, so a mod never sees it.
 
-Answers apply one frame after they are written. A hook a mod stops answering
-returns to the original behaviour.
+Camera, movement and shader answers apply one frame after they are written. A hook a mod stops
+answering returns to the original behaviour. Particle emissions run after the current frame's
+`Update`; the engine owns their motion and lifetime after emission.
+
+## Damage-driven particles
+
+`mods/blood` is a complete example of an event-driven mod. Its `frame` reads
+`cx.damage.events()` and calls `cx.particles.burst(ParticleBurst { ... })`. The mod chooses
+droplet sizes, red color, gravity and the spray direction; these are mod preferences. It needs no game assets,
+shader replacement, movement takeover or guest state between frames.
+
+A damage event contains the actor's script name, actual health lost and an optional
+position in map units with original axes. Combat events also include `source`, the
+known attacker position in those units. This is an incoming direction, not a
+measured blade velocity or exact wound location. Environmental damage and health
+services without an attributable attacker leave it absent. Names can repeat across actor instances;
+use them to filter by actor type, not as unique handles. A missing position means
+that the health service had no spatial state to publish; skip visual effects for it.
+The host captures events when health services reduce health, including scripted,
+contact, environmental and fatal loss. Healing, blocked hits and raw attribute edits
+are not damage-service events. A later failure does not undo health already written
+or its event. Each `PreUpdate` replaces the batch with up to 4096 recent events,
+oldest first. All mods see the same batch; reading it does not consume it. Historical
+events are not saved or replayed after loading a save.
+
+Particle geometry uses the same **scene coordinates** as camera poses, with Y up.
+`position.map_to_scene()` converts a damage event's map-unit point, including the
+world origin; do not use point conversion for velocities. Particle velocity is in
+scene units per second and acceleration in scene units per second squared. For example:
+
+```rust
+use cyrus_mod_sdk::{ParticleBurst, Vec3};
+for event in cx.damage.events() {
+    let Some(position) = event.position else { continue; };
+    let origin = position.map_to_scene();
+    let direction = event.source
+        .and_then(|source| (origin - source.map_to_scene()).normalized())
+        .unwrap_or(Vec3::new(0.0, -1.0, 0.0));
+    cx.particles.burst(ParticleBurst {
+        position: origin, direction,
+        acceleration: Vec3::new(0.0, -9.8, 0.0),
+        color: [0.52, 0.025, 0.018, 0.95],
+        speed: [3.0, 6.0], radius: [0.025, 0.06], lifetime: [0.4, 0.7],
+        spread: 0.38, stretch: 2.4, count: 16,
+    });
+}
+```
+
+The host uses [Hanabi](https://crates.io/crates/bevy_hanabi), the Bevy GPU particle
+system. Each burst shares one GPU program with other bursts; parameters are instance
+properties. Rounded droplets face the camera and stretch along their velocity.
+They retain their color initially and fade at the end. They have no collision and
+leave no marks. Motion and expiry use Bevy's virtual game time. GPU preparation does not consume
+a burst's particle lifetime. Disable or completed
+hot reload removes that mod's effects; changing or unloading the world removes all
+effects. Queued bursts retain the submitting world and loaded mod revision.
+
+`burst` returns false for an inactive owner, absent world, invalid input or exhausted
+queue. Position, direction and acceleration need three finite values within +/-1e6;
+direction must be nonzero and is normalized by the host. Color is sRGB RGBA in 0..=1.
+Speed, radius and lifetime are ordered min/max pairs in 0..=1000 scene units per
+second, 0.001..=10 scene units and 0.01..=10 seconds respectively. Spread is 0..=1
+and bounds each lateral velocity component relative to the forward component;
+stretch is 1..=8. Count is 1..=64 per burst. Queued and live limits count particles,
+256 per mod and 1024 total; overflow drops whole bursts. The SDK supplies the mod id.
+The mod can use two bursts for coarse droplets and a shorter, finer spray.
+
+To build and try the example:
+
+```sh
+rustup target add wasm32-wasip2
+cargo test --manifest-path mods/blood/Cargo.toml
+just mods
+cargo run -p cyrus -- --scene START
+```
+
+Open Backtick and enable **Blood particles** in the Mods window. Its amount and lifetime
+settings apply to new emissions immediately. Damage a combatant to exercise actual
+health-service events; setting a health attribute directly is not a substitute. Turn
+the mod off to verify cleanup. `cargo test --manifest-path mods/sdk/Cargo.toml` checks
+the SDK's pure helpers. Mods and this renderer are native-only; a `--headless` game
+run does not load mods or render particles.
+
+For an isolated guest/host check, build `mods/blood` for `wasm32-wasip2 --release`, set
+`CYRUS_BLOOD_WASM` to the resulting `blood.wasm` and run
+`cargo test -p cyrus-mods --lib wasm_blood_particles -- --ignored --nocapture`.
+The test loads the real component, supplies a damage event, checks its emissions and
+verifies disabling it removes entities and materials. It needs no game install.
+Setting `CYRUS_PARTICLE_CAPTURE` to a new PNG path also enables an offscreen GPU
+capture; this needs a Vulkan-capable runtime. Cargo reports its output root as
+`target_directory` in `cargo metadata --no-deps --format-version 1`; the component is
+under `wasm32-wasip2/release/` there. Both `just mods` and this workflow respect an
+inherited `CARGO_TARGET_DIR`.
+
 
 **Shading** (`[[shader]]`). Any shader asset can be replaced; list each one in
 `mod.toml`:
@@ -233,3 +336,36 @@ the replacement is read from the mod folder, so ship only data you made yourself
 If several active mods supply a path, the first by id wins. The files are read when
 the game starts, so toggling such a mod needs a restart (the Mods window says so).
 Turning the mod off restores the original, and cached assets rebuild by content.
+
+## Dialogue and save services
+
+`dialogue-skip` advances one displayed spoken line per press. Backspace is the default;
+its Mods settings can choose Space instead. A key assigned to a game action is refused with a notice,
+so it cannot also activate a topic choice or the original all-lines skip. It leaves topic choices to the
+player. Its Wasm guest owns the key binding and press-edge policy. The host queues the
+currently displayed record, stops its sample synchronously through the audio owner,
+and lets ordinary script continuation resume. It never chooses a topic or skips a
+whole conversation. Disabling the mod restores the existing controls.
+
+`autosave` counts eligible gameplay time and requests a save after 300 seconds by
+default, configurable from 60 to 1800 seconds. Menus, the console, loading, dialogue,
+drawn weapons, airborne movement and death defer the timer. A single stalled frame
+contributes at most one second, preventing a pause from immediately triggering a save. It writes reserved autosave
+slot one through the existing native session adapter, retaining manual slots and the
+quick-save slot. Quit can still replace the same reserved autosave. A successful save
+becomes the retained last-save selection for death reload. A failed save shows the
+storage error and retries after 30 eligible seconds. Notifications can be disabled.
+Both mods default to inactive and install with `just mods`.
+
+The SDK exposes `cx.dialogue.available()` and `cx.dialogue.advance()` for one-line
+advancement, and `cx.saves.ready()`, `save()`, `status()` and `error()` for storage.
+Both calls return queue acceptance; `SaveStatus::Saved` means native storage committed.
+`Failed` reports a terminal error, and `Pending` must finish before another request.
+Terminal results remain until the same guest starts another request or its loaded revision changes. The host checks
+eligibility again when consuming requests, rejects disabled guests and stale worlds,
+and serializes all saves through the existing storage boundary. Requests from expired guest
+incarnations are discarded; an eligibility change in the same incarnation reports failure. Guest owner IDs follow
+the SDK's folder name convention; they are lifecycle namespaces, not a security boundary.
+
+These hooks keep policy in the guest. A mod should own its keys, interval, retry timing
+and notifications, while the host owns speech teardown, snapshot validation and storage.

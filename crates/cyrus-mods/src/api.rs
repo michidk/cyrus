@@ -22,6 +22,49 @@ use cyrus_soup::{AnimationGroup, Native};
 use std::collections::{BTreeSet, HashMap};
 use wasvy::prelude::*;
 
+/// Actual health loss published once per frame to every mod.
+#[derive(Component, Reflect, Default, WasvyComponent)]
+#[reflect(Component)]
+pub struct Damage {
+    events: Vec<DamageHit>,
+}
+
+#[derive(Reflect)]
+struct DamageHit {
+    actor: String,
+    loss: u32,
+    position: Vec<f32>,
+    source: Vec<f32>,
+}
+
+#[wasvy::methods]
+impl Damage {
+    pub fn count(&self) -> u32 {
+        self.events.len() as u32
+    }
+    pub fn actor(&self, index: u32) -> String {
+        self.events
+            .get(index as usize)
+            .map(|e| e.actor.clone())
+            .unwrap_or_default()
+    }
+    pub fn loss(&self, index: u32) -> u32 {
+        self.events.get(index as usize).map_or(0, |e| e.loss)
+    }
+    pub fn position(&self, index: u32) -> Vec<f32> {
+        self.events
+            .get(index as usize)
+            .map(|e| e.position.clone())
+            .unwrap_or_default()
+    }
+    pub fn source(&self, index: u32) -> Vec<f32> {
+        self.events
+            .get(index as usize)
+            .map(|event| event.source.clone())
+            .unwrap_or_default()
+    }
+}
+
 /// Facts about the loaded world and the presentation, published each frame
 /// ([`cyrus_render::hooks::WorldFacts`]).
 #[derive(Component, Reflect, Default, WasvyComponent)]
@@ -364,10 +407,15 @@ pub struct Input {
     just_pressed: Vec<String>,
     mouse_delta: Vec<f32>,
     delta_seconds: f32,
+    bound_keys: Vec<String>,
 }
 
 #[wasvy::methods]
 impl Input {
+    /// Whether a key belongs to a game action, using the active game bindings.
+    pub fn bound(&self, key: String) -> bool {
+        self.bound_keys.contains(&key)
+    }
     pub fn held(&self, action: String) -> bool {
         self.held.contains(&action)
     }
@@ -390,6 +438,10 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Name::new("cyrus mod API"),
         Environment::default(),
         Actors::default(),
+        (
+            crate::gameplay::Dialogue::default(),
+            crate::gameplay::Saves::default(),
+        ),
         Camera::default(),
         Movement::default(),
         Settings::default(),
@@ -400,6 +452,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Effects::default(),
         Hud::default(),
         Input::default(),
+        (Damage::default(), crate::particles::Particles::default()),
     ));
 }
 
@@ -415,6 +468,7 @@ type Host = (
     &'static mut Natives,
     &'static mut Effects,
     &'static mut Input,
+    &'static mut Damage,
 );
 /// Engine-side resources the mod answers are handed to.
 #[derive(SystemParam)]
@@ -462,6 +516,7 @@ pub(crate) fn exchange(
         mut natives,
         mut effects,
         mut input,
+        mut damage,
     )) = host.single_mut()
     else {
         return;
@@ -504,6 +559,20 @@ pub(crate) fn exchange(
     out.claimed.0 = take_claim(&mut steering);
     exchange_collision(&mut out.probes, &mut collision);
     natives.calls = exchange_natives(&mut natives, src.actors.as_deref_mut());
+    damage.events = src
+        .actors
+        .as_deref_mut()
+        .and_then(|actors| actors.current.as_mut())
+        .map(|world| world.take_damage_events())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|event| DamageHit {
+            actor: event.name,
+            loss: u32::from(event.loss),
+            position: event.position.map(Vec::from).unwrap_or_default(),
+            source: event.source_position.map(Vec::from).unwrap_or_default(),
+        })
+        .collect();
     publish_player(&mut player, src.actors.as_deref());
     camera.pose = src.view.single().map_or_else(
         |_| Vec::new(),
@@ -524,6 +593,12 @@ pub(crate) fn exchange(
             u32::from(camera.view_angles[1].wrapping_neg() & 2047)
         });
 
+    input.bound_keys = src
+        .bindings
+        .bindings()
+        .keyboard_keys()
+        .map(|key| format!("{key:?}"))
+        .collect();
     // Keys typed into the console or read in the logbook are not the mods'.
     let typing = src.console.as_deref().is_some_and(|console| console.open)
         || src
@@ -880,3 +955,11 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "particle_runtime_test.rs"]
+mod particle_runtime_test;
+
+#[cfg(test)]
+#[path = "gameplay_runtime_test.rs"]
+mod gameplay_runtime_test;

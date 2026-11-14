@@ -348,6 +348,15 @@ The `Release` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. Both applications are built from this workspace.
+Each native build also produces `cyrus-with-mods-<target>.tar.gz` on Linux and
+macOS, or `cyrus-with-mods-<target>.zip` on Windows. It contains cyrus and every
+mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
+guests, shaders and authored file overlays. Mods are installed but disabled by
+default. Extract the whole archive and launch from the extracted directory,
+then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
+included `game-config` directory. The ordinary downloads remain available.
+No package contains the original game data or the builder's local state.
+
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
@@ -360,7 +369,9 @@ The site contains application code only. Choose a local GOG game folder in the
 browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
-They do not build release archives. Release builds run only for stable `vX.Y.Z`
+Pull requests also run `PR artifacts`, which makes the same native packages,
+including the mod bundles, and the browser archive available from the run
+summary for seven days. It does not publish a release. Release builds run only for stable `vX.Y.Z`
 tags, either when pushed or dispatched from the default branch with a `tag` input
 such as `v0.2.0`. A tag push dispatches the build on the default branch; every
 build still checks out the specified tag. This saves compiled dependencies in

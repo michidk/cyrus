@@ -290,7 +290,9 @@ impl ScriptWorld {
         } else {
             AnimationGroup::DEATH_EXPLORE
         };
+        let before = self.actors[index].attributes[Attribute::Health];
         self.actors[index].attributes[Attribute::Health] = health;
+        self.observe_health_loss(index, before);
         if health == 0 && holding {
             // An armed receiver dies through the contact death dispatch with selector zero.
             if self.updates.animation_system {

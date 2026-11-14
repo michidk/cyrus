@@ -12094,6 +12094,10 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .unwrap()
     );
     assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 90);
+    let damage = world.take_damage_events();
+    assert_eq!(damage.len(), 1);
+    assert_eq!((damage[0].actor, damage[0].loss), (id, 10));
+    assert_eq!(damage[0].source_position, None);
     world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     let decision = world
         .resolve_ordinary_landing_damage(
@@ -23561,6 +23565,23 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             );
         }
     }
+}
+
+#[test]
+fn native_nonplayer_health_reports_actual_loss_without_replaying_healing() {
+    let mut world = run_native_world(&[
+        (Native::SetHealth, &[60]),
+        (Native::AdjustHealth, &[-20, 0]),
+        (Native::AdjustHealth, &[5, 0]),
+        (Native::AdjustHealth, &[-10, 0]),
+    ])
+    .unwrap();
+    let events = world.take_damage_events();
+    assert_eq!(
+        events.iter().map(|event| event.loss).collect::<Vec<_>>(),
+        [20, 10]
+    );
+    assert!(world.take_damage_events().is_empty());
 }
 
 #[test]
@@ -35376,6 +35397,17 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
             )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[Attribute::Health], expected);
+        let damage = world.take_damage_events();
+        if expected < health as u8 {
+            assert_eq!(damage.len(), 1);
+            assert_eq!(damage[0].actor, id);
+            assert_eq!(damage[0].loss, health as u8 - expected);
+            assert_eq!(damage[0].name, world.actors()[0].name());
+            assert!(damage[0].position.is_some());
+        } else {
+            assert!(damage.is_empty());
+        }
+        assert!(world.take_damage_events().is_empty());
         assert_eq!(
             world.actors()[0].control_state().unwrap().ai_type,
             AiType::NONE
@@ -35761,6 +35793,10 @@ fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound()
         );
         assert_eq!(calls, 2);
         assert_eq!(result.is_err(), fail_reset_sound);
+        let damage = world.take_damage_events();
+        assert_eq!(damage.len(), 1);
+        assert_eq!(damage[0].actor, id);
+        assert_eq!(damage[0].loss, 7);
         assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
         assert_eq!(
             world.globals().selected_health().unwrap().displayed(),
@@ -41947,6 +41983,12 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
     world.set_attribute_for_test(sender, Attribute::Damage, 12);
+    let source = world
+        .spatial(sender)
+        .unwrap()
+        .local
+        .position
+        .map(|q8| q8 as f32 / 256.0);
     let before = world.spatial(receiver).unwrap().local.position;
     world
         .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
@@ -41967,6 +42009,10 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
             &mut |_, _| Ok(()),
         )
         .unwrap();
+    let events = world.take_damage_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].actor, receiver);
+    assert_eq!(events[0].source_position, Some(source));
     assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
     assert_ne!(world.spatial(receiver).unwrap().local.position, before);
     assert_eq!(world.globals().selected_health().unwrap().displayed(), 38);

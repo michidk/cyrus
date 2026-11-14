@@ -379,6 +379,11 @@ impl Hud {
 pub struct Input(pub(crate) raw::Input);
 
 impl Input {
+    /// Whether the game owns this key through an installed or saved game action.
+    pub fn bound(&self, key: Key) -> bool {
+        self.0.bound(key.name())
+    }
+
     /// The key is held.
     pub fn down(&self, key: Key) -> bool {
         self.0.pressed(key.name())
