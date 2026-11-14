@@ -15,6 +15,50 @@ spec.loader.exec_module(server)
 
 
 class OriginalServerTest(unittest.TestCase):
+    def test_cd_media_is_served_without_gog_companions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            install = root / "Redguard"
+            (install / "fxart").mkdir(parents=True)
+            (install / "maps").mkdir()
+            (install / "RGFX.EXE").write_bytes(b"synthetic executable")
+            (root / "CDROM").mkdir()
+            (root / "Soundtrack").mkdir()
+            movie = b"synthetic movie frames"
+            track = b"synthetic ripped audio"
+            (root / "CDROM/INTRO.SMK").write_bytes(movie)
+            (root / "Soundtrack/01 Track 1.mp3").write_bytes(track)
+            (root / "Soundtrack/02 Track 2.MP3").write_bytes(b"second track")
+            (root / "Soundtrack/cover.jpg").write_bytes(b"not audio")
+            (root / "private").write_bytes(b"not selected media")
+            (root / "CDROM/leak.smk").symlink_to(root / "private")
+            paths, manifest = server.original_files(install)
+            listing = {item["path"]: item for item in json.loads(manifest)["files"]}
+            for name, payload in [("disc/INTRO.SMK", movie), ("disc/track02.mp3", track),
+                                  ("disc/track03.mp3", b"second track")]:
+                self.assertIn(name, listing)
+                self.assertEqual(listing[name]["bytes"], len(payload))
+            self.assertNotIn("disc/leak.smk", paths)
+            self.assertNotIn("disc/cover.jpg", paths)
+            self.assertNotIn("disc/game.gog", paths)
+            handler = functools.partial(server.Handler, directory=str(root), originals=paths,
+                                        manifest=manifest, install=install)
+            service = server.Server(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=service.serve_forever, daemon=True)
+            thread.start()
+            client = http.client.HTTPConnection("127.0.0.1", service.server_port, timeout=5)
+            try:
+                for name, payload in [("disc/INTRO.SMK", movie), ("disc/track02.mp3", track)]:
+                    client.request("GET", "/original/" + name, headers={"Range": "bytes=2-8"})
+                    response = client.getresponse()
+                    self.assertEqual(response.status, 206)
+                    self.assertEqual(response.read(), payload[2:9])
+            finally:
+                client.close()
+                service.shutdown()
+                service.server_close()
+                thread.join()
+
     def test_manifest_ranges_and_unavailable_originals(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

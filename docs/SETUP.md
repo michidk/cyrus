@@ -16,6 +16,9 @@ For player controls, saving, resuming and current limitations, see
   install folder, and the CD music from the ripped `Soundtrack/` MP3s
   (`01 Track 1.mp3` is CD track 2) placed beside it. The CD repack's own
   DOSBox setup mounts `CDROM/` as a plain directory and plays no music.
+  The browser install server (`--install`) exposes these sibling media folders
+  to both the game and viewer. Local browser folder selection still requires
+  the GOG companion files.
 - Stable Rust (`rust-toolchain.toml`), `just`, and for a window Bevy's usual
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker, for the original game and for the virtual-display runner.
