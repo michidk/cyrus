@@ -407,15 +407,10 @@ pub struct Input {
     just_pressed: Vec<String>,
     mouse_delta: Vec<f32>,
     delta_seconds: f32,
-    bound_keys: Vec<String>,
 }
 
 #[wasvy::methods]
 impl Input {
-    /// Whether a key belongs to a game action, using the active game bindings.
-    pub fn bound(&self, key: String) -> bool {
-        self.bound_keys.contains(&key)
-    }
     pub fn held(&self, action: String) -> bool {
         self.held.contains(&action)
     }
@@ -438,10 +433,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Name::new("cyrus mod API"),
         Environment::default(),
         Actors::default(),
-        (
-            crate::gameplay::Dialogue::default(),
-            crate::gameplay::Saves::default(),
-        ),
+        crate::gameplay::Saves::default(),
         Camera::default(),
         Movement::default(),
         Settings::default(),
@@ -598,12 +590,6 @@ pub(crate) fn exchange(
             u32::from(camera.view_angles[1].wrapping_neg() & 2047)
         });
 
-    input.bound_keys = src
-        .bindings
-        .bindings()
-        .keyboard_keys()
-        .map(|key| format!("{key:?}"))
-        .collect();
     // Keys typed into the console or read in the logbook are not the mods'.
     let typing = src.console.as_deref().is_some_and(|console| console.open)
         || src

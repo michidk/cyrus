@@ -42,37 +42,6 @@ fn current(world: &World) -> Option<(u32, u64)> {
     Some((actors.world, actors.generation()))
 }
 
-/// Finish a displayed speech line through the synchronous audio owner.
-#[derive(Component, Reflect, Default, WasvyComponent)]
-#[reflect(Component)]
-pub struct Dialogue {
-    available: bool,
-    pending: Option<(Request, usize, u64)>,
-    world: Option<(u32, u64)>,
-    line: Option<(usize, u64)>,
-    owners: HashMap<String, Owner>,
-}
-
-#[wasvy::methods]
-impl Dialogue {
-    pub fn available(&mut self) -> bool {
-        self.available
-    }
-    pub fn advance(&mut self, owner: String) -> bool {
-        if !self.available || self.pending.is_some() {
-            return false;
-        }
-        let Some(request) = request(owner, &self.owners, self.world) else {
-            return false;
-        };
-        let Some((index, revision)) = self.line else {
-            return false;
-        };
-        self.pending = Some((request, index, revision));
-        true
-    }
-}
-
 #[derive(Reflect, Clone)]
 enum SaveState {
     Pending,
@@ -129,53 +98,6 @@ impl Saves {
         self.pending = Some(request);
         true
     }
-}
-
-pub(crate) fn publish(
-    mut dialogue: Query<&mut Dialogue>,
-    catalog: Res<Catalog>,
-    incarnations: Res<Owners>,
-    mut actors: Option<ResMut<ScriptActors>>,
-    state: Option<Res<State<cyrus_game::AppState>>>,
-    console: Option<Res<cyrus_console::Console>>,
-) {
-    let Ok(mut hook) = dialogue.single_mut() else {
-        return;
-    };
-    let in_game = state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
-        && !console.is_some_and(|console| console.open || console.blocked);
-    let world = actors
-        .as_deref_mut()
-        .and_then(|actors| actors.current.as_mut());
-    let Some(world) = world else {
-        hook.available = false;
-        hook.pending = None;
-        return;
-    };
-    let stamp = (world.world, world.generation());
-    let active = owners(&catalog, &incarnations);
-    let eligible =
-        in_game && world.globals().lockout() == Some(1) && world.globals().menu_state() == 0;
-    if let Some((request, index, revision)) = hook.pending.take()
-        && eligible
-        && request.world == stamp
-        && active.get(&request.owner) == Some(&request.incarnation)
-        && let Some(lines) = world.globals_mut().dialogue_mut()
-        && lines.presented_token() == Some((index, revision))
-    {
-        lines.request_line_advance();
-    }
-    hook.world = Some(stamp);
-    hook.owners = active;
-    hook.line = world
-        .globals()
-        .dialogue()
-        .and_then(|lines| lines.presented_token());
-    hook.available = eligible
-        && world
-            .globals()
-            .dialogue()
-            .is_some_and(|lines| lines.presented_line().is_some());
 }
 
 /// Native storage adapter publishes live eligibility before consuming a request.
@@ -240,25 +162,6 @@ pub fn finish_save(world: &mut World, result: Result<(), String>) {
             hook.states.insert(owner, SaveState::Failed(error));
         }
     }
-}
-
-#[cfg(test)]
-pub(crate) fn dialogue_fixture(world: &mut World) -> bool {
-    let owners = world.resource::<Owners>();
-    let active: HashMap<_, _> = owners
-        .active
-        .iter()
-        .map(|(id, owner)| (id.clone(), *owner))
-        .collect();
-    let stamp = owners.world;
-    let mut query = world.query::<&mut Dialogue>();
-    let mut hook = query.single_mut(world).unwrap();
-    let requested = hook.pending.take().is_some();
-    hook.available = true;
-    hook.world = stamp;
-    hook.owners = active;
-    hook.line = Some((1, 1));
-    requested
 }
 
 #[cfg(test)]
@@ -373,24 +276,5 @@ mod tests {
                 }
             );
         }
-    }
-    #[test]
-    fn dialogue_requires_an_active_owner_and_coalesces_requests() {
-        let mut dialogue = Dialogue {
-            available: true,
-            world: Some((1, 1)),
-            line: Some((1, 1)),
-            owners: HashMap::from([(
-                "dialogue-skip".into(),
-                Owner {
-                    instance: Entity::PLACEHOLDER,
-                    revision: 1,
-                },
-            )]),
-            ..Default::default()
-        };
-        assert!(!dialogue.advance("unknown".into()));
-        assert!(dialogue.advance("dialogue-skip".into()));
-        assert!(!dialogue.advance("dialogue-skip".into()));
     }
 }
