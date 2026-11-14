@@ -4,8 +4,8 @@ Installed splash/title presentation, the book menu and settings, cinematic playb
 world-entry loading, and the installed logbook reader. Book motion and helpers remain internal.
 The book is a real 3D scene: its models are meshes under a perspective camera that renders into the
 640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
-Page text, widgets and pictures are painted on the CPU into the page textures. F11 Flycam also flies
-this camera in the book menu. While it is enabled the menu ignores the keyboard, unless F11's
+Page text, widgets and pictures are painted on the CPU into the page textures. Backtick Flycam also flies
+this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
 on the same kind of camera, drawn by one shared lit material that applies the original's per-channel
