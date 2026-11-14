@@ -53,3 +53,56 @@ fn subtitles_wrap_and_place_like_the_original() {
         (Some(73), Some(565), Some(423), Some(439))
     );
 }
+
+#[test]
+fn installed_subtitle_replacement_updates_the_public_overlay() {
+    use bevy::prelude::*;
+    use cyrus_render::subtitles::{SubtitlePlugin, SubtitleRequest};
+
+    let Some(install) = install("subtitle replacement") else {
+        return;
+    };
+    let font = cyrus_text::Font::from(
+        &rgpre::import::fnt::parse_fnt(
+            &std::fs::read(install.root.join("fonts/REDSEL.FNT")).unwrap(),
+        )
+        .unwrap(),
+    );
+    let ini = cyrus_assets::install::system_ini(&install).unwrap();
+    let alpha =
+        font_alpha(cyrus_assets::sound::ini_value(&ini, "3dfx", "font_sel").unwrap_or("255,255"))
+            .unwrap();
+    let mut app = App::new();
+    app.init_resource::<Time<Real>>()
+        .init_resource::<Assets<Image>>()
+        .insert_resource(install)
+        .add_plugins(SubtitlePlugin);
+    app.update();
+    let request = |text: &str| SubtitleRequest::Speech {
+        text: text.into(),
+        seconds: 2.0,
+    };
+    app.world_mut().write_message(request("A"));
+    app.update();
+    app.world_mut().write_message(SubtitleRequest::StopAll);
+    app.world_mut().write_message(request("AA"));
+    app.update();
+    let image = app
+        .world_mut()
+        .query::<&ImageNode>()
+        .single(app.world())
+        .unwrap()
+        .image
+        .clone();
+    assert_eq!(
+        app.world()
+            .resource::<Assets<Image>>()
+            .get(&image)
+            .unwrap()
+            .data
+            .as_ref()
+            .unwrap(),
+        &draw(&font, "AA", alpha),
+        "reusing the active slot must publish the replacement installed glyphs"
+    );
+}

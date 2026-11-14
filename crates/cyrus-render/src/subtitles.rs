@@ -67,7 +67,7 @@ pub struct SubtitleFont {
     /// Main and shadow alpha of the NPC copy: `B` and `B × 200 / 256` of `[3dfx] font_sel`.
     alpha: [u8; 2],
     slots: Vec<Option<Line>>,
-    shown: Option<usize>,
+    shown: Option<(usize, String)>,
     overlay: Option<(Entity, Handle<Image>)>,
 }
 
@@ -157,23 +157,25 @@ fn show_lines(
     let shown = font
         .slots
         .iter()
-        .position(Option::is_some)
+        .enumerate()
+        .find_map(|(index, line)| line.as_ref().map(|line| (index, line.text.as_str())))
         .filter(|_| visible);
-    if shown == font.shown {
+    if shown
+        == font
+            .shown
+            .as_ref()
+            .map(|(index, text)| (*index, text.as_str()))
+    {
         return;
     }
-    font.shown = shown;
+    font.shown = shown.map(|(index, text)| (index, text.to_owned()));
     if let Some((entity, _)) = font.overlay.take() {
         commands.entity(entity).despawn();
     }
-    let Some(index) = shown else {
+    let Some((_, text)) = &font.shown else {
         return;
     };
-    let text = font.slots[index]
-        .as_ref()
-        .map(|l| l.text.clone())
-        .unwrap_or_default();
-    let rgba = draw(&font.font, &text, font.alpha);
+    let rgba = draw(&font.font, text, font.alpha);
     let image = images.add(Image::new(
         Extent3d {
             width: WIDTH as u32,
@@ -232,8 +234,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    #[test]
-    fn subtitle_requests_draw_expire_and_stop_without_an_audio_plugin() {
+    fn subtitle_app() -> App {
         let mut app = App::new();
         app.init_resource::<Time<Real>>()
             .init_resource::<Assets<Image>>()
@@ -257,6 +258,57 @@ mod tests {
                 overlay: None,
             })
             .add_plugins(SubtitlePlugin);
+        app
+    }
+
+    #[test]
+    fn stop_then_speech_in_one_update_replaces_the_presented_text() {
+        let mut app = subtitle_app();
+        let request = |text: &str| SubtitleRequest::Speech {
+            text: text.into(),
+            seconds: 2.0,
+        };
+        app.world_mut().write_message(request("A"));
+        app.update();
+        app.world_mut().write_message(SubtitleRequest::StopAll);
+        app.world_mut().write_message(request("AA"));
+        app.update();
+        let image = app
+            .world_mut()
+            .query::<&ImageNode>()
+            .single(app.world())
+            .unwrap()
+            .image
+            .clone();
+        let pixels = app
+            .world()
+            .resource::<Assets<Image>>()
+            .get(&image)
+            .unwrap()
+            .data
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|pixel| **pixel == [252, 0, 0, 255])
+                .count(),
+            2
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&ImageNode>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn subtitle_requests_draw_expire_and_stop_without_an_audio_plugin() {
+        let mut app = subtitle_app();
         app.world_mut().write_message(SubtitleRequest::Speech {
             text: "A".into(),
             seconds: 2.0,

@@ -41,8 +41,12 @@ Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition
 translates speech requests into `subtitles::SubtitleRequest` before
-`UpdateSubtitles`; the renderer owns text timing, slots and drawing. Game hosts
-select the view camera for audio listener updates. The isolated consumer check
+`UpdateSubtitles`; the renderer owns text timing, slots and drawing.
+Subtitle presentation follows both the active slot and its current text. Stopping
+voices and starting a replacement in the same update replaces the overlay even
+when the lowest free subtitle slot is reused.
+Game hosts select the view camera for audio listener updates. The isolated consumer
+check
 rejects audio or startup dependencies in rendering.
 
 `WorldRenderPlugin` composes the shared scene-spawn path, environment,
