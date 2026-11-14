@@ -564,6 +564,11 @@ impl ScriptWorld {
                         .then_some(128),
                 )?;
             }
+        }
+        if let Some(player) = self
+            .selected_player_index()
+            .filter(|&player| self.actors[player].player_movement.is_some())
+        {
             let metadata = selected
                 .as_ref()
                 .map(|support| match support.source() {
@@ -571,16 +576,18 @@ impl ScriptWorld {
                         .actors
                         .get(actor)
                         .and_then(|actor| actor.model.collision_flags)
-                        .context("selected support live metadata unavailable"),
+                        .context("ordinary support live metadata unavailable"),
                     source => query.scene.static_collision.support_metadata(source),
                 })
                 .transpose()?;
-            self.actors[id.index]
+            self.actors[player]
                 .player_movement
                 .as_mut()
                 .expect("validated history")
                 .history
-                .finish_query(metadata, true);
+                .finish_query(metadata, player == id.index);
+        }
+        if self.selected_player_index() == Some(id.index) {
             self.actors[id.index]
                 .control
                 .as_mut()
