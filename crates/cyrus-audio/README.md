@@ -639,3 +639,8 @@ The launcher requires a rig under `/home/vibepod/workspaces`, recreates only its
 pinned headless image when absent, mounts persistent config and logs, takes a
 per-run lock, and removes its own container on completion. The driver rejects
 missing stages, runtime errors and an executed WASM hash mismatch.
+
+CD volume clamps the engine setting to 0–255 and halves it for the Miles drive
+call before mapping that integer to the DOSBox channel gain. The shipped 200
+therefore publishes 200/255 linear gain; settings above 127 are applied.
+The released preservation [music volume rule](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/music.md#volume) owns this conversion.

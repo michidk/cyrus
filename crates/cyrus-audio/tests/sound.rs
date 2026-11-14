@@ -211,11 +211,11 @@ fn distance_volume_matches_the_original_curve() {
             243, 256
         ]
     );
-    assert_eq!(redbook_gain(slider_volume(9)), Some(230.0 / 255.0));
+    assert_eq!(redbook_gain(slider_volume(9)), 114.0 / 255.0);
     assert_eq!(
         redbook_gain(slider_volume(10)),
-        None,
-        "128 is ignored by the drive"
+        128.0 / 255.0,
+        "128 is halved for Miles then mapped to the drive channel"
     );
 }
 

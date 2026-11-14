@@ -11,17 +11,13 @@
 //! restarts track 2 from its beginning. A track repeats until another one
 //! starts. `SYSTEM.INI` `redbook` disables music.
 //!
-//! Volume: `redbook_volume` 0..=127 sets the drive's channel volume to twice
-//! the value out of 255, which GOG's DOSBox applies linearly; other values are
-//! ignored and the drive stays at its initial 255, full level. The shipped 200
-//! is therefore full level. Facts: preservation `docs/engine/music.md`
-//! ([PR 21](https://github.com/michidk/redguard-preservation/pull/21)).
-//!
-//! The Music slider writes `trunc(slider × 12.8)` through the same call, so
-//! slider 1–9 sets a level, 10–20 are ignored by the drive, and 0 pauses the
-//! CD until the slider leaves 0 (preservation `docs/engine/menu.md`). A movie
-//! pauses the CD from its request until it ends, and the CD then resumes where
-//! it was (preservation `docs/engine/music.md`).
+//! Volume: the engine clamps `redbook_volume` to 0..=255 and halves it for
+//! the 0..=127 Miles drive call. DOSBox's CD channel level is twice that
+//! integer out of 255. The shipped 200 therefore plays at 200/255 linear gain.
+//! Facts: released preservation `docs/engine/music.md#volume` and
+//! `docs/config/system-ini.md`. The Music slider writes trunc(slider * 12.8)
+//! through this same conversion. Zero pauses the CD until the slider leaves
+//! zero. Movies pause and resume CD playback without restarting the track.
 //!
 //! Modern music fidelity mutes CD-ROM data-sector bytes that the GOG image
 //! places at the start of track 2 (preservation `docs/engine/music.md`);
@@ -92,7 +88,7 @@ impl Plugin for MusicPlugin {
 #[derive(Resource)]
 pub struct Music {
     pub track: Option<u32>,
-    /// The drive's linear channel gain; it starts at full level and only accepted volumes change it.
+    /// The drive's linear channel gain; full level until the installed setting is applied.
     pub gain: f32,
     /// World selection waits for its inputs; restored publication preserves the saved owner.
     world_selection: WorldSelection,
@@ -128,12 +124,11 @@ pub struct MusicPlayer;
 /// The CD track the startup book menu plays.
 const MENU_TRACK: u32 = 2;
 
-/// Drive gain for a `redbook_volume` value: `Some` for the accepted 0..=127
-/// (channel volume `2v` of 255, applied linearly), `None` when it is ignored.
-pub fn redbook_gain(volume: i32) -> Option<f32> {
-    (0..=127)
-        .contains(&volume)
-        .then(|| (volume * 2) as f32 / 255.0)
+/// Drive gain after the engine's 0..=255 clamp and integer halving for Miles.
+/// DOSBox maps the resulting 0..=127 drive value to an even channel level of 255.
+/// This follows preservation's released music volume and SYSTEM.INI rules.
+pub fn redbook_gain(volume: i32) -> f32 {
+    ((volume.clamp(0, 255) / 2) * 2) as f32 / 255.0
 }
 
 fn music_enabled(
@@ -423,7 +418,7 @@ fn finish_track(
     ));
 }
 
-/// Applies a changed `redbook_volume`: accepted values set the drive level.
+/// Applies a changed `redbook_volume` through the engine clamp and drive conversion.
 fn apply_volume(
     settings: Res<SoundSettings>,
     global: Option<Res<bevy::audio::GlobalVolume>>,
@@ -431,9 +426,7 @@ fn apply_volume(
     mut sinks: Query<&mut bevy::audio::AudioSink, With<MusicPlayer>>,
     mut playback: Query<&mut PlaybackSettings, With<MusicPlayer>>,
 ) {
-    if let Some(gain) = redbook_gain(settings.redbook_volume) {
-        music.gain = gain;
-    }
+    music.gain = redbook_gain(settings.redbook_volume);
     for mut settings in &mut playback {
         settings.volume = bevy::audio::Volume::Linear(music.gain);
     }
@@ -627,8 +620,13 @@ mod tests {
 
     #[test]
     fn production_music_preserves_linear_drive_gain_and_queued_pause() {
-        use bevy::audio::{Decodable, PlaybackMode, PlaybackSettings, Volume};
-        for (volume, cinematic) in [(0, false), (64, false), (200, false), (64, true)] {
+        use bevy::audio::{Decodable, PlaybackMode, PlaybackSettings};
+        for (volume, cinematic, expected_gain) in [
+            (0, false, 0.0),
+            (64, false, 64.0 / 255.0),
+            (200, false, 200.0 / 255.0),
+            (64, true, 64.0 / 255.0),
+        ] {
             let source = AudioSource {
                 bytes: cyrus_assets::audio::pcm_wav(
                     rgpre::import::sfx::AudioType::Stereo16,
@@ -642,8 +640,14 @@ mod tests {
             let (player, settings) = app.world_mut().query_filtered::<(&AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>().single(app.world()).unwrap();
             assert!(matches!(settings.mode, PlaybackMode::Despawn));
             assert_eq!(settings.paused, cinematic || volume == 0);
-            let expected_gain = redbook_gain(volume).unwrap_or(1.0);
-            assert!(matches!(settings.volume, Volume::Linear(gain) if gain == expected_gain));
+            assert_eq!(
+                settings.volume.to_linear(),
+                expected_gain,
+                "engine volume {volume}"
+            );
+            eprintln!(
+                "CD engine volume {volume}: published linear gain {expected_gain}, cinematic {cinematic}"
+            );
             let transport = app
                 .world()
                 .resource::<Assets<MusicTransport>>()
@@ -755,7 +759,7 @@ mod tests {
         settings.redbook_volume = 64;
         app.insert_resource(settings);
         app.update();
-        assert_eq!(app.world().resource::<Music>().gain, 128.0 / 255.0);
+        assert_eq!(app.world().resource::<Music>().gain, 64.0 / 255.0);
     }
 
     #[test]
@@ -783,11 +787,19 @@ mod tests {
     }
 
     #[test]
-    fn redbook_volume_accepts_only_0_to_127() {
-        assert_eq!(redbook_gain(0), Some(0.0));
-        assert_eq!(redbook_gain(127), Some(254.0 / 255.0));
-        assert_eq!(redbook_gain(64), Some(128.0 / 255.0));
-        assert_eq!(redbook_gain(200), None, "shipped value is ignored");
-        assert_eq!(redbook_gain(-1), None);
+    fn redbook_volume_clamps_then_halves_before_the_drive_call() {
+        for (volume, channel) in [
+            (-1, 0),
+            (0, 0),
+            (1, 0),
+            (64, 64),
+            (127, 126),
+            (128, 128),
+            (200, 200),
+            (255, 254),
+            (256, 254),
+        ] {
+            assert_eq!(redbook_gain(volume), channel as f32 / 255.0);
+        }
     }
 }

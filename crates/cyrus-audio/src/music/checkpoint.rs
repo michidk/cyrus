@@ -203,7 +203,7 @@ impl MusicCandidate {
 }
 
 fn valid_gain(gain: f32) -> bool {
-    gain == 1.0 || (0..=127).any(|volume| super::redbook_gain(volume) == Some(gain))
+    gain == 1.0 || (0..=255).any(|volume| super::redbook_gain(volume) == gain)
 }
 
 impl Music {
