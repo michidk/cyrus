@@ -8,6 +8,12 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: actor-overlap landing requires the support's current model link, not a
+`MISC1` group in its catalogue. Bounce continuation also requires the support's
+animation association and bounce power. A missing requested group follows ordinary
+animation fallback rather than refusing the landing. This follows preservation's
+[actor landing rules](https://github.com/michidk/redguard-preservation/blob/a4d86d034c16e782309c166b28774a0f28ee8ead/docs/engine/player.md#weighted-actor-overlap-response).
+
 Verified: `drno` suspends the entire ordinary update of nonplayer actors, including
 response timers, movement and combat. The selected player and camera continue;
 turning it off resumes the retained actor state. This follows preservation's
