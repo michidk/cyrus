@@ -58,6 +58,7 @@ export function updateMusic(id, volume, paused) {
         player.source = null;
     } else if (!paused && !player.source) {
         play(player);
+        player.context.resume().catch(console.error);
     }
 }
 

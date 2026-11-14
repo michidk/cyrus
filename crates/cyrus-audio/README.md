@@ -60,6 +60,9 @@ notifications without selecting world music again. This preserves a stopped CD
 as well as a saved active track; a later ordinary world entry selects normally.
 `MusicTransport` reuses the source cursor at unity PCM gain. CD volume stays on
 the sink, and queued starts receive the current drive gain and cinematic pause.
+Browser CD continuation resumes the output context when starting a retained source,
+including a source first prepared while paused. Paused preparation stays silent.
+
 Browser CD playback requests the browser's playback latency policy and uses one
 retained WebAudio buffer per live player, so loading
 and rendering on the main thread do not interrupt the track. Its checkpoint maps
