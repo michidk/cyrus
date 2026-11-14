@@ -123,9 +123,12 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("surface transition control unavailable")?;
-        // shortcut: the retained direction is normalised, so the raw forward motion bytes 8, 9 and
-        // 24 read as forward here; upgrade when the raw motion byte is retained.
-        let forward = control.motion_direction == MotionDirection::FORWARD;
+        // Walking retains its own direction byte; both forward producers enter and leave
+        // deep water facing forward (preservation player.md, water transition effects).
+        let forward = matches!(
+            control.motion_direction,
+            MotionDirection::FORWARD | MotionDirection::WALK_FORWARD
+        );
         let torch = control.torch_burning != 0;
         if deep(stored) {
             self.request_ordinary_group(

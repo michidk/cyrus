@@ -43250,6 +43250,73 @@ fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound()
     ));
 }
 
+#[test]
+fn walking_continuation_enters_and_leaves_deep_water_facing_forward() {
+    use cyrus_script::script::{ScriptHud, ScriptInputs, ScriptSound};
+    for (previous, stored, expected, effect) in [
+        (
+            Surface::UNKNOWN,
+            Surface::from_byte(4),
+            AnimationGroup::SWIM_FORWARD,
+            71,
+        ),
+        (
+            Surface::from_byte(4),
+            Surface::from_byte(10),
+            AnimationGroup::RUN,
+            70,
+        ),
+    ] {
+        let (mut world, _, _) =
+            movement_fixture(AnimationGroup::WALK.index(), false, true, |_| {}, |_| {});
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        world
+            .continue_ordinary_motion(
+                id,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            MotionDirection::WALK_FORWARD
+        );
+        world.set_actor_surface(id, stored).unwrap();
+        let mut sounds = Vec::new();
+        world
+            .selected_surface_transition(
+                id,
+                previous,
+                stored,
+                1,
+                &mut cyrus_game::random::EngineRandom::default(),
+                None,
+                &mut |_, sound| {
+                    sounds.push(sound);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        let actor = world.inspect(0, 1);
+        let animation = &actor["actors"][0]["animation"];
+        assert_eq!(
+            animation["pending_group"]
+                .as_u64()
+                .or_else(|| animation["current_group"].as_u64()),
+            Some(u64::from(expected.index()))
+        );
+        assert!(matches!(sounds.as_slice(), [ScriptSound::Positional {
+            effect: actual, volume: 0, rate_offset_hz: -32..=31, ..
+        }] if *actual == effect));
+    }
+}
+
 fn script_jump_fixture(
     group: u16,
     edit_saved: impl FnOnce(&mut serde_json::Value),

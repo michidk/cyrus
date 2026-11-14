@@ -863,3 +863,8 @@ Unrelated owners and requested effects survive; animation Stop/Forget commands
 keep their per-actor order. `sound_dispatch::AnimationSoundQueue` owns this
 pre-binding routing, while the audio service owns playback and remembered slots.
 The stop rules follow preservation's [sample ownership](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
+
+Verified: selected-player water transitions retain forward swimming and exit animation requests
+for both running and walking motion, following preservation's
+[water transition rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#water-and-lava-transition-effects).
+Backward motion keeps its separate requests; transition sound selection is unchanged.
