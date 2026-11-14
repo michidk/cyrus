@@ -642,7 +642,7 @@ at = 922  # 0x39A
 insert-before = ["var4 = var4 + 1"]
 
 # After Basil's journal the script loads world 28 (the island at sunset, matching its own timeofday = 28);
-# the patch loads world 1 (the island by day).
+# the patch loads world 1 (the island by day). The reason is not documented; the sunset may have been intended.
 [[script-patch]]
 world = "HIDEINT"
 actor = "XJOURNAL"

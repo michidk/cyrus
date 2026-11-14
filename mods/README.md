@@ -34,6 +34,60 @@ Changing the held direction or looking manually chooses a new camera-relative di
 The Mods window offers camera follow, delay (default 0.75 seconds) and follow speed
 (default 2 per second). These are mod preferences, not recovered original behavior.
 
+## What the Unofficial Patch changes
+
+`unofficial-patch` ports the changes of Dillonn241's Unofficial Redguard Patch 1.01. The GOG install
+is never written; each change is applied in memory, and deactivating the mod restores the original
+behaviour. The reasons below are **Inferred** from comparing the installed scripts with the
+patched ones: the patch ships no explanation, so they say what each change does, not what its
+author intended. Where a reason is a guess, the entry says so.
+
+**Flags and counters that nothing set.** The game tests these, so the content behind them never
+appeared.
+
+| Where | Change |
+| --- | --- |
+| Vile (VILEKID) | Rescuing Iszara now sets `after_iszara` |
+| Belltower (FAVIS) and Harbour tower (PRNELL) | Being told the League blew up Richton's flagship now sets `FlagshipStory` |
+| Temple (NIDAL) | His topic flag is set, his sheathe-your-weapon warning advances its counter so it plays, and an unreachable greeting routine now runs when the player is out of range |
+| Hideout (VANDAR) | His repeated warning advances its counter, so he no longer stays silent |
+| Gerrick's (GERRICK) | The league-pirates answer sets the flag that marks it asked, and the flask answer gets its missing closing line |
+| Tavern (TOBIAS) | His closing branch sets the flag it was missing |
+| Island (AVIK) | The complete "Snake Songs" topic is now offered and dispatched |
+
+**Wrong tests.**
+
+| Where | Change |
+| --- | --- |
+| Tavern (DREEKIUS) | His reaction to the Smuggler's Den password tested the flag the wrong way round |
+| Island (CRENDAL) | The drunk's lines cycled with `<` comparisons, so several played at once and others never; they now test `=` |
+| Island (SIONA) | A topic tested `DragonDead`; it now tests `after_dragon`, which the rest of the game uses |
+| Gerrick's (GERRICK) | The Rollo topic is offered only while it has not been asked |
+
+**Wrong target.** A cutscene addressed an actor the world does not have.
+
+| Where | Change |
+| --- | --- |
+| Palace (SCENE1) | Commands to `dram` go to `dramball`, the one that speaks |
+| Vile (four guard scripts) | Commands to `vile` go to `viledog`, the riddle's speaker |
+
+**Other script fixes.**
+
+| Where | Change |
+| --- | --- |
+| Palace and outer palace (COMMON) | A strength potion no longer lowers the Soul Sword's strength; it now sets 250 |
+| Necrisle (NGASTA), Island (MARIAH) | Logbook lines are written where the line is spoken; Mariah's Smuggler's Den answer logs its own line instead of repeating another |
+| Gerrick's (PARROT) | The parrot's second topic uses its own label instead of an unused line |
+| Hideout (XJOURNAL) | After reading Basil's journal the script loads world 1 (the island by day) instead of world 28 (the island at sunset). The sunset matches the script's own `timeofday` value, so the original may have been intended; the patch author's reason is **Unknown** |
+
+**Text.** About ninety dialogue and logbook corrections (`ENGLISH.RTX`, by label) and six subtitle
+corrections of the intro and outro movies (`MENU.INI`, page 3). They are typos and punctuation.
+
+**Checked against the original patch.** A test applies the bundled patches to the installed maps
+and compares each patched actor statement by statement with the patch author's maps. All
+patched maps matched except the outer palace map (EXTPALAC), which was not compared. Nothing was
+played through in the game.
+
 ## Writing a mod
 
 A mod is a self-contained folder: drop it into `game-config/mods/` while the game runs and it
