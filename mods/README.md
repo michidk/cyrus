@@ -257,7 +257,7 @@ just mods
 cargo run -p cyrus -- --scene START
 ```
 
-Open F11 and enable **Blood particles** in the Mods window. Its amount and lifetime
+Open Backtick and enable **Blood particles** in the Mods window. Its amount and lifetime
 settings apply to new emissions immediately. Damage a combatant to exercise actual
 health-service events; setting a health attribute directly is not a substitute. Turn
 the mod off to verify cleanup. `cargo test --manifest-path mods/sdk/Cargo.toml` checks
