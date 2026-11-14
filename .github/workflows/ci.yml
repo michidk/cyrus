@@ -79,6 +79,11 @@ jobs:
       - name: Run publish-check
         run: dev/scripts/publish-check.sh
 
+      - name: Require a published preservation release
+        run: |
+          python3 -B dev/scripts/test-preservation-release.py
+          python3 -B dev/scripts/check-preservation-release.py
+
       - name: Check the generated map
         run: dev/scripts/genmap.sh --check
 
