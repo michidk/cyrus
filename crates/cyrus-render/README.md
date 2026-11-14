@@ -65,6 +65,9 @@ update walks, so an actor whose script has not yet run (the ISLAND lighthouse be
 the captured transform and animation frame.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
+**Verified:** HUD prompt and notice text wraps whole glyphs at x = 640, returning
+to the starting x one font line lower, following preservation's
+[HUD shared rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#shared-rules).
 HUD artwork and rasterized text explicitly use nearest sampling when the
 640×480 overlay is enlarged, preserving its pixel edges instead of inheriting
 the image plugin's linear sampler. World materials retain their own sampling rules.
