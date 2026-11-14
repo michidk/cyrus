@@ -5,7 +5,9 @@ Small presentation and launch helpers shared by the game and viewer.
 - `launch::InstallArgs` defines `--install` and `REDGUARD_DIR`; `locate()` shares
   native default-folder discovery and resolution of GOG library/package folders
   and install subdirectories. It checks explicit/environment paths before
-  `install.json` in the config directory, then conventional folders. `select()` inserts the
+  `install.json` in the config directory, then the executable folder and conventional folders. Missing or malformed saved
+  locations warn and fall back to discovery; discovered locations are remembered.
+  `select()` inserts the
   install or displays the shared path field, Browse and Continue screen in the
   application's existing egui context. Continue validates and saves the resolved
   root, inserts `GameInstall`, and removes the picker. It never opens another

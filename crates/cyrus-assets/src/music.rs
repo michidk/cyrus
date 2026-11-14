@@ -99,6 +99,7 @@ pub(crate) fn track_pcm(
 
 /// The CD audio track a ripped soundtrack file holds: `NN Track N.mp3` is track NN+1,
 /// because CD track 1 is data. shortcut: only this naming is recognised; add others when an edition needs them.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub(crate) fn soundtrack_track(file_name: &str) -> Option<u32> {
     let name = file_name.to_ascii_lowercase();
     let number: u32 = name.strip_suffix(".mp3")?.get(..2)?.parse().ok()?;
