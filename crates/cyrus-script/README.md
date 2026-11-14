@@ -25,6 +25,12 @@ and command bookkeeping; eligible receivers keep synchronous idle-cue dispatch a
 failure ordering. This follows the shared
 [receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility).
 
+Verified: route-link leaps retain logical start and point-command publication when
+no animation receiver exists. The shared request gate declines playback and cue
+dispatch while queued motion, fall origin, timer and sliding cleanup continue.
+This follows the same [receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility)
+and [leap-link rules](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/SOUP.md#phase-twelve-leap-link).
+
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does
 not change armed dispatch. This follows preservation's

@@ -383,6 +383,7 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         if !self.updates.animation_system
+            || self.actors[index].animation.is_none()
             || self.actors[index]
                 .control
                 .as_ref()
