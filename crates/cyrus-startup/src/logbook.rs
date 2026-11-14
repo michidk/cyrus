@@ -468,7 +468,8 @@ fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) 
                 } else {
                     scale_colour(font.colour(index), style.scale)
                 };
-                let alpha = u32::from(style.alpha);
+                // The shared glyph rule disables blending at B >= 254.
+                let alpha = u32::from(if style.alpha >= 254 { 255 } else { style.alpha });
                 let pixel = image.get_pixel_mut(x as u32, y as u32);
                 for c in 0..3 {
                     pixel[c] =
@@ -661,6 +662,82 @@ mod tests {
                     .get(&handle)
                     .is_some()
             );
+        }
+    }
+
+    #[test]
+    fn installed_reader_publication_preserves_opaque_glyph_alpha_boundary() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
+            eprintln!("skipped: no install (reader alpha boundary)");
+            return;
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let mut files = cyrus_assets::game::prepare(&source, "menu/book.menu").unwrap();
+        files.extend(cyrus_assets::game::prepare(&source, "logbook/reader.logbook").unwrap());
+        let mut artwork: LogbookArtwork =
+            serde_json::from_slice(&files["logbook/reader.logbook"]).unwrap();
+        for alpha in [254, 253, 255] {
+            artwork.styles[0].as_mut().unwrap().alpha = alpha;
+            files.insert(
+                "logbook/reader.logbook".into(),
+                serde_json::to_vec(&artwork).unwrap(),
+            );
+            let mut app =
+                standalone_asset_app(&files.clone().into_iter().collect::<Vec<_>>(), false);
+            {
+                let mut screen = app.world_mut().resource_mut::<LogbookScreen>();
+                screen.book = Some(cyrus_script::logbook::Logbook::new(&["0,A".into()]).unwrap());
+                screen.open = true;
+            }
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            let data = loop {
+                app.update();
+                let handle = app
+                    .world_mut()
+                    .query_filtered::<&ImageNode, With<Page>>()
+                    .single(app.world())
+                    .unwrap()
+                    .image
+                    .clone();
+                if let Some(image) = app.world().resource::<Assets<Image>>().get(&handle) {
+                    break image.data.as_ref().unwrap().clone();
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "reader publication timed out"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            };
+            let style = artwork.styles[0].unwrap();
+            let font = &artwork.fonts[style.font];
+            let mut checked = 0;
+            font.draw_char(b'A', [30, 70], |x, y, index| {
+                let at = (y as usize * 640 + x as usize) * 4;
+                let colour = scale_colour(font.colour(index), style.scale);
+                let expected = if alpha >= 254 {
+                    colour
+                } else {
+                    std::array::from_fn(|c| {
+                        ((u32::from(colour[c]) * u32::from(alpha)
+                            + u32::from(artwork.paper.rgba[at + c]) * u32::from(255 - alpha)
+                            + 127)
+                            / 255) as u8
+                    })
+                };
+                assert_eq!(
+                    &data[at..at + 3],
+                    &expected,
+                    "published reader alpha {alpha}, pixel {x},{y}"
+                );
+                checked += 1;
+            });
+            assert!(checked > 0);
+            eprintln!("reader alpha {alpha}: {checked} published installed glyph pixels exact");
         }
     }
 
