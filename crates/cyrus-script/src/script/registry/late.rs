@@ -1101,6 +1101,25 @@ impl ScriptWorld {
         Ok(support_found)
     }
 
+    /// Static-model ground admission is independent of the animated collision mask.
+    /// Preservation's ground-stage model-kind rule uses FallDamage and FallHold instead.
+    pub(super) fn ordinary_collision_admitted(
+        &self,
+        id: ScriptActorId,
+        data: &cyrus_assets::animation::Animations,
+    ) -> Result<bool> {
+        let actor = &self.actors[self.resolve(id)?];
+        if actor.placement().is_some_and(|placement| {
+            placement.object_type == cyrus_assets::script::PlacementType::MODEL
+        }) && data.actor(actor.name())?["model_load_path"].as_str() == Some("static")
+        {
+            Ok(actor.attributes[Attribute::FallDamage] != 0
+                && actor.attributes[Attribute::FallHold] == 0)
+        } else {
+            Ok(actor.attributes[Attribute::Collide] != 0)
+        }
+    }
+
     pub(super) fn resolve_ordinary_late_collision(
         &mut self,
         id: ScriptActorId,
@@ -1133,6 +1152,37 @@ impl ScriptWorld {
             script.frame_scale,
             sounds,
         )?;
+        if self.actors[id.index].placement().is_some_and(|placement| {
+            placement.object_type == cyrus_assets::script::PlacementType::MODEL
+        }) && query.animations.actor(self.actors[id.index].name())?["model_load_path"].as_str()
+            == Some("static")
+        {
+            if !self.ordinary_collision_admitted(id, query.animations)? {
+                return Ok(());
+            }
+            let control = self.actors[id.index]
+                .control
+                .as_ref()
+                .context("static ground control unavailable")?;
+            let special = control.living_state.is_ledge();
+            let falling = control.falling_state != JumpMotion::NONE;
+            self.ground_response_stage(
+                id,
+                query,
+                environment,
+                OrdinaryLateInputs {
+                    script,
+                    ticks,
+                    fine_ticks,
+                    step_fps,
+                    weapon,
+                },
+                (4, special, falling),
+                &mut *recovery.random,
+                sounds,
+            )?;
+            return Ok(());
+        }
         let obstacle_query = || super::obstacle::OrdinaryObstacleQuery {
             scene: query.scene,
             animations: query.animations,

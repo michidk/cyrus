@@ -393,14 +393,13 @@ impl ScriptWorld {
                         }),
                         sounds,
                     )?;
-                // An actor whose collision attribute lacks bit 0x04 never reaches the ground
-                // response that resolves queued or falling motion (preservation player.md, "Stable
-                // ordinary position" and "Terrain sink recovery"), so that motion stays as it is.
+                // Animated ground response uses Collide; static models use the fall attributes.
                 // A selected player without a controller sample still owns the
                 // ordinary script stages, but has no movement or collision query
                 // this update. Require scene data whenever collision work is
                 // actually admitted (all nonplayers and controller-driven input).
-                let collision = if self.actors[id.index].attributes[Attribute::Collide] != 0
+                let collision = if (self.ordinary_collision_admitted(id, data)?
+                    || self.actors[id.index].attributes[Attribute::Collide] != 0)
                     && (!selected_player || inputs.player_controller.is_some())
                     && !on_rope
                 {
@@ -669,7 +668,10 @@ impl ScriptWorld {
                     });
                     self.continue_ordinary_motion(id, inputs, query, sounds)?;
                 }
-                if self.actors[id.index].attributes[Attribute::Collide] != 0 && !on_rope {
+                if (self.ordinary_collision_admitted(id, data)?
+                    || self.actors[id.index].attributes[Attribute::Collide] != 0)
+                    && !on_rope
+                {
                     let scene = anyhow::Context::context(
                         scene,
                         "ordinary late collision scene unavailable",

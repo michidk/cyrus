@@ -8592,7 +8592,12 @@ fn ordinary_collision_preparation_precedes_script_and_admitted_late_response() {
     use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
     for (available, terrain) in [(true, false), (true, true), (false, false)] {
         let mut scripts = cache();
-        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 1;
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .extend([(Attribute::Collide, 1), (Attribute::FallDamage, 1)]);
         for placement in &mut scripts.instances {
             placement.active = 1;
         }
@@ -8616,6 +8621,7 @@ fn ordinary_collision_preparation_precedes_script_and_admitted_late_response() {
                     scripts: ScriptInputs {
                         nominal_ticks: Some(1),
                         frame_scale: Some(256),
+                        fine_ticks: Some(1),
                         ..Default::default()
                     },
                     scene: available.then_some(&scene),
@@ -11814,15 +11820,36 @@ fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion()
 
 #[test]
 fn falling_static_models_keep_full_support_distance_at_every_frame_rate() {
-    assert_static_fall_landing(1, 97);
+    assert_static_fall_landing(1, 97, 4, true, false);
 }
 
 #[test]
 fn undamaging_static_falls_land_without_an_animation_receiver() {
-    assert_static_fall_landing(1000, 100);
+    assert_static_fall_landing(1000, 100, 4, true, false);
 }
 
-fn assert_static_fall_landing(hurt_height: i32, expected_health: u8) {
+#[test]
+fn static_ground_admission_does_not_require_collision_bits() {
+    for mask in [0, 1, 4, 8, 15] {
+        assert_static_fall_landing(1000, 100, mask, true, false);
+    }
+}
+
+#[test]
+fn static_ground_stage_retains_motion_when_disabled_or_held() {
+    for mask in [0, 4, 15] {
+        assert_static_fall_landing(1000, 100, mask, false, false);
+        assert_static_fall_landing(1000, 100, mask, true, true);
+    }
+}
+
+fn assert_static_fall_landing(
+    hurt_height: i32,
+    expected_health: u8,
+    collision_mask: u8,
+    fall_damage: bool,
+    fall_hold: bool,
+) {
     use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
     for fps in [Some(9), Some(10), Some(30), None] {
         let mut scripts = cache();
@@ -11834,7 +11861,8 @@ fn assert_static_fall_landing(hurt_height: i32, expected_health: u8) {
             bounce_height: None,
         });
         scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
-            (Attribute::Collide, 4),
+            (Attribute::Collide, collision_mask),
+            (Attribute::FallDamage, u8::from(fall_damage)),
             (Attribute::JumpHeight, 32),
             (Attribute::Health, 100),
         ]);
@@ -11853,6 +11881,7 @@ fn assert_static_fall_landing(hurt_height: i32, expected_health: u8) {
             .unwrap(),
         );
         assert!(world.begin_static_ordinary_fall(id, &data).unwrap());
+        world.set_attribute_for_test(id, Attribute::FallHold, u8::from(fall_hold));
         world
             .update_ordinary(
                 &data,
@@ -11874,7 +11903,7 @@ fn assert_static_fall_landing(hurt_height: i32, expected_health: u8) {
             .unwrap();
         let actor = &world.actors()[0];
         eprintln!(
-            "static landing: hurt_height={hurt_height} fps={fps:?} y_q8={} falling={:?} health={} failure={:?}",
+            "static landing: mask={collision_mask} enabled={fall_damage} held={fall_hold} hurt_height={hurt_height} fps={fps:?} y_q8={} falling={:?} health={} failure={:?}",
             world.spatial(id).unwrap().local.position[1],
             actor.control_state().unwrap().falling_state,
             actor.attributes()[Attribute::Health],
@@ -11887,12 +11916,20 @@ fn assert_static_fall_landing(hurt_height: i32, expected_health: u8) {
         );
         assert_eq!(
             world.spatial(id).unwrap().local.position[1],
-            428 * 256,
+            if fall_damage && !fall_hold {
+                428 * 256
+            } else {
+                20 * 256
+            },
             "fps {fps:?}"
         );
         assert_eq!(
             actor.control_state().unwrap().falling_state,
-            JumpMotion::NONE,
+            if fall_damage && !fall_hold {
+                JumpMotion::NONE
+            } else {
+                JumpMotion::STANDING
+            },
             "fps {fps:?}"
         );
         assert_eq!(
@@ -13207,6 +13244,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
     let mut scripts = cache();
     let actor = scripts.actors.get_mut("LOGIC").unwrap();
     actor.attributes[Attribute::Collide] = 4;
+    actor.attributes[Attribute::FallDamage] = 1;
     actor.attributes[Attribute::Weight] = 128;
     actor.attributes[Attribute::ReservedWeight] = 64;
     for placement in &mut scripts.instances {
@@ -13266,7 +13304,7 @@ fn ordinary_automatic_ground_response_retains_support_and_sustained_script_updat
         let control = world.actors()[0].control_state().unwrap();
         assert!(control.stable_position_valid);
         assert_eq!(control.stable_local_position, [2560, 4608, 7680]);
-        assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 64);
+        assert_eq!(world.actors()[0].attributes()[Attribute::Weight], 128);
     }
 }
 

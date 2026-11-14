@@ -34,6 +34,11 @@ and combat inhibition along with its tasks. Falling and queued motion remain own
 by the ordinary controller and collision response. Unrelated control bits survive.
 This follows preservation's [camera reset contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#xresetcamera).
 
+Verified: static-model ground response uses `FallDamage` and `FallHold`, independently
+of `Collide`. Animated actors retain collision-mask admission. Static models run
+the support/ground stage without the animated obstacle and overlap passes, following
+preservation's [ground-stage rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-stage-by-model-kind).
+
 Verified: falling static models retain the full support probe distance and do not
 require a measured FPS sample. The shortened high-FPS probe belongs to animated
 falling actors, following preservation's
