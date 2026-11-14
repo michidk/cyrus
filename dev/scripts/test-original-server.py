@@ -59,6 +59,24 @@ class OriginalServerTest(unittest.TestCase):
                 service.server_close()
                 thread.join()
 
+    def test_duplicate_cd_track_aliases_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            install = root / "Redguard"
+            (install / "fxart").mkdir(parents=True)
+            (install / "maps").mkdir()
+            (install / "RGFX.EXE").write_bytes(b"synthetic executable")
+            (root / "Soundtrack").mkdir()
+            (root / "Soundtrack/01 Track 1.mp3").write_bytes(b"first rip")
+            (root / "Soundtrack/01 Another rip.mp3").write_bytes(b"different rip")
+            with self.assertRaisesRegex(ValueError, "disc/track02.mp3.*01.*01"):
+                server.original_files(install)
+            (root / "Soundtrack/01 Another rip.mp3").unlink()
+            (install / "disc").mkdir()
+            (install / "disc/TRACK02.MP3").write_bytes(b"already mapped audio")
+            with self.assertRaisesRegex(ValueError, "disc/track02.mp3.*TRACK02.MP3.*01 Track"):
+                server.original_files(install)
+
     def test_manifest_ranges_and_unavailable_originals(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
