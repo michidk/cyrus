@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # Same guest configuration as the interactive original, without preview services.
 set -euo pipefail
+# Requested capture must not silently run without its owning interposer after reset.
+for capture in FRAME MIXER; do
+    setting="CYRUS_${capture}_CAPTURE_DIR"
+    if [[ -n "${!setting:-}" ]]; then
+        library="/usr/local/lib/sdl-${capture,,}-capture.so"
+        if [[ ! -f "$library" || ! -r "$library" || ! -s "$library" ]]; then
+            echo "capture interposer unavailable: $setting requires $library" >&2
+            exit 1
+        fi
+    fi
+done
 export DISPLAY=:1
 # Dummy remains the unattended default; explicit monitor captures use PulseAudio.
 export SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-dummy}
