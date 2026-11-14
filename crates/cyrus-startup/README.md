@@ -234,3 +234,8 @@ Opening the book preserves raw installed sound and music volumes; initializing
 the displayed sliders does not write their rounded values back to the mixer.
 
 The credits release lifecycle is documented in merged [preservation PR #319](https://github.com/michidk/redguard-preservation/pull/319).
+**Verified:** credits Escape handling follows preservation's
+[credits scroll](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md#credits-scroll).
+Both F10 and ending credits retain the displayed frame and music owner while
+Escape is held, then consume its release before returning. `CreditsExit` exposes
+this shared input lifecycle; a movie-skip key held on entry cannot dismiss the credits.

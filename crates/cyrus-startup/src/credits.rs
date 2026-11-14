@@ -14,11 +14,62 @@ use cyrus_text::Font;
 
 const WIDTH: i32 = 640;
 const HEIGHT: i32 = 480;
-/// The original moves one pixel per swap with swap interval one, i.e. per display refresh;
-/// **Inferred** 60 Hz (the refresh rate it sets is not recovered).
+/// One pixel per display refresh at the requested 60 Hz Glide refresh setting.
+/// See preservation's credits-scroll contract in `engine/menu.md`.
 pub(super) const PIXELS_PER_SECOND: f64 = 60.0;
 /// Reader style table entry that style 5 uses.
 const STYLE_FIVE_ENTRY: usize = 9;
+
+/// Input disposition for the credits screen, including its release-before-return wait.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CreditsExitState {
+    /// Advance and paint the credits normally.
+    Scrolling,
+    /// Retain the displayed frame and music until Escape is released.
+    WaitingForRelease,
+    /// Return to the caller; the Escape release has been consumed.
+    Finished,
+}
+
+#[derive(Default)]
+enum ExitPhase {
+    #[default]
+    Entry,
+    Scrolling,
+    Release,
+    Finished,
+}
+
+/// Owns Escape for one credits presentation.
+///
+/// A key held on entry cannot dismiss the credits. A subsequent press stops
+/// scrolling, and its release is consumed before returning to the caller.
+/// This follows preservation's credits-scroll contract in `engine/menu.md`.
+#[derive(Default)]
+pub struct CreditsExit {
+    phase: ExitPhase,
+}
+
+impl CreditsExit {
+    /// Sample the current keyboard state once per presentation update.
+    pub fn poll(&mut self, keys: &mut ButtonInput<KeyCode>) -> CreditsExitState {
+        let held = keys.pressed(KeyCode::Escape);
+        match self.phase {
+            ExitPhase::Entry if !held => self.phase = ExitPhase::Scrolling,
+            ExitPhase::Scrolling if held => self.phase = ExitPhase::Release,
+            ExitPhase::Release if !held => {
+                self.phase = ExitPhase::Finished;
+                keys.reset(KeyCode::Escape);
+            }
+            _ => {}
+        }
+        match self.phase {
+            ExitPhase::Entry | ExitPhase::Scrolling => CreditsExitState::Scrolling,
+            ExitPhase::Release => CreditsExitState::WaitingForRelease,
+            ExitPhase::Finished => CreditsExitState::Finished,
+        }
+    }
+}
 
 /// The ending asked for the credits once its movie has finished.
 #[derive(Resource)]
@@ -177,8 +228,7 @@ struct Run {
     artwork: Handle<LogbookArtwork>,
     scroll: Option<(Position, f64)>,
     image: Handle<Image>,
-    /// The key that skipped the movie must not also end the credits.
-    first_update: bool,
+    exit: CreditsExit,
 }
 
 #[allow(clippy::too_many_arguments)] // One owner reads the movie, menu, asset and input state.
@@ -190,7 +240,7 @@ fn drive(
     server: Res<AssetServer>,
     artworks: Res<Assets<LogbookArtwork>>,
     time: Res<Time<Real>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
     mut images: ResMut<Assets<Image>>,
     mut sprite: Query<&mut Sprite, With<StartupContent>>,
     mut run: Local<Option<Run>>,
@@ -203,7 +253,7 @@ fn drive(
             artwork: server.load("cache://logbook/reader.logbook"),
             scroll: None,
             image: Handle::default(),
-            first_update: true,
+            exit: CreditsExit::default(),
         });
         menu.movie = Some(MovieStatus {
             name: "CREDITS.TXT".into(),
@@ -242,8 +292,14 @@ fn drive(
         finish(&mut commands, &mut menu, &mut run);
         return;
     };
-    let escape = !active.first_update && keys.just_pressed(KeyCode::Escape);
-    active.first_update = false;
+    match active.exit.poll(&mut keys) {
+        CreditsExitState::Scrolling => {}
+        CreditsExitState::WaitingForRelease => return,
+        CreditsExitState::Finished => {
+            finish(&mut commands, &mut menu, &mut run);
+            return;
+        }
+    }
     let (mut position, mut due) = active.scroll.unwrap_or_else(|| {
         commands.insert_resource(CreditsPlaying);
         if let Some(status) = menu.movie.as_mut() {
@@ -252,7 +308,7 @@ fn drive(
         (Position::start(line), 0.0)
     });
     due += time.delta_secs_f64() * PIXELS_PER_SECOND;
-    let mut done = escape;
+    let mut done = false;
     while !done && due >= 1.0 {
         due -= 1.0;
         done = position.advance(credits, line);

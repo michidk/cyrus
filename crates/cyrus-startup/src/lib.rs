@@ -3,6 +3,7 @@ mod book_motion;
 mod book_scene;
 mod confirmation;
 mod credits;
+pub use credits::{CreditsExit, CreditsExitState};
 mod examine;
 mod information;
 mod splash;
