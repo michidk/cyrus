@@ -170,7 +170,7 @@ pub struct SoundEffect {
 /// `SYSTEM.INI` audio switches (preservation `docs/config/system-ini.md`).
 #[derive(Resource, Debug, Clone)]
 pub struct SoundSettings {
-    /// `[system] sound`, default on.
+    /// `[system] sound`: enables sound startup, default on.
     pub effects: bool,
     /// `[system] redbook`, default on.
     pub music: bool,
@@ -200,10 +200,10 @@ impl SoundSettings {
             self.redbook_volume = slider_volume(music);
         }
         if let Some(voice) = value(603) {
-            self.speech = voice != 0;
+            self.speech = self.effects && voice != 0;
         }
         if let Some(subtitles) = value(504) {
-            self.subtitles = subtitles != 0;
+            self.subtitles = !self.effects || subtitles != 0;
         }
     }
 
@@ -211,11 +211,14 @@ impl SoundSettings {
         let on = |section, key| {
             !ini_value(ini, section, key).is_some_and(|v| v == "0" || v.eq_ignore_ascii_case("off"))
         };
+        // Disabled sound skips CD/voice initialization and forces text dialogue.
+        // Released preservation SYSTEM.INI sound startup contract.
+        let enabled = on("system", "sound");
         Self {
-            effects: on("system", "sound"),
-            music: on("system", "redbook"),
-            speech: on("dialog", "dialog_use_speech"),
-            subtitles: on("dialog", "dialog_print_text"),
+            effects: enabled,
+            music: enabled && on("system", "redbook"),
+            speech: enabled && on("dialog", "dialog_use_speech"),
+            subtitles: !enabled || on("dialog", "dialog_print_text"),
             rtx_filename: ini_value(ini, "system", "rtx_filename")
                 .unwrap_or("ENGLISH.RTX")
                 .to_string(),

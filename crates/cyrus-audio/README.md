@@ -644,3 +644,7 @@ CD volume clamps the engine setting to 0–255 and halves it for the Miles drive
 call before mapping that integer to the DOSBox channel gain. The shipped 200
 therefore publishes 200/255 linear gain; settings above 127 are applied.
 The released preservation [music volume rule](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/music.md#volume) owns this conversion.
+
+The public music plugin uses the prepared sound startup settings, so
+`SYSTEM.INI sound=0` admits no book CD track. Saved voice/text preferences
+retain the forced text-only dialogue state when sound startup is disabled.

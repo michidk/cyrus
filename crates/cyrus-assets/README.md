@@ -407,3 +407,8 @@ For a later seek endpoint, set `FRAME_COUNT` to the final frame and `FIRST_FRAME
 to the first frame to retain. The exporter decodes the required prefix and writes
 only the inclusive selected window. Frame numbers and audio sample positions
 remain in the original movie timeline; output must be outside the install.
+
+`SoundSettings` applies the installed sound startup switch to effects, CD music
+and speech together. Disabled sound forces text dialogue, including after saved
+book preferences are applied. The rule follows preservation
+[`SYSTEM.INI`](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#sound-and-music).
