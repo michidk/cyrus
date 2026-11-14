@@ -701,6 +701,9 @@ For independent original audio captures, `original-audio-capture.sh` repairs mis
 `prepare-original-definitions.py INSTALLED_REDGUARD RUN_REDGUARD`. Existing
 per-run files are preserved. Linked definition destinations are rejected so
 recovery cannot write into the install.
+The launcher copies the memory-region helper alongside the supplied state reader
+and mounts `<output>/config` as `CYRUS_CONFIG_DIR`, retaining local runtime state
+with the capture.
 
 `python3 dev/scripts/animation-transition.py ADAPTER KEYS.INI OUTPUT --group GROUP
 --effect EFFECT` drives a selected-player quick-sword transition through an

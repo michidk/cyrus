@@ -36,7 +36,7 @@ name=audio-capture-$$
 conf_mount=()
 # Configure the host chord even when reusing an image built before this default.
 dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
-mkdir -p "$out"
+mkdir -p "$out/config"
 exec 9>/tmp/cyrus-live.lock
 flock 9
 python3 "$here/prepare-original-definitions.py" "$gog/extracted/app/Redguard" "$run/Redguard"
@@ -71,6 +71,7 @@ mkdir -p "$run/capture"
 rm -f "$run"/capture/*.wav "$run/capture/START.OK"
 docker run --rm --entrypoint find -v "$run:/game" cyrus-retro:dev /game/Redguard/maps -iname '*.tsg' -delete
 docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTRACE \
+    -e CYRUS_CONFIG_DIR=/capture-config -v "$out/config:/capture-config" \
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
     "${conf_mount[@]}" cyrus-retro:dev "${dosbox_host_args[@]}" >/dev/null
 cleanup() {
@@ -83,6 +84,7 @@ docker cp "$repo/dev/scripts/capture-hook.py" "$name:/tmp/capture-hook.py"
 docker cp "$events" "$name:/tmp/events.json"
 [ -z "${CYRUS_CLOCK_HELPER:-}" ] || docker cp "$CYRUS_CLOCK_HELPER" "$name:/tmp/clock.py"
 [ -z "${CYRUS_CAPTURE_HOOK:-}" ] || docker cp "$CYRUS_CAPTURE_HOOK" "$name:/tmp/hook.py"
+docker cp "$repo/dev/scripts/original-memory-region.py" "$name:/tmp/original-memory-region.py"
 docker cp "${CYRUS_STATE_READER:?set CYRUS_STATE_READER to original-state.py}" "$name:/tmp/original-state.py"
 docker exec -e CYRUS_STATE_TIMEOUT="${CYRUS_STATE_TIMEOUT:-20}" -e CYRUS_CAPTURE_GAME_SECONDS="${CYRUS_CAPTURE_GAME_SECONDS:-0}" -e CYRUS_CAPTURE_MIN_FRAME="${CYRUS_CAPTURE_MIN_FRAME:-400}" -e CYRUS_REQUIRE_HOOK_ACK="${CYRUS_REQUIRE_HOOK_ACK:-0}" -e CYRUS_CAPTURE_STARTUP="${CYRUS_CAPTURE_STARTUP:-0}" -e CYRUS_HOOK_ARGS="${CYRUS_HOOK_ARGS:-}" -e CYRUS_FRAME_WAIT="${CYRUS_FRAME_WAIT:-150}" -e CYRUS_HOOK_DELAY="${CYRUS_HOOK_DELAY:-0}" -e CYRUS_SHOT_INTERVAL="${CYRUS_SHOT_INTERVAL:-0}" "$name" python3 /tmp/inner.py /tmp/original-state.py /tmp/events.json "$seconds" > "$out/timeline.json"
 wav=$(ls -t "$run"/capture/*.wav | head -1)
