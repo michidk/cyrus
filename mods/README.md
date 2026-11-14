@@ -36,7 +36,7 @@ The Mods window offers camera follow, delay (default 0.75 seconds) and follow sp
 
 ## What the Unofficial Patch changes
 
-`unofficial-patch` ports the changes of Dillonn241's Unofficial Redguard Patch 1.01. The GOG install
+`unofficial-patch` ports the changes of Dillonn241's Unofficial Redguard Patch 1.01, without the Soul Sword strength fix that version 1.03 removed because it froze the amulet delivery scene. Version 1.02's changes (thirty more typos, two subtitle typos, the flagship story fix and another Gerrick line) are not ported yet. The GOG install
 is never written; each change is applied in memory, and deactivating the mod restores the original
 behaviour. The reasons below are **Inferred** from comparing the installed scripts with the
 patched ones: the patch ships no explanation, so they say what each change does, not what its
@@ -75,7 +75,6 @@ appeared.
 
 | Where | Change |
 | --- | --- |
-| Palace and outer palace (COMMON) | A strength potion no longer lowers the Soul Sword's strength; it now sets 250 |
 | Necrisle (NGASTA), Island (MARIAH) | Logbook lines are written where the line is spoken; Mariah's Smuggler's Den answer logs its own line instead of repeating another |
 | Gerrick's (PARROT) | The parrot's second topic uses its own label instead of an unused line |
 | Hideout (XJOURNAL) | After reading Basil's journal the script loads world 1 (the island by day) instead of world 28 (the island at sunset). The sunset matches the script's own `timeofday` value, so the original may have been intended; the patch author's reason is **Unknown** |

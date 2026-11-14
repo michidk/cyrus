@@ -526,25 +526,8 @@ label = "xsma"
 find = "KIN NO"
 replace = "KIN' NO"
 
-# A strength potion sets the player's strength to 100, and the script only then gives the Soul Sword's 200:
-# with both, the potion lowered the sword's strength. The potion now makes it 250.
-[[script-patch]]
-world = "PALACE"
-actor = "COMMON"
-
-[[script-patch.edit]]
-at = 16  # 0x10
-insert-after = ["if HaveItem(13) = 1 { Player.setStrength(250) }"]
-
-# A strength potion sets the player's strength to 100, and the script only then gives the Soul Sword's 200:
-# with both, the potion lowered the sword's strength. The potion now makes it 250.
-[[script-patch]]
-world = "EXTPALAC"
-actor = "COMMON"
-
-[[script-patch.edit]]
-at = 16  # 0x10
-insert-after = ["if HaveItem(13) = 1 { Player.setStrength(250) }"]
+# Version 1.03 of the original patch removed its Soul Sword strength fix from the palace and outer palace, because it
+# froze the amulet delivery scene (the governor stopped moving). It is left out here for the same reason.
 
 # The cutscene addresses its commands (move, face, speak) to the actor "dram"; the one that speaks is "dramball".
 [[script-patch]]
