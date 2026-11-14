@@ -66,3 +66,10 @@ debug = 0
 # Movie packet decoding must keep pace with playback in development builds too.
 [profile.dev.package.smk]
 opt-level = 3
+
+# Decoding a CD edition's soundtrack MP3s must not delay world music in development builds.
+[profile.dev.package.symphonia-core]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3

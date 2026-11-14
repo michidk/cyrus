@@ -30,8 +30,8 @@ fn main() -> anyhow::Result<()> {
     );
     let install = GameInstall::locate(Some(args[1].as_ref()))?;
     let track = args[2].parse()?;
-    let cue = cyrus_assets::music::cue_path(&install)
-        .ok_or_else(|| anyhow::anyhow!("installed CD cue missing"))?;
+    let cue = cyrus_assets::music::music_source(&install)
+        .ok_or_else(|| anyhow::anyhow!("installed CD audio missing"))?;
     let transport = MusicTransport::new(bevy::audio::AudioSource {
         bytes: cyrus_assets::music::read_track(&cue, track)
             .map_err(anyhow::Error::msg)?

@@ -4,7 +4,7 @@ use cyrus_assets::audio::pcm_wav;
 use cyrus_assets::audio::read_settings;
 use cyrus_assets::audio::sfx_path;
 use cyrus_assets::install::GameInstall;
-use cyrus_assets::music::cue_path;
+use cyrus_assets::music::music_source;
 use cyrus_assets::music::read_track;
 use cyrus_assets::music::world_track;
 use cyrus_assets::sound::SoundSettings;
@@ -129,7 +129,7 @@ fn installed_world_music_reads_red_book_tracks() {
     let Some(install) = install("music") else {
         return;
     };
-    let Some(cue) = cue_path(&install) else {
+    let Some(cue) = music_source(&install) else {
         eprintln!("skipped: no install (game.ins beside install)");
         return;
     };

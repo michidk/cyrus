@@ -48,19 +48,16 @@ pub fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
     let install = GameInstall::open(root)?;
     let files = crate::native::Files::scan(&install, false)?;
     let original = crate::movie::original::prepare(&files, index)?;
+    let local = |path: &str| {
+        files
+            .local(path)
+            .map(Path::to_path_buf)
+            .with_context(|| format!("movie: {path} not on disk"))
+    };
     let source = match original.location {
-        crate::movie::original::Location::File { path, .. } => {
-            MovieInput::File(install.root.join(path))
-        }
+        crate::movie::original::Location::File { path, .. } => MovieInput::File(local(&path)?),
         crate::movie::original::Location::Disc { path, .. } => MovieInput::Disc {
-            path: install
-                .root
-                .parent()
-                .context("movie: install has no parent")?
-                .join(
-                    path.strip_prefix("disc/")
-                        .context("movie: invalid disc path")?,
-                ),
+            path: local(&path)?,
             name: original.metadata.definition.name.clone(),
         },
     };
