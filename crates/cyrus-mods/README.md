@@ -20,7 +20,7 @@ A mod is a folder `game-config/mods/<id>/` with `mod.toml` (`name`,
   `file_overlays()` by the `cyrus` binary before anything scans the install).
   Case-insensitive match, first active mod by id wins, applied at startup only.
 
-`ModsPlugin` lists the folders in a Mods window while the F11 menu is open and saves
+`ModsPlugin` lists the folders in a Mods window while the Backtick menu is open and saves
 activation to `game-config/mods.json`. Every half second it looks again: a folder
 dropped into the mods folder appears in the list, a deleted one is stopped and
 dropped, an edited `mod.toml` is reread, and an active mod whose `mod.wasm` or shaders

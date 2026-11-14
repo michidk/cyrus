@@ -846,7 +846,7 @@ Verified: fixed gameplay shortcuts select the original book pages with F2–F6,
 request version information with F1 and credits with F10. The information screens
 retain the live player. F1, book shortcuts and F9 require `final_version`.
 Desktop and browser hosts share F9 keyboard eligibility, including console,
-reader, inspection and pending-transition gates. F11 belongs to the debugger.
+reader, inspection and pending-transition gates. Backtick belongs to the debugger.
 
 Verified: scene teardown clears all shared dialogue records and remembered sample
 handles, including inactive records initialized with slot zero, before the next

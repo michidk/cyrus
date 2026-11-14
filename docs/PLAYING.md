@@ -65,7 +65,7 @@ the installed `final_version` setting; the tested GOG install enables it.
 | Tab | Toggle walk mode |
 | F9 | Quick save, when saving is permitted |
 | F10 | Show credits; Escape returns to the world |
-| F11 | Open cyrus inspection settings |
+| Backtick (`` ` ``) | Open cyrus inspection settings |
 | F12 | Open or close the developer console |
 
 In the book, use Up/Down to select, Enter to activate, Left/Right to adjust an
@@ -74,13 +74,13 @@ book entries is not implemented. Key rebinding starts when you activate a
 Controls entry; Escape cancels capture. Browser or desktop shortcuts may
 intercept function keys before the game receives them.
 
-F11's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
+Backtick's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
 right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
 player control. Its camera movement does not move Cyrus through the world. In the book menu it
 flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
 the **Pass input to game** option beside it is ticked.
 The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate it in the
-Mods window under F11, then Insert toggles it; its speed is a setting of the mod.
+Mods window under Backtick, then Insert toggles it; its speed is a setting of the mod.
 
 The controls and the follow camera are always the original's; Modern mode changes only how the
 game looks. A gamepad works in every mode: in the world its stick or D-pad and face buttons are the
@@ -88,7 +88,7 @@ installed joystick controls (South attacks or activates, East jumps, West looks,
 modifier; rebind them on the Controls page), Start opens the book and Back the inventory. In the book,
 the logbook and the inventory, the D-pad or left stick moves the selection, South confirms and East or
 Start goes back. Mouse look, camera-relative W, A, S and D movement and analog steering come from the
-bundled `movement` mod (see `mods/README.md`): activate it in the Mods window under F11. In a
+bundled `movement` mod (see `mods/README.md`): activate it in the Mods window under Backtick. In a
 browser, click the game to lock the cursor for its mouse look, also after Escape released it.
 
 ## Save and resume

@@ -3,7 +3,7 @@
 Native-only WebAssembly mods shipped with cyrus. Each folder with a `mod.toml` is its own Cargo
 crate (outside the game workspace) built for `wasm32-wasip2` against the shared SDK in `mods/sdk`; `just mods` builds
 them all and installs them into `game-config/mods/<folder>/`. Activate them in
-the Mods window that opens with F11. The browser build does not load mods.
+the Mods window that opens with Backtick. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |

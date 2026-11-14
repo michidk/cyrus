@@ -645,7 +645,7 @@ Local lights and complete static-prelighting behavior remain unsupported.
 
 ### Sky, fog, and water
 
-Re-export worlds to regenerate `.environment` sidecars. F11 provides independent
+Re-export worlds to regenerate `.environment` sidecars. Backtick provides independent
 Faithful/Modern buttons for Fog and Sky, which default to Faithful. Water changes only through the
 `modern-water` native mod.
 
@@ -662,7 +662,7 @@ cross its surface. Both retain the world's colors and horizon haze.
 **Verified:** Faithful fog uses the original tables and installed clipping
 range (7/3800 engine units in the shipped configuration). Modern fog defaults to
 four times that far distance and fades smoothly over the distant portion of
-the view. F11's distance control selects Modern Fog; Original resets the distance
+the view. Backtick's distance control selects Modern Fog; Original resets the distance
 and returns Fog to Faithful. Sky is unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
@@ -812,11 +812,11 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F11 and use **Flycam** to switch between inspection
+Press Backtick and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
-F11 world selections show the installed loading screen while the destination assets
+Backtick world selections show the installed loading screen while the destination assets
 Free flight is also available as the bundled `flycam` mod (see `mods/README.md`), toggled with Insert.
 load, then recreate the player at marker zero and return to the gameplay camera.
 Changing fidelity does not detach the view. Detaching preserves the player
@@ -936,7 +936,7 @@ game (**Verified** from preservation `engine/console.md`); none, zero or a non-n
 is refused, and the browser reports it unavailable because its wait would block the page.
 Other catalog entries report unavailable owners.
 
-Browser `savecheats` persists to localStorage `cyrus-cheats`. F11 Cheat files
+Browser `savecheats` persists to localStorage `cyrus-cheats`. Backtick Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can
 recover malformed local state; failed imports and saves retain existing state.
 
