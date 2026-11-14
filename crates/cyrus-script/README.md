@@ -34,6 +34,11 @@ and combat inhibition along with its tasks. Falling and queued motion remain own
 by the ordinary controller and collision response. Unrelated control bits survive.
 This follows preservation's [camera reset contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#xresetcamera).
 
+Verified: falling static models retain the full support probe distance and do not
+require a measured FPS sample. The shortened high-FPS probe belongs to animated
+falling actors, following preservation's
+[vertical-motion rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#queued-and-falling-vertical-motion).
+
 `GamePlugin` installs the `cyrus-game` state (application state, fidelity, preferences,
 cheats, random stream), `PlayerPlugin`, `ScriptPlugin` and the console commands.
 The host supplies Bevy asset/input/state infrastructure and `Preferences` with

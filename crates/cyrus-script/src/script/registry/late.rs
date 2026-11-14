@@ -945,7 +945,7 @@ impl ScriptWorld {
                 .is_some_and(|control| control.falling_state != JumpMotion::NONE);
         // An animated actor that is falling probes a shorter column once the measured FPS
         // reaches ten; static models always use the full distance.
-        let support_query = if falling {
+        let support_query = if falling && self.actors[id.index].animation.is_some() {
             let fps = step_fps.context("falling support probe needs the step's measured FPS")?;
             super::ground::OrdinaryGroundQuery {
                 distance: if fps >= 10 {

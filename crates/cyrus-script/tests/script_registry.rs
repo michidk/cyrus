@@ -11813,6 +11813,85 @@ fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion()
 }
 
 #[test]
+fn falling_static_models_keep_full_support_distance_at_every_frame_rate() {
+    use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
+    for fps in [Some(9), Some(10), Some(30), None] {
+        let mut scripts = cache();
+        scripts.instances.truncate(1);
+        scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
+            death_height: 1000,
+            hurt_height: 1,
+            hurt_zap: 3,
+            bounce_height: None,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
+            (Attribute::Collide, 4),
+            (Attribute::JumpHeight, 32),
+            (Attribute::Health, 100),
+        ]);
+        let (mut world, data, models) =
+            static_model_fixture_at(scripts, Some(20.0), [600, 20, 600]);
+        let id = world.id(0).unwrap();
+        let mut scene = ordinary_collision_scene(world.world, models);
+        scene.settings.post_collide_height = 500;
+        scene.collision.texture_surfaces = Some(Default::default());
+        scene.terrain = Some(
+            cyrus_collision::ground::TerrainGround::new(
+                vec![450; 256 * 256],
+                vec![false; 256 * 256],
+                Some(vec![1; 256 * 256]),
+            )
+            .unwrap(),
+        );
+        assert!(world.begin_static_ordinary_fall(id, &data).unwrap());
+        world
+            .update_ordinary(
+                &data,
+                [600, 600],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        fine_ticks: Some(1),
+                        step_fps: fps,
+                        ..Default::default()
+                    },
+                    scene: Some(&scene),
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        let actor = &world.actors()[0];
+        eprintln!(
+            "static support: fps={fps:?} y_q8={} falling={:?} health={} failure={:?}",
+            world.spatial(id).unwrap().local.position[1],
+            actor.control_state().unwrap().falling_state,
+            actor.attributes()[Attribute::Health],
+            actor.failure(),
+        );
+        assert!(
+            actor.failure().is_none(),
+            "fps {fps:?}: {:?}",
+            actor.failure()
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position[1],
+            428 * 256,
+            "fps {fps:?}"
+        );
+        assert_eq!(
+            actor.control_state().unwrap().falling_state,
+            JumpMotion::NONE,
+            "fps {fps:?}"
+        );
+        assert_eq!(actor.attributes()[Attribute::Health], 97, "fps {fps:?}");
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+    }
+}
+
+#[test]
 fn ordinary_animated_fall_entry_distinguishes_rollback_from_start() {
     use cyrus_script::script::{OrdinaryFallEntry, ordinary_fall_entry};
     for group in [AnimationGroup::RUN, AnimationGroup::RUN_TORCH] {
