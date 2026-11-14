@@ -99,7 +99,9 @@ pub fn scene_transform(pose: Pose) -> Affine3A {
     scene_transform_at(pose, pose.position.map(|value| (value >> 8) as f32))
 }
 
-pub(crate) fn scene_transform_at(pose: Pose, model_position: [f32; 3]) -> Affine3A {
+/// Converts a captured model orientation and its displaced map-unit position to scene axes.
+/// Unlike [`scene_transform`], the supplied stored model position is already prepared.
+pub fn scene_transform_at(pose: Pose, model_position: [f32; 3]) -> Affine3A {
     let sign = [-1.0, -1.0, 1.0];
     let matrix = Mat3::from_cols_array(&std::array::from_fn::<_, 9, _>(|index| {
         let (row, column) = (index % 3, index / 3);

@@ -29,6 +29,8 @@ pub struct ActorSnapshot {
     pub model: Option<(String, usize)>,
     /// Captured animation reference for presentation adapters when a model is not yet published.
     pub frame_reference: Option<u32>,
+    /// Captured model orientation and displaced map-unit position, independent of later movement.
+    pub presentation: Option<(Pose, [f32; 3])>,
     /// Query coordinates in original Q8 units and axes, when available.
     pub pose: Option<Pose>,
 }
@@ -98,6 +100,11 @@ impl ScriptWorld {
                 .animation
                 .as_ref()
                 .and_then(|animation| animation.frame),
+            presentation: actor
+                .model
+                .current
+                .as_ref()
+                .map(|model| (model.pose, model.position)),
             pose: self.spatial(id).ok().and_then(|spatial| spatial.effective),
         })
     }

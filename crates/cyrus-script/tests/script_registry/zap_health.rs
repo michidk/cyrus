@@ -211,7 +211,7 @@ fn player_world(
         assert!(death.snapshot.player);
         assert_eq!(
             death.source_position.is_some(),
-            function == Native::ZapPlayer && !at_player
+            function == Native::ZapPlayer
         );
     }
     (
@@ -240,7 +240,7 @@ fn the_player_natives_heal_through_the_additive_and_death_owning_services() {
 #[test]
 fn a_fatal_player_zap_names_the_receiver_as_the_damage_source_only_for_zap_player() {
     // LOGIC's ZapAnim selects the death animation when it is the source. ZapPlayer called by LOGIC
-    // names it; the same native routed to the player, and ZapObject's selected branch, name none.
+    // names it. A self-source does not override the animation; ZapObject passes no source.
     let (health, group, error) = player_world(Native::ZapPlayer, -40, false);
     assert_eq!((health, group, error), (0, Some(77), None));
     let (health, group, error) = player_world(Native::ZapPlayer, -40, true);
