@@ -379,7 +379,7 @@ impl Hud {
 pub struct Input(pub(crate) raw::Input);
 
 impl Input {
-    /// Whether the game owns this key through an installed/saved action or fixed Modern control.
+    /// Whether the game owns this key through an installed or saved game action.
     pub fn bound(&self, key: Key) -> bool {
         self.0.bound(key.name())
     }

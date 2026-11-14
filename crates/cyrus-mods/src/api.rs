@@ -412,7 +412,7 @@ pub struct Input {
 
 #[wasvy::methods]
 impl Input {
-    /// Whether a key belongs to a game action, including fixed Modern controls.
+    /// Whether a key belongs to a game action, using the active game bindings.
     pub fn bound(&self, key: String) -> bool {
         self.bound_keys.contains(&key)
     }
@@ -489,7 +489,6 @@ pub(crate) struct Sources<'w, 's> {
     values: Res<'w, ModSettings>,
     facts: Res<'w, WorldFacts>,
     look: Option<Res<'w, ModernLook>>,
-    fidelity: Option<Res<'w, cyrus_game::fidelity::Fidelity>>,
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, cyrus_script::logbook::LogbookScreen>>,
     view: Query<'w, 's, &'static Transform, With<ViewCamera>>,
@@ -600,24 +599,6 @@ pub(crate) fn exchange(
         .keyboard_keys()
         .map(|key| format!("{key:?}"))
         .collect();
-    if src
-        .fidelity
-        .as_deref()
-        .is_some_and(|fidelity| fidelity.player_controller == cyrus_game::fidelity::Mode::Modern)
-    {
-        input.bound_keys.extend(
-            [
-                "Space",
-                "KeyW",
-                "KeyA",
-                "KeyS",
-                "KeyD",
-                "ShiftLeft",
-                "ShiftRight",
-            ]
-            .map(str::to_owned),
-        );
-    }
     // Keys typed into the console or read in the logbook are not the mods'.
     let typing = src.console.as_deref().is_some_and(|console| console.open)
         || src

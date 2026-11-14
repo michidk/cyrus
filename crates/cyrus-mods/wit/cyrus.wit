@@ -265,7 +265,7 @@ interface components {
     /// Whether the player holds an action under the game's own key bindings (KEYS.INI):
     /// "forward", "back", "left", "right", "walk" (the walk/run modifier) or "jump".
     held: func(action: string) -> bool;
-    /// Whether a key is assigned to an installed/saved action or fixed Modern control.
+    /// Whether a key is assigned to an installed or saved game action.
     bound: func(key: string) -> bool;
     pressed: func(key: string) -> bool;
     tapped: func(key: string) -> bool;
