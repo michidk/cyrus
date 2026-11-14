@@ -149,9 +149,12 @@ module where it is defined and regenerate.
 ## `cyrus-mods` — Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 
 - `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
+- `src/geometry.rs` — Validated owner-scoped raster mesh uploads. Guest code owns all placement and LOD policy.
+- `src/grass_runtime_test.rs` — Load the actual grass component against typed terrain and owned mesh hooks.
 - `src/particle_runtime_test.rs` — Real WebAssembly guest/host exercise, optionally with offscreen GPU capture.
 - `src/particles.rs` — Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
 - `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
+- `src/terrain.rs` — Bounded, revision-scoped reads of retained terrain geometry and installed image pixels.
 
 ## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.
 
@@ -170,6 +173,7 @@ module where it is defined and regenerate.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/observation.rs` — Read-only transient mesh, material and generation observations.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/geometry.rs` — Scene-lit owned geometry and read-only retained terrain material access for native mods.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
 - `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
 - `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.

@@ -32,3 +32,25 @@ impl<const N: usize> Persist for [f32; N] {
         values.try_into().ok()
     }
 }
+
+impl<const N: usize> Persist for [u64; N] {
+    fn pack(&self) -> Vec<f32> {
+        self.iter()
+            .flat_map(|value| (0..4).map(move |i| ((value >> (i * 16)) & 65535) as f32))
+            .collect()
+    }
+    fn unpack(values: &[f32]) -> Option<Self> {
+        (values.len() == N * 4
+            && values
+                .iter()
+                .all(|v| v.is_finite() && (0.0..=65535.0).contains(v) && v.fract() == 0.0))
+        .then(|| {
+            std::array::from_fn(|index| {
+                values[index * 4..index * 4 + 4]
+                    .iter()
+                    .enumerate()
+                    .fold(0, |value, (i, n)| value | ((*n as u64) << (i * 16)))
+            })
+        })
+    }
+}

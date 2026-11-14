@@ -271,3 +271,13 @@ The native `blood` mod adds a brief spray of red particles when health services 
 health. It defaults to inactive. Spray size, color, gravity and lifetime are mod preferences,
 with amount and lifetime exposed in the Mods window. Particles fade without collision or surface
 marks. See the [mod authoring example](../mods/README.md#damage-driven-particles).
+
+## Optional terrain grass mod
+
+**Verified:** PR #255's grass policy is ported to the bundled native Wasm guest
+`mods/grass`, disabled by default. It reads terrain UVs and installed texture
+pixels through bounded host hooks. Seeded blades, distance bands, density and wind
+are guest policy. This optional appearance is not original engine behavior.
+The host supplies scene-lit owned meshes and cleanup. This base has raster Modern
+lighting; ray-traced grass stand-ins are unavailable. The shared geometry shader
+library follows the existing first-active-mod shader replacement rule.

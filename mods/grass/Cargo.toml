@@ -1,0 +1,10 @@
+[package]
+name = "grass"
+version = "0.1.0"
+edition = "2024"
+publish = false
+[workspace]
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+cyrus-mod-sdk = { path = "../sdk" }

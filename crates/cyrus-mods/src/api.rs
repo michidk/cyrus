@@ -388,6 +388,10 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Input::default(),
         Damage::default(),
         crate::particles::Particles::default(),
+        (
+            crate::terrain::Terrain::default(),
+            crate::geometry::Geometry::default(),
+        ),
     ));
 }
 
@@ -776,3 +780,7 @@ mod tests {
 #[cfg(test)]
 #[path = "particle_runtime_test.rs"]
 mod particle_runtime_test;
+
+#[cfg(test)]
+#[path = "grass_runtime_test.rs"]
+mod grass_runtime_test;

@@ -2,6 +2,7 @@
 mod clipping;
 mod compositing;
 mod effects;
+pub mod geometry;
 pub use effects::inspect_effect_geometry;
 pub(crate) mod modern_lighting;
 mod observation;
@@ -390,12 +391,14 @@ struct RejectedLighting;
 pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
+        geometry::register(app);
         texture::register(app);
         effects::register(app);
         clipping::register(app);
         compositing::register(app);
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");
+        load_shader_library!(app, "geometry_surface.wesl");
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");

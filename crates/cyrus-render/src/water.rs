@@ -584,6 +584,20 @@ pub(crate) fn animate_water(
     }
 }
 
+impl WaterPlayback {
+    /// Whether these bindings belong to the requested environment, rather than a retiring world.
+    pub fn owns_environment(&self, environment: AssetId<Environment>) -> bool {
+        self.source == Some(environment)
+    }
+    /// Retained, unclipped terrain source meshes for read-only presentation consumers.
+    /// Entities and handles belong to this playback world and expire on replacement.
+    pub fn source_meshes(&self) -> impl Iterator<Item = (Entity, &Handle<Mesh>)> {
+        self.terrain
+            .iter()
+            .map(|terrain| (terrain.entity, &terrain.original))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
