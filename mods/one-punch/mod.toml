@@ -1,0 +1,14 @@
+name = "One Punch"
+description = "Cyrus kills almost anything in one hit: every one of his sword attacks does 100 damage. An enemy that parries still survives, and, as the original mod's page says, the Dwemer titan, the dragon, the ogre and N'gasta need more than one hit. Takes effect after a restart."
+version = "0.1.0"
+author = "cyrus"
+
+# Cyrus's sword attacks are the COMBAT.INI records attack65 to attack71: thrust, lunge, the three
+# swings and the two swing endings. They deal 10 damage (0 for the two endings) in the original.
+[[ini-patch]]
+file = "COMBAT.INI"
+sections = [
+    "attack65", "attack66", "attack67", "attack68", "attack69", "attack70", "attack71",
+]
+key = "damage"
+value = "100"

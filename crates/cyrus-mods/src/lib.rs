@@ -98,25 +98,41 @@ pub fn file_overlays() -> Vec<PathBuf> {
         .collect()
 }
 
+/// The manifests of the active mods in id order. A manifest that does not read is skipped with an
+/// error in the log.
+fn active_manifests() -> impl Iterator<Item = Manifest> {
+    active_ids().into_iter().filter_map(|id| {
+        let path = mod_file(&id, "mod.toml");
+        std::fs::read_to_string(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|text| toml::from_str::<Manifest>(&text).map_err(anyhow::Error::from))
+            .inspect_err(|error| error!("mods: {}: {error:#}", path.display()))
+            .ok()
+    })
+}
+
 /// The `[[script-patch]]` entries of the active mods in id order, for the script preparation to
 /// apply. Like the file overlays they are fixed for the process, so a change applies after a
-/// restart. A manifest that does not read is skipped with an error in the log.
+/// restart.
 pub fn script_patches() -> Vec<cyrus_assets::script_patch::ScriptPatch> {
-    active_ids()
-        .iter()
-        .flat_map(|id| {
-            let path = mod_file(id, "mod.toml");
-            match std::fs::read_to_string(&path)
-                .map_err(anyhow::Error::from)
-                .and_then(|text| toml::from_str::<Manifest>(&text).map_err(anyhow::Error::from))
-            {
-                Ok(manifest) => manifest.script_patches,
-                Err(error) => {
-                    error!("mods: {}: {error:#}", path.display());
-                    Vec::new()
-                }
-            }
-        })
+    active_manifests()
+        .flat_map(|manifest| manifest.script_patches)
+        .collect()
+}
+
+/// The `[[text-patch]]` entries of the active mods in id order, for the dialogue reader to apply
+/// to the lines of the dialogue file; fixed for the process like the script patches.
+pub fn text_patches() -> Vec<cyrus_assets::text_patch::TextPatch> {
+    active_manifests()
+        .flat_map(|manifest| manifest.text_patches)
+        .collect()
+}
+
+/// The `[[ini-patch]]` entries of the active mods in id order, for the game-data reader to apply
+/// to the install's INI files; fixed for the process like the script patches.
+pub fn ini_patches() -> Vec<cyrus_assets::ini_patch::IniPatch> {
+    active_manifests()
+        .flat_map(|manifest| manifest.ini_patches)
         .collect()
 }
 
@@ -199,6 +215,10 @@ struct Manifest {
     shaders: Vec<ShaderReplacement>,
     #[serde(default, rename = "script-patch")]
     script_patches: Vec<cyrus_assets::script_patch::ScriptPatch>,
+    #[serde(default, rename = "ini-patch")]
+    ini_patches: Vec<cyrus_assets::ini_patch::IniPatch>,
+    #[serde(default, rename = "text-patch")]
+    text_patches: Vec<cyrus_assets::text_patch::TextPatch>,
 }
 
 /// One shader a mod swaps for another.
@@ -684,6 +704,12 @@ fn window(
             if !manifest.script_patches.is_empty() {
                 ui.small("Changes actor scripts; restart to apply a change.");
             }
+            if !manifest.ini_patches.is_empty() {
+                ui.small("Changes game settings files; restart to apply a change.");
+            }
+            if !manifest.text_patches.is_empty() {
+                ui.small("Corrects dialogue text; restart to apply a change.");
+            }
             if entry.active && !manifest.settings.is_empty() {
                 ui.indent(&entry.id, |ui| {
                     save_error = settings
@@ -751,6 +777,26 @@ mod tests {
         };
         assert!(patch.applies_to("island", "serpent"));
         assert_eq!(patch.remove, [cyrus_soup::Native::HideMe]);
+    }
+
+    #[test]
+    fn a_manifest_lists_ini_patches_by_file_section_and_key() {
+        let manifest: Manifest = toml::from_str(
+            r#"
+            name = "One Punch"
+            [[ini-patch]]
+            file = "COMBAT.INI"
+            sections = ["attack65", "attack66"]
+            key = "damage"
+            value = "100"
+            "#,
+        )
+        .unwrap();
+        let [patch] = &manifest.ini_patches[..] else {
+            panic!("one patch expected");
+        };
+        assert!(patch.applies_to("combat.ini"));
+        assert_eq!(patch.sections, ["attack65", "attack66"]);
     }
 
     #[test]

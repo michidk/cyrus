@@ -1,0 +1,770 @@
+name = "Unofficial Redguard Patch"
+description = "Fixes bugs and typos of the original game and restores content that never ran because of scripting errors: topics that were never offered, counters that never advanced, flags that were never set, dialogue and log lines in the wrong place, and about ninety misspelt or mispunctuated lines. Takes effect after a restart."
+version = "1.01"
+author = "Dillonn241 (patch), cyrus (port)"
+
+# A port of Dillonn241's Unofficial Redguard Patch 1.01. Every change is a few words of data (a flag
+# to set, a fragment of a line to correct), none is a copy of game data, and the install is never
+# written. Script offsets are those of the decompiled listing of the installed script, in decimal.
+
+# Subtitle corrections of the intro and outro movies (MENU.INI, page 3).
+[[ini-patch]]
+file = "MENU.INI"
+sections = ["page3"]
+key = "movie0_text[25]"
+find = "Nafalilargus"
+replace = "Nafaalilargus"
+
+[[ini-patch]]
+file = "MENU.INI"
+sections = ["page3"]
+key = "movie2_text[6]"
+find = "I,I have"
+replace = "I, I have"
+
+[[ini-patch]]
+file = "MENU.INI"
+sections = ["page3"]
+key = "movie2_text[90]"
+find = "I...I don"
+replace = "I... I don"
+
+[[ini-patch]]
+file = "MENU.INI"
+sections = ["page3"]
+key = "movie3_text[15]"
+find = "matana,Sura"
+replace = "matana, Sura"
+
+[[ini-patch]]
+file = "MENU.INI"
+sections = ["page3"]
+key = "movie3_text[31]"
+find = "Tuktu naredi."
+replace = "A'tor no mangai, Sura."
+
+[[ini-patch]]
+file = "MENU.INI"
+sections = ["page3"]
+key = "movie3_text[70]"
+find = "No,you help"
+replace = "No, you help"
+
+# Corrections of dialogue and logbook lines (ENGLISH.RTX), by label.
+[[text-patch]]
+label = "$042"
+find = "ion fo"
+replace = "ions fo"
+
+[[text-patch]]
+label = "$068"
+find = "ing'. "
+replace = "ing. "
+
+[[text-patch]]
+label = "$081"
+find = "gin Ta"
+replace = "gin' Ta"
+
+[[text-patch]]
+label = "$097"
+find = "when th"
+replace = "where th"
+
+[[text-patch]]
+label = "$140"
+find = "ial's a"
+replace = "ials a"
+
+[[text-patch]]
+label = "$edt"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "$exr"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "$sod"
+find = " DEADRA"
+replace = " DEDRA"
+
+[[text-patch]]
+label = "$sod"
+find = "H DEDR"
+replace = "H DAEDR"
+
+[[text-patch]]
+label = "$ssd"
+find = " DEADRA"
+replace = " DEDRA"
+
+[[text-patch]]
+label = "$ssd"
+find = "H DEDR"
+replace = "H DAEDR"
+
+[[text-patch]]
+label = "$sed"
+find = " DEADRA"
+replace = " DEDRA"
+
+[[text-patch]]
+label = "$sed"
+find = "H DEDR"
+replace = "H DAEDR"
+
+[[text-patch]]
+label = "$shd"
+find = " DEADRA"
+replace = " DEDRA"
+
+[[text-patch]]
+label = "$shd"
+find = "H DEDR"
+replace = "H DAEDR"
+
+[[text-patch]]
+label = "$xdh"
+find = "DRA HE"
+replace = "DRA'S HE"
+
+[[text-patch]]
+label = "?drt"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "0i2c"
+find = "ADY--"
+replace = "ADY --"
+
+[[text-patch]]
+label = "0b13"
+find = "BUT--"
+replace = "BUT --"
+
+[[text-patch]]
+label = "1blc"
+find = "ELLTOW"
+replace = "ELL TOW"
+
+[[text-patch]]
+label = "1fbd"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "1rxa"
+find = "STS-- "
+replace = "STS -- "
+
+[[text-patch]]
+label = "2619"
+find = "HIS--"
+replace = "HIS --"
+
+[[text-patch]]
+label = "3i2a"
+find = "ERE--"
+replace = "ERE --"
+
+[[text-patch]]
+label = "5cha"
+find = "OUR WA"
+replace = "OURE WA"
+
+[[text-patch]]
+label = "5cha"
+find = "YOURE "
+replace = "YOU'RE "
+
+[[text-patch]]
+label = "5drb"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "6eba"
+find = "FERR MU"
+replace = "FER MU"
+
+[[text-patch]]
+label = "6eba"
+find = "J'FER "
+replace = "J'FFER "
+
+[[text-patch]]
+label = "8w2c"
+find = "ONSQUE"
+replace = "ONSEQUE"
+
+[[text-patch]]
+label = "aj1c"
+find = "ALS--"
+replace = "ALS --"
+
+[[text-patch]]
+label = "aysc"
+find = "ES,UNF"
+replace = "ES, UNF"
+
+[[text-patch]]
+label = "bdtc"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "bh5c"
+find = "AN,I U"
+replace = "AN, I U"
+
+[[text-patch]]
+label = "cxdh"
+find = " DEADRA"
+replace = " DEDRA"
+
+[[text-patch]]
+label = "cxdh"
+find = "A DEDR"
+replace = "A DAEDR"
+
+[[text-patch]]
+label = "dd1c"
+find = "OOR--"
+replace = "OOR --"
+
+[[text-patch]]
+label = "di2a"
+find = "ILE--"
+replace = "ILE --"
+
+[[text-patch]]
+label = "dl1a"
+find = "MAP--"
+replace = "MAP --"
+
+[[text-patch]]
+label = "dq4c"
+find = " AN LO"
+replace = " AND LO"
+
+[[text-patch]]
+label = "drt3"
+find = "ILE--"
+replace = "ILE --"
+
+[[text-patch]]
+label = "ds3a"
+find = "IAN--"
+replace = "IAN --"
+
+[[text-patch]]
+label = "dv1a"
+find = " --EVE"
+replace = " -- EVE"
+
+[[text-patch]]
+label = "dw1c"
+find = "HAT--"
+replace = "HAT --"
+
+[[text-patch]]
+label = "dx2c"
+find = "LERS D"
+replace = "LER'S D"
+
+[[text-patch]]
+label = "dx4c"
+find = "LERS D"
+replace = "LER'S D"
+
+[[text-patch]]
+label = "f419"
+find = "HAS--"
+replace = "HAS --"
+
+[[text-patch]]
+label = "f421"
+find = "NLY--"
+replace = "NLY --"
+
+[[text-patch]]
+label = "fapc"
+find = "....?"
+replace = "...?"
+
+[[text-patch]]
+label = "fm3a"
+find = "INE-- "
+replace = "INE -- "
+
+[[text-patch]]
+label = "gc1a"
+find = "D--A F"
+replace = "D-- A F"
+
+[[text-patch]]
+label = "gc1a"
+find = "IRD-- "
+replace = "IRD -- "
+
+[[text-patch]]
+label = "gfla"
+find = "MAP--"
+replace = "MAP --"
+
+[[text-patch]]
+label = "gkmc"
+find = "... ."
+replace = "...."
+
+[[text-patch]]
+label = "gl3a"
+find = "ND THE ILI"
+replace = "ND ILI"
+
+[[text-patch]]
+label = "glpa"
+find = "TER--"
+replace = "TER --"
+
+[[text-patch]]
+label = "glpb"
+find = "--WAS"
+replace = "-- WAS"
+
+[[text-patch]]
+label = "gs1c"
+find = "LERS D"
+replace = "LER'S D"
+
+[[text-patch]]
+label = "hwrc"
+find = "... ."
+replace = "...."
+
+[[text-patch]]
+label = "jffb"
+find = " IT'S O"
+replace = " ITS O"
+
+[[text-patch]]
+label = "jh3a"
+find = "'ARGA L"
+replace = "'ARA L"
+
+[[text-patch]]
+label = "jh3a"
+find = "A'ARA "
+replace = "A'AGRA "
+
+[[text-patch]]
+label = "jzz4"
+find = "J'FER "
+replace = "J'FFER "
+
+[[text-patch]]
+label = "lgla"
+find = "K THAT"
+replace = "K TO THAT"
+
+[[text-patch]]
+label = "lsdc"
+find = "LERS D"
+replace = "LER'S D"
+
+[[text-patch]]
+label = "msdc"
+find = "LERS D"
+replace = "LER'S D"
+
+[[text-patch]]
+label = "ogrm"
+find = " IN WH"
+replace = " INTO WH"
+
+[[text-patch]]
+label = "ohgc"
+find = "LO,COY"
+replace = "LO, COY"
+
+[[text-patch]]
+label = "oy3a"
+find = " ITS J"
+replace = " IT'S J"
+
+[[text-patch]]
+label = "pi3c"
+find = "TOO"
+replace = "'TOO"
+
+[[text-patch]]
+label = "q508"
+find = "CEROR C"
+replace = "CERER C"
+
+[[text-patch]]
+label = "rb15"
+find = "AGO-- "
+replace = "AGO -- "
+
+[[text-patch]]
+label = "rb15"
+find = "D--THE"
+replace = "D-- THE"
+
+[[text-patch]]
+label = "rb15"
+find = "ARD-- "
+replace = "ARD -- "
+
+[[text-patch]]
+label = "sdtc"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "slzb"
+find = "TENTION"
+replace = "TENSION"
+
+[[text-patch]]
+label = "t1sc"
+find = "ERS' DE"
+replace = "ERS DE"
+
+[[text-patch]]
+label = "t1sc"
+find = "LERS D"
+replace = "LER'S D"
+
+[[text-patch]]
+label = "t2la"
+find = "WAR"
+replace = "'WAR"
+
+[[text-patch]]
+label = "t3la"
+find = "POL"
+replace = "'POL"
+
+[[text-patch]]
+label = "tf2c"
+find = "UNT"
+replace = "'UNT"
+
+[[text-patch]]
+label = "tilt"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "vb3a"
+find = "ERE--"
+replace = "ERE --"
+
+[[text-patch]]
+label = "vb4a"
+find = " ME--"
+replace = " ME --"
+
+[[text-patch]]
+label = "vh3a"
+find = "ICH--"
+replace = "ICH --"
+
+[[text-patch]]
+label = "wdtc"
+find = "GIN TA"
+replace = "GIN' TA"
+
+[[text-patch]]
+label = "xdra"
+find = " HAWL A"
+replace = " HAUL A"
+
+[[text-patch]]
+label = "xdra"
+find = "ET EM "
+replace = "ET 'EM "
+
+[[text-patch]]
+label = "xdra"
+find = "GE EM "
+replace = "GE 'EM "
+
+[[text-patch]]
+label = "xdra"
+find = "ARKELV"
+replace = "ARK ELV"
+
+[[text-patch]]
+label = "xisa"
+find = "TH EM "
+replace = "TH 'EM "
+
+[[text-patch]]
+label = "xlga"
+find = "IN EM,"
+replace = "IN 'EM,"
+
+[[text-patch]]
+label = "xlga"
+find = "ED EM "
+replace = "ED 'EM "
+
+[[text-patch]]
+label = "xsma"
+find = "OT EM "
+replace = "OT 'EM "
+
+[[text-patch]]
+label = "xsma"
+find = "KIN NO"
+replace = "KIN' NO"
+
+# A strength potion sets the player's strength to 100, and the script only then gives the Soul Sword's 200:
+# with both, the potion lowered the sword's strength. The potion now makes it 250.
+[[script-patch]]
+world = "PALACE"
+actor = "COMMON"
+
+[[script-patch.edit]]
+at = 16  # 0x10
+insert-after = ["if HaveItem(13) = 1 { Player.setStrength(250) }"]
+
+# A strength potion sets the player's strength to 100, and the script only then gives the Soul Sword's 200:
+# with both, the potion lowered the sword's strength. The potion now makes it 250.
+[[script-patch]]
+world = "EXTPALAC"
+actor = "COMMON"
+
+[[script-patch.edit]]
+at = 16  # 0x10
+insert-after = ["if HaveItem(13) = 1 { Player.setStrength(250) }"]
+
+# The cutscene addresses its commands (move, face, speak) to the actor "dram"; the one that speaks is "dramball".
+[[script-patch]]
+world = "PALACE"
+actor = "SCENE1"
+retarget = { dram = "dramball" }
+
+
+# Nidal's script holds a subroutine that nothing reached: it resets his default animation group and sets var7,
+# which arms his greeting. The patch makes it run when the player is out of range, so he greets again.
+# His warning to sheathe a weapon cycles with var6, which nothing advanced there, so it never played; it now
+# advances first. His topic of var29 was never offered because nothing set it.
+[[script-patch]]
+world = "TEMPLE"
+actor = "NIDAL"
+
+[[script-patch.edit]]
+at = 484  # 0x1E4
+branch-to = 702  # 0x2BE: the greeting subroutine that nothing reached
+
+[[script-patch.edit]]
+at = 589  # 0x24D
+insert-before = ["var6 = var6 + 1"]
+
+[[script-patch.edit]]
+at = 7500  # 0x1D4C
+insert-after = ["var29 = 1"]
+
+# Rescuing Iszara never set after_iszara.
+[[script-patch]]
+world = "VILE"
+actor = "VILEKID"
+
+[[script-patch.edit]]
+at = 1317  # 0x525
+insert-before = ["after_iszara = 1"]
+
+# The guard cutscenes direct the camera and animations at an actor "vile", which the world does not have;
+# the riddle's speaker is "viledog".
+[[script-patch]]
+world = "VILE"
+actor = "VR_GARD1"
+retarget = { vile = "viledog" }
+
+
+# The guard cutscenes direct the camera and animations at an actor "vile", which the world does not have;
+# the riddle's speaker is "viledog".
+[[script-patch]]
+world = "VILE"
+actor = "VR_GARD2"
+retarget = { vile = "viledog" }
+
+
+# The guard cutscenes direct the camera and animations at an actor "vile", which the world does not have;
+# the riddle's speaker is "viledog".
+[[script-patch]]
+world = "VILE"
+actor = "VR_SIGL1"
+retarget = { vile = "viledog" }
+
+
+# The guard cutscenes direct the camera and animations at an actor "vile", which the world does not have;
+# the riddle's speaker is "viledog".
+[[script-patch]]
+world = "VILE"
+actor = "VR_SIGL2"
+retarget = { vile = "viledog" }
+
+
+# Being told that the League blew up Richton's flagship never set FlagshipStory.
+[[script-patch]]
+world = "BELLTOWR"
+actor = "FAVIS"
+
+[[script-patch.edit]]
+at = 9568  # 0x2560
+insert-after = ["FlagshipStory = 1"]
+
+# Being told that the League blew up Richton's flagship never set FlagshipStory.
+[[script-patch]]
+world = "HARBTOWR"
+actor = "PRNELL"
+
+[[script-patch.edit]]
+at = 5992  # 0x1768
+insert-after = ["FlagshipStory = 1"]
+
+# Vandar's repeated warning cycles with var4, which nothing advanced here, so he stayed silent.
+[[script-patch]]
+world = "HIDEINT"
+actor = "VANDAR"
+
+[[script-patch.edit]]
+at = 922  # 0x39A
+insert-before = ["var4 = var4 + 1"]
+
+# After Basil's journal the script loads world 28 (the island at sunset, matching its own timeofday = 28);
+# the patch loads world 1 (the island by day).
+[[script-patch]]
+world = "HIDEINT"
+actor = "XJOURNAL"
+
+[[script-patch.edit]]
+at = 143  # 0x8F
+set-argument = { index = 0, value = "1" }
+
+# The Rollo topic is offered only while it is not yet asked (var11). The league-pirates answer ended in a jump
+# that skipped the flag marking it done (var23). The flask answer lacked its closing line, "gflb".
+[[script-patch]]
+world = "GERRICKS"
+actor = "GERRICK"
+
+[[script-patch.edit]]
+at = 1103  # 0x44F
+condition = "RolloTalk = 1 and var11 = 1"
+
+[[script-patch.edit]]
+at = 2546  # 0x9F2
+replace = ["var23 = 1"]
+
+[[script-patch.edit]]
+at = 3159  # 0xC57
+insert-after = ["rtxAnim(\"gflb\", 12, 153, 10)"]
+
+# The parrot's second topic was labelled with the unused steam-driven carriages line; it now says "I'VE HAD ENOUGH OF THIS!".
+[[script-patch]]
+world = "GERRICKS"
+actor = "PARROT"
+
+[[script-patch.edit]]
+at = 5336  # 0x14D8
+set-argument = { index = 0, value = "\"?sec\"" }
+
+# Dreekius's reaction to the Smuggler's Den password tested the flag the wrong way round.
+[[script-patch]]
+world = "TAVERN"
+actor = "DREEKIUS"
+
+[[script-patch.edit]]
+at = 25888  # 0x6520
+condition = "Password = 0"
+
+# Tobias's closing branch never set var45.
+[[script-patch]]
+world = "TAVERN"
+actor = "TOBIAS"
+
+[[script-patch.edit]]
+at = 22631  # 0x5867
+insert-after = ["var45 = 1"]
+
+# The logbook line about the one surviving brother of Arkay was written at the end of the soul-net talk, not at the
+# line where N'gasta says it; it moves there.
+[[script-patch]]
+world = "NECRISLE"
+actor = "NGASTA"
+
+[[script-patch.edit]]
+at = 10061  # 0x274D
+insert-after = ["AddLog(\"$139\")"]
+
+[[script-patch.edit]]
+at = 10481  # 0x28F1
+delete = true
+
+# Avik's "Snake Songs" topic is complete in the script (its answer at 0x2020) but was never offered or dispatched;
+# var18 offers it and the choice 18 jumps to the answer.
+[[script-patch]]
+world = "ISLAND"
+actor = "AVIK"
+
+[[script-patch.edit]]
+at = 1357  # 0x54D
+insert-before = ["if var18 = 1 { menuAddItem(\"?ssg\", var70, 18) }"]
+
+[[script-patch.edit]]
+at = 2247  # 0x8C7
+insert-before = ["if var42 = 18 { goto 8224 }"]
+
+# Mariah's log line about Iszara is written where she says it, and her Smuggler's Den answer logs its own line, $106,
+# instead of repeating $105.
+[[script-patch]]
+world = "ISLAND"
+actor = "MARIAH"
+
+[[script-patch.edit]]
+at = 2900  # 0xB54
+insert-after = ["AddLog(\"$105\")"]
+
+[[script-patch.edit]]
+at = 5351  # 0x14E7
+set-argument = { index = 0, value = "\"$106\"" }
+
+# A topic was gated on the DragonDead flag; after_dragon is the flag the rest of the game uses.
+[[script-patch]]
+world = "ISLAND"
+actor = "SIONA"
+
+[[script-patch.edit]]
+at = 2613  # 0xA35
+condition = "var20 = 1 and after_dragon = 0"
+
+# The drunk's lines cycled with "<" comparisons, so several played at once and others never; they test "=".
+[[script-patch]]
+world = "ISLAND"
+actor = "CRENDAL"
+
+[[script-patch.edit]]
+at = 946  # 0x3B2
+condition = "var29 = 1"
+
+[[script-patch.edit]]
+at = 970  # 0x3CA
+condition = "var29 = 2"
+
+[[script-patch.edit]]
+at = 994  # 0x3E2
+condition = "var29 = 3"
+
+[[script-patch.edit]]
+at = 1042  # 0x412
+condition = "var6 = 1"
+

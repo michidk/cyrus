@@ -215,7 +215,16 @@ pub fn prepare_source(
             };
             let changed = patch
                 .apply(&mut program, &decode)
-                .with_context(|| format!("{context}: mod patch"))?;
+                .with_context(|| format!("{context}: mod patch"))?
+                + crate::script_edit::apply(
+                    &mut program,
+                    &definition,
+                    &patch.edits,
+                    &patch.retarget,
+                    u32::try_from(source.bytecode.len())?,
+                    &decode,
+                )
+                .with_context(|| format!("{context}: mod patch edits"))?;
             info!("{context}: mod patch changed {changed} statement(s)");
         }
         program.validate().with_context(|| context.clone())?;

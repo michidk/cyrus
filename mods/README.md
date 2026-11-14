@@ -22,6 +22,8 @@ the Mods window that opens with Backtick. The browser build does not load mods.
 | `flycam` | camera, input, hud, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
 | `serpent` | script patch (manifest only, no code) | Restores the sea serpent in the Spine that was cut from the game: its installed script is complete but sits behind an endless `End`, which the mod lets fall through |
+| `one-punch` | ini patch (manifest only, no code) | Every sword attack of Cyrus (COMBAT.INI `attack65` to `attack71`) deals 100 damage instead of 10, so almost anything dies in one hit. An enemy that parries still survives, and the original mod's page says the Dwemer titan, the dragon, the ogre and N'gasta need more than one hit |
+| `unofficial-patch` | script, ini and text patches (manifest only, no code) | A port of Dillonn241's Unofficial Redguard Patch 1.01: topics and counters that never worked, flags that were never set, dialogue and log lines in the wrong place, and about ninety typos, as data. Its `mod.toml` says what each change fixes |
 | `actor-info` | actors, player, hud | A small example of the read-only hooks: shows the nearest visible actor, its health and its distance in the corner |
 
 Modern movement optionally follows travel with the camera after a configurable delay.
@@ -328,6 +330,56 @@ a restart (the Mods window says so, like for `files/` overlays). A mod with only
 needs no `mod.wasm`. The bundled `serpent` mod is the example: the installed ISLAND script of the
 sea serpent in the Spine is complete (it waits hidden, shows itself when the player is near,
 fights and sets the SerpentDead flag when killed) but sits behind an `End` that loops on itself.
+
+**Script edits** (`[[script-patch.edit]]`, under a `[[script-patch]]`). For changes that are not
+a skipped native or a fall-through, an edit names a statement of the original script by its
+offset (the `#offset` of the listing, in decimal) and changes it:
+
+```toml
+[[script-patch]]
+world = "PALACE"
+actor = "COMMON"
+retarget = { dram = "dramball" }       # every call to a named receiver goes to another one
+
+[[script-patch.edit]]
+at = 16                                  # the statement at offset 16 of the original script
+insert-after = ['if HaveItem(13) = 1 { Player.setStrength(250) }']
+```
+
+One action per edit: `insert-before` (every jump to the statement runs the new statements
+first), `insert-after`, `replace`, `delete = true`, `set-argument = { index = 0, value = '"?sec"' }`,
+`set-target = "viledog"`, `condition = "RolloTalk = 1 and var11 = 1"` and `branch-to = 702` (an
+`if` that fails, or a `goto`, continues at another original statement, including code the
+original never reaches). New statements are written like the listing: `Flag = 1`, `var6 = var6 + 1`,
+`Player.setStrength(250)`, `if … { … }` and `goto 8224`. Names are the installed `SOUP386.DEF`
+names, `varN` is a script variable, and a quoted four-letter word (`"?sec"`) is the dialogue label
+it encodes. Offsets always mean the original script, however many statements earlier edits
+inserted: new statements live at fresh offsets and jump back, so nothing shifts. An edit that
+does not fit (an unknown name, a wrong argument count, an offset that is not that kind of
+statement) is an error naming the edit, and the world does not load.
+
+**Settings and text patches** (`[[ini-patch]]`, `[[text-patch]]`). The same idea for the game's
+settings and dialogue, without shipping any of it. An INI patch sets a key in named sections of
+an install file, or corrects a fragment of its value; a text patch corrects a fragment of one
+dialogue line by its label. A section, key or fragment that is not there is an error, so a patch
+cannot silently do nothing:
+
+```toml
+[[ini-patch]]
+file = "COMBAT.INI"
+sections = ["attack65", "attack66"]
+key = "damage"
+value = "100"              # or: find = "I,I"  replace = "I, I"
+
+[[text-patch]]
+label = "$042"             # the line's four-character label in the dialogue file
+find = "ion fo"            # a fragment that occurs exactly once
+replace = "ions fo"
+```
+
+Both are applied to the text read from the install, in memory; the install is never written
+and turning the mod off restores the original. A line's on-screen time follows its length, so it
+follows a correction too. They take effect after a restart.
 
 **Game data** (`files/`). A `files/` folder inside the mod mirrors the game install:
 `files/fxart/<name>` is read instead of the install's `fxart/<name>`, and a path the

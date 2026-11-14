@@ -40,6 +40,7 @@ fn a_patch_lets_the_cut_serpent_run_the_script_that_follows_its_endless_loop() {
         actor: "serpent".into(),
         remove: vec![],
         fall_through: vec![4],
+        ..Default::default()
     }]));
     let patched = cyrus_assets::script_export::prepare(&map, &root, 1).unwrap();
     patched.validate().unwrap();

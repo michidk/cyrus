@@ -18,6 +18,9 @@ pub mod geometry;
 pub struct Files {
     manifest: Manifest,
     paths: BTreeMap<String, PathBuf>,
+    /// Files an active mod's `[[ini-patch]]` changed, by manifest path: served from memory, so the
+    /// install and the overlay folders stay as they are.
+    patched: BTreeMap<String, Vec<u8>>,
 }
 
 static OVERLAYS: OnceLock<Vec<PathBuf>> = OnceLock::new();
@@ -36,9 +39,21 @@ impl Files {
     }
     pub(crate) fn scan(install: &GameInstall, fingerprint: bool) -> Result<Self> {
         let overlays = OVERLAYS.get().map_or(&[][..], Vec::as_slice);
-        Self::scan_with(install, fingerprint, overlays)
+        Self::scan_with(
+            install,
+            fingerprint,
+            overlays,
+            crate::ini_patch::ini_patches(),
+            crate::text_patch::digest(crate::text_patch::text_patches()).as_deref(),
+        )
     }
-    fn scan_with(install: &GameInstall, fingerprint: bool, overlays: &[PathBuf]) -> Result<Self> {
+    fn scan_with(
+        install: &GameInstall,
+        fingerprint: bool,
+        overlays: &[PathBuf],
+        ini_patches: &[crate::ini_patch::IniPatch],
+        text_patches_digest: Option<&str>,
+    ) -> Result<Self> {
         let mut paths = BTreeMap::new();
         for item in walkdir::WalkDir::new(&install.root).follow_links(false) {
             let item = item?;
@@ -53,9 +68,19 @@ impl Files {
         }
         add_disc_images(&install.root, &mut paths);
         overlay_folders(&mut paths, overlays)?;
+        let patched = patch_ini_files(&paths, ini_patches)?;
         let mut files = Vec::new();
         for (relative, path) in &paths {
             let mut hash = blake3::Hasher::new();
+            if let Some(bytes) = patched.get(relative) {
+                hash.update(bytes);
+                files.push(FileInfo {
+                    path: relative.clone(),
+                    bytes: bytes.len() as u64,
+                    digest: hash.finalize().to_hex().to_string(),
+                });
+                continue;
+            }
             if !fingerprint || relative.starts_with("disc/") {
                 // Preparation scans and large CD images use size/mtime; catalog files use content.
                 let metadata = path.metadata()?;
@@ -64,6 +89,13 @@ impl Files {
                 hash.update(&modified.as_nanos().to_le_bytes());
             } else {
                 hash.update_reader(std::fs::File::open(path)?)?;
+            }
+            if let Some(digest) = text_patches_digest
+                && relative.to_ascii_lowercase().ends_with(".rtx")
+            {
+                // The dialogue file's text is served patched: caches made from it must not be
+                // shared with a run that has other patches.
+                hash.update(digest.as_bytes());
             }
             files.push(FileInfo {
                 path: relative.clone(),
@@ -74,8 +106,33 @@ impl Files {
         Ok(Self {
             manifest: Manifest { files },
             paths,
+            patched,
         })
     }
+}
+
+/// The text of each file an INI patch is for, with the patches applied. A patch for a file the
+/// install does not have is an error naming it.
+fn patch_ini_files(
+    paths: &BTreeMap<String, PathBuf>,
+    patches: &[crate::ini_patch::IniPatch],
+) -> Result<BTreeMap<String, Vec<u8>>> {
+    let mut patched = BTreeMap::new();
+    for patch in patches {
+        let (relative, path) = paths
+            .iter()
+            .find(|(relative, _)| patch.applies_to(relative))
+            .with_context(|| format!("ini patch: the install has no {}", patch.file))?;
+        if patched.contains_key(relative) {
+            continue;
+        }
+        let bytes = std::fs::read(path).with_context(|| path.display().to_string())?;
+        let text = String::from_utf8(bytes).with_context(|| format!("{relative}: not UTF-8"))?;
+        if let Some(text) = crate::ini_patch::apply_all(patches, relative, &text)? {
+            patched.insert(relative.clone(), text.into_bytes());
+        }
+    }
+    Ok(patched)
 }
 /// Adds the disc images and the splash files that sit beside the install folder.
 fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) {
@@ -187,6 +244,10 @@ impl ReadAssets for Files {
             start <= info.bytes && length as u64 <= info.bytes - start,
             "{path}: range outside original file"
         );
+        if let Some(bytes) = self.patched.get(&info.path) {
+            let start = usize::try_from(start)?;
+            return Ok(bytes[start..start + length].to_vec());
+        }
         let path = self
             .paths
             .get(&info.path)
@@ -364,7 +425,7 @@ mod tests {
         write(&first, "sound/new.wav", b"added");
         write(&second, "fxart/Tex.3DC", b"second");
         let install = GameInstall { root: install };
-        let files = Files::scan_with(&install, true, &[first, second]).unwrap();
+        let files = Files::scan_with(&install, true, &[first, second], &[], None).unwrap();
         let read = |path: &str| {
             files
                 .read_range(path, 0, files.manifest.find(path).unwrap().bytes as usize)
@@ -374,6 +435,87 @@ mod tests {
         assert_eq!(read("maps/KEEP.RGM"), b"kept");
         assert_eq!(read("sound/new.wav"), b"added");
         assert_eq!(files.manifest.files.len(), 3);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_ini_patch_changes_the_served_text_and_manifest_but_not_the_install() {
+        let dir = std::env::temp_dir().join(format!("cyrus-ini-patch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let original = b"[attack65]
+damage = 10
+";
+        write(&dir.join("install"), "COMBAT.INI", original);
+        write(
+            &dir.join("install"),
+            "ITEM.INI",
+            b"[a]
+b = 1
+",
+        );
+        let install = GameInstall {
+            root: dir.join("install"),
+        };
+        let patch = crate::ini_patch::IniPatch {
+            file: "combat.ini".into(),
+            sections: vec!["attack65".into()],
+            key: "damage".into(),
+            value: Some("100".into()),
+            find: None,
+            replace: None,
+        };
+        let files =
+            Files::scan_with(&install, true, &[], std::slice::from_ref(&patch), None).unwrap();
+        let read = |path: &str| {
+            files
+                .read_range(path, 0, files.manifest.find(path).unwrap().bytes as usize)
+                .unwrap()
+        };
+        assert_eq!(
+            read("COMBAT.INI"),
+            b"[attack65]
+damage = 100
+"
+        );
+        assert_eq!(
+            read("ITEM.INI"),
+            b"[a]
+b = 1
+"
+        );
+        assert_eq!(
+            std::fs::read(dir.join("install/COMBAT.INI")).unwrap(),
+            original
+        );
+        let missing = crate::ini_patch::IniPatch {
+            file: "NOPE.INI".into(),
+            ..patch
+        };
+        let error = Files::scan_with(&install, true, &[], &[missing], None)
+            .err()
+            .expect("a patch for an absent file fails");
+        assert!(error.to_string().contains("NOPE.INI"), "{error:#}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn text_patches_change_the_dialogue_files_digest_only() {
+        let dir = std::env::temp_dir().join(format!("cyrus-text-digest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        write(&dir.join("install"), "ENGLISH.RTX", b"dialogue");
+        write(&dir.join("install"), "ITEM.INI", b"[a]");
+        let install = GameInstall {
+            root: dir.join("install"),
+        };
+        let digests = |text: Option<&str>| {
+            let files = Files::scan_with(&install, true, &[], &[], text).unwrap();
+            ["ENGLISH.RTX", "ITEM.INI"]
+                .map(|path| files.manifest.find(path).unwrap().digest.clone())
+        };
+        let (plain, patched, other) = (digests(None), digests(Some("a")), digests(Some("b")));
+        assert_ne!(plain[0], patched[0]);
+        assert_ne!(patched[0], other[0]);
+        assert_eq!(plain[1], patched[1]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
