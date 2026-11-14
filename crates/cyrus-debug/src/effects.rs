@@ -23,26 +23,30 @@ pub(crate) fn effects_window(
                 ui.label("Modern lighting is not available in this build.");
                 return;
             };
-            if fidelity.mode(Area::Lighting) != Mode::Modern {
+            let modern = fidelity.mode(Area::Lighting) == Mode::Modern;
+            if !modern {
                 ui.label("The effects need Modern lighting.");
                 if ui.button("Switch lighting to Modern").clicked() {
                     fidelity.set(Area::Lighting, Mode::Modern);
                 }
                 ui.separator();
             }
-            ui.heading("Lighting");
-            for effect in Effect::LIGHTING {
-                ui.checkbox(effects.switch(effect), effect.label());
-            }
-            ui.separator();
-            ui.heading("Effects");
-            for effect in Effect::ALL
-                .into_iter()
-                .filter(|effect| !Effect::LIGHTING.contains(effect))
-            {
-                ui.checkbox(effects.switch(effect), effect.label());
-                ui.indent(effect.label(), |ui| settings(ui, &mut effects, effect));
-            }
+            // Greyed out, keeping their settings, while lighting is Faithful.
+            ui.add_enabled_ui(modern, |ui| {
+                ui.heading("Lighting");
+                for effect in Effect::LIGHTING {
+                    ui.checkbox(effects.switch(effect), effect.label());
+                }
+                ui.separator();
+                ui.heading("Effects");
+                for effect in Effect::ALL
+                    .into_iter()
+                    .filter(|effect| !Effect::LIGHTING.contains(effect))
+                {
+                    ui.checkbox(effects.switch(effect), effect.label());
+                    ui.indent(effect.label(), |ui| settings(ui, &mut effects, effect));
+                }
+            });
             ui.separator();
             if ui.button("Reset to defaults").clicked() {
                 *effects = ModernEffects::default();

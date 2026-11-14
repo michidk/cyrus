@@ -1,11 +1,14 @@
 //! Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 use anyhow::Context;
+use bevy::asset::RenderAssetUsages;
 use bevy::camera::primitives::MeshAabb;
+use bevy::camera::visibility::RenderLayers;
 use bevy::gltf::GltfExtras;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::{
-    AssetId, Assets, ChildOf, Commands, Component, Entity, Handle, IntoScheduleConfigs, Mesh,
-    Mesh3d, Name, Query, Res, ResMut, error,
+    Added, AssetId, Assets, Changed, ChildOf, Commands, Component, Entity, Handle,
+    IntoScheduleConfigs, Mesh, Mesh3d, Name, Or, Query, RemovedComponents, Res, ResMut, With,
+    error,
 };
 use cyrus_assets::animation::{AnimationModel, Animations};
 use cyrus_world::animation::{AnimationPose, AnimationRequest};
@@ -95,6 +98,57 @@ impl FrameGeometry {
     }
 }
 
+/// Marks an entity whose mesh is its own and is rewritten often: a posed model part or the
+/// water-animated terrain. Every rewrite of a render-world mesh is uploaded again, so while no camera
+/// draws the entity, because it is hidden behind its clipping draw or a ray-tracing stand-in, its mesh
+/// stays in the main world, which those copies read from. Writers set the usage with
+/// [`private_mesh_usage`] on every rewrite.
+#[derive(Component)]
+pub(crate) struct PrivateMesh;
+
+/// Where the mesh of a [`PrivateMesh`] entity with these render layers lives.
+pub(crate) fn private_mesh_usage(layers: Option<&RenderLayers>) -> RenderAssetUsages {
+    if layers == Some(&RenderLayers::none()) {
+        RenderAssetUsages::MAIN_WORLD
+    } else {
+        RenderAssetUsages::default()
+    }
+}
+
+/// Uploads a private mesh again once its entity is drawn, and drops the upload once it is hidden,
+/// between rewrites.
+#[allow(clippy::type_complexity)] // Bevy query filters.
+fn follow_private_mesh_visibility(
+    meshes: Option<ResMut<Assets<Mesh>>>,
+    changed: Query<
+        (&Mesh3d, Option<&RenderLayers>),
+        (
+            With<PrivateMesh>,
+            Or<(Changed<RenderLayers>, Added<PrivateMesh>)>,
+        ),
+    >,
+    all: Query<(&Mesh3d, Option<&RenderLayers>), With<PrivateMesh>>,
+    mut unlayered: RemovedComponents<RenderLayers>,
+) {
+    let Some(mut meshes) = meshes else {
+        return;
+    };
+    let unlayered: Vec<_> = unlayered
+        .read()
+        .filter_map(|entity| all.get(entity).ok())
+        .collect();
+    for (mesh, layers) in changed.iter().chain(unlayered) {
+        let usage = private_mesh_usage(layers);
+        if meshes
+            .get(&mesh.0)
+            .is_some_and(|mesh| mesh.asset_usage != usage)
+            && let Some(mut mesh) = meshes.get_mut(&mesh.0)
+        {
+            mesh.asset_usage = usage;
+        }
+    }
+}
+
 #[derive(Component)]
 pub(crate) struct BoundFrameMesh {
     source: AssetId<Animations>,
@@ -131,6 +185,7 @@ pub(crate) fn apply_poses(
         Option<&GltfExtras>,
         Option<&mut BoundFrameMesh>,
         Option<&RejectedPose>,
+        Option<&RenderLayers>,
     )>,
     nodes: Query<(&Name, &AnimationPose)>,
     actors: Query<(), bevy::prelude::With<cyrus_script::script::ScriptBinding>>,
@@ -139,7 +194,7 @@ pub(crate) fn apply_poses(
         return;
     };
     let animation = animations.get(&request.0);
-    for (entity, parent, mut mesh, extras, bound, rejected) in &mut primitives {
+    for (entity, parent, mut mesh, extras, bound, rejected, layers) in &mut primitives {
         if let Some(mut bound) = bound {
             if bound.source != request.0.id()
                 || nodes.get(bound.node).is_err()
@@ -155,7 +210,9 @@ pub(crate) fn apply_poses(
                 if let Some(bounds) = meshes.get(&mesh.0).and_then(Mesh::get_aabb) {
                     commands.entity(entity).insert(bounds);
                 }
-                commands.entity(entity).remove::<BoundFrameMesh>();
+                commands
+                    .entity(entity)
+                    .remove::<(BoundFrameMesh, PrivateMesh)>();
                 continue;
             }
             let Ok((_, pose)) = nodes.get(bound.node) else {
@@ -177,6 +234,7 @@ pub(crate) fn apply_poses(
             match result {
                 Ok(frame) => {
                     if let Some(mut private) = meshes.get_mut(&mesh.0) {
+                        private.asset_usage = private_mesh_usage(layers);
                         private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
                         private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);
                         private.final_aabb = None;
@@ -231,6 +289,7 @@ pub(crate) fn apply_poses(
         match result {
             Ok((mapping, frame)) => {
                 let mut private = original.clone();
+                private.asset_usage = private_mesh_usage(layers);
                 private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
                 private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);
                 private.final_aabb = None;
@@ -240,14 +299,17 @@ pub(crate) fn apply_poses(
                 let original = mesh.0.clone();
                 mesh.0 = meshes.add(private);
                 commands.entity(entity).remove::<RejectedPose>();
-                commands.entity(entity).insert(BoundFrameMesh {
-                    source: request.0.id(),
-                    node: parent.parent(),
-                    name: pose.model.clone(),
-                    mapping,
-                    original,
-                    frame: pose.frame,
-                });
+                commands.entity(entity).insert((
+                    PrivateMesh,
+                    BoundFrameMesh {
+                        source: request.0.id(),
+                        node: parent.parent(),
+                        name: pose.model.clone(),
+                        mapping,
+                        original,
+                        frame: pose.frame,
+                    },
+                ));
             }
             Err(error) => {
                 error!("world {} animation {}: {error:#}", animation.world, name);
@@ -430,7 +492,7 @@ impl PreparedModelFrames {
                 let handle = world.resource_mut::<Assets<Mesh>>().add(mesh);
                 let mut target = world.entity_mut(entity);
                 target
-                    .insert((Mesh3d(handle), binding))
+                    .insert((Mesh3d(handle), binding, PrivateMesh))
                     .remove::<RejectedPose>();
                 if let Some(bounds) = bounds {
                     target.insert(bounds);
@@ -446,7 +508,9 @@ impl bevy::prelude::Plugin for AnimationRenderPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_systems(
             bevy::prelude::PostUpdate,
-            apply_poses.before(bevy::asset::AssetEventSystems),
+            (apply_poses, follow_private_mesh_visibility)
+                .chain()
+                .before(bevy::asset::AssetEventSystems),
         );
     }
 }

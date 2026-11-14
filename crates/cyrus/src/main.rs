@@ -244,6 +244,21 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_debug::DebugMenuPlugin,
             cyrus_mods::ModsPlugin,
         ));
+        #[cfg(feature = "raytracing")]
+        {
+            app.add_plugins(cyrus_render::fog::RayTracingPlugin);
+            if let Some(value) = &args.launch.ray_tracing {
+                app.world_mut()
+                    .resource_mut::<cyrus_render::fog::RayTracing>()
+                    .enabled = value == "on";
+            }
+        }
+        #[cfg(not(feature = "raytracing"))]
+        if args.launch.ray_tracing.is_some() {
+            warn!(
+                "--ray-tracing ignored: this build has no ray tracing (cargo feature `raytracing`)"
+            );
+        }
         app.add_systems(
             Update,
             cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>

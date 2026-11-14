@@ -30,7 +30,7 @@ const SHADOW_FIRST_CASCADE: f32 = 20.0;
 const SHADOW_DISTANCE: f32 = 400.0;
 
 /// The camera exposure the lights are calibrated for; the view camera keeps Bevy's default.
-fn exposure() -> f32 {
+pub(in crate::fog) fn exposure() -> f32 {
     Exposure::default().exposure()
 }
 /// Everything the lights were last built from.
@@ -41,7 +41,7 @@ pub(super) struct Built {
 
 /// The retained script world, whose object lights replace the environment's while it owns it.
 #[derive(SystemParam)]
-pub(super) struct RetainedLights<'w> {
+pub(in crate::fog) struct RetainedLights<'w> {
     actors: Option<Res<'w, cyrus_script::script::ScriptActors>>,
     active: Option<Res<'w, crate::environment::ActiveEnvironment>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
@@ -50,7 +50,7 @@ pub(super) struct RetainedLights<'w> {
 }
 
 impl RetainedLights<'_> {
-    fn object_lights(
+    pub(in crate::fog) fn object_lights(
         &self,
         request: &EnvironmentRequest,
         environment: &Environment,
@@ -82,7 +82,7 @@ pub(super) struct LightAssets<'w> {
     lamps: ResMut<'w, super::glow::LampLights>,
 }
 
-fn peak(rgb: [f32; 3]) -> f32 {
+pub(in crate::fog) fn peak(rgb: [f32; 3]) -> f32 {
     rgb.into_iter().fold(0.0, f32::max).min(255.0)
 }
 
@@ -141,26 +141,26 @@ pub(super) fn sync_lights(
 
 /// The world's sun as installed: its 0..=255 colour and the direction its light travels.
 #[derive(Component)]
-pub(super) struct Sun {
-    pub(super) rgb: [f32; 3],
-    pub(super) direction: Dir3,
+pub(in crate::fog) struct Sun {
+    pub(in crate::fog) rgb: [f32; 3],
+    pub(in crate::fog) direction: Dir3,
 }
 
 /// The ambient environment cube and the world's installed 0..=255 ambient colour it was made of.
 #[derive(Component)]
-pub(super) struct Ambient {
-    pub(super) image: Handle<Image>,
-    pub(super) rgb: [f32; 3],
+pub(in crate::fog) struct Ambient {
+    pub(in crate::fog) image: Handle<Image>,
+    pub(in crate::fog) rgb: [f32; 3],
 }
 
 /// An original 0..=255 light triple as a colour whose linear value is the light factor.
-pub(super) fn light_color(rgb: [f32; 3]) -> Color {
+pub(in crate::fog) fn light_color(rgb: [f32; 3]) -> Color {
     let [r, g, b] = rgb.map(|value| (value / 255.0).clamp(0.0, 1.0));
     Color::srgb(r, g, b)
 }
 
 /// A light shining along `direction`; straight up or down keeps a horizontal up axis.
-pub(super) fn light_transform(direction: Dir3) -> Transform {
+pub(in crate::fog) fn light_transform(direction: Dir3) -> Transform {
     let up = if direction.y.abs() > 0.999 {
         Vec3::Z
     } else {
@@ -206,7 +206,10 @@ fn spawn_sun(commands: &mut Commands, lighting: &ModelLighting) {
 }
 
 /// The world's ambient colour as a uniform environment cubemap.
-fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> EnvironmentMapLight {
+pub(in crate::fog) fn ambient_light(
+    images: &mut Assets<Image>,
+    lighting: &ModelLighting,
+) -> EnvironmentMapLight {
     // Kept in the main world too, so the day/night cycle can retint it.
     let mut cube = Image::new(
         Extent3d {
@@ -234,17 +237,17 @@ fn ambient_light(images: &mut Assets<Image>, lighting: &ModelLighting) -> Enviro
 }
 
 /// An object light as the world places it: position, reach in world units and 0..=255 colour.
-struct Placed {
-    position: Vec3,
-    radius: f32,
-    rgb: [f32; 3],
+pub(in crate::fog) struct Placed {
+    pub(in crate::fog) position: Vec3,
+    pub(in crate::fog) radius: f32,
+    pub(in crate::fog) rgb: [f32; 3],
 }
 
 /// The lights that add light. Map light colours are signed: the original's vertex lighting adds
 /// the positive channels and takes the negative ones away, so a fire is orange with its blue
 /// removed and some lights only darken. Bevy's point lights only add, so each light shines with
 /// its positive channels and darkening-only lights are left out; a Modern tuning choice.
-fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
+pub(in crate::fog) fn placed(lights: &[LocalLight]) -> impl Iterator<Item = Placed> + '_ {
     lights
         .iter()
         .filter(|light| light.radius > 0 && light.rgb.iter().any(|value| *value > 0))
