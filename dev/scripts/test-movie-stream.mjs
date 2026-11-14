@@ -261,3 +261,24 @@ assert.equal(pendingContext.sources.length, 1, 'a new public play can activate t
 assert.equal(pendingContext.sources[0].offset, .5);
 movie.closeMovie(pendingId);
 console.log('packet PCM: seek invalidates pending context activation before source creation');
+
+// A seek must detach promise ownership, not just stop already-created nodes.
+const deferredId = movie.openMovie('/movies/deferred.smk', true, 2, .1);
+const deferredContext = contexts.at(-1);
+let rejectOld;
+deferredContext.resume = () => new Promise((_, reject) => { rejectOld = reject; });
+movie.movieAudio(deferredId, new Uint8Array(20).fill(160), 10, 1, 8, 0, false);
+movie.movieVideoEnd(deferredId, 1);
+movie.playMovie(deferredId);
+movie.seekMovie(deferredId, .5);
+movie.movieVideoEnd(deferredId, 1.5);
+deferredContext.resume = () => Promise.resolve();
+movie.playMovie(deferredId);
+await settle();
+assert.equal(deferredContext.sources.length, 1, 'a new seek generation must not wait for an obsolete play promise');
+rejectOld(new Error('obsolete output activation failed'));
+await settle();
+assert.equal(movie.movieError(deferredId), null, 'obsolete activation rejection cannot fail the new movie generation');
+assert.equal(deferredContext.sources[0].stopped, undefined, 'obsolete completion cannot stop the current source');
+movie.closeMovie(deferredId);
+console.log('packet PCM: seek detaches obsolete play promise and its late failure');
