@@ -1,12 +1,15 @@
 //! The installed Windows 3dfx splash, drawn live every frame as the original's Glide splash is.
 //! Projection, per-vertex lighting and fog follow preservation's `docs/engine/startup.md`; the
-//! meshes go through one perspective camera into a 1280 by 960 image that the startup sprite shows
-//! at 640 by 480, so edges are antialiased by two-times supersampling.
+//! meshes go through one perspective camera at the physical resolution of the window's fitted
+//! 4:3 viewport, including its display scale factor.
 use super::StartupContent;
 use super::view3d::{projection_for, raw_texture_image, target_image_sized, view_camera};
 use bevy::{
     asset::{AssetLoader, LoadContext, embedded_asset, io::Reader},
-    camera::visibility::{NoFrustumCulling, RenderLayers},
+    camera::{
+        RenderTarget,
+        visibility::{NoFrustumCulling, RenderLayers},
+    },
     image::ImageSampler,
     math::{Mat4, Vec2, Vec3},
     mesh::{MeshVertexBufferLayoutRef, PrimitiveTopology},
@@ -20,9 +23,6 @@ use bevy::{
 use cyrus_assets::splash_asset::{SplashAsset, SplashDraw};
 use std::collections::BTreeMap;
 
-/// The supersampled render size; the sprite shows it at half this size.
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 960;
 /// Render layer of the splash scene.
 const SPLASH_LAYER: usize = 9;
 /// Frames before the fog starts to lift, and the frames it takes to lift.
@@ -56,6 +56,38 @@ impl AssetLoader for Loader {
 pub(super) fn register_assets(app: &mut App) {
     app.init_asset::<SplashAsset>()
         .init_asset_loader::<Loader>();
+}
+
+/// The physical pixels covered by the startup sprite, with the original's 4:3 framing.
+fn render_size(window: UVec2) -> UVec2 {
+    (Vec2::new(640.0, 480.0) * super::viewport_scale(window.as_vec2()))
+        .round()
+        .as_uvec2()
+        .max(UVec2::ONE)
+}
+
+/// Resizes the live target without changing the sprite's logical size or the animation clock.
+pub(super) fn resize(
+    mut commands: Commands,
+    windows: Query<&Window>,
+    playback: Option<ResMut<super::Playback>>,
+    mut sprites: Query<&mut Sprite, With<StartupContent>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if let (Ok(window), Some(mut playback)) = (windows.single(), playback)
+        && playback.elapsed < playback.count as f32 / 30.0
+        && let Some((_, view)) = &mut playback.live
+        && view.resize(&mut images, window.physical_size())
+    {
+        if let Ok(mut sprite) = sprites.single_mut() {
+            sprite.image = view.target();
+        }
+        if let Some(camera) = view.camera {
+            commands
+                .entity(camera)
+                .insert(RenderTarget::Image(view.target().into()));
+        }
+    }
 }
 
 /// A splash draw's material: the texture, the fog visibility every draw of a frame shares (x) and the
@@ -269,9 +301,10 @@ pub(super) struct SplashAssets<'w> {
 
 impl SplashView {
     /// The view and the black image the startup sprite shows until the splash has loaded.
-    pub fn new(images: &mut Assets<Image>) -> Self {
-        let mut target = target_image_sized(WIDTH, HEIGHT, [0, 0, 0, 255]);
-        // The sprite shows this at half size; bilinear sampling is the box filter of the 2x2 samples.
+    pub fn new(images: &mut Assets<Image>, window: UVec2) -> Self {
+        let size = render_size(window);
+        let mut target = target_image_sized(size.x, size.y, [0, 0, 0, 255]);
+        // The target matches the displayed viewport; filtering handles fractional border pixels.
         target.sampler = ImageSampler::linear();
         Self {
             target: images.add(target),
@@ -284,6 +317,22 @@ impl SplashView {
 
     pub fn target(&self) -> Handle<Image> {
         self.target.clone()
+    }
+
+    fn resize(&mut self, images: &mut Assets<Image>, window: UVec2) -> bool {
+        let size = render_size(window);
+        if images
+            .get(&self.target)
+            .is_some_and(|image| image.size() != size)
+        {
+            // A new target also replaces GPU bindings that refer to the old texture view.
+            let mut image = target_image_sized(size.x, size.y, [0, 0, 0, 255]);
+            image.sampler = ImageSampler::linear();
+            let old = std::mem::replace(&mut self.target, images.add(image));
+            images.remove(old.id());
+            return true;
+        }
+        false
     }
 
     /// Spawns the camera and uploads the splash's textures.
@@ -380,7 +429,7 @@ impl SplashView {
         let frame_draws = draws(asset, frame);
         let reference = frame_draws.first().map_or(1.0, |draw| draw.horizontal_fov);
         if let Some(camera) = self.camera {
-            // The splash's horizontal half-field tangent at its 1280 by 960 size.
+            // Preserve the authored horizontal field of view at every render resolution.
             commands
                 .entity(camera)
                 .insert(projection_for((reference / 2.0).tan()));
@@ -418,6 +467,97 @@ impl SplashView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_target_follows_physical_window_pixels_and_resize_without_restarting_playback() {
+        let mut app = App::new();
+        let mut images = Assets::<Image>::default();
+        let mut view = SplashView::new(&mut images, UVec2::new(800, 600));
+        let target = view.target();
+        assert_eq!(images.get(&target).unwrap().size(), UVec2::new(800, 600));
+        let camera = app
+            .world_mut()
+            .spawn(RenderTarget::Image(target.clone().into()))
+            .id();
+        view.camera = Some(camera);
+        let sprite = app
+            .world_mut()
+            .spawn((Sprite::from_image(target.clone()), StartupContent))
+            .id();
+        app.insert_resource(images)
+            .insert_resource(super::super::Playback {
+                count: 150,
+                live: Some((Handle::default(), view)),
+                title: Handle::default(),
+                elapsed: 2.0,
+                failed: false,
+            })
+            .add_systems(Update, resize);
+        let window = app
+            .world_mut()
+            .spawn(Window {
+                resolution: bevy::window::WindowResolution::new(2560, 1600)
+                    .with_scale_factor_override(2.0),
+                ..default()
+            })
+            .id();
+        app.update();
+        let size = |app: &App| {
+            let playback = app.world().resource::<super::super::Playback>();
+            let current = playback.live.as_ref().unwrap().1.target();
+            assert_eq!(app.world().get::<Sprite>(sprite).unwrap().image, current);
+            assert!(matches!(app.world().get::<RenderTarget>(camera).unwrap(),
+                RenderTarget::Image(image) if image.handle == current));
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&current)
+                .unwrap()
+                .size()
+        };
+        // A 1280x800 logical browser viewport on a 2x display uses physical pixels.
+        assert_eq!(size(&app), UVec2::new(2133, 1600));
+        assert!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&target)
+                .is_none()
+        );
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set_physical_resolution(3840, 2160);
+        app.update();
+        assert_eq!(size(&app), UVec2::new(2880, 2160));
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set_physical_resolution(480, 800);
+        app.update();
+        assert_eq!(size(&app), UVec2::new(480, 360));
+        assert_eq!(
+            app.world().resource::<super::super::Playback>().elapsed,
+            2.0
+        );
+        assert_eq!(app.world().resource::<Assets<Image>>().len(), 1);
+        // Once the title is showing, resizing must not allocate another splash target.
+        app.world_mut()
+            .resource_mut::<super::super::Playback>()
+            .elapsed = 5.0;
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set_physical_resolution(1920, 1080);
+        app.update();
+        assert_eq!(size(&app), UVec2::new(480, 360));
+    }
+
+    #[test]
+    fn minimized_window_keeps_a_valid_render_attachment() {
+        assert_eq!(render_size(UVec2::ZERO), UVec2::ONE);
+    }
 
     fn asset(frames: usize, fps: u32) -> SplashAsset {
         SplashAsset {

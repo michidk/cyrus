@@ -14,8 +14,8 @@ such as DOSBox-X with `glide=emu`, runs the DOS Glide overlay and shows an older
 ([startup facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#splash-variants)).
 
 cyrus plays only the Windows splash, because it is what GOG players see, and has no option for the shield.
-Comparisons against DOSBox-X therefore show a different splash. Glide edge antialiasing is approximated by
-supersampling.
+Comparisons against DOSBox-X therefore show a different splash. The live meshes render at the
+physical resolution of the window's fitted 4:3 viewport. Glide's edge-antialiasing path is not reproduced.
 
 ## Skipped introduction movie
 

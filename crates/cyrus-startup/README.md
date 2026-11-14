@@ -82,9 +82,10 @@ The bottom-right red title label reports menu/HUD preparation, menu asset loadin
 and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
 the authored fade. The cache regenerates when the splash export changes. The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
-documents the DLL format. The splash draws into a 1280 by 960 image shown at
-half size, so edges are antialiased by
-2×2 supersampling; Glide edge coverage, floating-point approximations and pixel
+documents the DLL format. The splash draws at the physical resolution of the window's
+fitted 4:3 viewport, including display scaling, and resizes with the window.
+Its sprite retains the original logical framing without a fixed-resolution intermediate.
+Glide edge coverage, floating-point approximations and pixel
 quantization need a hardware comparison before claiming pixel-exact rendering.
 
 The book menu derives entries, layout, texture slots, widgets, and action IDs
