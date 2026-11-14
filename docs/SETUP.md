@@ -17,8 +17,9 @@ For player controls, saving, resuming and current limitations, see
   (`01 Track 1.mp3` is CD track 2) placed beside it. The CD repack's own
   DOSBox setup mounts `CDROM/` as a plain directory and plays no music.
   The browser install server (`--install`) exposes these sibling media folders
-  to both the game and viewer. Local browser folder selection still requires
-  the GOG companion files.
+  to both the game and viewer. Local browser folder selection maps the same
+  sibling media folders without requiring GOG disc files. Missing resources
+  are reported when an operation needs them; startup still requires its splash DLL.
 - Stable Rust (`rust-toolchain.toml`), `just`, and for a window Bevy's usual
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker, for the original game and for the virtual-display runner.
