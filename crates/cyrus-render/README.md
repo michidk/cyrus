@@ -283,7 +283,7 @@ each one alone; instead each caster gets a shadow-only twin that shares its mesh
 material on a layer only the sun lights (`fog/modern_lighting/shadows`). The camera's passes
 batch the same way: static scene models whose material values modern lighting reads are equal
 share one material (`fog/modern_lighting/sharing`) and get their own back in Faithful. When
-a mod writes the `water-surface` shader input (`hooks::ShaderInputs`) with a wave amplitude, the terrain
+a mod fills the `terrain-surface` effect slot (`hooks::EffectSlots`) with a wave amplitude, the terrain
 shader moves its waves on the unprojected terrain and the CPU no longer rewrites the terrain mesh each
 frame; the ground heights still follow the original's waves.
 The model and terrain materials are bindless where the platform supports it, so models with
@@ -296,7 +296,7 @@ Under modern lighting the map's object and baked lights are point lights with th
 channels, and small models that hold a light glow on their bright texels
 (`fog/modern_lighting/glow`). Models whose texture SURFACE.INI marks as water write a zero alpha,
 which the screen pass reflects as calm water without ripples, on faces that face up. The terrain
-and the screen pass share the water library `water_surface.wesl`, whose built-in version has no waves, ripples, foam or wet
+and the screen pass share the water library `terrain_surface.wesl`, whose built-in version has no waves, ripples, foam or wet
 sand and which a mod replaces (the `modern-water` mod carries the modern ones); the terrain's second
 UV channel carries the water weight and, packed together, each vertex's signed distance to the
 shore in grid cells from the terrain cells whose texture SURFACE.INI marks as water and its cell's
@@ -350,8 +350,8 @@ selected far frustum. Faithful Fog retains the original terrain window.
 Modern Fog defaults to 50,000 engine units and a gradual distant
 fade. Modern Sky is camera-centered. Fog and Sky are independently switchable and default to
 Faithful. Water has no mode; mods change it through the generic `hooks` (the
-"water-wave", "water-cell" and "lighting-modern" scene values, the "water-surface" shader
-input and the `water_surface.wesl` library). Re-export environments after this change.
+`WorldFacts` it publishes, the "terrain-surface" effect slot and the `terrain_surface.wesl`
+library). Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend. The framebuffer
 keeps eight bits per channel without RGB565 quantization or ordered dither:

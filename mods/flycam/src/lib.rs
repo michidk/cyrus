@@ -83,7 +83,12 @@ impl Mod for Flycam {
     const ID: &'static str = "flycam";
 
     fn frame(cx: &Cx) {
-        let mut fly: Option<Fly> = cx.memory.load(FLIGHT);
+        // A new world starts with the camera back on the player.
+        let mut fly: Option<Fly> = if cx.world_changed {
+            None
+        } else {
+            cx.memory.load(FLIGHT)
+        };
         if cx.input.tapped(Key::INSERT) {
             fly = match fly {
                 Some(_) => None,

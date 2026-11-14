@@ -33,6 +33,9 @@ impl Mod for Steering {
 
     fn frame(cx: &Cx) {
         cx.camera.orbit();
+        if cx.world_changed {
+            cx.memory.save::<SteeringState>(STEERING, None);
+        }
         // No player yet (menus, loading): leave everything to the game.
         if cx.player.position().is_none() {
             cx.memory.save::<SteeringState>(STEERING, None);

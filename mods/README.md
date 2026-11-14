@@ -7,10 +7,11 @@ the Mods window that opens with F11. The browser build does not load mods.
 
 | Mod | Hooks | Effect |
 | --- | --- | --- |
-| `modern-water` | scene, uniforms, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
-| `flycam` | camera, input, hud, settings | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
+| `modern-water` | environment, effects, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
+| `flycam` | camera, input, hud, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
 | `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
 | `serpent` | script patch (manifest only, no code) | Restores the sea serpent in the Spine that was cut from the game: its installed script is complete but sits behind an endless `End`, which the mod lets fall through |
+| `actor-info` | actors, player, hud | A small example of the read-only hooks: shows the nearest visible actor, its health and its distance in the corner |
 
 Modern movement optionally follows travel with the camera after a configurable delay.
 Mouse or right-stick camera input takes priority; standing still, jumping and armed
@@ -78,26 +79,35 @@ cyrus_mod_sdk::export_mod!(Hello);
 ```
 
 `frame` runs every `Update` with every hook in `cx` (`cx.camera`, `cx.player`, `cx.movement`, `cx.input`,
-`cx.scene`, ...). The sections below describe each hook in the host's own terms; the SDK keeps their
+`cx.environment`, `cx.actors`, `cx.effects`, ...). The sections below describe each hook in the host's own terms; the SDK keeps their
 units and timing and swaps the raw numbers for types: a camera `Pose`, `Vec3` positions, `Option` where
-the host answers an empty list, `Claim` for `movement.claim`, `cx.settings.flag("key")` without the mod id and
-`cx.memory.load::<T>("name")` for any type that implements `Persist`. `cargo test` in a mod folder or
+the host answers an empty list, `Claim` for `movement.claim`, `Water` and `Lighting` for the environment, `cx.settings.flag("key")`
+without the mod id, `cx.memory.load::<T>("name")` for any type that implements `Persist`, and
+`cx.world_changed`, true on the first frame after a world is loaded or unloaded, for resetting
+state kept per world. `cargo test` in a mod folder or
 `mods/sdk` runs its pure logic on the host.
 
 The raw WIT is `crates/cyrus-mods/wit/cyrus.wit`; wasvy 0.0.11 carries only primitives, `option` and `list`
 across it, which is why the typed layer lives in the SDK. Other wasvy guest languages (Python, Go) work
 against the WIT directly.
 
-- `scene`: `values(key)` reads a value the game publishes by name, `seconds()`
-  its clock. Published today: `"water-wave"` (amplitude, speed, frequency),
-  `"water-cell"` (terrain grid cell size in scene units) and `"lighting-modern"`
-  (1 while the Lighting area is Modern).
-- `uniforms`: `set(key, values)` writes a four-value input the game's shaders read
-  (call it every frame; stopping restores the original). Effects run in shaders: a mod
-  replaces a shader library and sets its inputs here; the game never hands out its meshes. Read today:
-  `"water-surface"` = `[effects, 0, amplitude, cell]`, which turns on the
-  shore foam, wet sand and ripples and, with a positive `amplitude`, moves the
-  waves in the terrain shader.
+- `environment`: read-only facts, refreshed every frame. `seconds()` is the presentation clock;
+  `generation()` changes whenever a world is loaded or reloaded (0 while none is), so a mod that
+  keeps state per world compares it with the value it saw last (the SDK does this for you as
+  `cx.world_changed`); `index()` is the loaded world's WORLD.INI index; `lighting()` is `"modern"` or
+  `"faithful"`; `water()` is the world's water as amplitude, speed and frequency (world file
+  units) plus the terrain grid cell size in scene units, empty when it has none.
+- `actors`: the loaded world's actors, read-only, in actor order and refreshed every frame:
+  `count()`, then `name(i)` (script name), `position(i)` (map units, original axes, empty before the
+  actor has one), `health(i)` and `hidden(i)`. An index outside the range answers a neutral value.
+  Indices are valid for one world generation. The SDK gives `Actor` values, `actors.all()` and
+  `actors.find(name)`.
+- `effects`: parameter blocks for the game's shaders, in named slots. Effects run in shaders: a mod
+  replaces a shader library (`[[shader]]`) and fills the slot that library reads; the game never
+  hands out its meshes. Fill a slot every frame; stopping restores the original. Slot
+  `"terrain-surface"` = `[effects, 0, amplitude, cell]` turns on the surface library's shore foam, wet
+  sand and ripples and, with a positive `amplitude`, moves the waves in the terrain shader (the SDK:
+  `effects.terrain_surface(TerrainSurface { .. })`).
 
 - `camera`: `pose()` is the current view; `drive(pose)` moves it this frame
   and suppresses player input. Stop calling it to hand control back.
@@ -177,8 +187,8 @@ returns to the original behaviour.
 
 ```toml
 [[shader]]
-replaces = "embedded://cyrus_render/water_surface.wesl"   # asset path of the original
-file = "water_surface.wesl"                                # in the mod folder
+replaces = "embedded://cyrus_render/terrain_surface.wesl"   # asset path of the original
+file = "terrain_surface.wesl"                                # in the mod folder
 ```
 
 The replacement must keep the original's exported functions and signatures (see

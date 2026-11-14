@@ -28,10 +28,10 @@ changed is reloaded. A mod is just its folder; copy it in or out while the game 
 `register_source` must run before the asset plugin is added.
 
 The API lives on one host entity with one component per hook (`src/api.rs`). The
-hooks are generic: named scene values and four-value shader inputs
-(cyrus-render's `hooks`, which lists the published and read names), the camera, the player's movement, animation and status,
+hooks are generic: world facts (clock, world generation, Lighting mode, water) and named
+shader effect slots (cyrus-render's `hooks`), the loaded world's actors, the camera, the player's movement, animation and status,
 collision probes, script native calls, settings, memory, a text overlay and input.
-`PreUpdate` hands last frame's mod answers to cyrus-render's `ShaderInputs`,
+`PreUpdate` hands last frame's mod answers to cyrus-render's `EffectSlots`,
 `CameraTakeover` and cyrus-script's `CameraOrbit`, `MovementWish`,
 `LocomotionClaimed` and `PlayerRequests`, and publishes this frame's state (including the
 selected player's `Player` status), so answers apply one frame

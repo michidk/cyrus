@@ -14,7 +14,7 @@ import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, sce
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::{base_color_level, base_color_size, sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
-import package::water_surface::{water_wave, water_ripple, shore_foam, shore_wetness};
+import package::terrain_surface::{water_wave, water_ripple, shore_foam, shore_wetness};
 import constants::MATERIAL_BIND_GROUP;
 @if(BINDLESS)
 import bevy_pbr::render::mesh_bindings::mesh;

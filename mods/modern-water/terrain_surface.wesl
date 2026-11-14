@@ -1,4 +1,4 @@
-// The modern water surface, replacing the built-in `water_surface.wesl`. The terrain shader and the
+// The modern water surface, replacing the built-in `terrain_surface.wesl`. The terrain shader and the
 // modern screen pass share it, so the waves the terrain shades are the waves the reflections bend
 // with. Every wave, ripple and foam shape is a tuning choice, not recovered behaviour.
 

@@ -58,7 +58,7 @@ pub(super) struct ModernPost {
     /// strength (0 turns them off).
     horizon: Vec4,
     /// Seconds as the scene shaders read them, for the water's ripples, and the modern waves'
-    /// amplitude and grid cell size in world units (both 0 without them; see `hooks::ShaderInputs`).
+    /// amplitude and grid cell size in world units (both 0 without them; see `hooks::EffectSlots`).
     time: Vec4,
 }
 
@@ -81,7 +81,7 @@ fn sun_direction(sky: Option<&SkyMaterial>, light: Option<&GlobalTransform>) -> 
 pub(super) struct PostInputs<'w, 's> {
     effects: Res<'w, ModernEffects>,
     time: Res<'w, Time>,
-    shader_inputs: Option<Res<'w, crate::hooks::ShaderInputs>>,
+    shader_inputs: Option<Res<'w, crate::hooks::EffectSlots>>,
     daylight: Res<'w, Daylight>,
     request: Option<Res<'w, EnvironmentRequest>>,
     environments: Res<'w, Assets<Environment>>,
@@ -112,7 +112,7 @@ struct FrameSky {
     visibility: f32,
     sun_color: Vec3,
     horizon: Vec3,
-    /// `crate::hooks::ShaderInputs::water`.
+    /// `crate::hooks::EffectSlots::terrain_surface`.
     waves: Vec4,
 }
 
@@ -141,7 +141,7 @@ impl PostInputs<'_, '_> {
         let waves = self
             .shader_inputs
             .as_deref()
-            .map_or(Vec4::ZERO, crate::hooks::ShaderInputs::water);
+            .map_or(Vec4::ZERO, crate::hooks::EffectSlots::terrain_surface);
         let horizon = environment.map_or(Vec3::ZERO, |environment| {
             let encoded = Vec3::from_array(environment.background.map(f32::from)) / 255.0 * tint;
             Vec3::from_array(

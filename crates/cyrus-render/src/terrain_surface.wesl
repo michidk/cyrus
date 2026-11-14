@@ -1,7 +1,7 @@
-// The water surface hook, shared by the terrain shader and the modern screen pass. This built-in
+// The terrain surface hook, shared by the terrain shader and the modern screen pass. This built-in
 // version keeps the original look: no waves, ripples, foam or wet sand. A mod replaces this whole
-// library (`[[shader]]` with `replaces = "embedded://cyrus_render/water_surface.wesl"`) and turns
-// the effects on through the `water-surface` shader input (`hooks::WATER_SURFACE`), which reaches
+// library (`[[shader]]` with `replaces = "embedded://cyrus_render/terrain_surface.wesl"`) and turns
+// the effects on through the `terrain-surface` effect slot (`hooks::TERRAIN_SURFACE`), which reaches
 // the shaders as `fog.water`. Units are world units and seconds.
 
 // The height above the base grid and its slope along x and z at a grid position, where the terrain

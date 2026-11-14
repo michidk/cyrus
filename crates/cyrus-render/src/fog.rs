@@ -399,7 +399,7 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");
-        load_shader_library!(app, "water_surface.wesl");
+        load_shader_library!(app, "terrain_surface.wesl");
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");
@@ -482,7 +482,7 @@ fn apply_scene_fog(
     (fidelity, daylight, inputs): (
         Res<Fidelity>,
         Option<Res<Daylight>>,
-        Option<Res<crate::hooks::ShaderInputs>>,
+        Option<Res<crate::hooks::EffectSlots>>,
     ),
     mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
@@ -591,10 +591,10 @@ fn apply_scene_fog(
         }
     }
     let mut extension = fog_extension(environment, &fidelity, [near, far]);
-    // A provider's water-surface input; without one the shaders keep the original look.
+    // A provider's terrain surface slot; without one the shaders keep the original look.
     extension.water = inputs
         .as_deref()
-        .map_or(Vec4::ZERO, crate::hooks::ShaderInputs::water);
+        .map_or(Vec4::ZERO, crate::hooks::EffectSlots::terrain_surface);
     // The modern day/night cycle tints the fog with the sky.
     if let Some(sky) = daylight.and_then(|daylight| daylight.0) {
         extension.color = (extension.color.truncate() * sky.tint).extend(extension.color.w);

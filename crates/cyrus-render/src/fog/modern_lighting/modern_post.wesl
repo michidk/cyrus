@@ -1,7 +1,7 @@
 // The modern lighting's screen pass: water reflections and the sun's lens flare; see `post.rs`.
 import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 import bevy_render::view::View;
-import package::water_surface::{water_wave, water_ripple};
+import package::terrain_surface::{water_wave, water_ripple};
 
 struct ModernPost {
     sun: vec4<f32>,

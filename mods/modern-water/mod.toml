@@ -2,5 +2,5 @@ name = "Modern water"
 description = "Crossing waves, ripples, shore foam and wet sand in place of the original table wave. Reflections come from Modern Lighting in the base game."
 
 [[shader]]
-replaces = "embedded://cyrus_render/water_surface.wesl"
-file = "water_surface.wesl"
+replaces = "embedded://cyrus_render/terrain_surface.wesl"
+file = "terrain_surface.wesl"

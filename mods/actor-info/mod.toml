@@ -1,0 +1,4 @@
+name = "Actor info"
+description = "Shows the nearest actor's name and health in the corner, and how far away it is. A small example of the read-only actors and environment hooks."
+version = "0.1.0"
+author = "cyrus"

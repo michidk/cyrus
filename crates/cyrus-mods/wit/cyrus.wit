@@ -1,7 +1,7 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `uniforms` and `hud` with `QueryFor::Mut` and `input`, `settings`,
-/// `player` and `scene` with `QueryFor::Ref`;
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// `player`, `environment` and `actors` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
@@ -9,17 +9,39 @@ package cyrus:mods@0.1.0;
 interface components {
   use wasvy:ecs/app@0.0.11.{component};
 
-  /// Values the game publishes by name, and its clock. Published today: "water-wave", the
-  /// loaded world's wave amplitude, speed and frequency (WLD units), while it has water.
-  /// "water-cell" is the terrain grid cell size in scene units, and "lighting-modern" is 1 while
-  /// the Lighting area is Modern, else 0.
-  /// wasvy:type-path=cyrus_mods::api::Scene
-  resource scene {
+  /// Facts about the loaded world and the presentation, read-only and refreshed every frame.
+  /// wasvy:type-path=cyrus_mods::api::Environment
+  resource environment {
     constructor(component: component);
-    /// The values published under `key`; empty when none are.
-    values: func(key: string) -> list<f32>;
     /// Presentation clock in seconds.
     seconds: func() -> f32;
+    /// Changes whenever a world is loaded or reloaded; 0 while none is. A mod that keeps state
+    /// per world compares it with the value it saw last and starts afresh when it differs.
+    generation: func() -> u32;
+    /// The loaded world's WORLD.INI index, or empty while none is loaded.
+    index: func() -> list<u32>;
+    /// "modern" while the Lighting area is Modern, else "faithful".
+    lighting: func() -> string;
+    /// The loaded world's water as amplitude, speed and frequency (world file units) and the
+    /// terrain grid cell size in scene units; empty when the world has no water.
+    water: func() -> list<f32>;
+  }
+
+  /// The actors of the loaded world, in actor order, read-only. Indices are valid for one world
+  /// generation (see `environment.generation`); every method answers a neutral value for an index that
+  /// does not exist.
+  /// wasvy:type-path=cyrus_mods::api::Actors
+  resource actors {
+    constructor(component: component);
+    count: func() -> u32;
+    /// The actor's script name.
+    name: func(index: u32) -> string;
+    /// x, y, z in map units, original axes; empty before the actor has a position.
+    position: func(index: u32) -> list<f32>;
+    /// The actor's health byte.
+    health: func(index: u32) -> u32;
+    /// A script hid the actor, so it is not drawn.
+    hidden: func(index: u32) -> bool;
   }
 
   /// The view camera. A mod that takes it over each frame suppresses player input.
@@ -163,15 +185,16 @@ interface components {
     save: func(key: string, values: list<f32>);
   }
 
-  /// Four-value inputs the game's shaders read, by name. Read today: "water-surface" =
-  /// `[effects, 0, amplitude, cell]`: `effects` above zero turns on the shader's shore foam, wet
-  /// sand and ripples; a positive `amplitude` also moves the waves in the terrain shader, `cell`
-  /// being the grid cell size in scene units (the "water-cell" scene value). Write every frame;
-  /// when a mod stops, the shaders return to the original.
-  /// wasvy:type-path=cyrus_mods::api::Uniforms
-  resource uniforms {
+  /// Parameter blocks for the game's shaders, in named slots. A mod replaces a shader library
+  /// (`[[shader]]` in mod.toml) and fills the slot that library reads. Slots today:
+  /// "terrain-surface" = `[effects, 0, amplitude, cell]`: `effects` above zero turns on the
+  /// surface library's shore foam, wet sand and ripples; a positive `amplitude` also moves the
+  /// waves in the terrain shader, `cell` being the grid cell size in scene units (`environment.water`).
+  /// Fill every frame; when a mod stops, the shaders return to the original.
+  /// wasvy:type-path=cyrus_mods::api::Effects
+  resource effects {
     constructor(component: component);
-    set: func(key: string, values: list<f32>);
+    set: func(slot: string, params: list<f32>);
   }
 
   /// Text lines drawn in the top-left corner over the game. A line shows for the frame it was
