@@ -708,5 +708,6 @@ parity with the original.
 
 **Verified:** ordinary gameplay hides the host pointer without capturing it. This follows
 [preservation’s observed gameplay cursor contract](https://github.com/michidk/redguard-preservation/blob/348982c/docs/formats/GXA.md).
-Mod orbit control additionally requests pointer lock; host UI outside gameplay retains
-a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.
+Mod orbit control additionally requests pointer lock. Opening the keyboard console
+releases that lock while keeping the pointer hidden; closing it restores orbit lock.
+Host settings retain a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.

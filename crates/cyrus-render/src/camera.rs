@@ -174,8 +174,10 @@ fn grab_cursor(
         && pending_world.is_none()
         && !logbook.is_some_and(|screen| screen.suspended())
         // The backtick settings block the console while open.
-        && !console.is_some_and(|console| console.open || console.blocked);
-    let grab = gameplay && look.is_some_and(|look| look.orbit);
+        && !console.as_ref().is_some_and(|console| console.blocked);
+    let grab = gameplay
+        && !console.is_some_and(|console| console.open)
+        && look.is_some_and(|look| look.orbit);
     // Ordinary gameplay has no pointer; host UI retains its cursor outside it.
     let visible = !gameplay;
     let mode = if grab {
