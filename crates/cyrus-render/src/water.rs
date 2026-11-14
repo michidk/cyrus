@@ -8,6 +8,7 @@ pub use preparation::{PreparedTerrainMesh, TerrainTarget};
 
 use crate::environment::EnvironmentRequest;
 use bevy::camera::primitives::MeshAabb;
+use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 use cyrus_assets::environment::Environment;
@@ -190,6 +191,15 @@ fn publish_heights(player: &PlayerTerrain, window: crate::terrain::Window, heigh
     }
 }
 
+/// What `animate_water` reads about a terrain's place in the scene: its parents, whether it is
+/// staged, its render layers and its glTF material names.
+type WaterHierarchy<'w, 's> = (
+    Query<'w, 's, &'static ChildOf>,
+    Query<'w, 's, (), With<crate::persistence::StagedRenderRoot>>,
+    Query<'w, 's, &'static RenderLayers>,
+    Query<'w, 's, &'static bevy::gltf::GltfMaterialName>,
+);
+
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn animate_water(
@@ -203,17 +213,13 @@ pub(crate) fn animate_water(
     mut meshes: ResMut<Assets<Mesh>>,
     mut entities: Query<(Entity, &mut Mesh3d)>,
     names: Query<&Name>,
-    hierarchy: (
-        Query<&ChildOf>,
-        Query<(), With<crate::persistence::StagedRenderRoot>>,
-        Query<&bevy::gltf::GltfMaterialName>,
-    ),
+    hierarchy: WaterHierarchy,
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     (distance, (mut facts, inputs)): (Option<Res<crate::fog::RenderDistance>>, Hooks),
     (mut preparation, player_scene): (Local<crate::terrain::Preparation>, PlayerTerrain),
 ) {
-    let (parents, staged, material_names) = hierarchy;
+    let (parents, staged, layers, material_names) = hierarchy;
     if playback.source != Some(request.0.id())
         || playback
             .terrain
@@ -227,7 +233,8 @@ pub(crate) fn animate_water(
                 mesh.0 = terrain.original.clone();
                 commands
                     .entity(terrain.entity)
-                    .insert(Visibility::Inherited);
+                    .insert(Visibility::Inherited)
+                    .remove::<crate::animation::PrivateMesh>();
                 if let Some(bounds) = meshes.get(&terrain.original).and_then(Mesh::get_aabb) {
                     commands.entity(terrain.entity).insert(bounds);
                 }
@@ -289,6 +296,9 @@ pub(crate) fn animate_water(
             };
         for binding in bindings {
             entities.get_mut(binding.entity).unwrap().1.0 = binding.mesh;
+            commands
+                .entity(binding.entity)
+                .insert(crate::animation::PrivateMesh);
             if let Some(bounds) = binding.bounds {
                 commands.entity(binding.entity).insert(bounds);
             }
@@ -453,8 +463,8 @@ pub(crate) fn animate_water(
             .collect();
         playback.grid = grid;
     }
-    // Modern lighting draws the whole unprojected terrain, which can cast shadows, instead of the
-    // original's per-frame camera-space preparation.
+    // Modern lighting draws the whole unprojected terrain, which can cast shadows and
+    // be traced, instead of the original's per-frame camera-space preparation.
     let prepare_for_camera = fidelity.mode(Area::Lighting) != Mode::Modern;
     let view = cameras
         .single()
@@ -552,18 +562,89 @@ pub(crate) fn animate_water(
                 *mesh = original;
             }
         }
+        // Between full updates only the wave window changes: write just its vertices. The island
+        // terrain is one mesh of about 300k vertices, so recolouring and comparing all of them on
+        // every frame cost more than the waves.
+        if wave_tick {
+            let moved: Vec<_> = terrain
+                .vertices
+                .iter()
+                .enumerate()
+                .filter(|&(_, &vertex)| window.wave_contains(vertex))
+                .collect();
+            fn current(
+                mesh: &Mesh,
+                attribute: bevy::mesh::MeshVertexAttribute,
+            ) -> Option<&[[f32; 3]]> {
+                match mesh.attribute(attribute) {
+                    Some(VertexAttributeValues::Float32x3(values)) => Some(values),
+                    _ => None,
+                }
+            }
+            let still = meshes.get(&terrain.animated).is_none_or(|mesh| {
+                let (Some(positions), Some(mesh_normals)) = (
+                    current(mesh, Mesh::ATTRIBUTE_POSITION),
+                    current(mesh, Mesh::ATTRIBUTE_NORMAL),
+                ) else {
+                    return true;
+                };
+                moved.iter().all(|&(index, &vertex)| {
+                    positions.get(index) == Some(&grid[vertex])
+                        && mesh_normals.get(index) == Some(&normals[vertex])
+                })
+            });
+            if moved.is_empty() || still {
+                continue;
+            }
+            let Some(mut mesh) = meshes.get_mut(&terrain.animated) else {
+                continue;
+            };
+            mesh.asset_usage =
+                crate::animation::private_mesh_usage(layers.get(terrain.entity).ok());
+            if let Ok(VertexAttributeValues::Float32x3(positions)) =
+                mesh.try_attribute_mut(Mesh::ATTRIBUTE_POSITION)
+            {
+                for &(index, &vertex) in &moved {
+                    positions[index] = grid[vertex];
+                }
+            }
+            if let Ok(VertexAttributeValues::Float32x3(mesh_normals)) =
+                mesh.try_attribute_mut(Mesh::ATTRIBUTE_NORMAL)
+            {
+                for &(index, &vertex) in &moved {
+                    mesh_normals[index] = normals[vertex];
+                }
+            }
+            if let Some(lighting) = lighting
+                && let Ok(VertexAttributeValues::Float32x4(colors)) =
+                    mesh.try_attribute_mut(Mesh::ATTRIBUTE_COLOR)
+            {
+                for &(index, &vertex) in &moved {
+                    colors[index] = lighting.color(normals[vertex]);
+                }
+            }
+            continue;
+        }
+        let colors = lighting.map(|lighting| {
+            terrain
+                .vertices
+                .iter()
+                .map(|&vertex| lighting.color(normals[vertex]))
+                .collect::<Vec<_>>()
+        });
+        // Most chunks hold no moving water. Writing one re-uploads it, and under ray tracing
+        // rebuilds its stand-ins and acceleration structure, so unchanged chunks are left alone.
+        if meshes.get(&terrain.animated).is_some_and(|mesh| {
+            unchanged(mesh, &terrain.vertices, grid, normals, colors.as_deref())
+        }) {
+            continue;
+        }
         let Some(mut mesh) = meshes.get_mut(&terrain.animated) else {
             continue;
         };
-        if let Some(lighting) = lighting {
-            mesh.insert_attribute(
-                Mesh::ATTRIBUTE_COLOR,
-                terrain
-                    .vertices
-                    .iter()
-                    .map(|&vertex| lighting.color(normals[vertex]))
-                    .collect::<Vec<_>>(),
-            );
+        mesh.asset_usage = crate::animation::private_mesh_usage(layers.get(terrain.entity).ok());
+        if let Some(colors) = colors {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
         }
         if let Ok(VertexAttributeValues::Float32x3(positions)) =
             mesh.try_attribute_mut(Mesh::ATTRIBUTE_POSITION)
@@ -580,6 +661,33 @@ pub(crate) fn animate_water(
             }
         }
     }
+}
+
+/// Whether a world-space terrain chunk already holds these grid positions, normals and colours.
+fn unchanged(
+    mesh: &Mesh,
+    vertices: &[usize],
+    grid: &[[f32; 3]],
+    normals: &[[f32; 3]],
+    colors: Option<&[[f32; 4]]>,
+) -> bool {
+    let matches = |attribute, values: &[[f32; 3]]| match mesh.attribute(attribute) {
+        Some(VertexAttributeValues::Float32x3(current)) => current
+            .iter()
+            .zip(vertices)
+            .all(|(current, &vertex)| *current == values[vertex]),
+        // Nothing to write into.
+        _ => true,
+    };
+    let colors_match = colors.is_none_or(|colors| {
+        matches!(
+            mesh.attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(VertexAttributeValues::Float32x4(current)) if current.as_slice() == colors
+        )
+    });
+    colors_match
+        && matches(Mesh::ATTRIBUTE_POSITION, grid)
+        && matches(Mesh::ATTRIBUTE_NORMAL, normals)
 }
 
 #[cfg(test)]

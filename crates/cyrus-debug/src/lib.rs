@@ -13,7 +13,7 @@ use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use cyrus_render::camera::DetachedView;
-use cyrus_render::fog::RenderDistance;
+use cyrus_render::fog::{RayTracing, RayTracingReference, RayTracingSupport, RenderDistance};
 use cyrus_script::player::Player;
 
 mod day_night;
@@ -129,6 +129,8 @@ fn debug_menu(
     mut flycam: ResMut<DetachedView>,
     mut fidelity: ResMut<Fidelity>,
     mut distance: ResMut<RenderDistance>,
+    ray_tracing: Option<ResMut<RayTracing>>,
+    reference: Option<ResMut<RayTracingReference>>,
     mut transfers: ResMut<cyrus_game::cheats::CheatTransfer>,
     player: Query<&Transform, With<Player>>,
 ) -> Result {
@@ -250,6 +252,7 @@ fn debug_menu(
             Area::Lighting,
             "Lighting (Modern: shadows, PBR)",
         );
+        ray_tracing_control(ui, &fidelity, ray_tracing, reference);
         fidelity_control(
             ui,
             &mut fidelity,
@@ -351,6 +354,53 @@ fn fidelity_control(ui: &mut egui::Ui, fidelity: &mut Fidelity, area: Area, labe
             if ui.selectable_label(current == mode, label).clicked() {
                 fidelity.set(area, mode);
             }
+        }
+    });
+}
+
+/// The ray-tracing switch beneath the lighting row, present only in builds with ray tracing. It
+/// starts on and works only under Modern lighting on a GPU with ray queries, so it is greyed out
+/// without them.
+fn ray_tracing_control(
+    ui: &mut egui::Ui,
+    fidelity: &Fidelity,
+    ray_tracing: Option<ResMut<RayTracing>>,
+    reference: Option<ResMut<RayTracingReference>>,
+) {
+    let Some(mut ray_tracing) = ray_tracing else {
+        return;
+    };
+    let unavailable = if fidelity.mode(Area::Lighting) != Mode::Modern {
+        Some("Ray tracing needs Modern lighting.".to_owned())
+    } else {
+        match &ray_tracing.support {
+            RayTracingSupport::Available => None,
+            RayTracingSupport::MissingFeatures(missing) => {
+                Some(format!("This GPU lacks ray query support: {missing}"))
+            }
+            RayTracingSupport::Unavailable => Some("No renderer is running.".to_owned()),
+        }
+    };
+    ui.indent("ray_tracing", |ui| {
+        let response = ui.add_enabled(
+            unavailable.is_none(),
+            egui::Checkbox::new(&mut ray_tracing.enabled, "Ray tracing (Solari)"),
+        );
+        if let Some(reason) = unavailable.as_deref() {
+            response.on_disabled_hover_text(reason);
+        }
+        // The reference only replaces the real-time tracer, so it needs ray tracing to be on.
+        let tracing = unavailable.is_none() && ray_tracing.enabled;
+        if let Some(mut reference) = reference {
+            ui.indent("ray_tracing_reference", |ui| {
+                ui.add_enabled(
+                    tracing,
+                    egui::Checkbox::new(
+                        &mut reference.0,
+                        "Path-traced reference (slow, converges while still)",
+                    ),
+                );
+            });
         }
     });
 }

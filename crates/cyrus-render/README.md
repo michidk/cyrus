@@ -317,6 +317,10 @@ shore in grid cells from the terrain cells whose texture SURFACE.INI marks as wa
 land borders in tile UV space (`water::preparation::Shore`). Near the shore the shader finds the
 waterline the beach tiles draw in their texels, and the land borders where it runs along a cell
 edge; that places the animated foam and the wet sand and makes the still shallows reflect.
+Under ray tracing, object and baked lights instead become emissive spheres. Lit windows
+and lamps (face brightness at least 96) emit into the scene with a Modern gain of 64 at night and
+eight by day; the walls' dimmer ambient brightening follows the day/night sky tint. A fullscreen pass after Solari applies the scene fog
+before forward materials draw, keeping traced buildings and cut-out foliage in the same haze.
 The Textures area point-samples world textures. The Fog and Sky switches remain independent.
 **Verified:** Faithful terrain maps the export's logical tile corners to the
 original [inset texture range](https://github.com/michidk/redguard-preservation/blob/aa70734/docs/engine/terrain-lighting.md#texture-coordinates-and-setup)

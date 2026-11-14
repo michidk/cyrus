@@ -130,7 +130,7 @@ fn phase(noon_direction: Dir3, hour: f32) -> Phase {
 }
 
 /// Advances the hour while the cycle runs.
-pub(super) fn advance(time: Res<Time>, mut cycle: ResMut<DayNight>) {
+pub(in crate::fog) fn advance(time: Res<Time>, mut cycle: ResMut<DayNight>) {
     if cycle.enabled && cycle.running && cycle.minutes_per_second != 0.0 {
         cycle.hour =
             (cycle.hour + time.delta_secs() * cycle.minutes_per_second / 60.0).rem_euclid(24.0);
@@ -138,7 +138,7 @@ pub(super) fn advance(time: Res<Time>, mut cycle: ResMut<DayNight>) {
 }
 
 /// Moves and tints the sun and the ambient light to the hour, or back to the installed values.
-pub(super) fn apply(
+pub(in crate::fog) fn apply(
     cycle: Res<DayNight>,
     skies: Query<(), With<MeshMaterial3d<SkyMaterial>>>,
     mut suns: Query<(&Sun, &mut DirectionalLight, &mut Transform)>,
