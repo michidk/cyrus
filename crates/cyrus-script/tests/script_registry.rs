@@ -11814,13 +11814,22 @@ fn ordinary_static_support_miss_initializes_once_and_continues_vertical_motion()
 
 #[test]
 fn falling_static_models_keep_full_support_distance_at_every_frame_rate() {
+    assert_static_fall_landing(1, 97);
+}
+
+#[test]
+fn undamaging_static_falls_land_without_an_animation_receiver() {
+    assert_static_fall_landing(1000, 100);
+}
+
+fn assert_static_fall_landing(hurt_height: i32, expected_health: u8) {
     use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
     for fps in [Some(9), Some(10), Some(30), None] {
         let mut scripts = cache();
         scripts.instances.truncate(1);
         scripts.updates.fall_landing = Some(cyrus_assets::script::FallLanding {
             death_height: 1000,
-            hurt_height: 1,
+            hurt_height,
             hurt_zap: 3,
             bounce_height: None,
         });
@@ -11859,13 +11868,13 @@ fn falling_static_models_keep_full_support_distance_at_every_frame_rate() {
                     scene: Some(&scene),
                 },
                 &mut cyrus_game::random::EngineRandom::default(),
-                &mut |_, _| Ok(()),
+                &mut |_, _| panic!("static landing emitted animation audio"),
                 100,
             )
             .unwrap();
         let actor = &world.actors()[0];
         eprintln!(
-            "static support: fps={fps:?} y_q8={} falling={:?} health={} failure={:?}",
+            "static landing: hurt_height={hurt_height} fps={fps:?} y_q8={} falling={:?} health={} failure={:?}",
             world.spatial(id).unwrap().local.position[1],
             actor.control_state().unwrap().falling_state,
             actor.attributes()[Attribute::Health],
@@ -11886,7 +11895,11 @@ fn falling_static_models_keep_full_support_distance_at_every_frame_rate() {
             JumpMotion::NONE,
             "fps {fps:?}"
         );
-        assert_eq!(actor.attributes()[Attribute::Health], 97, "fps {fps:?}");
+        assert_eq!(
+            actor.attributes()[Attribute::Health],
+            expected_health,
+            "fps {fps:?}"
+        );
         assert_eq!(world.animation_frame(id).unwrap(), None);
     }
 }

@@ -505,6 +505,7 @@ impl ScriptWorld {
     /// Dispatch an admitted ordinary landing animation and then clear falling.
     /// The caller completes surface and threshold response first and supplies
     /// the independently resolved selected-player weapon predicate when needed.
+    /// Without an animation receiver, dispatch is skipped but falling still clears.
     pub fn complete_ordinary_landing(
         &mut self,
         id: ScriptActorId,
@@ -520,28 +521,28 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary landing control unavailable")?;
-        let animation = actor
-            .animation
-            .as_ref()
-            .context("ordinary landing animation unavailable")?;
-        let (holding, _, _) = super::super::activation::weapon_predicates(
-            control.living_state,
-            Some(super::super::ActivationAnimation {
-                group: animation.playback.current_group(),
-            }),
-            control.combat_death_default.is_some(),
-            control.weapon_drawn,
-            actor.attributes[Attribute::HoldingWeapon],
-            environment.item_system_ready,
-            environment.shell_execution,
-        );
-        let request = ordinary_landing_request(
-            control.falling_state,
-            control.torch_burning,
-            holding,
-            selected_player_holding_weapon,
-            animation.playback.current_group(),
-        )?;
+        let request = if let Some(animation) = actor.animation.as_ref() {
+            let (holding, _, _) = super::super::activation::weapon_predicates(
+                control.living_state,
+                Some(super::super::ActivationAnimation {
+                    group: animation.playback.current_group(),
+                }),
+                control.combat_death_default.is_some(),
+                control.weapon_drawn,
+                actor.attributes[Attribute::HoldingWeapon],
+                environment.item_system_ready,
+                environment.shell_execution,
+            );
+            ordinary_landing_request(
+                control.falling_state,
+                control.torch_burning,
+                holding,
+                selected_player_holding_weapon,
+                animation.playback.current_group(),
+            )?
+        } else {
+            None
+        };
         if let Some(group) = request.filter(|_| self.updates.animation_system) {
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
             let event_context = super::effects::ActorEventContext::capture(self, id);
