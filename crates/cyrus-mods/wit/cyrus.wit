@@ -1,6 +1,6 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles`, `dialogue`, `saves` and `hud` with `QueryFor::Mut` and `input`, `settings`,
 /// `player`, `damage`, `environment` and `actors` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.

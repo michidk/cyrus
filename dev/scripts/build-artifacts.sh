@@ -63,7 +63,7 @@ case "${1:-}" in
 This package contains cyrus and every bundled mod in this source revision.
 Extract the entire archive and run cyrus from the extracted directory so it uses
 the included game-config folder. CYRUS_CONFIG_DIR overrides that location.
-Open F11, then Mods, to enable mods and adjust their settings.
+Open Backtick, then Mods, to enable mods and adjust their settings.
 Mods are installed but disabled by default. Choose which to enable; movement
 and camera mods can conflict when enabled together.
 The original game files are not included. Supply your own GOG installation.

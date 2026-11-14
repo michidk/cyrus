@@ -452,8 +452,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         Effects::default(),
         Hud::default(),
         Input::default(),
-        Damage::default(),
-        crate::particles::Particles::default(),
+        (Damage::default(), crate::particles::Particles::default()),
     ));
 }
 

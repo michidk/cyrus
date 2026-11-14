@@ -353,7 +353,7 @@ macOS, or `cyrus-with-mods-<target>.zip` on Windows. It contains cyrus and every
 mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
 guests, shaders and authored file overlays. Mods are installed but disabled by
 default. Extract the whole archive and launch from the extracted directory,
-then open F11 and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
+then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
 included `game-config` directory. The ordinary downloads remain available.
 No package contains the original game data or the builder's local state.
 

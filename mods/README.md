@@ -4,7 +4,7 @@ Native mods shipped with cyrus. The `cyrus-with-mods-<target>` downloads from
 releases and PR artifact runs contain every mod in the built source revision.
 Extract the entire archive and run cyrus from that directory to use its included
 `game-config/mods`. `CYRUS_CONFIG_DIR` overrides that location. Mods start disabled;
-open F11 and select Mods to enable them. The plain game downloads remain available.
+open Backtick and select Mods to enable them. The plain game downloads remain available.
 
 Mods with a Cargo crate are outside the game workspace and build for
 `wasm32-wasip2` against the shared SDK in `mods/sdk`. Others contain only a
@@ -266,7 +266,7 @@ just mods
 cargo run -p cyrus -- --scene START
 ```
 
-Open F11 and enable **Blood particles** in the Mods window. Its amount and lifetime
+Open Backtick and enable **Blood particles** in the Mods window. Its amount and lifetime
 settings apply to new emissions immediately. Damage a combatant to exercise actual
 health-service events; setting a health attribute directly is not a substitute. Turn
 the mod off to verify cleanup. `cargo test --manifest-path mods/sdk/Cargo.toml` checks
