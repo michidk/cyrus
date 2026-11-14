@@ -917,7 +917,9 @@ pub(super) fn drive(
                     405..=407 => menu.open(book, (entry.action - 400) as u8),
                     500 | 600 | 700 => menu.open(book, 4),
                     504 | 505 | 603 => {
-                        adjust_value(book, &mut menu, 0, true, &mut preferences_state);
+                        if adjust_value(book, &mut menu, 0, true, &mut preferences_state) {
+                            output.2.write(flat_sound(13));
+                        }
                     }
                     601 | 602 => {}
                     301..=305 => {
@@ -1207,6 +1209,120 @@ pub(super) fn begin_world_loading(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn installed_settings_activation_emits_one_adjustment_cue_after_save() {
+        use cyrus_game::preferences::{PreferenceKey, PreferenceStore, Preferences};
+        struct Store(bool);
+        impl PreferenceStore for Store {
+            fn load(&self, _: PreferenceKey) -> anyhow::Result<Option<String>> {
+                Ok(None)
+            }
+            fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+                anyhow::ensure!(!self.0, "test write failure");
+                Ok(())
+            }
+        }
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
+            eprintln!("skipped: no install (settings activation feedback)");
+            return;
+        };
+        let cache =
+            std::env::temp_dir().join(format!("cyrus-setting-feedback-{}", std::process::id()));
+        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let book: MenuAsset =
+            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        for (page, action, fail) in [
+            (5, 504, false),
+            (5, 505, false),
+            (6, 603, false),
+            (6, 603, true),
+        ] {
+            let mut app = App::new();
+            app.add_plugins((
+                MinimalPlugins,
+                AssetPlugin::default(),
+                bevy::state::app::StatesPlugin,
+            ))
+            .init_state::<AppState>()
+            .init_asset::<MenuAsset>()
+            .init_asset::<Image>()
+            .init_asset::<Font>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(Preferences::new(Store(fail)))
+            .init_resource::<cyrus_script::player::input::PlayerBindings>()
+            .add_message::<AppExit>()
+            .add_message::<SoundCue>()
+            .init_resource::<crate::SaveLoadHost>()
+            .init_resource::<LaunchRequest>()
+            .insert_resource(SimulationClock::new(book.clock).unwrap())
+            .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_millis(60),
+            ))
+            .add_systems(Update, drive);
+            let handle = app.world_mut().resource_mut::<Assets<MenuAsset>>().add(
+                serde_json::from_slice::<MenuAsset>(&serde_json::to_vec(&book).unwrap()).unwrap(),
+            );
+            app.insert_resource(MenuState {
+                asset: handle,
+                context: MenuContext::InGame,
+                entry_page: page,
+                ..default()
+            });
+            for _ in 0..12 {
+                app.update();
+            }
+            let old = {
+                let mut menu = app.world_mut().resource_mut::<MenuState>();
+                assert!(menu.ready, "{:?}", menu.unavailable);
+                menu.selected = menu.entries.iter().position(|entry| entry.action == action);
+                assert!(menu.selected.is_some());
+                menu.preferences.as_ref().unwrap().values[&action]
+            };
+            app.world_mut().resource_mut::<Messages<SoundCue>>().clear();
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Enter);
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<MenuState>()
+                    .preferences
+                    .as_ref()
+                    .unwrap()
+                    .values[&action],
+                if fail { old } else { 1 - old }
+            );
+            let cues: Vec<_> = app
+                .world_mut()
+                .resource_mut::<Messages<SoundCue>>()
+                .drain()
+                .collect();
+            assert_eq!(
+                cues.len(),
+                usize::from(!fail),
+                "action {action} feedback must follow save success"
+            );
+            if fail {
+                continue;
+            }
+            assert!(matches!(
+                cues[0],
+                SoundCue::Flat {
+                    effect: 13,
+                    volume: 0,
+                    rate_offset_hz: 0
+                }
+            ));
+        }
+        std::fs::remove_dir_all(cache).unwrap();
+    }
 
     #[test]
     fn explicit_menu_skip_cancels_automatic_introduction_but_not_new_game_shortcut() {

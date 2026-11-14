@@ -179,7 +179,7 @@ input uses edited bindings, including direct scene launches. The subtitle
 setting applies to cinematics; saved Sound preferences apply to shared
 effects and CD music, and native speech. Browser CD tracks use exported WAV files and
 installed world assignments; native playback reads the CD image. Book motion and
-direction/capture feedback dispatch installed effects through the shared native/browser sound path, following
+direction/capture feedback dispatch installed effects through the shared native/browser sound path. Enter-activated settings toggles emit adjustment feedback only after a successful save, following
 preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 **Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
 rebinding, lighting and camera-plane clipping remain unsupported. Escape in a world opens the book (`MenuContext::InGame`) only with SYSTEM.INI `final_version`. Entering the book from gameplay captures a
