@@ -18,7 +18,7 @@ fn sinc_preserves_duration_and_channel_isolation_even_for_short_sources() {
         let input: Vec<_> = (0..frames).flat_map(|_| [0.5, 0.0]).collect();
         let output = convert(input, 2, 11025, 48000);
         assert_eq!(output.len(), (frames * 48000_usize).div_ceil(11025) * 2);
-        for frame in output.chunks_exact(2) {
+        for frame in output.as_chunks::<2>().0 {
             assert!((frame[0] - 0.5).abs() < 1e-4, "DC sample: {}", frame[0]);
             assert_eq!(frame[1], 0.0);
         }

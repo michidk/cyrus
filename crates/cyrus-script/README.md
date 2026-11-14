@@ -12,7 +12,7 @@ Verified: actor-overlap landing requires the support's current model link, not a
 `MISC1` group in its catalogue. Bounce continuation also requires the support's
 animation association and bounce power. A missing requested group follows ordinary
 animation fallback rather than refusing the landing. This follows preservation's
-[actor landing rules](https://github.com/michidk/redguard-preservation/blob/a4d86d034c16e782309c166b28774a0f28ee8ead/docs/engine/player.md#weighted-actor-overlap-response).
+[actor landing rules](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/player.md#weighted-actor-overlap-response).
 
 Verified: `drno` suspends the entire ordinary update of nonplayer actors, including
 response timers, movement and combat. The selected player and camera continue;
@@ -23,19 +23,19 @@ Verified: ordinary slope and turn requests honor the `animation` cheat's nonzero
 request gate. At zero, slope translation, orientation and sliding bookkeeping continue
 with the current animation frozen; noncanonical nonzero values still admit requests.
 This follows preservation's [cheat switches](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
-and [slide request admission](https://github.com/michidk/redguard-preservation/blob/fd1918dad65118e05b7b1b067623b5f94d50ab91/docs/engine/player.md#slide-termination).
+and [slide request admission](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/player.md#slide-termination).
 
 Verified: ordinary requests leave excluded receivers' animation state and cues
 untouched. Public point-delay commands still publish their countdown, random draws
 and command bookkeeping; eligible receivers keep synchronous idle-cue dispatch and
 failure ordering. This follows the shared
-[receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility).
+[receiver gate](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/animation.md#receiver-eligibility).
 
 Verified: route-link leaps retain logical start and point-command publication when
 no animation receiver exists. The shared request gate declines playback and cue
 dispatch while queued motion, fall origin, timer and sliding cleanup continue.
-This follows the same [receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility)
-and [leap-link rules](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/SOUP.md#phase-twelve-leap-link).
+This follows the same [receiver gate](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/animation.md#receiver-eligibility)
+and [leap-link rules](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/SOUP.md#phase-twelve-leap-link).
 
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does
@@ -915,3 +915,12 @@ Verified: selected-player water transitions retain forward swimming and exit ani
 for both running and walking motion, following preservation's
 [water transition rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#water-and-lava-transition-effects).
 Backward motion keeps its separate requests; transition sound selection is unchanged.
+
+Verified: ordinary nonplayer ground queries publish support metadata to the active
+selected player's initialized movement history. They neither decrement nor reset
+its counter; a subsequent player miss retains the metadata and applies the
+player-only reset. This follows preservation's [shared support history and miss
+contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/player.md#support-query-misses).
+The public registry regression covers this handoff. Metadata lifetime before a
+selected movement owner exists and matched original/browser scene parity remain
+unverified.
