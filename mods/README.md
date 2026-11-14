@@ -16,6 +16,7 @@ the Mods window that opens with Backtick. The browser build does not load mods.
 | --- | --- | --- |
 | `dialogue-skip` | dialogue, input, settings | Advance one displayed spoken line per press, retaining topic choices |
 | `autosave` | saves, input, memory, settings, hud | Periodic transactional saves during eligible gameplay |
+| `grass` | terrain, owned geometry, settings, shader replacement | Seeded blades on green terrain texels, chunk LOD and wind |
 | `blood` | damage, particles, settings | A brief spray of fading red particles on actual player or actor health loss |
 | `modern-water` | environment, effects, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
 | `flycam` | camera, input, hud, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored; a corner line shows whether it is on |
@@ -113,8 +114,7 @@ against the WIT directly.
   Indices are valid for one world generation. The SDK gives `Actor` values, `actors.all()` and
   `actors.find(name)`.
 - `effects`: parameter blocks for the game's shaders, in named slots. Effects run in shaders: a mod
-  replaces a shader library (`[[shader]]`) and fills the slot that library reads; the game never
-  hands out its meshes. Fill a slot every frame; stopping restores the original. Slot
+  replaces a shader library (`[[shader]]`) and fills the slot that library reads; terrain readback and owned mesh uploads use separate hooks below. Fill a slot every frame; stopping restores the original. Slot
   `"terrain-surface"` = `[effects, 0, amplitude, cell]` turns on the surface library's shore foam, wet
   sand and ripples and, with a positive `amplitude`, moves the waves in the terrain shader (the SDK:
   `effects.terrain_surface(TerrainSurface { .. })`).
@@ -369,3 +369,83 @@ the SDK's folder name convention; they are lifecycle namespaces, not a security 
 
 These hooks keep policy in the guest. A mod should own its keys, interval, retry timing
 and notifications, while the host owns speech teardown, snapshot validation and storage.
+
+## Terrain and owned geometry
+
+`mods/grass` is a complete native Wasm example. It reads retained terrain triangles,
+classifies green image texels, interpolates each triangle's original UVs and builds
+seeded blade meshes in 24-scene-unit chunks. Near/middle/far bands use the PR #255
+placement and width/height policy. Two chunks are built per guest frame; existing
+chunks are retained until their distance band or settings change. Enable **Terrain
+grass** in the Mods window. New installs leave it disabled. Density and wind are
+mod settings. These are optional mod preferences, not recovered original behavior.
+
+The typed SDK exposes `cx.terrain` and `cx.geometry`:
+
+```rust,ignore
+let Some(revision) = cx.terrain.revision() else { return; };
+let triangles = cx.terrain.triangles(revision,
+    Region { min: [-24.0, -24.0], max: [0.0, 0.0] }, 0)?;
+let pixels = cx.terrain.pixels(revision, triangles[0].texture)?;
+// Interpolate the triangle's UVs before pixels.sample(uv).
+let Some(generation) = cx.geometry.generation() else { return; };
+cx.geometry.replace("my-mesh", generation, &mesh,
+    Material { parameters: [0.18, 0.0, 0.0, 0.0], bounds_padding: 0.18 })?;
+cx.geometry.remove("my-mesh");
+```
+
+Terrain uses scene coordinates, right-handed with Y up, just like camera poses.
+Each page contains at most 512 complete triangles, their stable snapshot-local IDs,
+matching UVs and typed texture IDs. Regions are half-open X/Z rectangles, at most
+512 units wide/deep; triangle centroids assign each triangle to exactly one region.
+A triangle may extend outside its assigned region. Advance the offset by the number
+returned until a short page. `revision()` is absent while unavailable or loading;
+old revisions and invalid reads return `None` at WIT. `status(revision)` reports
+0 ready, 1 loading, 2 absent world/terrain, 3 stale revision, 4 unsupported and 5 over budget. The SDK distinguishes
+`Invalid`, `Loading`, `Unavailable`, `Stale`, `Unsupported` and `OverBudget` read errors. Read-only snapshots refresh on world or
+retained terrain-binding replacement, not every camera movement. Images are capped
+at 512 by 512, 256 distinct images and 1,000,000 triangles per snapshot. Raw pixel rectangles return RGBA8,
+at most 65,536 pixels per request. The SDK assembles the full image in bounded rows.
+Texture IDs and triangle IDs expire with the snapshot revision. Do not persist
+installed images or mesh data into distributed mods.
+
+`cx.geometry.lease()` returns an opaque token for the current loaded mod instance.
+Persist it alongside cached placement decisions and clear those decisions when it
+changes after successful Wasm reload or reactivation. This includes cached empty
+regions, which have no mesh key for `contains` to validate. Terrain snapshot and
+world generation tokens alone do not identify the current mod code.
+
+`Mesh` contains indexed triangle vertices with positions, normals, UVs and linear
+RGBA colors. Each replacement validates all values before allocating render assets.
+Position/normal/UV values must be finite within +/-1e6, normals nonzero, colors in
+0..=1, indices valid complete triangles, and index count at most six per vertex.
+Material parameters are four finite values within +/-100. Keys are 1..=96 bytes;
+limits are 256 keys and 1,500,000 vertices per owner, 3,000,000 vertices globally.
+Rejected uploads preserve the previous key. WIT returns 0 accepted, 1 unavailable
+or stale generation, 2 invalid, 3 budget exceeded; the SDK uses `Result` and the
+`GeometryError` enum. The SDK supplies the owner's mod ID. Like other wasvy hooks,
+trusted mods have world access; the owner namespace is a lifetime convention, not
+a security sandbox against other trusted mods impersonating an ID.
+
+Uploads apply after guest Update and remain until `remove`, disable, completed
+reload or world replacement. The host releases both entities and owned mesh/material
+assets. `contains(key)` detects a lost lease, including a completed reload. Guest
+session memory can survive reload; rebuild keys whose leases have expired.
+
+The renderer supplies double-sided matte vertex-color PBR lighting and scene fog.
+The built-in `embedded://cyrus_render/geometry_surface.wesl` library leaves geometry
+stationary. A mod can replace its `deform(position, uv, seconds, parameters)` function,
+as grass does with its bundled `grass.wesl`. The deformation library is one shared
+shader slot: the existing first-active-mod-by-ID rule applies. Four per-mesh parameters
+let one library distinguish its material policies. This API does not compile arbitrary
+per-mesh shaders. Set `bounds_padding` to a conservative displacement bound in scene units,
+0..=100, so deformation remains inside the mesh bounds used for culling. No raster shadows are cast by these meshes. The current host has Modern
+raster lighting and no ray-tracing support; grass therefore has no traced shadow or
+bounce stand-ins. It does not import PR #255's old ray-tracing stack.
+
+Build with `cargo build --manifest-path mods/grass/Cargo.toml --release --target
+wasm32-wasip2`, or install all bundled mods with `just mods`. Distribute the folder
+containing `mod.toml`, `grass.wesl` and the built artifact renamed `mod.wasm`.
+The ignored host test `wasm_grass_geometry` loads the actual component when
+`CYRUS_GRASS_WASM` points to its output. Guest tests and SDK tests run with their own
+manifests. Host and browser game crates do not import guest code or installed art.

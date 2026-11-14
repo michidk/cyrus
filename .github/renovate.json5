@@ -17,6 +17,19 @@
         "rodio"
       ],
       "allowedVersions": "=0.22.2"
+    },
+    {
+      "description": "Keep preservation on the latest stable published crate, including minor and major releases.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "redguard-preservation"
+      ],
+      "rangeStrategy": "replace",
+      "respectLatest": true,
+      "ignoreUnstable": true,
+      "separateMajorMinor": false
     }
   ]
 }

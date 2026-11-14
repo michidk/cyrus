@@ -10,6 +10,15 @@ For player controls, saving, resuming and current limitations, see
   with `fxart/`, `maps/`, `RGFX.EXE` and the CD image `game.gog`/`game.ins`.
   On Linux extract it with `innoextract` (also available in Docker:
   `docker run --rm -v "$PWD:/w" -w /w alpine sh -c 'apk add innoextract && innoextract -d extracted setup_*.exe'`).
+- Or the English CD edition installed with its 3dfx (Glide) files, so the
+  install folder has `fxart/`, `maps/` and `RGFX.EXE`. Without `game.gog`,
+  cyrus reads the movies from the disc's files in a `CDROM/` folder beside the
+  install folder, and the CD music from the ripped `Soundtrack/` MP3s
+  (`01 Track 1.mp3` is CD track 2) placed beside it. The CD repack's own
+  DOSBox setup mounts `CDROM/` as a plain directory and plays no music.
+  The browser install server (`--install`) exposes these sibling media folders
+  to both the game and viewer. Local browser folder selection still requires
+  the GOG companion files.
 - Stable Rust (`rust-toolchain.toml`), `just`, and for a window Bevy's usual
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker, for the original game and for the virtual-display runner.
@@ -565,7 +574,7 @@ Saved Sound preferences apply to effects and CD music on native and browser
 builds, and to native speech. The book menu plays its installed CD track. Cinematics consume the subtitle preference; MOVIE INTERLACE does not change the picture, as in the installed release.
 
 Movies browses the initially unlocked entries and installed previews. Native
-playback reads the configured movie file or GOG `game.gog` beside the install
+playback reads the configured movie file, the CD edition's `CDROM/` file, or GOG `game.gog` beside the install
 through a bounded sequential reader; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and the REDSEL font with its shadow ([preservation#110](https://github.com/michidk/redguard-preservation/pull/110)), and applies the
 saved subtitle preference. A key press advances to the next installed
@@ -2120,7 +2129,12 @@ Never convert wall duration into a movie frame number.
 
 With both SDL probes loaded, `--require-pcm` requires a committed generated-PCM
 cursor at every presentation and rejects missing generation, backwards cursors
-or a changed sample rate. The retained cursor is a callback-generation prefix,
+or a changed sample rate. Completion also requires the generated cursor to advance.
+Use `--minimum-pcm-frames FRAMES` with `--require-pcm` to retain the sample span
+needed by the planned waveform comparison as well as the requested game-clock
+progress. The completion receipt records the actual frame span and sample rate;
+a short audio interval cannot pass merely because the game clock advanced.
+The retained cursor is a callback-generation prefix,
 not DAC position. Each result also retains the original SDL surface format,
 channel masks, pitch and dimensions before conversion to RGB24. These describe
 the capture boundary; upstream renderer quantization must be established

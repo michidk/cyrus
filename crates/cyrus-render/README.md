@@ -65,6 +65,9 @@ update walks, so an actor whose script has not yet run (the ISLAND lighthouse be
 the captured transform and animation frame.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
+**Verified:** HUD prompt and notice text wraps whole glyphs at x = 640, returning
+to the starting x one font line lower, following preservation's
+[HUD shared rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#shared-rules).
 HUD artwork and rasterized text explicitly use nearest sampling when the
 640×480 overlay is enlarged, preserving its pixel edges instead of inheriting
 the image plugin's linear sampler. World materials retain their own sampling rules.
@@ -705,5 +708,22 @@ parity with the original.
 
 **Verified:** ordinary gameplay hides the host pointer without capturing it. This follows
 [preservation’s observed gameplay cursor contract](https://github.com/michidk/redguard-preservation/blob/348982c/docs/formats/GXA.md).
-Mod orbit control additionally requests pointer lock; host UI outside gameplay retains
-a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.
+Mod orbit control additionally requests pointer lock. Opening the keyboard console
+releases that lock while keeping the pointer hidden; closing it restores orbit lock.
+Host settings retain a visible, unlocked cursor. Original book-menu cursor presentation remains Unknown.
+
+**Verified:** Glide sky scrolling ignores the installed `[xngine] sky_move`
+setting. It advances using elapsed BIOS ticks, direction and speed, including
+when the setting is zero, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
+The retained presentation interval is covered by the production scroll system
+test. This state comparison does not establish full raster parity or software
+sky acceptance.
+
+Native mods can read retained unclipped terrain sources through
+`WaterPlayback::source_meshes` and publish validated scene meshes through
+`cyrus-mods`. `fog::geometry` supplies their matte double-sided material, current
+scene fog and PBR bindings. A bounded shared `geometry_surface.wesl` library slot
+allows guest-authored deformation with per-mesh parameters and conservative bounds
+padding. It is stationary without an active replacement. Grass placement, image
+classification, LOD and wind equations belong to `mods/grass`, not this renderer.
+This base has no ray-tracing geometry integration.

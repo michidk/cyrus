@@ -288,3 +288,13 @@ The native `dialogue-skip` mod offers one displayed line per press, default Back
 without selecting topics. The native `autosave` mod requests a reserved-slot save after
 a configurable amount of eligible play, default 300 seconds. Both default to inactive.
 These are mod preferences. See [the mod service contract](../mods/README.md#dialogue-and-save-services).
+
+## Optional terrain grass mod
+
+**Verified:** PR #255's grass policy is ported to the bundled native Wasm guest
+`mods/grass`, disabled by default. It reads terrain UVs and installed texture
+pixels through bounded host hooks. Seeded blades, distance bands, density and wind
+are guest policy. This optional appearance is not original engine behavior.
+The host supplies scene-lit owned meshes and cleanup. This base has raster Modern
+lighting; ray-traced grass stand-ins are unavailable. The shared geometry shader
+library follows the existing first-active-mod shader replacement rule.

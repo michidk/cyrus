@@ -75,10 +75,18 @@ pub fn prepare(source: &dyn ReadAssets, index: usize) -> Result<OriginalMovie> {
                 && prefix[2..].iter().all(|b| matches!(*b, b'/' | b'\\')),
             "movie {name}: animation_drive {drive:?}: only the CD root is supported"
         );
-        let path = crate::preparation::path(source, "disc/game.gog")?;
-        let file =
-            CdImage::open(AssetFile::open(source, &path)?.without_read_ahead())?.file(name)?;
-        Location::Disc { path, file }
+        // A CD edition can provide the disc's files directly instead of GOG's image.
+        if let Some(file) = source.manifest().find(&format!("disc/{name}")) {
+            Location::File {
+                path: file.path.clone(),
+                size: file.bytes,
+            }
+        } else {
+            let path = crate::preparation::path(source, "disc/game.gog")?;
+            let file =
+                CdImage::open(AssetFile::open(source, &path)?.without_read_ahead())?.file(name)?;
+            Location::Disc { path, file }
+        }
     } else {
         let path = if drive.is_empty() {
             name.clone()

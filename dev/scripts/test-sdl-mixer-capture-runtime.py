@@ -19,6 +19,10 @@ with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     for name, preload, arguments, expected in (
             ('absent', '', [], 3), ('live', tap, [], 0),
+            ('device', tap, ['device'], 0),
+            ('device-delayed', tap+':'+stall, ['device'], 0),
+            ('device-overflow', tap+':'+stall, ['device-overflow'], 3),
+            ('device-unsupported', tap, ['device-unsupported'], 2),
             ('delayed', tap+':'+stall, [], 0),
             ('overflow', tap+':'+stall, ['overflow'], 3),
             ('unsupported', tap, ['unsupported'], 2)):
@@ -31,10 +35,10 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not (directory/'generated.jsonl').exists()
             continue
         blocks = [json.loads(line) for line in (directory/'generated.jsonl').read_text().splitlines()]
-        if name == 'unsupported':
+        if name.endswith('unsupported'):
             assert not blocks
             continue
-        if name == 'overflow':
+        if name.endswith('overflow'):
             assert any('error' in row for row in blocks), blocks[-1]
             continue
         endpoint = json.loads(result.stdout)
@@ -45,6 +49,6 @@ with tempfile.TemporaryDirectory() as temporary:
         assert metadata['peak'] == 1234
         pcm = (directory/'generated.raw').read_bytes()
         assert pcm == struct.pack('<hh', 1234, -1234)*(len(pcm)//4)
-        if name == 'delayed':
+        if name.endswith('delayed'):
             assert endpoint['delivered_frames'] < endpoint['frames'], endpoint
 print('SDL mixer: generation-owned PCM survives delayed delivery; absent/overflow/format controls reject')

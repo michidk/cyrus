@@ -247,3 +247,9 @@ The credits release lifecycle is documented in merged [preservation PR #319](htt
 Both F10 and ending credits retain the displayed frame and music owner while
 Escape is held, then consume its release before returning. `CreditsExit` exposes
 this shared input lifecycle; a movie-skip key held on entry cannot dismiss the credits.
+
+Reader paper glyphs obey the shared opaque-alpha boundary: style alpha 254 or
+255 replaces the paper colour, while values below 254 retain blending. The
+installed headless `LogbookPlugin` regression checks the published image at all
+three boundary values. The rule is documented in preservation
+[subtitle glyphs](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/subtitles.md#glyphs).

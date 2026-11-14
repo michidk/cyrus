@@ -30,7 +30,7 @@ changed is reloaded. A mod is just its folder; copy it in or out while the game 
 The API lives on one host entity with one component per hook (`src/api.rs`). The
 hooks are generic: world facts (clock, world generation, Lighting mode, water) and named
 shader effect slots (cyrus-render's `hooks`), the loaded world's actors, the camera, the player's movement, animation and status,
-collision probes, script native calls, health-loss observations, transient particles, settings, memory, a text overlay and input.
+collision probes, script native calls, health-loss observations, transient particles, dialogue and save requests, bounded terrain snapshots, owned indexed geometry, settings, memory, a text overlay and input.
 `PreUpdate` hands last frame's mod answers to cyrus-render's `EffectSlots`,
 `CameraTakeover` and cyrus-script's `CameraOrbit`, `MovementWish`,
 `LocomotionClaimed` and `PlayerRequests`, and publishes this frame's state (including the
@@ -63,3 +63,16 @@ advancement completes only a displayed line through synchronous audio teardown. 
 use the binary's existing transactional session adapter and report terminal results;
 the guests own key bindings, timing and retry policy. Both are inactive by default.
 See [the service contract](../../mods/README.md#dialogue-and-save-services).
+
+Terrain/mesh hooks are implemented in `src/terrain.rs` and `src/geometry.rs`.
+The SDK wraps raw lists as revision/texture types, triangle pages, vertices and
+materials. `mods/grass` owns classification, seeds, camera bands and deformation
+policy. See the [terrain and geometry contract](../../mods/README.md#terrain-and-owned-geometry)
+for upload budgets, shader slot limits and lifecycle rules. The renderer exposes
+retained source mesh handles and a generic scene-lit material, keeping grass
+policy out of the host. This base supports raster rendering only.
+
+Geometry leases identify the current loaded mod instance and revision. Guest caches,
+including cached empty terrain regions, must reset when the lease changes after
+successful reload or reactivation. The typed SDK persists the opaque token without
+losing integer precision through the session memory API.

@@ -8,10 +8,34 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: actor-overlap landing requires the support's current model link, not a
+`MISC1` group in its catalogue. Bounce continuation also requires the support's
+animation association and bounce power. A missing requested group follows ordinary
+animation fallback rather than refusing the landing. This follows preservation's
+[actor landing rules](https://github.com/michidk/redguard-preservation/blob/a4d86d034c16e782309c166b28774a0f28ee8ead/docs/engine/player.md#weighted-actor-overlap-response).
+
 Verified: `drno` suspends the entire ordinary update of nonplayer actors, including
 response timers, movement and combat. The selected player and camera continue;
 turning it off resumes the retained actor state. This follows preservation's
 [cheat update rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md).
+
+Verified: ordinary slope and turn requests honor the `animation` cheat's nonzero
+request gate. At zero, slope translation, orientation and sliding bookkeeping continue
+with the current animation frozen; noncanonical nonzero values still admit requests.
+This follows preservation's [cheat switches](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
+and [slide request admission](https://github.com/michidk/redguard-preservation/blob/fd1918dad65118e05b7b1b067623b5f94d50ab91/docs/engine/player.md#slide-termination).
+
+Verified: ordinary requests leave excluded receivers' animation state and cues
+untouched. Public point-delay commands still publish their countdown, random draws
+and command bookkeeping; eligible receivers keep synchronous idle-cue dispatch and
+failure ordering. This follows the shared
+[receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility).
+
+Verified: route-link leaps retain logical start and point-command publication when
+no animation receiver exists. The shared request gate declines playback and cue
+dispatch while queued motion, fall origin, timer and sliding cleanup continue.
+This follows the same [receiver gate](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/animation.md#receiver-eligibility)
+and [leap-link rules](https://github.com/michidk/redguard-preservation/blob/f85a1864349eaf10e155e4b9bf222e64741c93ba/docs/engine/SOUP.md#phase-twelve-leap-link).
 
 Verified: a nonzero weapon-holding attribute admits the ordinary armed controller.
 The held walk modifier selects armed walking; the retained walk-mode toggle does

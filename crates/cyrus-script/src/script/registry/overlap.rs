@@ -5,7 +5,7 @@ use crate::script::LivingState;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::animation::Animations;
 use cyrus_collision::actor_overlap::{OverlapSphere, actor_separation};
-use cyrus_soup::{AnimationGroup, Attribute};
+use cyrus_soup::Attribute;
 use cyrus_world::heading::wrap;
 
 impl ScriptWorld {
@@ -429,7 +429,7 @@ impl ScriptWorld {
 
     /// Land the actor on the other: set its support, clear its sliding, falling and queued-motion
     /// bytes and enter `LANDED_ON_ACTOR`, unless the landing is refused (the ledge living states, 27
-    /// and 28, deep water, or no `anim_misc1` on the other actor). Body-response bit `0x80` is set
+    /// and 28, deep water, or no current model link on the other actor). Body-response bit `0x80` is set
     /// either way. An admitted landing also clears both directional action words.
     fn land_on_actor(
         &mut self,
@@ -442,15 +442,12 @@ impl ScriptWorld {
             .context("ordinary overlap control unavailable")?
             .living_state;
         let surface = self.actor_surface(id)?;
-        let other_has_group = self.actors[other.index]
-            .animation
-            .as_ref()
-            .is_some_and(|animation| animation.playback.has_group(AnimationGroup::MISC1));
+        let other_has_model = self.actors[other.index].model.current.is_some();
         let admitted = !living.is_ledge()
             && living != LivingState::LANDED_ON_ACTOR
             && living != LivingState::BOUNCING_FROM_ACTOR
             && !surface.is_deep_water()
-            && other_has_group;
+            && other_has_model;
         let actor = &mut self.actors[id.index];
         let control = actor.control.as_mut().expect("checked above");
         control.last_collide |= crate::script::CollisionFlags::LANDED_ON_ACTOR;

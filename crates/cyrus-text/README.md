@@ -18,6 +18,8 @@ rules from redguard-preservation's FNT and subtitle documentation:
 - `draw_shadowed`: the NPC subtitle style used by dialogue and the HUD, a black
   copy at (+1, +1) beneath each glyph, alpha from `font_alpha` (`[3dfx] font_*`).
   Alpha values below 254 blend; 254 and 255 replace the destination opaquely.
+- `draw_shadowed_wrapped`: HUD glyphs wrap before their width crosses the image
+  edge, returning to the starting x one font line lower.
 - `colour`: palette entries shifted left by 2, matching captured original colours.
 
 Callers keep what differs between screens: justification, wrap width or the

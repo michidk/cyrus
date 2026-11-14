@@ -818,7 +818,7 @@ impl ScriptWorld {
     /// published rules settle (preservation player.md, actor bounce). `BOUNCE_ENTRY` and
     /// `BOUNCE_RISING` belong to `BounceObject`: the handler reports handled and the probe ends
     /// before the support query. An actor in one of the actor-bounce states whose support
-    /// reference is empty, has no animation or `MISC1` group, or has no bounce power loses the
+    /// reference is empty, has no animation or model link, or has no bounce power loses the
     /// reference and its living state. A valid support is left to `run_actor_bounce`. The support
     /// reference is the retained support actor, which must persist between updates for these
     /// states to last. Returns whether the probe ends.
@@ -845,9 +845,8 @@ impl ScriptWorld {
             .is_some_and(|support| {
                 let support = &self.actors[support];
                 support.attributes[Attribute::BouncePower] != 0
-                    && support.animation.as_ref().is_some_and(|animation| {
-                        animation.playback.has_group(AnimationGroup::MISC1)
-                    })
+                    && support.animation.is_some()
+                    && support.model.current.is_some()
             });
         if !valid {
             self.actors[id.index].model.support.actor = None;

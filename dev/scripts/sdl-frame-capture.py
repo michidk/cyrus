@@ -111,10 +111,11 @@ def capture(directory, output, rows, timeout=30, pcm_path=None, at_clock=None):
 
 
 def capture_progress(directory, output, rows, clock_field, progress, timeout=30,
-                     max_captures=128, require_pcm=False):
+                     max_captures=128, require_pcm=False, minimum_pcm_frames=1):
     """Persist presented states until the caller-bound clock advances by progress.
 
     The caller supplies the playback clock binding, never a wall-time conversion.
+    PCM-required series also wait for the requested generated sample-frame span.
     Rejected or interrupted series retain their individual captures for diagnosis.
     """
     rows = bindings(rows)
@@ -123,6 +124,9 @@ def capture_progress(directory, output, rows, clock_field, progress, timeout=30,
             or type(max_captures) is not int or not 2 <= max_captures <= 4096
             or type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0):
         raise ValueError('progress requires a bound u32 clock and finite capture budget')
+    if (type(minimum_pcm_frames) is not int or minimum_pcm_frames <= 0
+            or (not require_pcm and minimum_pcm_frames != 1)):
+        raise ValueError('minimum PCM frames requires a positive integer and PCM capture')
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     deadline = time.monotonic() + timeout
@@ -130,7 +134,7 @@ def capture_progress(directory, output, rows, clock_field, progress, timeout=30,
     for index in range(max_captures):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError('presentation clock did not reach requested progress')
+            raise TimeoutError('presentation clock or generated PCM did not reach requested progress')
         result = capture(directory, output / str(index), rows, timeout=remaining)
         clock = int.from_bytes(bytes.fromhex(result['fields'][clock_field]), 'little')
         if samples and (clock < samples[-1]['clock']
@@ -153,14 +157,20 @@ def capture_progress(directory, output, rows, clock_field, progress, timeout=30,
         temporary = output / 'progress.tmp'
         temporary.write_text(json.dumps(samples, indent=2))
         temporary.replace(output / 'progress.json')
-        if clock - samples[0]['clock'] >= progress:
+        pcm_span = (samples[-1]['pcm_generation']['frames']
+                    - samples[0]['pcm_generation']['frames']) if require_pcm else None
+        if (clock - samples[0]['clock'] >= progress
+                and (not require_pcm or pcm_span >= minimum_pcm_frames)):
             receipt = dict(clock_field=clock_field, first=samples[0]['clock'], last=clock,
                            captures=len(samples), progress=clock - samples[0]['clock'])
+            if require_pcm:
+                receipt.update(pcm_frames=pcm_span, pcm_rate=samples[0]['pcm_generation']['rate'],
+                               minimum_pcm_frames=minimum_pcm_frames)
             temporary = output / 'complete.tmp'
             temporary.write_text(json.dumps(receipt, indent=2))
             temporary.replace(output / 'complete.json')
             return receipt
-    raise TimeoutError('presentation clock did not reach requested progress within capture budget')
+    raise TimeoutError('presentation clock or generated PCM did not reach requested progress within capture budget')
 
 
 def main():
@@ -173,11 +183,16 @@ def main():
     mode.add_argument('--progress', nargs=2, metavar=('FIELD', 'TICKS'))
     parser.add_argument('--timeout', type=float, default=30)
     parser.add_argument('--require-pcm', action='store_true')
+    parser.add_argument('--minimum-pcm-frames', type=int, default=1,
+                        help='generated sample frames required in addition to clock progress')
     args = parser.parse_args()
     rows = json.loads(args.bindings.read_text())
+    if args.minimum_pcm_frames != 1 and not args.require_pcm:
+        parser.error('--minimum-pcm-frames requires --require-pcm')
     if args.progress:
         result = capture_progress(args.request_directory, args.output, rows,
-            args.progress[0], int(args.progress[1]), timeout=args.timeout, require_pcm=args.require_pcm)
+            args.progress[0], int(args.progress[1]), timeout=args.timeout, require_pcm=args.require_pcm,
+            minimum_pcm_frames=args.minimum_pcm_frames)
     else:
         if args.require_pcm:
             parser.error('--require-pcm requires --progress')

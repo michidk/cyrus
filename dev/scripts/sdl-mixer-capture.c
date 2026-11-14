@@ -25,6 +25,8 @@ static unsigned rate;
 static FILE *pcm, *events;
 static pthread_t worker;
 static int active;
+static SDL_AudioDeviceID captured_device;
+static _Thread_local int opening;
 
 // The presentation owner reads one committed callback prefix, not writer progress.
 int cyrus_mixer_cursor(uint64_t *out_frames, uint64_t *out_sequence, uint64_t *out_ns, unsigned *out_rate) {
@@ -84,12 +86,9 @@ static void stop(void) {
     fclose(pcm); fclose(events);
 }
 
-int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained) {
-    int (*open_audio)(SDL_AudioSpec *, SDL_AudioSpec *);
-    *(void **)(&open_audio) = dlsym(RTLD_NEXT, "SDL_OpenAudio");
-    if (!open_audio) return -1;
+// Both SDL entry points share the same producer and delivery ownership.
+static int prepare(const SDL_AudioSpec *desired, SDL_AudioSpec *request) {
     const char *directory = getenv("CYRUS_MIXER_CAPTURE_DIR");
-    if (!directory) return open_audio(desired, obtained);
     if (active || !desired || !desired->callback) return SDL_SetError("mixer capture requires one callback device");
     char path[4096];
     if (strlen(directory) > sizeof(path) - 32) return SDL_SetError("mixer capture path too long");
@@ -101,36 +100,79 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained) {
         return SDL_SetError("mixer capture output unavailable or already exists");
     }
     callback = desired->callback; callback_data = desired->userdata;
-    SDL_AudioSpec request = *desired, actual;
-    request.callback = generate; request.userdata = NULL;
-    int result = open_audio(&request, &actual);
-    if (result != 0) { fclose(pcm); fclose(events); return result; }
-    if (actual.format != AUDIO_S16LSB || actual.channels != 2 || actual.freq <= 0 ||
-        actual.size > BLOCK_BYTES) {
-        void (*close_audio)(void); *(void **)(&close_audio) = dlsym(RTLD_NEXT, "SDL_CloseAudio");
-        if (close_audio) close_audio();
-        fclose(pcm); fclose(events);
+    *request = *desired; request->callback = generate; request->userdata = NULL;
+    return 0;
+}
+
+static int begin(const SDL_AudioSpec *actual) {
+    if (actual->format != AUDIO_S16LSB || actual->channels != 2 || actual->freq <= 0 ||
+        actual->size > BLOCK_BYTES)
         return SDL_SetError("mixer capture requires bounded stereo s16le PCM");
-    }
-    rate = (unsigned)actual.freq;
+    rate = (unsigned)actual->freq;
     atomic_store(&head, 0); atomic_store(&tail, 0); atomic_store(&frames, 0);
     atomic_store(&sequence, 0); atomic_store(&generated_ns, 0); atomic_store(&revision, 0);
     atomic_store(&failed, 0); atomic_store(&running, 1);
-    if (pthread_create(&worker, NULL, deliver, NULL) != 0) {
-        void (*close_audio)(void); *(void **)(&close_audio) = dlsym(RTLD_NEXT, "SDL_CloseAudio");
-        if (close_audio) close_audio();
-        fclose(pcm); fclose(events);
+    if (pthread_create(&worker, NULL, deliver, NULL) != 0)
         return SDL_SetError("mixer capture worker unavailable");
-    }
     active = 1;
+    return 0;
+}
+
+int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained) {
+    int (*open_audio)(SDL_AudioSpec *, SDL_AudioSpec *);
+    void (*close_audio)(void);
+    *(void **)(&open_audio) = dlsym(RTLD_NEXT, "SDL_OpenAudio");
+    *(void **)(&close_audio) = dlsym(RTLD_NEXT, "SDL_CloseAudio");
+    if (!open_audio || !close_audio) return -1;
+    if (!getenv("CYRUS_MIXER_CAPTURE_DIR") || opening) return open_audio(desired, obtained);
+    SDL_AudioSpec request, actual;
+    if (prepare(desired, &request)) return -1;
+    // SDL's legacy open may itself call the device API. Do not wrap it twice.
+    opening++;
+    int result = open_audio(&request, &actual);
+    opening--;
+    if (!result && begin(&actual)) { close_audio(); result = -1; }
+    if (result) { fclose(pcm); fclose(events); return result; }
+    captured_device = 0;
     if (obtained) *obtained = actual;
     return 0;
+}
+
+SDL_AudioDeviceID SDL_OpenAudioDevice(const char *device, int iscapture,
+    const SDL_AudioSpec *desired, SDL_AudioSpec *obtained, int allowed_changes) {
+    SDL_AudioDeviceID (*open_device)(const char *, int, const SDL_AudioSpec *, SDL_AudioSpec *, int);
+    void (*close_device)(SDL_AudioDeviceID);
+    *(void **)(&open_device) = dlsym(RTLD_NEXT, "SDL_OpenAudioDevice");
+    *(void **)(&close_device) = dlsym(RTLD_NEXT, "SDL_CloseAudioDevice");
+    if (!open_device || !close_device) return 0;
+    if (!getenv("CYRUS_MIXER_CAPTURE_DIR") || opening || iscapture)
+        return open_device(device, iscapture, desired, obtained, allowed_changes);
+    SDL_AudioSpec request, actual;
+    if (prepare(desired, &request)) return 0;
+    opening++;
+    SDL_AudioDeviceID id = open_device(device, iscapture, &request, &actual, allowed_changes);
+    opening--;
+    if (id && begin(&actual)) { close_device(id); id = 0; }
+    if (!id) { fclose(pcm); fclose(events); return 0; }
+    captured_device = id;
+    if (obtained) *obtained = actual;
+    return id;
 }
 
 void SDL_CloseAudio(void) {
     void (*close_audio)(void); *(void **)(&close_audio) = dlsym(RTLD_NEXT, "SDL_CloseAudio");
     if (close_audio) close_audio();
-    stop();
+    if (active && !captured_device) stop();
 }
 
-__attribute__((destructor)) static void finish(void) { if (active) SDL_CloseAudio(); }
+void SDL_CloseAudioDevice(SDL_AudioDeviceID device) {
+    void (*close_device)(SDL_AudioDeviceID); *(void **)(&close_device) = dlsym(RTLD_NEXT, "SDL_CloseAudioDevice");
+    if (close_device) close_device(device);
+    if (active && device == captured_device) stop();
+}
+
+__attribute__((destructor)) static void finish(void) {
+    if (active) {
+        if (captured_device) SDL_CloseAudioDevice(captured_device); else SDL_CloseAudio();
+    }
+}

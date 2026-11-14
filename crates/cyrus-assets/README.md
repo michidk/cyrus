@@ -2,7 +2,12 @@
 
 ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
 of exposing them as static images. Zero-control authored ranges remain supported.
-Catalog version 35 invalidates image previews prepared before this admission check.
+[Preservation PR #325](https://github.com/michidk/redguard-preservation/pull/325)
+owns LBM static-palette admission. LBM preparation rejects malformed CRNG payloads and nonzero control
+words; preservation retains those chunks for inspection without inventing playback.
+Catalog version 38 invalidates environment records that applied the unused
+`sky_move` setting to Glide skies. Glide preparation retains authored WORLD.INI
+speed independently of that setting, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
 
 
 `loading/WORLD.loading` prepares only the requested destination's full-screen
@@ -402,3 +407,8 @@ For a later seek endpoint, set `FRAME_COUNT` to the final frame and `FIRST_FRAME
 to the first frame to retain. The exporter decodes the required prefix and writes
 only the inclusive selected window. Frame numbers and audio sample positions
 remain in the original movie timeline; output must be outside the install.
+
+`SoundSettings` applies the installed sound startup switch to effects, CD music
+and speech together. Disabled sound forces text dialogue, including after saved
+book preferences are applied. The rule follows preservation
+[`SYSTEM.INI`](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#sound-and-music).

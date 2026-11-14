@@ -1,0 +1,20 @@
+name = "Terrain grass"
+description = "Seeded blades matching the terrain's green texels, with distance LOD and wind. Native raster rendering."
+version = "0.1.0"
+[[shader]]
+replaces = "embedded://cyrus_render/geometry_surface.wesl"
+file = "grass.wesl"
+[[setting]]
+key = "density"
+label = "Grass density"
+type = "number"
+default = 1
+min = 0.1
+max = 1
+[[setting]]
+key = "wind"
+label = "Wind strength"
+type = "number"
+default = 0.18
+min = 0
+max = 0.5

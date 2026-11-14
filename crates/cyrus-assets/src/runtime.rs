@@ -76,6 +76,23 @@ impl<R: ReadAssets> Library<R> {
                 catalog.entries.push(parent);
             }
         }
+        if source.manifest().find("disc/game.ins").is_none() {
+            for file in &source.manifest().files {
+                let track = file
+                    .path
+                    .strip_prefix("disc/track")
+                    .and_then(|name| name.strip_suffix(".mp3")?.parse::<u32>().ok());
+                if let Some(track) = track {
+                    catalog.entries.push(entry(
+                        &file.path,
+                        file.bytes,
+                        Category::Audio,
+                        Source::CdTrack(track),
+                        &format!("CD track {track}"),
+                    ));
+                }
+            }
+        }
         if let Some(file) = source.manifest().find("disc/game.ins") {
             let cue = source.text(&file.path)?;
             for line in cue.lines() {
@@ -293,7 +310,11 @@ impl<R: ReadAssets> Library<R> {
 }
 
 fn movie_bytes(source: &dyn ReadAssets, name: &str) -> Result<Vec<u8>> {
-    for path in [name.to_owned(), format!("video/{name}")] {
+    for path in [
+        name.to_owned(),
+        format!("video/{name}"),
+        format!("disc/{name}"),
+    ] {
         if let Some(file) = source.manifest().find(&path) {
             return source.read(&file.path);
         }
@@ -302,21 +323,6 @@ fn movie_bytes(source: &dyn ReadAssets, name: &str) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     image.copy_file(name, &mut bytes)?;
     Ok(bytes)
-}
-
-fn track_pcm(source: &dyn ReadAssets, track: u32) -> Result<Vec<u8>> {
-    let cue = source.text("disc/game.ins")?;
-    let (name, start, end) =
-        crate::disc::cue_track(&cue, track, true).map_err(anyhow::Error::msg)?;
-    crate::validate_path(&name)?;
-    let path = format!("disc/{name}");
-    let file = source.manifest().find(&path).context("missing CD image")?;
-    let end = end.unwrap_or(file.bytes);
-    anyhow::ensure!(
-        start <= end && end <= file.bytes,
-        "CD track {track}: invalid byte range"
-    );
-    source.read_range(&file.path, start, usize::try_from(end - start)?)
 }
 
 pub(super) fn entry(
