@@ -7254,6 +7254,11 @@ fn model_records_retain_presentation_pose_until_admitted_refresh() {
             .point[1]
     };
     assert_eq!(support_height(&world), 20.0);
+    let snapshot = world.actor_snapshot(id).unwrap();
+    let (captured, position) = snapshot.presentation.unwrap();
+    assert_eq!(captured.position, [2560, 5120, 7680]);
+    assert_eq!(position[1], 20.0);
+    assert_ne!(captured.position, world.spatial(id).unwrap().local.position);
     world.refresh_model_presentations(&data, &[id]).unwrap();
     assert_eq!(support_height(&world), 21.0);
     assert_eq!(

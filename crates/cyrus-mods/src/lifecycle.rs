@@ -196,10 +196,13 @@ fn snapshot(
         Some((model, frame))
     });
     let pose = raw
-        .pose
-        .map(|pose| {
-            // Conjugate the original row-major orientation by the export-axis basis.
-            let affine = cyrus_render::script_transform::scene_transform(pose);
+        .presentation
+        .map(|(pose, position)| cyrus_render::script_transform::scene_transform_at(pose, position))
+        .or_else(|| {
+            raw.pose
+                .map(cyrus_render::script_transform::scene_transform)
+        })
+        .map(|affine| {
             let (_, rotation, position) = affine.to_scale_rotation_translation();
             vec![
                 position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, rotation.w,
