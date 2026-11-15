@@ -369,6 +369,10 @@ the bundle also includes that executable beside `cyrus`. Keep both in the same
 folder and start `cyrus-launcher` to choose game files, mods and presentation
 settings before playing. The ordinary game-only downloads remain available.
 No package contains the original game data or the builder's local state.
+Native release and PR smoke checks run `--help` from the packaged game and viewer
+payloads and the bundled game, with a temporary config directory. They reject
+missing or failing payloads; they do not open the graphical launcher or establish
+gameplay acceptance.
 
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
