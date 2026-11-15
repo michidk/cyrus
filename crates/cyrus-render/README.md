@@ -389,9 +389,9 @@ complete cross-world menu transitions and physical-hardware pixel parity remain
 
 Ordinary archive-model, placed-flat and terrain texture playback use preservation's
 [shared frame and admission rules](https://github.com/michidk/redguard-preservation/blob/af411516a872f56afc3b164a384ab782f824a6fe/docs/engine/texture-animation.md).
-Animated model preparation rejects missing polygon-admission provenance before
-publishing bindings. Geometry without texture-animation metadata creates no
-playback binding.
+Animated model preparation rejects missing meshes and missing polygon-admission
+provenance before publishing bindings. Geometry without texture-animation
+metadata creates no playback binding.
 **Verified:** renderer tests cover shared deadlines, late admission advancing only
 once, retained hidden frames, authored facing and clipping before raster area.
 Terrain requests use the camera window and each triangle's face normal, then

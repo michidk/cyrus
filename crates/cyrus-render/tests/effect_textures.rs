@@ -607,3 +607,34 @@ fn animated_models_require_polygon_admission_before_preparation_succeeds() {
         assert!(prepared.snapshot().is_empty());
     }
 }
+
+#[test]
+fn animated_material_without_a_mesh_cannot_publish_a_prepared_scene() {
+    use bevy::gltf::GltfMaterialExtras;
+    let mut world = World::new();
+    let root = world.spawn((StagedRenderRoot, Visibility::Hidden)).id();
+    let model = world
+        .spawn((
+            ChildOf(root),
+            GltfMaterialExtras {
+                value: serde_json::json!({"rgpre_texture_animation": {
+                    "version": 1, "image_name": "A00000", "delay_ms": 142, "textures": [0, 1]
+                }})
+                .to_string(),
+            },
+        ))
+        .id();
+    let environment = Handle::<cyrus_assets::environment::Environment>::default().id();
+    let error = TextureAnimations::prepare(&mut world, environment, &[root])
+        .err()
+        .expect("animated material without a mesh must reject scene preparation")
+        .to_string();
+    assert!(error.contains("mesh"), "{error}");
+    assert!(error.contains(&format!("{model:?}")), "{error}");
+    // Ordinary hierarchy nodes may carry nonanimated material extras without a mesh.
+    world
+        .entity_mut(model)
+        .insert(GltfMaterialExtras { value: "{}".into() });
+    let prepared = TextureAnimations::prepare(&mut world, environment, &[root]).unwrap();
+    assert!(prepared.snapshot().is_empty());
+}

@@ -907,10 +907,18 @@ impl TextureAnimations {
             if let Some(children) = world.get::<Children>(entity) {
                 pending.extend(children.iter().map(|child| (child, terrain)));
             }
-            let (Some(mesh), Some(extras)) = (
-                world.get::<Mesh3d>(entity),
-                world.get::<GltfMaterialExtras>(entity),
-            ) else {
+            let Some(extras) = world.get::<GltfMaterialExtras>(entity) else {
+                continue;
+            };
+            let Some(mesh) = world.get::<Mesh3d>(entity) else {
+                let description =
+                    serde_json::from_str::<MaterialExtras>(&extras.value).map_err(|error| {
+                        anyhow::anyhow!("texture preparation entity {entity:?}: {error}")
+                    })?;
+                ensure!(
+                    description.rgpre_texture_animation.is_none(),
+                    "texture preparation entity {entity:?}: animated material lacks a mesh"
+                );
                 continue;
             };
             let mesh = world
