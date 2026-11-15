@@ -589,7 +589,12 @@ pub(super) fn drive(
     if menu.preferences.is_none() {
         menu.preferences = Some(match preferences_state.menu().clone() {
             Ok(Some(preferences)) => preferences,
-            Ok(None) => book.defaults.clone(),
+            Ok(None) => {
+                let mut defaults = book.defaults.clone();
+                // Older exported menus predate explicit setting ownership.
+                defaults.overrides = Some(Default::default());
+                defaults
+            }
             Err(error) => {
                 let message =
                     format!("Menu preferences unavailable: {error}. Changes are disabled.");
@@ -1322,8 +1327,45 @@ mod tests {
                 "action {action}, {key:?}, initial {initial}: feedback must follow a saved change"
             );
             if expected == old {
+                assert!(
+                    app.world()
+                        .resource::<Preferences>()
+                        .menu()
+                        .as_ref()
+                        .unwrap()
+                        .is_none()
+                );
                 continue;
             }
+            let saved = app
+                .world()
+                .resource::<Preferences>()
+                .menu()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap();
+            assert_eq!(saved.overrides, Some([action].into()));
+            let mut audio = cyrus_assets::sound::SoundSettings::parse(
+                "[system]\nvolume=255\nredbook_volume=200",
+            );
+            audio.apply_menu(saved);
+            assert_eq!(
+                audio.master_volume,
+                if action == 601 {
+                    cyrus_assets::sound::slider_volume(expected)
+                } else {
+                    255
+                }
+            );
+            assert_eq!(
+                audio.redbook_volume,
+                if action == 602 {
+                    cyrus_assets::sound::slider_volume(expected)
+                } else {
+                    200
+                }
+            );
             assert!(matches!(
                 cues[0],
                 SoundCue::Flat {

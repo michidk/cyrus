@@ -192,7 +192,14 @@ impl SoundSettings {
     /// Overrides the SYSTEM.INI values with the book's saved Sound page preferences:
     /// actions 601 (sound) and 602 (music) in slider units, 603 (voice) as 0/1.
     pub fn apply_menu(&mut self, preferences: &crate::preferences::MenuPreferences) {
-        let value = |action| preferences.values.get(&action).copied();
+        let value = |action| {
+            preferences
+                .overrides
+                .as_ref()
+                .is_none_or(|actions| actions.contains(&action))
+                .then(|| preferences.values.get(&action).copied())
+                .flatten()
+        };
         if let Some(sound) = value(601) {
             self.master_volume = slider_volume(sound);
         }

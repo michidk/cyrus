@@ -415,6 +415,7 @@ mod tests {
         let displayed = MenuPreferences {
             values: [(601, 19), (602, 15), (603, 1), (504, 1), (505, 0)].into(),
             bindings: [0; 15],
+            overrides: None,
         };
         let mut app = App::new();
         app.init_resource::<StartupPresentation>()
@@ -461,6 +462,7 @@ mod tests {
         let preferences = MenuPreferences {
             values: [(601, 0), (602, 0), (603, 0), (504, 0), (505, 0)].into(),
             bindings: [0; 15],
+            overrides: None,
         };
         app.world_mut().resource_mut::<MenuState>().preferences = Some(preferences.clone());
         app.world_mut()

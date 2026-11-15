@@ -293,3 +293,8 @@ reversed threshold phase. Restore the original cache afterward. Run
 `test-check-book-framebuffer.py` with Pillow for its command-line controls.
 The earlier complementary and stripe controls describe the intermediate filtering
 output; they do not admit final framebuffer captures after RGB565 storage.
+
+New menu saves retain which settings were changed. Saving a toggle or binding
+preserves unedited installed Sound and Music levels; changing one volume slider
+updates only that volume. Ownership survives reopening the local preferences.
+Legacy preference documents retain their existing all-settings interpretation.

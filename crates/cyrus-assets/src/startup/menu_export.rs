@@ -102,6 +102,7 @@ pub(crate) fn prepare_menu(
         ]
         .into(),
         bindings: keys.control_codes(),
+        overrides: Some(Default::default()),
     };
     let archive_bytes = read("fxart/MENU.ROB")?;
     let palette_bytes = read("fxart/REDGUARD.COL")?;

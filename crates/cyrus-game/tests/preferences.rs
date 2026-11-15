@@ -24,6 +24,7 @@ fn value(volume: i32) -> MenuPreferences {
     MenuPreferences {
         values: [(504, 1), (505, 0), (601, volume), (602, 10), (603, 1)].into(),
         bindings: [0; 15],
+        overrides: None,
     }
 }
 #[test]
