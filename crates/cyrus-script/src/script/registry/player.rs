@@ -770,11 +770,14 @@ impl ScriptWorld {
         // Actor bytes +0x1b2 and +0x1b3: the falling and queued-motion bytes.
         let eligible = control.falling_state == JumpMotion::NONE
             && control.queued_motion == JumpMotion::NONE
-            && (held.walk
-                || matches!(
+            && if held.walk {
+                !control.living_state.is_ledge()
+            } else {
+                matches!(
                     control.living_state,
                     LivingState::ORDINARY | LivingState::LANDED_ON_ACTOR
-                ));
+                )
+            };
         let running = matches!(
             self.actors[index]
                 .animation

@@ -130,7 +130,8 @@ pub struct GroundTurnInput {
     pub walk_key: bool,
     /// Forward or backward is held.
     pub forward_or_backward: bool,
-    /// Living state 0 or 27 with the falling and queued-motion bytes zero.
+    /// Falling and queued motion are clear; with Walk held, the living state is outside
+    /// the ledge states, otherwise it is ordinary or landed on an actor.
     pub eligible: bool,
     /// The player holds a drawn weapon with a combat record, or stands in deep water: the
     /// heading still turns but no turn animation is requested.

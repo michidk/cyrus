@@ -8,6 +8,11 @@ access, rendering, cameras, audio playback, storage and external control.
 
 ## Integration
 
+Verified: held-Walk ground turning leaves ledge-entry, climb and drop headings
+owned by the ledge controller. Ordinary turning resumes outside those states;
+falling and queued motion still refuse it. This follows the published
+[ground-turn eligibility rules](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/player.md#ground-turn-eligibility-and-animation).
+
 Verified: actor-overlap landing requires the support's current model link, not a
 `MISC1` group in its catalogue. Bounce continuation also requires the support's
 animation association and bounce power. A missing requested group follows ordinary
