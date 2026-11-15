@@ -1,12 +1,40 @@
 #!/usr/bin/env python3
 """Public recovery contract without Docker builds or shared runtime changes."""
 import os
+import hashlib
+import io
+import json
+import tarfile
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 
 SCRIPT = Path(__file__).with_name('ensure-runtime-image.sh')
+
+def image_archive(path, payload, oci=False, index=False):
+    digest = hashlib.sha256(payload).hexdigest()
+    config = f'{digest}.json'
+    manifest = json.dumps([{'Config': config, 'RepoTags': ['fixture:1'], 'Layers': []}]).encode()
+    identity = f'sha256:{digest}'
+    entries = [(config, payload), ('manifest.json', manifest)]
+    if oci:
+        document = json.dumps({'config': {'digest': identity}}).encode()
+        digest = hashlib.sha256(document).hexdigest()
+        entries.append((f'blobs/sha256/{digest}', document))
+        identity = f'sha256:{digest}'
+        if index:
+            document = json.dumps({'manifests': [{'digest': identity}]}).encode()
+            digest = hashlib.sha256(document).hexdigest()
+            entries.append((f'blobs/sha256/{digest}', document))
+            identity = f'sha256:{digest}'
+    with tarfile.open(path, 'w') as archive:
+        for name, data in entries:
+            entry = tarfile.TarInfo(name)
+            entry.size = len(data)
+            archive.addfile(entry, io.BytesIO(data))
+    return identity
+
 
 class Recovery(unittest.TestCase):
     def run_restore(self, present=False, archive=True, accepted=True, correct_tag=True):
@@ -33,20 +61,23 @@ class Recovery(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             present = root / 'present'
-            present.touch()
+            template = root / 'template.tar'
+            first_id = image_archive(template, b'first-image')
+            present.write_text(first_id)
             saved = root / 'nested/runtime.tar'
             docker = root / 'docker'
             docker.write_text("""#!/bin/sh
 echo "$*" >> "$CALLS"
 case "$1" in
- image) test -f "$PRESENT" ;;
- save) printf retained > "$3"; test ! -f "$FAIL" ;;
- load) test -s "$3" && touch "$PRESENT" ;;
+ image) test -f "$PRESENT" && cat "$PRESENT" ;;
+ save) cp "$TEMPLATE" "$3"; test ! -f "$FAIL" ;;
+ load) test -s "$3" && cp "$IDENTITY" "$PRESENT" ;;
 esac
 """)
             docker.chmod(0o755)
             env = dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
-                       PRESENT=str(present), CALLS=str(root/'calls'), FAIL=str(root/'fail'))
+                       PRESENT=str(present), CALLS=str(root/'calls'), FAIL=str(root/'fail'),
+                       TEMPLATE=str(template), IDENTITY=str(root/'identity'))
             command = ['bash', str(SCRIPT), '--retain', 'fixture:1', str(saved)]
             (root/'fail').touch()
             failed = subprocess.run(command, env=env, capture_output=True, text=True)
@@ -60,9 +91,29 @@ esac
             for attempt in attempts:
                 output, error = attempt.communicate(timeout=10)
                 self.assertEqual(attempt.returncode, 0, output + error)
-            self.assertEqual(saved.read_bytes(), b'retained')
+            self.assertEqual(saved.read_bytes(), template.read_bytes())
             subprocess.run(command, env=env, check=True, capture_output=True)
             self.assertEqual((root/'calls').read_text().count('save --output'), 2)
+            # Rebuilding the same tag must replace its old checkpoint.
+            second_id = image_archive(template, b'rebuilt-image', oci=True)
+            present.write_text(second_id)
+            subprocess.run(command, env=env, check=True, capture_output=True)
+            self.assertEqual(saved.read_bytes(), template.read_bytes(),
+                             'retention kept an obsolete runtime under the rebuilt tag')
+            self.assertNotEqual(first_id, second_id)
+            previous = saved.read_bytes()
+            template.write_bytes(b'malformed Docker save')
+            present.write_text('sha256:changed')
+            invalid = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertEqual(saved.read_bytes(), previous)
+            self.assertFalse(list(saved.parent.glob('*.partial.*')))
+            # Multi-platform stores may identify an image by its enclosing index.
+            second_id = image_archive(template, b'rebuilt-image', oci=True, index=True)
+            present.write_text(second_id)
+            subprocess.run(command, env=env, check=True, capture_output=True)
+            self.assertEqual(saved.read_bytes(), template.read_bytes())
+            (root/'identity').write_text(second_id)
             present.unlink()
             subprocess.run(command, env=env, check=True, capture_output=True)
             self.assertTrue(present.exists())
