@@ -9,6 +9,12 @@ nonzero control words; preservation retains those chunks for inspection without 
 Catalog version 38 invalidates environment records that applied the unused
 `sky_move` setting to Glide skies. Glide preparation retains authored WORLD.INI
 speed independently of that setting, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
+Glide environment preparation uses `world_skyfx` BSI artwork independently of
+`world_sky` GXA artwork, following the published
+[renderer selection contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#gxa-assets).
+Missing Glide artwork is an error, even when software sky artwork is configured.
+Software sky compositing is not supplied by this preparation path.
+
 
 
 `loading/WORLD.loading` prepares only the requested destination's full-screen
