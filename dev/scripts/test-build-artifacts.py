@@ -2,6 +2,8 @@
 """Check archive contents without compiling or reading a game install."""
 import os
 import json
+from html.parser import HTMLParser
+from urllib.parse import urlparse
 from pathlib import Path
 import shutil
 import subprocess
@@ -180,6 +182,34 @@ done
                     f"build --locked --release --target {platform} ")]
                 self.assertEqual(len(build), 1)
                 self.assertIn("-p cyrus-launcher", build[0])
+
+    def test_download_page_links_complete_launcher_bundles(self):
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.hrefs = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "a":
+                    self.hrefs.extend(value for key, value in attrs if key == "href")
+
+        page = Links()
+        page.feed((Path(__file__).parents[2] / "dev/pages/index.html").read_text())
+        bundles = [url for url in page.hrefs if "/download/cyrus-with-mods-" in url]
+        self.assertEqual(len(bundles), 4)
+        self.mod_fixtures()
+        launcher = self.root / "crates/cyrus-launcher"
+        launcher.mkdir()
+        (launcher / "Cargo.toml").touch()
+        for platform in ("x86_64-unknown-linux-gnu", "x86_64-apple-darwin",
+                         "aarch64-apple-darwin", "x86_64-pc-windows-msvc"):
+            with self.subTest(platform=platform):
+                self.build("native-mods", platform)
+                extension = ".zip" if "windows" in platform else ".tar.gz"
+                name = f"cyrus-with-mods-{platform}{extension}"
+                url = f"https://github.com/michidk/cyrus/releases/latest/download/{name}"
+                self.assertIn(url, bundles)
+                self.assertTrue((self.root / "target/artifacts" / Path(urlparse(url).path).name).is_file())
 
     def test_mod_bundle_uses_inherited_build_directory(self):
         self.mod_fixtures()
