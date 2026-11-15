@@ -1744,6 +1744,14 @@ seconds (default 20); use a shorter bound for short diagnostic runs. Missing or
 timed-out clock observations cannot satisfy the requested progress. Each launcher
 invocation holds its lock for one run.
 
+Set `CYRUS_CAPTURE_MIN_AUDIO_SECONDS` to the required emulated-audio interval
+when a comparison needs a minimum retained sample span. After stopping, the
+recorder validates every declared WAV frame and rejects fewer than
+`ceil(required_seconds * sample_rate)` frames. This is an admission bound,
+not a wall-clock stop condition. A finalized file alone does not establish
+that the requested interval was captured. Generated SDL output progress cannot
+substitute for this WAV sample bound.
+
 The timeline identifies DOSBox's WAV as `emulated_mixer`. Probe wall bounds and
 game-clock observations remain separate from its PCM sample clock. File flush
 sizes, requested delays and wall-time scaling do not establish exact emission

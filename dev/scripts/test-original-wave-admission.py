@@ -11,7 +11,7 @@ import wave
 
 
 class WaveAdmission(unittest.TestCase):
-    def capture(self, mode):
+    def capture(self, mode, minimum_seconds=0):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / 'events.json').write_text('[]')
@@ -45,7 +45,8 @@ else:
                 [sys.executable, str(Path(__file__).with_name('original-capture-inner.py')),
                  str(reader), str(root / 'events.json'), '0.01'],
                 env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
-                     'CYRUS_CAPTURE_DIR': str(root), 'WAVE_TEST_MODE': mode},
+                     'CYRUS_CAPTURE_DIR': str(root), 'WAVE_TEST_MODE': mode,
+                     'CYRUS_CAPTURE_MIN_AUDIO_SECONDS': str(minimum_seconds)},
                 text=True, capture_output=True, timeout=5)
             return result
 
@@ -55,6 +56,22 @@ else:
                 result = self.capture(mode)
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertIn('WAV', result.stderr)
+
+    def test_finalized_wav_must_cover_the_requested_audio_interval(self):
+        result = self.capture('complete', minimum_seconds=0.02)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('WAV', result.stderr)
+        self.assertIn('960', result.stderr)
+        # The exact boundary is admitted, including silent PCM.
+        result = self.capture('complete', minimum_seconds=0.01)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['audio']['frames'], 480)
+
+    def test_audio_interval_must_be_finite_and_nonnegative(self):
+        for minimum in ('nan', 'inf', '-1'):
+            with self.subTest(minimum=minimum):
+                result = self.capture('complete', minimum_seconds=minimum)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
 
     def test_silent_complete_pcm_retains_its_sample_clock(self):
         result = self.capture('complete')

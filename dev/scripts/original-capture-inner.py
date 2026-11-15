@@ -23,6 +23,9 @@ import wave
 
 reader, events_path, seconds = sys.argv[1], sys.argv[2], float(sys.argv[3])
 events = json.load(open(events_path))
+minimum_audio_seconds = float(os.environ.get("CYRUS_CAPTURE_MIN_AUDIO_SECONDS", "0"))
+if not math.isfinite(minimum_audio_seconds) or minimum_audio_seconds < 0:
+    raise SystemExit("minimum WAV duration must be finite and nonnegative")
 env = {**os.environ, "DISPLAY": ":1"}
 capture_dir = Path(os.environ.get("CYRUS_CAPTURE_DIR", "/game/capture"))
 startup_capture = os.environ.get("CYRUS_CAPTURE_STARTUP") == "1"
@@ -223,6 +226,9 @@ try:
             if len(audio.readframes(count)) != count * width * channels:
                 raise ValueError("WAV recording has truncated sample frames")
             remaining -= count
+        required_frames = math.ceil(minimum_audio_seconds * audio.getframerate())
+        if frames < required_frames:
+            raise ValueError(f"WAV interval incomplete: retained {frames} frames, required {required_frames}")
         timeline["audio"] = {"file": recording.name, "frames": frames,
                              "sample_rate": audio.getframerate(),
                              "channels": channels, "sample_width": width}
