@@ -63,6 +63,7 @@ fn frame_projection_keeps_authored_corner_normals_with_face_fallback() {
         frame.normals,
         [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 2.0]]
     );
+    assert_eq!(frame.face_normals, [[0.0, -1.0, 0.0]; 3]);
     model.corner_normals.clear();
     assert!(cyrus_render::animation::FrameGeometry::from_model(model, 1, &binding).is_err());
 }

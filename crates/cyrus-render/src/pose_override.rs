@@ -119,6 +119,7 @@ pub(crate) fn apply(
                     normals.push(normal.to_array());
                 }
                 private.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+                private.insert_attribute(crate::animation::FACE_NORMAL, normals.clone());
                 private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
                 private.final_aabb = None;
                 if let Some(bounds) = private.get_aabb() {
@@ -191,6 +192,8 @@ pub(crate) fn apply(
             })
             .unzip();
         source.insert_attribute(Mesh::ATTRIBUTE_POSITION, deformed_positions);
+        // The rig replaces vertex-frame facing data with the posed normals it supplies.
+        source.insert_attribute(crate::animation::FACE_NORMAL, deformed_normals.clone());
         source.insert_attribute(Mesh::ATTRIBUTE_NORMAL, deformed_normals);
         source.final_aabb = None;
         if let Some(bounds) = source.get_aabb() {

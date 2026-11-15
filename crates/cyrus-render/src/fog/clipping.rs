@@ -530,6 +530,16 @@ fn draw_mesh(
     else {
         anyhow::bail!("missing texture coordinates")
     };
+    let face_normals = match original.attribute(crate::animation::FACE_NORMAL) {
+        Some(VertexAttributeValues::Float32x3(values)) => {
+            ensure!(
+                values.len() == positions.len(),
+                "face normal count mismatch"
+            );
+            Some(values)
+        }
+        _ => None,
+    };
     model.validate(positions)?;
     ensure!(
         normals.len() == positions.len() && uv.len() == positions.len(),
@@ -576,8 +586,8 @@ fn draw_mesh(
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("missing polygon corners"))?;
         let first = indices[0];
-        let normal = if animated {
-            normals[first]
+        let normal = if animated && let Some(face_normals) = face_normals {
+            face_normals[first]
         } else {
             polygon
                 .normal
@@ -773,6 +783,32 @@ mod tests {
             light_colors(&source, Mat4::IDENTITY, &material, &Image::default()).unwrap(),
             vec![[255.0, 255.0, 255.0, 1.0]; 3]
         );
+    }
+
+    #[test]
+    fn animated_facing_uses_frame_face_normals_independently_of_shading() {
+        let mut source = mesh();
+        source.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0., 0., -1.]; 3]);
+        source.insert_attribute(crate::animation::FACE_NORMAL, vec![[0., 0., 1.]; 3]);
+        let prepare = |source: &Mesh| {
+            draw_mesh(
+                source,
+                &model(),
+                None,
+                Mat4::IDENTITY,
+                Mat4::IDENTITY,
+                Vec2::ONE,
+                [640.0, 480.0],
+                &material(),
+                &Image::default(),
+                true,
+                &mut Preparation::default(),
+            )
+            .unwrap()
+        };
+        assert_eq!(prepare(&source).count_vertices(), 6);
+        source.insert_attribute(crate::animation::FACE_NORMAL, vec![[0., 0., -1.]; 3]);
+        assert_eq!(prepare(&source).count_vertices(), 0);
     }
 
     #[test]

@@ -61,6 +61,8 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
   Fix a rule there first, not only here.
 - Presentation never advances script stages: logical poses, health, inventory
   and dialogue are owned by `cyrus-game`/`cyrus-script`; this crate presents them.
+- Animated polygon facing uses the selected frame's face normals independently of
+  authored corner normals used for lighting.
 - Camera-dependent terrain, clipping, animation meshes and effect assets update
   before Bevy extracts assets, so camera and geometry reach the GPU in the same frame.
 - Material and shader changes often change the export schema: re-export worlds
