@@ -64,7 +64,7 @@ Browser state stays in this site's storage for your browser profile:
 | Module | Responsibility |
 | --- | --- |
 | [main](src/main.rs) | App assembly, install source, URL options |
-| [startup](src/startup.rs) | Default entry from installed startup flags and the reserved autosave |
+| [startup](src/startup.rs) | Book by default, with explicit New Game and movie shortcuts |
 | [assets](src/assets.rs) | Asset reads waiting on original-file preparation in the worker |
 | [session](src/session.rs) | Book and diagnostic save/load, slot storage and selection |
 | [storage](src/storage.rs), [preferences](src/preferences.rs) | Document storage for preferences, cheats and saves |
@@ -118,5 +118,6 @@ DevTools URL, the page URL, an install URL and an output directory, for example
 (also `autosave`, `menu`), `test-browser-movie-handoff.mjs` and
 `test-browser-world-entry.mjs`. Run `testSessionStorage()` and `testSessionSlots()`
 from `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB.
+The startup driver defaults to checking the book; `introduction` requests New Game explicitly.
 The `listener_publication` example is an isolated camera/audio scene
 (`cargo build -p cyrus-web --example listener_publication`).

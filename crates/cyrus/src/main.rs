@@ -62,10 +62,6 @@ struct Args {
     control: Option<String>,
 }
 
-/// Default startup selects its destination from installed flags and the native autosave.
-#[derive(Resource)]
-struct AutomaticStartup;
-
 fn main() -> anyhow::Result<()> {
     // Bevy's task-pool threads take the default 2 MiB stack, which a debug build overflows while
     // loading ISLAND (an IO pool thread, minutes after load). Set before any thread exists.
@@ -272,9 +268,6 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             || args.launch.new_game
             || args.launch.movie.is_some()
             || args.load_slot.is_some();
-        if startup && !direct && !args.launch.skip_startup {
-            app.insert_resource(AutomaticStartup);
-        }
         app.insert_resource(cyrus_startup::LaunchRequest::new(
             args.launch.new_game,
             args.launch.movie,
@@ -335,19 +328,13 @@ fn exit_when_primary_window_closes(
     }
 }
 
-type PreparedStartup = anyhow::Result<Option<cyrus_assets::startup::StartupEntry>>;
-
-type StartupSelection<'w> = (
-    Option<Res<'w, cyrus_startup::StartupPresentation>>,
-    Option<Res<'w, AutomaticStartup>>,
-    Option<ResMut<'w, cyrus_startup::LaunchRequest>>,
-);
+type PreparedStartup = anyhow::Result<()>;
 
 /// Prepare the first visible assets without blocking the window's event loop.
 fn prepare_install(
     mut commands: Commands,
     install: Option<Res<cyrus_assets::install::GameInstall>>,
-    (startup, automatic, mut launch): StartupSelection,
+    startup: Option<Res<cyrus_startup::StartupPresentation>>,
     mut pending: Local<Option<bevy::tasks::Task<PreparedStartup>>>,
     mut attempted: Local<bool>,
     mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
@@ -357,10 +344,7 @@ fn prepare_install(
         if let Some(result) = bevy::tasks::futures::check_ready(task) {
             *pending = None;
             match result {
-                Ok(entry) => {
-                    if let (Some(entry), Some(launch)) = (entry, launch.as_deref_mut()) {
-                        apply_startup_entry(launch, entry);
-                    }
+                Ok(()) => {
                     progress.visible = false;
                     commands.insert_resource(cyrus_audio::AudioReadiness {
                         prepare: startup.is_none(),
@@ -387,7 +371,6 @@ fn prepare_install(
     progress.fraction = None;
     let install = install.clone();
     let startup = startup.is_some();
-    let automatic = automatic.is_some();
     *pending = Some(bevy::tasks::IoTaskPool::get().spawn(async move {
         let cache = cyrus_config::cache_dir();
         install.cache_path(cache)?;
@@ -396,29 +379,8 @@ fn prepare_install(
         } else {
             cyrus_assets::hud_export::export_hud(&install, cache)?;
         }
-        if automatic {
-            cyrus_assets::startup::startup_entry(
-                &install,
-                session::slots::SlotStore::default().has_valid_autosave(),
-            )
-            .map(Some)
-        } else {
-            Ok(None)
-        }
+        Ok(())
     }));
-}
-
-fn apply_startup_entry(
-    launch: &mut cyrus_startup::LaunchRequest,
-    entry: cyrus_assets::startup::StartupEntry,
-) {
-    use cyrus_assets::startup::StartupEntry;
-    if entry != StartupEntry::Book {
-        *launch = cyrus_startup::LaunchRequest::automatic_new_game(launch.skip_movies);
-        if entry == StartupEntry::World {
-            launch.action = Some(cyrus_startup::LaunchAction::NewGameWithoutMovie);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -426,24 +388,49 @@ mod install_tests {
     use super::*;
 
     #[test]
-    fn default_fresh_start_requests_introduction_without_losing_explicit_movie_skip() {
-        use cyrus_assets::startup::StartupEntry;
-        let mut launch = cyrus_startup::LaunchRequest::new(false, None, false);
-        apply_startup_entry(&mut launch, StartupEntry::Introduction);
-        assert_eq!(launch.action, Some(cyrus_startup::LaunchAction::NewGame));
-        assert!(!launch.skip_movies);
-        let mut skipped = cyrus_startup::LaunchRequest::new(false, None, true);
-        apply_startup_entry(&mut skipped, StartupEntry::Introduction);
-        assert!(skipped.skip_movies);
-        let mut book = cyrus_startup::LaunchRequest::default();
-        apply_startup_entry(&mut book, StartupEntry::Book);
-        assert_eq!(book.action, None);
-        apply_startup_entry(&mut book, StartupEntry::World);
-        assert_eq!(
-            book.action,
-            Some(cyrus_startup::LaunchAction::NewGameWithoutMovie)
-        );
-        assert!(!book.skip_movies);
+    fn default_preparation_keeps_book_launch_without_starting_a_world() {
+        let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
+            eprintln!("skipped: no install (default book launch)");
+            return;
+        };
+        let args = Args::try_parse_from(["cyrus"]).unwrap();
+        assert!(args.launch.scene.is_none());
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+            .insert_state(cyrus_game::AppState::SelectingInstall)
+            .insert_resource(install)
+            .insert_resource(cyrus_startup::StartupPresentation::default())
+            .insert_resource(cyrus_startup::LaunchRequest::new(
+                args.launch.new_game,
+                args.launch.movie,
+                args.launch.skip_movies,
+            ))
+            .init_resource::<cyrus_app::loading::LoadingProgress>()
+            .add_systems(Update, prepare_install);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            app.update();
+            assert!(
+                app.world()
+                    .resource::<cyrus_startup::LaunchRequest>()
+                    .action
+                    .is_none()
+            );
+            assert!(!app.world().contains_resource::<cyrus_startup::StartGame>());
+            if *app.world().resource::<State<cyrus_game::AppState>>().get()
+                == cyrus_game::AppState::Loading
+            {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "startup preparation stalled: {:?}",
+                app.world()
+                    .resource::<cyrus_app::loading::LoadingProgress>()
+                    .label
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 
     #[test]

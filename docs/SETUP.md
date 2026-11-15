@@ -64,7 +64,7 @@ The link is gitignored. cyrus only reads from it.
 ## Run
 
 ```sh
-just run                 # splash/title, then Introduction for a fresh native launch
+just run                 # splash/title, then the book menu
 just run --skip-startup   # skip splash, prepare menu assets behind the title
 just run --new-game       # New Game from the book, with its introduction movie
 just run --new-game --skip-movies   # ... entering the world straight away
@@ -287,7 +287,11 @@ directory. In a checkout they are `game-config/`, `game-config/cache/` and
 `game-config/logs/`: `cargo run` and `cargo test` pin `CYRUS_CONFIG_DIR` to the checkout's
 `game-config/` (`.cargo/config.toml`), and `just run-native` pins it inside the container.
 A binary started by hand from a directory without `game-config/` uses the platform
-directories. Screenshots are written wherever the `screenshot` command's path says.
+directories. On Windows, logs normally live in `%LOCALAPPDATA%\cyrus\data\logs`;
+paste that path into File Explorer and open the newest `cyrus.YYYY-MM-DD.log`.
+They are beside the executable only when an existing portable `game-config/` directory
+or an explicit `CYRUS_CONFIG_DIR` selects that location. Screenshots are written
+wherever the `screenshot` command's path says.
 
 `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default window size. In the software-rendered
 dev container the renderer, not the game logic, limits the frame rate: an optimized build
@@ -548,11 +552,8 @@ directory as a fallback. **Verified:** its metallic logo and orange swoosh are
 the Windows Glide splash GOG players see; cyrus plays only that one ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents the DLL format. Enter, Space, or Escape advances startup.
-Default startup selects its entry from installed final-version and
-ignore-autosave flags and a validated host autosave, native storage or browser IndexedDB. A final-version launch
-without an autosave plays Introduction before the starting world. A valid
-autosave opens the book. Non-final or ignore-autosave configurations enter the
-starting world directly. This follows [preservation startup entry](https://github.com/michidk/redguard-preservation/pull/314).
+Default startup opens the book after the splash and title, regardless of installed
+debug flags or whether an autosave exists. Select New Game or load a save to enter a world.
 `--skip-startup` explicitly opens the book while required menu preparation remains behind the title. `--new-game`,
 `--movie INDEX` and `--load-slot SLOT` (native) skip the splash and drive the book once it is open, as the
 entry's key press would; `--skip-movies` makes New Game, from the book too, enter its world without the
