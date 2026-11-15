@@ -464,6 +464,21 @@ impl App {
         }
     }
 
+    fn select_install(&mut self, install: Option<PathBuf>) {
+        match self.options.select_install(
+            install,
+            self.remembered.as_deref(),
+            &cheats::local_file(),
+        ) {
+            Ok(state) => {
+                self.cheats = state;
+                self.save();
+                self.load_artwork();
+            }
+            Err(error) => self.problem = Some(format!("{error:#}")),
+        }
+    }
+
     fn game_page(&mut self, ui: &mut egui::Ui) {
         theme::section(ui, "Game files");
         match self.game_folder() {
@@ -477,16 +492,12 @@ impl App {
             if theme::secondary(ui, "Choose folder…").clicked()
                 && let Some(folder) = rfd::FileDialog::new().pick_folder()
             {
-                self.options.install = Some(folder);
-                self.save();
-                self.load_artwork();
+                self.select_install(Some(folder));
             }
             if self.options.install.is_some()
                 && theme::secondary(ui, "Search automatically").clicked()
             {
-                self.options.install = None;
-                self.save();
-                self.load_artwork();
+                self.select_install(None);
             }
         });
         theme::section(ui, "Start");

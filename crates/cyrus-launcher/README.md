@@ -19,6 +19,10 @@ The launcher does not link the game. It reads and writes the files the game read
 | `REDGUARD.CHT` | the cheats; the launcher writes the config directory's copy and starts from the install's when there is none |
 | `launcher.json` | the launcher's own choices (a picked game folder, skip the intro movie) |
 
+Changing the selected game folder refreshes the displayed cheats from the same source the game
+will read. A local cheat file still takes precedence. An unreadable or malformed candidate cheat
+file leaves the previous selection and displayed state intact and reports the error.
+
 All of them live in the config directory chosen by `cyrus-config`. A test pins the launcher's list
 of fidelity areas to the game's.
 
