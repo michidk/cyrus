@@ -7,6 +7,19 @@ Engine facts behind each entry live in
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Unintended differences are bugs; report them in [GitHub issues](https://github.com/michidk/cyrus/issues), not here.
 
+## Stable gameplay timing
+
+**Verified:** the original clock estimates frame scale from measured FPS, smooths
+that estimate, and emits one nominal tick per update during its twelve-update
+warmup, as documented in preservation's
+[FPS-derived frame scale](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#fps-derived-frame-scale).
+Cyrus uses elapsed active time for automatic gameplay at the installed nominal
+rate. Scene entry, menu returns and resource preparation exclude suspended time;
+FPS changes do not require a speed adjustment period. This applies by default in
+both fidelity modes, as requested for consistent gameplay speed. The installed
+minimum FPS still bounds movement during a single long host stall. Explicit
+original-clock inspection and book animation retain the original clock API.
+
 ## 3dfx splash
 
 **Verified:** the GOG Windows launch plays the metallic `3DfxSpl2.dll` splash. Emulated Voodoo hardware,

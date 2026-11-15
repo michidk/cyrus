@@ -845,7 +845,7 @@ pub(crate) fn sample_clock(
     mut actors: ResMut<ScriptActors>,
     clock: Option<ResMut<SimulationClock>>,
     prepared: OrdinaryAssets,
-    mut running: Local<bool>,
+    mut running: Local<Option<u64>>,
     mut commands: Commands,
 ) {
     let mut ready = !prepared
@@ -883,10 +883,14 @@ pub(crate) fn sample_clock(
     if let Some(mut clock) = clock {
         let tick = bios_tick(time.elapsed());
         if ready {
-            if !*running {
+            let generation = actors.current.as_ref().expect("ready world").generation();
+            let elapsed = if *running == Some(generation) {
+                time.delta()
+            } else {
                 clock.rebase(tick);
-            }
-            clock.advance(tick);
+                std::time::Duration::ZERO
+            };
+            clock.advance_elapsed(tick, elapsed);
             actors
                 .current
                 .as_mut()
@@ -900,7 +904,7 @@ pub(crate) fn sample_clock(
             });
         }
     }
-    *running = ready;
+    *running = ready.then(|| actors.current.as_ref().expect("ready world").generation());
 }
 
 #[derive(SystemParam)]

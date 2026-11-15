@@ -5917,6 +5917,14 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             .environmental_effects()
             .is_some()
     );
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .step()
+            .frame_scale,
+        0,
+        "first admitted frame must exclude resource preparation time"
+    );
     app.insert_resource(bevy::time::TimeUpdateStrategy::Automatic);
     let first = snapshot(&app);
     let role_snapshot = |app: &App| {
@@ -6023,6 +6031,14 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     app.update();
     app.insert_resource(bevy::time::TimeUpdateStrategy::Automatic);
     let next = snapshot(&app);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .step()
+            .frame_scale,
+        512,
+        "a one-second host stall must use the installed minimum-FPS bound without smoothing"
+    );
     let logical_world = app
         .world()
         .resource::<ScriptActors>()
@@ -6078,10 +6094,6 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
         [1, 1536]
     );
     assert_eq!(next["actors"][0]["locals"], serde_json::json!([6]));
-    assert_ne!(
-        next["actors"][0]["animation"]["frame"],
-        first["actors"][0]["animation"]["frame"]
-    );
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::Menu);
@@ -6150,7 +6162,8 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             .resource::<cyrus_script::clock::SimulationClock>()
             .step()
             .frame_scale,
-        before_clock.frame_scale
+        0,
+        "resume must exclude the paused host interval"
     );
     app.insert_resource(bevy::time::TimeUpdateStrategy::Automatic);
     let prepared = app.world().resource::<PreparedWorld>();
@@ -6216,6 +6229,14 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     app.insert_resource(replacement);
     app.update();
     let replaced = snapshot(&app);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .step()
+            .frame_scale,
+        0,
+        "replacement world must not inherit the retiring world delta"
+    );
     assert_eq!(
         app.world()
             .resource::<ScriptActors>()
@@ -6610,7 +6631,7 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
                 Some(if enabled != 0 {
                     initial_frame
                 } else {
-                    10 + (initial_frame - 10 + step as u32 + 1) % 4
+                    10 + (initial_frame - 10 + step as u32) % 4
                 })
             );
             assert_eq!(
@@ -16586,10 +16607,18 @@ fn keyboard_walk_session(verify_drno: bool) {
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::ArrowLeft);
+    // This fixture turns one integer heading unit per nominal tick. A sub-tick
+    // update truncates that amount to zero, so sample over a whole tick here.
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(100),
+    ));
     app.update();
     let turning = heading(&app);
     let gained = (turning[1] + 2048 - before[1]) % 2048;
     assert!((1..=48).contains(&gained), "{before:?} -> {turning:?}");
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(55),
+    ));
     assert_eq!(position(&app), stopped);
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
