@@ -458,10 +458,9 @@ pub(super) fn apply_camera_effects(
         }
         if differs(old, new, |e| e.motion_blur) {
             if new.motion_blur {
-                // A film camera's 180-degree shutter; eight samples per pixel keep fast turns smooth
-                // instead of ghosted.
+                // A short exposure keeps camera turns sharp.
                 camera.insert(MotionBlur {
-                    shutter_angle: 0.5,
+                    shutter_angle: 0.15,
                     samples: 8,
                 });
             } else {

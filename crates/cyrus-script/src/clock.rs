@@ -31,6 +31,7 @@ pub struct ClockCheckpoint {
     next_scale: u32,
     nominal_fraction: u32,
     fine_fraction: u32,
+    elapsed_fraction: u64,
 }
 
 /// Complete Cyrus clock continuation, distinct from a partial menu checkpoint.
@@ -54,6 +55,8 @@ pub struct ClockSnapshot {
     nominal_fraction: u32,
     fine_fraction: u32,
     warmup: u8,
+    #[serde(default)]
+    elapsed_fraction: u64,
 }
 
 /// FPS-derived state, independent of rendering and platform clock acquisition.
@@ -81,6 +84,7 @@ pub struct SimulationClock {
     /// Sum of every step's frame scale, in 1/256 nominal tick. Observation only: it is not part
     /// of a snapshot and restarts at zero after a restore.
     elapsed_scale: u64,
+    elapsed_fraction: u64,
 }
 
 impl SimulationClock {
@@ -99,6 +103,7 @@ impl SimulationClock {
             nominal_fraction: self.nominal_fraction,
             fine_fraction: self.fine_fraction,
             warmup: self.warmup,
+            elapsed_fraction: self.elapsed_fraction,
         }
     }
 
@@ -163,6 +168,10 @@ impl SimulationClock {
             "clock snapshot step.fine_ticks {} exceeds scale bound",
             snapshot.step.fine_ticks
         );
+        ensure!(
+            snapshot.elapsed_fraction < 1_000_000_000,
+            "clock snapshot elapsed_fraction exceeds nanosecond denominator"
+        );
         Ok(Self {
             settings: snapshot.settings,
             step: snapshot.step,
@@ -182,6 +191,7 @@ impl SimulationClock {
                 snapshot.measured
             },
             elapsed_scale: 0,
+            elapsed_fraction: snapshot.elapsed_fraction,
         })
     }
 
@@ -235,6 +245,7 @@ impl SimulationClock {
             warmup: 12,
             step_fps: 12,
             elapsed_scale: 0,
+            elapsed_fraction: 0,
         })
     }
 
@@ -253,6 +264,7 @@ impl SimulationClock {
             next_scale: self.next_scale,
             nominal_fraction: self.nominal_fraction,
             fine_fraction: self.fine_fraction,
+            elapsed_fraction: self.elapsed_fraction,
         }
     }
 
@@ -265,6 +277,7 @@ impl SimulationClock {
         self.next_scale = checkpoint.next_scale;
         self.nominal_fraction = checkpoint.nominal_fraction;
         self.fine_fraction = checkpoint.fine_fraction;
+        self.elapsed_fraction = checkpoint.elapsed_fraction;
         self.rebase(bios_tick);
     }
 
@@ -350,6 +363,43 @@ impl SimulationClock {
             }
         };
         self.elapsed_scale += u64::from(self.step.frame_scale);
+        self.step
+    }
+
+    /// Advance active gameplay by elapsed host time, without FPS warmup or smoothing.
+    ///
+    /// The BIOS sample still drives raw-clock consumers and idle measurements. Loading
+    /// and menu time must be excluded by the caller. Fractions retain sub-Q8 time across
+    /// updates and snapshots. As with the original clock, the installed minimum FPS
+    /// bounds a single update's movement scale after a long host stall.
+    pub fn advance_elapsed(&mut self, bios_tick: u32, elapsed: std::time::Duration) -> ClockStep {
+        let nominal_fraction = self.nominal_fraction;
+        let fine_fraction = self.fine_fraction;
+        let elapsed_scale = self.elapsed_scale;
+        self.advance(bios_tick);
+        let scaled = elapsed.as_nanos() * u128::from(self.settings.normal_frame_rate) * 256
+            + u128::from(self.elapsed_fraction);
+        self.elapsed_fraction = (scaled % 1_000_000_000) as u64;
+        let max_scale = self.settings.normal_frame_rate * 256 / self.settings.min_frame_rate;
+        let frame_scale = (scaled / 1_000_000_000).min(u128::from(max_scale)) as u32;
+        let nominal = nominal_fraction + frame_scale;
+        let fine = fine_fraction + frame_scale;
+        self.nominal_fraction = nominal & 255;
+        self.fine_fraction = fine & 31;
+        self.step_fps = if elapsed.is_zero() {
+            self.settings.max_frame_rate
+        } else {
+            (1_000_000_000 / elapsed.as_nanos()).clamp(
+                u128::from(self.settings.min_frame_rate),
+                u128::from(self.settings.max_frame_rate),
+            ) as u32
+        };
+        self.step = ClockStep {
+            frame_scale,
+            nominal_ticks: nominal >> 8,
+            fine_ticks: fine >> 5,
+        };
+        self.elapsed_scale = elapsed_scale + u64::from(frame_scale);
         self.step
     }
 

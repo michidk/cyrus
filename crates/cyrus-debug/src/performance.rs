@@ -156,6 +156,7 @@ pub(crate) fn performance_window(
         .id(egui::Id::new("Performance"))
         .open(&mut open)
         .default_width(380.0)
+        .default_height(0.0)
         .show(contexts.ctx_mut()?, |ui| {
             let Some(summary) = history.summary() else {
                 ui.label("Waiting for frames...");

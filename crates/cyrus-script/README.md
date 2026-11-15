@@ -97,6 +97,10 @@ persistence precedes runtime application. Fidelity areas default to Faithful.
 Player transforms remain independent of camera transforms. Inspection adapters
 set `InputSuppressed` before `InputSample`. Menu, console, logbook and inventory screen suspension
 must also suspend the shared simulation clock and automatic gameplay input.
+Automatic world updates derive their Q8 scale from elapsed active time at the
+installed nominal rate, bypassing FPS warmup and smoothing. The first update of
+an admitted world or a resumed session has zero elapsed time. Original-clock
+inspection and menu animation retain the FPS-derived API.
 Marker placement waits from the replacement request through host preparation, so
 the destination marker never changes the retiring player's pose or support state.
 

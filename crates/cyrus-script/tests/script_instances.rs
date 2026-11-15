@@ -107,6 +107,9 @@ fn installed_island_flags_advance_through_ordinary_updates() {
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(55),
+    ));
     let mut frames = Vec::new();
     for _ in 0..24 {
         app.update();
