@@ -147,6 +147,16 @@ pub struct Effect {
 #[derive(Resource, Default)]
 pub struct Speech(pub HashMap<String, VoiceClip<Handle<AudioSource>>>);
 
+impl Speech {
+    /// Resolve a loaded RTX voice using ASCII file-label case folding.
+    /// Installed bank keys are lowercase, as specified by preservation's sound rules.
+    pub fn get(&self, label: &str) -> Option<&VoiceClip<Handle<AudioSource>>> {
+        self.0
+            .get(label)
+            .or_else(|| self.0.get(&label.to_ascii_lowercase()))
+    }
+}
+
 use cyrus_assets::sound::VoiceClip;
 
 // shortcut: legacy control requests retain the full native voice bank; examine and scripts can prepare labels on demand.
@@ -974,7 +984,7 @@ fn play_requests(
                 if !settings.as_ref().is_some_and(|s| s.speech) {
                     continue;
                 }
-                let Some(clip) = speech.0.get(label) else {
+                let Some(clip) = speech.get(label) else {
                     warn_once!("sound: voice clip {label} is not loaded");
                     continue;
                 };

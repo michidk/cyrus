@@ -2,8 +2,10 @@
 
 Native/browser effects, speech and CD music playback. `SoundPlugin` and
 `MusicPlugin` retain the shared request, cue and playback-state interfaces.
-Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
-in presentation. Deferred browser starts belong to the channel pool, so public
+Public speech and voice requests resolve installed RTX labels with ASCII case
+folding through `Speech::get`; control admission and subtitle forwarding use the
+same lookup as playback. Logical cues stay in `cyrus-world`; subtitles and
+cinematic presentation stay in presentation. Deferred browser starts belong to the channel pool, so public
 sample stops, periodic maintenance and saved-world restoration cancel them
 through the same operation as live samples. Owner/effect filters apply to both
 pending and live playback. This crate has no rendering or startup dependency.
