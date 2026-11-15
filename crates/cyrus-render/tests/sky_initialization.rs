@@ -1,4 +1,4 @@
-use bevy::{asset::AssetPlugin, prelude::*};
+use bevy::{asset::AssetPlugin, prelude::*, time::TimeUpdateStrategy};
 use cyrus_game::{fidelity::Fidelity, random::EngineRandom};
 use cyrus_render::environment::{Environment, EnvironmentPlugin, EnvironmentRequest, SkyImage};
 
@@ -72,5 +72,80 @@ fn environment(speed: u8) -> Environment {
         prelighting: Default::default(),
         water_textures: Vec::new(),
         object_lights: Vec::new(),
+    }
+}
+
+#[test]
+fn restored_sky_wraps_both_axes_at_observed_original_boundaries() {
+    use cyrus_render::persistence::{SkyImages, SkySnapshot};
+    use std::time::Duration;
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_asset::<Image>()
+        .init_asset::<Mesh>()
+        .init_asset::<StandardMaterial>()
+        .init_asset::<Shader>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ClearColor>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+        .add_plugins(EnvironmentPlugin);
+    let reference_environment = environment(0);
+    let source = app
+        .world_mut()
+        .resource_mut::<Assets<Environment>>()
+        .add(environment(0));
+    app.world_mut().insert_resource(EnvironmentRequest(source));
+    app.world_mut().spawn(Camera3d::default());
+    app.update();
+    let entity = app
+        .world_mut()
+        .query_filtered::<Entity, With<Mesh3d>>()
+        .single(app.world())
+        .unwrap();
+    let image = app
+        .world_mut()
+        .resource_mut::<Assets<Image>>()
+        .add(Image::default());
+
+    // Presentation-owned original zero-speed controls, including the adjacent
+    // representable value below the lower bound. Restore retains the exact state.
+    let below = f32::from_bits((-256.0_f32).to_bits() + 1);
+    for (input, expected) in [(-256.0, 0.0), (256.0, 0.0), (below, -1.0 / 32768.0)] {
+        let mut saved = serde_json::to_value(SkySnapshot::capture(app.world()).unwrap()).unwrap();
+        saved["scroll"] = serde_json::json!([input, input, 0.0, 0.0]);
+        let snapshot: SkySnapshot = serde_json::from_value(saved).unwrap();
+        snapshot
+            .restore(
+                &reference_environment,
+                SkyImages {
+                    sky: image.clone(),
+                    sun: image.clone(),
+                },
+            )
+            .unwrap()
+            .queue(&mut app.world_mut().commands(), entity);
+        app.world_mut().flush();
+        let scroll = |app: &App| {
+            let saved = serde_json::to_value(SkySnapshot::capture(app.world()).unwrap()).unwrap();
+            serde_json::from_value::<[f32; 4]>(saved["scroll"].clone()).unwrap()
+        };
+        assert_eq!(scroll(&app), [input, input, 0.0, 0.0]);
+        app.world_mut()
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                55,
+            )));
+        app.update();
+        assert_eq!(
+            scroll(&app),
+            [expected, expected, 0.0, 0.0],
+            "input {input}"
+        );
+        app.update();
+        assert_eq!(
+            scroll(&app),
+            [expected, expected, 0.0, 0.0],
+            "zero-speed continuation"
+        );
     }
 }
