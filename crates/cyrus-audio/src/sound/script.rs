@@ -2968,6 +2968,10 @@ mod dialogue_tests {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 /// Opaque retained dialogue service checkpoint, separate from logical text records.
 pub struct RuntimeDialogueSnapshot {
+    /// Shared torch sample slot. Documents written before this field existed
+    /// restore with no torch owner.
+    #[serde(default)]
+    torch_channel: Option<u8>,
     ordinary_completed: bool,
     generation: Option<u64>,
     hud_bound: bool,
@@ -3026,7 +3030,13 @@ impl RuntimeDialogue {
         server: &AssetServer,
         audio_sources: &Assets<AudioSource>,
     ) -> anyhow::Result<RuntimeDialogueSnapshot> {
+        anyhow::ensure!(
+            self.torch_channel.is_none_or(|slot| slot < 16)
+                && (self.torch_channel.is_none() || self.generation.is_some()),
+            "torch sound checkpoint has invalid channel or missing world owner"
+        );
         Ok(RuntimeDialogueSnapshot {
+            torch_channel: self.torch_channel,
             ordinary_completed: self.ordinary_completed,
             generation: self.generation,
             hud_bound: self.hud.is_some(),
@@ -3049,6 +3059,23 @@ impl RuntimeDialogue {
         bindings: &crate::persistence::AudioRestoreBindings,
     ) -> anyhow::Result<Self> {
         use anyhow::{Context, ensure};
+        let torch_channel = saved
+            .torch_channel
+            .map(|slot| -> anyhow::Result<u8> {
+                ensure!(
+                    slot < 16 && saved.generation.is_some(),
+                    "saved torch sound channel or world owner is invalid"
+                );
+                let replacement = *Context::with_context(samples.get(&slot), || {
+                    format!("saved torch sound channel {slot}: binding absent")
+                })?;
+                ensure!(
+                    replacement < 16,
+                    "restored torch sound channel {replacement} is invalid"
+                );
+                Ok(replacement)
+            })
+            .transpose()?;
         let restore_clip = |saved: super::dialogue::DialogueClipSnapshot| {
             let entry = &saved.entry;
             let installed = Context::with_context(assets.clips.get(&entry.label), || {
@@ -3111,7 +3138,7 @@ impl RuntimeDialogue {
                 assets.loaded,
             )?,
             prepared_clips,
-            torch_channel: None,
+            torch_channel,
         })
     }
 }
