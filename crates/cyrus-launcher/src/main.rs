@@ -11,6 +11,7 @@ use cyrus_launcher::fidelity::{self, Area, Choices, Mode};
 use cyrus_launcher::launch::{self, Options};
 use cyrus_launcher::lettering;
 use cyrus_launcher::mods::{self, Installed};
+use cyrus_launcher::settings::Change;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, TextureHandle, TextureOptions, Vec2};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -234,19 +235,12 @@ impl App {
         }
     }
 
-    /// Writes every choice to the files the game reads. Called after each change, so closing the
-    /// window never loses one.
-    fn save(&mut self) {
-        let result = self
-            .options
-            .save(&launch::options_file())
-            .and_then(|()| mods::save_active(&mods::active_file(), &self.active))
-            .and_then(|()| fidelity::save(&fidelity::settings_file(), &self.choices));
+    /// Reports the result of persisting the group the player changed.
+    fn record_save(&mut self, result: anyhow::Result<()>) {
         self.problem = result.err().map(|error| format!("{error:#}"));
     }
 
     fn play(&mut self, context: &egui::Context) {
-        self.save();
         if let Some(problem) = self.problem.clone() {
             self.dialog = Dialog::Error(problem);
             return;
@@ -472,7 +466,9 @@ impl App {
         ) {
             Ok(state) => {
                 self.cheats = state;
-                self.save();
+                self.record_save(
+                    Change::GameOptions(&self.options).save(cyrus_config::config_dir()),
+                );
                 self.load_artwork();
             }
             Err(error) => self.problem = Some(format!("{error:#}")),
@@ -509,7 +505,7 @@ impl App {
             |ui| changed = theme::toggle(ui, &mut self.options.skip_movies).changed(),
         );
         if changed {
-            self.save();
+            self.record_save(Change::GameOptions(&self.options).save(cyrus_config::config_dir()));
         }
     }
 
@@ -577,7 +573,7 @@ impl App {
                 }
             });
         if changed {
-            self.save();
+            self.record_save(Change::Mods(&self.active).save(cyrus_config::config_dir()));
         }
     }
 
@@ -652,7 +648,7 @@ impl App {
                 }
             });
         if changed {
-            self.save();
+            self.record_save(Change::Presentation(&self.choices).save(cyrus_config::config_dir()));
         }
     }
 }

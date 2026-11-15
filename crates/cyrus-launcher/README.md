@@ -27,6 +27,9 @@ Changing the selected game folder refreshes the displayed cheats from the same s
 will read. A local cheat file still takes precedence. An unreadable or malformed candidate cheat
 file leaves the previous selection and displayed state intact and reports the error.
 
+Each control saves only its own configuration group. Changing options does not overwrite mods or
+presentation settings that failed to load. Play starts the game without rewriting configuration.
+
 All of them live in the config directory chosen by `cyrus-config`. A test pins the launcher's list
 of fidelity areas to the game's.
 

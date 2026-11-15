@@ -153,6 +153,7 @@ module where it is defined and regenerate.
 - `src/lettering.rs` — Button labels the original launcher has no bitmap for, assembled from the letters of the bitmaps it
 - `src/main.rs` — The launcher window: the original Redguard launcher, recreated, with its artwork read from the
 - `src/mods.rs` — The installed mods and which of them are switched on.
+- `src/settings.rs` — Saves only the configuration group the player explicitly changed.
 - `src/theme.rs` — The launcher's look: the colours of the original launcher's leather and gold, and the few widgets
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server

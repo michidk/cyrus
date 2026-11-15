@@ -10,3 +10,4 @@ pub mod fidelity;
 pub mod launch;
 pub mod lettering;
 pub mod mods;
+pub mod settings;
