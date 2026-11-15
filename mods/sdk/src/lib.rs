@@ -15,12 +15,28 @@
 //! ```
 //!
 //! `frame` runs every `Update` with every hook in the context; the host copies answers one frame
-//! later. A fresh instance of the mod runs for each call, so keep state in `Cx::memory`.
+//! later, except particle emissions, which render after the current Update. A fresh instance of the mod runs for each call, so keep state in `Cx::memory`.
+mod effects;
+mod gameplay;
+mod geometry;
+pub use geometry::{
+    Geometry, GeometryError, GeometryLease, Material, Mesh, Pixels, Region, Terrain,
+    TerrainRevision, TerrainTriangle, TextureId, Vertex, WorldGeneration,
+};
+mod lifecycle;
+pub use lifecycle::{ActorId, ActorSnapshot, ActorState, DeathEvent, Lifecycle};
+mod physics;
+pub use physics::{
+    Assembly, AttachmentBinding, BodyDesc, BodyIndex, ClaimError, JointDesc, Physics, Shape,
+    VertexWeight,
+};
 mod handles;
 mod keys;
 mod math;
 mod state;
 
+pub use effects::{Damage, DamageEvent, ParticleBurst, Particles};
+pub use gameplay::{SaveStatus, Saves};
 pub use handles::{
     Actor, Actors, Camera, Claim, Collision, Contact, Effects, Environment, Hud, Input, Lighting,
     Memory, Movement, NativeCall, Natives, Player, Settings, TerrainSurface, Water,
@@ -58,6 +74,7 @@ pub trait Mod {
 /// Every hook, for one frame.
 pub struct Cx {
     pub actors: Actors,
+    pub saves: Saves,
     pub camera: Camera,
     pub collision: Collision,
     pub effects: Effects,
@@ -72,6 +89,12 @@ pub struct Cx {
     /// A world was loaded or unloaded since the previous frame this mod ran, or this is the first
     /// frame it sees a world. Reset state kept per world when it is true.
     pub world_changed: bool,
+    pub damage: Damage,
+    pub particles: Particles,
+    pub terrain: Terrain,
+    pub geometry: Geometry,
+    pub lifecycle: Lifecycle,
+    pub physics: Physics,
 }
 
 /// The memory key this SDK keeps the last seen world generation under; the tilde keeps it apart
@@ -80,7 +103,7 @@ const WORLD_GENERATION: &str = "~world-generation";
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 12] {
+fn query_for() -> [QueryFor; 19] {
     [
         QueryFor::Ref(raw::Actors::type_path()),
         QueryFor::Mut(raw::Camera::type_path()),
@@ -94,6 +117,13 @@ fn query_for() -> [QueryFor; 12] {
         QueryFor::Mut(raw::Natives::type_path()),
         QueryFor::Ref(raw::Player::type_path()),
         QueryFor::Ref(raw::Settings::type_path()),
+        QueryFor::Ref(raw::Damage::type_path()),
+        QueryFor::Mut(raw::Particles::type_path()),
+        QueryFor::Mut(raw::Saves::type_path()),
+        QueryFor::Ref(raw::Terrain::type_path()),
+        QueryFor::Mut(raw::Geometry::type_path()),
+        QueryFor::Ref(raw::Lifecycle::type_path()),
+        QueryFor::Mut(raw::Physics::type_path()),
     ]
 }
 
@@ -132,11 +162,30 @@ pub fn run<M: Mod>(query: Query) {
             movement: Movement(raw::Movement::new(row.component(8))),
             natives: Natives(raw::Natives::new(row.component(9))),
             player: Player(raw::Player::new(row.component(10))),
+            saves: Saves {
+                raw: raw::Saves::new(row.component(14)),
+                id: M::ID,
+            },
             settings: Settings {
                 raw: raw::Settings::new(row.component(11)),
                 id: M::ID,
             },
             world_changed,
+            damage: Damage(raw::Damage::new(row.component(12))),
+            terrain: Terrain(raw::Terrain::new(row.component(15))),
+            geometry: Geometry {
+                raw: raw::Geometry::new(row.component(16)),
+                id: M::ID,
+            },
+            lifecycle: Lifecycle(raw::Lifecycle::new(row.component(17))),
+            physics: Physics {
+                raw: raw::Physics::new(row.component(18)),
+                id: M::ID,
+            },
+            particles: Particles {
+                raw: raw::Particles::new(row.component(13)),
+                id: M::ID,
+            },
         };
         M::frame(&cx);
     }

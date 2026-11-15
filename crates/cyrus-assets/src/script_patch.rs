@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 /// Edits one actor's script: skips calls to some natives and lets `End` statements fall through.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScriptPatch {
     /// The map the actor is in, by file stem (`ISLAND`); case does not matter.
     pub world: String,
@@ -27,6 +27,13 @@ pub struct ScriptPatch {
     /// itself.
     #[serde(default, rename = "fall-through")]
     pub fall_through: Vec<u32>,
+    /// Named receivers to replace across the whole script, by name (`vile = "viledog"`): every
+    /// call, argument or property that addresses the first object addresses the second.
+    #[serde(default)]
+    pub retarget: BTreeMap<String, String>,
+    /// Statement-level edits, applied in order after the natives and `End`s above.
+    #[serde(default, rename = "edit")]
+    pub edits: Vec<crate::script_edit::ScriptEdit>,
 }
 
 impl ScriptPatch {
@@ -142,7 +149,7 @@ mod tests {
             world: "ISLAND".into(),
             actor: "SERPENT".into(),
             remove: vec![Native::HideMe],
-            fall_through: vec![],
+            ..Default::default()
         }
     }
 

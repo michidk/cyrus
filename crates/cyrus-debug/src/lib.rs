@@ -266,6 +266,14 @@ fn debug_menu(
             "Music (Modern mutes CD data noise)",
         );
 
+        fidelity_control(
+            ui,
+            &mut fidelity,
+            Area::AudioResampling,
+            "Audio resampling (Modern: 24-tap sinc)",
+        );
+        ui.small("New sounds use the selected filter.");
+
         ui.separator();
         let mut anisotropic = fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern;
         if ui

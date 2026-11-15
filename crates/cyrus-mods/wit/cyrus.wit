@@ -1,12 +1,143 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects` and `hud` with `QueryFor::Mut` and `input`, `settings`,
-/// `player`, `environment` and `actors` with `QueryFor::Ref`;
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles`, `saves`, `geometry`, `physics` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// `player`, `damage`, `terrain`, `environment`, `actors` and `lifecycle` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
 package cyrus:mods@0.1.0;
 
 interface components {
+  /// Native transactional saves to reserved autosave slot one. Manual slots are untouched.
+  /// Policy (interval, retries) belongs to guests. Host revalidates gameplay and owner on consume.
+  /// Status is empty, pending, saved or failed. Saved means storage committed, not merely queued.
+  /// A completed guest reload clears the previous incarnation and its results.
+  /// wasvy:type-path=cyrus_mods::gameplay::Saves
+  resource saves {
+    constructor(component: component);
+    ready: func() -> bool;
+    save: func(owner: string) -> bool;
+    status: func(owner: string) -> string;
+    error: func(owner: string) -> string;
+  }
+
+  /// Read-only unclipped terrain. A revision expires on world or binding replacement.
+  /// wasvy:type-path=cyrus_mods::terrain::Terrain
+  resource terrain {
+    constructor(component: component);
+    /// 0 ready, 1 loading, 2 no world/terrain, 3 stale revision, 4 unsupported, 5 over budget.
+    status: func(revision: u64) -> u32;
+    revision: func() -> option<u64>;
+    /// Half-open [min x,min z,max x,max z], maximum width/depth 512 scene units.
+    /// A triangle belongs to the region containing its centroid. Offset counts matching
+    /// triangles, limit is 1..=512. Each returned record has 17 floats: texture index,
+    /// triangle ID, then three corners [scene x,y,z,u,v]. UVs retain source rotation.
+    /// IDs expire with revision. None means invalid arguments, stale or unavailable;
+    /// status(revision) distinguishes those cases. An empty page is a successful end.
+    triangles: func(revision: u64, bounds: list<f32>, offset: u32, limit: u32) -> option<list<f32>>;
+    dimensions: func(revision: u64, texture: u32) -> option<list<u32>>;
+    /// RGBA8 rectangle, up to 65536 pixels, within the snapshot image dimensions.
+    /// Images are at most 512x512; snapshots cap 256 images and 1000000 triangles.
+    pixels: func(revision: u64, texture: u32, x: u32, y: u32, width: u32, height: u32) -> option<list<u8>>;
+  }
+  /// Owner-scoped indexed meshes in scene coordinates, Y up. All requests validate
+  /// before render allocation. Twelve floats per vertex: position, normal, UV, linear RGBA.
+  /// Disable, successful reload and world replacement remove meshes and materials.
+  /// wasvy:type-path=cyrus_mods::geometry::Geometry
+  resource geometry {
+    constructor(component: component);
+    contains: func(owner: string, key: string) -> bool;
+    generation: func() -> option<u64>;
+    /// Opaque instance/revision pair; empty when unavailable. Changes after successful
+    /// Wasm reload or reactivation. Persist and compare it to invalidate guest caches.
+    lease: func(owner: string) -> list<u64>;
+    /// Up to 256 keys and 1500000 vertices per owner, 3000000 vertices globally.
+    /// Nonzero finite normals; finite position/UV within +/-1e6; linear RGBA 0..=1.
+    /// Triangle indices must be in range, at most six indices per vertex.
+    /// Invalid or exhausted requests preserve the previous key atomically.
+    /// parameters are four shader values plus nonnegative bounds padding, all finite within +/-100.
+    /// 0 accepted, 1 unavailable/stale, 2 invalid, 3 budget exceeded.
+    replace: func(owner: string, key: string, revision: u64, vertices: list<f32>, indices: list<u32>, parameters: list<f32>) -> u32;
+    remove: func(owner: string, key: string);
+  }
+
+  /// Owner-scoped visual rigid assemblies. Query Mut. Scene units, Y up, seconds, radians.
+  /// No writes to gameplay actors or original collision. Exclusive claim on a visible dead actor.
+  /// wasvy:type-path=cyrus_mods::physics::Physics
+  resource physics {
+    constructor(component: component);
+    /// Current source-model vertices, xyz triples in model-local export coordinates. Empty unavailable.
+    vertices: func(actor: u64) -> list<f32>;
+    /// Frame zero of the same source topology, model-local scene axes, for fitting bindings.
+    reference: func(actor: u64) -> list<f32>;
+    /// Model and world origin of the captured death frame. Empty until bound geometry is ready.
+    model: func(actor: u64) -> string;
+    origin: func(actor: u64) -> list<f32>;
+    /// Current attachment world poses, seven values per request-local attachment index.
+    attachments: func(actor: u64) -> list<f32>;
+    /// SDK Assembly JSON, maximum 2 MB. 1..32 bodies, <=64 joints, <=20000 weighted source vertices.
+    /// 0 accepted, 1 invalid, 2 unavailable/stale/not visible dead, 3 already claimed, 4 budget.
+    /// Validation and budget checks precede all allocation. Limits 256 bodies per owner, 1024 global.
+    claim: func(owner: string, actor: u64, description: string) -> u32;
+    release: func(owner: string, actor: u64) -> bool;
+    /// Body xyz+quaternion xyzw, seven floats each, in request order. Empty stale/unowned.
+    transforms: func(owner: string, actor: u64) -> list<f32>;
+  }
+
+  /// Opaque actor tokens expire on world replacement and save load. Names are not identities.
+  /// Read-only publication in PreUpdate. Restored corpses have dead state but no new death event.
+  /// wasvy:type-path=cyrus_mods::lifecycle::Lifecycle
+  resource lifecycle {
+    constructor(component: component);
+    ids: func() -> list<u64>;
+    /// 0 missing/stale, 1 alive, 2 dead, 3 hidden alive, 4 hidden dead, 5 removed.
+    state: func(id: u64) -> u32;
+    player: func(id: u64) -> bool;
+    model: func(id: u64) -> string;
+    /// One current source-model frame, or empty when geometry is unavailable.
+    frame: func(id: u64) -> list<u32>;
+    /// Scene position xyz and orientation quaternion xyzw, or empty if unavailable.
+    pose: func(id: u64) -> list<f32>;
+    count: func() -> u32;
+    /// One opaque actor token, or empty for an invalid event index. Duplicate reads are stable.
+    death: func(index: u32) -> list<u64>;
+    eventmodel: func(index: u32) -> string;
+    eventpose: func(index: u32) -> list<f32>;
+    eventframe: func(index: u32) -> list<u32>;
+    eventplayer: func(index: u32) -> bool;
+    /// Known attacker position in scene units and axes, or empty. No camera fallback.
+    source: func(index: u32) -> list<f32>;
+  }
+
+  /// Accepted health reductions since the previous frame, shared read-only by all mods.
+  /// Events are published in PreUpdate, including player and other actor health services.
+  /// Healing, blocked hits and direct attribute edits are not damage-service events.
+  /// wasvy:type-path=cyrus_mods::api::Damage
+  resource damage {
+    constructor(component: component);
+    count: func() -> u32;
+    actor: func(index: u32) -> string;
+    loss: func(index: u32) -> u32;
+    /// Map-unit position in original axes, or empty if spatial state was unavailable.
+    position: func(index: u32) -> list<f32>;
+    /// Known combat attacker position in map units, otherwise empty. Not a weapon trajectory.
+    source: func(index: u32) -> list<f32>;
+  }
+
+  /// GPU particle bursts using Hanabi. Coordinates, speed and acceleration use scene
+  /// units and axes. Game time controls lifetime. No surface decals or collision.
+  /// Disable/reload removes the owner's effects; world replacement removes all effects.
+  /// wasvy:type-path=cyrus_mods::particles::Particles
+  resource particles {
+    constructor(component: component);
+    /// position, nonzero direction and acceleration have three finite values within +/-1e6.
+    /// color is sRGB RGBA in 0..=1. speed, radius and lifetime are ordered [min,max] pairs:
+    /// speed 0..=1000, radius 0.001..=10, lifetime 0.01..=10 seconds.
+    /// spread 0..=1 bounds lateral velocity relative to the forward velocity.
+    /// stretch 1..=8 elongates droplets along velocity. count 1..=64.
+    /// Returns false for invalid or over-budget requests. Queued/live particle limits:
+    /// 256 per owner, 1024 total. Overflow drops entire bursts.
+    burst: func(owner: string, position: list<f32>, direction: list<f32>, acceleration: list<f32>, color: list<f32>, speed: list<f32>, radius: list<f32>, lifetime: list<f32>, spread: f32, stretch: f32, count: u32) -> bool;
+  }
   use wasvy:ecs/app@0.0.11.{component};
 
   /// Facts about the loaded world and the presentation, read-only and refreshed every frame.

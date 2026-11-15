@@ -35,6 +35,7 @@ impl Plugin for EnvironmentPlugin {
             .init_asset_loader::<EnvironmentLoader>()
             .init_resource::<EnvironmentRequest>()
             .init_resource::<ActiveEnvironment>()
+            .init_resource::<cyrus_game::random::EngineRandom>()
             .init_resource::<crate::water::WaterPlayback>()
             .add_systems(
                 Update,
@@ -60,6 +61,7 @@ fn apply_sky(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     mut active: ResMut<ActiveEnvironment>,
+    mut random: ResMut<cyrus_game::random::EngineRandom>,
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<SkyMaterial>>,
@@ -98,6 +100,11 @@ fn apply_sky(
                 return;
             }
         };
+        let direction = if environment.sky.is_some() {
+            cyrus_world::heading::wrap(random.draw()) as u16
+        } else {
+            0
+        };
         let sun = sky.sun.as_ref();
         let material = materials.add(SkyMaterial {
             image: images.add(prepared.sky),
@@ -124,7 +131,7 @@ fn apply_sky(
         active.sky = Some(
             commands
                 .spawn((
-                    Sky::new(sky.speed),
+                    Sky::new(sky.speed, direction),
                     Mesh3d(meshes.add(prepared.mesh)),
                     MeshMaterial3d(material),
                     NoFrustumCulling,
@@ -307,6 +314,7 @@ mod tests {
         app.insert_resource(environments)
             .insert_resource(EnvironmentRequest(outdoor.clone()))
             .init_resource::<ActiveEnvironment>()
+            .init_resource::<cyrus_game::random::EngineRandom>()
             .init_resource::<Assets<Image>>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<SkyMaterial>>()

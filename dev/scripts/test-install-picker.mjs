@@ -62,6 +62,16 @@ export async function testInstallPicker() {
     check(!document.querySelector('#install-picker'), 'Accepted picker must close');
     check(document.querySelector('#label').textContent.includes('Preparing'), 'Success must replace selection instructions');
 
+    active = await start();
+    select(active, ['Redguard/RGFX.EXE', 'Redguard/fxart/test', 'Redguard/maps/test',
+      'Redguard/SOUND/test.sfx', 'CDROM/INTRO.SMK', 'Soundtrack/01 Track 1.mp3']);
+    const cd = await active.result;
+    check(cd.files.has('disc/INTRO.SMK'), 'CD movie must reach the caller');
+    check(cd.files.has('disc/track02.mp3'), 'CD track must reach the caller');
+    check(cd.files.has('SOUND/test.sfx'), 'Installed sound must reach the caller');
+    check(!cd.files.has('disc/game.gog'), 'CD selection must not require GOG media');
+    check(!document.querySelector('#install-picker'), 'CD selection must complete');
+
     requested.length = 0;
     active = await start('?install=https://explicit.example/original/');
     check(requested.every(url => url === './launch.json'), 'Explicit URLs must also show the picker');
@@ -75,7 +85,7 @@ export async function testInstallPicker() {
       { files: ['RGFX.EXE', 'fxart/test', 'maps/test'].map(path => ({ path })) }));
     document.querySelector('form').requestSubmit();
     check((await active.result).url === 'https://explicit.example/original/', 'Server selection must still work');
-    return 'Passed: picker always shown, defaults only prefill, folder input, cancellation, invalid retry, DLL handoff and server connection.';
+    return 'Passed: picker always shown, defaults only prefill, folder input, cancellation, invalid retry, GOG/CD media handoff and server connection.';
   } finally {
     globalThis.fetch = original.fetch;
     history.replaceState(null, '', original.url);

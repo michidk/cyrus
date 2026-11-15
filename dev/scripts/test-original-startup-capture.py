@@ -29,7 +29,7 @@ class StartupCapture(unittest.TestCase):
 case "$*" in
   'type rgfx.exe') printf launch >> "$CAPTURE_TEST/log" ;;
   'key Return') touch "$CAPTURE_TEST/launched" ;;
-  *) printf '%s\\n' "$*" >> "$CAPTURE_TEST/keys"; printf recorder >> "$CAPTURE_TEST/log" ;;
+  *) python3 -c 'import os,wave; w=wave.open(os.environ["CAPTURE_TEST"]+"/capture.wav","wb"); w.setparams((2,2,48000,0,"NONE","not compressed")); w.writeframes(bytes(1920)); w.close()'; printf '%s\\n' "$*" >> "$CAPTURE_TEST/keys"; printf recorder >> "$CAPTURE_TEST/log" ;;
 esac
 """,
             }.items():

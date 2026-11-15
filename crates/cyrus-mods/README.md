@@ -30,12 +30,20 @@ changed is reloaded. A mod is just its folder; copy it in or out while the game 
 The API lives on one host entity with one component per hook (`src/api.rs`). The
 hooks are generic: world facts (clock, world generation, Lighting mode, water) and named
 shader effect slots (cyrus-render's `hooks`), the loaded world's actors, the camera, the player's movement, animation and status,
-collision probes, script native calls, settings, memory, a text overlay and input.
+collision probes, script native calls, health-loss observations, transient particles, save requests, bounded terrain snapshots, owned indexed geometry, settings, memory, a text overlay and input.
 `PreUpdate` hands last frame's mod answers to cyrus-render's `EffectSlots`,
 `CameraTakeover` and cyrus-script's `CameraOrbit`, `MovementWish`,
 `LocomotionClaimed` and `PlayerRequests`, and publishes this frame's state (including the
 selected player's `Player` status), so answers apply one frame
-later. Setting values come from `src/settings.rs`: mods declare them in
+later. Damage batches are read-only for all mods in the current frame; particle emissions
+are consumed after Update and retain their submitting world, mod instance and loaded revision.
+Particles use scene units, expire on game time and clear on disable, completed reload or world
+replacement. Their appearance belongs to the mod. Hanabi simulates and renders directional GPU
+bursts; `src/particles.rs` owns validation, instance properties and retirement.
+Known combat sources are published alongside damage so mods can direct effects away
+from the attacker. Missing sources remain explicit; they are not guessed from the camera.
+See [`mods/README.md`](../../mods/README.md#damage-driven-particles) for the complete authoring example,
+limits and coordinate conversion. Setting values come from `src/settings.rs`: mods declare them in
 `mod.toml`, the Mods window edits them and `mod-settings.json` keeps them. A hook a mod stops answering returns to the original.
 
 The generic camera hook also accepts relative yaw through `camera.turn` and reports
@@ -49,3 +57,30 @@ you trust.
 cargo check -p cyrus-mods
 just mods          # build mods/* and install them into game-config/mods
 ```
+
+The optional `autosave` Wasm guest uses the `gameplay` save hook. Saves use the
+binary's existing transactional session adapter and report terminal results; the
+guest owns timing and retry policy. It is inactive by default.
+See [the service contract](../../mods/README.md#save-service).
+
+Terrain/mesh hooks are implemented in `src/terrain.rs` and `src/geometry.rs`.
+The SDK wraps raw lists as revision/texture types, triangle pages, vertices and
+materials. `mods/grass` owns classification, seeds, camera bands and deformation
+policy. See the [terrain and geometry contract](../../mods/README.md#terrain-and-owned-geometry)
+for upload budgets, shader slot limits and lifecycle rules. The renderer exposes
+retained source mesh handles and a generic scene-lit material, keeping grass
+policy out of the host. This base supports raster rendering only.
+
+Geometry leases identify the current loaded mod instance and revision. Guest caches,
+including cached empty terrain regions, must reset when the lease changes after
+successful reload or reactivation. The typed SDK persists the opaque token without
+losing integer precision through the session memory API.
+
+`lifecycle` publishes generation-scoped identities, snapshots and committed death
+transitions from cyrus-script. `physics` validates guest-authored rigid assemblies
+and owns a native Rapier solver, static collision copies and exclusive mesh/attachment
+bindings. It runs after authoritative script transforms and before mesh frame
+presentation. These bodies never alter gameplay collision or actor state.
+Owner instance/revision, actor incarnation and world generation bound every claim.
+The SDK contracts and resource limits are documented in
+[`mods/README.md`](../../mods/README.md#death-observations-and-owned-physics).

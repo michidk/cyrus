@@ -138,3 +138,90 @@ fn installed_glide_sky_ignores_unused_motion_setting() -> Result<()> {
     assert_eq!(files.read("SYSTEM.INI")?, original);
     Ok(())
 }
+
+#[test]
+fn installed_glide_sky_neither_reads_nor_falls_back_to_software_artwork() -> Result<()> {
+    use cyrus_assets::source::{Manifest, ReadAssets};
+    struct WorldSettings<'a>(&'a Files, Vec<u8>);
+    impl ReadAssets for WorldSettings<'_> {
+        fn manifest(&self) -> &Manifest {
+            self.0.manifest()
+        }
+        fn read_range(&self, path: &str, start: u64, length: usize) -> Result<Vec<u8>> {
+            self.0.read_range(path, start, length)
+        }
+        fn read(&self, path: &str) -> Result<Vec<u8>> {
+            if path.eq_ignore_ascii_case("WORLD.INI") {
+                Ok(self.1.clone())
+            } else {
+                self.0.read(path)
+            }
+        }
+    }
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::open(&root) else {
+        eprintln!("skipped: no install (Glide/software sky separation)");
+        return Ok(());
+    };
+    let files = Files::open(&install)?;
+    let original = files.read("WORLD.INI")?;
+    let text = std::str::from_utf8(&original)?;
+    let ini = rgpre::import::world_ini::WorldIni::parse(text);
+    let entry = ini
+        .entries
+        .iter()
+        .find(|entry| {
+            entry
+                .map
+                .rsplit(['/', '\\'])
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case("START.RGM"))
+        })
+        .expect("installed START world");
+    let baseline = cyrus_assets::game::prepare(&files, "START.environment")?;
+    let baseline: serde_json::Value = serde_json::from_slice(&baseline["START.environment"])?;
+    assert_eq!(
+        baseline["sky"]["rgba"].as_array().unwrap().len(),
+        256 * 256 * 4
+    );
+    let replace = |key: &str, value: &str| {
+        let mut lines = text
+            .lines()
+            .filter(|line| {
+                !line
+                    .split_once('=')
+                    .is_some_and(|(name, _)| name.trim().eq_ignore_ascii_case(key))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        lines.push_str(&format!("\n{key}={value}\n"));
+        lines.into_bytes()
+    };
+    let unused = replace(
+        &format!("world_sky[{}]", entry.index),
+        "system/missing-software-sky.gxa",
+    );
+    let prepared =
+        cyrus_assets::game::prepare(&WorldSettings(&files, unused), "START.environment")?;
+    let prepared: serde_json::Value = serde_json::from_slice(&prepared["START.environment"])?;
+    assert_eq!(
+        prepared["sky"], baseline["sky"],
+        "software artwork is not a Glide sky input"
+    );
+    let missing = replace(
+        &format!("world_skyfx[{}]", entry.index),
+        "missing-glide-sky.bsi",
+    );
+    let error = cyrus_assets::game::prepare(&WorldSettings(&files, missing), "START.environment")
+        .unwrap_err();
+    let error = format!("{error:#}");
+    assert!(
+        error.contains(&format!("world {}: world_skyfx", entry.index)),
+        "{error}"
+    );
+    assert!(error.contains("missing-glide-sky.bsi"), "{error}");
+    assert_eq!(files.read("WORLD.INI")?, original);
+    Ok(())
+}

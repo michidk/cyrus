@@ -2,6 +2,7 @@
 mod clipping;
 mod compositing;
 mod effects;
+pub mod geometry;
 pub use effects::inspect_effect_geometry;
 pub(crate) mod modern_lighting;
 mod observation;
@@ -406,12 +407,14 @@ struct RejectedLighting;
 pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
+        geometry::register(app);
         texture::register(app);
         effects::register(app);
         clipping::register(app);
         compositing::register(app);
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");
+        load_shader_library!(app, "geometry_surface.wesl");
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");
@@ -1120,6 +1123,147 @@ mod tests {
         let depth = prepass.depth_stencil.unwrap();
         assert_eq!(depth.depth_compare, Some(CompareFunction::Never));
         assert_eq!(depth.depth_write_enabled, Some(false));
+    }
+
+    #[test]
+    fn scene_light_bindings_recover_a_removed_table_without_input_changes() {
+        let environment = Environment {
+            world_palette: Vec::new(),
+            effects: None,
+            texture_scale: [1, 1],
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_heights: None,
+            water: None,
+            terrain_lighting: None,
+            model_lighting: cyrus_assets::environment::ModelLighting {
+                ambient: [64.0; 3],
+                directional: [0.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            },
+            prelighting: Default::default(),
+            water_textures: Vec::new(),
+            object_lights: vec![cyrus_assets::environment::LocalLight {
+                position: [512, 0, 512],
+                radius: 100,
+                rgb: [255, -30, 40],
+            }],
+        };
+        let fidelity = Fidelity::default();
+        let material = model_material(
+            &StandardMaterial::default(),
+            &fog_extension(&environment, &fidelity, environment.clipping),
+            false,
+            None,
+            None,
+            0,
+            None,
+            Some(0),
+            Vec4::ZERO,
+            UVec4::ZERO,
+            Vec4::ZERO,
+            &Handle::default(),
+        );
+        let mut app = App::new();
+        app.init_resource::<Assets<Environment>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<Image>>()
+            .init_resource::<Assets<SceneMaterial>>()
+            .init_resource::<Assets<TerrainMaterial>>()
+            .insert_resource(fidelity)
+            .insert_resource(RenderDistance {
+                original: Some(environment.clipping),
+                override_far: None,
+            })
+            .add_systems(Update, apply_scene_fog);
+        let source = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(environment);
+        app.insert_resource(EnvironmentRequest(source.clone()));
+        app.world_mut().spawn((
+            ViewCamera,
+            Transform::from_xyz(0.0, 0.0, -3276.7998),
+            Projection::custom(crate::camera::projection::GameProjection::default()),
+        ));
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<SceneMaterial>>()
+            .add(material);
+        app.world_mut().spawn(MeshMaterial3d(material.clone()));
+        let bound = |app: &App| {
+            app.world()
+                .resource::<Assets<SceneMaterial>>()
+                .get(&material)
+                .unwrap()
+                .extension
+                .lights
+                .clone()
+        };
+        app.update();
+        let original = bound(&app);
+        let expected = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .remove(original.id())
+            .expect("initial light table");
+        assert_eq!(expected.height(), 257);
+        app.update();
+        let restored = bound(&app);
+        let images = app.world().resource::<Assets<Image>>();
+        let image = images
+            .get(&restored)
+            .expect("unchanged light inputs must recreate a lost table");
+        assert_eq!(image.data, expected.data);
+        assert_eq!(
+            image.texture_descriptor.size,
+            expected.texture_descriptor.size
+        );
+        app.update();
+        assert_eq!(
+            bound(&app),
+            restored,
+            "recovery must settle without reallocating each update"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .get_mut(&source)
+            .unwrap()
+            .object_lights
+            .clear();
+        app.update();
+        assert_eq!(bound(&app), restored);
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&restored)
+                .unwrap()
+                .height(),
+            256
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .get_mut(&source)
+            .unwrap()
+            .object_lights
+            .push(cyrus_assets::environment::LocalLight {
+                position: [512, 0, 512],
+                radius: 100,
+                rgb: [255, -30, 40],
+            });
+        app.update();
+        assert_eq!(bound(&app), restored);
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&restored)
+                .unwrap()
+                .data,
+            expected.data
+        );
     }
 
     #[test]

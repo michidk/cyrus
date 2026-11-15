@@ -17,17 +17,25 @@ use std::{
 
 type Fields = BTreeMap<(String, String), String>;
 
-fn rtx_labels(entries: Vec<RtxEntry>) -> std::collections::BTreeMap<String, String> {
+fn rtx_labels(
+    entries: Vec<RtxEntry>,
+) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
     // Activation needs entry presence; build_label_map omits empty captions.
+    let patches = crate::text_patch::text_patches();
     entries
         .into_iter()
         .map(|entry| {
             let tag = entry.tag_str();
-            let text = match entry {
-                RtxEntry::Text { text, .. } => text,
-                RtxEntry::Audio { label, .. } => label,
+            let (label, mut text) = match entry {
+                RtxEntry::Text { text, tag } => (tag, text),
+                RtxEntry::Audio { label, tag, .. } => (tag, label),
             };
-            (tag, text)
+            crate::text_patch::apply_all(
+                patches,
+                label.map(|byte| byte.to_ascii_lowercase()),
+                &mut text,
+            )?;
+            Ok((tag, text))
         })
         .collect()
 }
@@ -216,7 +224,8 @@ pub(crate) fn prepare(
         parse_rtx_file(&rtx)
             .with_context(|| format!("hud: {}", rtx_path))?
             .entries,
-    );
+    )
+    .with_context(|| format!("hud: {}", rtx_path))?;
     let label = |tag: &str| -> anyhow::Result<String> {
         labels
             .iter()
@@ -621,7 +630,8 @@ mod tests {
         let labels = super::rtx_labels(vec![rgpre::import::rtx::RtxEntry::Text {
             tag: *b"#nil",
             text: String::new(),
-        }]);
+        }])
+        .unwrap();
         assert_eq!(labels.get("#nil").map(String::as_str), Some(""));
     }
 

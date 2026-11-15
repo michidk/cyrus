@@ -12,8 +12,6 @@ use bevy::shader::ShaderRef;
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
-use cyrus_world::heading::wrap;
-use std::hash::{BuildHasher, RandomState};
 
 /// One-shot synchronization with a captured original sky, independent of scene identity.
 #[derive(Resource, Default)]
@@ -61,8 +59,7 @@ impl Sky {
         self.velocity = scroll_velocity(direction, self.speed);
     }
 
-    pub(crate) fn new(speed: u8) -> Self {
-        let direction = wrap(RandomState::new().hash_one(0_u8)) as u16;
+    pub(crate) fn new(speed: u8, direction: u16) -> Self {
         Self {
             velocity: scroll_velocity(direction, f32::from(speed)),
             speed: f32::from(speed),
@@ -301,8 +298,8 @@ mod tests {
                     .is_err()
             );
         }
-        assert_eq!(Sky::new(0).velocity, Vec2::ZERO);
-        assert!((Sky::new(6).velocity.length() - 0.375).abs() < 0.00001);
+        assert_eq!(Sky::new(0, 0).velocity, Vec2::ZERO);
+        assert!((Sky::new(6, 0).velocity.length() - 0.375).abs() < 0.00001);
 
         // Original live sky samples, with the captured direction and zero offsets.
         // A fresh trigonometric evaluation differs in both channels.

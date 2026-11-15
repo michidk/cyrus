@@ -7,15 +7,19 @@ and sizes passed here are bytes; returned addresses are process virtual addresse
 
 
 def locate(memory, ranges, signature, anchor_offset, region_size):
-    """Require one signature-anchored region wholly contained in a mapping."""
+    """Require one signature-anchored region wholly contained in a readable mapping."""
     if not signature or anchor_offset < 0 or region_size < anchor_offset + len(signature):
         raise ValueError('original memory region: invalid signature bounds')
     candidates = set()
     for start, end in ranges:
         if end - start < region_size:
             continue
-        memory.seek(start)
-        blob = memory.read(end - start)
+        try:
+            memory.seek(start)
+            blob = memory.read(end - start)
+        except OSError:
+            # A process mapping can disappear after its maps snapshot.
+            continue
         match = blob.find(signature, anchor_offset)
         while match != -1:
             base = start + match - anchor_offset

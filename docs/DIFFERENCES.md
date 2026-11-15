@@ -55,6 +55,16 @@ Modern fog (`fog` area) thickens smoothly with distance and reaches the fog colo
 which moves out to 50,000 engine units (thirteen times the island's installed 3,800), or to the world's
 installed clipping distance where that reaches farther.
 
+## Optional death presentation
+
+The native `ragdolls` Wasm mod requests articulated physical presentation after a
+committed death. Its authored rigs, gravity, joint limits and impact strength are
+mod preferences. Enable it in the Mods window; it is disabled by default.
+The host retains script state, gameplay collision and the player death controller.
+Unsupported geometry retains the installed animation and reports a diagnostic.
+See [mod authoring](../mods/README.md#death-observations-and-owned-physics) for
+source-geometry, ownership and resource limits.
+
 ## Day/night cycle
 
 **Verified:** the original has one fixed sun per world, read from its lighting data, and night is a
@@ -304,3 +314,41 @@ footprint, which also replaces the Modern `textures` point sampling. Other colou
 samplers with a hardware anisotropy limit of sixteen. The indexed world paths integrate their
 existing source textures without mipmaps, which costs GPU time. Turning it off restores the image
 samplers.
+
+## Optional blood particles
+
+The native `blood` mod adds a brief spray of red particles when health services reduce an actor's
+health. It defaults to inactive. Spray size, color, gravity and lifetime are mod preferences,
+with amount and lifetime exposed in the Mods window. Particles fade without collision or surface
+marks. See the [mod authoring example](../mods/README.md#damage-driven-particles).
+
+## Optional periodic autosave
+
+The native `autosave` mod requests a reserved-slot save after a configurable amount of
+eligible play, default 300 seconds. It defaults to inactive. This is a mod preference.
+See [the mod service contract](../mods/README.md#save-service).
+
+## Optional terrain grass mod
+
+**Verified:** PR #255's grass policy is ported to the bundled native Wasm guest
+`mods/grass`, disabled by default. It reads terrain UVs and installed texture
+pixels through bounded host hooks. Seeded blades, distance bands, density and wind
+are guest policy. This optional appearance is not original engine behavior.
+The host supplies scene-lit owned meshes and cleanup. This base has raster Modern
+lighting; ray-traced grass stand-ins are unavailable. The shared geometry shader
+library follows the existing first-active-mod shader replacement rule.
+## Audio resampling
+
+**Unknown:** the original game's reconstruction filter. Faithful keeps the
+existing linear backend conversion without claiming waveform parity. Modern
+`audio_resampling` uses Rubato's 24-tap Hann-windowed sinc when increasing a source
+rate to the output rate. It filters the reconstructed signal while retaining its
+source duration and channel ordering. It cannot recover detail absent from the
+recording. Filter length, window and phase resolution are Modern design choices.
+
+Select Audio resampling independently of Music in the backtick debug menu, or set
+`audio_resampling` through the fidelity control port. New source spans use the
+selection; already playing spans retain their filter. The option covers native
+backend audio and browser streaming audio. Direct WebAudio CD music retains the
+browser's conversion. Equal-rate playback and downsampling keep their existing
+backend paths.

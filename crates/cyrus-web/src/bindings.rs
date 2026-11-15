@@ -125,6 +125,7 @@ mod tests {
         let mut saved = cyrus_assets::preferences::MenuPreferences {
             values: [(504, 1), (505, 0), (601, 10), (602, 10), (603, 1)].into(),
             bindings: [0; 15],
+            overrides: None,
         };
         saved.bindings[0] = 17;
         app.world_mut()

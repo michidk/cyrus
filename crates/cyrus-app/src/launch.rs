@@ -12,7 +12,7 @@ pub struct InstallArgs {
 #[cfg(not(target_arch = "wasm32"))]
 impl InstallArgs {
     /// Resolves CLI/environment, remembered location, then conventional folders.
-    /// Invalid supplied or remembered locations remain errors for noninteractive callers.
+    /// Invalid supplied locations remain errors. Unavailable remembered locations fall back to discovery.
     pub fn locate(&self) -> anyhow::Result<cyrus_assets::install::GameInstall> {
         let path = self.install.clone().or_else(|| {
             std::env::var_os(cyrus_assets::install::ENV_VAR).map(std::path::PathBuf::from)

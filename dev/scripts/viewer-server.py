@@ -27,6 +27,26 @@ def original_files(install):
         path = install.parent / name
         if path.is_file():
             paths[f"disc/{name}"] = path
+    # Match the native catalog's CD-edition companion layout. Only regular
+    # files inside each media directory are exposed; symlinks cannot escape it.
+    for directory in ("CDROM", "Soundtrack"):
+        folder = install.parent / directory
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        for path in sorted(folder.iterdir()):
+            if not path.is_file() or path.is_symlink():
+                continue
+            name = path.name
+            if directory == "Soundtrack":
+                match = re.match(r"^([0-9]{2}).*\.mp3$", name, re.IGNORECASE)
+                if not match or int(match[1]) == 0:
+                    continue
+                name = f"track{int(match[1]) + 1:02}.mp3"
+            alias = f"disc/{name}"
+            existing = next((key for key in paths if key.lower() == alias.lower()), None)
+            if existing is not None:
+                raise ValueError(f"{alias}: conflicting media files {paths[existing]} and {path}")
+            paths[alias] = path
     for path in (install / "glide2x_emu.ovl", install.parent / "DOSBOX/glide2x_emu.ovl"):
         if path.is_file():
             paths["splash/glide2x_emu.ovl"] = path

@@ -203,6 +203,17 @@ fn player_world(
         Some(&mut random),
         100,
     );
+    let deaths = world.take_death_events();
+    let committed = world.actor_snapshot(player).unwrap().dead;
+    assert_eq!(deaths.len(), usize::from(committed));
+    if let Some(death) = deaths.first() {
+        assert_eq!(death.snapshot.actor, player);
+        assert!(death.snapshot.player);
+        assert_eq!(
+            death.source_position.is_some(),
+            function == Native::ZapPlayer
+        );
+    }
     (
         world.actors()[index].attributes()[Attribute::Health],
         world.globals().player_death_override_group(),
@@ -229,7 +240,7 @@ fn the_player_natives_heal_through_the_additive_and_death_owning_services() {
 #[test]
 fn a_fatal_player_zap_names_the_receiver_as_the_damage_source_only_for_zap_player() {
     // LOGIC's ZapAnim selects the death animation when it is the source. ZapPlayer called by LOGIC
-    // names it; the same native routed to the player, and ZapObject's selected branch, name none.
+    // names it. A self-source does not override the animation; ZapObject passes no source.
     let (health, group, error) = player_world(Native::ZapPlayer, -40, false);
     assert_eq!((health, group, error), (0, Some(77), None));
     let (health, group, error) = player_world(Native::ZapPlayer, -40, true);
@@ -335,8 +346,13 @@ fn current_group(world: &ScriptWorld) -> i64 {
 fn a_zapped_nonplayer_dies_into_the_group_its_state_selects() {
     use cyrus_script::script::AiType;
     // Not holding a weapon: the explore death, or the land death from a fight-landing group.
-    let (world, result) = killed_world(false, false, AnimationGroup::IDLE_LEDGE);
+    let (mut world, result) = killed_world(false, false, AnimationGroup::IDLE_LEDGE);
     result.unwrap();
+    let deaths = world.take_death_events();
+    assert_eq!(deaths.len(), 1);
+    assert_eq!(deaths[0].snapshot.actor, world.id(0).unwrap());
+    assert!(!deaths[0].snapshot.player);
+    assert!(world.take_death_events().is_empty());
     assert_eq!(health(&world), 0);
     assert_eq!(current_group(&world), 134);
     assert_eq!(

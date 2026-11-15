@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+import zipfile
 
 
 class ArtifactTest(unittest.TestCase):
@@ -30,27 +31,33 @@ class ArtifactTest(unittest.TestCase):
         cargo.write_text('''#!/bin/bash
 set -euo pipefail
 echo "$*" >> cargo-calls.txt
+if [[ "$1" = metadata ]]; then
+    printf '{"target_directory":"%s","packages":[{"targets":[{"name":"different_name","kind":["cdylib"]}]}]}\\n' "${CARGO_TARGET_DIR:-$PWD/target}"
+    exit 0
+fi
 profile=release
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target) platform=$2; shift 2 ;;
         -p) apps+=("$2"); shift 2 ;;
+        --manifest-path) apps+=(different_name); shift 2 ;;
         --profile) profile=$2; shift 2 ;;
         *) shift ;;
     esac
 done
 suffix=""
 if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
-mkdir -p "target/$platform/$profile"
+build_root="${CARGO_TARGET_DIR:-target}"
+mkdir -p "$build_root/$platform/$profile"
 for app in "${apps[@]}"; do
-    if [[ "$platform" = wasm32-unknown-unknown ]]; then
+    if [[ "$platform" = wasm32-* ]]; then
         binary=$app
         if [[ "$app" = cyrus-assets-worker ]]; then binary=cyrus_assets_worker; fi
-        echo wasm > "target/$platform/$profile/$binary.wasm"
+        echo wasm > "$build_root/$platform/$profile/$binary.wasm"
         continue
     fi
-    echo executable > "target/$platform/release/$app$suffix"
-    chmod +x "target/$platform/release/$app$suffix"
+    echo executable > "$build_root/$platform/release/$app$suffix"
+    chmod +x "$build_root/$platform/release/$app$suffix"
 done
 ''')
         cargo.chmod(0o755)
@@ -103,6 +110,77 @@ done
         (self.root / "crates/cyrus-viewer/Cargo.toml").unlink()
         self.build("native", windows)
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.exe").exists())
+
+    def mod_fixtures(self):
+        for name in ("guest", "shader", "manifest-only"):
+            mod = self.root / "mods" / name
+            mod.mkdir(parents=True)
+            (mod / "mod.toml").write_text(f'name = "{name}"')
+            (mod / "private.log").write_text("exclude")
+        guest = self.root / "mods/guest"
+        (guest / "Cargo.toml").write_text('[package]\nname = "different-name"\n')
+        (guest / "src").mkdir()
+        (guest / "src/lib.rs").write_text("exclude source")
+        (self.root / "mods/shader/effect.wesl").write_text("shader")
+        overlay = self.root / "mods/manifest-only/files/maps"
+        overlay.mkdir(parents=True)
+        (overlay / "custom.txt").write_text("authored overlay")
+
+    def test_native_mod_bundles_include_only_runtime_files(self):
+        self.mod_fixtures()
+        for platform, suffix, extension in (
+            ("x86_64-unknown-linux-gnu", "", "tar.gz"),
+            ("x86_64-pc-windows-msvc", ".exe", "zip"),
+        ):
+            self.build("native-mods", platform)
+            path = self.root / f"target/artifacts/cyrus-with-mods-{platform}.{extension}"
+            if extension == "zip":
+                with zipfile.ZipFile(path) as archive:
+                    files = {n: archive.read(n) for n in archive.namelist() if not n.endswith("/")}
+            else:
+                with tarfile.open(path) as archive:
+                    files = {m.name.removeprefix("./"): archive.extractfile(m).read()
+                             for m in archive if m.isfile()}
+            expected = {f"cyrus{suffix}", "MODS.txt", "game-config/mods.json",
+                        "game-config/mods/guest/mod.toml", "game-config/mods/guest/mod.wasm",
+                        "game-config/mods/shader/mod.toml", "game-config/mods/shader/effect.wesl",
+                        "game-config/mods/manifest-only/mod.toml",
+                        "game-config/mods/manifest-only/files/maps/custom.txt"}
+            self.assertEqual(set(files), expected)
+            self.assertEqual(json.loads(files["game-config/mods.json"]), {"active": []})
+            self.assertEqual(files["game-config/mods/guest/mod.wasm"], b"wasm\n")
+            self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{suffix or '.tar.gz'}").is_file())
+
+    def test_mod_bundle_uses_inherited_build_directory(self):
+        self.mod_fixtures()
+        # Fake Cargo writes tiny fixture files, never real compiler outputs.
+        build_root = self.root / "shared-build"
+        self.env["CARGO_TARGET_DIR"] = str(build_root)
+        platform = "x86_64-unknown-linux-gnu"
+        self.build("native-mods", platform)
+        path = build_root / f"artifacts/cyrus-with-mods-{platform}.tar.gz"
+        with tarfile.open(path) as archive:
+            self.assertEqual(archive.extractfile("./game-config/mods/guest/mod.wasm").read(), b"wasm\n")
+        self.assertFalse((self.root / "target").exists())
+
+    def test_native_workflows_build_and_upload_mod_bundles(self):
+        for name in ("pr-artifacts.yml", "release.yml"):
+            workflow = (Path(__file__).parents[2] / ".github/workflows" / name).read_text()
+            native = workflow.split("  native:\n", 1)[1].split("\n  web:", 1)[0]
+            self.assertIn("targets: ${{ matrix.target }}, wasm32-wasip2", native)
+            self.assertIn('build-artifacts.sh native-mods "$BUILD_TARGET"', native)
+            self.assertIn("target/artifacts/cyrus-with-mods-${{ matrix.target }}*", native)
+
+    def test_mod_build_failure_does_not_leave_a_previous_bundle(self):
+        self.mod_fixtures()
+        platform = "x86_64-unknown-linux-gnu"
+        self.build("native-mods", platform)
+        cargo = self.root / "bin/cargo"
+        cargo.write_text(cargo.read_text().replace('profile=release',
+                          'if [[ "$*" = *wasm32-wasip2* ]]; then exit 7; fi\nprofile=release'))
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.build("native-mods", platform)
+        self.assertFalse((self.root / f"target/artifacts/cyrus-with-mods-{platform}.tar.gz").exists())
 
     def test_browser_excludes_install_cache_and_stale_outputs(self):
         expected = {"browser/index.html", "browser/sw.js", "browser/README.md",

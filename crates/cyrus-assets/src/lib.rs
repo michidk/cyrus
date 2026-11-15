@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub mod decode;
 pub mod disc;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod ini_patch;
 pub mod install;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
@@ -17,7 +18,7 @@ pub mod runtime;
 #[cfg(feature = "parsers")]
 pub mod source;
 
-pub const CATALOG_VERSION: u32 = 38;
+pub const CATALOG_VERSION: u32 = 39;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -495,6 +496,8 @@ pub mod preferences;
 pub mod scene;
 pub mod script;
 #[cfg(feature = "parsers")]
+pub mod script_edit;
+#[cfg(feature = "parsers")]
 pub mod script_export;
 #[cfg(feature = "parsers")]
 pub mod script_patch;
@@ -505,6 +508,7 @@ pub mod splash_asset;
 #[cfg(feature = "parsers")]
 pub mod startup;
 pub mod surface;
+pub mod text_patch;
 
 #[cfg(feature = "parsers")]
 pub mod music;

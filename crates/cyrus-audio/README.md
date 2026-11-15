@@ -2,8 +2,10 @@
 
 Native/browser effects, speech and CD music playback. `SoundPlugin` and
 `MusicPlugin` retain the shared request, cue and playback-state interfaces.
-Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
-in presentation. Deferred browser starts belong to the channel pool, so public
+Public speech and voice requests resolve installed RTX labels with ASCII case
+folding through `Speech::get`; control admission and subtitle forwarding use the
+same lookup as playback. Logical cues stay in `cyrus-world`; subtitles and
+cinematic presentation stay in presentation. Deferred browser starts belong to the channel pool, so public
 sample stops, periodic maintenance and saved-world restoration cancel them
 through the same operation as live samples. Owner/effect filters apply to both
 pending and live playback. This crate has no rendering or startup dependency.
@@ -36,6 +38,22 @@ the first source sample establishes its channels and effective rate. Exact decod
 size hints retain the complete resampling span, including a pending right channel.
 The vendored dependency fix is documented in `dev/vendor/rodio/README.md`.
 Volume and pan updates keep the sample's original width and apply together at stereo-frame boundaries.
+
+The independent `audio_resampling` fidelity area selects the backend's upsampling
+filter. Faithful retains Rodio's linear conversion. Modern uses Rubato's 24-tap
+Hann-windowed sinc, with its automatic cutoff and 1024 fractional phases.
+Rubato supplies coefficient generation, CPU-specific convolution and fractional
+interpolation; the Rodio adapter retains frame alignment, source boundaries and
+exact rational output length. Coefficients are shared and prepared before selection
+reaches the audio thread. Per-source buffering is bounded to 26 source frames,
+plus one output frame; subsequent output frames allocate nothing.
+The debug menu exposes Audio resampling separately from Music. Changes apply at
+subsequent source spans, so an already playing sound can retain its filter until
+its current span ends. Equal-rate and downsampled sources retain their existing
+path. Browser streaming effects use this backend; direct browser CD playback
+continues through WebAudio's own conversion. The original reconstruction filter
+is **Unknown**; this option does not claim original waveform parity.
+
 
 `Panned::with_repetitions` validates the source and owns finite or unbounded
 repetition before gain scaling. `with_playback` selects once or unbounded playback;
@@ -648,3 +666,9 @@ The released preservation [music volume rule](https://github.com/michidk/redguar
 The public music plugin uses the prepared sound startup settings, so
 `SYSTEM.INI sound=0` admits no book CD track. Saved voice/text preferences
 retain the forced text-only dialogue state when sound startup is disabled.
+
+`tests/installed_audio_decode.rs` compares installed CD and examine speech through
+`MusicTransport` and `Panned` with an independent WAV reader. It checks every
+source sample, channels, rate, complete speech retirement, installed speech gain,
+and the CD loop boundary. These checks exclude backend resampling and device
+buffers; they do not establish calibrated audible gain or request-to-output timing.

@@ -190,6 +190,14 @@ untracked working memory. Each crate has a `README.md` with its commands.
 - Bevy is pinned in `Cargo.toml` (`0.20`); do not migrate minor versions as a
   side effect. The `bevy-ecs` project skill carries the API conventions.
 
+## Preservation dependency
+
+Use the latest stable published `redguard-preservation` crate from crates.io,
+pinned to its exact release version in the workspace manifest. Renovate updates
+that version and the lockfile when new releases are published. Never replace it
+with a Git revision, branch, tag or local path. If a required upstream fix has
+not been released, treat the missing release as a dependency blocker.
+
 ## Structure and quality
 
 - Group code by responsibility and default to modules within existing crates.

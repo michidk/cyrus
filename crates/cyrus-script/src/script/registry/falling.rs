@@ -290,17 +290,15 @@ impl ScriptWorld {
         } else {
             AnimationGroup::DEATH_EXPLORE
         };
+        let before = self.actors[index].attributes[Attribute::Health];
         self.actors[index].attributes[Attribute::Health] = health;
+        self.observe_health_loss(index, before);
         if health == 0 && holding {
             // An armed receiver dies through the contact death dispatch with selector zero.
             if self.updates.animation_system {
                 self.dispatch_contact_death(id, 0, Some(environment.ticks), sounds)?;
             }
-            self.actors[index]
-                .control
-                .as_mut()
-                .expect("validated health control")
-                .ai_type = AiType::DEAD;
+            self.set_actor_ai_type(index, AiType::DEAD);
         } else if health == 0 {
             // The force-request boundary rejects an actor without animation state.
             if self.updates.animation_system && self.actors[index].animation.is_some() {
@@ -344,11 +342,7 @@ impl ScriptWorld {
                     }
                 }
             }
-            self.actors[index]
-                .control
-                .as_mut()
-                .expect("validated health control")
-                .ai_type = AiType::DEAD;
+            self.set_actor_ai_type(index, AiType::DEAD);
         }
         Ok(true)
     }

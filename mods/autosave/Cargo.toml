@@ -1,0 +1,14 @@
+[package]
+name = "autosave"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Built on its own for wasm32-wasip2 by `just mods`, outside the game workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cyrus-mod-sdk = { path = "../sdk" }

@@ -82,6 +82,11 @@ therefore reach the renderer in the same frame.
 Menu edits persist before applying. Audio preference application precedes
 `AnimationSystems`, which precedes cue consumption in the same Update. Mesh poses
 apply in PostUpdate. Cinematic presentation is owned by cyrus-startup.
+Held animation poses rebuild a missing private mesh from the retained source and
+selected frame, preserving authored normals and leaving the shared base mesh unchanged.
+The selected model/frame pair follows preservation's
+[held frame contract](https://github.com/michidk/redguard-preservation/blob/8ba44a6d287a75b618ac940c7f94475a1392645f/docs/engine/animation.md#held-frame-selection);
+the animation progress byte does not identify a model frame.
 
 See [SETUP](../../docs/SETUP.md) for entry points, controls, export prerequisites,
 settings and fidelity limitations. Run `cargo test -p cyrus-render` for graphics
@@ -183,6 +188,10 @@ control. Sky phase and the selected foam frame are held; the original water
 field is not synchronized. The original capture follows a book-menu return;
 these native/browser captures enter the world directly.
 
+Rejected model-lighting preparation clears the private clipped draw instead of
+retaining old geometry. Corrected source assets restore it through normal change
+notifications.
+
 Ordinary clipped-model draw meshes use the published
 [projection quantization rule](https://github.com/michidk/redguard-preservation/commit/c91863c44fafaf212e7b9928a3331c8242049cc1).
 Prepared screen coordinates lie on a 1/16-pixel grid and are recomputed when
@@ -224,6 +233,13 @@ checkpoint; hidden session replacements consume the saved checkpoint before
 publication. Both bake private vertex RGB using the retained model translation
 and floating matrix. **Unknown:** actor lighting overrides and complete
 original-game pixel parity.
+
+Material preparation rejects missing source geometry, including terrain, before
+converting any materials or allocating light images. Restoring the source asset
+permits the same staged scene to resume preparation. Before publication, model
+light tables must retain their packed byte format, complete CPU data and finite
+light rows; resident handles alone do not establish a usable table.
+
 **Verified:** matched BELLTOWR original/native/browser captures at 640×480 compare
 static wall and table lighting. Color/filtering differences remain; the candle
 appearance also differs. The retained logical camera target selects the light
@@ -303,7 +319,9 @@ frame; the ground heights still follow the original's waves.
 The model and terrain materials are bindless where the platform supports it, so models with
 different textures share one draw batch; their values travel in one buffer per material
 (`ModelUniform`) and the shaders read the texture and the light table through Bevy's binding
-arrays. The light table stores each 32-bit float as one RGBA8 texel of its bytes, because binding
+arrays. A missing runtime light-table image is rebuilt from the current light list even
+when the camera and source are unchanged; live material bindings adopt its replacement.
+The light table stores each 32-bit float as one RGBA8 texel of its bytes, because binding
 arrays only take filterable textures; the shader reassembles the exact bits. WebGL keeps plain
 bindings.
 Under modern lighting the map's object and baked lights are point lights with their positive
@@ -352,8 +370,11 @@ with frozen sky phase. Scrolling advances texture coordinates
 on the documented BIOS timer, using the per-world speed and a random initial
 direction. `SkyScrollSync` and MCP `set_sky_scroll` accept a captured direction
 and texture offsets. Browser [capture mode](../cyrus-web/README.md) accepts the
-same measured phase after world entry. The original session's shared random
-stream is not reproduced.
+same measured phase after world entry. The session's shared engine random
+stream supplies one draw when each outdoor sky is admitted, retaining its low
+11 bits as the direction. Repeated updates and snapshot restoration do not draw.
+The complete original cross-system draw order remains **Unknown**. The direction
+rule follows preservation's [initial scroll direction](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#initial-scroll-direction).
 
 Faithful cloud coordinates undo the scene export's Z-origin shift before using
 the original camera position. This combines preservation's
@@ -393,6 +414,10 @@ complete cross-world menu transitions and physical-hardware pixel parity remain
 
 Ordinary archive-model, placed-flat and terrain texture playback use preservation's
 [shared frame and admission rules](https://github.com/michidk/redguard-preservation/blob/af411516a872f56afc3b164a384ab782f824a6fe/docs/engine/texture-animation.md).
+Animated model preparation rejects missing meshes and missing polygon-admission
+provenance before publishing bindings. Geometry without texture-animation
+metadata creates no playback binding. Successful re-preparation retires obsolete
+bindings; rejected preparation preserves the previous bindings.
 **Verified:** renderer tests cover shared deadlines, late admission advancing only
 once, retained hidden frames, authored facing and clipping before raster area.
 Terrain requests use the camera window and each triangle's face normal, then
@@ -722,3 +747,26 @@ when the setting is zero, per [preservation PR #329](https://github.com/michidk/
 The retained presentation interval is covered by the production scroll system
 test. This state comparison does not establish full raster parity or software
 sky acceptance.
+
+Native mods can read retained unclipped terrain sources through
+`WaterPlayback::source_meshes` and publish validated scene meshes through
+`cyrus-mods`. `fog::geometry` supplies their matte double-sided material, current
+scene fog and PBR bindings. A bounded shared `geometry_surface.wesl` library slot
+allows guest-authored deformation with per-mesh parameters and conservative bounds
+padding. It is stationary without an active replacement. Grass placement, image
+classification, LOD and wind equations belong to `mods/grass`, not this renderer.
+This base has no ray-tracing geometry integration.
+`pose_override` accepts an exclusive visual claim on a model node. The claim
+identifies an exact source frame and normalized source-vertex body weights.
+It clones each mapped primitive once, applies weighted body transforms to positions
+and inverse-transpose transforms to normals, and updates bounds. Ordinary animation
+writes skip claimed meshes. Claim removal restores the original mesh handle and
+reclaims the private copy. Gameplay transforms and visibility retain ownership.
+sky acceptance. The published
+[wrap contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#scrolling-and-rotation)
+includes equality at both bounds: stationary offsets of either -256 or +256
+become zero on the next processed tick.
+
+Rebinding unchanged environmental effect sources restores missing frame images at
+their retained handles. Resident frames, shared playback deadlines and inspection
+holds remain intact. Changed source contents still reject before recovery.

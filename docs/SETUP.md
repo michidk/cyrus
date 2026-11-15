@@ -16,6 +16,10 @@ For player controls, saving, resuming and current limitations, see
   install folder, and the CD music from the ripped `Soundtrack/` MP3s
   (`01 Track 1.mp3` is CD track 2) placed beside it. The CD repack's own
   DOSBox setup mounts `CDROM/` as a plain directory and plays no music.
+  The browser install server (`--install`) exposes these sibling media folders
+  to both the game and viewer. Local browser folder selection maps the same
+  sibling media folders without requiring GOG disc files. Missing resources
+  are reported when an operation needs them; startup still requires its splash DLL.
 - Stable Rust (`rust-toolchain.toml`), `just`, and for a window Bevy's usual
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker, for the original game and for the virtual-display runner.
@@ -354,6 +358,15 @@ The `Release` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. Both applications are built from this workspace.
+Each native build also produces `cyrus-with-mods-<target>.tar.gz` on Linux and
+macOS, or `cyrus-with-mods-<target>.zip` on Windows. It contains cyrus and every
+mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
+guests, shaders and authored file overlays. Mods are installed but disabled by
+default. Extract the whole archive and launch from the extracted directory,
+then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
+included `game-config` directory. The ordinary downloads remain available.
+No package contains the original game data or the builder's local state.
+
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
@@ -366,7 +379,9 @@ The site contains application code only. Choose a local GOG game folder in the
 browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
-They do not build release archives. Release builds run only for stable `vX.Y.Z`
+Pull requests also run `PR artifacts`, which makes the same native packages,
+including the mod bundles, and the browser archive available from the run
+summary for seven days. It does not publish a release. Release builds run only for stable `vX.Y.Z`
 tags, either when pushed or dispatched from the default branch with a `tag` input
 such as `v0.2.0`. A tag push dispatches the build on the default branch; every
 build still checks out the specified tag. This saves compiled dependencies in
@@ -459,17 +474,21 @@ The WASM worker prepares game assets from that manifest and original bytes.
 Original reads use bounded requests, a transport retry and contextual errors.
 See the crate READMEs for the complete mappings.
 
-Both native applications discover `./redguard`, `./Redguard`,
+Without a supplied or usable remembered location, both native applications search
+beside the executable and its ancestors, then discover `./redguard`, `./Redguard`,
 `~/GOG Games/Redguard`, `~/GOG Games/Redguard/app/Redguard`, and on Windows
-`%SystemDrive%/GOG Games/Redguard`. Explicit `--install` and `REDGUARD_DIR` take
-precedence over the remembered native location in `install.json` in the config directory;
-conventional discovery follows when there is no saved location. Windowed game
+`%SystemDrive%/GOG Games/Redguard` and the Program Files GOG Galaxy folders.
+Discovery also checks a Wine prefix (`WINEPREFIX`, otherwise `~/.wine`) and
+`~/Games/Heroic/Redguard`, `~/Games/gog/redguard`, and `~/Games/redguard`.
+Explicit `--install` and `REDGUARD_DIR` take precedence over the remembered native location in `install.json` in the config directory;
+discovery follows when there is no usable saved location and remembers its result. Windowed game
 and viewer launches open a shared install-selection screen when resolution fails.
 Enter a path or choose Browse, then Continue to validate and remember the resolved
 root. The picker, loading progress and game or viewer share one window and process.
 Initial game images are prepared in the background so the window remains responsive.
 Cancel closes the application without changing preferences. A missing or
-invalid remembered folder reopens the picker. Headless, world-listing and export
+invalid remembered folder produces a warning and falls back to discovery. The
+picker opens if discovery also fails. Headless, world-listing and export
 commands report contextual command-line errors instead of opening a window.
 Linux Browse uses a desktop file portal or Zenity; manual input needs neither.
 
@@ -541,6 +560,12 @@ Use an unmodified final-version run and inspect its autosave state when comparin
 startup paths; a development-mode run can select a different entry path.
 Run `python3 dev/scripts/test-original-startup-capture.py` for the recording
 order and game-clock cutoff regression without game data.
+A successful audio capture also requires exactly one new, finalized WAV with
+at least one complete PCM frame. The timeline retains its sample rate, channel
+count, sample width and frame count. Missing, empty, ambiguous or truncated
+recordings fail even when game-clock progress succeeds. Silent PCM is valid;
+this check establishes sample availability, not waveform continuity or calibrated
+gain. Run `python3 dev/scripts/test-original-wave-admission.py` for these controls.
 
 The book menu reads `MENU.INI` through rgpre, using original geometry, page
 textures, indexed FNT glyphs, and GXA widgets. Up/Down navigates eligible
@@ -693,6 +718,9 @@ For independent original audio captures, `original-audio-capture.sh` repairs mis
 `prepare-original-definitions.py INSTALLED_REDGUARD RUN_REDGUARD`. Existing
 per-run files are preserved. Linked definition destinations are rejected so
 recovery cannot write into the install.
+The launcher copies the memory-region helper alongside the supplied state reader
+and mounts `<output>/config` as `CYRUS_CONFIG_DIR`, retaining local runtime state
+with the capture.
 
 `python3 dev/scripts/animation-transition.py ADAPTER KEYS.INI OUTPUT --group GROUP
 --effect EFFECT` drives a selected-player quick-sword transition through an
@@ -1726,6 +1754,14 @@ as world-clock progress. `CYRUS_STATE_TIMEOUT` bounds each reader call in wall
 seconds (default 20); use a shorter bound for short diagnostic runs. Missing or
 timed-out clock observations cannot satisfy the requested progress. Each launcher
 invocation holds its lock for one run.
+
+Set `CYRUS_CAPTURE_MIN_AUDIO_SECONDS` to the required emulated-audio interval
+when a comparison needs a minimum retained sample span. After stopping, the
+recorder validates every declared WAV frame and rejects fewer than
+`ceil(required_seconds * sample_rate)` frames. This is an admission bound,
+not a wall-clock stop condition. A finalized file alone does not establish
+that the requested interval was captured. Generated SDL output progress cannot
+substitute for this WAV sample bound.
 
 The timeline identifies DOSBox's WAV as `emulated_mixer`. Probe wall bounds and
 game-clock observations remain separate from its PCM sample clock. File flush

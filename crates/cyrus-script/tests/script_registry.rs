@@ -7254,6 +7254,11 @@ fn model_records_retain_presentation_pose_until_admitted_refresh() {
             .point[1]
     };
     assert_eq!(support_height(&world), 20.0);
+    let snapshot = world.actor_snapshot(id).unwrap();
+    let (captured, position) = snapshot.presentation.unwrap();
+    assert_eq!(captured.position, [2560, 5120, 7680]);
+    assert_eq!(position[1], 20.0);
+    assert_ne!(captured.position, world.spatial(id).unwrap().local.position);
     world.refresh_model_presentations(&data, &[id]).unwrap();
     assert_eq!(support_height(&world), 21.0);
     assert_eq!(
@@ -12144,6 +12149,10 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .unwrap()
     );
     assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 90);
+    let damage = world.take_damage_events();
+    assert_eq!(damage.len(), 1);
+    assert_eq!((damage[0].actor, damage[0].loss), (id, 10));
+    assert_eq!(damage[0].source_position, None);
     world.set_actor_surface(id, Surface::UNKNOWN).unwrap();
     let decision = world
         .resolve_ordinary_landing_damage(
@@ -18059,6 +18068,123 @@ fn walking_with_the_animation_system_off_still_advances_and_keeps_the_group() {
 }
 
 #[test]
+fn nonplayer_support_queries_publish_metadata_without_resetting_player_ticks() {
+    use cyrus_script::script::{OrdinaryGroundQuery, ScriptActorSource};
+    let (scripts, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let floor = world.id(0).unwrap();
+    let npc = world.id(1).unwrap();
+    if world.ordinary_collision_shape(npc).is_err() {
+        world
+            .prepare_ordinary_collision_shape(npc, &data, &scene)
+            .unwrap();
+    }
+    world.begin_player_movement_update(player, 0).unwrap();
+    let empty = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_ground(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &empty,
+                    distance: 4,
+                    sidedness: false
+                }
+            )
+            .unwrap()
+            .is_none()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"],
+        0
+    );
+    let prepared = world
+        .prepare_ordinary_collision_query(npc, &scene, &data, [10, 30], &[npc, floor])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_ground(
+                npc,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 1000,
+                    sidedness: false
+                }
+            )
+            .unwrap()
+            .is_some()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_metadata"], 6,
+        "nonplayer result must reach the active player's retained metadata"
+    );
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"], 0,
+        "nonplayer query must not reset the player timer"
+    );
+    let npc_empty = world
+        .prepare_ordinary_collision_query(npc, &scene, &data, [10, 30], &[])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_ground(
+                npc,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &npc_empty,
+                    distance: 4,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_none()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_metadata"],
+        6
+    );
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"],
+        0
+    );
+    assert!(
+        world
+            .query_ordinary_ground(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &empty,
+                    distance: 4,
+                    sidedness: false
+                }
+            )
+            .unwrap()
+            .is_none()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"],
+        12
+    );
+}
+
+#[test]
 fn selected_player_collision_uses_logical_pose_and_live_map_support() {
     use cyrus_collision::ground::SupportSource;
     use cyrus_script::script::{OrdinaryGroundQuery, ScriptActorSource};
@@ -23687,6 +23813,23 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             );
         }
     }
+}
+
+#[test]
+fn native_nonplayer_health_reports_actual_loss_without_replaying_healing() {
+    let mut world = run_native_world(&[
+        (Native::SetHealth, &[60]),
+        (Native::AdjustHealth, &[-20, 0]),
+        (Native::AdjustHealth, &[5, 0]),
+        (Native::AdjustHealth, &[-10, 0]),
+    ])
+    .unwrap();
+    let events = world.take_damage_events();
+    assert_eq!(
+        events.iter().map(|event| event.loss).collect::<Vec<_>>(),
+        [20, 10]
+    );
+    assert!(world.take_damage_events().is_empty());
 }
 
 #[test]
@@ -35684,6 +35827,21 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
             )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[Attribute::Health], expected);
+        let damage = world.take_damage_events();
+        if expected < health as u8 {
+            assert_eq!(damage.len(), 1);
+            assert_eq!(damage[0].actor, id);
+            assert_eq!(damage[0].loss, health as u8 - expected);
+            assert_eq!(damage[0].name, world.actors()[0].name());
+            assert!(damage[0].position.is_some());
+        } else {
+            assert!(damage.is_empty());
+        }
+        assert!(world.take_damage_events().is_empty());
+        assert!(
+            world.take_death_events().is_empty(),
+            "raw zero health is not a committed death"
+        );
         assert_eq!(
             world.actors()[0].control_state().unwrap().ai_type,
             AiType::NONE
@@ -36069,6 +36227,10 @@ fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound()
         );
         assert_eq!(calls, 2);
         assert_eq!(result.is_err(), fail_reset_sound);
+        let damage = world.take_damage_events();
+        assert_eq!(damage.len(), 1);
+        assert_eq!(damage[0].actor, id);
+        assert_eq!(damage[0].loss, 7);
         assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
         assert_eq!(
             world.globals().selected_health().unwrap().displayed(),
@@ -36406,6 +36568,16 @@ fn contact_death_prefers_122_then_121_and_retains_combat_default() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.ai_type, AiType::DEAD);
         assert_eq!(control.combat_death_default, expected);
+        let deaths = world.take_death_events();
+        assert_eq!(deaths.len(), 1);
+        assert_eq!(deaths[0].snapshot.actor, id);
+        assert!(deaths[0].snapshot.dead);
+        assert!(deaths[0].source_position.is_none());
+        world
+            .dispatch_contact_death(id, selector, Some(1), &mut |_, _| Ok(()))
+            .unwrap();
+        assert!(world.take_death_events().is_empty());
+        let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (control.navigation.current, control.navigation.next),
             (-1, -1)
@@ -42255,6 +42427,12 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
     world.set_attribute_for_test(sender, Attribute::Damage, 12);
+    let source = world
+        .spatial(sender)
+        .unwrap()
+        .local
+        .position
+        .map(|q8| q8 as f32 / 256.0);
     let before = world.spatial(receiver).unwrap().local.position;
     world
         .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
@@ -42275,6 +42453,10 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
             &mut |_, _| Ok(()),
         )
         .unwrap();
+    let events = world.take_damage_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].actor, receiver);
+    assert_eq!(events[0].source_position, Some(source));
     assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
     assert_ne!(world.spatial(receiver).unwrap().local.position, before);
     assert_eq!(world.globals().selected_health().unwrap().displayed(), 38);
@@ -42335,6 +42517,12 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
     let control = world.actors()[receiver.index].control_state().unwrap();
     assert_eq!(control.ai_type, AiType::DEAD);
     assert_eq!(control.combat.as_ref().unwrap().action, -1);
+    let deaths = world.take_death_events();
+    assert_eq!(deaths.len(), 1);
+    assert_eq!(deaths[0].snapshot.actor, receiver);
+    assert!(deaths[0].snapshot.dead);
+    assert!(deaths[0].source_position.is_some());
+    assert!(world.take_death_events().is_empty());
 }
 
 #[test]
@@ -42448,6 +42636,12 @@ fn a_fatal_direct_damage_message_runs_the_combat_death_service_for_a_nonplayer()
         ),
         (0, 0)
     );
+    let deaths = world.take_death_events();
+    assert_eq!(deaths.len(), 1);
+    assert_eq!(deaths[0].snapshot.actor, receiver);
+    assert!(deaths[0].snapshot.dead);
+    assert!(deaths[0].source_position.is_some());
+    assert!(world.take_death_events().is_empty());
 }
 
 #[test]
@@ -42994,6 +43188,12 @@ fn ordinary_animated_fall_landing(water: bool, fatal_distance: bool, model_verti
         world.actors()[id.index].attributes()[Attribute::Health],
         if water || !fatal_distance { 100 } else { 0 }
     );
+    let deaths = world.take_death_events();
+    assert_eq!(deaths.len(), usize::from(!water && fatal_distance));
+    if let Some(death) = deaths.first() {
+        assert_eq!(death.snapshot.actor, id);
+        assert!(death.source_position.is_none());
+    }
 }
 
 #[test]
@@ -47874,6 +48074,15 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         )
         .unwrap();
     assert!(world.actors()[0].control_state().unwrap().killed);
+    let death = world.take_death_events();
+    assert_eq!(death.len(), 1);
+    assert_eq!(death[0].snapshot.actor, id);
+    let revision = world.actor_snapshot(id).unwrap().revision;
+    assert_eq!(
+        world.actor_snapshot(id).unwrap().presence,
+        cyrus_script::script::ActorPresence::Removed
+    );
+
     assert!(world.model_presentation(id).unwrap().is_none());
     assert!(
         world.equipped_weapon(id).unwrap().is_none(),
@@ -47910,6 +48119,9 @@ fn kill_me_releases_equipped_weapon_presentation_before_resurrection() {
         )
         .unwrap();
     assert!(!world.actors()[0].control_state().unwrap().killed);
+    assert!(world.actor_snapshot(id).unwrap().revision > revision);
+    assert!(world.take_death_events().is_empty());
+
     assert!(world.model_presentation(id).unwrap().is_none());
     assert!(
         world.equipped_weapon(id).unwrap().is_none(),
@@ -52646,3 +52858,55 @@ fn selected_wall_contact_receipt_comes_from_admitted_primary_response_not_floor_
 
 #[path = "script_registry/actor_update_skip.rs"]
 mod actor_update_skip_tests;
+
+#[test]
+fn lifecycle_observations_distinguish_same_name_actors_and_ignore_raw_health() {
+    use cyrus_script::script::ActorPresence;
+    let mut world = ScriptWorld::prepare(&cache(), 901).unwrap();
+    let first = world.id(0).unwrap();
+    let second = world.id(1).unwrap();
+    assert_eq!(world.actors()[0].name(), world.actors()[1].name());
+    world.set_attribute_for_test(first, Attribute::Health, 0);
+    assert!(!world.actor_snapshot(first).unwrap().dead);
+    assert!(world.take_death_events().is_empty());
+    world.mark_actor_dead(0).unwrap();
+    world.mark_actor_dead(1).unwrap();
+    world.mark_actor_dead(0).unwrap();
+    let events = world.take_death_events();
+    assert_eq!(
+        events.iter().map(|e| e.snapshot.actor).collect::<Vec<_>>(),
+        vec![first, second]
+    );
+    assert_eq!(
+        world.actor_snapshot(first).unwrap().presence,
+        ActorPresence::Visible
+    );
+    assert!(world.actor_snapshot(first).unwrap().dead);
+    assert!(world.take_death_events().is_empty());
+    assert!(
+        world
+            .actor_snapshot(cyrus_script::script::ScriptActorId {
+                generation: 900,
+                index: 0
+            })
+            .is_err()
+    );
+}
+
+#[test]
+fn restored_dead_snapshot_does_not_replay_a_death() {
+    let (mut world, scripts, data) = movement_fixture(18, false, true, |_| {}, |_| {});
+    world.mark_actor_dead(0).unwrap();
+    assert_eq!(world.take_death_events().len(), 1);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    let mut restored = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    assert!(
+        restored
+            .actor_snapshot(restored.id(0).unwrap())
+            .unwrap()
+            .dead
+    );
+    assert!(restored.take_death_events().is_empty());
+    restored.mark_actor_dead(0).unwrap();
+    assert!(restored.take_death_events().is_empty());
+}

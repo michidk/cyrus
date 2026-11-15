@@ -3,11 +3,21 @@
 ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
 of exposing them as static images. Zero-control authored ranges remain supported.
 [Preservation PR #325](https://github.com/michidk/redguard-preservation/pull/325)
-owns LBM static-palette admission. LBM preparation rejects malformed CRNG payloads and nonzero control
-words; preservation retains those chunks for inspection without inventing playback.
+is included in the published preservation 0.12.5 release used for LBM
+static-palette admission. LBM preparation rejects malformed CRNG payloads and
+nonzero control words; preservation retains those chunks for inspection without inventing playback.
 Catalog version 38 invalidates environment records that applied the unused
 `sky_move` setting to Glide skies. Glide preparation retains authored WORLD.INI
 speed independently of that setting, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
+Glide environment preparation uses `world_skyfx` BSI artwork independently of
+`world_sky` GXA artwork, following the published
+[renderer selection contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#gxa-assets).
+Missing Glide artwork is an error, even when software sky artwork is configured.
+Software sky compositing is not supplied by this preparation path.
+Catalog version 39 rebuilds world clipping from preservation's parsed
+`SYSTEM.INI` settings. Clipping retains the first matching setting and accepts
+inline semicolon comments, consistently with the other engine settings.
+
 
 
 `loading/WORLD.loading` prepares only the requested destination's full-screen
@@ -412,3 +422,21 @@ remain in the original movie timeline; output must be outside the install.
 and speech together. Disabled sound forces text dialogue, including after saved
 book preferences are applied. The rule follows preservation
 [`SYSTEM.INI`](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#sound-and-music).
+
+Ripped CD MP3 decoding uses Symphonia's audio-track decoder with gapless trimming
+and explicit signed 16-bit interleaving. Only 44.1 kHz stereo is admitted, matching
+the CD PCM consumer; packet and decode errors are propagated rather than treated
+as clean end-of-stream. Speech PCM and Smacker movie audio use their own readers.
+
+CD media admission rejects multiple files that resolve to the same disc path or
+ripped track number. Errors identify the track/path and both physical sources;
+playback does not select a rip by filesystem enumeration order. The native
+catalog, direct track reader and browser install server enforce this alongside
+the browser folder picker.
+
+Saved menu preferences retain the setting actions explicitly changed by the player.
+Audio applies only those overrides, preserving installed engine volumes when a
+checkbox or key binding is saved. Documents without ownership metadata retain
+the legacy all-settings interpretation. Displayed sliders are not engine-volume
+snapshots; their conversion follows the released
+[menu settings rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/menu.md#options-and-settings-pages).

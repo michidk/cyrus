@@ -1,0 +1,18 @@
+name = "Autosave"
+description = "Save periodically during safe gameplay to the reserved autosave slot."
+version = "0.1.0"
+author = "cyrus contributors"
+
+[[setting]]
+key = "interval"
+label = "Eligible gameplay seconds between saves"
+type = "number"
+default = 300
+min = 60
+max = 1800
+
+[[setting]]
+key = "notifications"
+label = "Show save notifications"
+type = "bool"
+default = true

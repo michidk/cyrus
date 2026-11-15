@@ -20,7 +20,7 @@ fn forward(
     for request in requests.read() {
         match request {
             SoundRequest::Speech(label) => {
-                if let Some(clip) = speech.0.get(label) {
+                if let Some(clip) = speech.get(label) {
                     subtitles.write(SubtitleRequest::Speech {
                         text: clip.text.clone(),
                         seconds: clip.seconds,
@@ -58,7 +58,7 @@ mod tests {
         );
         for request in [
             SoundRequest::Speech("missing".into()),
-            SoundRequest::Speech("greeting".into()),
+            SoundRequest::Speech("GrEeTiNg".into()),
             SoundRequest::Voice("greeting".into()),
             SoundRequest::Play {
                 effect: 0,

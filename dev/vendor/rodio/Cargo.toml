@@ -189,3 +189,7 @@ version = "0.26"
 
 [dev-dependencies.rstest_reuse]
 version = "0.7"
+
+[dependencies.rubato]
+version = "5.1"
+default-features = false

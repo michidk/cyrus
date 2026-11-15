@@ -45,6 +45,7 @@ type ModelOwners<'w, 's> = Query<
         Ref<'static, AnimationPose>,
         Option<&'static Name>,
         Option<&'static ScriptBinding>,
+        Option<&'static crate::pose_override::PoseOverride>,
     ),
     Or<(With<Player>, With<ScriptBinding>)>,
 >;
@@ -164,7 +165,9 @@ fn bind(
     for (root, binding) in &roots {
         if players
             .get(binding.player)
-            .map_or(true, |(_, pose, name, _)| !replaces_base(name, &pose))
+            .map_or(true, |(_, pose, name, _, claim)| {
+                !replaces_base(name, &claimed_pose(&pose, claim))
+            })
         {
             commands.entity(root).despawn();
         }
@@ -176,7 +179,9 @@ fn bind(
             .entry(binding.player)
             .or_insert((root, binding));
     }
-    for (player, pose, name, binding) in &players {
+    for (player, pose, name, binding, claim) in &players {
+        let changed = pose.is_changed();
+        let pose = claimed_pose(&pose, claim);
         if !replaces_base(name, &pose) {
             continue;
         }
@@ -187,7 +192,7 @@ fn bind(
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_')
         {
-            if pose.is_changed() {
+            if changed {
                 error!("player model: invalid frame-source key {:?}", pose.model);
             }
             if let Some((root, _)) = roots_by_player.get(&player) {
@@ -203,7 +208,7 @@ fn bind(
             // The actor's skin is not known yet; loading the default skin would flash.
             Some(Ok(None)) => continue,
             Some(Err(error)) => {
-                if pose.is_changed() {
+                if changed {
                     error!("player model {}: {error:#}", pose.model);
                 }
                 continue;
@@ -295,6 +300,19 @@ pub(crate) fn model_source(
 }
 
 // A map-local frame keeps its original geometry; a different source needs its own mesh mapping.
+fn claimed_pose<'a>(
+    pose: &'a AnimationPose,
+    claim: Option<&crate::pose_override::PoseOverride>,
+) -> std::borrow::Cow<'a, AnimationPose> {
+    match claim.and_then(|claim| claim.source.as_ref()) {
+        Some((_, model, frame)) => std::borrow::Cow::Owned(AnimationPose {
+            model: model.clone(),
+            frame: *frame,
+        }),
+        None => std::borrow::Cow::Borrowed(pose),
+    }
+}
+
 fn replaces_base(name: Option<&Name>, pose: &AnimationPose) -> bool {
     name.is_none_or(|name| name.as_str() != pose.model)
 }
@@ -316,13 +334,20 @@ type BasePrimitives<'w, 's> = Query<
 
 fn base_visibility(
     mut commands: Commands,
-    owners: Query<(Option<&Name>, &AnimationPose), With<ScriptBinding>>,
+    owners: Query<
+        (
+            Option<&Name>,
+            &AnimationPose,
+            Option<&crate::pose_override::PoseOverride>,
+        ),
+        With<ScriptBinding>,
+    >,
     mut primitives: BasePrimitives,
 ) {
     for (entity, parent, mut visibility, saved) in &mut primitives {
         let replaced = owners
             .get(parent.parent())
-            .is_ok_and(|(name, pose)| replaces_base(name, pose));
+            .is_ok_and(|(name, pose, claim)| replaces_base(name, &claimed_pose(pose, claim)));
         match (replaced, saved) {
             (true, None) => {
                 commands

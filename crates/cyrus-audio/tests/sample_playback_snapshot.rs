@@ -283,7 +283,8 @@ fn finished_playback_releases_its_channel_before_capture() -> Result<()> {
 }
 
 #[test]
-fn restored_control_voice_retains_source_hint_and_stop_slot_with_looping_effect() -> Result<()> {
+fn restored_mixed_case_control_voice_retains_source_hint_and_stop_slot_with_looping_effect()
+-> Result<()> {
     use cyrus_assets::sound::VoiceClip;
     use cyrus_audio::sound::Speech;
     let (mut app, effect_source) = fixture()?;
@@ -311,7 +312,7 @@ fn restored_control_voice_retains_source_hint_and_stop_slot_with_looping_effect(
         },
     );
     app.world_mut()
-        .write_message(SoundRequest::Voice("test".into()));
+        .write_message(SoundRequest::Voice("TeSt".into()));
     app.update();
     let voice_handle = app
         .world_mut()

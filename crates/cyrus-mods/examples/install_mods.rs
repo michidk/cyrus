@@ -9,7 +9,6 @@ use std::process::Command;
 fn main() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let bundled = root.join("mods");
-    let target = root.join("target/mods");
     let installed = cyrus_config::config_dir().join("mods");
     let mut mods = Vec::new();
     for item in std::fs::read_dir(&bundled).with_context(|| bundled.display().to_string())? {
@@ -33,7 +32,7 @@ fn main() -> Result<()> {
         std::fs::create_dir_all(&out).with_context(|| out.display().to_string())?;
         copy(&dir.join("mod.toml"), &out.join("mod.toml"))?;
         if dir.join("Cargo.toml").is_file() {
-            build(dir, &target)?;
+            let target = build(dir)?;
             // The library is named after the package, with underscores.
             let wasm = target
                 .join("wasm32-wasip2/release")
@@ -62,18 +61,34 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn build(dir: &Path, target: &Path) -> Result<()> {
+fn build(dir: &Path) -> Result<PathBuf> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let metadata = Command::new(&cargo)
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .current_dir(dir)
+        .output()
+        .with_context(|| format!("read Cargo output directory for {}", dir.display()))?;
+    ensure!(
+        metadata.status.success(),
+        "Cargo metadata for {}: {}",
+        dir.display(),
+        String::from_utf8_lossy(&metadata.stderr)
+    );
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout)?;
+    let target = PathBuf::from(
+        metadata["target_directory"]
+            .as_str()
+            .context("Cargo target_directory missing")?,
+    );
     let status = Command::new(cargo)
         .args(["build", "--release", "--target", "wasm32-wasip2"])
-        .env("CARGO_TARGET_DIR", target)
         .current_dir(dir)
         .status()
         .with_context(|| format!("run cargo in {}", dir.display()))?;
     if !status.success() {
         bail!("building {} failed: {status}", dir.display());
     }
-    Ok(())
+    Ok(target)
 }
 
 fn copy(from: &Path, to: &Path) -> Result<()> {

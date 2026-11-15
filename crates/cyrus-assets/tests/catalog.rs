@@ -1034,3 +1034,76 @@ fn installed_lbm_preparation_refuses_unsupported_cycles_without_losing_static_co
         original
     );
 }
+
+#[test]
+fn lbm_screen_preparation_rejects_malformed_ranges_without_an_install() {
+    fn screen(range: &[u8]) -> Vec<u8> {
+        let mut header = [0_u8; 20];
+        header[..2].copy_from_slice(&2_u16.to_be_bytes());
+        header[2..4].copy_from_slice(&1_u16.to_be_bytes());
+        header[8] = 8;
+        let mut form = b"PBM ".to_vec();
+        for (tag, payload) in [
+            (b"BMHD", header.as_slice()),
+            (b"CMAP", [12, 34, 56, 78, 90, 123].as_slice()),
+            (b"CRNG", range),
+            (b"BODY", [0, 1].as_slice()),
+        ] {
+            form.extend_from_slice(tag);
+            form.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+            form.extend_from_slice(payload);
+            if payload.len() % 2 != 0 {
+                form.push(0);
+            }
+        }
+        let mut bytes = b"FORM".to_vec();
+        bytes.extend_from_slice(&(form.len() as u32).to_be_bytes());
+        bytes.extend(form);
+        bytes
+    }
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart", "system"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    for (name, range) in [
+        ("short.lbm", vec![0; 6]),
+        ("long.lbm", vec![0; 10]),
+        ("static.lbm", vec![0, 0, 0, 0, 0, 0, 0, 1]),
+    ] {
+        std::fs::write(root.join("system").join(name), screen(&range)).unwrap();
+    }
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    let mut checked = 0;
+    for entry in library
+        .catalog
+        .entries
+        .iter()
+        .filter(|e| e.path.ends_with(".lbm"))
+    {
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        if entry.path.ends_with("static.lbm") {
+            let Content::Images { frames } = preview.content else {
+                panic!("static screen must remain available")
+            };
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].rgba, [12, 34, 56, 255, 78, 90, 123, 255]);
+        } else {
+            let Content::Unavailable { reason } = preview.content else {
+                panic!("malformed palette range must not become a static screen")
+            };
+            assert!(reason.contains(&entry.path), "{reason}");
+            assert!(reason.contains("CRNG 0"), "{reason}");
+            assert!(reason.contains("eight bytes"), "{reason}");
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 3);
+}

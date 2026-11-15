@@ -1,0 +1,12 @@
+name = "Articulated ragdolls"
+description = "Jointed visual death physics. Scripts, gameplay collision and player death UI retain ownership."
+version = "0.1.0"
+author = "cyrus contributors"
+
+[[setting]]
+key = "impulse"
+label = "Impact strength"
+type = "number"
+default = 1
+min = 0
+max = 3

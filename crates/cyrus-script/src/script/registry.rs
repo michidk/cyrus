@@ -21,6 +21,10 @@ mod attack_input;
 mod camera;
 mod camera_drive;
 pub use camera_drive::{CameraDrive, CameraFrameState, PublishedCamera};
+mod damage;
+mod lifecycle;
+pub use damage::DamageEvent;
+pub use lifecycle::{ActorPresence, ActorSnapshot, DeathEvent};
 mod death_exit;
 mod effects;
 mod health;
@@ -751,6 +755,8 @@ pub struct ScriptWorld {
     /// Natives a mod watches and the calls made to them since the log was last taken; not saved.
     native_watch: BTreeSet<Native>,
     native_calls: Vec<NativeCall>,
+    damage: damage::DamageLog,
+    lifecycle: lifecycle::LifecycleLog,
     weapons: BTreeMap<u16, cyrus_assets::script::weapon::Weapon>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
@@ -1753,6 +1759,8 @@ impl ScriptWorld {
             player_tempo: (1.0, 0.0),
             native_watch: BTreeSet::new(),
             native_calls: Vec::new(),
+            damage: Default::default(),
+            lifecycle: Default::default(),
             weapons: scripts.weapons.clone(),
             combat_attacks: scripts.combat_attacks.clone(),
             combat_defenses: scripts.combat_defenses.clone(),
@@ -2561,11 +2569,11 @@ impl ScriptWorld {
             .get_mut(index)
             .with_context(|| format!("mark dead: no actor {index}"))?;
         actor.attributes[Attribute::Health] = 0;
-        actor
-            .control
-            .as_mut()
-            .with_context(|| format!("mark dead: actor {index} has no control state"))?
-            .ai_type = AiType::DEAD;
+        anyhow::ensure!(
+            actor.control.is_some(),
+            "mark dead: actor {index} has no control state"
+        );
+        self.set_actor_ai_type(index, AiType::DEAD);
         Ok(())
     }
 
@@ -3041,8 +3049,17 @@ impl ScriptWorld {
             }
             sounds(sound)
         };
-        match crate::player::placement::initial_role_animation(data, actor.name(), ticks, &mut emit)
-        {
+        let result = if self.updates.animation_system {
+            crate::player::placement::initial_role_animation(data, actor.name(), ticks, &mut emit)
+        } else {
+            cyrus_world::animation::ActorAnimation::from_asset(
+                data,
+                actor.name(),
+                AnimationGroup::PANIC,
+            )
+            .map(|playback| (playback, None))
+        };
+        match result {
             Ok((playback, frame)) => {
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 if matches!(actor.source, ScriptActorSource::AlternatePlayer) {
@@ -5783,8 +5800,10 @@ impl GameHost<'_, '_, '_, '_> {
         kills: bool,
     ) -> Result<()> {
         let attributes = &mut self.registry.actors[self.index].attributes;
-        let sum = i32::from(attributes[Attribute::Health]).wrapping_add(amount);
+        let before = attributes[Attribute::Health];
+        let sum = i32::from(before).wrapping_add(amount);
         attributes[Attribute::Health] = sum.clamp(0, 255) as u8;
+        self.registry.observe_health_loss(self.index, before);
         if kills && sum <= 0 {
             let holding = self.receiver_weapon_predicates(Native::IsHoldingWeapon)?.0;
             let ticks = self
@@ -6358,7 +6377,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let byte = value as u8;
             match name {
                 Property::HandItem => control.held_item = Some(byte),
-                Property::AiType => control.ai_type = super::AiType::from_byte(byte),
+                Property::AiType => self
+                    .registry
+                    .set_actor_ai_type(index, super::AiType::from_byte(byte)),
                 Property::ExtraFlag => control.living_state = LivingState::from_byte(byte),
                 Property::FallFlag => control.falling_state = JumpMotion::from_byte(byte),
                 Property::LastDirection => {
@@ -7987,6 +8008,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .context("Resurrect: receiver lifecycle unavailable")?;
                 if control.killed || control.ai_type == AiType::DEAD {
                     control.killed = false;
+                    self.registry.lifecycle.revive(self.index);
                     // A selector-6 receiver with combat state first runs the unconditional part
                     // of the end-of-combat reset; the script-control bit stays (it is only
                     // cleared there while the killed flag is still set).
@@ -8028,12 +8050,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function == Native::KillMe {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
-            let control = self.registry.actors[self.index]
+            let _ = self.registry.actors[self.index]
+                .control
+                .as_ref()
+                .context("KillMe: receiver lifecycle unavailable")?;
+            self.registry.set_actor_ai_type(self.index, AiType::DEAD);
+            self.registry.actors[self.index]
                 .control
                 .as_mut()
-                .context("KillMe: receiver lifecycle unavailable")?;
-            control.killed = true;
-            control.ai_type = AiType::DEAD;
+                .expect("validated KillMe control")
+                .killed = true;
             self.registry.actors[self.index].model.current = None;
             self.registry.actors[self.index].model.weapon = None;
             // The original frees the receiver's light and flat records, so a later call starts new ones.
@@ -8770,7 +8796,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
             if function == Native::SetAiType {
-                control.ai_type = AiType::from_byte(value);
+                self.registry
+                    .set_actor_ai_type(self.index, AiType::from_byte(value));
             } else {
                 control.ai_mode = value;
             }
@@ -10310,6 +10337,8 @@ mod fighting_tests {
             player_tempo: (1.0, 0.0),
             native_watch: BTreeSet::new(),
             native_calls: Vec::new(),
+            damage: Default::default(),
+            lifecycle: Default::default(),
             weapons: BTreeMap::new(),
             combat_attacks: Vec::new(),
             combat_defenses: Vec::new(),

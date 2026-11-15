@@ -44,9 +44,14 @@ impl<'a> DialogueArchive<'a> {
             .iter()
             .position(|entry| entry.tag == label)
             .with_context(context)?;
-        self.index
+        let mut entry = self
+            .index
             .read_entry(&mut self.file, index)
-            .with_context(context)
+            .with_context(context)?;
+        let (RtxEntry::Text { text, .. } | RtxEntry::Audio { label: text, .. }) = &mut entry;
+        crate::text_patch::apply_all(crate::text_patch::text_patches(), label, text)
+            .with_context(context)?;
+        Ok(entry)
     }
 }
 

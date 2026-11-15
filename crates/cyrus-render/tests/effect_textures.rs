@@ -550,3 +550,140 @@ fn special_and_ordinary_actor_flats_share_playback_without_sharing_draw_properti
     census.validate(&restored, &world, &[replacement_root])?;
     Ok(())
 }
+
+#[test]
+fn animated_models_require_polygon_admission_before_preparation_succeeds() {
+    use bevy::{
+        asset::RenderAssetUsages,
+        gltf::{GltfExtras, GltfMaterialExtras},
+        mesh::PrimitiveTopology,
+    };
+    for geometry in [None, Some("{}"), Some(r#"{"rgpre_lighting":{}}"#)] {
+        let mut world = World::new();
+        world.init_resource::<Assets<Mesh>>();
+        let mesh = world.resource_mut::<Assets<Mesh>>().add(Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD,
+        ));
+        let root = world.spawn((StagedRenderRoot, Visibility::Hidden)).id();
+        let model = world
+            .spawn((
+                ChildOf(root),
+                Mesh3d(mesh),
+                GltfMaterialExtras {
+                    value: serde_json::json!({"rgpre_texture_animation": {
+                        "version":1,"image_name":"A00000","delay_ms":142,"textures":[0,1]
+                    }})
+                    .to_string(),
+                },
+            ))
+            .id();
+        if let Some(value) = geometry {
+            world.entity_mut(model).insert(GltfExtras {
+                value: value.into(),
+            });
+        }
+        let result = TextureAnimations::prepare(
+            &mut world,
+            Handle::<cyrus_assets::environment::Environment>::default().id(),
+            &[root],
+        );
+        let error = result
+            .err()
+            .expect("missing polygon admission must reject animated model preparation")
+            .to_string();
+        assert!(error.contains("admission"), "{error}");
+        assert!(error.contains(&format!("{model:?}")), "{error}");
+        // A failed admission must leave the same model available for correction.
+        world
+            .entity_mut(model)
+            .insert(GltfMaterialExtras { value: "{}".into() });
+        let prepared = TextureAnimations::prepare(
+            &mut world,
+            Handle::<cyrus_assets::environment::Environment>::default().id(),
+            &[root],
+        )
+        .expect("nonanimated geometry requires no texture binding");
+        assert!(prepared.snapshot().is_empty());
+    }
+}
+
+#[test]
+fn animated_material_without_a_mesh_cannot_publish_a_prepared_scene() {
+    use bevy::gltf::GltfMaterialExtras;
+    let mut world = World::new();
+    let root = world.spawn((StagedRenderRoot, Visibility::Hidden)).id();
+    let model = world
+        .spawn((
+            ChildOf(root),
+            GltfMaterialExtras {
+                value: serde_json::json!({"rgpre_texture_animation": {
+                    "version": 1, "image_name": "A00000", "delay_ms": 142, "textures": [0, 1]
+                }})
+                .to_string(),
+            },
+        ))
+        .id();
+    let environment = Handle::<cyrus_assets::environment::Environment>::default().id();
+    let error = TextureAnimations::prepare(&mut world, environment, &[root])
+        .err()
+        .expect("animated material without a mesh must reject scene preparation")
+        .to_string();
+    assert!(error.contains("mesh"), "{error}");
+    assert!(error.contains(&format!("{model:?}")), "{error}");
+    // Ordinary hierarchy nodes may carry nonanimated material extras without a mesh.
+    world
+        .entity_mut(model)
+        .insert(GltfMaterialExtras { value: "{}".into() });
+    let prepared = TextureAnimations::prepare(&mut world, environment, &[root]).unwrap();
+    assert!(prepared.snapshot().is_empty());
+}
+
+#[test]
+fn unchanged_effect_rebind_restores_evicted_frame_without_restarting_playback() -> anyhow::Result<()>
+{
+    let mut world = World::new();
+    let (mut live, root) = prepared(&mut world);
+    let source = source();
+    live.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    live.request_effect_draw(
+        Handle::<cyrus_assets::environment::Environment>::default().id(),
+        0x2500,
+        0,
+        &cyrus_render::fog::EffectDrawView {
+            center: [0.0, 0.0, 100.0],
+            projection_scale: Vec2::ONE,
+            clipping: [1.0, 1000.0],
+        },
+        100,
+    )?
+    .expect("visible effect starts its shared deadline");
+    live.hold("a00000", Some(1))?;
+    let before = serde_json::to_value(live.snapshot_playback()?)?;
+    let census = live.snapshot_sources(&world, &[root])?;
+    let (id, expected) = world
+        .resource::<Assets<Image>>()
+        .iter()
+        .find(|(_, image)| image.data.as_deref() == Some(&[100, 110, 120, 0, 70, 80, 90, 255]))
+        .map(|(id, image)| (id, image.clone()))
+        .unwrap();
+    world.resource_mut::<Assets<Image>>().remove(id);
+    live.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    let images = world.resource::<Assets<Image>>();
+    let restored = images
+        .get(id)
+        .expect("unchanged rebind must restore the bound frame image");
+    assert_eq!(restored.data, expected.data);
+    assert_eq!(
+        restored.texture_descriptor.size,
+        expected.texture_descriptor.size
+    );
+    assert_eq!(
+        restored.texture_descriptor.format,
+        expected.texture_descriptor.format
+    );
+    assert_eq!(images.len(), 2, "resident frames must not be duplicated");
+    assert_eq!(serde_json::to_value(live.snapshot_playback()?)?, before);
+    census.validate(&live, &world, &[root])?;
+    Ok(())
+}
