@@ -560,6 +560,15 @@ Use an unmodified final-version run and inspect its autosave state when comparin
 startup paths; a development-mode run can select a different entry path.
 Run `python3 dev/scripts/test-original-startup-capture.py` for the recording
 order and game-clock cutoff regression without game data.
+**Verified:** The audio launcher uses a separate, pinned DOSBox-X build whose CD decoder applies
+the drive channel volume once. The packaged emulator also applies the raw channel
+byte as a mixer scale, which clamps to 400% and corrupts music-level references.
+This reference-runtime correction changes neither the game executable nor cyrus's
+music gain. `ensure-retro-audio-runtime.sh` validates the runtime marker and retains
+an image checkpoint keyed by its build inputs; it never restarts a preview.
+Run `python3 dev/scripts/test-retro-cd-volume.py` for the failed-before CD control
+and duplicate-patch rejection checks.
+
 A successful audio capture also requires exactly one new, finalized WAV with
 at least one complete PCM frame. The timeline retains its sample rate, channel
 count, sample width and frame count. Missing, empty, ambiguous or truncated
