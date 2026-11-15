@@ -111,6 +111,8 @@ fn begin_requested_world(
             error!("{message}");
             commands.insert_resource(SceneLoadError(message));
             commands.remove_resource::<super::WorldLoadRequest>();
+            // Re-enter the loader on the next explicit request after cache repair.
+            startup.menu = Handle::default();
         }
         return;
     };
@@ -514,39 +516,56 @@ fn cleanup(mut commands: Commands) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum MissingAsset {
+        Artwork,
+        Menu,
+    }
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
-        world_entry_recreates_player(false, 0, false);
+        world_entry_recreates_player(false, 0, None);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_from_paused_book_recreates_the_retained_player() {
-        world_entry_recreates_player(true, 0, false);
+        world_entry_recreates_player(true, 0, None);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn destination_world_entry_presents_its_configured_artwork() {
-        world_entry_recreates_player(false, 2, false);
+        world_entry_recreates_player(false, 2, None);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_loading_artwork() {
-        world_entry_recreates_player(false, 2, true);
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn world_entry_recreates_player(from_book: bool, destination: u32, repair: bool) {
+    #[test]
+    fn world_entry_retries_repaired_book_asset() {
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn world_entry_recreates_player(
+        from_book: bool,
+        destination: u32,
+        repair: Option<MissingAsset>,
+    ) {
         use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
             eprintln!("skipped: no install (debug world loading)");
             return;
         };
         let cache = std::env::temp_dir().join(format!(
-            "cyrus-debug-loading-{}-{from_book}-{destination}-{repair}",
+            "cyrus-debug-loading-{}-{from_book}-{destination}-{repair:?}",
             std::process::id()
         ));
         cyrus_assets::startup::export_menu(&install, &cache).unwrap();
@@ -571,10 +590,20 @@ mod tests {
             .collect::<Vec<_>>();
         let mut app = App::new();
         let directory = bevy::asset::io::memory::Dir::default();
-        let path = format!("loading/{destination}.loading");
-        if !repair {
+        let artwork_path = format!("loading/{destination}.loading");
+        let path = if repair == Some(MissingAsset::Menu) {
+            "menu/book.menu".to_string()
+        } else {
+            artwork_path.clone()
+        };
+        let repair_bytes = if repair == Some(MissingAsset::Menu) {
+            serde_json::to_vec(&book).unwrap()
+        } else {
+            serde_json::to_vec(&destination_artwork).unwrap()
+        };
+        if repair != Some(MissingAsset::Artwork) {
             directory.insert_asset(
-                std::path::Path::new(&path),
+                std::path::Path::new(&artwork_path),
                 serde_json::to_vec(&destination_artwork).unwrap(),
             );
         }
@@ -604,10 +633,14 @@ mod tests {
         .add_systems(Update, begin_requested_world)
         .add_systems(OnEnter(AppState::Loading), suspend_world_cameras)
         .add_systems(OnExit(AppState::Loading), resume_world_cameras);
-        let menu = app
-            .world_mut()
-            .resource_mut::<Assets<MenuAsset>>()
-            .add(book);
+        super::super::menu::register_assets(&mut app);
+        let menu = if repair == Some(MissingAsset::Menu) {
+            Handle::default()
+        } else {
+            app.world_mut()
+                .resource_mut::<Assets<MenuAsset>>()
+                .add(book)
+        };
         app.insert_resource(StartupPresentation { menu, ..default() });
         app.init_asset_loader::<LoadingArtworkLoader>();
         let camera = app
@@ -629,7 +662,7 @@ mod tests {
             heading: 512,
         });
         app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
-        if repair {
+        if repair.is_some() {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             while !app.world().contains_resource::<SceneLoadError>()
                 && std::time::Instant::now() < deadline
@@ -644,10 +677,7 @@ mod tests {
                 !app.world()
                     .contains_resource::<super::super::WorldLoadRequest>()
             );
-            directory.insert_asset(
-                std::path::Path::new(&path),
-                serde_json::to_vec(&destination_artwork).unwrap(),
-            );
+            directory.insert_asset(std::path::Path::new(&path), repair_bytes);
             app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);

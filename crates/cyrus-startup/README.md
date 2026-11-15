@@ -254,4 +254,4 @@ installed headless `LogbookPlugin` regression checks the published image at all
 three boundary values. The rule is documented in preservation
 [subtitle glyphs](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/subtitles.md#glyphs).
 
-A failed destination loading-artwork request leaves the current player intact and reports the failing asset. After repairing the cache, repeating `WorldLoadRequest` retries the artwork load instead of retaining its failed handle. The installed-artwork regression exercises this failure/retry path and checks the selected full raster and player replacement.
+A failed destination loading-artwork or required book-cache request leaves the current player intact and reports the failing asset. After repairing the cache, repeating `WorldLoadRequest` retries that load instead of retaining its failed handle. The installed-artwork and book-cache regressions exercise both failure/retry paths and check the selected full raster and player replacement.
