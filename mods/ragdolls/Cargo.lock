@@ -133,7 +133,8 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 [[package]]
 name = "bitmap2ttf"
 version = "0.1.2"
-source = "git+https://github.com/michidk/bitmap2ttf?rev=6801e76ffee2edf96f3086ec70cd163cd6984081#6801e76ffee2edf96f3086ec70cd163cd6984081"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f684f9de1f7cd48abae90d2dbf4ec37275696af205493c021361269f90b71c2f"
 dependencies = [
  "kurbo",
  "thiserror",
@@ -967,8 +968,9 @@ dependencies = [
 
 [[package]]
 name = "redguard-preservation"
-version = "0.12.4"
-source = "git+https://github.com/michidk/redguard-preservation?rev=50575a965ea2160e0b25ff0cd26f7e4daf09b8b3#50575a965ea2160e0b25ff0cd26f7e4daf09b8b3"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41c6492395b133775f0eb091d6364e30fbad652d64702245656b6b8445e9061c"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",

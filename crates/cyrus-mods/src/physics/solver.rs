@@ -36,6 +36,7 @@ pub(super) struct Simulation {
     pub(super) colliders: rp::ColliderSet,
     pub(super) joints: rp::ImpulseJointSet,
     pub(super) multibodies: rp::MultibodyJointSet,
+    pub(super) soft_bodies: rp::SoftBodySet,
     pub(super) ccd: rp::CCDSolver,
     pub(super) accumulator: f64,
 }
@@ -50,6 +51,7 @@ impl Default for Simulation {
             colliders: rp::ColliderSet::new(),
             joints: rp::ImpulseJointSet::new(),
             multibodies: rp::MultibodyJointSet::new(),
+            soft_bodies: rp::SoftBodySet::default(),
             ccd: rp::CCDSolver::new(),
             accumulator: 0.,
         }
@@ -74,6 +76,7 @@ impl Simulation {
                 &mut self.colliders,
                 &mut self.joints,
                 &mut self.multibodies,
+                &mut self.soft_bodies,
                 &mut self.ccd,
                 &(),
                 &(),
@@ -89,6 +92,7 @@ impl Simulation {
                 &mut self.colliders,
                 &mut self.joints,
                 &mut self.multibodies,
+                &mut self.soft_bodies,
                 true,
             );
         }

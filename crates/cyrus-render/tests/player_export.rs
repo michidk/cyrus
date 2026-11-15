@@ -196,6 +196,16 @@ fn verify_exported_models(
             .unwrap_or_else(|error| panic!("{file}: {error}"));
         let glb = bevy::gltf::gltf::Gltf::from_slice(&bytes).unwrap();
         let node = glb.nodes().find(|node| node.name() == Some(name)).unwrap();
+        if name.starts_with("CYRSA") {
+            let extras: serde_json::Value =
+                serde_json::from_str(node.extras().as_ref().unwrap().get()).unwrap();
+            assert_eq!(
+                extras["cyrus_actor_render"]["draw_flags"],
+                serde_json::json!(0),
+                "{file}: standalone Cyrus must retain initialized bilinear draw flags"
+            );
+            assert!(extras["rgpre_render"]["rob_attributes"].is_null());
+        }
         let mesh = node.mesh().unwrap();
         assert!(mesh.primitives().len() > 0);
         assert!(glb.textures().len() > 0);

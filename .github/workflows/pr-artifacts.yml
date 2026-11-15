@@ -66,16 +66,10 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: bash dev/scripts/build-artifacts.sh native-mods "$BUILD_TARGET"
-      - name: Smoke native executables
+      - name: Smoke packaged native executables
         env:
           BUILD_TARGET: ${{ matrix.target }}
-        run: |
-          suffix=""
-          if [[ "$RUNNER_OS" = Windows ]]; then suffix=.exe; fi
-          for app in cyrus cyrus-viewer; do
-            binary="target/$BUILD_TARGET/release/$app$suffix"
-            if [[ -f "$binary" ]]; then "$binary" --help; fi
-          done
+        run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-${{ matrix.target }}

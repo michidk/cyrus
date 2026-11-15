@@ -47,6 +47,18 @@ else
     status=$?
     if [ "$status" != 3 ]; then exit "$status"; fi
 fi
+# A reset can follow Cargo's executable event before the final build seal.
+# Recover only that validated unit before considering another compilation.
+if python3 dev/scripts/web-compile-checkpoint.py restore-executable "$CYRUS_NATIVE_CHECKPOINT_DIR" \
+    "$snapshot" "$configuration" "$output"; then
+    python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
+    mv "$snapshot" "$output.provenance.json"
+    echo "restored completed native executable unit: $output"
+    exit
+else
+    status=$?
+    if [ "$status" != 3 ]; then exit "$status"; fi
+fi
 python3 dev/scripts/web-compile-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
     "$snapshot" "$configuration" "$CARGO_TARGET_DIR"
 # Spool Cargo events on the host so unit compression cannot backpressure Cargo

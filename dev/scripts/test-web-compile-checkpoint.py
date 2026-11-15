@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -31,6 +33,49 @@ class Recovery(unittest.TestCase):
 
     def store(self):
         units.retain(self.cache, self.target, self.event, self.identity)
+
+    def test_native_executable_recovers_after_unit_completion_before_final_seal(self):
+        import json
+        executable = self.target / 'debug/cyrus'
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(b'completed native application')
+        executable.chmod(0o755)
+        snapshot = self.root / 'snapshot.json'
+        snapshot.write_text(json.dumps({'files': {'crates/app/src/main.rs': 'source'}, 'sha256': 'source'}))
+        identity = units.checkpoint.identity(snapshot, 'compiler and flags')
+        event = {'reason': 'compiler-artifact', 'target': {'name': 'cyrus'},
+                 'filenames': [str(executable)]}
+        units.retain(self.cache, self.target, event, identity)
+        units.shutil.rmtree(self.target)
+        output = self.root / 'capture/cyrus'
+        command = [sys.executable, str(Path(units.__file__)), 'restore-executable',
+                   str(self.cache), str(snapshot), 'compiler and flags', str(output)]
+        # A changed source or toolchain cannot publish the retained executable.
+        for index, value in [(4, 'changed source'), (5, 'changed compiler')]:
+            rejected = command.copy()
+            if index == 4:
+                changed = self.root / 'changed.json'
+                changed.write_text(json.dumps({'files': {'crates/app/src/main.rs': value}}))
+                rejected[index] = str(changed)
+            else:
+                rejected[index] = value
+            result = subprocess.run(rejected, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertFalse(output.exists())
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output.read_bytes(), b'completed native application')
+        self.assertTrue(output.stat().st_mode & 0o111)
+        self.assertFalse(self.target.exists(), 'capture recovery must not restore the Cargo dependency tree')
+        self.assertTrue(units.checkpoint.restore(self.cache, 'cyrus', output, identity))
+        # Corrupt completion must not replace a previously validated output.
+        record = next((self.cache / 'units').glob('*/record.json'))
+        data = json.loads(record.read_text())
+        data['files']['debug/cyrus'] = '0' * 64
+        record.write_text(json.dumps(data))
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(output.read_bytes(), b'completed native application')
 
     def test_completed_dependency_survives_loss_before_application_completion(self):
         self.store()

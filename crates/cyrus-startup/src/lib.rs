@@ -107,12 +107,18 @@ struct Playback {
         splash::SplashView,
     )>,
     title: Handle<Image>,
+    /// The title is the shipped artwork, shown covering the window rather than fitted to 4:3.
+    title_fills_window: bool,
     elapsed: f32,
     failed: bool,
 }
 
 #[derive(Component)]
 struct StartupContent;
+
+/// Marks the startup sprite as artwork scaled to cover the whole window, cropping what overflows.
+#[derive(Component)]
+struct FillWindow;
 
 impl Plugin for StartupPlugin {
     fn build(&self, app: &mut App) {
@@ -230,7 +236,8 @@ fn setup(
         .as_ref()
         .map(|(_, view)| view.target())
         .unwrap_or_else(|| title.clone());
-    commands.spawn((
+    let title_fills_window = game.is_none();
+    let mut sprite = commands.spawn((
         Sprite {
             image: first,
             // Keep presentation coordinates independent of the live render target's resolution.
@@ -239,10 +246,14 @@ fn setup(
         },
         StartupContent,
     ));
+    if title_fills_window && live.is_none() {
+        sprite.insert(FillWindow);
+    }
     commands.insert_resource(Playback {
         count,
         live,
         title,
+        title_fills_window,
         elapsed: 0.0,
         failed: false,
     });
@@ -256,17 +267,24 @@ fn viewport_scale(size: Vec2) -> f32 {
 type FittedImages<'w, 's> = Query<
     'w,
     's,
-    &'static mut Transform,
-    (
-        With<StartupContent>,
-        With<Sprite>,
-        Without<last_game::CapturedBackground>,
-    ),
+    (&'static mut Transform, &'static Sprite, Has<FillWindow>),
+    (With<StartupContent>, Without<last_game::CapturedBackground>),
 >;
 
-fn fit_image(windows: Query<&Window>, mut image: FittedImages) {
-    if let (Ok(window), Ok(mut transform)) = (windows.single(), image.single_mut()) {
-        transform.scale = Vec3::splat(viewport_scale(Vec2::new(window.width(), window.height())));
+fn fit_image(windows: Query<&Window>, images: Option<Res<Assets<Image>>>, mut image: FittedImages) {
+    if let (Ok(window), Ok((mut transform, sprite, fills))) = (windows.single(), image.single_mut())
+    {
+        let window = Vec2::new(window.width(), window.height());
+        let artwork = sprite.custom_size.or_else(|| {
+            images
+                .as_ref()
+                .and_then(|images| images.get(&sprite.image))
+                .map(Image::size_f32)
+        });
+        transform.scale = Vec3::splat(match artwork {
+            Some(size) if fills => (window.x / size.x).max(window.y / size.y),
+            _ => viewport_scale(window),
+        });
     }
 }
 
@@ -279,7 +297,7 @@ fn advance(
         Res<NextState<AppState>>,
     ),
     mut playback: ResMut<Playback>,
-    mut image: Query<&mut Sprite, With<StartupContent>>,
+    mut image: Query<(Entity, &mut Sprite), With<StartupContent>>,
     mut drawing: splash::SplashAssets,
     mut startup: ResMut<StartupPresentation>,
 ) {
@@ -318,7 +336,7 @@ fn advance(
             return;
         }
     }
-    let Ok(mut sprite) = image.single_mut() else {
+    let Ok((entity, mut sprite)) = image.single_mut() else {
         return;
     };
     let splash_duration = playback.count as f32 / 30.0;
@@ -341,6 +359,9 @@ fn advance(
             view.finish(&mut commands);
         }
         sprite.image = playback.title.clone();
+        if playback.title_fills_window && sprite.custom_size.take().is_some() {
+            commands.entity(entity).insert(FillWindow);
+        }
         startup.title_visible = true;
     }
 }

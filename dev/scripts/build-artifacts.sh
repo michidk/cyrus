@@ -18,6 +18,11 @@ case "${1:-}" in
         fi
         apps=(cyrus)
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
+        launcher=false
+        if [[ "$1" = native-mods && -f crates/cyrus-launcher/Cargo.toml ]]; then
+            apps+=(cyrus-launcher)
+            launcher=true
+        fi
         packages=()
         for app in "${apps[@]}"; do packages+=(-p "$app"); done
         cargo build --locked --release --target "$platform" "${packages[@]}"
@@ -25,6 +30,8 @@ case "${1:-}" in
         if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
         # Windows gets the bare executable; Unix archives keep the executable bit.
         for app in "${apps[@]}"; do
+            # The launcher needs a sibling game; ship it in the complete bundle.
+            [[ "$app" != cyrus-launcher ]] || continue
             binary="$build_root/$platform/release/$app$suffix"
             if [[ -n "$suffix" ]]; then
                 cp "$binary" "$artifacts/$app-$platform$suffix"
@@ -36,6 +43,9 @@ case "${1:-}" in
             bundle="$stage/bundled"
             mkdir -p "$bundle/game-config/mods"
             cp "$build_root/$platform/release/cyrus$suffix" "$bundle/"
+            if [[ "$launcher" = true ]]; then
+                cp "$build_root/$platform/release/cyrus-launcher$suffix" "$bundle/"
+            fi
             count=0
             for manifest in mods/*/mod.toml; do
                 [[ -f "$manifest" ]] || continue
@@ -61,13 +71,23 @@ case "${1:-}" in
             printf '{"active":[]}\n' > "$bundle/game-config/mods.json"
             cat > "$bundle/MODS.txt" <<'EOF'
 This package contains cyrus and every bundled mod in this source revision.
-Extract the entire archive and run cyrus from the extracted directory so it uses
+When cyrus-launcher is included, keep it beside cyrus and use it to start the game.
+Extract the entire archive and run from the extracted directory so it uses
 the included game-config folder. CYRUS_CONFIG_DIR overrides that location.
 Open Backtick, then Mods, to enable mods and adjust their settings.
 Mods are installed but disabled by default. Choose which to enable; movement
 and camera mods can conflict when enabled together.
 The original game files are not included. Supply your own GOG installation.
 EOF
+            # Never retain links to builder-local files or let zip dereference them.
+            python3 - "$bundle" <<'PYLINKS'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+for path in root.rglob('*'):
+    if path.is_symlink():
+        sys.exit(f"Cannot package symbolic link: {path.relative_to(root)}")
+PYLINKS
             if [[ -n "$suffix" ]]; then
                 python3 - "$bundle" "$artifacts/cyrus-with-mods-$platform.zip" <<'PY'
 from pathlib import Path

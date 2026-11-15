@@ -1970,15 +1970,21 @@ mod tests {
                 },
             ))
             .id();
-        let flagged: Vec<_> = [0, 3]
+        let flagged: Vec<_> = [(0, false), (3, false), (0, true)]
             .into_iter()
-            .map(|flags| {
+            .map(|(flags, actor)| {
                 let root = app
                     .world_mut()
                     .spawn(bevy::gltf::GltfExtras {
-                        value: format!(
-                            r#"{{"rgpre_render":{{"version":1,"rob_attributes":{flags}}}}}"#
-                        ),
+                        value: if actor {
+                            format!(
+                                r#"{{"cyrus_actor_render":{{"version":1,"draw_flags":{flags}}}}}"#
+                            )
+                        } else {
+                            format!(
+                                r#"{{"rgpre_render":{{"version":1,"rob_attributes":{flags}}}}}"#
+                            )
+                        },
                     })
                     .id();
                 app.world_mut()
@@ -2167,6 +2173,7 @@ mod tests {
         for (handle, flags, alpha) in [
             (&flag_handles[0], 0.0, AlphaMode::Opaque),
             (&flag_handles[1], 3.0, AlphaMode::Mask(0.4)),
+            (&flag_handles[2], 0.0, AlphaMode::Opaque),
         ] {
             let material = scene_materials.get(handle).unwrap();
             assert_eq!(material.extension.lighting.w, flags);

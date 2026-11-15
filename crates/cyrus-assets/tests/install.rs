@@ -582,9 +582,14 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
         &std::fs::read(install.root.join("system/STARTUP2.GXA")).unwrap(),
     )
     .unwrap();
+    // The background is the artwork cyrus ships, not the installed picture.
+    assert_eq!(title.dimensions(), (1820, 1024));
+    let shipped = image::load_from_memory(include_bytes!("../assets/title.png"))
+        .unwrap()
+        .to_rgba8();
     assert_eq!(
-        &title.as_raw()[..640 * 467 * 4],
-        &source.frames[0].rgba[..640 * 467 * 4]
+        &title.as_raw()[..1820 * 990 * 4],
+        &shipped.as_raw()[..1820 * 990 * 4]
     );
     // The labels draw palette entry 161 tinted by the palette entry the six-bit colour request
     // matches, component by component over 255 (preservation engine/startup.md).
@@ -605,24 +610,24 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
     assert!(
         title
             .enumerate_pixels()
-            .any(|(x, y, p)| x < 150 && y >= 467 && *p == version)
+            .any(|(x, y, p)| x < 600 && y >= 990 && *p == version)
     );
     assert!(
         title
             .enumerate_pixels()
-            .any(|(x, y, p)| x > 500 && y >= 467 && *p == status)
+            .any(|(x, y, p)| x > 1200 && y >= 990 && *p == status)
     );
     for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
         let stage = image(name);
-        assert_eq!(stage.dimensions(), (640, 480));
+        assert_eq!(stage.dimensions(), (1820, 1024));
         assert_eq!(
-            &stage.as_raw()[..640 * 467 * 4],
-            &title.as_raw()[..640 * 467 * 4]
+            &stage.as_raw()[..1820 * 990 * 4],
+            &title.as_raw()[..1820 * 990 * 4]
         );
         assert!(
             stage
                 .enumerate_pixels()
-                .any(|(x, y, p)| { x > 400 && y >= 467 && *p == status })
+                .any(|(x, y, p)| { x > 900 && y >= 990 && *p == status })
         );
         assert_ne!(
             stage, title,

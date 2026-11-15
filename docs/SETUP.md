@@ -364,8 +364,15 @@ mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
 guests, shaders and authored file overlays. Mods are installed but disabled by
 default. Extract the whole archive and launch from the extracted directory,
 then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
-included `game-config` directory. The ordinary downloads remain available.
+included `game-config` directory. When the revision includes `cyrus-launcher`,
+the bundle also includes that executable beside `cyrus`. Keep both in the same
+folder and start `cyrus-launcher` to choose game files, mods and presentation
+settings before playing. The ordinary game-only downloads remain available.
 No package contains the original game data or the builder's local state.
+Native release and PR smoke checks run `--help` from the packaged game and viewer
+payloads and the bundled game, with a temporary config directory. They reject
+missing or failing payloads; they do not open the graphical launcher or establish
+gameplay acceptance.
 
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
@@ -529,8 +536,8 @@ hosts need a manifest, CORS and HTTP byte-range support. No native executable or
 prepared cache is required by the browser.
 
 For manual export, prepare startup with `cargo run -p cyrus -- --export-startup`. The exporter
-reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
-`gui_low_font` from the install; all generated images stay in
+reads the installed `3DfxSpl2.dll`, the label palette in `system/STARTUP2.GXA`, and the configured
+`gui_low_font` from the install, and draws the labels on the title artwork cyrus ships; all generated images stay in
 `startup/` in the cache directory. Native windowed launch generates this cache when
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
@@ -1452,11 +1459,11 @@ archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
 the live-run lock, serializes concurrent restores and verifies the requested
 image exists. An existing image requires no archive load. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
-Pass `--retain` before `IMAGE` to save an available image when its archive is
-missing. This checkpoints setup before the next reset: concurrent calls share
+Pass `--retain` before `IMAGE` to checkpoint the available image. This checkpoints setup before the next reset: concurrent calls share
 the restore lock, and only a successful nonempty Docker save is published by
-atomic rename. A failed save leaves no reusable archive. Existing nonempty
-archives are preserved. If both image and archive are absent, recreate the
+atomic rename. A failed save leaves the previous checkpoint intact. Retention checks the
+archive tag and image identity against the available image and
+replaces an obsolete or invalid archive after a successful, validated save. If both image and archive are absent, recreate the
 required image with its repository Dockerfile first; the helper does not guess
 a build context. Archives remain local; recovery never removes peer images or
 containers.
@@ -1847,7 +1854,13 @@ interpolation, giving 7.8125 microsecond alignment resolution. Integer-grid
 alignment can underestimate fitted gain or reject an overlapping cue when the
 true onset lies between samples. The original coarse result is retained beside
 the refined anchors. Correlation 0.8, three independent windows spanning 300 ms,
-and the 10 ms drift limit are unchanged. Overlap annotations show where an
+and the 10 ms drift limit are unchanged. The normalized report also rejects a
+reference interval that extends beyond either recording endpoint, allowing one
+sample of fractional alignment resolution. `reference_duration_seconds` is the
+installed reference length, not a measured playback duration;
+`recorded_interval_complete` only establishes that the inferred source interval
+fits inside the recording. A matching middle fragment cannot admit a missing
+beginning or tail. Overlap annotations show where an
 admitted cue continues while another plays; they do not subtract another cue or
 admit obscured windows. These are window-continuity observations, not proof of
 every tail sample. Fitted gain describes the shared analysis band, not a

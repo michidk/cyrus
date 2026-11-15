@@ -138,6 +138,32 @@ class Continuity(unittest.TestCase):
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
             self.assertFalse(json.loads((temp / 'rejected.json').read_text())['success'])
 
+    def test_normalized_cli_rejects_partial_reference_interval(self):
+        import json
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            reference, monitor, output = (root / name for name in ('ref.wav', 'monitor.wav', 'report.json'))
+            module.wavfile.write(reference, 8000, self.reference.astype(np.int16))
+            # Four correct middle anchors satisfy continuity but cannot establish
+            # either endpoint of the complete one-second cue.
+            for start, end in ((3200, 6400), (0, 6400), (3200, 8000)):
+                with self.subTest(start=start, end=end):
+                    module.wavfile.write(monitor, 8000, self.reference[start:end].astype(np.int16))
+                    if output.exists():
+                        output.unlink()
+                    result = subprocess.run([
+                        sys.executable, str(Path(__file__).with_name('book-audio-normalize.py')),
+                        str(monitor), str(output), '--reference', str(reference), '--input-seconds', '0'],
+                        capture_output=True)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    value = json.loads(output.read_text())['references'][0]
+                    self.assertFalse(value['success'])
+                    self.assertIsNone(value['input_relative_onset_seconds'])
+                    self.assertEqual(value['reference_duration_seconds'], 1)
+                    self.assertIn('interval', value['error'])
+
     def test_silence_and_wrong_sound_are_not_continuity(self):
         for recording in (np.zeros(12000), np.random.default_rng(7).normal(0, 1000, 12000)):
             self.assertFalse(module.analyze(recording, self.reference)['success'])

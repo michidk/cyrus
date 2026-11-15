@@ -78,8 +78,9 @@ loading contracts. Runtime checks require native/browser startup, menu, movie,
 persistence and world-entry playtests with an explicit install. See
 [SETUP](../../docs/SETUP.md) for commands and controls.
 
-Default windowed startup plays the installed Windows Glide swoosh animation and decoded
-640×480 title image. Native default launches then use installed startup policy
+Default windowed startup plays the installed Windows Glide swoosh animation and then the
+title: the 1820×1024 artwork shipped in `cyrus-assets`, scaled to cover the window (see
+[DIFFERENCES](../../docs/DIFFERENCES.md#title-artwork)). Native default launches then use installed startup policy
 and validated native autosave state to select Introduction, book, or direct world
 entry. The title remains visible while a pending launch action initializes;
 book motion and drawing do not briefly appear before its cinematic. Explicit
@@ -88,7 +89,8 @@ policy with its validated IndexedDB autosave before constructing the application
 Native menu/HUD export begins after the title becomes visible. The full
 parser-coverage scan remains in headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.
-The title uses the configured FNT font and documented bottom-label positions.
+The title uses the configured FNT font and documented bottom-label positions, mapped onto the
+centred 4:3 region of the artwork.
 Label colours follow the installed title palette: the VGA-selected tint multiplies
 the low font texture colour at palette index 161, following [preservation PR #313](https://github.com/michidk/redguard-preservation/pull/313).
 The bottom-right red title label reports menu/HUD preparation, menu asset loading,
