@@ -198,6 +198,30 @@ fn explicit_pose_deforms_a_private_mesh_and_scene_change_restores_it() {
         positions,
         &[[0.0, 0.0, 0.1], [-0.05, 0.0, 0.1], [0.0, -0.05, 0.1]]
     );
+    // A retained pose must remain drawable if its private mesh asset is lost.
+    let private = app.world().get::<Mesh3d>(primitive).unwrap().0.clone();
+    app.world_mut()
+        .resource_mut::<Assets<Mesh>>()
+        .remove(&private);
+    app.update();
+    let recovered = app.world().get::<Mesh3d>(primitive).unwrap().0.clone();
+    assert_ne!(recovered, original);
+    let meshes = app.world().resource::<Assets<Mesh>>();
+    let recovered = meshes
+        .get(&recovered)
+        .expect("held pose mesh must be rebuilt");
+    assert_eq!(
+        recovered.attribute(Mesh::ATTRIBUTE_POSITION),
+        Some(&VertexAttributeValues::Float32x3(vec![
+            [0.0, 0.0, 0.1],
+            [-0.05, 0.0, 0.1],
+            [0.0, -0.05, 0.1],
+        ]))
+    );
+    assert_eq!(
+        recovered.attribute(Mesh::ATTRIBUTE_NORMAL),
+        Some(&VertexAttributeValues::Float32x3(vec![[0.0, 0.0, 1.0]; 3]))
+    );
     app.world_mut().resource_mut::<AnimationRequest>().0 = Handle::default();
     app.update();
     assert_eq!(app.world().get::<Mesh3d>(primitive).unwrap().0, original);

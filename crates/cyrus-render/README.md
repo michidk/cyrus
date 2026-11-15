@@ -82,6 +82,8 @@ therefore reach the renderer in the same frame.
 Menu edits persist before applying. Audio preference application precedes
 `AnimationSystems`, which precedes cue consumption in the same Update. Mesh poses
 apply in PostUpdate. Cinematic presentation is owned by cyrus-startup.
+Held animation poses rebuild a missing private mesh from the retained source and
+selected frame, preserving authored normals and leaving the shared base mesh unchanged.
 
 See [SETUP](../../docs/SETUP.md) for entry points, controls, export prerequisites,
 settings and fidelity limitations. Run `cargo test -p cyrus-render` for graphics
