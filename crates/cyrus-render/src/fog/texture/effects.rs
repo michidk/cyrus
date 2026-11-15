@@ -86,6 +86,25 @@ impl PreparedEffects {
     }
 }
 
+fn effect_frame([width, height]: [u32; 2], rgba: &[u8]) -> Image {
+    // GLTF scene images reverse rows; effect UVs use that same orientation.
+    let stride = width as usize * 4;
+    let pixels = rgba.chunks_exact(stride).rev().flatten().copied().collect();
+    let mut frame = Image::new(
+        Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    frame.sampler = ImageSampler::nearest();
+    frame
+}
+
 /// Camera-space admission inputs in original map units, with positive Z forward.
 /// X and Y have not yet been multiplied by the projection scales.
 pub struct EffectDrawView {
@@ -138,7 +157,8 @@ impl EffectDraw {
 impl TextureAnimations {
     /// Prepare installed effect frames without requesting or advancing any image.
     /// Call with this owner's exact environment, before binding its logical pool.
-    /// All metadata validates before allocation. Rebinding the same source is a no-op;
+    /// All metadata validates before allocation. Rebinding the same source restores missing
+    /// frame assets at their existing handles without changing playback;
     /// changed sources reject without modifying frames or shared deadlines.
     /// Effect frames join the same source census as scene-bound animated textures.
     pub fn prepare_effects(&mut self, source: &Effects, assets: &mut Assets<Image>) -> Result<()> {
@@ -155,6 +175,15 @@ impl TextureAnimations {
                 prepared.source == identity,
                 "environment effect image source changed"
             );
+            for (&id, binding) in &prepared.bindings {
+                let image = &source.images[&id];
+                for (index, handle) in binding.frames.iter().enumerate() {
+                    if !assets.contains(handle) {
+                        assets
+                            .insert(handle.id(), effect_frame(image.size, &image.frames[index]))?;
+                    }
+                }
+            }
             return Ok(());
         }
         let mut metadata = BTreeMap::new();
@@ -176,28 +205,10 @@ impl TextureAnimations {
         }
         let mut frames = BTreeMap::new();
         for (key, image) in shared {
-            let [width, height] = image.size;
             let handles = image
                 .frames
                 .iter()
-                .map(|rgba| {
-                    // GLTF scene images reverse rows; effect UVs use that same orientation.
-                    let stride = width as usize * 4;
-                    let pixels = rgba.chunks_exact(stride).rev().flatten().copied().collect();
-                    let mut frame = Image::new(
-                        Extent3d {
-                            width,
-                            height,
-                            depth_or_array_layers: 1,
-                        },
-                        TextureDimension::D2,
-                        pixels,
-                        TextureFormat::Rgba8UnormSrgb,
-                        RenderAssetUsages::default(),
-                    );
-                    frame.sampler = ImageSampler::nearest();
-                    assets.add(frame)
-                })
+                .map(|rgba| assets.add(effect_frame(image.size, rgba)))
                 .collect::<Vec<_>>();
             frames.insert(key, handles);
         }

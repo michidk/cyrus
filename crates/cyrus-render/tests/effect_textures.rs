@@ -638,3 +638,52 @@ fn animated_material_without_a_mesh_cannot_publish_a_prepared_scene() {
     let prepared = TextureAnimations::prepare(&mut world, environment, &[root]).unwrap();
     assert!(prepared.snapshot().is_empty());
 }
+
+#[test]
+fn unchanged_effect_rebind_restores_evicted_frame_without_restarting_playback() -> anyhow::Result<()>
+{
+    let mut world = World::new();
+    let (mut live, root) = prepared(&mut world);
+    let source = source();
+    live.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    live.request_effect_draw(
+        Handle::<cyrus_assets::environment::Environment>::default().id(),
+        0x2500,
+        0,
+        &cyrus_render::fog::EffectDrawView {
+            center: [0.0, 0.0, 100.0],
+            projection_scale: Vec2::ONE,
+            clipping: [1.0, 1000.0],
+        },
+        100,
+    )?
+    .expect("visible effect starts its shared deadline");
+    live.hold("a00000", Some(1))?;
+    let before = serde_json::to_value(live.snapshot_playback()?)?;
+    let census = live.snapshot_sources(&world, &[root])?;
+    let (id, expected) = world
+        .resource::<Assets<Image>>()
+        .iter()
+        .find(|(_, image)| image.data.as_deref() == Some(&[100, 110, 120, 0, 70, 80, 90, 255]))
+        .map(|(id, image)| (id, image.clone()))
+        .unwrap();
+    world.resource_mut::<Assets<Image>>().remove(id);
+    live.prepare_effects(&source, &mut world.resource_mut::<Assets<Image>>())?;
+    let images = world.resource::<Assets<Image>>();
+    let restored = images
+        .get(id)
+        .expect("unchanged rebind must restore the bound frame image");
+    assert_eq!(restored.data, expected.data);
+    assert_eq!(
+        restored.texture_descriptor.size,
+        expected.texture_descriptor.size
+    );
+    assert_eq!(
+        restored.texture_descriptor.format,
+        expected.texture_descriptor.format
+    );
+    assert_eq!(images.len(), 2, "resident frames must not be duplicated");
+    assert_eq!(serde_json::to_value(live.snapshot_playback()?)?, before);
+    census.validate(&live, &world, &[root])?;
+    Ok(())
+}

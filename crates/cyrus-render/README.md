@@ -735,3 +735,7 @@ when the setting is zero, per [preservation PR #329](https://github.com/michidk/
 The retained presentation interval is covered by the production scroll system
 test. This state comparison does not establish full raster parity or software
 sky acceptance.
+
+Rebinding unchanged environmental effect sources restores missing frame images at
+their retained handles. Resident frames, shared playback deadlines and inspection
+holds remain intact. Changed source contents still reject before recovery.
