@@ -61,5 +61,8 @@ pub(super) fn adjust_value(
         return false;
     }
     *value = next;
+    if let Some(actions) = &mut preferences.overrides {
+        actions.insert(entry.item.action);
+    }
     persist(menu, preferences, store)
 }

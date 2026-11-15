@@ -141,33 +141,18 @@ fn sky_disabled(ini: &str) -> anyhow::Result<bool> {
     Ok(disabled)
 }
 
-fn clipping(system: &str, world: &str, id: u32) -> anyhow::Result<[f32; 2]> {
-    let mut section = "";
-    let mut near = None;
-    let mut far = None;
-    for line in system.lines().map(str::trim) {
-        if let Some(name) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-            section = name;
-        } else if section.eq_ignore_ascii_case("xngine")
-            && let Some((key, value)) = line.split_once('=')
-        {
-            let target = match key.trim().to_ascii_lowercase().as_str() {
-                "front_plane" => &mut near,
-                "back_plane" => &mut far,
-                _ => continue,
-            };
-            *target = Some(
-                value
-                    .trim()
-                    .parse::<i32>()
-                    .with_context(|| format!("SYSTEM.INI [xngine] {}", key.trim()))?
-                    as f32,
-            );
-        }
-    }
-    let near = near.context("SYSTEM.INI [xngine] missing front_plane")?;
-    let far = far.context("SYSTEM.INI [xngine] missing back_plane")?;
-    let far = sky_parameter(world, "world_back_plane", id, far as i32)? as f32;
+fn clipping(
+    system: &rgpre::import::system_ini::XngineSettings,
+    world: &str,
+    id: u32,
+) -> anyhow::Result<[f32; 2]> {
+    let near = system
+        .front_plane
+        .context("SYSTEM.INI [xngine] missing front_plane")? as f32;
+    let far = system
+        .back_plane
+        .context("SYSTEM.INI [xngine] missing back_plane")?;
+    let far = sky_parameter(world, "world_back_plane", id, far)? as f32;
     anyhow::ensure!(
         near > 0.0 && far > near,
         "world {id}: invalid front_plane/back_plane range"
@@ -336,7 +321,7 @@ pub(crate) fn prepare(
     };
     // Verified Glide background fill in preservation's docs/engine/sky.md.
     let background = background_color(&ini, entry.index)?;
-    let clipping = clipping(&system, &ini, entry.index)?;
+    let clipping = clipping(&system_settings.xngine, &ini, entry.index)?;
     let fog_table = fog_table(source, entry.index)?;
     let water = if let (Some(terrain), Some(parameters)) =
         (terrain, value(&ini, "world_wave", entry.index))
@@ -499,7 +484,11 @@ mod tests {
 
     #[test]
     fn scene_clipping_uses_system_values_and_nonzero_world_override() {
-        let system = "[other]\nback_plane=9000\n[xngine]\nfront_plane=7\nback_plane=3800";
+        let settings = rgpre::import::system_ini::SystemIni::parse(
+            "[system]\n[other]\nback_plane=9000\n[xngine]\nfront_plane=7\nback_plane=3800",
+        )
+        .unwrap();
+        let system = &settings.xngine;
         assert_eq!(clipping(system, "", 1).unwrap(), [7.0, 3800.0]);
         assert_eq!(
             clipping(system, "world_back_plane[1]=0", 1).unwrap(),
@@ -512,7 +501,7 @@ mod tests {
         for value in ["-1", "7", "bad"] {
             assert!(clipping(system, &format!("world_back_plane[1]={value}"), 1).is_err());
         }
-        assert!(clipping("[other]\nfront_plane=7\nback_plane=3800", "", 1).is_err());
+        assert!(clipping(&Default::default(), "", 1).is_err());
     }
 
     #[test]

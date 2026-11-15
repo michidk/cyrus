@@ -9,6 +9,10 @@ use std::collections::BTreeMap;
 pub struct MenuPreferences {
     pub values: BTreeMap<i32, i32>,
     pub bindings: [u8; 15],
+    /// Settings explicitly updated by the player. Empty retains installed values;
+    /// absent preserves the all-settings behavior of legacy local documents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<std::collections::BTreeSet<i32>>,
 }
 
 impl MenuPreferences {
@@ -25,6 +29,12 @@ impl MenuPreferences {
                 "menu preferences: invalid action {action} value"
             );
         }
+        ensure!(
+            self.overrides.as_ref().is_none_or(|actions| actions
+                .iter()
+                .all(|action| self.values.contains_key(action))),
+            "menu preferences: override references an absent setting"
+        );
         ensure!(
             self.bindings.iter().all(|code| *code <= 139),
             "menu preferences: invalid binding code"
@@ -48,6 +58,7 @@ mod tests {
         let mut preferences = MenuPreferences {
             values: BTreeMap::new(),
             bindings: [0; 15],
+            overrides: None,
         };
         preferences.bindings[0] = 17;
         preferences.bindings[1] = 31;

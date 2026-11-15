@@ -15,6 +15,7 @@ fn disabled_sound_forces_silent_text_even_after_saved_preferences() {
         let mut preferences = MenuPreferences {
             values: Default::default(),
             bindings: [0; 15],
+            overrides: None,
         };
         preferences.values.insert(603, 1);
         preferences.values.insert(504, 0);
@@ -33,6 +34,7 @@ fn enabled_sound_retains_independent_music_voice_and_text_preferences() {
     let mut preferences = MenuPreferences {
         values: Default::default(),
         bindings: [0; 15],
+        overrides: None,
     };
     preferences.values.insert(603, 1);
     preferences.values.insert(504, 0);
@@ -41,4 +43,52 @@ fn enabled_sound_retains_independent_music_voice_and_text_preferences() {
     assert!(!settings.subtitles);
     let default = SoundSettings::parse("");
     assert!(default.effects && default.music && default.speech && default.subtitles);
+}
+
+#[test]
+fn saved_unrelated_settings_preserve_installed_audio_levels() {
+    // The installed 255/200 display as 19/15. Only an updated volume control
+    // converts its displayed value back to engine units (released menu.md).
+    for (overrides, expected) in [
+        (vec![504], (255, 200)),
+        (vec![], (255, 200)),
+        (vec![602], (255, 192)),
+        (vec![601], (243, 200)),
+    ] {
+        let saved = serde_json::json!({
+            "values": {"504": 0, "505": 0, "601": 19, "602": 15, "603": 1},
+            "bindings": vec![0; 15],
+            "overrides": overrides,
+        });
+        let preferences: MenuPreferences = serde_json::from_value(saved).unwrap();
+        preferences.validate().unwrap();
+        // Saved preferences must retain their ownership when reopened.
+        let preferences: MenuPreferences =
+            serde_json::from_str(&serde_json::to_string(&preferences).unwrap()).unwrap();
+        let mut settings = SoundSettings::parse("[system]\nvolume=255\nredbook_volume=200");
+        settings.apply_menu(&preferences);
+        assert_eq!((settings.master_volume, settings.redbook_volume), expected);
+    }
+}
+
+#[test]
+fn saved_override_ownership_rejects_unknown_settings_and_keeps_legacy_documents() {
+    let mut saved = serde_json::json!({
+        "values": {"504": 1, "505": 0, "601": 19, "602": 15, "603": 1},
+        "bindings": vec![0; 15],
+    });
+    let legacy: MenuPreferences = serde_json::from_value(saved.clone()).unwrap();
+    legacy.validate().unwrap();
+    let mut audio = SoundSettings::parse("[system]\nvolume=255\nredbook_volume=200");
+    audio.apply_menu(&legacy);
+    assert_eq!((audio.master_volume, audio.redbook_volume), (243, 192));
+    saved["overrides"] = serde_json::json!([999]);
+    let invalid: MenuPreferences = serde_json::from_value(saved).unwrap();
+    assert!(
+        invalid
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("override")
+    );
 }
