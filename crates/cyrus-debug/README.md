@@ -13,6 +13,12 @@ camera persists when startup and world cameras are replaced. Headless launches
 do not register the debug UI. F1 is reserved for the original game's version dialog
 and F10 for its credits. See [fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c91d64c19d5b38b280e8253eec3ab779fe8810fe/docs/config/keys-ini.md#fixed-gameplay-shortcuts).
 
+The debug menu starts at the upper left and fits its controls instead of filling the
+window height. The native Mods window starts alongside it. Both remain movable
+and resizable, with their contents setting the minimum size.
+Effects starts wider to accommodate its longer controls; it, Day/night and
+Performance also fit their content vertically.
+
 Press Backtick, then click **Open inspector**. Click **Close inspector** or the
 inspector window's close button to hide it.
 
@@ -61,7 +67,7 @@ with a gradual distant fade.
 Fog and Sky have independent Faithful/Modern buttons. Water changes only through native mods;
 `cyrus-mods` adds its Mods window while this menu is open.
 
-Backtick's **Anisotropic filtering (up to 16×)** checkbox independently filters world
+Backtick's **Texture filtering** Faithful/Modern row independently filters world
 textures at oblique angles. It defaults off and works with either lighting mode.
 **All Faithful** turns it off; **All modern** turns it on.
 

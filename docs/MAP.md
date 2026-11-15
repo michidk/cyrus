@@ -413,7 +413,7 @@ module where it is defined and regenerate.
 - `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/splash.rs` — The installed Windows 3dfx splash, drawn live every frame as the original's Glide splash is.
-- `src/view3d.rs` — Shared GPU drawing for the screens that show textured models in the original's fixed 640 by 480
+- `src/view3d.rs` — Shared GPU drawing for installed model views: the book menu, logbook scrolls and examine view.
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
