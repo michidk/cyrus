@@ -238,6 +238,9 @@ pub(super) fn drive(
                 presentation.returned = true;
                 match choice {
                     ConfirmationChoice::No => {
+                        commands.queue(|world: &mut World| {
+                            world.write_message(cyrus_audio::sound::SoundRequest::StopAll);
+                        });
                         let dispatch = dispatch.as_deref_mut().ok_or_else(|| {
                             anyhow::anyhow!("last-game confirmation: book dispatcher unavailable")
                         })?;
@@ -511,6 +514,7 @@ mod tests {
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<AppExit>()
         .add_message::<cyrus_world::sound::SoundCue>()
+        .add_message::<cyrus_audio::sound::SoundRequest>()
         .insert_resource(cyrus_script::clock::SimulationClock::new(book.clock).unwrap())
         .insert_resource(
             cyrus_script::player::input::PlayerBindings::from_codes([
@@ -636,6 +640,18 @@ mod tests {
         assert_eq!(
             app.world().resource::<DeathDispatch>().book_context,
             Some(2)
+        );
+        let requests = app
+            .world_mut()
+            .resource_mut::<Messages<cyrus_audio::sound::SoundRequest>>()
+            .drain()
+            .collect::<Vec<_>>();
+        assert!(
+            matches!(
+                requests.as_slice(),
+                [cyrus_audio::sound::SoundRequest::StopAll]
+            ),
+            "declining the confirmation must tear down sound on death-book entry"
         );
         assert_eq!(app.world().resource::<DeathBookEntry>().override_group, 74);
         assert!(!app.world().contains_resource::<LastGameEntry>());
