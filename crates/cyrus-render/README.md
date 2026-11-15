@@ -228,6 +228,11 @@ checkpoint; hidden session replacements consume the saved checkpoint before
 publication. Both bake private vertex RGB using the retained model translation
 and floating matrix. **Unknown:** actor lighting overrides and complete
 original-game pixel parity.
+
+Material preparation rejects missing source geometry, including terrain, before
+converting any materials or allocating light images. Restoring the source asset
+permits the same staged scene to resume preparation.
+
 **Verified:** matched BELLTOWR original/native/browser captures at 640×480 compare
 static wall and table lighting. Color/filtering differences remain; the candle
 appearance also differs. The retained logical camera target selects the light

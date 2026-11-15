@@ -80,6 +80,9 @@ pub fn prepare_scene_materials(
         let Some(mesh) = world.get::<Mesh3d>(entity) else {
             continue;
         };
+        let original = meshes
+            .get(&mesh.0)
+            .with_context(|| format!("replacement mesh {entity:?} asset absent"))?;
         let handle = world
             .get::<MeshMaterial3d<StandardMaterial>>(entity)
             .with_context(|| format!("replacement mesh {entity:?} lacks original material"))?;
@@ -157,9 +160,7 @@ pub fn prepare_scene_materials(
                 prepare_model_geometry(
                     environment,
                     base,
-                    meshes
-                        .get(&mesh.0)
-                        .context("replacement model mesh absent")?,
+                    original,
                     &extras.value,
                     world
                         .get::<GltfMaterialExtras>(entity)
