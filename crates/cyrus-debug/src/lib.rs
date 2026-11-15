@@ -257,6 +257,12 @@ fn debug_menu(
         fidelity_control(
             ui,
             &mut fidelity,
+            Area::AnisotropicFiltering,
+            "Texture filtering",
+        );
+        fidelity_control(
+            ui,
+            &mut fidelity,
             Area::Music,
             "Music (Modern mutes CD data noise)",
         );
@@ -270,20 +276,6 @@ fn debug_menu(
         ui.small("New sounds use the selected filter.");
 
         ui.separator();
-        let mut anisotropic = fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern;
-        if ui
-            .checkbox(&mut anisotropic, "Anisotropic filtering (up to 16×)")
-            .changed()
-        {
-            fidelity.set(
-                Area::AnisotropicFiltering,
-                if anisotropic {
-                    Mode::Modern
-                } else {
-                    Mode::Faithful
-                },
-            );
-        }
         let performance_label = if menu.performance_open {
             "Close performance"
         } else {

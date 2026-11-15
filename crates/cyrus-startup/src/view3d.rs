@@ -1,6 +1,6 @@
-//! Shared GPU drawing for the screens that show textured models in the original's fixed 640 by 480
-//! frame: the book menu, the logbook scrolls and the examine view. Each renders its meshes through a
-//! perspective camera into a 640 by 480 image that the screen shows like any other picture.
+//! Shared GPU drawing for installed model views: the book menu, logbook scrolls and examine view.
+//! Each renders meshes through a perspective camera into an image. The book fills the window;
+//! logbook and examine retain their fixed 640 by 480 frame.
 //!
 //! Original engine coordinates have X right, Y down and Z forward. Bevy's have Y up and Z toward the
 //! viewer, so every point maps `(x, y, z)` to `(x, -y, -z)`, a half turn about X that keeps
@@ -24,7 +24,7 @@ use bevy::{
 };
 use std::collections::BTreeMap;
 
-/// Width and height of every view's render target, the original's frame size.
+/// The authored reference frame dimensions, also used by fixed-size model views.
 pub(super) const WIDTH: u32 = 640;
 pub(super) const HEIGHT: u32 = 480;
 /// Horizontal half-field tangent of the original's viewport; the vertical one follows from 4:3.
@@ -126,6 +126,21 @@ pub(super) fn projection_for(horizontal_tangent: f32) -> Projection {
     Projection::Perspective(PerspectiveProjection {
         fov: 2.0 * tangent.atan(),
         aspect_ratio: 4.0 / 3.0,
+        near: 0.5,
+        far: 100_000.0,
+        ..default()
+    })
+}
+
+/// Fits the complete authored 4:3 composition inside a window, extending the 3D view
+/// into the remaining space without stretching the models.
+pub(super) fn fitted_projection(size: UVec2) -> Projection {
+    let size = size.max(UVec2::ONE);
+    let aspect_ratio = size.x as f32 / size.y as f32;
+    let tangent = HALF_FIELD_TANGENT * (1.0 / aspect_ratio).max(HEIGHT as f32 / WIDTH as f32);
+    Projection::Perspective(PerspectiveProjection {
+        fov: 2.0 * tangent.atan(),
+        aspect_ratio,
         near: 0.5,
         far: 100_000.0,
         ..default()
@@ -351,6 +366,23 @@ impl LitModel {
 mod tests {
     use super::*;
     use bevy::mesh::VertexAttributeValues;
+
+    #[test]
+    fn book_projection_preserves_the_complete_authored_frame_without_stretching() {
+        for (size, expected_corner) in [
+            (UVec2::new(640, 480), Vec2::ONE),
+            (UVec2::new(1280, 720), Vec2::new(0.75, 1.0)),
+            (UVec2::new(480, 800), Vec2::new(1.0, 0.45)),
+        ] {
+            let projection = fitted_projection(size);
+            let matrix = projection.get_clip_from_view();
+            let corner = matrix.project_point3(Vec3::new(78.8, 59.1, -100.0));
+            assert!((corner.truncate() - expected_corner).length() < 1e-5);
+            let right = matrix.project_point3(Vec3::new(10.0, 0.0, -100.0));
+            let up = matrix.project_point3(Vec3::new(0.0, 10.0, -100.0));
+            assert!((right.x * size.x as f32 - up.y * size.y as f32).abs() < 1e-4);
+        }
+    }
 
     #[test]
     fn engine_points_map_to_bevy_with_y_and_z_flipped() {

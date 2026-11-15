@@ -3,7 +3,9 @@
 Installed splash/title presentation, the book menu and settings, cinematic playback,
 world-entry loading, and the installed logbook reader. Book motion and helpers remain internal.
 The book is a real 3D scene: its models are meshes under a perspective camera that renders into the
-640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
+window-sized frame the book sprite shows, with the installed placements and camera paths.
+The authored 4:3 composition stays visible while the camera extends the scene into the
+remaining window area. Dialogs retain their original coordinates and scale with that composition.
 Page text, widgets and pictures are painted on the CPU into the page textures.
 Book texture filtering operates on encoded eight-bit channels, before display
 conversion, using the same raw-texture material as the other installed model views.

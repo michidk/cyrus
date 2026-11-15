@@ -67,7 +67,7 @@ with a gradual distant fade.
 Fog and Sky have independent Faithful/Modern buttons. Water changes only through native mods;
 `cyrus-mods` adds its Mods window while this menu is open.
 
-Backtick's **Anisotropic filtering (up to 16×)** checkbox independently filters world
+Backtick's **Texture filtering** Faithful/Modern row independently filters world
 textures at oblique angles. It defaults off and works with either lighting mode.
 **All Faithful** turns it off; **All modern** turns it on.
 

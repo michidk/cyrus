@@ -217,13 +217,15 @@ for the moment before the first frame and effect sounds stop as they do for any 
 
 **Verified:** the original draws the book menu, the logbook scrolls and the examine view through Glide
 with bilinear texture filtering. cyrus draws them as meshes through a perspective camera with the same
-projection, placements and camera paths, into the original's 640 by 480 frame, which is then scaled to
-the window like the other startup pictures. Light levels follow the original's per-channel combine
+placements and camera paths. The book renders at the window's physical resolution, with the
+authored 4:3 composition kept visible and the 3D view extended into the remaining window area.
+The logbook and examine retain their 640 by 480 frame, scaled to the window.
+Light levels follow the original's per-channel combine
 (`floor(T * (L + 1) / 256)`, interpolated in screen space), applied in a shader. Page text, widgets and
 pictures are painted into the page textures on the CPU, as the original does.
 
-**Verified:** against the previous CPU renderer the settled book pages differ by a mean of about 1.5 out
-of 765 per pixel (roughly 0.5 % of pixels visibly) and the logbook by about 0.3. The remainder is the
+**Verified:** at 640 by 480, against the previous CPU renderer the settled book pages differ by a mean
+of about 1.5 out of 765 per pixel (roughly 0.5 % of pixels visibly) and the logbook by about 0.3. The remainder is the
 GPU's texture sampling and rounding, not different geometry. **Unknown:** whether the original's own
 sampling matches either to the last bit; it was not compared pixel by pixel.
 
@@ -267,7 +269,7 @@ East and Start hold Escape. The pad is read only while the window has focus.
 
 ## Optional anisotropic filtering
 
-Backtick's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+Backtick's **Texture filtering** row enables the Modern `anisotropic_filtering` fidelity
 area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
 modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
 models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture
