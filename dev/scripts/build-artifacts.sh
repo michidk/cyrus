@@ -45,6 +45,20 @@ case "${1:-}" in
             cp "$build_root/$platform/release/cyrus$suffix" "$bundle/"
             if [[ "$launcher" = true ]]; then
                 cp "$build_root/$platform/release/cyrus-launcher$suffix" "$bundle/"
+                if [[ -n "$suffix" ]]; then
+                    cat > "$bundle/play-cyrus.cmd" <<'CMD'
+@echo off
+cd /d "%~dp0" || exit /b 1
+cyrus-launcher.exe %*
+CMD
+                else
+                    cat > "$bundle/play-cyrus.sh" <<'SH'
+#!/bin/sh
+CDPATH= cd "$(dirname "$0")" || exit 1
+exec ./cyrus-launcher "$@"
+SH
+                    chmod +x "$bundle/play-cyrus.sh"
+                fi
             fi
             count=0
             for manifest in mods/*/mod.toml; do
@@ -71,7 +85,9 @@ case "${1:-}" in
             printf '{"active":[]}\n' > "$bundle/game-config/mods.json"
             cat > "$bundle/MODS.txt" <<'EOF'
 This package contains cyrus and every bundled mod in this source revision.
-When cyrus-launcher is included, keep it beside cyrus and use it to start the game.
+When cyrus-launcher is included, start play-cyrus.cmd (Windows) or
+play-cyrus.sh (Linux/macOS). Keep all extracted files together. These entry
+scripts select the bundle directory so its mods are available from any caller.
 Extract the entire archive and run from the extracted directory so it uses
 the included game-config folder. CYRUS_CONFIG_DIR overrides that location.
 Open Backtick, then Mods, to enable mods and adjust their settings.
