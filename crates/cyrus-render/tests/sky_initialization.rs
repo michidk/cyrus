@@ -80,24 +80,8 @@ fn restored_sky_wraps_both_axes_at_observed_original_boundaries() {
     use cyrus_render::persistence::{SkyImages, SkySnapshot};
     use std::time::Duration;
 
-    let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
-        .init_asset::<Image>()
-        .init_asset::<Mesh>()
-        .init_asset::<StandardMaterial>()
-        .init_asset::<Shader>()
-        .init_resource::<Fidelity>()
-        .init_resource::<ClearColor>()
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
-        .add_plugins(EnvironmentPlugin);
+    let mut app = sky_app(0);
     let reference_environment = environment(0);
-    let source = app
-        .world_mut()
-        .resource_mut::<Assets<Environment>>()
-        .add(environment(0));
-    app.world_mut().insert_resource(EnvironmentRequest(source));
-    app.world_mut().spawn(Camera3d::default());
-    app.update();
     let entity = app
         .world_mut()
         .query_filtered::<Entity, With<Mesh3d>>()
@@ -147,5 +131,68 @@ fn restored_sky_wraps_both_axes_at_observed_original_boundaries() {
             [expected, expected, 0.0, 0.0],
             "zero-speed continuation"
         );
+    }
+}
+
+fn sky_app(speed: u8) -> App {
+    use std::time::Duration;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_asset::<Image>()
+        .init_asset::<Mesh>()
+        .init_asset::<StandardMaterial>()
+        .init_asset::<Shader>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ClearColor>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+        .add_plugins(EnvironmentPlugin);
+    let source = app
+        .world_mut()
+        .resource_mut::<Assets<Environment>>()
+        .add(environment(speed));
+    app.world_mut().insert_resource(EnvironmentRequest(source));
+    app.world_mut().spawn(Camera3d::default());
+    app.update();
+    app
+}
+
+#[test]
+fn moving_sky_matches_presented_original_ticks_through_a_full_wrap() {
+    use cyrus_render::{environment::SkyScrollSync, persistence::SkySnapshot};
+    use std::time::Duration;
+    let mut app = sky_app(255);
+    app.world_mut()
+        .resource_mut::<SkyScrollSync>()
+        .set(0, [0.0, 15.9375])
+        .unwrap();
+    app.update();
+    let mut previous_tick = 0;
+    // Retained original presentation endpoints, direction zero and speed 255/16.
+    // Clock units are processed BIOS ticks, not game-update or rendered-frame counts.
+    for (tick, expected_v) in [
+        (0, 15.9375),
+        (2, 47.8125),
+        (3, 63.75),
+        (5, 95.625),
+        (7, 127.5),
+        (8, 143.4375),
+        (11, 191.25),
+        (13, 223.125),
+        (15, 255.0),
+        (16, 14.9375),
+        (18, 46.8125),
+    ] {
+        if tick > previous_tick {
+            app.world_mut()
+                .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+                    55 * (tick - previous_tick),
+                )));
+            app.update();
+        }
+        let saved = serde_json::to_value(SkySnapshot::capture(app.world()).unwrap()).unwrap();
+        let actual: [f32; 4] = serde_json::from_value(saved["scroll"].clone()).unwrap();
+        assert_eq!(actual, [0.0, expected_v, 0.0, 0.0], "processed tick {tick}");
+        assert_eq!(saved["tick"].as_u64().unwrap(), tick);
+        previous_tick = tick;
     }
 }
