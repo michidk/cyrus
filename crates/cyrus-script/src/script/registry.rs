@@ -3041,8 +3041,17 @@ impl ScriptWorld {
             }
             sounds(sound)
         };
-        match crate::player::placement::initial_role_animation(data, actor.name(), ticks, &mut emit)
-        {
+        let result = if self.updates.animation_system {
+            crate::player::placement::initial_role_animation(data, actor.name(), ticks, &mut emit)
+        } else {
+            cyrus_world::animation::ActorAnimation::from_asset(
+                data,
+                actor.name(),
+                AnimationGroup::PANIC,
+            )
+            .map(|playback| (playback, None))
+        };
+        match result {
             Ok((playback, frame)) => {
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 if matches!(actor.source, ScriptActorSource::AlternatePlayer) {

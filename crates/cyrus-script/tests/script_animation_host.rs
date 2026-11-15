@@ -3895,6 +3895,44 @@ fn selected_player_weapon_validation_uses_type_ownership_animation_and_shell() {
 }
 
 #[test]
+fn disabled_animation_system_keeps_standalone_roles_unposed() {
+    for enabled in [false, true] {
+        let mut data = scripts(vec![Operation::End { target: 0 }]);
+        data.updates.animation_system = enabled;
+        for name in ["CYRUS", "GREMLIN"] {
+            let mut role = data.actors["OTHER"].clone();
+            role.namespace = Some(name.into());
+            data.actors.insert(name.into(), role);
+        }
+        data.content_id = data.content_identity().unwrap();
+        let mut animation = animations(&data, false);
+        animation.metadata["actors"] = json!(["CYRUS", "GREMLIN"].map(|name| json!({
+            "script_name":name,"animation_groups":[{"group_index":0,"anim_type":0,"anim_id":1,
+                "commands":[{"opcode":4,"sound_param":9,"volume_shift":0},
+                    {"opcode":0,"frame_reference":3},{"opcode":0,"frame_reference":4},{"opcode":2,"value":0}]}]
+        })));
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let mut sounds = Vec::new();
+        for index in [2, 3] {
+            let id = world.id(index).unwrap();
+            world
+                .initialize_player_animation(id, &animation, 1, &mut |sound| {
+                    sounds.push(sound);
+                    Ok(())
+                })
+                .unwrap();
+            assert!(world.actors()[index].animation_initialized());
+            assert_eq!(world.animation_frame(id).unwrap(), enabled.then_some(3));
+            assert_eq!(
+                world.actors()[index].control_state().unwrap().hidden,
+                index == 3
+            );
+        }
+        assert_eq!(sounds.len(), if enabled { 2 } else { 0 });
+    }
+}
+
+#[test]
 fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_entry() {
     for combat in [false, true] {
         let mut data = scripts(vec![Operation::End { target: 0 }]);
