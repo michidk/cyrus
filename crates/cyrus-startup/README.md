@@ -6,7 +6,13 @@ The book is a real 3D scene: its models are meshes under a perspective camera th
 640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
 Page text, widgets and pictures are painted on the CPU into the page textures.
 Book texture filtering operates on encoded eight-bit channels, before display
-conversion, using the same raw-texture material as the other installed model views. Backtick Flycam also flies
+conversion, using the same raw-texture material as the other installed model views.
+[Preservation PR #334](https://github.com/michidk/redguard-preservation/pull/334)
+clarifies the menu application of the encoded-channel filtering rule in release 0.12.5.
+Book sampling quantizes fractional texture coordinates to four bits and floors
+each horizontal and vertical channel interpolation, following the released
+[software-Voodoo filter rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md).
+Other lit model views retain their existing filtering path. Backtick Flycam also flies
 this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
@@ -261,9 +267,16 @@ A failed destination loading-artwork or required book-cache request leaves the c
 For a production book-filter regression, use `dev/scripts/check-book-filter.py prepare`
 to create two disposable `menu/book.menu` cache files from an exported cache, one
 with `--inverse`. Render each through the native or browser application at the
-same settled pose. `compare FIRST.png SECOND.png --rectangle LEFT TOP RIGHT BOTTOM`
+same settled pose. `compare FIRST.png SECOND.png --four-bit --rectangle LEFT TOP RIGHT BOTTOM`
 checks complementary encoded channels on a textured region without text or
 transparency. It rejects the brighter midpoint produced by filtering sRGB
 textures in linear light. Keep the install read-only and restore the original
 cache after this synthetic control. Run `test-check-book-filter.py` with Pillow
 for CLI passing and wrong-domain controls.
+
+Use `prepare --horizontal` for a one-axis black/white stripe fixture. The
+`sample-grid IMAGE.png --rectangle LEFT TOP RIGHT BOTTOM` command checks the
+exact encoded levels produced by four-bit interpolation. It rejects both
+continuous interpolation and a point-sampled image without fractional levels.
+The complementary checkerboard check uses an explicit two-floor bound with
+`--four-bit`; its continuous-filter rounding bound remains separate.

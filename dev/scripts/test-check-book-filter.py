@@ -27,6 +27,32 @@ class BookFilter(unittest.TestCase):
                 self.assertEqual(result['maximum_complement_error'],
                                  abs(sum(values) - 255))
 
+    def test_four_bit_complements_have_a_separate_two_floor_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second = root / 'a.png', root / 'b.png'
+            for values, accepted in [((126, 127), True), ((126, 126), False),
+                                     ((128, 128), False), ((188, 188), False)]:
+                Image.new('RGB', (1, 1), (values[0],) * 3).save(first)
+                Image.new('RGB', (1, 1), (values[1],) * 3).save(second)
+                run = subprocess.run([sys.executable, str(SCRIPT), 'compare', str(first),
+                                      str(second), '--four-bit', '--rectangle', '0', '0', '1', '1'],
+                                     capture_output=True, text=True, check=False)
+                self.assertEqual(run.returncode == 0, accepted, run.stderr)
+
+    def test_sample_grid_rejects_continuous_interpolation_and_nearest_sampling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'stripe.png'
+            for levels, accepted in [([0, 127, 255], True), ([0, 128, 255], False),
+                                     ([0, 255, 0], False)]:
+                image = Image.new('RGB', (3, 1))
+                image.putdata([(value,) * 3 for value in levels])
+                image.save(path)
+                run = subprocess.run([sys.executable, str(SCRIPT), 'sample-grid', str(path),
+                                      '--rectangle', '0', '0', '3', '1'],
+                                     capture_output=True, text=True, check=False)
+                self.assertEqual(run.returncode == 0, accepted, run.stderr)
+
     def test_fixture_retains_dimensions_and_transparency(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

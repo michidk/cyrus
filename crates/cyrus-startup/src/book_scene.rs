@@ -178,11 +178,11 @@ fn spawn_groups(
         let handle = match texture {
             Some(texture) => textured
                 .entry(texture)
-                .or_insert_with(|| materials.add(LitMaterial::new(textures[texture].clone())))
+                .or_insert_with(|| materials.add(LitMaterial::book(textures[texture].clone())))
                 .clone(),
             None => {
                 let texture = images.add(super::view3d::raw_texture_image(1, 1, colour.to_vec()));
-                materials.add(LitMaterial::new(texture))
+                materials.add(LitMaterial::book(texture))
             }
         };
         let group = Group {

@@ -190,12 +190,17 @@ pub struct LitMaterial {
     #[texture(0)]
     #[sampler(1)]
     texture: Handle<Image>,
+    #[uniform(2)]
+    four_bit_filter: u32,
 }
 
 impl LitMaterial {
-    /// Sample encoded texture channels before converting the shaded result for display.
-    pub(super) fn new(texture: Handle<Image>) -> Self {
-        Self { texture }
+    /// Book textures use four-bit encoded-channel filtering before display conversion.
+    pub(super) fn book(texture: Handle<Image>) -> Self {
+        Self {
+            texture,
+            four_bit_filter: 1,
+        }
     }
 }
 
@@ -317,6 +322,7 @@ impl LitModel {
                         Mesh3d(meshes.add(texture_mesh(scene, texture))),
                         MeshMaterial3d(materials.add(LitMaterial {
                             texture: handle.clone(),
+                            four_bit_filter: 0,
                         })),
                         LitMesh(layer),
                         Transform::IDENTITY,
