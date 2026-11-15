@@ -553,7 +553,7 @@ fn draw_mesh(
     } else {
         None
     };
-    let camera_from_local = camera.inverse() * transform;
+    let camera_from_local = crate::camera::model_view_transform(camera, transform);
     let center = camera_from_local.transform_point3(Vec3::ZERO) * 20.0;
     if super::texture::admission::classify(
         [center.x * scale.x, -center.y * scale.y, -center.z],
@@ -574,9 +574,9 @@ fn draw_mesh(
         ));
     }
     let colors = light_colors(original, transform, material, lights)?;
-    let local_camera = transform
-        .inverse()
-        .transform_point3(camera.w_axis.truncate());
+    let local_camera = crate::camera::model_view_transform(transform, camera)
+        .w_axis
+        .truncate();
     let mut output_positions = Vec::new();
     let mut output_normals = Vec::new();
     let mut output_uv = Vec::new();

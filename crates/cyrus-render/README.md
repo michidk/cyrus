@@ -84,3 +84,7 @@ Tests that need installed data report a skip without an install. Rendering
 fidelity also needs a native and browser playtest or a matched capture against
 the original (see [METHOD](../../docs/METHOD.md) and the `cyrus-playtest` skill);
 compilation alone does not establish it.
+
+Model preparation subtracts the camera origin before applying the view basis,
+including backface tests, to preserve camera-relative precision far from the world origin.
+See preservation’s [view projection contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/projection.md).

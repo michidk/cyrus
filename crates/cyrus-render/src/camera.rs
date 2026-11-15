@@ -7,6 +7,19 @@ use cyrus_script::player::Player;
 use cyrus_script::player::input::InputSample;
 use cyrus_script::player::input::InputSuppressed;
 pub use persistence::{CameraCandidate, CameraSnapshot};
+/// Transform model-local positions into camera space from two affine render-space poses.
+///
+/// Camera-relative translation precedes view rotation, following preservation's
+/// [view projection](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/projection.md).
+/// Render-space units are unchanged; no projection or engine-unit conversion is applied.
+pub fn model_view_transform(camera: Mat4, model: Mat4) -> Mat4 {
+    let mut view_basis = camera;
+    view_basis.w_axis = Vec4::W;
+    let mut relative_model = model;
+    relative_model.w_axis = (model.w_axis - camera.w_axis).truncate().extend(1.0);
+    view_basis.inverse() * relative_model
+}
+
 /// The view camera is independent of the player transform.
 #[derive(Component)]
 pub struct ViewCamera;
