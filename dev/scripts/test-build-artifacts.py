@@ -153,6 +153,27 @@ done
             self.assertEqual(files["game-config/mods/guest/mod.wasm"], b"wasm\n")
             self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{suffix or '.tar.gz'}").is_file())
 
+    def test_native_mod_bundles_reject_external_overlay_links(self):
+        self.mod_fixtures()
+        private = self.root / "private-install.txt"
+        private.write_text("local data must never enter a release")
+        link = self.root / "mods/manifest-only/files/maps/external.txt"
+        link.symlink_to(private)
+        for platform, extension in (("x86_64-unknown-linux-gnu", "tar.gz"),
+                                    ("x86_64-pc-windows-msvc", "zip")):
+            with self.subTest(platform=platform):
+                archive = self.root / f"target/artifacts/cyrus-with-mods-{platform}.{extension}"
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                archive.write_text("stale package")
+                result = subprocess.run(
+                    ["bash", "dev/scripts/build-artifacts.sh", "native-mods", platform],
+                    cwd=self.root, env=self.env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("symbolic link", result.stderr)
+                self.assertIn("game-config/mods/manifest-only/files/maps/external.txt", result.stderr)
+                self.assertFalse(archive.exists())
+                self.assertFalse(list(archive.parent.glob("package.*")))
+
     def test_mod_bundle_delivers_launcher_beside_game_on_each_platform(self):
         self.mod_fixtures()
         crate = self.root / "crates/cyrus-launcher"

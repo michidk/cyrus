@@ -79,6 +79,15 @@ Mods are installed but disabled by default. Choose which to enable; movement
 and camera mods can conflict when enabled together.
 The original game files are not included. Supply your own GOG installation.
 EOF
+            # Never retain links to builder-local files or let zip dereference them.
+            python3 - "$bundle" <<'PYLINKS'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+for path in root.rglob('*'):
+    if path.is_symlink():
+        sys.exit(f"Cannot package symbolic link: {path.relative_to(root)}")
+PYLINKS
             if [[ -n "$suffix" ]]; then
                 python3 - "$bundle" "$artifacts/cyrus-with-mods-$platform.zip" <<'PY'
 from pathlib import Path
