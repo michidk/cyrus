@@ -57,8 +57,45 @@ def original_window(original, updates, original_key="space"):
     return observations[:updates + 1], steps[:updates], release_offset, rate
 
 
-def compare(original, native, updates, *, key="Space", original_key="space", allow_displacement=False):
+def jump_lifecycle(observations):
+    """Admit the bounded standing-jump fixture, including airborne lift and landing."""
+    events = {"queued_at": [], "falling_at": [], "landed_at": []}
+    phase = "supported"
+    lifted = False
+    origin_y = observations[0]["player"]["position_q8"][1]
+    for offset, row in enumerate(observations):
+        player = row["player"]
+        queued, falling = player["queued"], player["falling"]
+        if phase == "supported":
+            if falling:
+                raise ValueError("jump lifecycle: fall without queued admission")
+            if queued:
+                events["queued_at"].append(offset)
+                phase, lifted = "queued", False
+        elif phase == "queued":
+            if falling and not queued:
+                events["falling_at"].append(offset)
+                phase = "falling"
+            elif not queued:
+                raise ValueError("jump lifecycle: queue cleared without observed fall")
+        elif queued:
+            raise ValueError("jump lifecycle: new queue before observed landing")
+        elif not falling:
+            if not lifted:
+                raise ValueError("jump lifecycle: no observed airborne lift")
+            events["landed_at"].append(offset)
+            phase = "supported"
+        if phase != "supported" and player["position_q8"][1] < origin_y:
+            lifted = True
+    if phase != "supported" or not events["landed_at"]:
+        raise ValueError("jump lifecycle: incomplete or absent queue/fall/landing cycle")
+    return events
+
+
+def compare(original, native, updates, *, key="Space", original_key="space", allow_displacement=False,
+            require_jump_lifecycle=False):
     expected, steps, release, rate = original_window(original, updates, original_key)
+    lifecycle = jump_lifecycle(expected) if require_jump_lifecycle else None
     boundaries = native["boundaries"]
     # Offset zero establishes the native baseline; offset one admits the press.
     if len(boundaries) != updates + 2:
@@ -101,7 +138,7 @@ def compare(original, native, updates, *, key="Space", original_key="space", all
     return {"updates": updates, "release_after": release,
             "consumed_scale": sum(step["frame_scale"] for step in steps),
             "normal_frame_rate": rate, "matched_boundaries": len(expected),
-            "max_position_error_q8": 0, "generation": generation,
+            "max_position_error_q8": 0, "generation": generation, "jump_lifecycle": lifecycle,
             "key": key, "original_key": original_key, "allow_displacement": allow_displacement,
             "displacement_q8": [end - start for start, end in zip(
                 expected[0]["player"]["position_q8"], expected[-1]["player"]["position_q8"])]}
@@ -129,6 +166,8 @@ def main():
     parser.add_argument("--original-key", default="space", help="key identity in the original receipt")
     parser.add_argument("--allow-displacement", action="store_true",
                         help="allow an idle endpoint at a different position; retain exact state/clock comparison")
+    parser.add_argument("--require-jump-lifecycle", action="store_true",
+                        help="require observed standing-jump queue, lift, fall and landing cycles")
     parser.add_argument("--updates", type=int, default=32)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -146,7 +185,8 @@ def main():
                            key=args.key, original_key=args.original_key))
     raw.write_text(json.dumps(native, indent=2) + "\n")
     result = compare(original, native, args.updates, key=args.key,
-                     original_key=args.original_key, allow_displacement=args.allow_displacement)
+                     original_key=args.original_key, allow_displacement=args.allow_displacement,
+                     require_jump_lifecycle=args.require_jump_lifecycle)
     result["original_sha256"] = hashlib.sha256(args.original.read_bytes()).hexdigest()
     result["native_sha256"] = hashlib.sha256(raw.read_bytes()).hexdigest()
     args.out.write_text(json.dumps(result, indent=2) + "\n")

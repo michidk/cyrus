@@ -81,6 +81,67 @@ class Contracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'pre-admission'):
             held.compare(original, native, 2)
 
+    def test_jump_acceptance_requires_an_observed_queue_fall_and_landing(self):
+        original, native = receipts()
+        # Identical idle receipts establish equality, never jump admission.
+        with self.assertRaisesRegex(ValueError, 'jump lifecycle'):
+            held.compare(original, native, 2, require_jump_lifecycle=True)
+
+    def test_jump_lifecycle_reports_complete_cycles_and_rejects_missing_stages(self):
+        original, native = receipts()
+        template = copy.deepcopy(original['observations'][0])
+        original['observations'] = []
+        for i in range(5):
+            row = copy.deepcopy(template)
+            row.update(frame=10 + i, clock_scale=i * 512, input_state={'space': i == 1})
+            row['player'].update(queued=int(i == 1), falling=int(i == 2))
+            row['player']['position_q8'][1] = -256 if i in (1, 2) else 0
+            original['observations'].append(row)
+        original['steps'] = [dict(frame=10 + i, frame_scale=512,
+                                  input_state={'space': i == 0}) for i in range(4)]
+        original['boundaries'] = [dict(copy.deepcopy(original['observations'][0]),
+                                       input_state={'space': True}),
+                                  copy.deepcopy(original['observations'][-1])]
+        original['input_edges'] = [dict(copy.deepcopy(original['observations'][1]),
+                                        input_state={'space': False})]
+        template = copy.deepcopy(native['boundaries'][0])
+        native['boundaries'] = []
+        for i in range(6):
+            row = copy.deepcopy(template)
+            scale = 512 + i * 512
+            row.update(after_updates=i, update=20 + i, elapsed_scale=scale,
+                       game_seconds=scale / 3072,
+                       key='Space' if i in (1, 2) else None,
+                       action='press' if i == 1 else 'release' if i == 2 else None)
+            player = original['observations'][max(0, i - 1)]['player']
+            actor = row['player']['actors'][0]
+            actor['spatial']['effective']['position'] = player['position_q8'][:]
+            actor['control'].update(queued_motion=player['queued'], falling_state=player['falling'])
+            native['boundaries'].append(row)
+        result = held.compare(original, native, 4, require_jump_lifecycle=True)
+        self.assertEqual(result['jump_lifecycle'],
+                         {'queued_at': [1], 'falling_at': [2], 'landed_at': [3]})
+        grounded = copy.deepcopy(original)
+        for row in grounded['observations'] + grounded['input_edges'] + grounded['boundaries']:
+            row['player']['position_q8'][1] = 0
+        with self.assertRaisesRegex(ValueError, 'jump lifecycle: no observed airborne lift'):
+            held.compare(grounded, native, 4, require_jump_lifecycle=True)
+        for field in ('queued', 'falling'):
+            damaged = copy.deepcopy(original)
+            for row in damaged['observations'] + damaged['input_edges'] + damaged['boundaries']:
+                row['player'][field] = 0
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'jump lifecycle'):
+                held.compare(damaged, native, 4, require_jump_lifecycle=True)
+
+    def test_jump_lifecycle_rejects_unfinished_flight(self):
+        original, native = receipts()
+        for row in original['observations'][1:]:
+            row['player']['queued'] = 1
+        original['input_edges'][0]['player']['queued'] = 1
+        original['boundaries'][-1]['player']['queued'] = 1
+        with self.assertRaisesRegex(ValueError, 'jump lifecycle: incomplete'):
+            held.compare(original, native, 2, require_jump_lifecycle=True)
+
     def test_incomplete_native_is_rejected(self):
         original, native = receipts()
         native["boundaries"].pop()
@@ -124,6 +185,12 @@ class Contracts(unittest.TestCase):
                        "--native", str(captured), "--updates", "2", "--out", str(output)]
             subprocess.run(command, check=True, capture_output=True)
             self.assertEqual(json.loads(output.read_text())["matched_boundaries"], 3)
+            idle = subprocess.run(command + ['--require-jump-lifecycle'],
+                                  capture_output=True, text=True)
+            self.assertNotEqual(idle.returncode, 0)
+            self.assertIn('jump lifecycle', idle.stderr)
+            self.assertFalse(output.exists())
+            self.assertEqual(json.loads(output.with_suffix('.raw.json').read_text()), native)
             native["boundaries"].pop()
             captured.write_text(json.dumps(native))
             failed = subprocess.run(command, capture_output=True, text=True)

@@ -1269,12 +1269,20 @@ provenance with the capture. No original memory layout is shipped with this driv
 
 ```sh
 python3 dev/scripts/native-held-jump.py --addr 127.0.0.1:7117 \
-  --original ORIGINAL/held.json --updates 32 --out NATIVE/accepted.json
+  --original ORIGINAL/held.json --updates 32 --require-jump-lifecycle --out NATIVE/accepted.json
 # Recheck finalized receipts without launching either game:
 python3 dev/scripts/native-held-jump.py --native NATIVE/accepted.raw.json \
-  --original ORIGINAL/held.json --updates 32 --out NATIVE/rechecked.json
+  --original ORIGINAL/held.json --updates 32 --require-jump-lifecycle --out NATIVE/rechecked.json
 python3 dev/scripts/test-native-held-jump.py
 ```
+
+For standing-jump acceptance, `--require-jump-lifecycle` also requires an observed
+queued start, airborne lift, falling handoff and completed landing. It reports the
+update offsets for each cycle, including repeats while the key remains held.
+An identical all-idle pair is an equality control, not jump acceptance. Missing
+stages or an unfinished cycle fail and remove any stale acceptance summary. This
+is admission for the bounded standing-jump fixture, not a general validator for
+falls from ledges, swimming or scripted jumps.
 
 For a directional input comparison, choose both key names from the installed
 binding and pass `--allow-displacement` to permit a different final position:
