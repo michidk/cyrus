@@ -307,3 +307,18 @@ are guest policy. This optional appearance is not original engine behavior.
 The host supplies scene-lit owned meshes and cleanup. This base has raster Modern
 lighting; ray-traced grass stand-ins are unavailable. The shared geometry shader
 library follows the existing first-active-mod shader replacement rule.
+## Audio resampling
+
+**Unknown:** the original game's reconstruction filter. Faithful keeps the
+existing linear backend conversion without claiming waveform parity. Modern
+`audio_resampling` uses Rubato's 24-tap Hann-windowed sinc when increasing a source
+rate to the output rate. It filters the reconstructed signal while retaining its
+source duration and channel ordering. It cannot recover detail absent from the
+recording. Filter length, window and phase resolution are Modern design choices.
+
+Select Audio resampling independently of Music in the backtick debug menu, or set
+`audio_resampling` through the fidelity control port. New source spans use the
+selection; already playing spans retain their filter. The option covers native
+backend audio and browser streaming audio. Direct WebAudio CD music retains the
+browser's conversion. Equal-rate playback and downsampling keep their existing
+backend paths.

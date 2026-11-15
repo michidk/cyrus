@@ -4,7 +4,18 @@ Installed splash/title presentation, the book menu and settings, cinematic playb
 world-entry loading, and the installed logbook reader. Book motion and helpers remain internal.
 The book is a real 3D scene: its models are meshes under a perspective camera that renders into the
 640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
-Page text, widgets and pictures are painted on the CPU into the page textures. Backtick Flycam also flies
+Page text, widgets and pictures are painted on the CPU into the page textures.
+Book texture filtering operates on encoded eight-bit channels, before display
+conversion, using the same raw-texture material as the other installed model views.
+[Preservation PR #334](https://github.com/michidk/redguard-preservation/pull/334)
+clarifies the menu application of the encoded-channel filtering rule in release 0.12.5.
+Book sampling quantizes fractional texture coordinates to four bits and floors
+each horizontal and vertical channel interpolation, following the released
+[software-Voodoo filter rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md).
+**Verified:** book fragments also apply the released [ordered RGB565 framebuffer rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/fog.md#integer-precision-and-framebuffer-dithering)
+before display conversion. Merged [preservation PR #335](https://github.com/michidk/redguard-preservation/pull/335)
+records its book application; the generic arithmetic is already in release 0.12.5.
+Other lit model views retain their existing filtering and framebuffer paths. Backtick Flycam also flies
 this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
@@ -58,7 +69,7 @@ into cyrus-audio before `ApplyPreferences`. Preferences still persist before the
 apply. Keep `ApplyPreferences -> AnimationSystems -> PlayCues`; rendering hosts
 own the optional listener pose. Cinematic entities carry audio's `CinematicAudio`
 marker so CD music pauses during playback. Native media workers and browser
-cooperative decoding retain their cancellation, seeking and menu-return behavior. Native video workers retain indexed delta-decoded frames and their palettes in a bounded queue. The audio-owned movie clock selects the due picture before tiled expansion; obsolete pictures do not accumulate raster work. Catch-up retains frame ordinals and the sample-exact seek origin.
+cooperative decoding retain their cancellation, seeking and menu-return behavior. Browser terminal PCM duration validation precedes clock admission, so a rejected packet cannot extend or complete the accepted audio horizon. Native video workers retain indexed delta-decoded frames and their palettes in a bounded queue. The audio-owned movie clock selects the due picture before tiled expansion; obsolete pictures do not accumulate raster work. Catch-up retains frame ordinals and the sample-exact seek origin.
 
 Run `cargo test -p cyrus-startup` for startup, motion, raster, settings, movie and
 loading contracts. Runtime checks require native/browser startup, menu, movie,
@@ -180,7 +191,7 @@ setting applies to cinematics; saved Sound preferences apply to shared
 effects and CD music, and native speech. Browser CD tracks use exported WAV files and
 installed world assignments; native playback reads the CD image. Book motion and
 direction/capture feedback dispatch installed effects through the shared native/browser sound path. Enter-activated settings toggles emit adjustment feedback only after a successful save, following
-preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
+preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34). The installed-menu input regression covers Sound and Music slider endpoint changes, clamping without extra feedback, and failed persistence without applying a change or emitting feedback. This checks menu dispatch and saved state; it does not establish audible output parity.
 **Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
 rebinding, lighting and camera-plane clipping remain unsupported. Escape in a world opens the book (`MenuContext::InGame`) only with SYSTEM.INI `final_version`. Entering the book from gameplay captures a
 256x192 centre-cropped `GameplayThumbnail` for the book and for slot saves; leaving the book discards it. Entering the book from gameplay (pause or death) also stops every sound channel, as the original's book entry does; ambient loops restart from their scripts when play resumes. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
@@ -253,3 +264,32 @@ Reader paper glyphs obey the shared opaque-alpha boundary: style alpha 254 or
 installed headless `LogbookPlugin` regression checks the published image at all
 three boundary values. The rule is documented in preservation
 [subtitle glyphs](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/subtitles.md#glyphs).
+
+A failed destination loading-artwork or required book-cache request leaves the current player intact and reports the failing asset. After repairing the cache, repeating `WorldLoadRequest` retries that load instead of retaining its failed handle. The installed-artwork and book-cache regressions exercise both failure/retry paths and check the selected full raster and player replacement.
+
+For a production book-filter regression, use `dev/scripts/check-book-filter.py prepare`
+to create two disposable `menu/book.menu` cache files from an exported cache, one
+with `--inverse`. Render each through the native or browser application at the
+same settled pose. `compare FIRST.png SECOND.png --four-bit --rectangle LEFT TOP RIGHT BOTTOM`
+checks complementary encoded channels on a textured region without text or
+transparency. It rejects the brighter midpoint produced by filtering sRGB
+textures in linear light. Keep the install read-only and restore the original
+cache after this synthetic control. Run `test-check-book-filter.py` with Pillow
+for CLI passing and wrong-domain controls.
+
+Use `prepare --horizontal` for a one-axis black/white stripe fixture. The
+`sample-grid IMAGE.png --rectangle LEFT TOP RIGHT BOTTOM` command checks the
+exact encoded levels produced by four-bit interpolation. It rejects both
+continuous interpolation and a point-sampled image without fractional levels.
+The complementary checkerboard check uses an explicit two-floor bound with
+`--four-bit`; its continuous-filter rounding bound remains separate.
+
+For the final book framebuffer regression, `dev/scripts/check-book-framebuffer.py prepare`
+writes a constant-colour disposable cache. Render that cache through the production
+application, then use `check CAPTURE --colour R G B --rectangle LEFT TOP RIGHT BOTTOM`
+on unpainted geometry at native 640×480. The checker verifies every ordered-dither
+phase and the expanded RGB565 channels. It rejects full-precision output and a
+reversed threshold phase. Restore the original cache afterward. Run
+`test-check-book-framebuffer.py` with Pillow for its command-line controls.
+The earlier complementary and stripe controls describe the intermediate filtering
+output; they do not admit final framebuffer captures after RGB565 storage.

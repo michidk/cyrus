@@ -1,4 +1,5 @@
 //! Active authored object lights and quantized distance tables for model shaders.
+use anyhow::{Result, ensure};
 use bevy::ecs::system::SystemParam;
 use bevy::{
     asset::RenderAssetUsages,
@@ -97,6 +98,39 @@ fn selected(lights: &[LocalLight], origin: [i32; 2]) -> Vec<&LocalLight> {
 /// Texels per light table row: eight floats of four bytes each.
 pub(crate) const LIGHT_TABLE_WIDTH: u32 = 8;
 
+/// Validate the packed table before publishing a prepared model material.
+/// The table is an eight-texel RGBA8 byte encoding, not a color texture.
+pub(crate) fn validate_light_table(image: &Image) -> Result<()> {
+    let descriptor = &image.texture_descriptor;
+    ensure!(
+        descriptor.dimension == TextureDimension::D2
+            && descriptor.format == TextureFormat::Rgba8Unorm
+            && descriptor.size.width == LIGHT_TABLE_WIDTH
+            && descriptor.size.height >= 256
+            && descriptor.size.depth_or_array_layers == 1
+            && descriptor.mip_level_count == 1
+            && descriptor.sample_count == 1,
+        "expected single-layer, single-mip 8-by-(256+lights) Rgba8Unorm image of float bytes",
+    );
+    let data = image
+        .data
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("CPU image bytes unavailable"))?;
+    ensure!(
+        data.len() % 32 == 0 && data.len() / 32 == descriptor.size.height as usize,
+        "light image byte length does not match dimensions"
+    );
+    ensure!(
+        data[256 * 32..]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|bytes| f32::from_le_bytes(*bytes).is_finite()),
+        "non-finite light image row"
+    );
+    Ok(())
+}
+
 /// The light table the model shader reads: 256 square-root rows, then one row per light, each row
 /// eight little-endian 32-bit floats. Every float is one RGBA8 texel of its four bytes, because
 /// bindless materials only bind filterable textures; the shader reassembles the exact bits.
@@ -165,7 +199,10 @@ impl RuntimeLights {
         images: &mut Assets<Image>,
     ) -> Handle<Image> {
         let origin = region(target);
-        if self.previous != Some((source, origin)) || self.previous_lights != lights {
+        if self.previous != Some((source, origin))
+            || self.previous_lights != lights
+            || !images.contains(&self.image)
+        {
             let image = texture(&selected(lights, origin));
             self.previous_lights = lights.to_vec();
             if let Some(mut old) = images.get_mut(&self.image) {

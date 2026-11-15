@@ -19,9 +19,13 @@ import threading
 import subprocess
 import sys
 import time
+import wave
 
 reader, events_path, seconds = sys.argv[1], sys.argv[2], float(sys.argv[3])
 events = json.load(open(events_path))
+minimum_audio_seconds = float(os.environ.get("CYRUS_CAPTURE_MIN_AUDIO_SECONDS", "0"))
+if not math.isfinite(minimum_audio_seconds) or minimum_audio_seconds < 0:
+    raise SystemExit("minimum WAV duration must be finite and nonnegative")
 env = {**os.environ, "DISPLAY": ":1"}
 capture_dir = Path(os.environ.get("CYRUS_CAPTURE_DIR", "/game/capture"))
 startup_capture = os.environ.get("CYRUS_CAPTURE_STARTUP") == "1"
@@ -83,6 +87,7 @@ else:
 required_hook = os.environ.get("CYRUS_REQUIRE_HOOK_ACK") == "1"
 if required_hook and not os.path.exists("/tmp/hook.py"):
     raise SystemExit("observed emission capture requires a hook")
+existing_recordings = set(capture_dir.glob("*.wav"))
 toggle_recorder()
 start = time.time()
 epoch = time.monotonic()
@@ -204,6 +209,32 @@ if hook_capture:
         timeline["hook"] = json.loads((capture_dir / "hook-result.json").read_text())
     finally:
         hook_capture.close()
+try:
+    recordings = set(capture_dir.glob("*.wav")) - existing_recordings
+    if len(recordings) != 1:
+        raise ValueError(f"expected one new WAV recording, found {len(recordings)}")
+    recording = recordings.pop()
+    with wave.open(str(recording), "rb") as audio:
+        frames = audio.getnframes()
+        width = audio.getsampwidth()
+        channels = audio.getnchannels()
+        if frames <= 0:
+            raise ValueError("WAV recording contains no sample frames")
+        remaining = frames
+        while remaining:
+            count = min(remaining, 65536)
+            if len(audio.readframes(count)) != count * width * channels:
+                raise ValueError("WAV recording has truncated sample frames")
+            remaining -= count
+        required_frames = math.ceil(minimum_audio_seconds * audio.getframerate())
+        if frames < required_frames:
+            raise ValueError(f"WAV interval incomplete: retained {frames} frames, required {required_frames}")
+        timeline["audio"] = {"file": recording.name, "frames": frames,
+                             "sample_rate": audio.getframerate(),
+                             "channels": channels, "sample_width": width}
+except (OSError, EOFError, wave.Error, ValueError) as error:
+    timeline["audio_error"] = str(error)
+    hook_error = f"WAV capture failed: {error}" + (f"; {hook_error}" if hook_error else "")
 print(json.dumps(timeline))
 if hook_error:
     raise SystemExit(hook_error)

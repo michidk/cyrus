@@ -71,15 +71,20 @@ Use the folder containing `RGFX.EXE` for `--install`. Open
 Stop the server with Ctrl+C.
 
 Startup always shows a local folder picker and an expandable install-service URL
-field. All browsers use a directory file input. Choose the main GOG folder
-containing the game, DOSBOX and disc files. Selected files remain local and are
-never uploaded. The browser grants access only to that folder and its descendants.
+field. All browsers use a directory file input. Choose the folder containing the
+installation and its GOG support files or sibling CDROM and Soundtrack folders.
+Selected files remain local and are never uploaded. The browser grants access only to that folder and its descendants.
 Select the folder again after reload or navigation between game and viewer.
 
 The picker reports cancellation, validation failures and application preparation.
 Companion files are discovered throughout the selected folder, including nested
 GOG support directories. Local selection remembers only the preference `local`,
 not the files.
+
+CD media uses the same paths as the native catalog and install server. Selection
+requires RGFX.EXE, fxart and maps; operation-specific missing media errors are
+reported during preparation rather than rejecting the entire install. Full game
+startup still requires the splash DLL.
 
 URL `install`, the server default and the saved URL prefill the server field in
 that order; none starts loading automatically. `?install=local` leaves it empty.

@@ -42,7 +42,11 @@ def original_files(install):
                 if not match or int(match[1]) == 0:
                     continue
                 name = f"track{int(match[1]) + 1:02}.mp3"
-            paths[f"disc/{name}"] = path
+            alias = f"disc/{name}"
+            existing = next((key for key in paths if key.lower() == alias.lower()), None)
+            if existing is not None:
+                raise ValueError(f"{alias}: conflicting media files {paths[existing]} and {path}")
+            paths[alias] = path
     for path in (install / "glide2x_emu.ovl", install.parent / "DOSBOX/glide2x_emu.ovl"):
         if path.is_file():
             paths["splash/glide2x_emu.ovl"] = path

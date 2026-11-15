@@ -80,6 +80,9 @@ pub fn prepare_scene_materials(
         let Some(mesh) = world.get::<Mesh3d>(entity) else {
             continue;
         };
+        let original = meshes
+            .get(&mesh.0)
+            .with_context(|| format!("replacement mesh {entity:?} asset absent"))?;
         let handle = world
             .get::<MeshMaterial3d<StandardMaterial>>(entity)
             .with_context(|| format!("replacement mesh {entity:?} lacks original material"))?;
@@ -157,9 +160,7 @@ pub fn prepare_scene_materials(
                 prepare_model_geometry(
                     environment,
                     base,
-                    meshes
-                        .get(&mesh.0)
-                        .context("replacement model mesh absent")?,
+                    original,
                     &extras.value,
                     world
                         .get::<GltfMaterialExtras>(entity)
@@ -284,10 +285,12 @@ pub fn validate_scene_materials(world: &World, roots: &[Entity]) -> Result<()> {
                 let material = models
                     .get(&handle.0)
                     .context("prepared model material disappeared")?;
-                ensure!(
-                    images.contains(&material.extension.lights),
-                    "prepared model light image disappeared"
-                );
+                let lights = images
+                    .get(&material.extension.lights)
+                    .context("prepared model light image disappeared")?;
+                crate::lighting::runtime::validate_light_table(lights).with_context(|| {
+                    format!("prepared mesh {entity:?} model light image invalid")
+                })?;
                 &material.base
             }
             (None, Some(handle)) => {

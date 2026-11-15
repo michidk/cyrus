@@ -620,7 +620,7 @@ fn handle(
                 if audio
                     .speech
                     .as_ref()
-                    .is_some_and(|s| s.0.contains_key(&label))
+                    .is_some_and(|s| s.get(&label).is_some())
                 {
                     audio
                         .requests
@@ -1716,6 +1716,41 @@ mod tests {
         assert!(!response.ok);
         assert!(response.error.unwrap().contains("PCM"));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn speech_command_admits_uppercase_installed_labels() {
+        let mut app = app();
+        app.init_resource::<cyrus_audio::sound::Speech>()
+            .add_message::<cyrus_audio::sound::SoundRequest>();
+        app.world_mut()
+            .resource_mut::<cyrus_audio::sound::Speech>()
+            .0
+            .insert(
+                "cisw".into(),
+                cyrus_assets::sound::VoiceClip {
+                    audio: Handle::default(),
+                    bits_per_sample: 8,
+                    base_volume: 127,
+                    seconds: 2.5,
+                    text: "description".into(),
+                },
+            );
+        let result = run_commands(
+            &mut app,
+            vec![Command::PlaySpeech {
+                label: "CISW".into(),
+            }],
+        );
+        assert_eq!(result[0]["label"], "CISW");
+        let requests = app
+            .world_mut()
+            .resource_mut::<Messages<cyrus_audio::sound::SoundRequest>>()
+            .drain()
+            .collect::<Vec<_>>();
+        assert!(
+            matches!(requests.as_slice(), [cyrus_audio::sound::SoundRequest::Speech(label)] if label == "CISW")
+        );
     }
 
     fn run_commands(app: &mut App, commands: Vec<Command>) -> Vec<serde_json::Value> {

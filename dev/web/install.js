@@ -76,7 +76,7 @@ export async function chooseInstall() {
   folderInput.multiple = true;
   folderInput.hidden = true;
   const localHelp = document.createElement("p");
-  localHelp.textContent = "Choose your main GOG Redguard folder. Cyrus searches its subfolders for the game and support files. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
+  localHelp.textContent = "Choose your Redguard game folder, including any CDROM or Soundtrack folders beside the installation. Cyrus searches its subfolders for the game and support files. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
   const server = document.createElement("details");
   const summary = document.createElement("summary");
   summary.textContent = "Connect to a game-file server instead";
@@ -139,7 +139,7 @@ export async function chooseInstall() {
         : failure.message;
     }
     folder.addEventListener("click", () => {
-      busy(true, "Choose your main GOG Redguard folder in the browser dialog.");
+      busy(true, "Choose your Redguard game folder in the browser dialog.");
       folderInput.value = "";
       folderInput.click();
     });

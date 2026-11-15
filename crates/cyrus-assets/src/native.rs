@@ -66,7 +66,7 @@ impl Files {
                 paths.insert(relative, item.into_path());
             }
         }
-        add_disc_images(&install.root, &mut paths);
+        add_disc_images(&install.root, &mut paths)?;
         overlay_folders(&mut paths, overlays)?;
         let patched = patch_ini_files(&paths, ini_patches)?;
         let mut files = Vec::new();
@@ -135,7 +135,7 @@ fn patch_ini_files(
     Ok(patched)
 }
 /// Adds the disc images and the splash files that sit beside the install folder.
-fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) {
+fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) -> Result<()> {
     if let Some(parent) = root.parent() {
         for name in ["game.gog", "game.ins"] {
             let path = parent.join(name);
@@ -162,7 +162,18 @@ fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) {
                 .filter(|entry| entry.path().is_file())
             {
                 if let Some(name) = disc_name(&entry.file_name().to_string_lossy()) {
-                    paths.insert(format!("disc/{name}"), entry.path());
+                    let alias = format!("disc/{name}");
+                    if let Some((_, existing)) = paths
+                        .iter()
+                        .find(|(path, _)| path.eq_ignore_ascii_case(&alias))
+                    {
+                        anyhow::bail!(
+                            "{alias}: conflicting media files {} and {}",
+                            existing.display(),
+                            entry.path().display()
+                        );
+                    }
+                    paths.insert(alias, entry.path());
                 }
             }
         }
@@ -190,6 +201,7 @@ fn add_disc_images(root: &Path, paths: &mut BTreeMap<String, PathBuf>) {
             paths.insert("splash/3DfxSpl2.dll".into(), path);
         }
     }
+    Ok(())
 }
 
 /// Replaces or adds the files of each overlay folder; the first folder holding a path wins.

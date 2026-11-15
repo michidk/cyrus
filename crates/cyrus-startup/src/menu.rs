@@ -1212,7 +1212,7 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn installed_settings_activation_emits_one_adjustment_cue_after_save() {
+    fn installed_settings_input_emits_adjustment_cues_only_for_saved_changes() {
         use cyrus_game::preferences::{PreferenceKey, PreferenceStore, Preferences};
         struct Store(bool);
         impl PreferenceStore for Store {
@@ -1238,11 +1238,18 @@ mod tests {
         cyrus_assets::startup::export_menu(&install, &cache).unwrap();
         let book: MenuAsset =
             serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
-        for (page, action, fail) in [
-            (5, 504, false),
-            (5, 505, false),
-            (6, 603, false),
-            (6, 603, true),
+        for (page, action, key, initial, expected, fail) in [
+            (5, 504, KeyCode::Enter, 0, 1, false),
+            (5, 505, KeyCode::Enter, 1, 0, false),
+            (6, 603, KeyCode::Enter, 0, 1, false),
+            (6, 603, KeyCode::Enter, 0, 0, true),
+            (6, 601, KeyCode::ArrowRight, 19, 20, false),
+            (6, 601, KeyCode::ArrowRight, 20, 20, false),
+            (6, 601, KeyCode::ArrowLeft, 1, 0, false),
+            (6, 601, KeyCode::ArrowLeft, 0, 0, false),
+            (6, 602, KeyCode::ArrowRight, 19, 20, false),
+            (6, 602, KeyCode::ArrowLeft, 1, 0, false),
+            (6, 602, KeyCode::ArrowRight, 19, 19, true),
         ] {
             let mut app = App::new();
             app.add_plugins((
@@ -1283,12 +1290,17 @@ mod tests {
                 assert!(menu.ready, "{:?}", menu.unavailable);
                 menu.selected = menu.entries.iter().position(|entry| entry.action == action);
                 assert!(menu.selected.is_some());
-                menu.preferences.as_ref().unwrap().values[&action]
+                menu.preferences
+                    .as_mut()
+                    .unwrap()
+                    .values
+                    .insert(action, initial);
+                initial
             };
             app.world_mut().resource_mut::<Messages<SoundCue>>().clear();
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
-                .press(KeyCode::Enter);
+                .press(key);
             app.update();
             assert_eq!(
                 app.world()
@@ -1297,7 +1309,7 @@ mod tests {
                     .as_ref()
                     .unwrap()
                     .values[&action],
-                if fail { old } else { 1 - old }
+                expected
             );
             let cues: Vec<_> = app
                 .world_mut()
@@ -1306,10 +1318,10 @@ mod tests {
                 .collect();
             assert_eq!(
                 cues.len(),
-                usize::from(!fail),
-                "action {action} feedback must follow save success"
+                usize::from(expected != old),
+                "action {action}, {key:?}, initial {initial}: feedback must follow a saved change"
             );
-            if fail {
+            if expected == old {
                 continue;
             }
             assert!(matches!(

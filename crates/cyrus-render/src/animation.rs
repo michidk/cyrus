@@ -171,7 +171,7 @@ pub(crate) fn apply_poses(
             let Ok((_, pose)) = nodes.get(bound.node) else {
                 continue;
             };
-            if bound.frame == pose.frame {
+            if bound.frame == pose.frame && meshes.contains(mesh.0.id()) {
                 continue;
             }
             let Some(animation) = animation else {
@@ -186,6 +186,12 @@ pub(crate) fn apply_poses(
                 });
             match result {
                 Ok(frame) => {
+                    if !meshes.contains(mesh.0.id()) {
+                        let Some(original) = meshes.get(&bound.original).cloned() else {
+                            continue;
+                        };
+                        mesh.0 = meshes.add(original);
+                    }
                     if let Some(mut private) = meshes.get_mut(&mesh.0) {
                         private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
                         private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);

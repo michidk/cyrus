@@ -99,6 +99,7 @@ pub(crate) fn track_pcm(
 
 /// The CD audio track a ripped soundtrack file holds: `NN Track N.mp3` is track NN+1,
 /// because CD track 1 is data. shortcut: only this naming is recognised; add others when an edition needs them.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub(crate) fn soundtrack_track(file_name: &str) -> Option<u32> {
     let name = file_name.to_ascii_lowercase();
     let number: u32 = name.strip_suffix(".mp3")?.get(..2)?.parse().ok()?;
@@ -108,43 +109,44 @@ pub(crate) fn soundtrack_track(file_name: &str) -> Option<u32> {
 /// Decodes a 44.1 kHz stereo MP3 to the interleaved 16-bit little-endian PCM a CD track holds.
 fn mp3_pcm(bytes: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     use symphonia::core::{
-        audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions,
-        io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
+        codecs::audio::AudioDecoderOptions,
+        formats::{FormatOptions, TrackType, probe::Hint},
+        io::MediaSourceStream,
+        meta::MetadataOptions,
     };
     let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
-    let options = FormatOptions {
-        enable_gapless: true,
-        ..Default::default()
-    };
-    let mut format = symphonia::default::get_probe()
-        .format(
-            Hint::new().with_extension("mp3"),
-            stream,
-            &options,
-            &MetadataOptions::default(),
-        )?
-        .format;
-    let params = format
-        .default_track()
-        .context("no audio stream")?
+    let mut format = symphonia::default::get_probe().probe(
+        Hint::new().with_extension("mp3"),
+        stream,
+        FormatOptions::default(),
+        MetadataOptions::default(),
+    )?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .context("no audio stream")?;
+    let track_id = track.id;
+    let params = track
         .codec_params
-        .clone();
+        .as_ref()
+        .and_then(|params| params.audio())
+        .context("missing audio codec parameters")?;
     anyhow::ensure!(
-        params.sample_rate == Some(RED_BOOK_RATE) && params.channels.map(|c| c.count()) == Some(2),
+        params.sample_rate == Some(RED_BOOK_RATE)
+            && params.channels.as_ref().map(|c| c.count()) == Some(2),
         "not 44.1 kHz stereo"
     );
-    let mut decoder = symphonia::default::get_codecs().make(&params, &DecoderOptions::default())?;
+    let mut decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(params, &AudioDecoderOptions::default().gapless(true))?;
     let mut pcm = Vec::new();
-    loop {
-        let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e.into()),
-        };
+    let mut samples = Vec::<i16>::new();
+    while let Some(packet) = format.next_packet()? {
+        if packet.track_id != track_id {
+            continue;
+        }
         let decoded = decoder.decode(&packet)?;
-        let mut samples = SampleBuffer::<i16>::new(decoded.capacity() as u64, *decoded.spec());
-        samples.copy_interleaved_ref(decoded);
-        pcm.extend(samples.samples().iter().flat_map(|s| s.to_le_bytes()));
+        samples.resize(decoded.samples_interleaved(), 0);
+        decoded.copy_to_slice_interleaved(&mut samples);
+        pcm.extend(samples.iter().flat_map(|s| s.to_le_bytes()));
     }
     Ok(pcm)
 }
@@ -196,11 +198,19 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
 pub fn read_track(source: &Path, track: u32) -> Result<Vec<u8>, String> {
     let context = |e: &dyn std::fmt::Display| format!("{} track {track}: {e}", source.display());
     let pcm = if source.is_dir() {
-        let file = std::fs::read_dir(source)
+        let mut files = std::fs::read_dir(source)
             .map_err(|e| context(&e))?
             .filter_map(Result::ok)
-            .find(|entry| soundtrack_track(&entry.file_name().to_string_lossy()) == Some(track))
-            .ok_or_else(|| context(&"no soundtrack MP3"))?;
+            .filter(|entry| entry.path().is_file())
+            .filter(|entry| soundtrack_track(&entry.file_name().to_string_lossy()) == Some(track));
+        let file = files.next().ok_or_else(|| context(&"no soundtrack MP3"))?;
+        if let Some(other) = files.next() {
+            return Err(context(&format!(
+                "multiple soundtrack MP3 files: {} and {}",
+                file.path().display(),
+                other.path().display()
+            )));
+        }
         let bytes = std::fs::read(file.path()).map_err(|e| context(&e))?;
         mp3_pcm(bytes).map_err(|e| context(&e))?
     } else {

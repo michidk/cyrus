@@ -13,8 +13,9 @@ for (const prefix of ['', 'GOG/', 'Games/Redguard/app/', 'İstanbul/Games/']) {
 }
 assert.ok(localInstall(entries.map(([path, file]) => [path.toUpperCase(), file])).files.has('disc/game.gog'));
 assert.throws(() => localInstall([]), /No Redguard/);
-assert.throws(() => localInstall(entries.filter(([path]) => path.startsWith('Redguard/'))), /main GOG Redguard folder/);
-assert.throws(() => localInstall(entries.filter(([path]) => path !== 'game.gog')), /game.gog/);
+assert.ok(localInstall(entries.filter(([path]) => path.startsWith('Redguard/'))).files.has('RGFX.EXE'),
+  'base install selection does not require optional GOG media');
+assert.ok(localInstall(entries.filter(([path]) => path !== 'game.gog')).files.has('disc/game.ins'));
 assert.throws(() => localInstall([...entries, ['redguard/rgfx.exe', new File([], 'duplicate')]]), /Duplicate/);
 assert.throws(() => localInstall([...entries, ['../secret', new File([], 'secret')]]), /Invalid/);
 assert.throws(() => localInstall([...entries, ...entries.map(([path, file]) => ['Other/' + path, file])]), /just one/);
@@ -28,3 +29,26 @@ assert.ok(localInstall(scattered).files.has('splash/3DfxSpl2.dll'), 'search all 
 assert.throws(() => localInstall([...nestedSupport, ['backup/3DfxSpl2.dll', new File([], '3DfxSpl2.dll')]]),
   /Multiple copies/, 'do not silently choose among ambiguous support files');
 console.log('Nested GOG support directories, flat installations and ambiguous companions passed');
+
+const cd = ['Redguard/RGFX.EXE', 'Redguard/fxart/TEXBSI.001', 'Redguard/maps/START.RGM',
+  'Redguard/SOUND/test.sfx', 'Redguard/ENGLISH.RTX', 'CDROM/INTRO.SMK',
+  'Soundtrack/01 Track 1.mp3', 'Soundtrack/02 Track 2.MP3', 'Soundtrack/cover.jpg']
+  .map(path => [path, new File(['test'], path.split('/').at(-1))]);
+for (const prefix of ['', 'Games/CD/', 'İstanbul/']) {
+  const { files } = localInstall(cd.map(([path, file]) => [prefix + path, file]));
+  for (const [name, index] of [['disc/INTRO.SMK', 5], ['disc/track02.mp3', 6], ['disc/track03.mp3', 7]]) {
+    assert.equal(files.get(name), cd[index][1], 'retain original media File handles');
+  }
+  assert.equal(files.get('SOUND/test.sfx'), cd[3][1], 'retain installed speech/effects');
+  assert.ok(!files.has('disc/cover.jpg'));
+  assert.ok(!files.has('disc/game.gog'), 'CD selection does not borrow GOG files');
+}
+assert.ok(localInstall(cd.map(([path, file]) => [path.toUpperCase(), file])).files.has('disc/track02.mp3'));
+console.log('CD companion mapping and base installs without optional GOG media passed');
+
+assert.throws(() => localInstall([...cd, ['Redguard/disc/INTRO.SMK', new File([], 'conflict')]]), /Conflicting/);
+assert.throws(() => localInstall([...cd, ['Soundtrack/01 Other.mp3', new File([], 'ambiguous')]]), /Conflicting/);
+const unrelated = ['backup/CDROM/OTHER.SMK', 'backup/Soundtrack/03 Track 3.mp3']
+  .map(path => [path, new File([], path.split('/').at(-1))]);
+assert.ok(!localInstall([...cd, ...unrelated]).files.has('disc/OTHER.SMK'));
+assert.ok(!localInstall([...cd, ...unrelated]).files.has('disc/track04.mp3'));

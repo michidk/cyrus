@@ -282,3 +282,28 @@ assert.equal(movie.movieError(deferredId), null, 'obsolete activation rejection 
 assert.equal(deferredContext.sources[0].stopped, undefined, 'obsolete completion cannot stop the current source');
 movie.closeMovie(deferredId);
 console.log('packet PCM: seek detaches obsolete play promise and its late failure');
+
+// Rejected terminal PCM cannot extend or complete the admitted sample horizon.
+for (const rejectedSamples of [20, 0]) {
+    const rejectedTailId = movie.openMovie('/movies/rejected-tail.smk', true, 2, .1);
+    const rejectedTailContext = contexts.at(-1);
+    movie.movieAudio(rejectedTailId, new Uint8Array(10).fill(160), 10, 1, 8, 0, false);
+    movie.movieVideoEnd(rejectedTailId, 2);
+    movie.playMovie(rejectedTailId);
+    await settle();
+    assert.throws(() => movie.movieAudio(rejectedTailId,
+        new Uint8Array(rejectedSamples).fill(160), 10, 1, 8, 10, true), /duration mismatch/);
+    assert.equal(rejectedTailContext.buffers.length, 1, 'rejected PCM must not allocate an audio buffer');
+    rejectedTailContext.currentTime = 1.5;
+    assert.equal(movie.movieTime(rejectedTailId), 1,
+        'rejected terminal PCM must not extend the admitted clock or mark it complete');
+    movie.movieAudio(rejectedTailId, new Uint8Array(10).fill(160), 10, 1, 8, 10, true);
+    movie.movieTime(rejectedTailId);
+    await settle();
+    assert.equal(rejectedTailContext.sources.at(-1).offset, 0,
+        'valid continuation after rejection must retain its first sample');
+    rejectedTailContext.currentTime = 1.75;
+    assert.equal(movie.movieTime(rejectedTailId), 1.25);
+    movie.closeMovie(rejectedTailId);
+}
+console.log('packet PCM: rejected terminal durations preserve the clock and valid continuation');

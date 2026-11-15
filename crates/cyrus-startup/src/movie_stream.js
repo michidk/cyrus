@@ -35,14 +35,15 @@ class PacketAudio {
         const samples = pcm.length / alignment;
         const start = startSample / rate;
         const end = (startSample + samples) / rate;
+        // Validate the terminal boundary before changing the admitted clock.
+        if (last && Math.abs(end - this.duration) > this.frameSeconds) {
+            throw new Error('audio: cache/header duration mismatch; re-export startup');
+        }
         // Observe exhaustion against the old boundary before admitting new PCM.
         // Otherwise an unpolled underrun becomes elapsed movie time on arrival.
         if (!this.paused) void this.currentTime;
         this.bufferEnd = Math.max(this.bufferEnd, end);
-        if (last) {
-            this.complete = true;
-            if (Math.abs(end - this.duration) > this.frameSeconds) throw new Error('audio: cache/header duration mismatch; re-export startup');
-        }
+        if (last) this.complete = true;
         if (!samples || end <= this.position) return;
         const buffer = this.context.createBuffer(channels, samples, rate);
         const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);

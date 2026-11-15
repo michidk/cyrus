@@ -1,10 +1,7 @@
 //! Read-only acquisition of the CPU image bound to a live scene material.
 use super::SceneMaterial;
 use anyhow::{Context, Result, ensure};
-use bevy::{
-    prelude::{Assets, ChildOf, Children, Entity, Image, MeshMaterial3d, Name, World},
-    render::render_resource::{TextureDimension, TextureFormat},
-};
+use bevy::prelude::{Assets, ChildOf, Children, Entity, Image, MeshMaterial3d, Name, World};
 
 /// A material binding observation, not GPU readback or a visual parity result.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -21,7 +18,7 @@ pub struct BoundSceneLightImage {
     pub generation: u64,
     /// Prepared environment path used to check the current logical owner.
     pub environment: String,
-    /// Image dimensions in texels. Each row contains two RGBA float texels.
+    /// Image dimensions in texels. Each row contains eight RGBA8 byte texels.
     pub dimensions: [u32; 2],
     /// Actual bound image descriptor format, checked before decoding.
     pub format: String,
@@ -185,31 +182,17 @@ impl BoundSceneLightImage {
 }
 
 fn decode(image: &Image) -> Result<Vec<[f32; 8]>> {
-    let descriptor = &image.texture_descriptor;
-    ensure!(
-        descriptor.dimension == TextureDimension::D2
-            && descriptor.format == TextureFormat::Rgba8Unorm
-            && descriptor.size.width == crate::lighting::runtime::LIGHT_TABLE_WIDTH
-            && descriptor.size.height >= 256
-            && descriptor.size.depth_or_array_layers == 1
-            && descriptor.mip_level_count == 1
-            && descriptor.sample_count == 1,
-        "expected single-layer, single-mip 8-by-(256+lights) Rgba8Unorm image of float bytes",
-    );
+    crate::lighting::runtime::validate_light_table(image)?;
     let data = image
         .data
         .as_deref()
         .context("CPU image bytes unavailable")?;
-    ensure!(
-        data.len() % 32 == 0 && data.len() / 32 == descriptor.size.height as usize,
-        "light image byte length does not match dimensions"
-    );
-    data[256 * 32..]
+    Ok(data[256 * 32..]
         .as_chunks::<32>()
         .0
         .iter()
         .map(|bytes| {
-            let row = std::array::from_fn(|column| {
+            std::array::from_fn(|column| {
                 let start = column * 4;
                 f32::from_le_bytes([
                     bytes[start],
@@ -217,20 +200,19 @@ fn decode(image: &Image) -> Result<Vec<[f32; 8]>> {
                     bytes[start + 2],
                     bytes[start + 3],
                 ])
-            });
-            ensure!(
-                row.iter().all(|value| value.is_finite()),
-                "non-finite light image row"
-            );
-            Ok(row)
+            })
         })
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::{asset::RenderAssetUsages, prelude::Handle, render::render_resource::Extent3d};
+    use bevy::{
+        asset::RenderAssetUsages,
+        prelude::Handle,
+        render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+    };
 
     #[test]
     fn image_rows_preserve_signed_values_and_reject_invalid_storage() -> Result<()> {

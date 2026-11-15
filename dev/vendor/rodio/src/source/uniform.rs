@@ -68,8 +68,13 @@ where
             first,
             n: span_len,
         };
-        let input =
-            SampleRateConverter::new(input, from_sample_rate, target_sample_rate, from_channels);
+        let input = SampleRateConverter::new_with_method(
+            input,
+            from_sample_rate,
+            target_sample_rate,
+            from_channels,
+            crate::conversions::resampling::default_resampling_method(),
+        );
         ChannelCountConverter::new(input, from_channels, target_channels)
     }
 }

@@ -18068,6 +18068,123 @@ fn walking_with_the_animation_system_off_still_advances_and_keeps_the_group() {
 }
 
 #[test]
+fn nonplayer_support_queries_publish_metadata_without_resetting_player_ticks() {
+    use cyrus_script::script::{OrdinaryGroundQuery, ScriptActorSource};
+    let (scripts, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let floor = world.id(0).unwrap();
+    let npc = world.id(1).unwrap();
+    if world.ordinary_collision_shape(npc).is_err() {
+        world
+            .prepare_ordinary_collision_shape(npc, &data, &scene)
+            .unwrap();
+    }
+    world.begin_player_movement_update(player, 0).unwrap();
+    let empty = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_ground(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &empty,
+                    distance: 4,
+                    sidedness: false
+                }
+            )
+            .unwrap()
+            .is_none()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"],
+        0
+    );
+    let prepared = world
+        .prepare_ordinary_collision_query(npc, &scene, &data, [10, 30], &[npc, floor])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_ground(
+                npc,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 1000,
+                    sidedness: false
+                }
+            )
+            .unwrap()
+            .is_some()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_metadata"], 6,
+        "nonplayer result must reach the active player's retained metadata"
+    );
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"], 0,
+        "nonplayer query must not reset the player timer"
+    );
+    let npc_empty = world
+        .prepare_ordinary_collision_query(npc, &scene, &data, [10, 30], &[])
+        .unwrap();
+    assert!(
+        world
+            .query_ordinary_ground(
+                npc,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &npc_empty,
+                    distance: 4,
+                    sidedness: false,
+                }
+            )
+            .unwrap()
+            .is_none()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_metadata"],
+        6
+    );
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"],
+        0
+    );
+    assert!(
+        world
+            .query_ordinary_ground(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &empty,
+                    distance: 4,
+                    sidedness: false
+                }
+            )
+            .unwrap()
+            .is_none()
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][index]["player_movement"]["support_ticks"],
+        12
+    );
+}
+
+#[test]
 fn selected_player_collision_uses_logical_pose_and_live_map_support() {
     use cyrus_collision::ground::SupportSource;
     use cyrus_script::script::{OrdinaryGroundQuery, ScriptActorSource};

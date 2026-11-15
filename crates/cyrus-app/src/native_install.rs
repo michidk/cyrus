@@ -22,15 +22,38 @@ fn remembered(path: &Path) -> anyhow::Result<Option<PathBuf>> {
         .transpose()
 }
 
+/// Explicit path, then the remembered folder if it still holds the game, then the search in
+/// [`GameInstall::locate`] (`REDGUARD_DIR`, the program's folder and the folders around it, the
+/// standard GOG folders). A remembered folder that has gone away is skipped with a warning, not an
+/// error. What the search finds is remembered for the next start.
 pub(super) fn locate(explicit: Option<&Path>, preferences: &Path) -> anyhow::Result<GameInstall> {
+    locate_using(explicit, preferences, || GameInstall::locate(None))
+}
+
+fn locate_using(
+    explicit: Option<&Path>,
+    preferences: &Path,
+    discover: impl FnOnce() -> anyhow::Result<GameInstall>,
+) -> anyhow::Result<GameInstall> {
     if let Some(path) = explicit {
         return GameInstall::resolve(path);
     }
-    if let Some(path) = remembered(preferences)? {
-        return GameInstall::resolve(&path)
-            .context("The remembered game-files folder is no longer available");
+    match remembered(preferences) {
+        Ok(Some(path)) => match GameInstall::resolve(&path) {
+            Ok(install) => return Ok(install),
+            Err(error) => bevy::log::warn!(
+                "{}: remembered game-files folder is no longer available: {error:#}",
+                preferences.display()
+            ),
+        },
+        Ok(None) => {}
+        Err(error) => bevy::log::warn!("{error:#}"),
     }
-    GameInstall::locate(None)
+    let install = discover()?;
+    if let Err(error) = remember(&install, preferences) {
+        bevy::log::warn!("{error:#}");
+    }
+    Ok(install)
 }
 
 fn remember(install: &GameInstall, preferences: &Path) -> anyhow::Result<()> {
@@ -255,27 +278,42 @@ mod tests {
         assert!(selection.confirm(&preferences).is_err());
         assert_eq!(std::fs::read(&preferences).unwrap(), saved);
         std::fs::remove_dir_all(&root).unwrap();
-        assert!(locate(None, &preferences).is_err());
+        assert!(locate_using(None, &preferences, || anyhow::bail!("no install")).is_err());
         selection.path = other.display().to_string();
         selection.confirm(&preferences).unwrap();
         assert_eq!(locate(None, &preferences).unwrap().root, other);
     }
 
     #[test]
-    fn malformed_preferences_are_reported_and_explicit_selection_can_replace_them() {
+    fn malformed_preferences_are_reported_and_discovery_can_replace_them() {
         let scratch = Scratch::new();
         let preferences = scratch.0.join("install.json");
         std::fs::write(&preferences, "broken").unwrap();
         assert!(
-            locate(None, &preferences)
+            remembered(&preferences)
                 .unwrap_err()
                 .to_string()
                 .contains("invalid saved")
         );
         let root = scratch.install("Redguard");
         assert_eq!(locate(Some(&root), &preferences).unwrap().root, root);
-        remember(&GameInstall::open(&root).unwrap(), &preferences).unwrap();
+        let found = locate_using(None, &preferences, || GameInstall::open(&root)).unwrap();
+        assert_eq!(found.root, root);
+        assert_eq!(remembered(&preferences).unwrap(), Some(root.clone()));
         assert_eq!(locate(None, &preferences).unwrap().root, root);
+    }
+
+    #[test]
+    fn missing_remembered_folder_falls_back_and_remembers_discovery() {
+        let scratch = Scratch::new();
+        let old = scratch.install("Old/Redguard");
+        let root = scratch.install("New/Redguard");
+        let preferences = scratch.0.join("install.json");
+        remember(&GameInstall::open(&old).unwrap(), &preferences).unwrap();
+        std::fs::remove_dir_all(&old).unwrap();
+        let found = locate_using(None, &preferences, || GameInstall::open(&root)).unwrap();
+        assert_eq!(found.root, root);
+        assert_eq!(remembered(&preferences).unwrap(), Some(root));
     }
 
     #[test]

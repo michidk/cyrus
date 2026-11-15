@@ -42,7 +42,12 @@ class OriginalHook(unittest.TestCase):
             reader.write_text('import pathlib,json; p=pathlib.Path(__file__).with_name("clock"); n=int(p.read_text())+1 if p.exists() else 0; p.write_text(str(n)); print(json.dumps({"counters":{"mainloop_frame":401+n},"game_seconds":n/4}))')
             (root / 'events.json').write_text('[]')
             tool = root / 'xdotool'
-            tool.write_text('#!/bin/sh\nexit 0\n'); tool.chmod(0o755)
+            tool.write_text('''#!/usr/bin/env python3
+import os, wave
+with wave.open(os.environ['CYRUS_CAPTURE_DIR']+'/capture.wav', 'wb') as output:
+    output.setparams((2, 2, 48000, 0, 'NONE', 'not compressed'))
+    output.writeframes(bytes(1920))
+'''); tool.chmod(0o755)
             result = subprocess.run([sys.executable, str(Path(__file__).with_name('original-capture-inner.py')),
                 str(reader), str(root / 'events.json'), '30'],
                 env={**os.environ, 'PATH':f"{root}:{os.environ['PATH']}", 'CYRUS_CAPTURE_DIR':str(root),

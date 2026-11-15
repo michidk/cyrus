@@ -77,7 +77,7 @@ impl Source for SamplesBuffer {
         if self.pos >= self.data.len() {
             Some(0)
         } else {
-            Some(self.data.len())
+            Some(self.data.len().saturating_sub(self.pos))
         }
     }
 
