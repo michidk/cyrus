@@ -10,6 +10,7 @@ pub mod decode;
 pub mod disc;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod ini_patch;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod install;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
