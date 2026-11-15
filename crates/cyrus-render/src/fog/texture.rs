@@ -871,7 +871,8 @@ impl TextureAnimations {
 
     /// Bind only an off-live scene forest, without advancing or replacing live timelines.
     /// Callers must keep these roots hidden until coordinated session publication.
-    /// Every mesh validates before binding components are installed.
+    /// Every mesh validates before binding components are replaced. Re-preparation retires
+    /// bindings that no longer have animation metadata; a failed attempt preserves them.
     pub fn prepare(
         world: &mut World,
         environment: AssetId<Environment>,
@@ -939,6 +940,9 @@ impl TextureAnimations {
                 })?;
             bindings.push((entity, binding));
         }
+        for entity in visited {
+            world.entity_mut(entity).remove::<(Binding, Admission)>();
+        }
         for (entity, binding) in bindings {
             let mut entity = world.entity_mut(entity);
             entity.insert(Inspected);
@@ -956,6 +960,73 @@ impl TextureAnimations {
 #[cfg(test)]
 mod preparation_tests {
     use super::*;
+
+    #[test]
+    fn repeated_preparation_retires_obsolete_bindings_and_preserves_failed_attempts()
+    -> anyhow::Result<()> {
+        use bevy::{asset::RenderAssetUsages, mesh::PrimitiveTopology};
+        for remove_extras in [false, true] {
+            let mut world = World::new();
+            world.init_resource::<Assets<Mesh>>();
+            world.init_resource::<Assets<Image>>();
+            let image = world.resource_mut::<Assets<Image>>().add(Image::default());
+            let mut mesh = Mesh::new(
+                PrimitiveTopology::TriangleList,
+                RenderAssetUsages::MAIN_WORLD,
+            );
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0, 0.0, 0.0]; 3]);
+            let mesh = world.resource_mut::<Assets<Mesh>>().add(mesh);
+            let root = world.spawn((StagedRenderRoot, Visibility::Hidden)).id();
+            let metadata = |version| GltfMaterialExtras {
+                value: serde_json::json!({"rgpre_texture_animation": {
+                    "version": version, "image_name": "A00000", "delay_ms": 142,
+                    "textures": [0, 1]
+                }})
+                .to_string(),
+            };
+            let model = world
+                .spawn((
+                    ChildOf(root),
+                    Mesh3d(mesh),
+                    metadata(1),
+                    frames::Frames(vec![image.clone(), image]),
+                    GltfExtras {
+                        value: serde_json::json!({"rgpre_admission": {
+                            "version": 1, "radius_fixed": 256,
+                            "polygons": [{"vertices": [0, 1, 2], "normal": [0.0, 0.0, 1.0]}]
+                        }})
+                        .to_string(),
+                    },
+                ))
+                .id();
+            let environment = Handle::<Environment>::default().id();
+            let initial = TextureAnimations::prepare(&mut world, environment, &[root])?;
+            assert_eq!(initial.snapshot().len(), 1);
+            let sources = initial.snapshot_sources(&world, &[root])?;
+
+            world.entity_mut(model).insert(metadata(2));
+            assert!(TextureAnimations::prepare(&mut world, environment, &[root]).is_err());
+            world.entity_mut(model).insert(metadata(1));
+            sources.validate(&initial, &world, &[root])?;
+
+            if remove_extras {
+                world.entity_mut(model).remove::<GltfMaterialExtras>();
+            } else {
+                world
+                    .entity_mut(model)
+                    .insert(GltfMaterialExtras { value: "{}".into() });
+            }
+            let replacement = TextureAnimations::prepare(&mut world, environment, &[root])?;
+            assert!(replacement.snapshot().is_empty());
+            replacement.snapshot_sources(&world, &[root])?;
+
+            world.entity_mut(model).insert(metadata(1));
+            let resumed = TextureAnimations::prepare(&mut world, environment, &[root])?;
+            assert_eq!(resumed.snapshot().len(), 1);
+            sources.validate(&resumed, &world, &[root])?;
+        }
+        Ok(())
+    }
 
     #[test]
     fn header_delay_keeps_the_observed_two_tick_waterfall_cadence() {

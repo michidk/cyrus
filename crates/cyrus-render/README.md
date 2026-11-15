@@ -391,7 +391,8 @@ Ordinary archive-model, placed-flat and terrain texture playback use preservatio
 [shared frame and admission rules](https://github.com/michidk/redguard-preservation/blob/af411516a872f56afc3b164a384ab782f824a6fe/docs/engine/texture-animation.md).
 Animated model preparation rejects missing meshes and missing polygon-admission
 provenance before publishing bindings. Geometry without texture-animation
-metadata creates no playback binding.
+metadata creates no playback binding. Successful re-preparation retires obsolete
+bindings; rejected preparation preserves the previous bindings.
 **Verified:** renderer tests cover shared deadlines, late admission advancing only
 once, retained hidden frames, authored facing and clipping before raster area.
 Terrain requests use the camera window and each triangle's face normal, then
