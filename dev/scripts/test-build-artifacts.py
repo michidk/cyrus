@@ -2,6 +2,8 @@
 """Check archive contents without compiling or reading a game install."""
 import os
 import json
+from html.parser import HTMLParser
+from urllib.parse import urlparse
 from pathlib import Path
 import shutil
 import subprocess
@@ -150,6 +152,85 @@ done
             self.assertEqual(json.loads(files["game-config/mods.json"]), {"active": []})
             self.assertEqual(files["game-config/mods/guest/mod.wasm"], b"wasm\n")
             self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{suffix or '.tar.gz'}").is_file())
+
+    def test_native_mod_bundles_reject_external_overlay_links(self):
+        self.mod_fixtures()
+        private = self.root / "private-install.txt"
+        private.write_text("local data must never enter a release")
+        link = self.root / "mods/manifest-only/files/maps/external.txt"
+        link.symlink_to(private)
+        for platform, extension in (("x86_64-unknown-linux-gnu", "tar.gz"),
+                                    ("x86_64-pc-windows-msvc", "zip")):
+            with self.subTest(platform=platform):
+                archive = self.root / f"target/artifacts/cyrus-with-mods-{platform}.{extension}"
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                archive.write_text("stale package")
+                result = subprocess.run(
+                    ["bash", "dev/scripts/build-artifacts.sh", "native-mods", platform],
+                    cwd=self.root, env=self.env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("symbolic link", result.stderr)
+                self.assertIn("game-config/mods/manifest-only/files/maps/external.txt", result.stderr)
+                self.assertFalse(archive.exists())
+                self.assertFalse(list(archive.parent.glob("package.*")))
+
+    def test_mod_bundle_delivers_launcher_beside_game_on_each_platform(self):
+        self.mod_fixtures()
+        crate = self.root / "crates/cyrus-launcher"
+        crate.mkdir()
+        (crate / "Cargo.toml").touch()
+        for platform, suffix in (
+            ("x86_64-unknown-linux-gnu", ""),
+            ("x86_64-apple-darwin", ""),
+            ("aarch64-apple-darwin", ""),
+            ("x86_64-pc-windows-msvc", ".exe"),
+        ):
+            with self.subTest(platform=platform):
+                self.build("native-mods", platform)
+                stem = self.root / f"target/artifacts/cyrus-with-mods-{platform}"
+                if suffix:
+                    with zipfile.ZipFile(str(stem) + ".zip") as archive:
+                        files = set(archive.namelist())
+                else:
+                    with tarfile.open(str(stem) + ".tar.gz") as archive:
+                        files = {m.name.removeprefix("./") for m in archive if m.isfile()}
+                        for app in ("cyrus", "cyrus-launcher"):
+                            self.assertTrue(archive.getmember(f"./{app}").mode & 0o111)
+                self.assertIn(f"cyrus{suffix}", files)
+                self.assertIn(f"cyrus-launcher{suffix}", files)
+                calls = (self.root / "cargo-calls.txt").read_text().splitlines()
+                build = [call for call in calls if call.startswith(
+                    f"build --locked --release --target {platform} ")]
+                self.assertEqual(len(build), 1)
+                self.assertIn("-p cyrus-launcher", build[0])
+
+    def test_download_page_links_complete_launcher_bundles(self):
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.hrefs = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "a":
+                    self.hrefs.extend(value for key, value in attrs if key == "href")
+
+        page = Links()
+        page.feed((Path(__file__).parents[2] / "dev/pages/index.html").read_text())
+        bundles = [url for url in page.hrefs if "/download/cyrus-with-mods-" in url]
+        self.assertEqual(len(bundles), 4)
+        self.mod_fixtures()
+        launcher = self.root / "crates/cyrus-launcher"
+        launcher.mkdir()
+        (launcher / "Cargo.toml").touch()
+        for platform in ("x86_64-unknown-linux-gnu", "x86_64-apple-darwin",
+                         "aarch64-apple-darwin", "x86_64-pc-windows-msvc"):
+            with self.subTest(platform=platform):
+                self.build("native-mods", platform)
+                extension = ".zip" if "windows" in platform else ".tar.gz"
+                name = f"cyrus-with-mods-{platform}{extension}"
+                url = f"https://github.com/michidk/cyrus/releases/latest/download/{name}"
+                self.assertIn(url, bundles)
+                self.assertTrue((self.root / "target/artifacts" / Path(urlparse(url).path).name).is_file())
 
     def test_mod_bundle_uses_inherited_build_directory(self):
         self.mod_fixtures()

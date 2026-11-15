@@ -163,16 +163,55 @@ def restore(directory, target, expected):
     return restored
 
 
+def restore_executable(directory, output, expected):
+    """Promote a completed native unit when reset interrupted the final build seal."""
+    if output.name != 'cyrus':
+        raise ValueError('native executable output must be named cyrus')
+    relative = 'debug/cyrus'
+    candidates = []
+    for unit in sorted((directory / 'units').glob('*')):
+        if not re.fullmatch(r'[0-9a-f]{64}-[0-9a-f]{64}', unit.name):
+            continue
+        record = json.loads((unit / 'record.json').read_text())
+        if (compiler_identity(record['identity']) == compiler_identity(expected)
+                and relative in record['files']):
+            candidates.append((unit, record['files'][relative]))
+    if not candidates:
+        return False
+    if len({digest for _, digest in candidates}) != 1:
+        raise ValueError('ambiguous completed native executable checkpoints')
+    unit, digest = candidates[0]
+    pack(unit)
+    with tempfile.TemporaryDirectory(dir=directory) as temporary:
+        staged = Path(temporary) / 'cyrus'
+        with tarfile.open(unit / 'files.tar.gz', 'r|gz') as archive:
+            for member in archive:
+                if member.name != relative:
+                    continue
+                if staged.exists() or not member.isfile() or not member.mode & 0o111:
+                    raise ValueError('invalid completed native executable member')
+                with archive.extractfile(member) as source, staged.open('wb') as destination:
+                    shutil.copyfileobj(source, destination)
+                os.chmod(staged, member.mode)
+        if not staged.exists() or checkpoint.digest(staged) != digest:
+            raise ValueError('corrupt completed native executable checkpoint')
+        checkpoint.store(directory, 'cyrus', staged, expected)
+    return checkpoint.restore(directory, 'cyrus', output, expected)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=('restore', 'record'))
+    parser.add_argument('operation', choices=('restore', 'record', 'restore-executable'))
     parser.add_argument('directory', type=Path)
     parser.add_argument('snapshot', type=Path)
     parser.add_argument('configuration')
     parser.add_argument('target', type=Path)
     args = parser.parse_args()
     expected = checkpoint.identity(args.snapshot, args.configuration)
-    if args.operation == 'restore':
+    if args.operation == 'restore-executable':
+        if not restore_executable(args.directory, args.target, expected):
+            raise SystemExit(3)
+    elif args.operation == 'restore':
         print(f'restored {restore(args.directory, args.target, expected)} completed compilation files', flush=True)
     else:
         for line in sys.stdin:

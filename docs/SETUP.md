@@ -364,7 +364,10 @@ mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
 guests, shaders and authored file overlays. Mods are installed but disabled by
 default. Extract the whole archive and launch from the extracted directory,
 then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
-included `game-config` directory. The ordinary downloads remain available.
+included `game-config` directory. When the revision includes `cyrus-launcher`,
+the bundle also includes that executable beside `cyrus`. Keep both in the same
+folder and start `cyrus-launcher` to choose game files, mods and presentation
+settings before playing. The ordinary game-only downloads remain available.
 No package contains the original game data or the builder's local state.
 
 Browser artifact builds compile all available applications and the viewer worker
@@ -1452,11 +1455,11 @@ archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
 the live-run lock, serializes concurrent restores and verifies the requested
 image exists. An existing image requires no archive load. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
-Pass `--retain` before `IMAGE` to save an available image when its archive is
-missing. This checkpoints setup before the next reset: concurrent calls share
+Pass `--retain` before `IMAGE` to checkpoint the available image. This checkpoints setup before the next reset: concurrent calls share
 the restore lock, and only a successful nonempty Docker save is published by
-atomic rename. A failed save leaves no reusable archive. Existing nonempty
-archives are preserved. If both image and archive are absent, recreate the
+atomic rename. A failed save leaves the previous checkpoint intact. Retention checks the
+archive tag and image identity against the available image and
+replaces an obsolete or invalid archive after a successful, validated save. If both image and archive are absent, recreate the
 required image with its repository Dockerfile first; the helper does not guess
 a build context. Archives remain local; recovery never removes peer images or
 containers.
