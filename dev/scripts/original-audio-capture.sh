@@ -38,14 +38,16 @@ name=audio-capture-$$
 conf_mount=()
 # Configure the host chord even when reusing an image built before this default.
 dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
+image=$("$here/ensure-retro-audio-runtime.sh")
 mkdir -p "$out/config"
+printf '%s\n' "$image" > "$out/reference-runtime.txt"
+docker image inspect --format '{{.Id}}' "$image" > "$out/reference-runtime.sha256"
 exec 9>/tmp/cyrus-live.lock
 flock 9
 python3 "$here/prepare-original-definitions.py" "$gog/extracted/app/Redguard" "$run/Redguard"
-docker image inspect cyrus-retro:dev >/dev/null 2>&1 || docker build -q -t cyrus-retro:dev "$repo/dev/docker/retro" >&2
 if [ -n "${CYRUS_DOSBOX_AUTOEXEC:-}" ]; then
     conf="$run/dosbox-x.autoexec.conf"
-    docker run --rm --entrypoint cat cyrus-retro:dev /etc/cyrus/dosbox-x.conf > "$conf"
+    docker run --rm --entrypoint cat "$image" /etc/cyrus/dosbox-x.conf > "$conf"
     python3 - "$conf" <<'PY'
 import os, sys
 path = sys.argv[1]
@@ -71,11 +73,11 @@ fi
 docker rm -f "$name" >/dev/null 2>&1 || true
 mkdir -p "$run/capture"
 rm -f "$run"/capture/*.wav "$run/capture/START.OK"
-docker run --rm --entrypoint find -v "$run:/game" cyrus-retro:dev /game/Redguard/maps -iname '*.tsg' -delete
+docker run --rm --entrypoint find -v "$run:/game" "$image" /game/Redguard/maps -iname '*.tsg' -delete
 docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTRACE \
     -e CYRUS_CONFIG_DIR=/capture-config -v "$out/config:/capture-config" \
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
-    "${conf_mount[@]}" cyrus-retro:dev "${dosbox_host_args[@]}" >/dev/null
+    "${conf_mount[@]}" "$image" "${dosbox_host_args[@]}" >/dev/null
 cleanup() {
     docker rm -f "$name" >/dev/null 2>&1 || true
     [ -z "${conf:-}" ] || rm -f "$conf"

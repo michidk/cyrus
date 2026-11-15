@@ -7,7 +7,7 @@ use anyhow::Context;
 use rgpre::import::{bsi, fog_ini, palette::Palette, wld, world_ini::WorldEntry};
 use std::path::Path;
 
-fn value<'a>(ini: &'a str, key: &str, id: u32) -> Option<&'a str> {
+pub(crate) fn value<'a>(ini: &'a str, key: &str, id: u32) -> Option<&'a str> {
     let key = format!("{key}[{id}]");
     ini.lines()
         .filter_map(|line| line.split_once('='))

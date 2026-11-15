@@ -56,7 +56,7 @@ esac
             ] * 2)
             launcher = INNER.with_name("original-audio-capture.sh").read_text()
             self.assertIn('dosbox_host_args=(-set "dosbox hostkey=ctrlalt")', launcher)
-            self.assertIn('cyrus-retro:dev "${dosbox_host_args[@]}" >', launcher)
+            self.assertIn('"$image" "${dosbox_host_args[@]}" >', launcher)
 
 
 if __name__ == "__main__":

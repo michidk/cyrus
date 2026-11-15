@@ -332,18 +332,18 @@ type BasePrimitives<'w, 's> = Query<
     With<Mesh3d>,
 >;
 
-fn base_visibility(
-    mut commands: Commands,
-    owners: Query<
-        (
-            Option<&Name>,
-            &AnimationPose,
-            Option<&crate::pose_override::PoseOverride>,
-        ),
-        With<ScriptBinding>,
-    >,
-    mut primitives: BasePrimitives,
-) {
+type BaseOwners<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Option<&'static Name>,
+        &'static AnimationPose,
+        Option<&'static crate::pose_override::PoseOverride>,
+    ),
+    With<ScriptBinding>,
+>;
+
+fn base_visibility(mut commands: Commands, owners: BaseOwners, mut primitives: BasePrimitives) {
     for (entity, parent, mut visibility, saved) in &mut primitives {
         let replaced = owners
             .get(parent.parent())

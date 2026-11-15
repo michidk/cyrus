@@ -1,5 +1,4 @@
 //! Insert toggles a free first-person camera. While it flies, the host suppresses player input.
-//! A line in the corner shows whether it is on.
 use cyrus_mod_sdk::{Cx, Input, Key, Mod, Persist, Pose, Quat, Vec3};
 
 /// Radians per pixel of mouse motion.
@@ -95,14 +94,10 @@ impl Mod for Flycam {
                 None => cx.camera.pose().map(Fly::from_pose),
             };
         }
-        match fly.as_mut() {
-            Some(fly) => {
-                cx.hud.show("Fly camera: ON (Insert)");
-                // Scene units per second; the manifest's `speed` setting.
-                fly.steer(&cx.input, cx.settings.number("speed"));
-                cx.camera.drive(fly.pose());
-            }
-            None => cx.hud.show("Fly camera: OFF (Insert)"),
+        if let Some(fly) = fly.as_mut() {
+            // Scene units per second; the manifest's `speed` setting.
+            fly.steer(&cx.input, cx.settings.number("speed"));
+            cx.camera.drive(fly.pose());
         }
         cx.memory.save(FLIGHT, fly.as_ref());
     }

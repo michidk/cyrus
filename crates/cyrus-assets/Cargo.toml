@@ -33,3 +33,7 @@ toml.workspace = true
 [[example]]
 name = "movie_window"
 required-features = ["native"]
+
+[[example]]
+name = "software_sky"
+required-features = ["native"]

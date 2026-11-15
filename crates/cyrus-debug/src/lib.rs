@@ -137,11 +137,9 @@ fn debug_menu(
     let player_position = player.single().ok().map(|transform| transform.translation);
 
     let ctx = contexts.ctx_mut()?;
-    // Tall enough for every section; it scrolls only where the screen is shorter.
-    let height = (ctx.content_rect().height() - 40.0).max(200.0);
     let window = egui::Window::new("cyrus debug")
-        .vscroll(true)
-        .default_height(height);
+        .default_pos([16.0, 16.0])
+        .default_height(0.0);
     window.show(ctx, |ui| {
         let label = |name: &str| {
             world
@@ -262,6 +260,12 @@ fn debug_menu(
         fidelity_control(
             ui,
             &mut fidelity,
+            Area::AnisotropicFiltering,
+            "Texture filtering",
+        );
+        fidelity_control(
+            ui,
+            &mut fidelity,
             Area::Music,
             "Music (Modern mutes CD data noise)",
         );
@@ -275,20 +279,6 @@ fn debug_menu(
         ui.small("New sounds use the selected filter.");
 
         ui.separator();
-        let mut anisotropic = fidelity.mode(Area::AnisotropicFiltering) == Mode::Modern;
-        if ui
-            .checkbox(&mut anisotropic, "Anisotropic filtering (up to 16×)")
-            .changed()
-        {
-            fidelity.set(
-                Area::AnisotropicFiltering,
-                if anisotropic {
-                    Mode::Modern
-                } else {
-                    Mode::Faithful
-                },
-            );
-        }
         let performance_label = if menu.performance_open {
             "Close performance"
         } else {

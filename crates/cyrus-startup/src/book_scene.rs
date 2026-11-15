@@ -1,6 +1,6 @@
 //! The book menu as a real 3D scene: one mesh per model material group under a perspective camera.
-//! Placements, projection and camera follow preservation's engine/menu.md; the camera renders into
-//! a 640 by 480 image that the book sprite shows, so the existing letterboxing applies unchanged.
+//! Placements and camera follow preservation's engine/menu.md. The camera renders at the window's
+//! resolution and extends the view around the authored 4:3 composition without letterboxing.
 //!
 //! Original engine coordinates have X right, Y down and Z forward. Bevy's have Y up and Z toward the
 //! viewer, so every point and the camera position map `(x, y, z)` to `(x, -y, -z)`, a half turn
@@ -42,6 +42,7 @@ struct Shown {
 /// The live 3D scene of the open book.
 #[derive(Resource)]
 pub(super) struct BookScene {
+    target: Handle<Image>,
     textures: Vec<Handle<Image>>,
     overlay: Handle<Image>,
     overlay_entity: Entity,
@@ -146,6 +147,8 @@ pub(super) struct BookDrawing<'w, 's> {
     sprite: Query<'w, 's, (Entity, &'static mut Sprite), BookSprite>,
     visibility: Query<'w, 's, &'static mut Visibility>,
     cameras: Query<'w, 's, &'static mut Transform, With<BookCamera>>,
+    projections: Query<'w, 's, (&'static Camera, &'static mut Projection), With<BookCamera>>,
+    windows: Query<'w, 's, &'static Window>,
 }
 
 /// One mesh per model and texture or solid colour, spawned in its first pose.
@@ -261,9 +264,10 @@ fn create(
     commands.spawn((
         StartupContent,
         BookCamera,
-        super::view3d::view_camera(target, BOOK_LAYER, Color::BLACK),
+        super::view3d::view_camera(target.clone(), BOOK_LAYER, Color::BLACK),
     ));
     Ok(BookScene {
+        target,
         textures,
         overlay,
         overlay_entity,
@@ -272,6 +276,45 @@ fn create(
         camera: None,
         was_flying: false,
     })
+}
+
+/// Matches the window's physical pixels while retaining the original coordinates for dialogs.
+fn fit_view(drawing: &mut BookDrawing, scene: &BookScene) {
+    let Ok(window) = drawing.windows.single() else {
+        return;
+    };
+    let Ok((camera, mut projection)) = drawing.projections.single_mut() else {
+        return;
+    };
+    if !camera.is_active {
+        return;
+    }
+    let size = window.physical_size().max(UVec2::ONE);
+    if drawing
+        .images
+        .get(&scene.target)
+        .is_some_and(|image| image.size() != size)
+        && let Some(mut image) = drawing.images.get_mut(&scene.target)
+    {
+        image.resize(bevy::render::render_resource::Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        });
+    }
+    if let (Projection::Perspective(current), Projection::Perspective(fitted)) =
+        (&mut *projection, super::view3d::fitted_projection(size))
+        && (current.fov != fitted.fov || current.aspect_ratio != fitted.aspect_ratio)
+    {
+        *current = fitted;
+    }
+    let logical_size = Vec2::new(window.width(), window.height());
+    let scale = super::viewport_scale(logical_size);
+    if scale > 0.0
+        && let Ok((_, mut sprite)) = drawing.sprite.single_mut()
+    {
+        sprite.custom_size = Some(logical_size / scale);
+    }
 }
 
 /// Uploads what the last redraw painted: the page surfaces, or a dialog over the scene.
@@ -369,6 +412,7 @@ pub(super) fn present(
         }
         return;
     };
+    fit_view(&mut drawing, &scene);
     upload(&mut drawing, &scene, menu.painted.take());
     let Some(motion) = menu.motion.as_ref() else {
         return;
@@ -380,6 +424,89 @@ pub(super) fn present(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn book_fills_resized_windows_and_leaves_paused_backdrops_untouched() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>().add_systems(
+            Update,
+            (
+                super::super::fit_image,
+                |mut drawing: BookDrawing, scene: Res<BookScene>| fit_view(&mut drawing, &scene),
+            )
+                .chain(),
+        );
+        let target = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(super::super::view3d::target_image([0, 0, 0, 255]));
+        app.insert_resource(BookScene {
+            target: target.clone(),
+            textures: Vec::new(),
+            overlay: Handle::default(),
+            overlay_entity: Entity::PLACEHOLDER,
+            groups: Vec::new(),
+            shown: [None; 5],
+            camera: None,
+            was_flying: false,
+        });
+        let window = app.world_mut().spawn(Window::default()).id();
+        let sprite = app
+            .world_mut()
+            .spawn((Sprite::from_image(target.clone()), StartupContent))
+            .id();
+        let camera = app
+            .world_mut()
+            .spawn((
+                BookCamera,
+                Camera::default(),
+                super::super::view3d::projection(),
+                Transform::default(),
+            ))
+            .id();
+        for size in [UVec2::new(1280, 720), UVec2::new(480, 800)] {
+            app.world_mut()
+                .get_mut::<Window>(window)
+                .unwrap()
+                .resolution
+                .set_physical_resolution(size.x, size.y);
+            app.update();
+            let image = app
+                .world()
+                .resource::<Assets<Image>>()
+                .get(&target)
+                .unwrap();
+            assert_eq!(image.size(), size);
+            let displayed = app
+                .world()
+                .get::<Sprite>(sprite)
+                .unwrap()
+                .custom_size
+                .unwrap()
+                * app
+                    .world()
+                    .get::<Transform>(sprite)
+                    .unwrap()
+                    .scale
+                    .truncate();
+            assert!((displayed - size.as_vec2()).length() < 0.001);
+        }
+        app.world_mut().get_mut::<Camera>(camera).unwrap().is_active = false;
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .unwrap()
+            .resolution
+            .set_physical_resolution(800, 600);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&target)
+                .unwrap()
+                .size(),
+            UVec2::new(480, 800),
+        );
+    }
 
     #[test]
     fn engine_points_map_to_bevy_with_y_and_z_flipped() {

@@ -223,3 +223,49 @@ fn exact_elapsed_scale_tracks_consumed_steps_without_float_reconstruction() {
         assert_eq!(clock.elapsed_frame_scale(), consumed);
     }
 }
+
+#[test]
+fn elapsed_gameplay_has_no_warmup_and_tracks_cadence_changes() {
+    use std::time::Duration;
+    for smoothing in [false, true] {
+        let mut clock = SimulationClock::new(settings(smoothing)).unwrap();
+        assert_eq!(clock.advance_elapsed(0, Duration::ZERO).frame_scale, 0);
+        let mut nanos = 0u64;
+        for interval in [1_000_000, 4_000_000, 16_000_000, 50_000_000, 8_000_000] {
+            for _ in 0..120 {
+                nanos += interval;
+                clock.advance_elapsed(
+                    bios_tick(Duration::from_nanos(nanos)),
+                    Duration::from_nanos(interval),
+                );
+                assert_eq!(
+                    clock.elapsed_frame_scale(),
+                    nanos * 12 * 256 / 1_000_000_000
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn elapsed_gameplay_excludes_suspension_and_survives_snapshot_restore() {
+    use std::time::Duration;
+    let mut clock = SimulationClock::new(settings(true)).unwrap();
+    clock.advance_elapsed(0, Duration::from_nanos(1_234_567));
+    let mut uninterrupted = clock.clone();
+    let checkpoint = clock.checkpoint();
+    for tick in 1..20 {
+        clock.advance(tick);
+    }
+    clock.advance_elapsed(20, Duration::from_nanos(7_654_321));
+    clock.restore(checkpoint, 1000);
+    let snapshot = serde_json::to_value(clock.snapshot()).unwrap();
+    let mut restored =
+        SimulationClock::from_snapshot(serde_json::from_value(snapshot).unwrap(), 1000).unwrap();
+    for interval in [0, 1_234_567, 16_666_667, 100_000_000] {
+        let elapsed = Duration::from_nanos(interval);
+        let expected = uninterrupted.advance_elapsed(0, elapsed);
+        assert_eq!(clock.advance_elapsed(1000, elapsed), expected);
+        assert_eq!(restored.advance_elapsed(1000, elapsed), expected);
+    }
+}

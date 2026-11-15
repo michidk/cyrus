@@ -399,6 +399,25 @@ fn discover(
     {
         let worlds = world_ini::WorldIni::parse(&source.text(&parent.path)?);
         for world in worlds.entries {
+            if crate::environment_export::value(
+                &source.text(&parent.path)?,
+                "world_sky",
+                world.index,
+            )
+            .is_some_and(|value| !value.is_empty())
+                && source
+                    .manifest()
+                    .find(&world.palette.replace('\\', "/"))
+                    .is_some()
+            {
+                catalog.entries.push(entry(
+                    &parent.path,
+                    parent.bytes,
+                    Category::Images,
+                    Source::SoftwareSky(world.index),
+                    &format!("{} · software sky", world.index),
+                ));
+            }
             catalog.entries.push(entry(
                 &parent.path,
                 parent.bytes,

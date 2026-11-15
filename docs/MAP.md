@@ -68,6 +68,7 @@ module where it is defined and regenerate.
 - `src/script_edit.rs` — Script edits: statement-level changes to an actor's SOUP program, declared by a mod
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/script_patch.rs` — Script patches: a mod's declared edits to an actor's script in one world, applied when the
+- `src/software_sky.rs` — Software sky preparation and indexed scanline presentation, shared by both viewer hosts.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
 - `src/sound/cache.rs` — Portable RTX payload retention; the caller owns synchronous sample feedback.
 - `src/sound/dialogue.rs` — Indexed dialogue payload access for native and browser game hosts.
@@ -419,7 +420,7 @@ module where it is defined and regenerate.
 - `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/splash.rs` — The installed Windows 3dfx splash, drawn live every frame as the original's Glide splash is.
-- `src/view3d.rs` — Shared GPU drawing for the screens that show textured models in the original's fixed 640 by 480
+- `src/view3d.rs` — Shared GPU drawing for installed model views: the book menu, logbook scrolls and examine view.
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
