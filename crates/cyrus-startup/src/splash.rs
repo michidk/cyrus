@@ -489,6 +489,7 @@ mod tests {
                 count: 150,
                 live: Some((Handle::default(), view)),
                 title: Handle::default(),
+                title_fills_window: false,
                 elapsed: 2.0,
                 failed: false,
             })

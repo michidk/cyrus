@@ -30,6 +30,14 @@ cyrus plays only the Windows splash, because it is what GOG players see, and has
 Comparisons against DOSBox-X therefore show a different splash. The live meshes render at the
 physical resolution of the window's fitted 4:3 viewport. Glide's edge-antialiasing path is not reproduced.
 
+## Title artwork
+
+The original shows the 640×480 `STARTUP2.GXA` picture after the splash. cyrus shows a higher-resolution,
+16:9 redraw of it that ships with cyrus (`crates/cyrus-assets/assets/title.png`) and is not read from the
+install. It scales to cover the window, so a window narrower than 16:9 crops the sides and a wider one crops
+the top and bottom. The "Version" and status labels still use the installed font and palette, placed as in the
+original on the artwork's centred 4:3 region; a window much wider than 16:9 can crop them.
+
 ## Skipped introduction movie
 
 **Verified:** New Game plays the introduction movie before entering the world. `--skip-movies`

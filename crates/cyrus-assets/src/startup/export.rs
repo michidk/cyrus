@@ -7,7 +7,10 @@ use std::{
     path::Path,
 };
 
-/// Generates local presentation images from the player's own splash DLL and GXA.
+/// The title artwork cyrus ships: a 16:9 redraw of the installed 640×480 title, without labels.
+const TITLE_ARTWORK: &[u8] = include_bytes!("../../assets/title.png");
+
+/// Generates local presentation images from the player's own splash DLL, GXA and label font.
 /// The install is read-only; every output stays under the supplied cache path.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn export_startup(install: &crate::install::GameInstall, cache: &Path) -> anyhow::Result<()> {
@@ -50,7 +53,7 @@ pub(crate) fn prepare_startup(
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path))?,
     );
     let mut fingerprint = DefaultHasher::new();
-    (9u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
+    (10u32, &dll_bytes, &title_bytes, &font_bytes, TITLE_ARTWORK).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
     let directory = Path::new("startup");
     let stamp = directory.join("source.txt");
@@ -92,8 +95,9 @@ pub(crate) fn prepare_startup(
     output
         .publish(&path, &serde_json::to_vec(&asset)?)
         .with_context(|| format!("startup: writing {}", path.display()))?;
-    let mut background = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
-        .context("startup: title pixel count is invalid")?;
+    let mut background = image::load_from_memory(TITLE_ARTWORK)
+        .context("startup: decoding the shipped title artwork")?
+        .to_rgba8();
     let palette = rgpre::import::palette::Palette {
         colors: title_frame
             .palette
@@ -140,7 +144,9 @@ fn title_colour(palette: &[[u8; 3]; 256], tint: u8) -> [u8; 3] {
     })
 }
 
-/// Draws one flat-colour line with its pen at (`x`, 467).
+/// Draws one flat-colour line with its pen at (`x`, 467) of the original 640×480 title frame.
+/// The artwork is shown filling the window, so that frame is its centred 4:3 region at the
+/// artwork's height; each font pixel becomes the block of artwork pixels it covers there.
 fn draw_text(
     image: &mut image::RgbaImage,
     font: &cyrus_text::Font,
@@ -148,13 +154,25 @@ fn draw_text(
     x: i32,
     color: [u8; 3],
 ) {
+    let scale = image.height() as f32 / 480.0;
+    let left = (image.width() as f32 - 640.0 * scale) / 2.0;
+    let edge = |cell: i32, origin: f32| (origin + cell as f32 * scale).round() as i32;
     font.draw(text, [x, 467], |x, y, _| {
-        if (0..640).contains(&x) && (0..480).contains(&y) {
-            image.put_pixel(
-                x as u32,
-                y as u32,
-                image::Rgba([color[0], color[1], color[2], 255]),
-            );
+        if !(0..640).contains(&x) || !(0..480).contains(&y) {
+            return;
+        }
+        for py in edge(y, 0.0)..edge(y + 1, 0.0) {
+            for px in edge(x, left)..edge(x + 1, left) {
+                if (0..image.width() as i32).contains(&px)
+                    && (0..image.height() as i32).contains(&py)
+                {
+                    image.put_pixel(
+                        px as u32,
+                        py as u32,
+                        image::Rgba([color[0], color[1], color[2], 255]),
+                    );
+                }
+            }
         }
     });
 }

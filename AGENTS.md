@@ -22,7 +22,9 @@ acceptance, status and session claims. The maintainer's agents also follow
 1. **Nothing from the install, and nothing from `magic/`, enters a tracked file in cyrus.**
    Game assets, extracted archives, screenshots of copyrighted art, save games,
    working notes and research journals live under the ignored research and
-   local-state directories. `git add -f` is never the answer. If unsure
+   local-state directories. `git add -f` is never the answer. The one exception is the title artwork
+   (`crates/cyrus-assets/assets/title.png`), a higher-resolution redraw of the original
+   title that the maintainer chose to ship. If unsure
    whether something counts, it does: leave it in `magic/` and say so.
 2. **The install is read-only.** cyrus never writes into the game directory.
    Local state lives where the config crate says: `CYRUS_CONFIG_DIR`, else an

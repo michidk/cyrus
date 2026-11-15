@@ -32,12 +32,13 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
     std::fs::write(output.join("splash-01.png"), "legacy shield frame").unwrap();
     export_startup(&install, &cache).unwrap();
     let title = image::open(output.join("title.png")).unwrap().to_rgba8();
-    assert_eq!(title.get_pixel(10, 469).0, [105, 66, 30, 255]);
-    let version_pixels = (469..=474)
-        .flat_map(|y| (10..=86).map(move |x| (x, y)))
-        .filter(|&(x, y)| title.get_pixel(x, y).0 == [105, 66, 30, 255])
-        .count();
-    assert_eq!(version_pixels, 187);
+    // The shipped 16:9 artwork carries the labels in the installed colour, below the picture.
+    assert_eq!(title.dimensions(), (1820, 1024));
+    assert!(
+        title
+            .enumerate_pixels()
+            .any(|(x, y, p)| x < 600 && y >= 990 && p.0 == [105, 66, 30, 255])
+    );
     let splash_path = output.join("splash.splash");
     let asset: cyrus_assets::splash_asset::SplashAsset =
         serde_json::from_slice(&std::fs::read(&splash_path).unwrap()).unwrap();

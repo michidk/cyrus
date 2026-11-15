@@ -536,8 +536,8 @@ hosts need a manifest, CORS and HTTP byte-range support. No native executable or
 prepared cache is required by the browser.
 
 For manual export, prepare startup with `cargo run -p cyrus -- --export-startup`. The exporter
-reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
-`gui_low_font` from the install; all generated images stay in
+reads the installed `3DfxSpl2.dll`, the label palette in `system/STARTUP2.GXA`, and the configured
+`gui_low_font` from the install, and draws the labels on the title artwork cyrus ships; all generated images stay in
 `startup/` in the cache directory. Native windowed launch generates this cache when
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
