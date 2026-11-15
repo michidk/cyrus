@@ -624,6 +624,9 @@ impl ScriptWorld {
             self.prepare_spatial()?;
         }
         let mut radii = Vec::new();
+        // Each animation-table actor takes the next value of a world-wide counter, in placement
+        // order, as its message group; the counter starts at zero for every world.
+        let mut message_groups = Vec::new();
         for (index, actor) in self.actors.iter().enumerate() {
             if actor
                 .placement()
@@ -638,7 +641,10 @@ impl ScriptWorld {
             );
             let radius = match data.actor(actor.name())?["model_load_path"].as_str() {
                 Some("static" | "none") => statics.loaded_radius(index)?,
-                Some("animation_table") => None,
+                Some("animation_table") => {
+                    message_groups.push(index);
+                    None
+                }
                 path => anyhow::bail!(
                     "world {} instance {index}: model path {path:?} unsupported",
                     self.world
@@ -667,6 +673,9 @@ impl ScriptWorld {
                 position,
                 statics.collision_flags(index)?,
             ));
+        }
+        for (group, index) in message_groups.into_iter().enumerate() {
+            self.actors[index].attributes[Attribute::MessGroup] = group as u8;
         }
         for (index, radius, model, matrix, position, flags) in radii {
             self.actors[index].model.matrix = Some(matrix);
