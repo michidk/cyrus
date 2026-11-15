@@ -18,6 +18,7 @@ pub(crate) fn day_night_window(
         .id(egui::Id::new("Day/night"))
         .open(&mut open)
         .default_width(300.0)
+        .default_height(0.0)
         .show(contexts.ctx_mut()?, |ui| {
             let Some(mut cycle) = cycle else {
                 ui.label("Modern lighting is not available in this build.");

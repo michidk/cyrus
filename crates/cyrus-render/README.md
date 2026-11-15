@@ -306,7 +306,8 @@ day/night cycle, off unless turned on so the game keeps its own times of day, mo
 and the sky by the hour, and its
 optional effects (tonemapping and grading, auto exposure, god rays, sky glow and stars,
 water reflections, lens flare, swaying plants, depth of field, motion blur) are switched in
-`ModernEffects`. Under modern lighting the terrain writes its water weight into the colour
+`ModernEffects`. Motion blur uses a short shutter exposure of 15% of a frame.
+Under modern lighting the terrain writes its water weight into the colour
 alpha for the modern screen pass, which always restores an opaque alpha.
 Every model and terrain piece has its own material, so the sun's shadow cascades would draw
 each one alone; instead each caster gets a shadow-only twin that shares its mesh and one plain

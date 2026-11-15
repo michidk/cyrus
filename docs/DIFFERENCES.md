@@ -87,7 +87,8 @@ every value is a Modern tuning choice:
   while calm water models reflect fully;
 - swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
   about their base, while collision keeps the installed placement;
-- depth of field focused on the player, and motion blur.
+- depth of field focused on the player, and subtle motion blur with a shutter
+  exposure of 15% of a frame.
 - the map's object and baked lights (lamps and fires) shine as point lights. Map light colours are
   signed and the original subtracts the negative channels; point lights only add, so each light
   shines with its positive channels and darkening-only lights are left out. Each lights a facing

@@ -621,7 +621,10 @@ fn window(
     mut catalog: ResMut<Catalog>,
     mut settings: ResMut<ModSettings>,
 ) -> Result {
-    egui::Window::new("Mods").show(contexts.ctx_mut()?, |ui| {
+    let window = egui::Window::new("Mods")
+        .default_pos([384.0, 16.0])
+        .default_height(0.0);
+    window.show(contexts.ctx_mut()?, |ui| {
         if catalog.entries.is_empty() && catalog.problems.is_empty() {
             ui.label(format!(
                 "No mods in {}. `just mods` installs the bundled ones.",

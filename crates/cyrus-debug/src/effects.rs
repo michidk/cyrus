@@ -17,7 +17,8 @@ pub(crate) fn effects_window(
     egui::Window::new("Effects")
         .id(egui::Id::new("Effects"))
         .open(&mut open)
-        .default_width(380.0)
+        .default_width(420.0)
+        .default_height(0.0)
         .show(contexts.ctx_mut()?, |ui| {
             let Some(mut effects) = effects else {
                 ui.label("Modern lighting is not available in this build.");
