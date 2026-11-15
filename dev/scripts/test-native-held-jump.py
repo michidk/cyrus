@@ -44,6 +44,43 @@ class Contracts(unittest.TestCase):
         original, native = receipts()
         self.assertEqual(held.compare(original, native, 2)["matched_boundaries"], 3)
 
+    def test_directional_input_allows_a_displaced_idle_endpoint_only_when_requested(self):
+        original, native = receipts()
+        original['key'] = 'Up'
+        for row in original['observations'] + original['steps'] + original['input_edges'] + original['boundaries']:
+            row['input_state'] = {'Up': row['input_state']['space']}
+        for row in original['observations'][1:]:
+            row['player']['position_q8'][2] = 1024
+        # Edges retain the same atomic body as their corresponding observation.
+        original['input_edges'][0]['player']['position_q8'][2] = 1024
+        original['boundaries'][-1]['player']['position_q8'][2] = 1024
+        for i, row in enumerate(native['boundaries']):
+            if row['key'] is not None:
+                row['key'] = 'ArrowUp'
+            if i >= 2:
+                row['player']['actors'][0]['spatial']['effective']['position'][2] = 1024
+        with self.assertRaisesRegex(ValueError, 'same position'):
+            held.compare(original, native, 2, key='ArrowUp', original_key='Up')
+        result = held.compare(original, native, 2, key='ArrowUp', original_key='Up',
+                              allow_displacement=True)
+        self.assertEqual(result['displacement_q8'], [0, 0, 1024])
+        self.assertEqual(result['max_position_error_q8'], 0)
+        # A different idle animation is not an admitted movement comparison.
+        native['boundaries'][0]['player']['actors'][0]['animation']['current_group'] = 2
+        with self.assertRaisesRegex(ValueError, 'state diverged'):
+            held.compare(original, native, 2, key='ArrowUp', original_key='Up',
+                         allow_displacement=True)
+
+    def test_only_released_pre_admission_observations_can_precede_the_press(self):
+        original, native = receipts()
+        prefix = copy.deepcopy(original['observations'][0])
+        prefix['frame'] -= 1
+        original['observations'].insert(0, prefix)
+        self.assertEqual(held.compare(original, native, 2)['matched_boundaries'], 3)
+        prefix['input_state']['space'] = True
+        with self.assertRaisesRegex(ValueError, 'pre-admission'):
+            held.compare(original, native, 2)
+
     def test_incomplete_native_is_rejected(self):
         original, native = receipts()
         native["boundaries"].pop()
@@ -120,6 +157,45 @@ class Contracts(unittest.TestCase):
                 {"after_updates": 0}, {"after_updates": 1, "key": "Space", "action": "press"},
                 {"after_updates": 2, "key": "Space", "action": "release"}, {"after_updates": 3}])
             self.assertEqual(calls[-1], {"type": "input", "key": "Space", "action": "release"})
+
+    def test_directional_capture_schedules_and_releases_the_selected_binding(self):
+        from unittest.mock import patch
+        original, native = receipts()
+        original['key'] = 'Up'
+        for row in original['observations'] + original['steps'] + original['input_edges'] + original['boundaries']:
+            row['input_state'] = {'Up': row['input_state']['space']}
+        with patch.object(held.trace, 'wait_live'), patch.object(held.trace, 'call', return_value=native) as call:
+            self.assertEqual(held.capture('unused', original, 2, key='ArrowUp', original_key='Up'), native)
+        self.assertEqual(call.call_args_list[0].args[1]['events'][1],
+                         {'after_updates': 1, 'key': 'ArrowUp', 'action': 'press'})
+        self.assertEqual(call.call_args_list[-1].args[1],
+                         {'type': 'input', 'key': 'ArrowUp', 'action': 'release'})
+
+    def test_public_cli_accepts_directional_bindings(self):
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        original, native = receipts()
+        original['key'] = 'Up'
+        for row in original['observations'] + original['steps'] + original['input_edges'] + original['boundaries']:
+            row['input_state'] = {'Up': row['input_state']['space']}
+        for row in native['boundaries']:
+            if row['key'] is not None:
+                row['key'] = 'ArrowUp'
+        with tempfile.TemporaryDirectory() as directory:
+            source, captured, output = (Path(directory)/name for name in ('o.json', 'n.json', 'out.json'))
+            source.write_text(json.dumps(original))
+            captured.write_text(json.dumps(native))
+            result = subprocess.run([sys.executable, str(Path(held.__file__)),
+                '--original', str(source), '--native', str(captured), '--out', str(output),
+                '--updates', '2', '--key', 'ArrowUp', '--original-key', 'Up', '--allow-displacement'],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads(output.read_text())
+            self.assertEqual((summary['key'], summary['original_key']), ('ArrowUp', 'Up'))
+            self.assertTrue(summary['allow_displacement'])
+            self.assertEqual(summary['matched_boundaries'], 3)
 
     def test_long_capture_rejected_before_taking_input(self):
         original, _ = receipts()

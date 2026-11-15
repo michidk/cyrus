@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture a bounded held jump and compare exact ordinary boundaries to original receipts."""
+"""Capture bounded held input and compare exact ordinary boundaries to original receipts."""
 import argparse
 import hashlib
 import importlib.util
@@ -11,19 +11,26 @@ trace = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trace)
 
 
-def original_window(original, updates):
+def original_window(original, updates, original_key="space"):
     """Require complete original admission, including the explicit release edge."""
     if not 2 <= updates <= 32:
-        raise ValueError("held jump needs 2..32 updates; keep each capture below the service deadline")
+        raise ValueError("held input needs 2..32 updates; keep each capture below the service deadline")
     observations = original["observations"]
+    # Acquisition may observe earlier released boundaries while waiting for the
+    # requested cadence. The acknowledged press, not the first poll, owns time zero.
+    first_frame = original["boundaries"][0]["frame"]
+    prefix = [row for row in observations if row["frame"] < first_frame]
+    if any(row["input_state"] != {original_key: False} for row in prefix):
+        raise ValueError("original pre-admission observations contain held input")
+    observations = observations[len(prefix):]
     steps = original["steps"]
-    if (original["key"] != "space" or len(observations) != len(steps) + 1
+    if (original["key"] != original_key or len(observations) != len(steps) + 1
             or len(steps) < updates or len(original["input_edges"]) != 1):
-        raise ValueError("incomplete original held-jump receipt")
+        raise ValueError("incomplete original held-input receipt")
     origin = observations[0]
     release = original["input_edges"][0]
     release_offset = release["frame"] - origin["frame"]
-    if not 0 < release_offset < updates or release["input_state"] != {"space": False}:
+    if not 0 < release_offset < updates or release["input_state"] != {original_key: False}:
         raise ValueError("original release is missing or outside the capture")
     rate = original["normal_frame_rate"]
     if type(rate) is not int or rate <= 0:
@@ -31,27 +38,27 @@ def original_window(original, updates):
     elapsed = origin["clock_scale"]
     for i, row in enumerate(observations):
         if (row["frame"] != origin["frame"] + i or row["clock_scale"] != elapsed
-                or row["input_state"] != {"space": 0 < i <= release_offset}
+                or row["input_state"] != {original_key: 0 < i <= release_offset}
                 or row["player"].get("selected") is not True):
             raise ValueError("original boundary continuity or input acknowledgement failed")
         if i < len(steps):
             step = steps[i]
             if (step["frame"] != row["frame"] or type(step["frame_scale"]) is not int
                     or step["frame_scale"] <= 0
-                    or step["input_state"] != {"space": i < release_offset}):
+                    or step["input_state"] != {original_key: i < release_offset}):
                 raise ValueError("original step admission failed")
             elapsed += step["frame_scale"]
     for edge, offset, pressed in ((original["boundaries"][0], 0, True),
                                   (release, release_offset, False),
                                   (original["boundaries"][-1], len(steps), False)):
-        expected_edge = dict(observations[offset], input_state={"space": pressed})
+        expected_edge = dict(observations[offset], input_state={original_key: pressed})
         if edge != expected_edge:
             raise ValueError("original input edge differs from its atomic observation")
     return observations[:updates + 1], steps[:updates], release_offset, rate
 
 
-def compare(original, native, updates):
-    expected, steps, release, rate = original_window(original, updates)
+def compare(original, native, updates, *, key="Space", original_key="space", allow_displacement=False):
+    expected, steps, release, rate = original_window(original, updates, original_key)
     boundaries = native["boundaries"]
     # Offset zero establishes the native baseline; offset one admits the press.
     if len(boundaries) != updates + 2:
@@ -61,8 +68,8 @@ def compare(original, native, updates):
     origin_update = boundaries[0]["update"]
     generation = boundaries[0]["generation"]
     for offset, boundary in enumerate(boundaries):
-        action = ("Space", "press") if offset == 1 else (
-            ("Space", "release") if offset == release + 1 else (None, None))
+        action = (key, "press") if offset == 1 else (
+            (key, "release") if offset == release + 1 else (None, None))
         row = trace.boundary_sample(boundary, "held_jump", action)
         if (boundary["after_updates"] != offset or boundary["update"] != origin_update + offset
                 or boundary["generation"] != generation or boundary["normal_frame_rate"] != rate
@@ -88,24 +95,28 @@ def compare(original, native, updates):
     for player in (expected[0]["player"], expected[-1]["player"]):
         if (player["group"] != 0 or player["health"] <= 0
                 or any(player[name] for name in ("falling", "queued", "sliding", "living", "rope_attached"))
-                or player["position_q8"] != expected[0]["player"]["position_q8"]):
+                or (not allow_displacement
+                    and player["position_q8"] != expected[0]["player"]["position_q8"])):
             raise ValueError("capture must start supported and finish idle at the same position")
     return {"updates": updates, "release_after": release,
             "consumed_scale": sum(step["frame_scale"] for step in steps),
             "normal_frame_rate": rate, "matched_boundaries": len(expected),
-            "max_position_error_q8": 0, "generation": generation}
+            "max_position_error_q8": 0, "generation": generation,
+            "key": key, "original_key": original_key, "allow_displacement": allow_displacement,
+            "displacement_q8": [end - start for start, end in zip(
+                expected[0]["player"]["position_q8"], expected[-1]["player"]["position_q8"])]}
 
 
-def capture(addr, original, updates):
-    _, _, release, _ = original_window(original, updates)
+def capture(addr, original, updates, *, key="Space", original_key="space"):
+    _, _, release, _ = original_window(original, updates, original_key)
     trace.wait_live(addr, 180)
     events = [{"after_updates": i} for i in range(updates + 2)]
-    events[1].update(key="Space", action="press")
-    events[release + 1].update(key="Space", action="release")
+    events[1].update(key=key, action="press")
+    events[release + 1].update(key=key, action="release")
     try:
         return trace.call(addr, {"type": "schedule_input", "events": events})
     finally:
-        trace.call(addr, {"type": "input", "key": "Space", "action": "release"})
+        trace.call(addr, {"type": "input", "key": key, "action": "release"})
 
 
 def main():
@@ -114,6 +125,10 @@ def main():
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--addr")
     source.add_argument("--native", type=Path)
+    parser.add_argument("--key", default="Space", help="native key from the installed binding")
+    parser.add_argument("--original-key", default="space", help="key identity in the original receipt")
+    parser.add_argument("--allow-displacement", action="store_true",
+                        help="allow an idle endpoint at a different position; retain exact state/clock comparison")
     parser.add_argument("--updates", type=int, default=32)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -127,9 +142,11 @@ def main():
     args.out.unlink(missing_ok=True)
     original = json.loads(args.original.read_text())
     native = (json.loads(args.native.read_text()) if args.native
-              else capture(args.addr, original, args.updates))
+              else capture(args.addr, original, args.updates,
+                           key=args.key, original_key=args.original_key))
     raw.write_text(json.dumps(native, indent=2) + "\n")
-    result = compare(original, native, args.updates)
+    result = compare(original, native, args.updates, key=args.key,
+                     original_key=args.original_key, allow_displacement=args.allow_displacement)
     result["original_sha256"] = hashlib.sha256(args.original.read_bytes()).hexdigest()
     result["native_sha256"] = hashlib.sha256(raw.read_bytes()).hexdigest()
     args.out.write_text(json.dumps(result, indent=2) + "\n")

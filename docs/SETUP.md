@@ -1276,6 +1276,26 @@ python3 dev/scripts/native-held-jump.py --native NATIVE/accepted.raw.json \
 python3 dev/scripts/test-native-held-jump.py
 ```
 
+For a directional input comparison, choose both key names from the installed
+binding and pass `--allow-displacement` to permit a different final position:
+
+```sh
+python3 dev/scripts/native-held-jump.py --original ORIGINAL/forward.json \
+  --native NATIVE/forward.raw.json --updates 24 --key ArrowUp --original-key Up \
+  --allow-displacement --out NATIVE/forward-accepted.json
+```
+
+The opt-in changes only the same-position endpoint requirement. Both endpoints
+must still be alive and idle, and every position, heading, animation group,
+health/motion state and consumed clock boundary must match exactly. In particular,
+an initial idle-variation animation is not equivalent to the reference standing
+animation; establish the same animation before arming input. The summary includes
+Q8 displacement and hashes both receipts. Original observations made while
+acquiring cadence may precede the acknowledged press; only released observations
+before that frame are excluded from the consumed interval. Held pre-admission
+input, missing steps and inconsistent edges remain errors. Without these options,
+the existing held-Space jump comparison retains its same-position requirement.
+
 The native offset-zero baseline precedes the acknowledged press at offset one.
 The driver aligns subsequent consumed Q8 clock scales, explicit release, exact Q8
 positions, animation groups, health and fall/queued/slide/living/rope state. Both
