@@ -198,11 +198,19 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
 pub fn read_track(source: &Path, track: u32) -> Result<Vec<u8>, String> {
     let context = |e: &dyn std::fmt::Display| format!("{} track {track}: {e}", source.display());
     let pcm = if source.is_dir() {
-        let file = std::fs::read_dir(source)
+        let mut files = std::fs::read_dir(source)
             .map_err(|e| context(&e))?
             .filter_map(Result::ok)
-            .find(|entry| soundtrack_track(&entry.file_name().to_string_lossy()) == Some(track))
-            .ok_or_else(|| context(&"no soundtrack MP3"))?;
+            .filter(|entry| entry.path().is_file())
+            .filter(|entry| soundtrack_track(&entry.file_name().to_string_lossy()) == Some(track));
+        let file = files.next().ok_or_else(|| context(&"no soundtrack MP3"))?;
+        if let Some(other) = files.next() {
+            return Err(context(&format!(
+                "multiple soundtrack MP3 files: {} and {}",
+                file.path().display(),
+                other.path().display()
+            )));
+        }
         let bytes = std::fs::read(file.path()).map_err(|e| context(&e))?;
         mp3_pcm(bytes).map_err(|e| context(&e))?
     } else {

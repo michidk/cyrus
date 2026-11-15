@@ -418,3 +418,9 @@ Ripped CD MP3 decoding uses Symphonia's audio-track decoder with gapless trimmin
 and explicit signed 16-bit interleaving. Only 44.1 kHz stereo is admitted, matching
 the CD PCM consumer; packet and decode errors are propagated rather than treated
 as clean end-of-stream. Speech PCM and Smacker movie audio use their own readers.
+
+CD media admission rejects multiple files that resolve to the same disc path or
+ripped track number. Errors identify the track/path and both physical sources;
+playback does not select a rip by filesystem enumeration order. The native
+catalog, direct track reader and browser install server enforce this alongside
+the browser folder picker.
