@@ -1505,7 +1505,10 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("walking control unavailable")?;
-        if control.queued_motion != JumpMotion::NONE || control.falling_state != JumpMotion::NONE {
+        if control.queued_motion != JumpMotion::NONE
+            || control.falling_state != JumpMotion::NONE
+            || control.living_state.is_ledge()
+        {
             return Ok(false);
         }
         let mut definition = query

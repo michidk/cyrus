@@ -52948,24 +52948,12 @@ fn restored_dead_snapshot_does_not_replay_a_death() {
     assert!(restored.take_death_events().is_empty());
 }
 
-#[test]
-fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
+fn held_walk_turn_in_states(states: &[LivingState], sliding: u8) {
     use cyrus_script::script::{
         OrdinaryGroundQuery, PlayerControllerInput, ScriptInputs, WorldRestoreContext,
         WorldSnapshotSources,
     };
-    for living in [
-        LivingState::ORDINARY,
-        LivingState::TURNING_TO_HIGH_LEDGE,
-        LivingState::HIGH_CLIMB,
-        LivingState::TURNING_TO_LOW_LEDGE,
-        LivingState::LOW_CLIMB,
-        LivingState::CATCHING_HANG,
-        LivingState::CLIMB_FROM_HANG,
-        LivingState::DROPPING,
-        LivingState::CLIMB_FINISHED,
-        LivingState::ENTERING_LEDGE,
-    ] {
+    for &living in states {
         let (scripts, mut world, mut data, scene) = player_walking_fixture();
         data.metadata["markers"] = serde_json::json!([]);
         data.metadata["walk_node_maps"] = serde_json::json!([]);
@@ -53006,8 +52994,8 @@ fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
         assert!(world.actors()[player.index].failure().is_none());
         let mut saved = movement_snapshot(&world, &scripts, &data);
         saved["actors"][player.index]["control"]["living_state"] = living.byte().into();
-        // Sliding refuses translation independently; keep the test on heading ownership.
-        saved["actors"][player.index]["control"]["sliding_state"] = 1.into();
+        // Parameterize sliding so the heading control cannot mask walking admission.
+        saved["actors"][player.index]["control"]["sliding_state"] = sliding.into();
         let globals = std::mem::take(world.globals_mut());
         world = ScriptWorld::from_snapshot(
             serde_json::from_value(saved).unwrap(),
@@ -53028,6 +53016,8 @@ fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
         .unwrap();
         let player = world.id(player.index).unwrap();
         let map = world.id(map.index).unwrap();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let before_position = world.spatial(player).unwrap().local.position;
         let before = world.spatial(player).unwrap().local.angles;
         let prepared = world
             .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
@@ -53056,7 +53046,7 @@ fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
                 ScriptInputs {
                     player_controller: Some(PlayerControllerInput {
                         held: &held,
-                        walk_mode: true,
+                        walk_mode: false,
                         auto_defend: false,
                         steer: None,
                         claim: None,
@@ -53072,11 +53062,40 @@ fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
                 &mut |_, _| Ok(()),
             )
             .unwrap();
+        world.finish_player_movement_update(player).unwrap();
         let after = world.spatial(player).unwrap().local.angles;
         if living.is_ledge() {
             assert_eq!(after[1], before[1], "ledge state {living} owns heading");
+            assert_eq!(
+                world.spatial(player).unwrap().local.position,
+                before_position
+            );
         } else {
             assert_ne!(after[1], before[1], "ordinary turning must remain live");
         }
     }
+}
+
+#[test]
+fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
+    held_walk_turn_in_states(
+        &[
+            LivingState::ORDINARY,
+            LivingState::TURNING_TO_HIGH_LEDGE,
+            LivingState::HIGH_CLIMB,
+            LivingState::TURNING_TO_LOW_LEDGE,
+            LivingState::LOW_CLIMB,
+            LivingState::CATCHING_HANG,
+            LivingState::CLIMB_FROM_HANG,
+            LivingState::DROPPING,
+            LivingState::CLIMB_FINISHED,
+            LivingState::ENTERING_LEDGE,
+        ],
+        1,
+    );
+}
+
+#[test]
+fn held_walk_forward_preserves_low_climb_without_stopping_controller() {
+    held_walk_turn_in_states(&[LivingState::LOW_CLIMB], 0);
 }
