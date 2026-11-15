@@ -9,7 +9,7 @@ use super::StartupContent;
 use super::book_motion::BookPose;
 use super::menu::MenuState;
 use super::menu_raster::Painted;
-use super::view3d::{HEIGHT, WIDTH};
+use super::view3d::{HEIGHT, LitMaterial, WIDTH};
 use bevy::{
     asset::RenderAssetUsages,
     camera::visibility::{NoFrustumCulling, RenderLayers},
@@ -24,8 +24,6 @@ use std::collections::{BTreeMap, HashMap};
 
 /// Render layer of the book scene, apart from the world and the 2D startup content.
 const BOOK_LAYER: usize = 5;
-/// Pixels whose interpolated alpha rounds to zero are not drawn (alpha 0 is the colour key).
-const ALPHA_CUTOFF: f32 = 0.5 / 255.0;
 
 /// One mesh of one model: the faces that share a texture, or a solid colour.
 struct Group {
@@ -113,22 +111,11 @@ fn group_mesh(book: &MenuAsset, group: &Group, shown: Shown) -> Mesh {
     )
     .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 0.0, 1.0]; count])
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-}
-
-/// An unlit material: the book's faces carry no light.
-fn material(texture: Option<Handle<Image>>, colour: [u8; 4]) -> StandardMaterial {
-    StandardMaterial {
-        base_color: if texture.is_some() {
-            Color::WHITE
-        } else {
-            Color::srgba_u8(colour[0], colour[1], colour[2], colour[3])
-        },
-        base_color_texture: texture,
-        unlit: true,
-        fog_enabled: false,
-        alpha_mode: AlphaMode::Mask(ALPHA_CUTOFF),
-        ..default()
-    }
+    // Unity modulation keeps the book unlit while filtering encoded channels.
+    .with_inserted_attribute(
+        Mesh::ATTRIBUTE_COLOR,
+        vec![[255.0, 255.0, 255.0, 1.0]; count],
+    )
 }
 
 /// The camera transform for an engine camera position and pitch (2048 units per revolution).
@@ -155,7 +142,7 @@ pub(super) struct BookDrawing<'w, 's> {
     commands: Commands<'w, 's>,
     images: ResMut<'w, Assets<Image>>,
     meshes: Option<ResMut<'w, Assets<Mesh>>>,
-    materials: Option<ResMut<'w, Assets<StandardMaterial>>>,
+    materials: Option<ResMut<'w, Assets<LitMaterial>>>,
     sprite: Query<'w, 's, (Entity, &'static mut Sprite), BookSprite>,
     visibility: Query<'w, 's, &'static mut Visibility>,
     cameras: Query<'w, 's, &'static mut Transform, With<BookCamera>>,
@@ -165,9 +152,10 @@ pub(super) struct BookDrawing<'w, 's> {
 fn spawn_groups(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
+    materials: &mut Assets<LitMaterial>,
     book: &MenuAsset,
     textures: &[Handle<Image>],
+    images: &mut Assets<Image>,
 ) -> Vec<Group> {
     let mut grouped: BTreeMap<(usize, Option<usize>, [u8; 4]), Vec<usize>> = BTreeMap::new();
     for (index, model) in book.models.iter().enumerate() {
@@ -183,16 +171,19 @@ fn spawn_groups(
                 .push(face_index);
         }
     }
-    let mut textured: HashMap<usize, Handle<StandardMaterial>> = HashMap::new();
+    let mut textured: HashMap<usize, Handle<LitMaterial>> = HashMap::new();
     let mut groups = Vec::new();
     let layer = RenderLayers::layer(BOOK_LAYER);
     for ((model, texture, colour), faces) in grouped {
         let handle = match texture {
             Some(texture) => textured
                 .entry(texture)
-                .or_insert_with(|| materials.add(material(Some(textures[texture].clone()), [0; 4])))
+                .or_insert_with(|| materials.add(LitMaterial::new(textures[texture].clone())))
                 .clone(),
-            None => materials.add(material(None, colour)),
+            None => {
+                let texture = images.add(super::view3d::raw_texture_image(1, 1, colour.to_vec()));
+                materials.add(LitMaterial::new(texture))
+            }
         };
         let group = Group {
             model,
@@ -245,9 +236,15 @@ fn create(
     sprite.image = target.clone();
     let textures: Vec<Handle<Image>> = surfaces
         .into_iter()
-        .map(|s| images.add(super::view3d::texture_image(s.width, s.height, s.rgba)))
+        .map(|s| {
+            images.add(super::view3d::raw_texture_image(
+                s.width.into(),
+                s.height.into(),
+                s.rgba,
+            ))
+        })
         .collect();
-    let groups = spawn_groups(commands, meshes, materials, book, &textures);
+    let groups = spawn_groups(commands, meshes, materials, book, &textures, images);
     let overlay = images.add(super::view3d::texture_image(
         WIDTH as u16,
         HEIGHT as u16,

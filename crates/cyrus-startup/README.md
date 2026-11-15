@@ -4,7 +4,9 @@ Installed splash/title presentation, the book menu and settings, cinematic playb
 world-entry loading, and the installed logbook reader. Book motion and helpers remain internal.
 The book is a real 3D scene: its models are meshes under a perspective camera that renders into the
 640 by 480 frame the book sprite shows, with the installed projection, placements and camera paths.
-Page text, widgets and pictures are painted on the CPU into the page textures. Backtick Flycam also flies
+Page text, widgets and pictures are painted on the CPU into the page textures.
+Book texture filtering operates on encoded eight-bit channels, before display
+conversion, using the same raw-texture material as the other installed model views. Backtick Flycam also flies
 this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
@@ -255,3 +257,13 @@ three boundary values. The rule is documented in preservation
 [subtitle glyphs](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/subtitles.md#glyphs).
 
 A failed destination loading-artwork or required book-cache request leaves the current player intact and reports the failing asset. After repairing the cache, repeating `WorldLoadRequest` retries that load instead of retaining its failed handle. The installed-artwork and book-cache regressions exercise both failure/retry paths and check the selected full raster and player replacement.
+
+For a production book-filter regression, use `dev/scripts/check-book-filter.py prepare`
+to create two disposable `menu/book.menu` cache files from an exported cache, one
+with `--inverse`. Render each through the native or browser application at the
+same settled pose. `compare FIRST.png SECOND.png --rectangle LEFT TOP RIGHT BOTTOM`
+checks complementary encoded channels on a textured region without text or
+transparency. It rejects the brighter midpoint produced by filtering sRGB
+textures in linear light. Keep the install read-only and restore the original
+cache after this synthetic control. Run `test-check-book-filter.py` with Pillow
+for CLI passing and wrong-domain controls.

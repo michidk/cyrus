@@ -192,6 +192,13 @@ pub struct LitMaterial {
     texture: Handle<Image>,
 }
 
+impl LitMaterial {
+    /// Sample encoded texture channels before converting the shaded result for display.
+    pub(super) fn new(texture: Handle<Image>) -> Self {
+        Self { texture }
+    }
+}
+
 impl Material for LitMaterial {
     fn vertex_shader() -> ShaderRef {
         "embedded://cyrus_startup/lit.wesl".into()
