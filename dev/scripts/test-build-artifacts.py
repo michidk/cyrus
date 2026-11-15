@@ -151,6 +151,36 @@ done
             self.assertEqual(files["game-config/mods/guest/mod.wasm"], b"wasm\n")
             self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{suffix or '.tar.gz'}").is_file())
 
+    def test_mod_bundle_delivers_launcher_beside_game_on_each_platform(self):
+        self.mod_fixtures()
+        crate = self.root / "crates/cyrus-launcher"
+        crate.mkdir()
+        (crate / "Cargo.toml").touch()
+        for platform, suffix in (
+            ("x86_64-unknown-linux-gnu", ""),
+            ("x86_64-apple-darwin", ""),
+            ("aarch64-apple-darwin", ""),
+            ("x86_64-pc-windows-msvc", ".exe"),
+        ):
+            with self.subTest(platform=platform):
+                self.build("native-mods", platform)
+                stem = self.root / f"target/artifacts/cyrus-with-mods-{platform}"
+                if suffix:
+                    with zipfile.ZipFile(str(stem) + ".zip") as archive:
+                        files = set(archive.namelist())
+                else:
+                    with tarfile.open(str(stem) + ".tar.gz") as archive:
+                        files = {m.name.removeprefix("./") for m in archive if m.isfile()}
+                        for app in ("cyrus", "cyrus-launcher"):
+                            self.assertTrue(archive.getmember(f"./{app}").mode & 0o111)
+                self.assertIn(f"cyrus{suffix}", files)
+                self.assertIn(f"cyrus-launcher{suffix}", files)
+                calls = (self.root / "cargo-calls.txt").read_text().splitlines()
+                build = [call for call in calls if call.startswith(
+                    f"build --locked --release --target {platform} ")]
+                self.assertEqual(len(build), 1)
+                self.assertIn("-p cyrus-launcher", build[0])
+
     def test_mod_bundle_uses_inherited_build_directory(self):
         self.mod_fixtures()
         # Fake Cargo writes tiny fixture files, never real compiler outputs.

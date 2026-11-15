@@ -364,7 +364,10 @@ mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
 guests, shaders and authored file overlays. Mods are installed but disabled by
 default. Extract the whole archive and launch from the extracted directory,
 then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
-included `game-config` directory. The ordinary downloads remain available.
+included `game-config` directory. When the revision includes `cyrus-launcher`,
+the bundle also includes that executable beside `cyrus`. Keep both in the same
+folder and start `cyrus-launcher` to choose game files, mods and presentation
+settings before playing. The ordinary game-only downloads remain available.
 No package contains the original game data or the builder's local state.
 
 Browser artifact builds compile all available applications and the viewer worker
