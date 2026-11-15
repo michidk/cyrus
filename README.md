@@ -20,6 +20,10 @@ Bring your own GOG install. cyrus ships no game data.
 | --- | --- |
 | [![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/mqdefault.jpg)](https://youtu.be/pG4tS6XbdIw) | [![Watch the cyrus editor on YouTube](https://i.ytimg.com/vi/B1s0oL_fFGU/mqdefault.jpg)](https://youtu.be/B1s0oL_fFGU) |
 
+## Name
+
+cyrus is named after [Cyrus](https://en.uesp.net/wiki/Redguard:Cyrus), the main character of *Redguard*.
+
 ## What works today
 
 - Play the installed splash and title, then browse the data-driven book menu.
