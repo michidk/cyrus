@@ -285,10 +285,12 @@ pub fn validate_scene_materials(world: &World, roots: &[Entity]) -> Result<()> {
                 let material = models
                     .get(&handle.0)
                     .context("prepared model material disappeared")?;
-                ensure!(
-                    images.contains(&material.extension.lights),
-                    "prepared model light image disappeared"
-                );
+                let lights = images
+                    .get(&material.extension.lights)
+                    .context("prepared model light image disappeared")?;
+                crate::lighting::runtime::validate_light_table(lights).with_context(|| {
+                    format!("prepared mesh {entity:?} model light image invalid")
+                })?;
                 &material.base
             }
             (None, Some(handle)) => {

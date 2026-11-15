@@ -231,7 +231,9 @@ original-game pixel parity.
 
 Material preparation rejects missing source geometry, including terrain, before
 converting any materials or allocating light images. Restoring the source asset
-permits the same staged scene to resume preparation.
+permits the same staged scene to resume preparation. Before publication, model
+light tables must retain their packed byte format, complete CPU data and finite
+light rows; resident handles alone do not establish a usable table.
 
 **Verified:** matched BELLTOWR original/native/browser captures at 640×480 compare
 static wall and table lighting. Color/filtering differences remain; the candle
