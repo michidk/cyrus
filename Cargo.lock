@@ -3250,6 +3250,7 @@ dependencies = [
  "cyrus-config",
  "cyrus-game",
  "eframe",
+ "redguard-preservation",
  "rfd",
  "serde",
  "serde_json",

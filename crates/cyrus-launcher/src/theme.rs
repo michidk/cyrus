@@ -22,7 +22,8 @@ pub fn dialog(context: &egui::Context, title: &str, contents: impl FnOnce(&mut e
         .title_bar(false)
         .collapsible(false)
         .resizable(false)
-        .fixed_size([DIALOG_WIDTH, 0.0])
+        .min_width(DIALOG_WIDTH)
+        .max_width(DIALOG_WIDTH)
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
         .frame(
             egui::Frame::window(&context.global_style())

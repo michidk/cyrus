@@ -2,9 +2,12 @@
 
 The window that starts cyrus. It shows the original Redguard launcher, recreated, with its
 background and buttons read at run time from the player's own `REDGUARD.EXE` (plain buttons when
-that file is not found; nothing is shipped). **Game Options** holds the game files, the mods and the
-faithful or modern choice for each presentation area; **Play Redguard** starts the `cyrus`
-executable beside the launcher and closes the launcher.
+that file is not found; nothing is shipped). **Play Redguard** starts the `cyrus` executable beside the launcher and closes the launcher.
+**Mods** lists the installed mods and switches them on or off. **Game Options** holds the game
+files, the intro-movie switch, the faithful or modern choice for each presentation area, and the
+cheats. **Technical Support** opens the issue tracker. The Mods label is assembled from letters of
+the original bitmaps; the Cancel button keeps its original bitmap, because the artwork has no Q for
+a Quit label.
 
 The launcher does not link the game. It reads and writes the files the game reads at startup:
 
@@ -13,6 +16,7 @@ The launcher does not link the game. It reads and writes the files the game read
 | `mods.json` | the active mods; the folders in `mods/` are listed from their `mod.toml` |
 | `settings.toml` | the `[fidelity]` table, one `faithful` or `modern` per area; other keys are kept |
 | `install.json` | the game folder the game remembered, shown and used for the artwork |
+| `REDGUARD.CHT` | the cheats; the launcher writes the config directory's copy and starts from the install's when there is none |
 | `launcher.json` | the launcher's own choices (a picked game folder, skip the intro movie) |
 
 All of them live in the config directory chosen by `cyrus-config`. A test pins the launcher's list

@@ -5,6 +5,8 @@
 //! `cyrus` executable beside it. Everything here is plain data and file access so that it can be
 //! tested without a window; the window is the `cyrus-launcher` binary.
 pub mod artwork;
+pub mod cheats;
 pub mod fidelity;
 pub mod launch;
+pub mod lettering;
 pub mod mods;

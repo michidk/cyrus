@@ -5,9 +5,11 @@
 //! modern presentation. Without the artwork it shows plain buttons instead.
 mod theme;
 
-use cyrus_launcher::artwork::{Artwork, BUTTON_POSITIONS, Image};
+use cyrus_launcher::artwork::{Artwork, BUTTON_POSITIONS, Button, Image};
+use cyrus_launcher::cheats::{self, Cheat};
 use cyrus_launcher::fidelity::{self, Area, Choices, Mode};
 use cyrus_launcher::launch::{self, Options};
+use cyrus_launcher::lettering;
 use cyrus_launcher::mods::{self, Installed};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, TextureHandle, TextureOptions, Vec2};
 use std::collections::BTreeSet;
@@ -18,57 +20,93 @@ const WIDTH: f32 = 640.0;
 const HEIGHT: f32 = 480.0;
 const PROJECT: &str = "https://github.com/michidk/cyrus";
 const ISSUES: &str = "https://github.com/michidk/cyrus/issues";
-const BETHESDA: &str = "https://bethesda.net/";
-
-/// The original's buttons, in order. Uninstall has nothing to do here and is not shown.
+/// What a button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
     Play,
     Options,
+    Mods,
     Support,
-    Website,
-    Uninstall,
     Quit,
 }
-const ACTIONS: [Action; 6] = [
-    Action::Play,
-    Action::Options,
-    Action::Support,
-    Action::Website,
-    Action::Uninstall,
-    Action::Quit,
-];
-const LABELS: [&str; 6] = [
-    "Play Redguard",
-    "Game Options",
-    "Technical Support",
-    "www.bethesda.net",
-    "",
-    "Cancel",
-];
 
-fn shown(action: Action) -> bool {
-    action != Action::Uninstall
+/// Where a button's artwork comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Art {
+    /// The original launcher's bitmaps for this button, by their index in the artwork.
+    Original(usize),
+    /// Assembled from the letters of the original bitmaps: "Mods".
+    Mods,
 }
+
+/// A button, the slot of the original 640 by 480 layout it sits in (the original has six, the
+/// fourth for a web link that this launcher does not show), and its fallback label.
+struct Entry {
+    action: Action,
+    label: &'static str,
+    art: Art,
+    slot: usize,
+}
+
+const ENTRIES: [Entry; 5] = [
+    Entry {
+        action: Action::Play,
+        label: "Play Redguard",
+        art: Art::Original(0),
+        slot: 0,
+    },
+    Entry {
+        action: Action::Options,
+        label: "Game Options",
+        art: Art::Original(1),
+        slot: 1,
+    },
+    Entry {
+        action: Action::Mods,
+        label: "Mods",
+        art: Art::Mods,
+        slot: 2,
+    },
+    Entry {
+        action: Action::Support,
+        label: "Technical Support",
+        art: Art::Original(2),
+        slot: 3,
+    },
+    Entry {
+        action: Action::Quit,
+        label: "Quit",
+        art: Art::Original(5),
+        slot: 5,
+    },
+];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
     Game,
-    Mods,
     Graphics,
+    Cheats,
 }
 
 #[derive(PartialEq)]
 enum Dialog {
     None,
     Options(Page),
+    Mods,
     Error(String),
+}
+
+/// A button's three bitmaps and where the original layout puts its top-left corner.
+struct Placed {
+    action: Action,
+    button: Button,
+    origin: (u32, u32),
 }
 
 struct Textures {
     background: TextureHandle,
-    /// Up, focus, down for each button.
-    buttons: Vec<[TextureHandle; 3]>,
+    /// Up, focus, down for each button, and the rectangle it fills.
+    buttons: Vec<([TextureHandle; 3], Rect, Action)>,
 }
 
 struct App {
@@ -78,7 +116,9 @@ struct App {
     installed: Installed,
     active: BTreeSet<String>,
     choices: Choices,
+    cheats: cheats::State,
     art: Option<Artwork>,
+    placed: Vec<Placed>,
     textures: Option<Textures>,
     dialog: Dialog,
     /// The button under the mouse.
@@ -93,6 +133,24 @@ fn texture(context: &egui::Context, name: &str, image: &Image) -> TextureHandle 
         &image.rgba,
     );
     context.load_texture(name, pixels, TextureOptions::NEAREST)
+}
+
+/// `entry`'s artwork, right-aligned in its slot of the original layout and centred on it. `None` when
+/// a label has to be cut from original bitmaps that do not separate into letters.
+fn place(entry: &Entry, art: &Artwork) -> Option<Placed> {
+    let slot = art.buttons.get(entry.slot)?;
+    let (slot_x, slot_y) = BUTTON_POSITIONS[entry.slot];
+    let button = match entry.art {
+        Art::Original(index) => art.buttons.get(index)?.clone(),
+        Art::Mods => lettering::label(art, &lettering::MODS)?,
+    };
+    let x = (slot_x + slot.up.width).saturating_sub(button.up.width);
+    let y = (slot_y + slot.up.height / 2).saturating_sub(button.up.height / 2);
+    Some(Placed {
+        action: entry.action,
+        button,
+        origin: (x, y),
+    })
 }
 
 /// Open a web page or folder with the system's default program.
@@ -116,7 +174,9 @@ impl App {
             installed: Installed::default(),
             active: BTreeSet::new(),
             choices: Choices::default(),
+            cheats: cheats::State::default(),
             art: None,
+            placed: Vec::new(),
             textures: None,
             dialog: Dialog::None,
             focus: Some(0),
@@ -139,6 +199,13 @@ impl App {
             Ok(choices) => app.choices = choices,
             Err(error) => problems.push(format!("{error:#}")),
         }
+        match cheats::load(
+            &cheats::local_file(),
+            app.game_folder().map(PathBuf::as_path),
+        ) {
+            Ok(state) => app.cheats = state,
+            Err(error) => problems.push(format!("{error:#}")),
+        }
         if !problems.is_empty() {
             app.dialog = Dialog::Error(problems.join("\n"));
         }
@@ -152,8 +219,19 @@ impl App {
     }
 
     fn load_artwork(&mut self) {
-        self.art = self.game_folder().and_then(|game| Artwork::load(game));
         self.textures = None;
+        self.placed.clear();
+        self.art = self.game_folder().and_then(|game| Artwork::load(game));
+        let Some(art) = &self.art else {
+            return;
+        };
+        let placed: Option<Vec<Placed>> = ENTRIES.iter().map(|entry| place(entry, art)).collect();
+        match placed {
+            Some(placed) => self.placed = placed,
+            // When the new labels cannot be cut from the original bitmaps, plain buttons show instead
+            // of a half-lettered screen.
+            None => self.art = None,
+        }
     }
 
     /// Writes every choice to the files the game reads. Called after each change, so closing the
@@ -191,13 +269,10 @@ impl App {
         match action {
             Action::Play => self.play(context),
             Action::Options => self.dialog = Dialog::Options(Page::Game),
+            Action::Mods => self.dialog = Dialog::Mods,
             Action::Support => {
                 let _ = open(ISSUES.as_ref());
             }
-            Action::Website => {
-                let _ = open(BETHESDA.as_ref());
-            }
-            Action::Uninstall => {}
             Action::Quit => context.send_viewport_cmd(egui::ViewportCommand::Close),
         }
     }
@@ -209,16 +284,22 @@ impl App {
         {
             self.textures = Some(Textures {
                 background: texture(&context, "background", &art.background),
-                buttons: art
-                    .buttons
+                buttons: self
+                    .placed
                     .iter()
                     .enumerate()
-                    .map(|(i, b)| {
-                        [
-                            texture(&context, &format!("b{i}u"), &b.up),
-                            texture(&context, &format!("b{i}f"), &b.focus),
-                            texture(&context, &format!("b{i}d"), &b.down),
-                        ]
+                    .map(|(i, placed)| {
+                        let states = [
+                            texture(&context, &format!("b{i}u"), &placed.button.up),
+                            texture(&context, &format!("b{i}f"), &placed.button.focus),
+                            texture(&context, &format!("b{i}d"), &placed.button.down),
+                        ];
+                        let (x, y) = placed.origin;
+                        let rect = Rect::from_min_size(
+                            Pos2::new(x as f32, y as f32),
+                            states[0].size_vec2(),
+                        );
+                        (states, rect, placed.action)
                     })
                     .collect(),
             });
@@ -231,13 +312,8 @@ impl App {
             let full = Rect::from_min_size(Pos2::ZERO, Vec2::new(WIDTH, HEIGHT));
             ui.painter()
                 .image(textures.background.id(), full, uv, Color32::WHITE);
-            for (i, states) in textures.buttons.iter().enumerate() {
-                if !shown(ACTIONS[i]) {
-                    continue;
-                }
-                let (x, y) = BUTTON_POSITIONS[i];
-                let rect =
-                    Rect::from_min_size(Pos2::new(x as f32, y as f32), states[0].size_vec2());
+            for (i, (states, rect, _)) in textures.buttons.iter().enumerate() {
+                let rect = *rect;
                 let sense = if modal {
                     Sense::hover()
                 } else {
@@ -266,13 +342,10 @@ impl App {
                 ui.heading(egui::RichText::new("Redguard").size(40.0).color(RED));
                 ui.label("The original launcher artwork is shown when REDGUARD.EXE is in your game folder.");
                 ui.add_space(20.0);
-                for (i, action) in ACTIONS.iter().enumerate() {
-                    if !shown(*action) || *action == Action::Website {
-                        continue;
-                    }
+                for (i, entry) in ENTRIES.iter().enumerate() {
                     let button = ui.add_enabled(
                         !modal,
-                        egui::Button::new(LABELS[i]).min_size(Vec2::new(220.0, 30.0)),
+                        egui::Button::new(entry.label).min_size(Vec2::new(220.0, 30.0)),
                     );
                     if button.hovered() {
                         hovered = Some(i);
@@ -292,7 +365,7 @@ impl App {
             self.focus = hovered;
         }
         if let Some(i) = clicked {
-            self.activate(ACTIONS[i], &context);
+            self.activate(ENTRIES[i].action, &context);
         }
     }
 
@@ -347,20 +420,34 @@ impl App {
                     self.dialog = Dialog::None;
                 }
             }
+            Dialog::Mods => {
+                let mut done = false;
+                theme::dialog(context, "Mods", |ui| {
+                    self.mods_page(ui);
+                    if let Some(problem) = &self.problem {
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new(problem).color(ERROR));
+                    }
+                    theme::footer(ui, |ui| done = theme::primary(ui, "Done").clicked());
+                });
+                if done {
+                    self.dialog = Dialog::None;
+                }
+            }
             Dialog::Options(page) => {
                 let mut page = *page;
                 let mut done = false;
                 theme::dialog(context, "Game Options", |ui| {
                     ui.horizontal(|ui| {
                         ui.selectable_value(&mut page, Page::Game, "Game");
-                        ui.selectable_value(&mut page, Page::Mods, "Mods");
                         ui.selectable_value(&mut page, Page::Graphics, "Graphics and sound");
+                        ui.selectable_value(&mut page, Page::Cheats, "Cheats");
                     });
                     ui.add_space(4.0);
                     match page {
                         Page::Game => self.game_page(ui),
-                        Page::Mods => self.mods_page(ui),
                         Page::Graphics => self.graphics_page(ui),
+                        Page::Cheats => self.cheats_page(ui),
                     }
                     if let Some(problem) = &self.problem {
                         ui.add_space(6.0);
@@ -428,7 +515,7 @@ impl App {
         ui.label(theme::muted("Active mods load when the game starts."));
         let mut changed = false;
         egui::ScrollArea::vertical()
-            .max_height(260.0)
+            .max_height(330.0)
             .show(ui, |ui| {
                 for entry in &self.installed.mods {
                     let byline = match (&entry.version, &entry.author) {
@@ -460,6 +547,36 @@ impl App {
             });
         if changed {
             self.save();
+        }
+    }
+
+    fn cheats_page(&mut self, ui: &mut egui::Ui) {
+        theme::section(ui, "Cheats");
+        ui.label(theme::muted(
+            "They change how the game plays and are kept in your cyrus settings, not in the game folder.",
+        ));
+        let mut changed = false;
+        for cheat in Cheat::ALL {
+            let mut on = self.cheats.is_on(cheat);
+            theme::row(ui, cheat.label(), cheat.detail(), |ui| {
+                if theme::toggle(ui, &mut on).changed() {
+                    self.cheats.set(cheat, on);
+                    changed = true;
+                }
+            });
+        }
+        ui.add_space(6.0);
+        if ui
+            .add_enabled(self.cheats.any_on(), egui::Button::new("Turn all off"))
+            .clicked()
+        {
+            self.cheats.clear();
+            changed = true;
+        }
+        if changed {
+            self.problem = cheats::save(&cheats::local_file(), &self.cheats)
+                .err()
+                .map(|error| format!("{error:#}"));
         }
     }
 
