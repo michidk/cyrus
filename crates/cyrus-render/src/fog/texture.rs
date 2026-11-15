@@ -823,12 +823,12 @@ impl TextureAnimations {
                 flat.radius,
             )?))
         } else {
-            let Some(geometry) = geometry else {
-                return Ok(None);
-            };
-            let Some(admission) = admission::Model::parse(&geometry.value)? else {
-                return Ok(None);
-            };
+            let geometry = geometry.ok_or_else(|| {
+                anyhow::anyhow!("animated texture model lacks polygon admission geometry")
+            })?;
+            let admission = admission::Model::parse(&geometry.value)?.ok_or_else(|| {
+                anyhow::anyhow!("animated texture model lacks polygon admission metadata")
+            })?;
             let Some(VertexAttributeValues::Float32x3(positions)) =
                 mesh.attribute(Mesh::ATTRIBUTE_POSITION)
             else {

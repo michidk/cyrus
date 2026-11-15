@@ -550,3 +550,60 @@ fn special_and_ordinary_actor_flats_share_playback_without_sharing_draw_properti
     census.validate(&restored, &world, &[replacement_root])?;
     Ok(())
 }
+
+#[test]
+fn animated_models_require_polygon_admission_before_preparation_succeeds() {
+    use bevy::{
+        asset::RenderAssetUsages,
+        gltf::{GltfExtras, GltfMaterialExtras},
+        mesh::PrimitiveTopology,
+    };
+    for geometry in [None, Some("{}"), Some(r#"{"rgpre_lighting":{}}"#)] {
+        let mut world = World::new();
+        world.init_resource::<Assets<Mesh>>();
+        let mesh = world.resource_mut::<Assets<Mesh>>().add(Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD,
+        ));
+        let root = world.spawn((StagedRenderRoot, Visibility::Hidden)).id();
+        let model = world
+            .spawn((
+                ChildOf(root),
+                Mesh3d(mesh),
+                GltfMaterialExtras {
+                    value: serde_json::json!({"rgpre_texture_animation": {
+                        "version":1,"image_name":"A00000","delay_ms":142,"textures":[0,1]
+                    }})
+                    .to_string(),
+                },
+            ))
+            .id();
+        if let Some(value) = geometry {
+            world.entity_mut(model).insert(GltfExtras {
+                value: value.into(),
+            });
+        }
+        let result = TextureAnimations::prepare(
+            &mut world,
+            Handle::<cyrus_assets::environment::Environment>::default().id(),
+            &[root],
+        );
+        let error = result
+            .err()
+            .expect("missing polygon admission must reject animated model preparation")
+            .to_string();
+        assert!(error.contains("admission"), "{error}");
+        assert!(error.contains(&format!("{model:?}")), "{error}");
+        // A failed admission must leave the same model available for correction.
+        world
+            .entity_mut(model)
+            .insert(GltfMaterialExtras { value: "{}".into() });
+        let prepared = TextureAnimations::prepare(
+            &mut world,
+            Handle::<cyrus_assets::environment::Environment>::default().id(),
+            &[root],
+        )
+        .expect("nonanimated geometry requires no texture binding");
+        assert!(prepared.snapshot().is_empty());
+    }
+}
