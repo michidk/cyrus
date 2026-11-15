@@ -34,6 +34,7 @@ module where it is defined and regenerate.
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
 - `src/hud.rs` — Installed HUD layout, item and font records.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
+- `src/ini_patch.rs` — INI patches: a mod's declared value changes in the game's INI files (`COMBAT.INI`, `MENU.INI`).
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
 - `src/loading.rs` — Native preload scan and parser coverage results.
 - `src/loading_artwork.rs` — Destination-specific loading pictures, prepared on demand from WORLD.INI.
@@ -64,6 +65,7 @@ module where it is defined and regenerate.
 - `src/script/combat.rs` — Prepared combat moves with authored omissions retained explicitly.
 - `src/script/inventory.rs` — Static SOUP census; occurrence counts do not establish runtime support or reachability.
 - `src/script/weapon.rs` — Installed weapon model identities and original signed ROB length inputs.
+- `src/script_edit.rs` — Script edits: statement-level changes to an actor's SOUP program, declared by a mod
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/script_patch.rs` — Script patches: a mod's declared edits to an actor's script in one world, applied when the
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
@@ -79,6 +81,7 @@ module where it is defined and regenerate.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/splash_data.rs` — Converts the parsed Windows 3dfx splash into the asset the game draws live.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
+- `src/text_patch.rs` — Text patches: a mod's declared corrections to the lines of the game's dialogue file
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 
@@ -150,7 +153,20 @@ module where it is defined and regenerate.
 ## `cyrus-mods` — Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 
 - `src/api.rs` — Host components behind `wit/cyrus.wit`, exchanged with the engine once per frame.
+- `src/gameplay.rs` — Native gameplay services requested by Wasm guests; hosts own eligibility and completion.
+- `src/gameplay_runtime_test.rs` — Actual Wasm guests exercise typed gameplay hooks without a renderer or installed assets.
+- `src/geometry.rs` — Validated owner-scoped raster mesh uploads. Guest code owns all placement and LOD policy.
+- `src/grass_runtime_test.rs` — Load the actual grass component against typed terrain and owned mesh hooks.
+- `src/lifecycle.rs` — Generation-scoped opaque actor readback and committed death observations for native guests.
+- `src/ownership.rs` — Loaded guest incarnations shared by asynchronous gameplay and visual hooks.
+- `src/particle_runtime_test.rs` — Real WebAssembly guest/host exercise, optionally with offscreen GPU capture.
+- `src/particles.rs` — Mod-owned Hanabi GPU bursts in scene coordinates, independent of gameplay rules.
+- `src/physics.rs` — Bounded owner-scoped rigid assemblies and source-vertex bindings. No gameplay collision writes.
+- `src/physics/description.rs` — Atomic validation of owned assembly requests at the guest boundary.
+- `src/physics/solver.rs` — Fixed-step visual rigid bodies and read-only installed world collision.
+- `src/physics/tests.rs` — Contact, constraint and resource ownership contracts through the host API.
 - `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
+- `src/terrain.rs` — Bounded, revision-scoped reads of retained terrain geometry and installed image pixels.
 
 ## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.
 
@@ -169,6 +185,7 @@ module where it is defined and regenerate.
 - `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
 - `src/fog/effects/observation.rs` — Read-only transient mesh, material and generation observations.
 - `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
+- `src/fog/geometry.rs` — Scene-lit owned geometry and read-only retained terrain material access for native mods.
 - `src/fog/modern_lighting.rs` — Modern lighting: the world lit by real-time PBR shading, selected by `Area::Lighting`.
 - `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
 - `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
@@ -198,6 +215,7 @@ module where it is defined and regenerate.
 - `src/persistence/source.rs` — Scene identity recorded by the same GLTF decode that creates render assets.
 - `src/player_model.rs` — Actor frame-source replacement through the shared native/browser GLB loader.
 - `src/player_model/persistence.rs` — Adoption of a fully loaded player model without a second GLTF request.
+- `src/pose_override.rs` — Owned deformation of a frozen vertex-frame mesh. Gameplay poses remain authoritative.
 - `src/presentation_clock.rs` — Presentation time continuation rebased independently of the host real-time epoch.
 - `src/sampling.rs` — ROB sampling attributes and effective palette keys from preservation's GLTF contract.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
@@ -286,6 +304,7 @@ module where it is defined and regenerate.
 - `src/script/registry/contact.rs` — Combat contact queries follow preservation's SOUP motion-contact rules.
 - `src/script/registry/coordination.rs` — Combat coordination shares attacker eligibility, close counters and addressed class queues.
 - `src/script/registry/counter.rs` — Live nonplayer counter timing, synchronous attack start and primitive sidesteps.
+- `src/script/registry/damage.rs` — Bounded observations of actual health loss, separate from damage requests and gameplay state.
 - `src/script/registry/death_exit.rs` — End-of-frame exits use selected state after ordinary traversal, never mid-actor.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
@@ -303,6 +322,7 @@ module where it is defined and regenerate.
 - `src/script/registry/leap.rs` — The leap that a route link flagged `0x4000` starts, from preservation's SOUP.md phase twelve.
 - `src/script/registry/ledge.rs` — Selected-player ledge entry: the edge service, the ledge scan with its record classification,
 - `src/script/registry/ledge_states.rs` — The selected player's ledge transition (the ledge living states), the hang release and the
+- `src/script/registry/lifecycle.rs` — Presentation observations at committed actor lifecycle writes, independent of health loss.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
 - `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update
