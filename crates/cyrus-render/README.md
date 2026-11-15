@@ -303,7 +303,9 @@ frame; the ground heights still follow the original's waves.
 The model and terrain materials are bindless where the platform supports it, so models with
 different textures share one draw batch; their values travel in one buffer per material
 (`ModelUniform`) and the shaders read the texture and the light table through Bevy's binding
-arrays. The light table stores each 32-bit float as one RGBA8 texel of its bytes, because binding
+arrays. A missing runtime light-table image is rebuilt from the current light list even
+when the camera and source are unchanged; live material bindings adopt its replacement.
+The light table stores each 32-bit float as one RGBA8 texel of its bytes, because binding
 arrays only take filterable textures; the shader reassembles the exact bits. WebGL keeps plain
 bindings.
 Under modern lighting the map's object and baked lights are point lights with their positive

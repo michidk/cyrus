@@ -165,7 +165,10 @@ impl RuntimeLights {
         images: &mut Assets<Image>,
     ) -> Handle<Image> {
         let origin = region(target);
-        if self.previous != Some((source, origin)) || self.previous_lights != lights {
+        if self.previous != Some((source, origin))
+            || self.previous_lights != lights
+            || !images.contains(&self.image)
+        {
             let image = texture(&selected(lights, origin));
             self.previous_lights = lights.to_vec();
             if let Some(mut old) = images.get_mut(&self.image) {
