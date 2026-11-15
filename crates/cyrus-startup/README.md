@@ -13,7 +13,9 @@ Book sampling quantizes fractional texture coordinates to four bits and floors
 each horizontal and vertical channel interpolation, following the released
 [software-Voodoo filter rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md).
 **Verified:** book fragments also apply the released [ordered RGB565 framebuffer rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/fog.md#integer-precision-and-framebuffer-dithering)
-before display conversion. Other lit model views retain their existing filtering and framebuffer paths. Backtick Flycam also flies
+before display conversion. Merged [preservation PR #335](https://github.com/michidk/redguard-preservation/pull/335)
+records its book application; the generic arithmetic is already in release 0.12.5.
+Other lit model views retain their existing filtering and framebuffer paths. Backtick Flycam also flies
 this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
