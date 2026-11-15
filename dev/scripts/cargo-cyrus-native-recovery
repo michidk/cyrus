@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Cargo subcommand used by hauler to serialize native checkpoint target mutations.
+set -euo pipefail
+if [ -z "${CARGO_HAULER_INSIDE:-}" ]; then
+    echo 'native recovery subcommand requires the hauler lane' >&2
+    exit 1
+fi
+shift # Cargo supplies the subcommand name before its arguments.
+exec bash "$(dirname "$0")/build-native-recovery.sh" "$@"

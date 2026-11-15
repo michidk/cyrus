@@ -20,7 +20,7 @@ class Recovery(unittest.TestCase):
         scripts = self.root / 'dev/scripts'
         scripts.mkdir(parents=True)
         for name in ('build-native-recovery.sh', 'build-native.sh', 'run-game.sh', 'web-build-checkpoint.py',
-                     'web-compile-checkpoint.py', 'build-provenance.py'):
+                     'web-compile-checkpoint.py', 'build-provenance.py', 'cargo-cyrus-native-recovery'):
             shutil.copyfile(SCRIPTS / name, scripts / name)
         (scripts / 'toolchain.sh').write_text('export PATH="$PWD/bin:$PATH"\n')
         (scripts / 'cargo.sh').write_text('cargo() { "$PWD/bin/fake-cargo" "$@"; }\n')
@@ -29,9 +29,11 @@ class Recovery(unittest.TestCase):
             'rustc': '#!/bin/sh\ncat "$PWD/compiler"\n',
             'hauler': '#!/bin/sh\nexit 0\n',
             'fake-cargo': '''#!/usr/bin/env python3
-import json,os
+import json,os,subprocess
 from pathlib import Path
 import sys
+if sys.argv[1:2] == ['cyrus-native-recovery']:
+ sys.exit(subprocess.call(['bash','dev/scripts/cargo-cyrus-native-recovery',*sys.argv[1:]],env={**os.environ,'CARGO_HAULER_INSIDE':'1'}))
 if sys.argv[1:] == ['--version']:
  print('cargo-test-version');sys.exit()
 root=Path.cwd();target=Path(os.environ['CARGO_TARGET_DIR'])
@@ -66,6 +68,23 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
                                 cwd=self.root, env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
+
+    def test_target_restore_runs_inside_the_same_hauler_lane_as_compilation(self):
+        recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'
+        recorder.write_text("import os,sys\n"
+                            "if sys.argv[1] == 'restore' and not os.environ.get('CARGO_HAULER_INSIDE'):\n"
+                            " sys.exit('target restore ran outside the hauler lane')\n" + recorder.read_text())
+        self.run_build()
+
+    def test_internal_subcommand_rejects_execution_without_hauler(self):
+        result = subprocess.run(['bash', 'dev/scripts/cargo-cyrus-native-recovery',
+                                 'cyrus-native-recovery', str(self.output)],
+                                cwd=self.root, env={k: v for k, v in self.env.items()
+                                                   if k != 'CARGO_HAULER_INSIDE'},
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('requires the hauler lane', result.stderr)
+        self.assertFalse((self.root / 'cargo.log').exists())
 
     def test_interrupted_build_restores_completed_units_and_final_executable(self):
         (self.root / 'interrupt').touch()

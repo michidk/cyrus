@@ -2502,7 +2502,9 @@ For a full native acceptance build, set `CYRUS_NATIVE_CHECKPOINT_DIR` to an igno
 host directory and run `dev/scripts/build-native-recovery.sh /host/path/cyrus`. The output
 must be named `cyrus`; it can live directly in the checkpoint directory to avoid
 keeping a second executable copy. The script requires hauler and preserves the
-inherited Cargo target directory. Completed Cargo units are retained as they are
+inherited Cargo target directory. The queue lane covers target restoration,
+compilation and checkpoint recording together; restoration cannot overlap another
+queued Cargo build. Completed Cargo units are retained as they are
 reported, using the same hashed unit recovery as browser builds. Restoration
 never replaces existing shared compilation files; Cargo checks their freshness.
 Cargo events spool to the host independently of unit compression. A successful

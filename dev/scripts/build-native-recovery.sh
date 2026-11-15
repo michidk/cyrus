@@ -8,6 +8,13 @@ source dev/scripts/cargo.sh
 : "${CYRUS_NATIVE_CHECKPOINT_DIR:?set a host-mounted checkpoint directory}"
 command -v hauler >/dev/null || { echo 'native recovery requires hauler' >&2; exit 1; }
 CARGO_HAULER_MAX_CONCURRENT=1 CARGO_HAULER_OVERLAP_EXECUTION=0 hauler daemon start >/dev/null
+# Restoring Cargo files is a target mutation too. Hold the queue lane for restoration,
+# compilation and recording so another build cannot observe a partially restored target.
+if [ -z "${CARGO_HAULER_INSIDE:-}" ]; then
+    export PATH="$PWD/dev/scripts:$PATH"
+    cargo cyrus-native-recovery "${1:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE}"
+    exit
+fi
 output=$(realpath -m "${1:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE}")
 if [ "$(basename "$output")" != cyrus ]; then
     echo 'native executable output must be named cyrus' >&2
