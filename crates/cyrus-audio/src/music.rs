@@ -8,7 +8,7 @@
 //! track keep it running. A missing entry (or `-1`) keeps the current track;
 //! `0` or another negative value stops the music. A different track stops the
 //! playing one when the world request begins, so the loading screen is silent,
-//! and the new track starts once the world is prepared. The startup book menu
+//! and the new track starts once gameplay is admitted. The startup book menu
 //! restarts track 2 from its beginning. A completed track repeats only while
 //! the world runs. The book leaves current playback unchanged and does not
 //! replay a completed track. `SYSTEM.INI` `redbook` disables music.
@@ -107,6 +107,7 @@ pub struct Music {
 enum WorldSelection {
     Settled,
     Pending,
+    AwaitingGameplay,
     Restored,
 }
 
@@ -170,6 +171,7 @@ fn request(install: &GameInstall, music: &mut Music, track: u32) {
             install.root.display()
         );
     };
+    music.world_selection = WorldSelection::Settled;
     music.track = Some(track);
     music.source = None;
     music.load = Some(IoTaskPool::get().spawn(async move {
@@ -181,6 +183,7 @@ fn request(install: &GameInstall, music: &mut Music, track: u32) {
 
 #[cfg(target_arch = "wasm32")]
 fn request(assets: &AssetServer, music: &mut Music, track: u32) {
+    music.world_selection = WorldSelection::Settled;
     music.track = Some(track);
     music.source = None;
     music.load = Some(assets.load(format!("cache://music/{track:02}.wav")));
@@ -251,7 +254,7 @@ fn stop_track(
 }
 
 /// A world load stops the CD when it begins, ahead of the loading screen, if the
-/// world names a different track; the new track starts once the world is prepared.
+/// world names a different track; the new track starts once gameplay is admitted.
 #[cfg(not(target_arch = "wasm32"))]
 fn stop_for_world_entry(
     mut commands: Commands,
@@ -308,6 +311,7 @@ fn start_world_track(
     if music.world_selection == WorldSelection::Restored {
         return;
     }
+    let awaiting_gameplay = music.world_selection == WorldSelection::AwaitingGameplay;
     if current.is_changed() {
         music.world_selection = if current.name.is_empty() {
             WorldSelection::Settled
@@ -346,6 +350,9 @@ fn start_world_track(
         || (u32::try_from(value).ok() == music.track
             && (!playing.is_empty() || music.load.is_some()))
     {
+        if awaiting_gameplay && music.load.is_some() {
+            music.world_selection = WorldSelection::AwaitingGameplay;
+        }
         return;
     }
     stop_track(&mut commands, &mut music, &playing);
@@ -354,6 +361,7 @@ fn start_world_track(
         request(&install, &mut music, track);
         #[cfg(target_arch = "wasm32")]
         request(&assets, &mut music, track);
+        music.world_selection = WorldSelection::AwaitingGameplay;
     }
 }
 
@@ -367,6 +375,7 @@ fn finish_restoration(mut music: ResMut<Music>) {
 fn finish_track(
     mut commands: Commands,
     mut music: ResMut<Music>,
+    state: Option<Res<State<cyrus_game::AppState>>>,
     #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
     (settings, fidelity): (
@@ -379,6 +388,13 @@ fn finish_track(
     ),
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
 ) {
+    // CurrentScene arrives before rendering finishes. Keep its asynchronous CD
+    // preparation, but publish the destination player only with gameplay.
+    if music.world_selection == WorldSelection::AwaitingGameplay
+        && !state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
+    {
+        return;
+    }
     let (Some(load), Some(transports)) = (music.load.as_mut(), transports.as_mut()) else {
         return;
     };
@@ -400,6 +416,9 @@ fn finish_track(
         _ => return,
     };
     music.load = None;
+    if music.world_selection == WorldSelection::AwaitingGameplay {
+        music.world_selection = WorldSelection::Settled;
+    }
     let source = match result {
         Ok(source) => source,
         Err(e) => {

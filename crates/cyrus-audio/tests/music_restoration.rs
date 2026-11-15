@@ -134,3 +134,126 @@ fn world_music_waits_for_initial_settings_but_not_subsequent_preferences() {
         );
     }
 }
+
+#[test]
+fn prepared_world_music_waits_for_gameplay_admission() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (world CD gameplay admission)");
+        return;
+    };
+    let track = cyrus_assets::music::world_track(&install, "1").unwrap();
+    let settings =
+        SoundSettings::parse(&std::fs::read_to_string(install.root.join("SYSTEM.INI")).unwrap());
+    let device = std::env::var_os("CYRUS_MUSIC_ADMISSION_DEVICE_ACCEPTANCE").is_some();
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        bevy::state::app::StatesPlugin,
+    ))
+    .insert_state(cyrus_game::AppState::Loading)
+    .init_asset::<bevy::audio::AudioSource>()
+    .init_asset::<MusicTransport>()
+    .insert_resource(install)
+    .insert_resource(settings)
+    .insert_resource(CurrentScene {
+        name: "1".into(),
+        world: Some(1),
+    });
+    if device {
+        app.add_plugins(bevy::audio::AudioPlugin::default());
+    }
+    app.add_plugins(MusicPlugin);
+    app.finish();
+    app.cleanup();
+    if device {
+        eprintln!("music-admission: Loading");
+    }
+    let mut players = app
+        .world_mut()
+        .query_filtered::<&bevy::audio::PlaybackSettings, With<AudioPlayer<MusicTransport>>>();
+    // Exercise asynchronous preparation without an audio device. Publication must
+    // remain silent for the entire Loading state, even if the track is ready.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        app.update();
+        assert!(
+            players.iter(app.world()).all(|playback| playback.paused),
+            "prepared world started CD playback before gameplay admission"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    // A repeated notification for the same destination must not release its
+    // prepared audio while Loading still owns presentation.
+    app.insert_resource(CurrentScene {
+        name: "1".into(),
+        world: Some(1),
+    });
+    app.update();
+    assert!(players.iter(app.world()).all(|playback| playback.paused));
+    if device {
+        eprintln!("music-admission: InGame");
+    }
+    app.world_mut()
+        .resource_mut::<NextState<cyrus_game::AppState>>()
+        .set(cyrus_game::AppState::InGame);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        app.update();
+        if players.iter(app.world()).any(|playback| !playback.paused) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "gameplay admission lost the pending world track"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(app.world().resource::<Music>().track, Some(track as u32));
+    if device {
+        // The paced backend, rather than a render frame count, owns this span.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            app.update();
+            let mut active = app.world_mut().query::<&AudioPlayer<MusicTransport>>();
+            let player = active.single(app.world()).unwrap();
+            let transports = app.world().resource::<Assets<MusicTransport>>();
+            let transport = transports.get(&player.0).unwrap();
+            let snapshot = app
+                .world()
+                .resource::<Music>()
+                .snapshot(&[(transport, false)])
+                .unwrap();
+            let value = serde_json::to_value(snapshot).unwrap();
+            let samples = value["playback"]["transport"]["input_samples"]
+                .as_u64()
+                .unwrap();
+            if samples >= 10 * 44_100 * 2 {
+                eprintln!("music-admission: complete {samples} source samples");
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "CD device cursor stalled"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+    let mut owners = app
+        .world_mut()
+        .query_filtered::<Entity, With<AudioPlayer<MusicTransport>>>();
+    let owner = owners.single(app.world()).unwrap();
+    app.world_mut()
+        .resource_mut::<NextState<cyrus_game::AppState>>()
+        .set(cyrus_game::AppState::Loading);
+    app.insert_resource(CurrentScene {
+        name: "1".into(),
+        world: Some(1),
+    });
+    app.update();
+    assert_eq!(owners.single(app.world()).unwrap(), owner);
+    assert!(players.iter(app.world()).any(|playback| !playback.paused));
+}

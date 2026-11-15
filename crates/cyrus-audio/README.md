@@ -89,3 +89,10 @@ Install-free controls run directly, for example
 `python3 -B dev/scripts/test-surface-audio.py` and
 `node dev/scripts/test-browser-music-output.mjs CDP_URL` against a Chromium
 DevTools endpoint.
+
+New destination CD tracks prepare asynchronously during world loading and publish
+playback only after gameplay admission. A track already playing for the destination
+continues through loading. This follows the released preservation
+[world-load CD contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/music.md#track-selection).
+`tests/music_restoration.rs` checks that a prepared destination stays silent in
+Loading and starts on InGame without losing its pending selection.
