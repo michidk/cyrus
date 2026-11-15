@@ -33,7 +33,7 @@ See [Playing and controls](docs/PLAYING.md) for saving, resuming and current
 limitations. See the [delivery issues](https://github.com/michidk/cyrus/issues/92) for remaining work and acceptance evidence.
 
 Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
-`rg-unity-devtalk`.
+`#redguard-cyrus-rust`.
 
 ## Run cyrus
 
