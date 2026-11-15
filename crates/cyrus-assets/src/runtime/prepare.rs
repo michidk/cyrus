@@ -42,6 +42,29 @@ pub(super) fn prepare<R: ReadAssets>(
             .collect(),
     };
     match &entry.source {
+        Source::SoftwareSky(id) => {
+            let sky = crate::software_sky::SoftwareSky::prepare(&library.source, *id)?;
+            let rgba = sky.rgba(crate::software_sky::View {
+                draw: 1,
+                angles: [0, 0],
+                screen_scale: 256,
+            })?;
+            preview.content = Content::Images {
+                frames: vec![Picture {
+                    label: entry.name.clone(),
+                    width: 640,
+                    height: 480,
+                    rgba,
+                    indices: None,
+                    embedded_palette: false,
+                }],
+            };
+            preview.details.push((
+                "View".into(),
+                "640x480, heading/pitch 0, scale 256, sky draw 1".into(),
+            ));
+            return Ok(preview);
+        }
         Source::World(id) => {
             let world = geometry::world(&library.source, &id.to_string())?;
             let url = library.output(&entry.id, "glb");

@@ -19,7 +19,10 @@ pub mod runtime;
 #[cfg(feature = "parsers")]
 pub mod source;
 
-pub const CATALOG_VERSION: u32 = 39;
+#[cfg(feature = "parsers")]
+pub mod software_sky;
+
+pub const CATALOG_VERSION: u32 = 40;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +80,8 @@ pub enum Source {
     /// A stored mesh within an original Glide splash DLL or overlay.
     SplashMesh(usize),
     World(u32),
+    /// A world-configured software sky rendered independently of scene geometry.
+    SoftwareSky(u32),
     CdTrack(u32),
     CdMovie(String),
 }
@@ -109,6 +114,7 @@ impl Entry {
     pub fn format_label(&self) -> &str {
         match self.source {
             Source::World(_) => "World previews",
+            Source::SoftwareSky(_) => "Software skies",
             Source::CdTrack(_) => "CD audio",
             _ if self
                 .path

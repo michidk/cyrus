@@ -440,3 +440,16 @@ checkbox or key binding is saved. Documents without ownership metadata retain
 the legacy all-settings interpretation. Displayed sliders are not engine-volume
 snapshots; their conversion follows the released
 [menu settings rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/menu.md#options-and-settings-pages).
+
+The portable viewer lists configured software skies when their authored world
+palette is present. These previews use the software GXA, HAZE table, movement
+switch and rotation settings, independently of Glide's BSI plane. The supported
+preview is a full 640 by 480 viewport at heading/pitch zero, screen scale 256,
+and sky draw 1. `software_sky::SoftwareSky` accepts explicit camera/draw inputs
+for comparisons; `cargo run -p cyrus-assets --features native --example software_sky --
+INSTALL WORLD DRAW HEADING PITCH SCREEN_SCALE OUTPUT.png` renders that same path
+from a read-only source directory. This source-only utility does not establish
+CD installation admission or software gameplay-scene support, tracked in #2 and
+#91. The scanline and haze rules are documented in
+[preservation PR #339](https://github.com/michidk/redguard-preservation/pull/339). Catalog version 40 admits these derived previews. Existing Glide world
+preparation continues to use its own renderer contract.

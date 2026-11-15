@@ -68,6 +68,7 @@ module where it is defined and regenerate.
 - `src/script_edit.rs` — Script edits: statement-level changes to an actor's SOUP program, declared by a mod
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/script_patch.rs` — Script patches: a mod's declared edits to an actor's script in one world, applied when the
+- `src/software_sky.rs` — Software sky preparation and indexed scanline presentation, shared by both viewer hosts.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
 - `src/sound/cache.rs` — Portable RTX payload retention; the caller owns synchronous sample feedback.
 - `src/sound/dialogue.rs` — Indexed dialogue payload access for native and browser game hosts.
