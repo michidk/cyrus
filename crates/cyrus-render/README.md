@@ -152,6 +152,14 @@ retain separate flag settings. Re-export worlds for required version-1
 `rgpre_render` node metadata. Standalone and generated models explicitly retain
 absent ROB provenance and their previous sampling. **Unknown:** standalone-model
 sampling defaults. Placed flats select point sampling.
+
+**Verified:** prepared animation-table actors retain zero draw flags when
+initialization and all installed first-RAAN-model archive matches agree on zero,
+following the published draw-flag ownership rule. Their explicit `cyrus_actor_render` metadata
+selects encoded bilinear sampling across frame-source switches, including Cyrus.
+This actor state takes precedence over source-model ROB provenance in live and
+staged material preparation. Missing actor state keeps the previous unsupported
+sampling path. Re-prepare older caches for catalog version 41.
 **Verified:** known ROB and placed-flat paths compare filtered encoded RGB with
 the effective palette-zero RGB before vertex lighting, following preservation's
 [texture-key contract](https://github.com/michidk/redguard-preservation/commit/7d7c0f38a7fc30dcfd93c4f045df581673e42902).

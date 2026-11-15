@@ -1,8 +1,23 @@
 //! ROB sampling attributes and effective palette keys from preservation's GLTF contract.
 
 pub(super) fn attributes<'a>(extras: impl Iterator<Item = &'a str>) -> anyhow::Result<Option<u8>> {
-    for value in extras {
-        let value: serde_json::Value = serde_json::from_str(value)?;
+    let values = extras
+        .map(serde_json::from_str::<serde_json::Value>)
+        .collect::<Result<Vec<_>, _>>()?;
+    for value in &values {
+        if let Some(actor) = value.get("cyrus_actor_render") {
+            anyhow::ensure!(
+                actor["version"] == 1,
+                "unsupported actor render metadata version"
+            );
+            return actor["draw_flags"]
+                .as_u64()
+                .and_then(|flags| u8::try_from(flags).ok())
+                .map(Some)
+                .ok_or_else(|| anyhow::anyhow!("actor draw flags must be a byte"));
+        }
+    }
+    for value in &values {
         let Some(render) = value.get("rgpre_render") else {
             continue;
         };
@@ -132,6 +147,28 @@ mod tests {
         );
         assert!(chroma_key(None, r#"{"rgpre_lighting":{"solid_rgb":null}}"#).is_err());
         assert!(chroma_key(None, r#"{"rgpre_lighting":{"solid_rgb":[0]}}"#).is_err());
+    }
+
+    #[test]
+    fn actor_draw_state_overrides_source_model_provenance() {
+        for source in ["null", "3"] {
+            let source = format!(r#"{{"rgpre_render":{{"version":1,"rob_attributes":{source}}}}}"#);
+            for flags in [0, 1, 2, 3] {
+                let actor =
+                    format!(r#"{{"cyrus_actor_render":{{"version":1,"draw_flags":{flags}}}}}"#);
+                assert_eq!(
+                    attributes([source.as_str(), &actor].into_iter()).unwrap(),
+                    Some(flags)
+                );
+            }
+        }
+        for actor in [
+            r#"{"cyrus_actor_render":{"version":2,"draw_flags":0}}"#,
+            r#"{"cyrus_actor_render":{"version":1}}"#,
+            r#"{"cyrus_actor_render":{"version":1,"draw_flags":256}}"#,
+        ] {
+            assert!(attributes([actor].into_iter()).is_err());
+        }
     }
 
     #[test]

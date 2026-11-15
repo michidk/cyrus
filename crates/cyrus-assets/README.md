@@ -1,5 +1,16 @@
 # cyrus-assets
 
+Catalog version 41 retains zero draw flags in actor frame-source GLBs when
+animation-table initialization and every possible first-RAAN-model ROB match
+agree on zero. **Verified:** preservation’s [draw-flag ownership](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/model-lighting.md#draw-flag-ownership)
+initializes zero flags and assigns the first model's archive flags on a successful
+lookup. Zero selects bilinear sampling without chroma rejection. Every frame
+source for that actor retains those flags. ROB provenance stays absent.
+Shared frame sources receive zero only when every actor using that texture variant
+qualifies. Nonzero archive matches require authoritative archive selection;
+those actors, static actors and weapon defaults retain their existing unsupported
+sampling state.
+
 ANM preparation rejects unsupported nonzero palette-cycle control prefixes instead
 of exposing them as static images. Zero-control authored ranges remain supported.
 [Preservation PR #325](https://github.com/michidk/redguard-preservation/pull/325)
