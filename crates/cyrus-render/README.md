@@ -84,6 +84,9 @@ Menu edits persist before applying. Audio preference application precedes
 apply in PostUpdate. Cinematic presentation is owned by cyrus-startup.
 Held animation poses rebuild a missing private mesh from the retained source and
 selected frame, preserving authored normals and leaving the shared base mesh unchanged.
+The selected model/frame pair follows preservation's
+[held frame contract](https://github.com/michidk/redguard-preservation/blob/8ba44a6d287a75b618ac940c7f94475a1392645f/docs/engine/animation.md#held-frame-selection);
+the animation progress byte does not identify a model frame.
 
 See [SETUP](../../docs/SETUP.md) for entry points, controls, export prerequisites,
 settings and fidelity limitations. Run `cargo test -p cyrus-render` for graphics
@@ -739,7 +742,10 @@ setting. It advances using elapsed BIOS ticks, direction and speed, including
 when the setting is zero, per [preservation PR #329](https://github.com/michidk/redguard-preservation/pull/329).
 The retained presentation interval is covered by the production scroll system
 test. This state comparison does not establish full raster parity or software
-sky acceptance.
+sky acceptance. The published
+[wrap contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#scrolling-and-rotation)
+includes equality at both bounds: stationary offsets of either -256 or +256
+become zero on the next processed tick.
 
 Rebinding unchanged environmental effect sources restores missing frame images at
 their retained handles. Resident frames, shared playback deadlines and inspection
