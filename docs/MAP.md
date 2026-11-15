@@ -144,6 +144,15 @@ module where it is defined and regenerate.
 - `src/random.rs` — Shared engine random arithmetic, following preservation's SOUP random functions.
 - `src/rope.rs` — Retained ropes from the installed `MPRP` records: construction, swing, chain placement and the
 
+## `cyrus-launcher` — The launcher: what a player chooses before the game starts, and the command it starts it with.
+
+- `src/artwork.rs` — The original launcher's artwork, read from the player's own `REDGUARD.EXE`.
+- `src/fidelity.rs` — The faithful or modern choice for each presentation area, as the game's `settings.toml` holds it.
+- `src/launch.rs` — What the launcher itself remembers, and how it starts the game.
+- `src/main.rs` — The launcher window: the original Redguard launcher, recreated, with its artwork read from the
+- `src/mods.rs` — The installed mods and which of them are switched on.
+- `src/theme.rs` — The launcher's look: the colours of the original launcher's leather and gold, and the few widgets
+
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 
 ## `cyrus-media` — Portable Smacker decoding and PCM conversion; game presentation policy is separate.
