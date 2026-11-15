@@ -666,3 +666,9 @@ The released preservation [music volume rule](https://github.com/michidk/redguar
 The public music plugin uses the prepared sound startup settings, so
 `SYSTEM.INI sound=0` admits no book CD track. Saved voice/text preferences
 retain the forced text-only dialogue state when sound startup is disabled.
+
+`tests/installed_audio_decode.rs` compares installed CD and examine speech through
+`MusicTransport` and `Panned` with an independent WAV reader. It checks every
+source sample, channels, rate, complete speech retirement, installed speech gain,
+and the CD loop boundary. These checks exclude backend resampling and device
+buffers; they do not establish calibrated audible gain or request-to-output timing.
