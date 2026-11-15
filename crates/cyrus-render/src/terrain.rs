@@ -133,6 +133,12 @@ impl Window {
         Self { radius: 16, ..self }.contains(vertex)
     }
 
+    /// Whether a wave can change this vertex's position or normal: the original window and the
+    /// ring of cells around it, whose normals share its faces.
+    pub(super) fn wave_contains(self, vertex: usize) -> bool {
+        Self { radius: 17, ..self }.contains(vertex)
+    }
+
     /// Whether any grid cell in `[min_x, max_x, min_row, max_row]` lies inside the window; a
     /// triangle needs all three corners inside, so none can be admitted otherwise.
     fn overlaps(self, [min_x, max_x, min_row, max_row]: [i32; 4]) -> bool {

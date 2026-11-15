@@ -210,9 +210,11 @@ fn handle(
         mut frame_captures,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
-    (input, mut flycam): (
+    (input, mut flycam, mut reference, mut ray_tracing): (
         Res<cyrus_script::player::input::PlayerInput>,
         Option<ResMut<cyrus_render::camera::DetachedView>>,
+        Option<ResMut<cyrus_render::fog::RayTracingReference>>,
+        Option<ResMut<cyrus_render::fog::RayTracing>>,
     ),
     mut camera: Query<&mut Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
@@ -511,6 +513,24 @@ fn handle(
                 }
                 None => Err(format!("unknown key {key}")),
             },
+            Command::RayTracing { enabled } => match ray_tracing.as_mut() {
+                Some(ray_tracing) => {
+                    ray_tracing.enabled = enabled;
+                    Ok(json!({
+                        "enabled": enabled,
+                        "traced": cyrus_render::fog::ray_traced(&fidelity, ray_tracing),
+                        "support": format!("{:?}", ray_tracing.support),
+                    }))
+                }
+                None => Err("this build has no ray tracing (cargo feature `raytracing`)".into()),
+            },
+            Command::RayTracingReference { enabled } => match reference.as_mut() {
+                Some(reference) => {
+                    reference.0 = enabled;
+                    Ok(json!({"enabled": enabled}))
+                }
+                None => Err("no renderer is running".into()),
+            },
             Command::SetFidelity { area, mode } => {
                 match (
                     serde_json::from_value::<Area>(json!(area)),
@@ -521,7 +541,7 @@ fn handle(
                         Ok(json!(*fidelity))
                     }
                     _ => Err(
-                        "area must be player_controller|camera|water|fog|sky|lighting|textures|music, mode faithful|modern"
+                        "area must be fog|sky|lighting|textures|music|anisotropic_filtering, mode faithful|modern"
                             .into(),
                     ),
                 }

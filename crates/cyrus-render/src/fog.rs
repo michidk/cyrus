@@ -7,6 +7,7 @@ pub use effects::inspect_effect_geometry;
 pub(crate) mod modern_lighting;
 mod observation;
 mod preparation;
+pub(crate) mod ray_tracing;
 pub use observation::BoundSceneLightImage;
 mod texture;
 pub use modern_lighting::{
@@ -15,6 +16,9 @@ pub use modern_lighting::{
 pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
+#[cfg(feature = "raytracing")]
+pub use ray_tracing::RayTracingPlugin;
+pub use ray_tracing::{RayTracing, RayTracingReference, RayTracingSupport, ray_traced};
 pub use texture::{
     EffectDraw, EffectDrawView, TextureAnimations, TextureFrame, TexturePlaybackSnapshot,
     TextureSourcesSnapshot,
@@ -233,6 +237,12 @@ struct FogExtension {
     lighting: Vec4,
 }
 
+/// The fog the scene materials use for the current world, for passes that fog without them.
+#[derive(Resource, Default, Clone, PartialEq)]
+// Only the ray-traced fog pass reads it.
+#[cfg_attr(not(feature = "raytracing"), allow(dead_code))]
+struct SceneFog(Option<FogExtension>);
+
 impl FogExtension {
     fn modern_lighting(&self) -> bool {
         self.lighting.x != 0.0
@@ -413,6 +423,7 @@ impl Plugin for FogPlugin {
         embedded_asset!(app, "model_prepass.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
+            .init_resource::<SceneFog>()
             .add_plugins((
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
@@ -488,11 +499,12 @@ fn apply_scene_fog(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     distance: Res<RenderDistance>,
-    (fidelity, daylight, inputs, effects): (
+    (fidelity, daylight, inputs, effects, scene_fog): (
         Res<Fidelity>,
         Option<Res<Daylight>>,
         Option<Res<crate::hooks::EffectSlots>>,
         Option<Res<ModernEffects>>,
+        Option<ResMut<SceneFog>>,
     ),
     mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
@@ -505,7 +517,7 @@ fn apply_scene_fog(
             Option<&bevy::gltf::GltfMaterialExtras>,
             Option<&bevy::gltf::GltfMaterialName>,
         ),
-        Without<RejectedLighting>,
+        (Without<RejectedLighting>, Without<ray_tracing::StandIn>),
     >,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
@@ -662,6 +674,9 @@ fn apply_scene_fog(
             material.extension.fog = extension.clone();
             material.extension.fog.water.y = 1.0;
         }
+    }
+    if let Some(mut scene_fog) = scene_fog {
+        scene_fog.set_if_neq(SceneFog(Some(extension.clone())));
     }
     *previous = Some((request.0.id(), extension.clone()));
     for (entity, handle, mut mesh, layers, extras, material_extras, material_name) in &mut entities
@@ -963,6 +978,8 @@ fn model_material(
     }
 }
 
+/// The fog uniform for `environment`. Its lighting flag selects the modern shader branch, which
+/// draws the world-space geometry of modern lighting, which ray tracing traces.
 fn fog_extension(
     environment: &Environment,
     fidelity: &Fidelity,

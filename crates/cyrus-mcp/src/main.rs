@@ -84,6 +84,11 @@ struct ModernEffectParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+struct RayTracingParams {
+    enabled: bool,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct SkyScrollParams {
     #[schemars(description = "Captured original sky direction, 0 through 2047")]
     direction: u16,
@@ -317,6 +322,16 @@ impl Cyrus {
             effect: p.effect,
             enabled: p.enabled,
         })?)
+    }
+
+    #[tool(
+        description = "Switch ray tracing, which works under the lighting fidelity area Modern on a GPU with ray queries; fails in builds without ray tracing."
+    )]
+    fn set_ray_tracing(
+        &self,
+        Parameters(p): Parameters<RayTracingParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::RayTracing { enabled: p.enabled })?)
     }
 
     #[tool(

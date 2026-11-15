@@ -73,6 +73,10 @@ pub struct GameOptions {
     /// CD music mode; modern mutes CD-ROM data bytes inside audio tracks.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub music: Option<String>,
+    /// The ray-tracing switch (Bevy Solari) in builds with the `raytracing` feature; on by default.
+    /// It traces under Modern lighting on a GPU with ray queries.
+    #[arg(long, value_parser = ["on", "off"])]
+    pub ray_tracing: Option<String>,
 }
 
 /// The linear output gain of a `--volume` percentage; full volume when it is absent.
@@ -186,9 +190,11 @@ mod tests {
             "--skip-startup",
             "--music=modern",
             "--mode=modern",
+            "--ray-tracing=off",
         ])
         .unwrap();
         assert_eq!(game.mode.as_deref(), Some("modern"));
+        assert_eq!(game.ray_tracing.as_deref(), Some("off"));
         assert_eq!(game.music.as_deref(), Some("modern"));
         assert_eq!(game.scene.as_deref(), Some("START"));
         assert!(game.skip_startup);
@@ -213,7 +219,7 @@ mod tests {
         assert!(GameOptions::try_parse_from(["game", "--mode=other"]).is_err());
         // Modern lighting follows `--mode` and the debug menu; it has no flag of its own.
         assert!(GameOptions::try_parse_from(["game", "--lighting=modern"]).is_err());
-        assert!(GameOptions::try_parse_from(["game", "--ray-tracing=other"]).is_err());
+        assert!(GameOptions::try_parse_from(["game", "--ray-tracing=modern"]).is_err());
         let viewer = ViewerOptions::try_parse_from([
             "viewer",
             "--asset=abc",

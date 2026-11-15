@@ -19,12 +19,13 @@
 //! holds the optional effects: tonemapping and grading, automatic exposure, god rays, the sky
 //! glow, water reflections and the lens flare (`post`), swaying plants (`foliage`), depth of
 //! field and motion blur.
-mod candle;
-mod day_night;
+use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
+pub(super) mod candle;
+pub(super) mod day_night;
 mod effects;
 mod foliage;
 mod glow;
-mod lights;
+pub(super) mod lights;
 mod plugin;
 mod post;
 mod shadows;
@@ -32,3 +33,23 @@ mod sharing;
 pub use day_night::{DayNight, Daylight, SkyLight};
 pub use effects::{Effect, ModernEffects, Tonemapper};
 pub use plugin::ModernLightingPlugin;
+
+/// The order in which the lighting tiers hand the camera over in `Update`. Each tier adds its camera
+/// components only where they are missing and removes them when it stands down, and both tiers use
+/// some of the same ones (`Hdr`, the depth prepass), so every teardown runs and is applied before
+/// any setup looks at the camera. Otherwise a setup that saw a component about to be removed would
+/// skip adding it, and the next tier would run without it.
+#[derive(SystemSet, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(in crate::fog) enum CameraHandover {
+    Teardown,
+    Setup,
+}
+
+impl CameraHandover {
+    pub(in crate::fog) fn configure(app: &mut bevy::prelude::App) {
+        app.configure_sets(
+            bevy::prelude::Update,
+            CameraHandover::Teardown.before(CameraHandover::Setup),
+        );
+    }
+}

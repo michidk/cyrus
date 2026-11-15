@@ -63,8 +63,9 @@ pub(super) fn register(app: &mut App) {
 #[derive(Component)]
 struct ModernDrawn(RenderLayers);
 
-/// While `Area::Lighting` is Modern, a clipped model draws its full world-space source mesh,
-/// which can cast shadows and fill the depth prepass, and its camera-space draw stops drawing.
+/// While `Area::Lighting` is Modern, traced or not, a clipped model draws its full
+/// world-space source mesh, which can cast shadows, fill the depth prepass and be traced, and its
+/// camera-space draw stops drawing.
 /// Back in Faithful the draw returns and rebuilds its geometry on the next preparation.
 fn swap_for_modern_lighting(
     mut commands: Commands,
@@ -259,8 +260,9 @@ fn prepare(
             })
             .collect()
     });
-    // Modern lighting draws the sources themselves; see `swap_for_modern_lighting`. Changes made
-    // meanwhile are not tracked, so the first faithful view afterwards re-checks every source.
+    // Modern lighting and ray tracing draw the sources themselves; see `swap_for_modern_lighting`.
+    // Changes made meanwhile are not tracked, so the first faithful view afterwards re-checks every
+    // source.
     if fidelity.mode(Area::Lighting) == Mode::Modern {
         *previous_view = None;
         return;

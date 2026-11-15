@@ -1206,6 +1206,45 @@ fn add_light_effect_shares_the_pool_capacity_and_keeps_snapshots() {
     assert_eq!(restored.object_lights().len(), 2);
 }
 
+/// One step per query, assigning `native(name)` to the query's local, then the end of the script.
+fn query_steps(queries: &[(Native, &str)], first_function: u16) -> BTreeMap<u32, Step> {
+    let mut steps: Vec<Operation> = queries
+        .iter()
+        .enumerate()
+        .map(|(index, (native, _))| Operation::Assign {
+            destination: Place::Local { index: index as u8 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: first_function + u16::from(*native == Native::FindAiShell),
+                        function: *native,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: vec![Value::String {
+                            index: index as u32,
+                        }],
+                    }),
+                },
+                rest: vec![],
+            },
+        })
+        .collect();
+    steps.push(Operation::End { target: 0 });
+    steps
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect()
+}
+
 /// Runs `queries` (`CountAiShells` or `FindAiShell` over a name) as one script on actor 0 after
 /// starting the named shells in order, and returns the locals the results landed in.
 fn shell_list_world(shells: &[&str], queries: &[(Native, &str)]) -> anyhow::Result<Vec<i32>> {
@@ -1232,41 +1271,7 @@ fn shell_list_world(shells: &[&str], queries: &[(Native, &str)]) -> anyhow::Resu
     logic.program.strings = queries.iter().map(|(_, name)| (*name).into()).collect();
     logic.program.variables = vec![0; 8];
     logic.instance_variables = vec![vec![0; 8]; logic.instance_variables.len()];
-    let mut steps: Vec<Operation> = queries
-        .iter()
-        .enumerate()
-        .map(|(index, (native, _))| Operation::Assign {
-            destination: Place::Local { index: index as u8 },
-            formula: Formula {
-                first: Value::Call {
-                    call: Box::new(Call {
-                        function_id: first_function + u16::from(*native == Native::FindAiShell),
-                        function: *native,
-                        kind: CallKind::Function,
-                        target: Object::Me,
-                        arguments: vec![Value::String {
-                            index: index as u32,
-                        }],
-                    }),
-                },
-                rest: vec![],
-            },
-        })
-        .collect();
-    steps.push(Operation::End { target: 0 });
-    logic.program.steps = steps
-        .into_iter()
-        .enumerate()
-        .map(|(index, operation)| {
-            (
-                index as u32,
-                Step {
-                    next: index as u32 + 1,
-                    operation,
-                },
-            )
-        })
-        .collect();
+    logic.program.steps = query_steps(queries, first_function);
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
     for shell in shells {
