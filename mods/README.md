@@ -1,132 +1,51 @@
 # Bundled mods
 
-Native mods shipped with cyrus. The `cyrus-with-mods-<target>` downloads from
-releases and PR artifact runs contain every mod in the built source revision.
-Extract the entire archive and run cyrus from that directory to use its included
-`game-config/mods`. `CYRUS_CONFIG_DIR` overrides that location. Mods start disabled;
-open Backtick and select Mods to enable them. The plain game downloads remain available.
+Native mods shipped with cyrus, and the guide for writing your own. The browser
+build does not load mods. Mods start disabled: open the Backtick menu and select
+**Mods** to enable them and edit their settings.
 
-Mods with a Cargo crate are outside the game workspace and build for
-`wasm32-wasip2` against the shared SDK in `mods/sdk`. Others contain only a
-manifest or shaders. From source, `just mods` builds
-them all and installs them into `game-config/mods/<folder>/`. Activate them in
-the Mods window that opens with Backtick. The browser build does not load mods.
+- **Players:** the `cyrus-with-mods-<target>` release downloads contain every
+  bundled mod. Extract the whole archive and run cyrus from that directory so it
+  finds `game-config/mods` (`CYRUS_CONFIG_DIR` overrides the location).
+- **From source:** `just mods` builds every mod with a `Cargo.toml` for
+  `wasm32-wasip2` against the SDK in `mods/sdk`, copies manifest-only mods, and
+  installs them into `game-config/mods/<folder>/`.
 
-| Mod | Hooks | Effect |
+| Mod | Kind | Effect |
 | --- | --- | --- |
-| `autosave` | saves, input, memory, settings, hud | Periodic transactional saves during eligible gameplay |
-| `grass` | terrain, owned geometry, settings, shader replacement | Seeded blades on green terrain texels, chunk LOD and wind |
-| `ragdolls` | lifecycle, physics, memory, settings | Articulated visual death physics with guest-authored anatomy templates |
-| `blood` | damage, particles, settings | A brief spray of fading red particles on actual player or actor health loss |
-| `modern-water` | environment, effects, shader replacement | Crossing waves, ripples, shore foam and wet sand. Water reflections are the base game's Modern Lighting, with or without this mod |
-| `flycam` | camera, input, settings, environment | A free camera. Insert toggles a free camera (every F key is taken: F1 to F12 are the original shortcuts and the cyrus menus): WASD, Space/Left Shift, mouse look, a speed setting; the world streams around it, the player stays put and keys typed into the console are ignored |
-| `movement` | movement, player, camera, settings, input | Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once (`claim`), the animations only show it (`play`); a drawn weapon keeps the player facing the camera |
-| `serpent` | script patch (manifest only, no code) | Restores the sea serpent in the Spine that was cut from the game: its installed script is complete but sits behind an endless `End`, which the mod lets fall through |
-| `one-punch` | ini patch (manifest only, no code) | Every sword attack of Cyrus (COMBAT.INI `attack65` to `attack71`) deals 100 damage instead of 10, so almost anything dies in one hit. An enemy that parries still survives, and the original mod's page says the Dwemer titan, the dragon, the ogre and N'gasta need more than one hit |
-| `unofficial-patch` | script, ini and text patches (manifest only, no code) | A port of Dillonn241's Unofficial Redguard Patch 1.01: topics and counters that never worked, flags that were never set, dialogue and log lines in the wrong place, and about ninety typos, as data. Its `mod.toml` says what each change fixes |
-| `actor-info` | actors, player, hud | A small example of the read-only hooks: shows the nearest visible actor, its health and its distance in the corner |
+| `autosave` | Wasm | Periodic saves during eligible gameplay ([below](#save-service)) |
+| `grass` | Wasm + shader | Seeded grass blades on green terrain with distance bands and wind |
+| `ragdolls` | Wasm | Articulated visual death physics |
+| `blood` | Wasm | A brief spray of red particles when the player or an actor loses health |
+| `modern-water` | Wasm + shader | Crossing waves, ripples, shore foam and wet sand (reflections are the base game's Modern Lighting) |
+| `flycam` | Wasm | Insert toggles a free camera: WASD, Space/Left Shift, mouse look; the player stays put |
+| `movement` | Wasm | Camera-relative third-person movement with mouse orbit and optional camera follow |
+| `actor-info` | Wasm | Small read-only example: nearest visible actor, its health and distance |
+| `serpent` | manifest | Restores the cut sea serpent in the Spine (its script sits behind an endless `End`) |
+| `one-punch` | manifest | Cyrus's sword attacks (COMBAT.INI `attack65`–`attack71`) deal 100 damage |
+| `unofficial-patch` | manifest | Port of Dillonn241's Unofficial Redguard Patch 1.01 as data patches |
 
-Modern movement optionally follows travel with the camera after a configurable delay.
-Mouse or right-stick camera input takes priority; standing still, jumping and armed
-strafing do not recenter. While a direction is held, automatic camera rotation keeps
-the travel direction fixed in the world, so holding left does not create a circle.
-Changing the held direction or looking manually chooses a new camera-relative direction.
-The Mods window offers camera follow, delay (default 0.75 seconds) and follow speed
-(default 2 per second). These are mod preferences, not recovered original behavior.
-
-## What the Unofficial Patch changes
-
-`unofficial-patch` ports the changes of Dillonn241's Unofficial Redguard Patch, version 1.03, plus fixes for bugs reported on its page that it has not fixed. (Version 1.03's own change was to remove the Soul Sword strength fix, which froze the amulet delivery scene; this mod leaves it out too.) The GOG install
-is never written; each change is applied in memory, and deactivating the mod restores the original
-behaviour. The reasons below are **Inferred** from comparing the installed scripts with the
-patched ones: the patch ships no explanation, so they say what each change does, not what its
-author intended. Where a reason is a guess, the entry says so.
-
-**Flags and counters that nothing set.** The game tests these, so the content behind them never
-appeared.
-
-| Where | Change |
-| --- | --- |
-| Vile (VILEKID) | Rescuing Iszara now sets `after_iszara` |
-| Belltower (FAVIS) and Harbour tower (PRNELL) | Being told the League blew up Richton's flagship now sets `FlagshipStory` |
-| Temple (NIDAL) | His topic flag is set, his sheathe-your-weapon warning advances its counter so it plays, and an unreachable greeting routine now runs when the player is out of range |
-| Hideout (VANDAR) | His repeated warning advances its counter, so he no longer stays silent |
-| Gerrick's (GERRICK) | The league-pirates answer sets the flag that marks it asked, and the flask answer gets its missing closing line |
-| Tavern (TOBIAS) | His closing branch sets the flag it was missing |
-| Island (AVIK) | The complete "Snake Songs" topic is now offered and dispatched |
-
-**Wrong tests.**
-
-| Where | Change |
-| --- | --- |
-| Tavern (DREEKIUS) | His reaction to the Smuggler's Den password tested the flag the wrong way round |
-| Island (CRENDAL) | The drunk's lines cycled with `<` comparisons, so several played at once and others never; they now test `=` |
-| Island (COYLE) | **Not in the original patch.** The "Hayle" topic is offered while Hayle's story is open, whether or not Iszara has been rescued: the original patch now sets `after_iszara`, and a guard on that flag hid the topic (reported on the patch's bug page) |
-| Island (SIONA) | A topic tested `DragonDead`; it now tests `after_dragon`, which the rest of the game uses |
-| Gerrick's (GERRICK) | The Rollo topic is offered only while it has not been asked |
-
-**Wrong target.** A cutscene addressed an actor the world does not have.
-
-| Where | Change |
-| --- | --- |
-| Palace (SCENE1) | Commands to `dram` go to `dramball`, the one that speaks |
-| Vile (four guard scripts) | Commands to `vile` go to `viledog`, the riddle's speaker |
-
-**Other script fixes.**
-
-| Where | Change |
-| --- | --- |
-| Necrisle (NGASTA), Island (MARIAH) | Logbook lines are written where the line is spoken; Mariah's Smuggler's Den answer logs its own line instead of repeating another |
-| Gerrick's (PARROT) | The parrot's second topic uses its own label instead of an unused line |
-| Hideout (XJOURNAL) | After reading Basil's journal the script loads world 1 (the island by day) instead of world 28 (the island at sunset). The sunset matches the script's own `timeofday` value, so the original may have been intended; the patch author's reason is **Unknown** |
-
-**Text.** About ninety dialogue and logbook corrections (`ENGLISH.RTX`, by label) and six subtitle
-corrections of the intro and outro movies (`MENU.INI`, page 3). They are typos and punctuation.
-
-**Checked against the original patch.** A test applies the bundled patches to the installed maps
-and compares each patched actor statement by statement with the patch author's maps. All
-patched maps matched except the outer palace map (EXTPALAC), which was not compared. Nothing was
-played through in the game.
+Everything these mods add is a mod preference, not recovered original behaviour.
+`unofficial-patch` fixes flags and counters nothing set, wrong tests and receivers,
+misplaced logbook lines and about ninety typos; it leaves out the Soul Sword
+strength fix that the patch's version 1.03 removed. Its
+[`mod.toml`](unofficial-patch/mod.toml) explains each change. A test compares the
+patched scripts with the patch author's maps (all matched except EXTPALAC, which
+was not compared); nothing was played through.
 
 ## Writing a mod
 
-A mod is a self-contained folder: drop it into `game-config/mods/` while the game runs and it
-appears in the Mods window; delete it and it goes. A mod folder holds `mod.toml` plus any of `mod.wasm`, shader files and a `files/` folder.
-Copy one of these crates as a start.
+A mod is a folder holding `mod.toml` plus any of `mod.wasm`, shader files and a
+`files/` folder. Drop it into `game-config/mods/` while the game runs and it appears
+in the Mods window; delete it and it goes. Copy a bundled mod as a start.
 
-**Manifest** (`mod.toml`). `name` is required; `description`, `version` and
-`author` are optional and shown in the Mods window. A mod can offer settings
-with `[[setting]]` entries; the window draws them under the mod while it is
-active and saves the values to `game-config/mod-settings.json`:
+**Manifest.** `name` is required; `description`, `version` and `author` are shown in
+the Mods window. `[[setting]]` entries (`type` = `number` with `default`/`min`/`max`,
+`bool`, or `choice` with `options`) appear under an active mod and are saved to
+`game-config/mod-settings.json`; a stale saved value falls back to the default. See
+[`movement/mod.toml`](movement/mod.toml).
 
-```toml
-[[setting]]
-key = "speed"            # what the mod reads
-label = "Fly speed"      # what the player sees (defaults to the key)
-type = "number"          # number: default, min, max
-default = 150
-min = 20
-max = 600
-
-[[setting]]
-key = "run_by_default"
-type = "bool"            # bool: default
-default = false
-
-[[setting]]
-key = "style"
-type = "choice"          # choice: default, options
-default = "smooth"
-options = ["smooth", "choppy"]
-```
-
-A saved value that no longer fits its declaration (out of range, removed
-option, changed type) falls back to the default; a bad declaration stops the
-mod from being listed, with the error in the log.
-
-**Logic** (`mod.wasm`). Rust mods use the SDK in `mods/sdk` (crate `cyrus-mod-sdk`): typed handles
-for every hook below, `Vec3`/`Pose`/`Key` types, settings and memory scoped to the mod, and one line to export it.
-Copy a bundled mod as a start (`Cargo.toml` depends on `cyrus-mod-sdk = { path = "../sdk" }`):
+**Logic** (`mod.wasm`). Rust mods depend on the SDK (`cyrus-mod-sdk = { path = "../sdk" }`):
 
 ```rust
 use cyrus_mod_sdk::{Cx, Key, Mod};
@@ -145,462 +64,114 @@ impl Mod for Hello {
 cyrus_mod_sdk::export_mod!(Hello);
 ```
 
-`frame` runs every `Update` with every hook in `cx` (`cx.camera`, `cx.player`, `cx.movement`, `cx.input`,
-`cx.environment`, `cx.actors`, `cx.effects`, ...). The sections below describe each hook in the host's own terms; the SDK keeps their
-units and timing and swaps the raw numbers for types: a camera `Pose`, `Vec3` positions, `Option` where
-the host answers an empty list, `Claim` for `movement.claim`, `Water` and `Lighting` for the environment, `cx.settings.flag("key")`
-without the mod id, `cx.memory.load::<T>("name")` for any type that implements `Persist`, and
-`cx.world_changed`, true on the first frame after a world is loaded or unloaded, for resetting
-state kept per world. `cargo test` in a mod folder or
-`mods/sdk` runs its pure logic on the host.
+`frame` runs every `Update` with every hook in `cx`. The SDK handles in
+[`sdk/src`](sdk/src) document each hook's units and limits; the raw interface is
+[`crates/cyrus-mods/wit/cyrus.wit`](../crates/cyrus-mods/wit/cyrus.wit), which other
+wasvy guest languages can target directly.
 
-The raw WIT is `crates/cyrus-mods/wit/cyrus.wit`; wasvy 0.0.11 carries only primitives, `option` and `list`
-across it, which is why the typed layer lives in the SDK. Other wasvy guest languages (Python, Go) work
-against the WIT directly.
+| Hook | What it does |
+| --- | --- |
+| `environment`, `world_changed` | Clock, world index and generation, Lighting mode, water parameters |
+| `actors`, `player` | Read-only actors (name, position, health) and player state (heading, animation, armed, speed) |
+| `camera` | Read the pose, `drive` it, `orbit` the follow camera, `turn` it, detect `manual` look |
+| `movement` | `steer` like a stick, `play` animation groups, `face`, `tempo`, `claim` ground locomotion, `tune` jumps |
+| `collision`, `natives` | Segment casts against nearby geometry; observe calls to a named script native |
+| `effects` | Fill named parameter slots read by replaced shaders |
+| `damage`, `particles` | Health-loss events and GPU particle bursts ([below](#damage-driven-particles)) |
+| `saves` | Request a save ([below](#save-service)) |
+| `terrain`, `geometry` | Terrain snapshot reads and owned mesh uploads ([below](#terrain-and-owned-geometry)) |
+| `lifecycle`, `physics` | Actor handles, deaths and visual rigid bodies ([below](#death-observations-and-owned-physics)) |
+| `settings`, `memory`, `hud`, `input` | Mod settings, session memory, a text line, keys and mouse |
 
-- `environment`: read-only facts, refreshed every frame. `seconds()` is the presentation clock;
-  `generation()` changes whenever a world is loaded or reloaded (0 while none is), so a mod that
-  keeps state per world compares it with the value it saw last (the SDK does this for you as
-  `cx.world_changed`); `index()` is the loaded world's WORLD.INI index; `lighting()` is `"modern"` or
-  `"faithful"`; `water()` is the world's water as amplitude, speed and frequency (world file
-  units) plus the terrain grid cell size in scene units, empty when it has none.
-- `actors`: the loaded world's actors, read-only, in actor order and refreshed every frame:
-  `count()`, then `name(i)` (script name), `position(i)` (map units, original axes, empty before the
-  actor has one), `health(i)` and `hidden(i)`. An index outside the range answers a neutral value.
-  Indices are valid for one world generation. The SDK gives `Actor` values, `actors.all()` and
-  `actors.find(name)`.
-- `effects`: parameter blocks for the game's shaders, in named slots. Effects run in shaders: a mod
-  replaces a shader library (`[[shader]]`) and fills the slot that library reads; terrain readback and owned mesh uploads use separate hooks below. Fill a slot every frame; stopping restores the original. Slot
-  `"terrain-surface"` = `[effects, 0, amplitude, cell]` turns on the surface library's shore foam, wet
-  sand and ripples and, with a positive `amplitude`, moves the waves in the terrain shader (the SDK:
-  `effects.terrain_surface(TerrainSurface { .. })`).
+Rules every mod must respect:
 
-- `camera`: `pose()` is the current view; `drive(pose)` moves it this frame
-  and suppresses player input. Stop calling it to hand control back.
-  `orbit()` each frame lets the mouse and right stick turn the follow camera
-  around the player, with the cursor captured,
-  whatever moves the player.
-  `turn(amount)` adds a yaw adjustment to the orbit camera (2048 units per turn,
-  positive left), without taking over its pose or suppressing movement. Manual
-  mouse/right-stick input wins over the adjustment. `manual()` reports recent
-  manual camera input, so a mod can delay resuming automatic movement.
-- `movement`: `steer(x, y, jump)` every frame moves the player like a tilted
-  left stick relative to the camera (x right, y forward; a length below 0.75
-  walks, from 0.75 runs). While a mod steers, a quick sword key among WASD does
-  not draw the sword.
-- `movement.play(group, interrupt)`: play an animation group on the player (the
-  number a script's `PlayAnimation` takes). With `interrupt` the current group
-  gives way now; without, the request waits for the current group's exit like
-  the original's. `movement.face(heading)` sets the heading (2048 to a turn).
-  Both apply after the original controller, only on updates it runs (not while
-  a script, death or another owner moves the player), so the mod's choice wins;
-  call them each frame you want them.
-- `movement.tempo(scale)`: play the player's animation faster or slower this frame
-  (markers such as a jump's take-off arrive sooner; arithmetic on the game clock,
-  such as the jump's arc, keeps its pace). Applies like `play`.
-- `movement.claim(heading, travel, speed, run, jump)`: take over the player's ground
-  locomotion for this frame (call it every frame). The original bindings read as
-  released and the original turn, walk, run and jump selection do not run; the
-  mod faces `heading` (2048 to a turn) and moves `speed` map units per nominal
-  update along `travel`, walking or running, from the first frame: the animation
-  (forward, backward or a sidestep, by `travel` against `heading`) only shows the
-  movement; `jump` starts the original jump. The engine
-  still resolves ground, slopes and collision, and keeps death, dialogue and
-  combat; it keeps control while the player is airborne, sliding or hanging, or a
-  script moves it, and menus, the console and loading take control back.
-  Stopping the claim returns the original controls.
-- `movement.tune(jump_height, jump_speed)`: scale the claimed player's jump height
-  (and the descent of a fall) and the forward speed of a walking or running jump
-  while it stands on the ground; a jump in flight keeps its values. A claimed
-  player steers a jump in the air through the heading it claims.
-- `collision`: `cast(sx, sy, sz, ex, ey, ez)` queues a segment (map units, original
-  axes) and `hit(i)` returns where the i-th segment of the last answered batch
-  first met the static geometry the engine gathered near the player or the
-  terrain: the point and the unit normal, or nothing. The engine answers while a
-  mod claims locomotion; an answer arrives two frames after its cast.
-- `natives`: `watch(name)` every frame names a script native (SOUP command, by its
-  installed name) to observe; a frame later `count()`, `function(i)`, `actor(i)`
-  and `arguments(i)` report the calls made to it, oldest first (the caller's script
-  name and its integer arguments; the call that starts a task, not its
-  continuation). Observation only: a call is never changed, and it keeps at most
-  4096 calls per frame.
-- `player`: `position()` (map units), `heading()`, `view()` (the camera's
-  heading, same units), `airborne()`, `animation()`, `pending()` and `idle()`
-  (the playing group, the one waiting to follow it and the one it returns to;
-  each one value or empty), `armed()` (a weapon is drawn or the combat stance is on: a
-  claimed player then walks and runs in the fight animations and `speed` returns
-  the fight speeds) and `speed(run)` (the player's own walk or run speed per
-  nominal update, the base for a speed scale).
-- `settings`: `cx.settings.flag("key")`, `number("key")` and `choice("key")` read the
-  player's values. The SDK supplies the mod id. Read settings every frame so a
-  change in the window takes effect at once.
-- `memory`: `load(key)` and `save(key, values)` keep a list of numbers between
-  frames for the session. wasvy starts a fresh instance of the mod for every
-  system call, so a mod's own variables (statics, `thread_local!`) are gone by the
-  next frame; keep state here, under keys prefixed with the mod's folder name.
-- `hud`: `show(line)` draws a line of text in the top-left corner for this frame;
-  call it every frame the text should stay.
-- `input`: `cx.input.down(Key::INSERT)` and `tapped(Key::INSERT)` use SDK `Key`
-  values; `mouse()` returns pixels and `delta()` returns seconds. The raw WIT
-  calls `down` by the name `pressed` and takes Bevy `KeyCode` names.
+- Call a hook every frame you want its effect; answers apply one frame later, and a
+  hook a mod stops answering returns to the original behaviour.
+- wasvy starts a fresh instance per call, so Rust statics do not survive a frame;
+  keep state in `cx.memory`, and reset per-world state on `cx.world_changed`.
+- Positions from `actors`/`player`/`collision` are map units in original axes;
+  camera, particles, terrain, geometry and physics use scene units, Y up.
+  `Vec3::map_to_scene` converts points.
+- Guest submissions are validated and budgeted; rejected input changes nothing.
+- Mods run with whole-world access, stdio and network. Only run mods you trust.
 
-The SDK queries each hook with the mutability wasvy needs, so a mod never sees it.
+**Shaders** (`[[shader]]`, `replaces` = asset path such as
+`embedded://cyrus_render/terrain_surface.wesl`, `file` = replacement). The
+replacement must keep the original's exported functions (see `crates/cyrus-render/src/`).
+Each shader is one slot; the first active mod by id wins and a warning is logged.
 
-Camera, movement and shader answers apply one frame after they are written. A hook a mod stops
-answering returns to the original behaviour. Particle emissions run after the current frame's
-`Update`; the engine owns their motion and lifetime after emission.
+**Data patches** change installed data in memory without shipping any of it; the
+install is never written and disabling the mod restores the original. They take
+effect after a restart. A patch that does not match is an error, never a silent no-op.
+
+- `[[script-patch]]` (`world`, `actor`): `remove` calls to named natives,
+  `fall-through` named `End` statements, `retarget` receivers, and
+  `[[script-patch.edit]]` entries (`at` an original statement offset, then one of
+  `insert-before`, `insert-after`, `replace`, `delete`, `set-argument`,
+  `set-target`, `condition`, `branch-to`). See [`serpent`](serpent/mod.toml) and
+  [`unofficial-patch`](unofficial-patch/mod.toml).
+- `[[ini-patch]]` sets a key in named sections of an install INI, or replaces a
+  fragment; `[[text-patch]]` corrects a fragment of one dialogue line by label. See
+  [`one-punch`](one-punch/mod.toml).
+- `files/` mirrors the install: its files replace or add to the install's
+  (case-insensitive, first active mod by id wins). Ship only data you made.
 
 ## Damage-driven particles
 
-`mods/blood` is a complete example of an event-driven mod. Its `frame` reads
-`cx.damage.events()` and calls `cx.particles.burst(ParticleBurst { ... })`. The mod chooses
-droplet sizes, red color, gravity and the spray direction; these are mod preferences. It needs no game assets,
-shader replacement, movement takeover or guest state between frames.
-
-A damage event contains the actor's script name, actual health lost and an optional
-position in map units with original axes. Combat events also include `source`, the
-known attacker position in those units. This is an incoming direction, not a
-measured blade velocity or exact wound location. Environmental damage and health
-services without an attributable attacker leave it absent. Names can repeat across actor instances;
-use them to filter by actor type, not as unique handles. A missing position means
-that the health service had no spatial state to publish; skip visual effects for it.
-The host captures events when health services reduce health, including scripted,
-contact, environmental and fatal loss. Healing, blocked hits and raw attribute edits
-are not damage-service events. A later failure does not undo health already written
-or its event. Each `PreUpdate` replaces the batch with up to 4096 recent events,
-oldest first. All mods see the same batch; reading it does not consume it. Historical
-events are not saved or replayed after loading a save.
-
-Particle geometry uses the same **scene coordinates** as camera poses, with Y up.
-`position.map_to_scene()` converts a damage event's map-unit point, including the
-world origin; do not use point conversion for velocities. Particle velocity is in
-scene units per second and acceleration in scene units per second squared. For example:
-
-```rust
-use cyrus_mod_sdk::{ParticleBurst, Vec3};
-for event in cx.damage.events() {
-    let Some(position) = event.position else { continue; };
-    let origin = position.map_to_scene();
-    let direction = event.source
-        .and_then(|source| (origin - source.map_to_scene()).normalized())
-        .unwrap_or(Vec3::new(0.0, -1.0, 0.0));
-    cx.particles.burst(ParticleBurst {
-        position: origin, direction,
-        acceleration: Vec3::new(0.0, -9.8, 0.0),
-        color: [0.52, 0.025, 0.018, 0.95],
-        speed: [3.0, 6.0], radius: [0.025, 0.06], lifetime: [0.4, 0.7],
-        spread: 0.38, stretch: 2.4, count: 16,
-    });
-}
-```
-
-The host uses [Hanabi](https://crates.io/crates/bevy_hanabi), the Bevy GPU particle
-system. Each burst shares one GPU program with other bursts; parameters are instance
-properties. Rounded droplets face the camera and stretch along their velocity.
-They retain their color initially and fade at the end. They have no collision and
-leave no marks. Motion and expiry use Bevy's virtual game time. GPU preparation does not consume
-a burst's particle lifetime. Disable or completed
-hot reload removes that mod's effects; changing or unloading the world removes all
-effects. Queued bursts retain the submitting world and loaded mod revision.
-
-`burst` returns false for an inactive owner, absent world, invalid input or exhausted
-queue. Position, direction and acceleration need three finite values within +/-1e6;
-direction must be nonzero and is normalized by the host. Color is sRGB RGBA in 0..=1.
-Speed, radius and lifetime are ordered min/max pairs in 0..=1000 scene units per
-second, 0.001..=10 scene units and 0.01..=10 seconds respectively. Spread is 0..=1
-and bounds each lateral velocity component relative to the forward component;
-stretch is 1..=8. Count is 1..=64 per burst. Queued and live limits count particles,
-256 per mod and 1024 total; overflow drops whole bursts. The SDK supplies the mod id.
-The mod can use two bursts for coarse droplets and a shorter, finer spray.
-
-To build and try the example:
-
-```sh
-rustup target add wasm32-wasip2
-cargo test --manifest-path mods/blood/Cargo.toml
-just mods
-cargo run -p cyrus -- --scene START
-```
-
-Open Backtick and enable **Blood particles** in the Mods window. Its amount and lifetime
-settings apply to new emissions immediately. Damage a combatant to exercise actual
-health-service events; setting a health attribute directly is not a substitute. Turn
-the mod off to verify cleanup. `cargo test --manifest-path mods/sdk/Cargo.toml` checks
-the SDK's pure helpers. Mods and this renderer are native-only; a `--headless` game
-run does not load mods or render particles.
-
-For an isolated guest/host check, build `mods/blood` for `wasm32-wasip2 --release`, set
-`CYRUS_BLOOD_WASM` to the resulting `blood.wasm` and run
-`cargo test -p cyrus-mods --lib wasm_blood_particles -- --ignored --nocapture`.
-The test loads the real component, supplies a damage event, checks its emissions and
-verifies disabling it removes entities and materials. It needs no game install.
-Setting `CYRUS_PARTICLE_CAPTURE` to a new PNG path also enables an offscreen GPU
-capture; this needs a Vulkan-capable runtime. Cargo reports its output root as
-`target_directory` in `cargo metadata --no-deps --format-version 1`; the component is
-under `wasm32-wasip2/release/` there. Both `just mods` and this workflow respect an
-inherited `CARGO_TARGET_DIR`.
-
-
-**Shading** (`[[shader]]`). Any shader asset can be replaced; list each one in
-`mod.toml`:
-
-```toml
-[[shader]]
-replaces = "embedded://cyrus_render/terrain_surface.wesl"   # asset path of the original
-file = "terrain_surface.wesl"                                # in the mod folder
-```
-
-The replacement must keep the original's exported functions and signatures (see
-the file under `crates/cyrus-render/src/`; the water library has the
-waves, ripples, shore foam and wet sand, all zero in the built-in version). It replaces the
-built-in source, so a compile error shows up in the log and can hide what the
-shader draws until it is fixed. Each shader is one slot: the first active mod in
-id order wins and a warning is logged. Turning the mod off restores the original.
-
-**Script patches** (`[[script-patch]]`). A mod can change what an actor's script does in one world
-without code and without any game data. It names the actor and what to change:
-
-```toml
-[[script-patch]]
-world = "ISLAND"          # the map, by file stem (case does not matter)
-actor = "SERPENT"         # the actor's script name
-fall-through = [4]        # End statements, by offset, that no longer end the script
-remove = ["HideMe"]       # natives, by their SOUP386.DEF names, whose calls are skipped
-```
-
-- `remove`: every call statement in that actor's script to one of the named natives is skipped,
-  as if the script did not make it (a native used as a value inside an expression stays, and the
-  arguments of a skipped call are not evaluated). A name that is not a SOUP native stops the mod
-  from being listed.
-- `fall-through`: each offset names an `End` statement, as the `#offset` labels of a decompiled
-  listing do (in decimal). It no longer ends the script's turn: execution continues with the
-  statement after it, including code the original script never reaches because the `End` loops on
-  itself. An offset that is not an `End` is an error in the log and the world does not load.
-
-A skipped call or a fall-through jump neither waits nor changes any state, so the rest of the
-script runs exactly as installed. The scripts are prepared at every world load, so turning the mod
-off restores the original script; the patches are read at start-up, so a change takes effect after
-a restart (the Mods window says so, like for `files/` overlays). A mod with only a `mod.toml`
-needs no `mod.wasm`. The bundled `serpent` mod is the example: the installed ISLAND script of the
-sea serpent in the Spine is complete (it waits hidden, shows itself when the player is near,
-fights and sets the SerpentDead flag when killed) but sits behind an `End` that loops on itself.
-
-**Script edits** (`[[script-patch.edit]]`, under a `[[script-patch]]`). For changes that are not
-a skipped native or a fall-through, an edit names a statement of the original script by its
-offset (the `#offset` of the listing, in decimal) and changes it:
-
-```toml
-[[script-patch]]
-world = "PALACE"
-actor = "COMMON"
-retarget = { dram = "dramball" }       # every call to a named receiver goes to another one
-
-[[script-patch.edit]]
-at = 16                                  # the statement at offset 16 of the original script
-insert-after = ['if HaveItem(13) = 1 { Player.setStrength(250) }']
-```
-
-One action per edit: `insert-before` (every jump to the statement runs the new statements
-first), `insert-after`, `replace`, `delete = true`, `set-argument = { index = 0, value = '"?sec"' }`,
-`set-target = "viledog"`, `condition = "RolloTalk = 1 and var11 = 1"` and `branch-to = 702` (an
-`if` that fails, or a `goto`, continues at another original statement, including code the
-original never reaches). New statements are written like the listing: `Flag = 1`, `var6 = var6 + 1`,
-`Player.setStrength(250)`, `if … { … }` and `goto 8224`. Names are the installed `SOUP386.DEF`
-names, `varN` is a script variable, and a quoted four-letter word (`"?sec"`) is the dialogue label
-it encodes. Offsets always mean the original script, however many statements earlier edits
-inserted: new statements live at fresh offsets and jump back, so nothing shifts. An edit that
-does not fit (an unknown name, a wrong argument count, an offset that is not that kind of
-statement) is an error naming the edit, and the world does not load.
-
-**Settings and text patches** (`[[ini-patch]]`, `[[text-patch]]`). The same idea for the game's
-settings and dialogue, without shipping any of it. An INI patch sets a key in named sections of
-an install file, or corrects a fragment of its value; a text patch corrects a fragment of one
-dialogue line by its label. A section, key or fragment that is not there is an error, so a patch
-cannot silently do nothing:
-
-```toml
-[[ini-patch]]
-file = "COMBAT.INI"
-sections = ["attack65", "attack66"]
-key = "damage"
-value = "100"              # or: find = "I,I"  replace = "I, I"
-
-[[text-patch]]
-label = "$042"             # the line's four-character label in the dialogue file
-find = "ion fo"            # a fragment that occurs exactly once
-replace = "ions fo"
-```
-
-Both are applied to the text read from the install, in memory; the install is never written
-and turning the mod off restores the original. A line's on-screen time follows its length, so it
-follows a correction too. They take effect after a restart.
-
-**Game data** (`files/`). A `files/` folder inside the mod mirrors the game install:
-`files/fxart/<name>` is read instead of the install's `fxart/<name>`, and a path the
-install lacks is added. Names match ignoring case. The install is never written;
-the replacement is read from the mod folder, so ship only data you made yourself.
-If several active mods supply a path, the first by id wins. The files are read when
-the game starts, so toggling such a mod needs a restart (the Mods window says so).
-Turning the mod off restores the original, and cached assets rebuild by content.
+[`blood`](blood/src) is the example. `cx.damage.events()` gives up to 4096 recent
+health-loss events per frame (shared, not consumed, not saved): actor script name,
+health lost, optional position and optional attacker `source`. Names repeat across
+actors; a missing position means there is nothing to place an effect at.
+`cx.particles.burst(ParticleBurst { .. })` emits camera-facing droplets in scene
+units, simulated by [Hanabi](https://crates.io/crates/bevy_hanabi) on game time,
+with no collision. Limits: 64 particles per burst, 256 per mod, 1024 total; `burst`
+returns false when rejected. Effects clear on disable, reload or world change.
 
 ## Save service
 
-`autosave` counts eligible gameplay time and requests a save after 300 seconds by
-default, configurable from 60 to 1800 seconds. Menus, the console, loading, dialogue,
-drawn weapons, airborne movement and death defer the timer. A single stalled frame
-contributes at most one second, preventing a pause from immediately triggering a save. It writes reserved autosave
-slot one through the existing native session adapter, retaining manual slots and the
-quick-save slot. Quit can still replace the same reserved autosave. A successful save
-becomes the retained last-save selection for death reload. A failed save shows the
-storage error and retries after 30 eligible seconds. Notifications can be disabled.
-The mod defaults to inactive and installs with `just mods`. There is no dialogue-skip mod:
-the game already ends the current spoken line when the walk/run key (Left Shift) is pressed
-during a conversation (see [docs/PLAYING.md](../docs/PLAYING.md)).
-
-The SDK exposes `cx.saves.ready()`, `save()`, `status()` and `error()` for storage.
-`save()` returns queue acceptance; `SaveStatus::Saved` means native storage committed.
-`Failed` reports a terminal error, and `Pending` must finish before another request.
-Terminal results remain until the same guest starts another request or its loaded revision changes. The host checks
-eligibility again when consuming requests, rejects disabled guests and stale worlds,
-and serializes all saves through the existing storage boundary. Requests from expired guest
-incarnations are discarded; an eligibility change in the same incarnation reports failure. Guest owner IDs follow
-the SDK's folder name convention; they are lifecycle namespaces, not a security boundary.
-
-The hook keeps policy in the guest. A mod should own its interval, retry timing and
-notifications, while the host owns snapshot validation and storage.
+`autosave` requests a save after 300 eligible seconds (60–1800, configurable) into
+reserved autosave slot one; menus, dialogue, drawn weapons, airborne movement and
+death defer it, and a failure retries after 30 seconds. The SDK's `cx.saves`
+offers `ready()`, `save()`, `status()` and `error()`; `SaveStatus::Saved` means
+storage committed. The guest owns timing and retries; the host rechecks
+eligibility and serializes all saves through the existing session storage.
 
 ## Terrain and owned geometry
 
-`mods/grass` is a complete native Wasm example. It reads retained terrain triangles,
-classifies green image texels, interpolates each triangle's original UVs and builds
-seeded blade meshes in 24-scene-unit chunks. Near/middle/far bands use the PR #255
-placement and width/height policy. Two chunks are built per guest frame; existing
-chunks are retained until their distance band or settings change. Enable **Terrain
-grass** in the Mods window. New installs leave it disabled. Density and wind are
-mod settings. These are optional mod preferences, not recovered original behavior.
-
-The typed SDK exposes `cx.terrain` and `cx.geometry`:
-
-```rust,ignore
-let Some(revision) = cx.terrain.revision() else { return; };
-let triangles = cx.terrain.triangles(revision,
-    Region { min: [-24.0, -24.0], max: [0.0, 0.0] }, 0)?;
-let pixels = cx.terrain.pixels(revision, triangles[0].texture)?;
-// Interpolate the triangle's UVs before pixels.sample(uv).
-let Some(generation) = cx.geometry.generation() else { return; };
-cx.geometry.replace("my-mesh", generation, &mesh,
-    Material { parameters: [0.18, 0.0, 0.0, 0.0], bounds_padding: 0.18 })?;
-cx.geometry.remove("my-mesh");
-```
-
-Terrain uses scene coordinates, right-handed with Y up, just like camera poses.
-Each page contains at most 512 complete triangles, their stable snapshot-local IDs,
-matching UVs and typed texture IDs. Regions are half-open X/Z rectangles, at most
-512 units wide/deep; triangle centroids assign each triangle to exactly one region.
-A triangle may extend outside its assigned region. Advance the offset by the number
-returned until a short page. `revision()` is absent while unavailable or loading;
-old revisions and invalid reads return `None` at WIT. `status(revision)` reports
-0 ready, 1 loading, 2 absent world/terrain, 3 stale revision, 4 unsupported and 5 over budget. The SDK distinguishes
-`Invalid`, `Loading`, `Unavailable`, `Stale`, `Unsupported` and `OverBudget` read errors. Read-only snapshots refresh on world or
-retained terrain-binding replacement, not every camera movement. Images are capped
-at 512 by 512, 256 distinct images and 1,000,000 triangles per snapshot. Raw pixel rectangles return RGBA8,
-at most 65,536 pixels per request. The SDK assembles the full image in bounded rows.
-Texture IDs and triangle IDs expire with the snapshot revision. Do not persist
-installed images or mesh data into distributed mods.
-
-`cx.geometry.lease()` returns an opaque token for the current loaded mod instance.
-Persist it alongside cached placement decisions and clear those decisions when it
-changes after successful Wasm reload or reactivation. This includes cached empty
-regions, which have no mesh key for `contains` to validate. Terrain snapshot and
-world generation tokens alone do not identify the current mod code.
-
-`Mesh` contains indexed triangle vertices with positions, normals, UVs and linear
-RGBA colors. Each replacement validates all values before allocating render assets.
-Position/normal/UV values must be finite within +/-1e6, normals nonzero, colors in
-0..=1, indices valid complete triangles, and index count at most six per vertex.
-Material parameters are four finite values within +/-100. Keys are 1..=96 bytes;
-limits are 256 keys and 1,500,000 vertices per owner, 3,000,000 vertices globally.
-Rejected uploads preserve the previous key. WIT returns 0 accepted, 1 unavailable
-or stale generation, 2 invalid, 3 budget exceeded; the SDK uses `Result` and the
-`GeometryError` enum. The SDK supplies the owner's mod ID. Like other wasvy hooks,
-trusted mods have world access; the owner namespace is a lifetime convention, not
-a security sandbox against other trusted mods impersonating an ID.
-
-Uploads apply after guest Update and remain until `remove`, disable, completed
-reload or world replacement. The host releases both entities and owned mesh/material
-assets. `contains(key)` detects a lost lease, including a completed reload. Guest
-session memory can survive reload; rebuild keys whose leases have expired.
-
-The renderer supplies double-sided matte vertex-color PBR lighting and scene fog.
-The built-in `embedded://cyrus_render/geometry_surface.wesl` library leaves geometry
-stationary. A mod can replace its `deform(position, uv, seconds, parameters)` function,
-as grass does with its bundled `grass.wesl`. The deformation library is one shared
-shader slot: the existing first-active-mod-by-ID rule applies. Four per-mesh parameters
-let one library distinguish its material policies. This API does not compile arbitrary
-per-mesh shaders. Set `bounds_padding` to a conservative displacement bound in scene units,
-0..=100, so deformation remains inside the mesh bounds used for culling. No raster shadows are cast by these meshes. The current host has Modern
-raster lighting and no ray-tracing support; grass therefore has no traced shadow or
-bounce stand-ins. It does not import PR #255's old ray-tracing stack.
-
-Build with `cargo build --manifest-path mods/grass/Cargo.toml --release --target
-wasm32-wasip2`, or install all bundled mods with `just mods`. Distribute the folder
-containing `mod.toml`, `grass.wesl` and the built artifact renamed `mod.wasm`.
-The ignored host test `wasm_grass_geometry` loads the actual component when
-`CYRUS_GRASS_WASM` points to its output. Guest tests and SDK tests run with their own
-manifests. Host and browser game crates do not import guest code or installed art.
+[`grass`](grass/src) is the example. `cx.terrain` reads the loaded terrain as
+paged triangles (with UVs and texture IDs) and texture pixels, scoped to a snapshot
+revision; `cx.geometry.replace(key, generation, &mesh, material)` uploads an indexed
+mesh lit like the scene, until `remove`, disable, reload or world change. A mod can
+replace the `deform` function of `embedded://cyrus_render/geometry_surface.wesl`
+(as grass does with `grass.wesl`); set `bounds_padding` to cover its displacement.
+Clear cached placement when `cx.geometry.lease()` changes. Budgets and error codes
+are in [`sdk/src/geometry.rs`](sdk/src/geometry.rs). Do not ship installed images
+or mesh data in a mod.
 
 ## Death observations and owned physics
 
-`Cx::lifecycle` gives opaque `ActorId` values. They distinguish same-name actors
-and expire when the world or an actor's presentation incarnation changes.
-`Lifecycle::snapshot` distinguishes alive, dead, hidden and removed actors. A stale
-handle returns `None`. `Actors::deaths` is a shared read-only batch of committed
-lifecycle transitions, published before guest Update. Raw health writes and saved
-corpses do not synthesize deaths. The selected player's death inhibition does not
-hide its committed transition. Each event includes the captured model, frame,
-world pose, player flag and optional known source position. All these positions
-use scene coordinates, Y up, with twenty original map units per scene unit.
+[`ragdolls`](ragdolls/src) is the example. `cx.lifecycle` gives opaque `ActorId`s,
+snapshots and `deaths()`, committed death transitions with the captured model,
+frame and pose. `cx.physics.claim(actor, &assembly)` attaches guest-built bodies,
+joints and vertex weights to a dead actor's frozen mesh; a 120 Hz Rapier solver
+moves them against static geometry and dry terrain. It never touches health,
+scripts or gameplay collision; hide, revival, reload, save load or world change
+release the claim and restore the original mesh. Limits are in
+[`sdk/src/physics.rs`](sdk/src/physics.rs).
 
-`Cx::physics` fits presentation to those observations. It never writes health,
-scripts, gameplay collision, quest state or the player death controller.
-`model`, `origin`, `vertices` and `reference` describe the captured death mesh
-when its rendered binding is ready. Vertices use model-local scene coordinates;
-`reference` has the same topology in frame zero. Empty results mean unavailable.
-`attachments` returns world poses in a request-local order. Read these values
-when fitting an assembly, rather than uploading meshes every frame.
+## Building and testing
 
-Build an `Assembly` by calling `body(BodyDesc)` for each body. The returned
-`BodyIndex` can be used in `JointDesc`, source `VertexWeight` values and
-`AttachmentBinding`. Bodies use world poses, unit quaternions, scene distances,
-seconds and positive masses. The guest chooses sphere/capsule/box shapes,
-velocity, constant acceleration, impulse and damping. Joints lock linear motion
-and accept ordered angular bounds in radians about their shared world rest
-frame. Source weights contain one to four nonnegative entries, summing to one.
-The renderer freezes that exact installed frame and deforms positions and
-normals using the bodies. An attachment binding follows its assigned body while
-the original attachment still exists.
+```sh
+rustup target add wasm32-wasip2
+cargo test --manifest-path mods/sdk/Cargo.toml      # SDK helpers; same for any mod folder
+just mods
+cargo run -p cyrus -- --scene START                  # then enable the mod under Backtick > Mods
+```
 
-`Physics::claim(actor, &assembly)` validates the whole request before allocating.
-It returns `Invalid`, `Unavailable`, `AlreadyClaimed` or `Budget`. Claims require
-a visible dead actor with prepared source geometry and a static collision world.
-The renderer waits for the captured model's GLB mapping when that asset is still loading.
-`transforms` returns body poses in insertion order; an empty batch means stale
-or unowned. `release` succeeds only for the submitting owner. Physics uses
-virtual game time, steps at 120 Hz, limits catch-up to eight steps, and sleeps
-settled bodies. Visual bodies contact static source polygons and dry terrain;
-they do not participate in original actor collision or contact each other.
-
-Limits are 32 bodies and 64 joints per assembly, 20,000 source vertices per
-actor, 256 bodies and 100,000 bound vertices per mod, and 1,024 bodies and 400,000
-bound vertices total. A serialized request is at most 2 MB. Invalid or over-budget
-requests allocate nothing. Hide, removal, revival, owner disable, successful
-component reload, save load and world replacement release claims. Releasing a
-claim restores the original mesh and animation ownership.
-
-The bundled `ragdolls` mod owns rig templates, fitting, joint limits, masses,
-gravity and impact settings. It is disabled until activated in the Mods window.
-It consumes death transitions, including the player, rather than health values
-or actor names. Unknown sources supply no directed impulse. Unsupported geometry
-retains original presentation and emits a diagnostic. Rig fitting and anatomical
-coverage are separate from the generic host contract; a successful claim alone
-does not establish the visual quality of a profile.
+A `--headless` run does not load mods. For a guest/host check without an install,
+build a mod with `cargo build --release --target wasm32-wasip2 --manifest-path mods/<mod>/Cargo.toml`,
+point `CYRUS_BLOOD_WASM` or `CYRUS_GRASS_WASM` at the built `.wasm` (under
+`wasm32-wasip2/release/` in the Cargo target directory) and run
+`cargo test -p cyrus-mods --lib wasm_blood_particles -- --ignored` or
+`wasm_grass_geometry`. `CYRUS_PARTICLE_CAPTURE=<new.png>` adds an offscreen GPU
+capture (needs Vulkan).

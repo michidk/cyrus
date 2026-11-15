@@ -1,147 +1,50 @@
 # cyrus-world
 
-World lifecycle, explicit animation execution and actor transforms,
-with a one-way dependency on `cyrus-assets`. No renderer, camera, audio backend,
-install parser or sockets are required.
+World lifecycle, actor animation playback and original actor matrix arithmetic.
+It depends only on `cyrus-assets` (cached records) and `cyrus-soup` (typed
+`AnimationGroup`); it needs no renderer, camera, audio backend, install parser or
+sockets. Game, script, render, audio and the hosts build on it. SOUP execution
+belongs to `cyrus-soup`, scripted hosts to `cyrus-script`, pose application to
+`cyrus-render` and terrain/static collision to [cyrus-collision](../cyrus-collision/README.md).
 
-`PreparedWorld` retains host-selected cache references. `WorldPlugin` commits
-identity and animation inputs in `WorldChange`; game and presentation consume the
-same request. A coordinated same-world restore calls `PreparedWorld::queue_restored`
-to consume its prepared-world update without announcing another world entry.
-The restore owner has already published identity and animation inputs.
-`CurrentScene.world` retains the resolved WORLD.INI ID separately from the
-request name. `WorldMetadataStatus` reports animation metadata loading and
-errors; neither identity nor metadata readiness implies that graphics or player
-sidecars are ready.
+## Modules
 
-`WorldPreparationPending` marks an active host preparation worker and is removed
-on completion, failure or supersession. `PreparationProgress` is retained loading-bar
-history and must not be used as an in-flight-work marker.
+| Module | Responsibility |
+| --- | --- |
+| [lifecycle](src/lifecycle.rs) | `WorldPlugin`, `SceneRequest`, `PreparedWorld` (cache references), `CurrentScene`, `WorldChange`, `WorldMetadataStatus`, preparation progress |
+| [animation](src/animation.rs) | `AnimationPlugin`, `AnimationSystems`, explicit `AnimationTick` playback |
+| [animation/actor](src/animation/actor.rs) | `ActorAnimation`: requests, default group, priorities, checkpoints and versioned snapshots |
+| [animation/playback](src/animation/playback.rs), [sequence](src/animation/sequence.rs), [class](src/animation/class.rs) | Command interpretation, frame sequences, per-type group rules |
+| [sound](src/sound.rs) | `SoundCue` and `SoundSurface` intents; the audio consumer registers the queue |
+| [transform](src/transform.rs) | `transform::Matrix` and the shared rotation table, with original single-precision and extended-intermediate arithmetic |
+| [heading](src/heading.rs) | Heading arithmetic (2048 units per turn) |
 
-`AnimationPlugin` loads animation data and advances explicitly attached playback
-only for supplied `AnimationTick` messages. `FrameSequence::from_asset`,
-`ActorAnimation::from_asset` construct runtime
-state from records. No production clock, actor activation or unsupported script
-operation is inferred. Pose application belongs to `cyrus-render`.
+## Notes
 
-`ActorAnimation::initialize` performs the animation-table loading sequence with
-two group-zero requests and retains the selected frame. The caller supplies
-nominal ticks and synchronous sound dispatch; this does not grant update eligibility.
+- Playback advances only on supplied `AnimationTick` messages (whole nominal
+  ticks), never on render frames. No clock, actor activation or script scheduling
+  is inferred here. Rules follow preservation's
+  [animation facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md).
+- Sound commands need a synchronous handler (`*_with_sounds`); without one, or on
+  an unsupported cue, playback fails with a contextual error that stays sticky.
+  See preservation's [sound facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#animation-playsound).
+- Neither world identity nor `WorldMetadataStatus` implies graphics or player
+  sidecars are ready. `WorldPreparationPending` marks in-flight work;
+  `PreparationProgress` is loading-bar history only.
+- `ActorAnimationSnapshot` is an internal versioned format, not an original save
+  record. Restoring it executes no commands or sounds; the host validates actor
+  and world generation first. Bump the version when the layout changes.
+- Matrix arithmetic emulates the original's rounding in software and must not
+  change host floating-point modes.
+- Still unsupported: animated i16 frames, cross-model mesh replacement, automatic
+  actor activation, complete script scheduling and a host-clock driver.
 
-World defines `SoundCue` and `SoundSurface`; the audio consumer registers the cue
-queue. Animation cues capture the actor surface when the command runs; the
-mixer does not read a later component value. Without that consumer, sound-bearing animation remains explicitly
-unsupported. `AnimationSystems` lets composition preserve same-update ordering.
+## Testing
 
-Terrain and static collision queries live in [cyrus-collision](../cyrus-collision/README.md).
-Run `cargo test -p cyrus-world` for animation, lifecycle and transform contracts.
+```sh
+cargo test -p cyrus-world
+```
 
-`AnimationPlayback` consumes an explicitly selected forward group and finite
-loop count. `AnimationTick` supplies the original whole nominal-tick increment;
-render updates alone do not advance playback. The interpreter follows
-preservation's [animation facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md).
-BreakPoint markers retain the documented walking-translation gate until the
-cursor advances or a taken loop/exit jump clears it. DelayCounter holds the prior
-pose while its byte delay consumes supplied nominal ticks. Zero continues
-immediately and byte 255 waits until replacement. A waiting group remains current
-and does not complete its PushAnimation task. These rules are
-[published in preservation](https://github.com/michidk/redguard-preservation/blob/515e62f/docs/engine/animation.md#forward-animation-delays).
-Unsupported cues stop playback with a contextual error. A rejected synchronous
-Forget during forced, ordinary, skipped-frame or default replacement also leaves
-the receiver failed. Later requests and snapshot restoration cannot replay it;
-already dispatched services are not rolled back.
-
-`ActorAnimation` owns requests and playback direction for types zero through two.
-The caller supplies the default group and nominal ticks. Direction, timing and
-persistence contracts live beside the Rust APIs. Ordinary requests
-replace one pending group by the original numeric priority; forced requests
-bypass that priority. End selects a pending or default group in the same call,
-reusing its tick input. `set_loop_count` supplies the finite count when a
-PushAnimation task becomes current. Returning to the same default keeps the
-group identity, so a finite count alone does not prove the waiting task completed.
-Type-one groups keep their exit tail when the pending group is the default.
-`select_default_with_sounds` applies a caller-selected ordinary default outside
-shell execution. A changed default immediately replaces the current old default
-before its exit marker and retargets a pending old default through ordinary
-request priority. It retains synchronous sound dispatch and shared nominal ticks,
-following [preservation's default selection rules](https://github.com/michidk/redguard-preservation/blob/d6e59584fb0fb5bc750e1c881cb386d4c9c690cc/docs/engine/animation.md#living-actor-default-selection).
-After an exit marker, a pending non-default can replace them on a later advance,
-with delays checked first. These rules are
-[published in preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md#forward-type-one-transitions).
-`request_with_sounds`, `force_request_with_sounds`, and `advance_with_sounds` accept a synchronous handler for
-signed effect requests, rate offsets in hertz, End stops and replacement handle
-resets. The handler owns the original surface remapping, positional gains and
-channel allocation. Advancement queries a previously requested sample before
-interpreting further commands, including updates held by a delay. The audio host
-clears an idle remembered slot at that query; it retains reusable-slot semantics
-between animation updates. Query failures remain sticky across snapshots.
-Without the handler, sound commands still fail explicitly. Audible
-original walking cues and automatic runtime scheduling remain unverified. The
-[sound facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#animation-playsound)
-define this boundary.
-
-SOUP execution belongs to `cyrus-soup`; game-owned hosts and explicit scripted
-playback belong to `cyrus-script::script`. `cyrus-world` supplies animation and
-sound services without depending on either executor or gameplay handlers.
-`PreparedWorld` also retains the independently exported `.scripts` asset.
-
-Animated i16 frame
-interpretation, mesh replacement across models, automatic actor activation,
-complete script scheduling, state-dependent default selection,
-cancellation requests and the host-clock driver remain
-unsupported. These APIs do not establish matched original-game playback.
-
-`transform::Matrix` retains original single-precision actor matrices. Its products
-and sums use software x87 extended intermediates and nearest-even stores and
-integer conversion, following preservation PR55. The shared rotation table also
-supplies player heading projection. Matrix arithmetic requires no renderer or
-host floating-point-mode changes. Ordinary unattached incremental refresh uses
-`Matrix::rotate_unattached`, which rounds products before sums, following
-[preservation PR154](https://github.com/michidk/redguard-preservation/pull/154).
-Family composition retains the separate extended-product path.
-
-`Matrix::collision_orientation` rebuilds shape orientation from local angles,
-using the published collision matrix rather than retained presentation history.
-It shares table samples and extended arithmetic, while retaining the collision
-matrix's distinct yaw direction. Model presentation matrices remain independent.
-
-Stored-coordinate matrix transforms retain fractional sphere centers with the
-same extended dot-product arithmetic as integer actor transforms. Integer
-conversion remains a separate operation for queries that require it.
-
-`ActorAnimation::checkpoint` saves the current receiver and pending request for
-ordinary collision rollback. Restoration retains the separately selected default
-and sticky failure. The game host validates actor generation and restores the
-selected frame; the audio host restores its remembered animation sample slot.
-
-`ActorAnimation::snapshot` captures complete playback state, including the default,
-pending request, counters, delays, exit/translation/sound latches and failures.
-`from_snapshot` builds a replacement after matching actor context and exact installed
-groups, validating selected groups and command cursors. It decodes immutable commands
-without executing them. Restoration makes no initialization requests or sound calls.
-The versioned snapshot is an internal format, not an original save record. Snapshot
-version 2 retains the separate wrapping frame-progress byte used by SOUP frame
-waits. Version 1 snapshots cannot reconstruct that counter and are rejected;
-existing session documents containing them need fresh captures. Collision rollback
-also preserves progress. Command cursor loops do not reset it.
-
-**Verified:** headless serialization/resume contracts retain pending/default requests,
-finite loops, wrapped byte countdowns, delays, exit tails and sticky failures.
-Subsequent Stop/Forget cues retain the prior sound latch without replaying Play.
-Malformed state and changed sources reject without changing live playback. This does
-not restore a game world: the host must validate actor/world generation and bind its
-saved model frame and native sound slot before committing the replacement.
-
-The shared rotation table rounds the angle to single precision before sine, then
-stores single-precision samples, including the extended cosine endpoint. Water
-reuses this owner. The construction follows preservation's
-[initialized runtime table](https://github.com/michidk/redguard-preservation/pull/154).
-
-`ActorAnimation::clear_pending_request` cancels only the queued group, preserving
-current sequence, frame, finite loop count and sound ownership. Combat callers
-use it after the forced request and loop-count assignment.
-
-`ActorAnimation::current_command_cursor` reads the signed command index used by
-combat timing without advancing playback. It remains distinct from the wrapping
-frame-wait progress byte and displayed model frame, and follows snapshot and
-checkpoint restoration through the existing playback owner.
+The tests in `tests/` cover animation, transitions, persistence, lifecycle and
+transforms. All but the exported-model check in `tests/animation.rs` need no
+install; that one reports a skip without it.

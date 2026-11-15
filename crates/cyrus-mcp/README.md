@@ -1,75 +1,53 @@
 # cyrus-mcp
 
-MCP server (stdio) that exposes a running game to AI agents. Each tool opens
-a fresh connection to the control port, so the server may start before the
-game and survives game restarts.
+MCP server (stdio) that exposes a running game to AI agents. Each tool opens a
+fresh [`cyrus-control`](../cyrus-control/README.md) connection, so the server
+may start before the game and survives game restarts. It is a thin adapter:
+command semantics live in `cyrus-control` and the game host, not here.
 
-Tools: `ping`, `state`, `screenshot` (returns the PNG), `teleport`, `input`,
-`set_fidelity`, `skip_startup`, `load_scene`, `play_sound`, `play_speech`,
-`stop_sounds`, `quit`.
+## Modules
 
-`skip_startup` goes to the book menu. `load_scene {name}` enters a world
-directly from startup or the menu. Check `state` before driving player input.
+| Module | Responsibility |
+| --- | --- |
+| [main](src/main.rs) | Tool definitions (`rmcp`), parameter schemas, one control `Command` per tool |
 
-Registered for Claude Code in `.mcp.json` (pre-approved by
-`.claude/settings.json`) and for Codex in `.codex/config.toml` (trusted
-project). `CYRUS_CONTROL_ADDR` selects the game's control address.
+## Usage
 
-`just smoke-mcp` runs a headless game and drives it through this server end
-to end; run it after touching the control server, this crate or the player.
+`just setup` registers the server for both agents: Claude Code reads
+`.mcp.json` and the generated `.claude/settings.json` enables it; Codex reads
+the generated `.codex/config.toml` (trusted project). Both launch
+`dev/scripts/mcp.sh`, which runs the built binary and builds it once when it is
+missing. `CYRUS_CONTROL_ADDR` selects the game's control address (default
+`127.0.0.1:7117`).
 
-In `Menu`, `state.menu` reports the page, installed entries, current selection,
-preferences, and Controls capture action. Wait for `ready` before sending menu
-input and after each animated page change. Quit closes the book before exiting.
-Drive Options and Movies with `input`; the same saved bindings and values
-apply after a native restart. Native Movies playback uses the saved subtitle
-preference and reports progress in `state.menu.movie`. A new key press
-advances to the next installed skip point, then returns to the menu. Saved Sound
-preferences apply to native effects, speech, and CD music. Browser Movies shares
-playback rules using locally exported cinematic assets; it has no control port.
+Tools:
 
-`set_sky_scroll {direction, offset}` applies a captured original sky direction
-from 0 through 2047 and two texture offsets in texels from -256 through 256.
-Use it after loading the reference world. It synchronizes sky motion for
-comparison; it does not synchronize other users of the original random stream.
+| Group | Tools |
+| --- | --- |
+| Session | `ping`, `state`, `skip_startup`, `load_scene`, `quit` |
+| Driving | `input`, `teleport`, `screenshot` (returns the PNG), `cheat`, `console` |
+| Fidelity and rendering | `set_fidelity`, `set_day_night`, `set_modern_effect`, `set_ray_tracing`, `set_sky_scroll`, `hold_texture_frame` |
+| Audio | `play_sound`, `play_speech`, `stop_sounds` |
+| Script inspection | `scripts`, `bind_script_animation`, `step_script` |
 
-`scripts {offset, limit}` returns bounded logical actor state. `step_script
-{generation, index, stage, frame_scale, nominal_ticks}` selects `animation`,
-`entry`, `main`, `interrupt`, or `tasks`.
-`tasks` requires an explicit unsigned `frame_scale` with eight fractional bits.
-For example, 256 supplies scale one; zero is accepted. Main and interrupt body
-steps do not poll existing tasks. These inspection tools do not enable gameplay.
+Commands without a tool (captures, input schedules, save slots, render
+inspection) are sent directly over the control port, as the scripts in
+`dev/scripts/` do.
 
-`bind_script_animation {generation, index, default_group, node?}` prepares an
-actor once for this world generation. The caller supplies the established default
-group. An optional exact scene node name transfers its animation presentation to
-the logical actor. Without a node, stepping captures sound intents in the response's `captured_sounds` array instead of playing them. Once any actor is animation-bound,
-all steps require explicit `nominal_ticks`, including zero, before execution.
-These tools do not determine production eligibility or pacing.
+## Notes
 
-Spatial inspection uses `step_script` stages `prepare_spatial`, `snapshot`,
-`transform`, and `families`. Preparation is explicit and transactional. Snapshot
-copies the selected actor's local angles; transform refreshes an unattached
-matrix; families composes prepared attachments. These operations grant no actor
-eligibility. Once spatial state is prepared, executable stages need both
-`frame_scale` and `nominal_ticks`, including zero.
+- Check `state` before driving player input. In `Menu`, wait for
+  `state.menu.ready` before input and after each animated page change.
+- `skip_startup` stops at the book menu; `load_scene {name}` enters a world
+  directly from startup or the menu.
+- Script inspection tools step explicit stages only; they never enable
+  automatic gameplay.
+- When adding a tool, add the `Command` to `cyrus-control` first and keep the
+  tool a one-call wrapper.
 
-Player queries use the current `PlayerPose`, not the inspection camera.
-`distance_override` optionally overrides runtime `neversaydie` state;
-`fallback_position` supplies original Q8 coordinates when no player exists.
-Missing required inputs fail. Attached queries read the last composed pose.
-Unattached linked-position selection remains unsupported in the script host.
+## Testing
 
-`cheat {name, value?}` applies a named toggle or explicit unsigned integer value.
-Without a value, `oracle` lists state and `savecheats` writes the complete CHT file.
-`state.cheats` reports readiness, load errors, raw values and each effect's support.
-Unsupported effects retain their values but do not change gameplay. This is an
-inspection interface. `console {open?, line?}` opens/closes or submits to the
-shared F12 editor. `state.console` exposes its output and selection.
-
-`hold_texture_frame {world, image, frame}` holds a zero-based texture frame for
-matched captures. `frame: null` resumes automatic requests from the selected
-frame without replacing its deadline. `state.textures` reports loaded image
-names, frame counts, selected frames and holds. The requested world must be
-ready, and the image/frame must exist. World replacement clears holds. These
-inspection controls do not change ordinary playback or establish cadence parity.
+`just smoke-mcp` builds `cyrus` and `cyrus-mcp`, runs a headless game on
+`START`, and drives state, input, fidelity and quit through this server. It
+needs an install. Run it after touching the control server, this crate or the
+player. The crate has no unit tests (`test = false`).

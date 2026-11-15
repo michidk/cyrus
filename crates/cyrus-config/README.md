@@ -1,26 +1,27 @@
 # cyrus-config
 
-Where cyrus keeps its own state on the player's machine (settings, the remembered game-files
-folder, preferences, saves, screenshots, exported caches and logs) and how it reads and writes it. Nothing is
-ever written to the install.
+Where cyrus keeps its own state on the player's machine (settings, the
+remembered install folder, preferences, saves, screenshots, exported caches and
+logs) and the one way it reads and writes it. Nothing is ever written to the
+install. A leaf crate: no workspace dependencies, and only `directories` and
+`anyhow` on native targets. Every crate that keeps local state asks it for a
+directory and goes through `read` and `write` instead of spelling
+`game-config/...` or writing files itself.
 
-A leaf crate: no workspace dependencies; `directories` and `anyhow` on native targets only. Every
-crate that keeps local state asks it for a directory and goes through `read` and `write`, instead
-of spelling `game-config/...` or replacing files itself.
+## Modules
 
-Native storage uses ordinary filesystem reads and writes, creating parent directories
-as needed. Writes overwrite the destination directly. A failed or interrupted write
-may leave a partial file; atomic replacement and power-loss durability are not promised.
-Errors include the affected path.
+| Module | Responsibility |
+| --- | --- |
+| [lib](src/lib.rs) | Root selection: `config_dir`, `cache_dir`, `log_dir`, `screenshots_dir` |
+| [file](src/file.rs) | `read`, `write`, `create_dir_all` with path-naming errors |
+
+## Usage
 
 ```rust
 let settings = cyrus_config::config_dir().join("settings.toml");
-let cache = cyrus_config::cache_dir();
-let logs = cyrus_config::log_dir();
-
 // None when the file does not exist; an error that names the path otherwise.
 let saved = cyrus_config::read(&settings)?;
-// Create parent directories and write the document.
+// Creates parent directories and overwrites the document.
 cyrus_config::write(&settings, b"scene = \"START\"")?;
 ```
 
@@ -29,9 +30,9 @@ cyrus_config::write(&settings, b"scene = \"START\"")?;
 Chosen once per process, first match wins:
 
 1. `CYRUS_CONFIG_DIR`, used as given (`cache/` and `logs/` below it).
-2. A `game-config/` directory that already exists in the working directory. This is the
-   layout of a development checkout, the web server and earlier releases, so existing state keeps
-   working; `cache/`, `logs/` and `screenshots/` below it.
+2. A `game-config/` directory that already exists in the working directory (a
+   development checkout, the web server, earlier releases); `cache/`, `logs/`
+   and `screenshots/` below it.
 3. The platform directories for an application named `cyrus`:
 
    | | config | cache | logs |
@@ -40,9 +41,15 @@ Chosen once per process, first match wins:
    | macOS | `~/Library/Application Support/cyrus` | `~/Library/Caches/cyrus` | `~/Library/Application Support/cyrus/logs` |
    | Windows | `%APPDATA%\cyrus\config` | `%LOCALAPPDATA%\cyrus\cache` | `%LOCALAPPDATA%\cyrus\data\logs` |
 
-The browser build has no filesystem and persists through `localStorage`; on `wasm32` the crate
-only supplies the checkout-local names so shared code compiles.
+## Notes
 
-```
+- Writes overwrite the destination directly. An interrupted write may leave a
+  partial file; atomic replacement is not promised.
+- The browser build has no filesystem and persists through `localStorage`; on
+  `wasm32` the crate only supplies the checkout-local names so shared code compiles.
+
+## Testing
+
+```sh
 cargo test -p cyrus-config
 ```

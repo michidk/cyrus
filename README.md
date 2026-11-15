@@ -13,8 +13,9 @@ Bring your own GOG install. cyrus ships no game data.
 </div>
 
 > [!IMPORTANT]
-> cyrus is early in development. Startup presentation and world viewing work,
-> but a complete gameplay and fidelity playthrough has not been accepted.
+> cyrus is early in development. You can start a new game, play in its worlds
+> and save and resume, but a complete gameplay and fidelity playthrough has not
+> been accepted.
 
 | Watch cyrus v0.5.0 | Watch the cyrus editor |
 | --- | --- |
@@ -27,13 +28,15 @@ cyrus is named after [Cyrus](https://en.uesp.net/wiki/Redguard:Cyrus), the main 
 ## What works today
 
 - Play the installed splash and title, then browse the data-driven book menu.
-- Play unlocked movies, edit persistent settings, and enter the starting world
-  with New Game. Save and restore cyrus sessions through the book, including
-  gameplay thumbnails and native/browser restart support.
-- Load Redguard worlds from a local GOG install in the native or browser viewer.
-- Inspect loaded worlds with a free camera.
+- Play unlocked movies, edit persistent settings, and start New Game with its
+  introduction.
+- Move, fight and interact in Redguard's worlds with the implemented controls.
+- Save and load cyrus sessions through the book, with gameplay thumbnails, in
+  the native and browser builds.
+- Jump to any world and inspect it with a free camera (Backtick menu).
+- Browse every asset in the separate asset viewer.
 
-See [Playing and controls](docs/PLAYING.md) for saving, resuming and current
+See [Playing and controls](docs/PLAYING.md) for controls, saving and current
 limitations. See the [delivery issues](https://github.com/michidk/cyrus/issues/92) for remaining work and acceptance evidence.
 
 Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
@@ -49,43 +52,35 @@ just run --install /path/to/GOG/extracted/app/Redguard
 ```
 
 Without `--install`, both native applications use `REDGUARD_DIR`, a remembered
-location, or the default local/GOG folders. A `redguard` symlink in the working
-directory works too. If no usable install is found, a window lets you enter a
-folder or browse for it. Continue remembers the resolved location for both the
-game and viewer; a missing saved folder reopens the picker.
+location, or the default local/GOG folders, including a `redguard` symlink in the
+working directory. If no usable install is found, a window lets you enter a
+folder or browse for it, and remembers it for both the game and viewer.
+Prebuilt packages for Windows, Linux and macOS are on the
+[releases page](https://github.com/michidk/cyrus/releases/latest); see
+[Playing](docs/PLAYING.md#start).
 
 Use `just run --scene START` to open a world directly. The
 [setup guide](docs/SETUP.md) covers the browser build, the original game runner,
 and all available commands.
 
-The game install remains read-only. cyrus stores settings, caches, and
-logs in your user profile's standard folders (on Linux `~/.config/cyrus`, `~/.cache/cyrus`
-and `~/.local/state/cyrus`), or in `CYRUS_CONFIG_DIR` when that is set. A `game-config/`
-folder in the directory you launch from takes precedence.
+The game install remains read-only. cyrus stores settings, saves, caches and
+logs in `CYRUS_CONFIG_DIR` when that is set, else in an existing `game-config/`
+folder in the directory you launch from, else in your user profile's standard
+folders (on Linux `~/.config/cyrus`, `~/.cache/cyrus` and `~/.local/state/cyrus`).
 
 ## Web version
 
-Open the browser build and click **Choose game folder**. Select your main GOG
-folder, such as `D:\Games\GOG Galaxy\Redguard`, containing both `DOSBOX` and
-the inner `Redguard` folder. Files stay on your computer. Select the folder again
-after reloading; the picker always appears.
-
-Alternatively, extract a browser release and run its bundled Python server:
-
-```sh
-python3 viewer-server.py --directory . --page index.html --port 8080 --install "/path/to/Redguard"
-```
-
-Here, `--install` points to the inner folder containing `RGFX.EXE`.
-Open <http://localhost:8080>, expand **Connect to a game-file server instead**,
-then click **Connect to server** using the prefilled address. The server reads
-your install without changing it. Stop it with Ctrl+C.
-See [browser setup](crates/cyrus-web/README.md) for building from source.
+Open the [browser build](https://michidk.github.io/cyrus/game/) and click
+**Choose game folder**. Select your main GOG folder, such as
+`D:\Games\GOG Galaxy\Redguard`, containing both `DOSBOX` and the inner
+`Redguard` folder. Files stay on your computer. Select the folder again after
+reloading. The [browser guide](crates/cyrus-web/README.md) covers the bundled
+game-file server, URL options and building from source.
 
 ## Asset viewer
 
-cyrus ships a separate asset viewer that opens every Redguard file format:
-models, worlds, textures, fonts, animations, scripts, and audio. Download a
+cyrus ships a separate asset viewer for Redguard's files: models, worlds,
+textures, fonts, animations, scripts, audio and movies. Download a
 prebuilt `cyrus-viewer` archive from the
 [latest release](https://github.com/michidk/cyrus/releases/latest) or open the
 [browser viewer](https://michidk.github.io/cyrus/viewer/) directly. From source,

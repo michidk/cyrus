@@ -1,20 +1,40 @@
 # cyrus-media
 
-Portable Smacker decoding through the existing codec, sequential bounded packets,
-indexed movie frames, PCM-to-WAV conversion and waveform envelopes.
+Portable Smacker movie decoding and PCM helpers on top of the `smk` codec. It
+has no Bevy or install dependency: callers supply the compressed bytes and the
+expected format. Installed asset discovery, subtitles, skip rules, network
+transport and audio backends stay in the consumers (`cyrus-assets`,
+`cyrus-startup`, `cyrus-viewer`).
 
-`MovieFormat` carries expected codec timing and dimensions. Callers supply these
-values; installed asset discovery, subtitle fonts, skip rules, network transport
-and audio backends remain in consumer crates. `Packets` accepts a `Read` source
-and retains one compressed packet. `MovieStream` consumes downloaded chunks in
-order so delta frames remain correct during forward skips.
+## Modules
 
-Run `cargo test -p cyrus-media`. Installed streaming contracts live in
-`cyrus-assets/tests/movie_stream.rs`; native playback contracts live in render.
+| Module | Responsibility |
+| --- | --- |
+| [lib](src/lib.rs) | `Movie` (whole-file decoder, one current picture), `audio_tracks`, `pcm_wav` (PCM to WAV), `peaks` (waveform envelopes) |
+| [packets](src/packets.rs) | `Packets`: reads a `Read` source one compressed packet at a time |
+| [stream](src/stream.rs) | `MovieStream`: decodes chunks pushed in order, validated against a `MovieFormat` |
 
-For a bounded independent picture oracle from an explicitly supplied local
-compressed payload, run `cargo run -p cyrus-media --example frame_window --
-MOVIE OUTPUT FIRST LAST`. It decodes the authored prefix and retains only the
-inclusive window as raw RGBA with numbered metadata. It requires a new output
-directory and never modifies the input. Installed discovery and subtitle
-composition remain in the asset and presentation consumers.
+## Notes
+
+- `MovieFormat` carries the expected frame count, frame time and viewport;
+  `validate` rejects a codec header that does not match.
+- `MovieStream` consumes chunks strictly in order and decodes skipped frames
+  too, so delta frames stay correct across forward skips.
+- The enable mask is shared: bits 0..=6 select audio tracks, bit 7 indexed video.
+
+## Testing
+
+```sh
+cargo test -p cyrus-media
+```
+
+Installed streaming contracts live in
+[`cyrus-assets/tests/movie_stream.rs`](../cyrus-assets/tests/movie_stream.rs).
+
+For a bounded picture oracle from a local movie file, decode an inclusive frame
+window (1-based) to raw RGBA plus metadata in a new output directory; the input
+is never modified:
+
+```sh
+cargo run -p cyrus-media --example frame_window -- MOVIE OUTPUT FIRST LAST
+```

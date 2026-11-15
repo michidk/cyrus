@@ -1,18 +1,26 @@
-# smk: sequential browser input
+# Vendored smk
 
-Vendored from the published `smk` 0.1.0 package by Alessandro Rosetti,
-[upstream repository](https://github.com/roarc0/smk). The existing libsmacker
-1.2.0 Rust port and its file/memory APIs are retained. No media is included.
+Vendored from the published `smk` 0.1.0 package by Alessandro Rosetti
+([upstream](https://github.com/roarc0/smk)), a Rust port of libsmacker 1.2.0,
+under LGPL-2.1-or-later ([LGPL-2.1.txt](LGPL-2.1.txt),
+[GPL-2.0.txt](GPL-2.0.txt)). The file and memory APIs are retained. No media
+is included. The workspace depends on this copy by path.
 
-Cyrus adds `header_size`, `open_stream`, `packet_size`, and `decode_packet`
-so the browser can supply complete compressed packets as they arrive, preserving
-palette and delta-frame state without loading the whole movie. File navigation
-is unavailable on a packet decoder; callers decode sequentially and discard
-intermediate frames for forward skips. Header dimensions and allocation sizes
-are checked before creating streaming buffers.
+## Changes
 
-Run `cargo test --manifest-path dev/vendor/smk/Cargo.toml` from the workspace.
-The installed frame/palette contract lives in `cyrus-assets::movie::stream`.
+- **Sequential packet input**: `header_size`, `open_stream`, `packet_size` and
+  `decode_packet` let the browser feed complete compressed packets as they
+  arrive, keeping palette and delta-frame state without loading the whole
+  movie. A packet decoder cannot seek; callers decode sequentially and discard
+  frames to skip forward.
+- Header dimensions and allocation sizes are checked before streaming buffers
+  are created.
 
-The source remains LGPL-2.1-or-later. See [LGPL-2.1.txt](LGPL-2.1.txt) and
-[GPL-2.0.txt](GPL-2.0.txt).
+## Testing
+
+```sh
+cargo test --manifest-path dev/vendor/smk/Cargo.toml
+```
+
+The installed frame and palette contract lives in `cyrus-media`'s `stream`
+module.

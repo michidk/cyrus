@@ -1,35 +1,54 @@
 # cyrus-console
 
-Portable editor, keyboard focus and command dispatch. This crate depends on
-Bevy's ECS/input layer, serde and anyhow. It does not depend on gameplay,
-rendering, installed assets, transport or host storage.
+Portable console editor, keyboard focus and command dispatch. Subsystems
+register their own commands; the game hosts and `cyrus-debug` use it. It depends
+only on Bevy's ECS/input layer, serde and anyhow, plus redguard-preservation
+behind the optional `cpf` feature. It must not depend on gameplay, rendering,
+installed assets, transport or host storage.
 
-Add `ConsolePlugin`, then register commands with `ConsoleApp::console_command`.
-Each handler is a normal Bevy system taking `In<Invocation>` and returning
-`anyhow::Result<Vec<String>>`. Plugins retain ownership of the state they change.
-Names and aliases are unique. Programmatic dispatch accepts canonical names;
-interactive dispatch also accepts exact aliases. Hidden gameplay input only
-accepts commands marked as cheats and does not append console output.
+## Modules
 
-Hosts set `Console.enabled` and `Console.blocked` to control input availability.
-Keyboard submissions execute during `ConsoleInput` before the next keyboard
-event. Other queued submissions run in `ConsoleDispatch` after input. An
-exclusive host adapter can use `submit` for synchronous execution and reports.
+| Module | Responsibility |
+| --- | --- |
+| [lib](src/lib.rs) | `ConsolePlugin`, `ConsoleApp`, `Command`, `Invocation`, `submit`, the `ConsoleInput`/`ConsoleDispatch` sets |
+| [editor](src/editor.rs) | Console line editor and hidden gameplay cheat entry |
+| [input](src/input.rs) | Keyboard focus; each Enter dispatches before the next key event |
+| [catalog](src/catalog.rs) | The original command names and aliases |
+| [number](src/number.rs) | Numeric literals: decimal, hexadecimal, percent-prefixed, packed four-byte |
+| [preferences](src/preferences.rs) | Console preferences (`font`, `paper`, `col0`–`col3`, ...) and the host `Store` |
 
-The shared `number` parser accepts decimal, hexadecimal, percent-prefixed and
-packed four-byte values. Decimal and hexadecimal conversion consume the numeric
-prefix and wrap at 32 bits. Command owners supply live symbol lookup through the
-`number` callback. Short quoted inputs remain unsupported.
-**Verified:** percent-prefixed input returns zero under the
-[preservation console rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/console.md).
+## Usage
 
-`cargo test -p cyrus-console` verifies a consumer without the game or renderer.
+```rust
+app.add_plugins(cyrus_console::ConsolePlugin)
+    .console_command(command, handler); // command: cyrus_console::Command
+```
 
-`console clear`, `write`, `save`, `show`, `font`, `shadow`, `paper`, `col0` through
-`col3`, `hex,number` and `limit,number` share the portable preference state.
-Hosts install `Console::with_store` for persistence and log export. The optional
-`cpf` feature supplies the rgpre codec adapter; isolated core consumers do not
-load preservation parsers. Malformed local preferences block edits and saves.
-`ConsoleApp::console_symbols` supplies live game values to numeric commands.
-The original command catalog remains visible in `commands`; entries without an
-owner report unsupported. Aliases work only in interactive dispatch.
+A handler is an ordinary Bevy system taking `In<Invocation>` and returning
+`anyhow::Result<Vec<String>>`; the registering plugin keeps owning the state it
+changes. `console_symbols` supplies live game values to numeric arguments.
+Hosts toggle `Console.enabled` / `Console.blocked`, install `Console::with_store`
+for persistence and log export, and may call `submit` from an exclusive system
+for synchronous execution.
+
+## Notes
+
+- Names and aliases are unique. Programmatic dispatch takes canonical names;
+  aliases work only in interactive dispatch. Hidden gameplay input accepts only
+  commands marked as cheats and writes no console output.
+- The original catalog stays visible in `commands`; entries without an owner
+  report unsupported rather than disappearing.
+- Number parsing follows preservation's
+  [console rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/console.md)
+  (percent-prefixed input returns zero). Short quoted inputs are unsupported.
+- Malformed stored preferences block edits and saves instead of being overwritten.
+
+## Testing
+
+```sh
+cargo test -p cyrus-console
+cargo test -p cyrus-console --features cpf
+just verify console
+```
+
+Tests build a consumer without the game or renderer and need no install.

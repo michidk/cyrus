@@ -1,77 +1,54 @@
 # cyrus-debug
 
-The backtick (`` ` ``) debug menu shared by the native and browser game. It changes
-runtime fidelity individually or all at once, an independent flycam toggle and
-speed, loads an installed world from a dropdown, and launches a separate
-`bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
-Resources to edit reflected resources, and Assets to inspect loaded assets.
-The inspector scrolls within its resized window. World choices show their installed
-map name alongside the WORLD.INI ID, including shared-map palette variants.
-The inspector stays open independently of the Backtick menu and has its own close button.
-Backtick is available during startup, at the book menu, and in a world. Its overlay
-camera persists when startup and world cameras are replaced. Headless launches
-do not register the debug UI. F1 is reserved for the original game's version dialog
-and F10 for its credits. See [fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c91d64c19d5b38b280e8253eec3ab779fe8810fe/docs/config/keys-ini.md#fixed-gameplay-shortcuts).
+The Backtick (`` ` ``) debug menu shared by the native and browser game. It
+switches fidelity areas between Faithful and Modern (one by one or all at once),
+sets render distance, loads an installed world from a dropdown, and opens
+separate windows: a `bevy-inspector-egui` World Inspector, Performance,
+Day/night and Effects. It depends on `cyrus-app` (egui setup), `cyrus-render`,
+`cyrus-game`, `cyrus-script` and `cyrus-console`. It does not read the install
+or the browser DOM; hosts fill its world list. Headless launches do not register it.
 
-The debug menu starts at the upper left and fits its controls instead of filling the
-window height. The native Mods window starts alongside it. Both remain movable
-and resizable, with their contents setting the minimum size.
-Effects starts wider to accommodate its longer controls; it, Day/night and
-Performance also fit their content vertically.
+## Modules
 
-Press Backtick, then click **Open inspector**. Click **Close inspector** or the
-inspector window's close button to hide it.
+| Module | Responsibility |
+| --- | --- |
+| [lib](src/lib.rs) | `DebugMenuPlugin`, the Backtick menu, fidelity and render-distance controls, `WorldPicker`, inspector window |
+| [performance](src/performance.rs) | Frame-rate and frame-time plots over the last 30 seconds, render statistics |
+| [day_night](src/day_night.rs) | Modern lighting time of day: cycle, hour, speed |
+| [effects](src/effects.rs) | Modern lighting optional effects and their parameters |
 
-Press Backtick, then click **Open performance** for a Performance window. It plots the
-frame rate and the frame time of every real-time frame over the last 30 seconds
-(newest on the right, value axis from zero to the next round number), with the
-average, 1% low (the slowest 1% of frames) and worst frame below the plots. Beneath
-that it lists the GPU adapter, window resolution, entity count, visible and total
-meshes, lights, and loaded mesh and image assets. Frames are recorded whether or not
-the window is open, so the plots are already filled in when it opens; the counts are
-only gathered while it is open. Like the inspector, the window stays open
-independently of the Backtick menu and does not capture game input.
+## Usage
 
-Press Backtick, then click **Open day/night** for the modern lighting's time of day:
-turn the cycle on, pick the hour (12:00 is the world's installed sun) or jump to
-dawn, noon, dusk or night, and let it run at a chosen speed. It needs Modern
-lighting, and the panel offers to switch it. The browser build has no modern
-lighting and says so.
+```rust
+app.add_plugins(cyrus_debug::DebugMenuPlugin);
+```
 
-Press Backtick, then click **Open effects** for the modern lighting's optional effects: a switch
-for each one (tonemapping and colour grading, auto exposure, god rays, lens flare and sun
-glare, sky glow and stars, water reflections, swaying plants, depth of field, motion blur),
-with the tonemapper, exposure, saturation, contrast, haze density and aperture beneath them.
-They need Modern lighting, and the panel offers to switch it.
+Hosts populate `WorldPicker.options` with WORLD.INI IDs and map names and
+consume `WorldPicker.pending`. A selection enters through the shared loading and
+player-entry path (see [cyrus-startup](../cyrus-startup/README.md)) at marker
+zero and clears the inspection camera. Player-facing use of the menu is in
+[SETUP](../../docs/SETUP.md).
 
-The dependency pins the unreleased Bevy 0.20 port from
-[upstream PR #324](https://github.com/jakobhellermann/bevy-inspector-egui/pull/324).
-Its egui adapter is patched to the same released `bevy_egui` 0.43 used by Cyrus.
-Replace the pinned port when an upstream Bevy 0.20 release is available.
-Types without registered Bevy reflection cannot be edited by the inspector.
+## Notes
 
-Hosts populate `WorldPicker` and consume its pending selection; this crate does
-not read the install or browser DOM. A world selection enters through the game's
-loading screen and player-entry lifecycle on native and browser hosts. It clears
-the inspection camera and enters the selected world at marker zero.
+- Every switch here selects a fidelity `Mode` per `Area`
+  (`crates/cyrus-game/src/fidelity.rs`); Faithful stays the default. Changing
+  render distance selects Modern Fog, and **Original** returns Fog to Faithful.
+- Day/night and Effects need Modern lighting and offer to switch it. The browser
+  build has no Modern lighting and says so.
+- Water and free flight are native mods (`cyrus-mods`, `mods/`), not menu
+  controls. The menu never moves the player.
+- F1 and F10 stay reserved for the original's version dialog and credits
+  ([fixed gameplay shortcuts](https://github.com/michidk/redguard-preservation/blob/c91d64c19d5b38b280e8253eec3ab779fe8810fe/docs/config/keys-ini.md#fixed-gameplay-shortcuts)).
+- The overlay camera persists while startup and world cameras are replaced, so
+  the menu works at startup, in the book and in a world.
+- The inspector edits only types with registered Bevy reflection.
 
-The menu has no camera controls: the view is detached only by an explicit inspection view
-or the control protocol, and free flight is the `flycam` mod (Backtick). Neither moves the
-player nor changes the fidelity settings.
+## Testing
 
-Render distance starts at the installed game's value. Changing it selects
-Modern Fog; Original clears the override and returns Fog to Faithful. Modern Fog
-also expands terrain and water submission to the selected distance. Modern Fog
-defaults to 50,000 engine units, or the original distance where that is farther,
-with a gradual distant fade.
-Fog and Sky have independent Faithful/Modern buttons. Water changes only through native mods;
-`cyrus-mods` adds its Mods window while this menu is open.
+```sh
+cargo test -p cyrus-debug
+just verify debug
+```
 
-Backtick's **Texture filtering** Faithful/Modern row independently filters world
-textures at oblique angles. It defaults off and works with either lighting mode.
-**All Faithful** turns it off; **All modern** turns it on.
-
-The Fidelity section has an independent **Audio resampling** selection. Faithful
-retains linear conversion; Modern uses Rubato's 24-tap sinc upsampling. New sounds
-use the selection; an existing sound retains its current conversion span. This
-selection is separate from Music, which controls CD data-noise handling.
+The tests run headless and do not need an install.

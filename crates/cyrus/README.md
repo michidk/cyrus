@@ -1,231 +1,99 @@
 # cyrus (binary)
 
-The game executable. Parses arguments, finds the install, assembles the Bevy
-app from assets, world, game and presentation plugins, and runs it.
+The native game executable. It parses the command line, finds the read-only
+install, assembles the Bevy app from the assets, world, game and presentation
+plugins ([cyrus-startup](../cyrus-startup/README.md), cyrus-render, cyrus-audio)
+and runs it. It owns native local state (settings, preferences, cheats, console,
+save slots) through `cyrus-config`, and applies the TCP control commands that
+`cyrus-control` frames. The browser counterpart is [cyrus-web](../cyrus-web/README.md).
 
-Software render adapters use direct mesh drawing. Hardware adapters retain
-Bevy's indirect drawing selection. This changes renderer setup without changing
-world geometry or materials.
+## Usage
 
 ```sh
-cargo run -p cyrus -- --scene START         # window
-cargo run -p cyrus -- --headless --scene 27 # preload, scene export and control server only
-cargo run -p cyrus -- --export-all-worlds   # write every WORLD.INI world to the cache directory
+cargo run -p cyrus                              # splash, title, then the default start
+cargo run -p cyrus -- --scene START             # load a world directly
+cargo run -p cyrus -- --headless --scene 27     # no window: preload, export, control server
 ```
 
-Without `--scene`, a normal windowed launch plays splash/title, then selects its
-entry from installed `SYSTEM.INI [debug] final_version`, `MENU.INI [general]
-ignore_autosave` and the native autosave. Final-version fresh starts play
-Introduction before entering the starting world. A valid native slot-one session
-opens the book; missing or corrupt autosaves take the fresh path. Non-final or
-ignore-autosave configurations enter the starting world without Introduction.
-`--skip-startup` retains the explicit book-menu inspection entry.
-`--scene` and headless launches retain direct scene loading.
-`--skip-startup` bypasses the splash and waits behind the title for required
-menu/HUD preparation. New Game and the temporary Load fallback export the
-installed starting world in a worker and enter after its dependencies are ready.
-Menu requests start preparation in Loading, after the attempt record is reset.
+From a prebuilt archive, run `./cyrus --install /path/to/Redguard` (`cyrus.exe`
+on Windows) from a writable directory. Without `--install` the game tries
+`REDGUARD_DIR`, the remembered location, then default local/GOG folders, and
+opens an install picker when none works ([setup](../../docs/SETUP.md#browser-build)
+lists the folders). Launch options share their names with the browser's URL parameters:
 
-Windowed launches show the shared install picker when their explicit, remembered,
-or discovered game-files location is unusable. Continue validates and remembers
-the location in `install.json` in the config directory, shared with the viewer. Selection,
-background preparation and gameplay use the same window and process. Headless,
-world-listing and export commands keep contextual command-line errors.
+| Flag | Meaning |
+| --- | --- |
+| `--install PATH` | Original install, read only |
+| `--scene STEM\|ID` | Load a map stem or WORLD.INI ID directly |
+| `--view=x,y,z,qx,qy,qz,qw` | One-shot inspection camera pose for the first world (unit quaternion) |
+| `--skip-startup` | Skip the splash and open the book menu |
+| `--new-game`, `--movie INDEX` | Start New Game, or play a Movies-page cinematic (zero-based MENU.INI index), from the open book |
+| `--skip-movies` | New Game without its introduction movie |
+| `--volume PERCENT` | Master volume 0–100 for this launch, not saved; use `--volume 0` in automated runs |
+| `--mode`, `--fog`, `--sky`, `--music` | `faithful` or `modern`; `--mode` sets every area including modern lighting, per-area flags override it |
+| `--ray-tracing on\|off` | Solari ray tracing under Modern lighting, in builds with `--features raytracing` |
 
-Flags: `--export-startup` exports startup, menu, starting world, movies and HUD
-for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, then the remembered location, then default local/GOG folders), `--scene STEM|ID`,
-`--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
-`--new-game`, `--movie INDEX` and `--load-slot SLOT` start from the open book instead of waiting for a key
-(each implies `--skip-startup`; with `--scene` and each other they conflict, and `--headless` has no book).
-`--movie` takes the zero-based MENU.INI index and plays hidden entries too. `--load-slot` restores the newest
-revision of slot SLOT of the saved slots and exits with an error when it cannot; `--list-slots` prints the
-saved slots as JSON and exits. `--skip-movies` enters New Game without its introduction movie.
-Settings come from `settings.toml` in the config directory (see `docs/SETUP.md`).
-With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
-from a writable directory. On Windows the executable is `cyrus.exe`.
-The Linux archive uses Ubuntu 24.04 system libraries.
-In any windowed launch, press Backtick to choose a world, set flycam speed, and
-change runtime fidelity. The menu remains available across startup and world entry.
+Native-only flags:
 
-This crate owns native settings and preference storage, binding initialization,
-scene preparation, debug world options and control-command application.
-`cyrus-control::server` handles TCP framing. Headless assembly omits the camera
-and audio backend; windowed assembly adds the shared presentation plugins.
+| Flag | Meaning |
+| --- | --- |
+| `--headless` | No window or renderer |
+| `--control ADDR` | Control server address (default `127.0.0.1:7117`, env `CYRUS_CONTROL_ADDR`) |
+| `--load-slot SLOT`, `--list-slots` | Restore the newest revision of a save slot through the book; print slots as JSON |
+| `--export-scene --scene NAME`, `--list-worlds` | Prepare one world and exit; print accepted world names |
+| `--export-startup`, `--export-all-worlds` | Write startup or every world to the browser cache and exit |
+| `--audit-worlds` | Headless audit of every WORLD.INI entry (see below) |
+| `--log`, `--log-file`, `--log-dir` | Log filters and directory (`RUST_LOG`, `CYRUS_LOG_FILE`, `CYRUS_LOG_DIR`) |
 
-The public `place_player` control response includes an optional placement-event boundary:
-selected-actor state, world generation, completed ordinary updates and exact elapsed Q8
-nominal ticks with the installed normal frame rate. This acknowledges application in
-PreUpdate before the next ordinary update. Without a clock or prepared world the boundary
-is unavailable; a later `state` poll cannot supply the missing event time. Placement
-acknowledgement does not establish rendered-pixel or mixer correspondence.
+`--new-game`, `--movie` and `--load-slot` imply `--skip-startup` and conflict
+with `--scene` and with each other. Flags override `settings.toml` in the config
+directory. Backtick opens the world picker, flycam and fidelity controls; F12
+opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for controls.
 
-Native document storage uses ordinary filesystem writes through `cyrus-config`,
-creating parent directories as needed. Writes overwrite directly; a failed or
-interrupted write may leave a partial file. Callers own document validation.
-This shared byte-storage boundary does not yet establish complete gameplay
-continuation after a restart. Native save slots wrap session documents with
-revision-checked metadata and optional gameplay thumbnails. Storage operations
-do not request disk syncing.
+## Modules
 
-Original `SAVEGAME.SAV` and per-world `.TSG` files are not supported load inputs.
-They use a different format from cyrus session documents. Preservation can read
-their containers, global flags and inventory records, but the complete original
-object/script state has no validated import mapping. A matching world number or
-successfully decoded inventory does not establish a compatible session. The load
-path rejects unsupported document/slot formats before session publication; it
-does not load a fresh world as a substitute. See
-[original-save compatibility](https://github.com/michidk/cyrus/issues/93).
+| Module | Responsibility |
+| --- | --- |
+| [main](src/main.rs) | Argument parsing, install selection, app assembly, default startup choice |
+| [scene](src/scene.rs) | Background scene export; cache references commit only after preparation succeeds |
+| [session](src/session.rs), [session/slots](src/session/slots.rs) | Off-live session load preparation; save slot files under `slots/` |
+| [settings](src/settings.rs), [preferences](src/preferences.rs), [bindings](src/bindings.rs) | `settings.toml`, local preferences, saved key bindings |
+| [cheats](src/cheats.rs), [console](src/console.rs) | `REDGUARD.CHT` and `REDGUARD.CPF` in the config directory, `CONSOLE.LOG` |
+| [control](src/control.rs) | Applies control commands; `control/` holds frame capture, input scheduling and other diagnostics |
+| [audit](src/audit.rs) | `--audit-worlds` |
+| [debug](src/debug.rs), [subtitles](src/subtitles.rs), [rendering](src/rendering.rs) | World picker sources, speech-to-subtitle adapter, software-adapter renderer setup |
 
-Shared browser/CLI options use exactly the same names:
+## Notes
 
-| CLI | Browser URL | Meaning |
-| --- | --- | --- |
-| `--install PATH` | `?install=URL` | Read-only original install, local directory or install-service URL |
-| `--scene START` | `?scene=START` | Load a map stem or WORLD.INI ID directly |
-| `--view=x,y,z,qx,qy,qz,qw` | `?view=x,y,z,qx,qy,qz,qw` | First-world scene-space inspection camera pose; accepts menu entry and requires a unit quaternion |
-| `--skip-startup` | `?skip-startup=true` | Bypass the splash |
-| `--new-game` | `?new-game=true` | Start a new game from the open book (implies `--skip-startup`) |
-| `--movie 2` | `?movie=2` | Play that Movies-page cinematic (zero-based MENU.INI index) from the open book |
-| `--skip-movies` | `?skip-movies=true` | New Game enters its world without the introduction movie |
-| `--volume 0` | `?volume=0` | Master output volume for this launch, 0 to 100 percent; not saved. Use `--volume 0` for automated test runs |
-| `--fog modern` | `?fog=modern` | Fog fidelity mode |
-| `--sky modern` | `?sky=modern` | Sky fidelity mode |
-| `--mode modern` | `?mode=modern` | Every presentation area at once, including modern lighting (shadow-mapped PBR, native only), which has no flag of its own and is also switched in the Backtick debug menu; per-area flags override the others |
-| `--ray-tracing off` | native only | The Solari ray-tracing switch in builds with the `raytracing` feature (`cargo run -p cyrus --features raytracing`); on by default. It traces under Modern lighting on ray-query hardware |
+- The install is never written. Local state lives where `cyrus-config` decides;
+  local cheat and console files take precedence over the installed ones.
+- Default startup reads `SYSTEM.INI [debug] final_version`, `MENU.INI [general]
+  ignore_autosave` and the native autosave: a fresh final-version start plays
+  the Introduction, a valid autosave opens the book.
+- Save slots hold cyrus session documents. Original `SAVEGAME.SAV` and `.TSG`
+  files are not load inputs ([#93](https://github.com/michidk/cyrus/issues/93)).
+- Control commands and their wire contract, including frame and mixer capture
+  (`CYRUS_MIXER_CAPTURE_DIR`), are documented in [cyrus-control](../cyrus-control/README.md).
+- Headless assembly omits the camera and audio backend; rendering never depends
+  on the audio backend.
 
-Mode values are `faithful` or `modern`. Native flags override saved settings.
-Native-only flags include headless/control and export commands. `--export-scene
---scene NAME` prepares one world and exits; `--list-worlds` prints accepted names
-as JSON. The browser install service uses these existing asset paths without
-starting a game window.
+## World audit
 
-[cyrus-startup](../cyrus-startup/README.md) supplies splash, title, the book menu,
-settings, cinematic playback and world-entry loading. Hosts add it alongside
-cyrus-render and cyrus-audio.
+`cargo run -p cyrus -- --audit-worlds` loads every numeric WORLD.INI identity,
+including palette variants, through the normal preload, scene export and script
+preparation, and writes `report.json` (schema version 1, sorted, no timestamps)
+and `report.txt` under `magic/artifacts/world-audit/`. Each diagnostic names its
+world, source file, field, reason and count. Categories can describe the same
+request, so do not add them up as independent defects; an absent failure does
+not prove an unexercised operation works. A failed world is recorded, the rest
+are attempted, and the command then exits unsuccessfully.
 
-Native cheat state loads after install selection. `REDGUARD.CHT` in the config directory
-takes precedence over the installed file; absent files start at zero, then
-SYSTEM.INI replaces task, animation and node-marker defaults. Malformed local
-state blocks commands without falling back to the install. `savecheats` writes
-only the local file and preserves unnamed slots. Remove it to restore installed
-state on the next launch. Startup defaults still apply.
+## Testing
 
-F12 opens the console in a world; F12 or Escape closes it. Type a cheat name,
-`name = integer`, `oracle`, or `savecheats`. Gameplay also accepts a typed cheat
-name followed by Enter. TCP/MCP `cheat` retains its explicit raw-value API;
-`console {open?, line?}` operates the shared editor and `state.console` reports it.
-Unsupported commands and gameplay effects report their limits.
+```sh
+cargo test -p cyrus
+just verify cyrus
+just run-native --fixture dev/fixtures/<world>.json   # matched viewpoint, see dev/fixtures/README.md
+```
 
-`cargo run -p cyrus -- --audit-worlds` runs without a window and writes
-`magic/artifacts/world-audit/report.json` and `report.txt`. It enumerates numeric
-WORLD.INI identities, including palette variants, and reuses preload, scene export
-and the normal script preparation systems. Each diagnostic retains its world,
-source file, field, reason and affected count. JSON schema version 1 uses sorted
-worlds and diagnostics, without timestamps or timings, for diffs between runs.
-Exports used by the audit remain in that artifact directory.
-
-The report describes loading observations. It does not supply invented actor
-eligibility or animation ticks, or execute speculative native calls. It separately
-counts actors whose animations were not initialized. No observed failure does not
-establish support for an unexercised operation. A world export failure is retained,
-the remaining worlds are attempted, and the command exits unsuccessfully after
-writing both reports.
-
-For matched original/native/browser viewpoints, use
-`just run-native --fixture dev/fixtures/<world>.json` and the
-[fixture workflow](../../dev/fixtures/README.md). Captures stay under `magic/`.
-The audit's script inventory is a static census. Runtime unsupported counts are
-observed preparation/execution failures whose existing error says `unsupported`;
-script decode failures and runtime failures have separate counts.
-Placement counts include repeated missing rope links. Asset counts count failed
-loader requests, including actor-name fallbacks for empty authored model fields.
-They do not establish that an authored asset is missing, and are not counts of
-unique filenames. A skipped placement and an asset failure can describe the same
-request; do not add these categories together as independent defects. Preload
-diagnostics use a null world because the coverage scan does not establish a
-world reference.
-
-Native `state.scene_ready` reports that the current rendered world has finished spawning. `InGame` alone does not establish that its asynchronous scene dependencies have loaded.
-
-Native `state.music_track` is the CD track playing or loading, and `state.music_paused` whether its sink is paused (a cinematic is playing, or the Music slider is at 0); it is `null` while no sink exists (no track has started, or the host has no audio device).
-
-Console preferences restore from `REDGUARD.CPF` in the config directory, then the installed
-file when local state is absent. `console save` writes only the local CPF;
-`console write` exports retained output to `CONSOLE.LOG` in the config directory. Malformed
-preferences remain visible in `state.console.preference_error` and block edits
-and saves. `console show` reports settings and any load error.
-
-The native host connects speech metadata to rendering through
-`subtitles::SubtitleRequest` and selects the rendering camera for audio listener
-updates. These adapters keep rendering independent of the audio backend.
-
-`hold_texture_frame {world, image, frame}` holds a zero-based texture frame for
-matched captures. `frame: null` resumes automatic requests from the selected
-frame without replacing its deadline. `state.textures` reports loaded image
-names, frame counts, selected frames and holds. The requested world must be
-ready, and the image/frame must exist. World replacement clears holds. These
-inspection controls do not change ordinary playback or establish cadence parity.
-
-Native diagnostic `session_load {path}` reads a cyrus document and prepares its
-installed current/visited worlds and service sources off-live. Poll
-`session_load_result` until it reports `committed` or a contextual error.
-Preparation alone is not success. Only one native load may be pending, and its
-terminal result remains available across repeated polls. Acknowledge it with
-`session_load_result {acknowledge: true}` before another request. Capture commands reject while
-that load owns the boundary. The authored Load page uses this host to list paginated slots and restore
-the selected revision. Slot and retained-last-game loads clear saved sample/dialogue
-services and retain the live CD transport for ordinary world track selection,
-following preservation's sound and music restoration rules. Named diagnostic loads
-retain exact audio source checkpoints. Authored Save/Load actions apply the book's eligibility rules.
-
-Native diagnostic `session_slots {operation}` supports list, create, overwrite,
-load and delete. Poll `session_slots_result` and acknowledge its terminal result
-with `acknowledge: true`. Create uses the first free manual slot; overwrite,
-load and delete require the listed revision. Files under `slots/` in the config directory
-contain bounded metadata and an opaque cyrus session document, not original SAV
-files. Failed capture, preparation or publication does not replace accepted data.
-Admitted save/load selections retain the last-save slot and description for death
-confirmation. Its Yes choice restores that slot through the shared atomic session
-boundary; missing or malformed saves report errors without starting a fresh world.
-The authored Save page uses the same slot host for description editing, creation
-and revision-checked overwrite. Slot metadata includes the captured gameplay thumbnail.
-
-Native acceptance tools can use the control protocol's `schedule_input` command
-to deliver balanced input at ordinary update boundaries. Admission reuses the
-production world/model service gates. Delivery runs after model preparation and
-before player input sampling and ordinary simulation; returned actor snapshots
-observe that same boundary. See `cyrus-control` for the wire contract and failure
-cleanup. Normal gameplay continues to use the same keyboard bindings.
-
-The native `effect_geometry` diagnostic samples transient geometry after effect
-PostUpdate. `after_generation` arms a bounded first admitted-update observation before
-a public session replacement or dormant-world revisit. Scene/model services and
-the generation-matching world clock sample must be ready. It preserves command order
-and reports a missing binding as an error rather than waiting for it to repair.
-`dev/scripts/native-transient-session.py` drives the installed public acceptance.
-
-Native control captures can use `capture_gameplay_frame` to freeze the ready
-world clock and player presentation before the requested frame is extracted.
-Readback and PNG encoding are asynchronous and bounded to one capture. See the
-control crate README for admission failures and the PCM delivery-cursor limit.
-
-Native `capture_gameplay_frame` can wait for an exact consumed clock or the first
-admitted selected-player primary wall response after an identified ordinary update.
-The clock/actor/presentation receipt is frozen before render extraction and retained
-through asynchronous GPU readback and PNG encoding. Late or unavailable boundaries
-fail instead of silently capturing the next frame; ordinary gameplay cadence is
-unchanged. See `cyrus-control` for the trigger protocol and cursor limitations.
-
-Independent Linux acceptance runs may set `CYRUS_MIXER_CAPTURE_DIR` to an empty
-host-mounted directory. The ALSA owner retains completed mixer callback bytes
-and generation timestamps before device submission, using bounded asynchronous
-file delivery. Frame receipts then include `pcm_generation` independently of the
-optional monitor delivery cursor. Unsupported formats, overflow, writer failure
-and stream replacement invalidate the cursor. `generated-pcm.py` checks producer
-pacing without substituting recorder process duration. Native f32 bytes retain
-their raw hash; exported s16 WAV is explicitly a preview conversion. Generated
-samples alone do not prove device playback or original-game PCM parity.
-
-Optional Wasm save requests bridge to the same native session adapter as the book and
-quick save. The host rechecks eligibility before capture and reports completion only
-after the reserved autosave slot commits. Guest code owns periodic timing and retries.
+Tests that need the install skip without one and say so.

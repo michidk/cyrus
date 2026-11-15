@@ -1,164 +1,64 @@
 # cyrus-soup
 
-Portable SOUP execution from its own `program::Program`. The `program` module
-owns instructions, definitions and validation. Asset preparation constructs these
-records without changing their serialized schema. This crate depends only on
-`anyhow` and `serde`, with no Bevy, asset loader, install parser or platform I/O.
-`dev/scripts/check-core-boundaries.sh` verifies it as an isolated consumer.
-
-`Runtime::invoke` runs an explicitly eligible main or interrupt stage through an
-authored yield or blocking task. The host supplies synchronous native services,
-completion tokens, End notifications, shared global flags, and a diagnostic
-instruction budget. Budget exhaustion and unsupported operations retain a sticky
-world/actor/instruction error. The core supplies no production clock or activation.
-
-**Verified:** operand structure, cooperative invocation, End continuation, separate
-invocation cursors and actor return continuation, and integer operators follow preservation's
+Portable SOUP script virtual machine: program records, invocation stages,
+actor task slots, values and VM snapshots. The game supplies every effect
+through the `Host` trait; this crate supplies no clock, activation or
+eligibility. `cyrus-assets` builds `program::Program` records from the
+install, and `cyrus-script` runs them and implements the native handlers. It
+depends only on `anyhow` and `serde`: no Bevy, asset loader, install parser or
+platform I/O. The behaviour follows preservation's
 [SOUP contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md).
-Synthetic public-interface tests cover immediate statements, subroutines,
-shared locals, blocking completion, arithmetic, branches, and sticky failures.
-These tests do not establish complete game fidelity.
 
-`Attribute` names each actor attribute slot after the installed `SOUP386.DEF`
-equates, and `Attributes` holds an actor's 256 attribute bytes indexed only by
-`Attribute`. Asset preparation translates installed names to slots once; script
-calls such as `GetAttribute` address slots by number through `Attributes::bytes`.
+## Modules
 
-`AnimationGroup` is an animation group number with a constant for every group
-the `SOUP386.DEF` animation-group equates name, aliases included
-(`AnimationGroup::RUN` is `anim_run`). Groups 169 to 177 have no DEF name.
-`AnimationGroup::from_index` is for numbers that are data: a script argument,
-an installed group record, a control-port request.
+| Module | Responsibility |
+| --- | --- |
+| [lib](src/lib.rs) | `Runtime`, `Host`, `ScriptValue`, `CallResult`; entry, main and interrupt invocation |
+| [program](src/program.rs) | Instructions, definitions and serialized schema; [validation](src/program/validation.rs) before any host effect |
+| [tasks](src/tasks.rs) | Six actor-owned task slots, blocking and timed task passes, operand reevaluation |
+| [routing](src/routing.rs) | Object calls to other actors, `receive`, native hooks |
+| [values](src/values.rs) | Integer formulas and conditions, typed actor references |
+| [persistence](src/persistence.rs) | Versioned VM `Snapshot`, validated restore, actor-reference rebinding |
+| [attribute](src/attribute.rs) | `Attribute` slots and an actor's 256 `Attributes` bytes |
+| [animation_group](src/animation_group.rs) | `AnimationGroup` numbers with the named DEF groups |
+| [native](src/native.rs) | `Native`: every native function in DEF order plus engine-only natives |
+| [property](src/property.rs) | `Property`: every object property in DEF `[refs]` order |
 
-`Native` names every SOUP native function after the `SOUP386.DEF` function list,
-in DEF order after the synthetic `NullFunction`, followed by the engine natives
-the DEF does not declare (`showObjWorld`, `showObjWorldPan`, `DialogBegin`,
-`DialogEnd`, `MenuBegin`, `MenuEnd`). Decoded calls and the definition carry
-`Native`, which serializes as its installed spelling, and hosts receive it in
-`Host::call`.
+## Usage
 
-`Property` names every SOUP object property after the `SOUP386.DEF` `[refs]`
-list, in DEF order (`pos.vx` is `Property::PosVx`, `grip[0]` is
-`Property::Grip0`). The definition's references carry `Property`, which
-serializes as its installed spelling.
+A host builds a `Runtime` for an actor and calls one explicit stage per update:
+`invoke_entry`, `invoke_main_stage` (entry, timed task pass and main body),
+`invoke_body`, `invoke_tasks_timed`, `invoke_native_hook` or `receive`. Native
+calls reach `Host::call` as a typed `Native` with arguments in authored order.
+`Runtime::snapshot` and `Runtime::from_snapshot` capture and rebuild the VM.
 
-`CallResult::CompleteWithoutValue` lets a host complete an effect when no
-portable numeric result is established. Statements discard that result;
-formulas, conditions and arguments fail contextually when consuming it.
-The failure is retained so the effect is not repeated. Routing and native hooks
-preserve the absent value. This does not define a new result for the original
-handler or admit any unsupported native service.
+## Notes
 
-Six actor-owned task slots support blocking tasks, multitasks, operand
-reevaluation, explicit task passes, pause/resume, stop and teardown cancellation.
-Native operands evaluate from last to first; handlers receive authored argument order.
-`invoke_body` excludes the existing-task pass; `invoke` combines a main task pass
-with body processing for the existing animation adapter. The caller supplies
-eligibility and task timing. `invoke_tasks_timed` takes an explicit frame scale
-with eight fractional bits. **Verified:** each slot starts at counter one;
-elapsed uses the low 32-bit counter/scale product shifted right by eight.
-Counters wrap at 16 bits and paused slots do not advance. Initial native
-completion does not skip allocation or the blocking yield. Hosts must retain a
-task token for completion on a later task pass. Hosts receive elapsed
-zero for initial task calls, and unpaused total/blocking slot counts that reflect
-earlier completions in the same pass. Untimed animation passes and Function calls
-have no established elapsed input. `Yield`, Anchor and ScriptRV retain actor state.
-Each slot's blocking byte, pause byte and 16-bit timer sit in state arrays that keep their values
-while the slot is empty; `Runtime::task_slot_field` and `set_task_slot_field` read and write them
-(bytes zero-extended, the timer sign-extended) for the `task_status`, `task_pause` and `task_timer`
-properties, which `Host::task_slot_property` names. Snapshots are version 2; version 1 saves carry the
-three values in the task record and migrate on restore.
-Exceeding task capacity fails before a seventh host effect. Full save restoration
-and complete native command services remain unsupported.
+- `Attribute`, `AnimationGroup`, `Native` and `Property` are named after the
+  installed `SOUP386.DEF` and serialize as its spellings. Convert installed
+  names or numbers to them once at the boundary; use `from_index` or raw
+  attribute bytes only where the number is data (a script argument, an
+  installed record, a control request).
+- The caller chooses eligibility and timing. Task timers take an explicit
+  frame scale with eight fractional bits.
+- Failures (unsupported operations, budget exhaustion, consumed
+  `CallResult::CompleteWithoutValue`) are sticky and retain
+  world/actor/instruction context, so an effect is never repeated.
+- Program records must be schema version 4; VM snapshots are version 2 and
+  still restore version 1. A snapshot is a VM restore boundary, not a game
+  save: the game host restores globals, RNG, animation and native task state
+  and rebinds actor references and task tokens.
+- Actor references are logical generation/index identities, never pointers.
+  Arithmetic and ordering on references are unsupported.
+- New native handlers belong in `cyrus-script`; format and engine discoveries
+  belong in redguard-preservation.
 
-`Host::route` resolves object calls before evaluating their operands. `Runtime::receive`
-uses receiver locals and task slots without running its body. Native strings use
-the session source established by normal interpreter entry,
-even when a task blocks the main body. Alternate entry retains the prior source.
-Shared actor hosts implement the source callbacks; isolated hosts use their own table.
-`CodeOrigin` and `TaskSource` retain the physical RASC operand identity across routing.
-`Host::task_call` supplies foreign instructions for reevaluation. Duplicate suppression
-and task controls compare physical operands. Object calls continue the caller, including
-explicit Me tasks. Hosts restore receiver context and runtime ownership on errors.
-The default host rejects non-Me routing. `State` is serializable for inspection;
-serialization alone is not a save/load implementation. Production task tokens
-must remain bound to their owning actor and world generation.
+## Testing
 
-`Runtime::snapshot` captures complete VM state and the exact owning/foreign
-programs used by its tasks. `Runtime::from_snapshot` builds a replacement VM
-without invoking native services or scripts. It validates program content,
-continuation and return cursors, local counts, task source/operand identities,
-blocking kinds, and unique saved tokens. Every saved token requires an explicit,
-unique replacement token prepared by the host. `Snapshot::task_tokens` exposes
-those saved tokens in slot order. Slot holes, pause state, counters and sticky
-failures are retained. Source programs are included for exact compatibility,
-including their strings and initial locals, without an asset or hashing dependency.
-`Snapshot::task_calls` validates saved structure and exposes each token's
-unevaluated source call, including paused and foreign slots. Game hosts use it
-to validate native continuation variants. It does not replace the installed-source
-validation in `Runtime::from_snapshot`.
+```sh
+cargo test -p cyrus-soup
+dev/scripts/check-core-boundaries.sh   # builds cyrus-soup as an isolated consumer
+```
 
-**Verified:** headless public-interface tests resume waits and subroutines without
-reissuing native calls, retain both continuations and saved return values, poll
-foreign tasks after rebinding, preserve paused/wrapping counters, and reject
-malformed state or changed code without altering the live VM. This is a VM
-restore boundary, not a complete game save. The owning game host must validate
-actor/world identity and restore globals, RNG, animation, native task state and
-all other gameplay state before committing the replacement world. Native/browser
-storage, original-save import and full game restoration remain unsupported.
-
-Run `cargo test -p cyrus-soup`. New handlers belong to `cyrus-script`; format and
-engine discoveries belong to preservation.
-
-`invoke_entry` applies the ordinary entry gate before running the interrupt
-continuation. An unpaused blocking task suppresses entry when its physical
-operand identity is at or before that cursor, including foreign task sources.
-`invoke_body(Thread::Interrupt)` remains the separately admitted direct interrupt
-path. Neither entry API runs existing tasks or chooses update eligibility.
-
-`invoke_native_hook` dispatches the validated RAHK call with the actor's locals
-and the host's string-source context, without advancing either continuation or
-polling tasks. It retains
-native failures so a failed effect is not retried. Hook eligibility remains the
-game scheduler's responsibility.
-
-`invoke_main_stage` combines entry, timed task polling, and main continuation for
-an admitted ordinary update. Its task-bypass input skips polling and the main
-blocking-slot gate, while retaining entry's operand gate. It does not choose
-actor eligibility or recheck game control flags between entry and main.
-
-Property references retain the full installed 16-bit index. Program schema 4
-rejects older exports that could discard the high property byte or the distinct
-object function-expression encoding.
-The host owns property semantics; the portable runtime forwards the complete
-reference and does not select an actor field itself.
-
-The host receives native call provenance before operand evaluation. Statements
-and direct function values reset command state; object function values retain
-the point value, including explicit Me calls. Hooks preserve current state.
-Task passes load active slots and save empty, paused and pending slots. Completed
-slots leave their resulting command state shared without saving it. Initial
-allocation saves the first invocation result. Game hosts retain shared state
-above actors and six banks per actor; portable hosts may omit these callbacks.
-
-Verified: active task resumption supplies the scaled call count to the host while
-restoring its native continuation, before reevaluating operands. Empty and paused
-slots save the current native scratch without replacing the shared elapsed value,
-following preservation's
-[native command contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#point-navigation-command-state).
-
-`ScriptValue` preserves integer or actor-reference identity in locals and plain
-assignments. `Host::read_value` supplies typed property values, while numeric
-hosts can continue implementing `read_property`. Native operands carry
-`Argument::Actor`; object-local targets require that reference rather than
-looking up a numeric `MyId`. Hosts validate generation, allocation and liveness
-before dereferencing. Integer locals keep their existing JSON representation;
-reference locals serialize logical generation/index identities, never pointers.
-The game snapshot owner rebinds these identities before committing a restored
-world through `Snapshot::rebind_actor_references`.
-
-Reference equality and inequality compare identities. Arithmetic, ordering,
-numeric property writes and global-flag storage of references remain explicitly
-unsupported. Numeric native parameters reject references. Failure retains the
-current continuation and is not retried. This implements preservation's object
-and reference encodings without exposing host addresses as integers.
+The tests use synthetic programs through the public interface and need no
+install. They do not establish complete game fidelity.

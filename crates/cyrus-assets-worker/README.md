@@ -1,26 +1,37 @@
 # cyrus-assets-worker
 
-Worker-only WASM adapter for the shared `cyrus-assets` runtime parsers.
-The browser supplies either an HTTP install URL and manifest or a map of
-user-selected `File` objects. Local files are read without network requests or
-uploads. The worker computes content fingerprints in 1 MiB chunks and retains
-the read-only handles, without copying the installation into browser storage.
-Synchronous reads run exclusively inside the worker so preservation's
-seekable parsers do not block game or viewer UI.
+WASM adapter that runs the shared `cyrus-assets` parsers inside a browser Web
+Worker, so preservation's synchronous, seekable parsers never block the game or
+viewer UI. The page supplies either an HTTP install URL with a manifest
+(relative paths, byte lengths, content digests) or the player's selected local
+`File` objects. Generated previews and media go back to the game or viewer in
+memory. It depends only on `cyrus-assets` (with `parsers`) and compiles to
+nothing on native targets. No game files are needed to build it.
 
-The file host must support byte ranges. Downloads use at most 1 MiB per request,
-report progress for large files, and time out after 30 seconds per request.
-The manifest lists relative paths, byte lengths and content digests. Generated previews and media
-are transferred to the game or viewer in memory. `GameLibrary` prepares cache
-groups through the shared byte-source exporters and reads bounded cinematic ranges. No game files are required to build.
+## Modules
 
-Build and package with `just viewer-web-build`. The worker script is
-`dev/web/asset-worker.js`. Verify the built worker without an install using
-`node dev/scripts/test-assets-worker.mjs`.
-Use `node dev/scripts/test-local-worker.mjs` for local read/error contracts
-with network access forbidden, and `node dev/scripts/test-local-install.mjs`
-for folder mapping and validation.
+| Module | Responsibility |
+| --- | --- |
+| [lib](src/lib.rs) | `AssetLibrary` (viewer catalog and previews) and `GameLibrary` (game cache groups, bounded cinematic ranges); HTTP range reads |
+| [local](src/local.rs) | Read-only local `File` handles with bounded reads and content fingerprints |
 
-With an install linked, run `node dev/scripts/test-game-worker.mjs` against the
-built package to check game exports, preserved actor metadata and bounded CD movie
-reads without a native executable or prepared cache.
+The JavaScript side is [`dev/web/asset-worker.js`](../../dev/web/asset-worker.js).
+
+## Notes
+
+- Local files are read in place: no network requests, uploads or copies into
+  browser storage.
+- Reads and fingerprints use 1 MiB chunks. The HTTP file host must support byte
+  ranges; each request times out after 30 seconds.
+
+## Testing
+
+`dev/scripts/build-web.sh` builds the worker together with the game or viewer
+(`just web-build`, `just viewer-web-build`). Against the built package:
+
+```sh
+node dev/scripts/test-assets-worker.mjs    # no install needed
+node dev/scripts/test-local-worker.mjs     # local read/error contracts, network forbidden
+node dev/scripts/test-local-install.mjs    # folder mapping and validation
+node dev/scripts/test-game-worker.mjs      # needs an install: game exports and CD movie reads
+```

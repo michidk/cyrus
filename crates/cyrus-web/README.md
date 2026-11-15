@@ -1,343 +1,122 @@
 # cyrus-web
 
-The browser game selects its default startup destination from installed startup flags and its validated IndexedDB autosave. Fresh final-version launches play Introduction before entering the world; valid autosaves open the book. Explicit `?skip-startup` retains book inspection. It uses the same
-world, game and presentation plugins as the native game. This host owns URL
-selection and localStorage preferences; it has no native control port.
+The browser build of the cyrus game. It runs the same world, game and presentation
+plugins as the native game ([cyrus](../cyrus/README.md)), with
+[cyrus-startup](../cyrus-startup/README.md) for splash, title, book menu and
+cinematics. This host owns install selection, URL launch options and browser
+storage. It has no control port; automated checks use the opt-in capture mode
+below. It is not a default workspace member, so everyday builds and tests skip it.
 
-Preference storage preserves the accepted value when a write exceeds the browser
-quota, and distinguishes missing records from read failures. Read/write errors
-identify the document key and retain the browser's reason, including denied access
-to local storage. Failed asset-source opens terminate their worker before returning
-the original error.
-Complete gameplay save restoration remains open.
+## Play in the browser
 
-With `?capture`, diagnostic session requests use `window.__cyrusSessionRequest`
-as a JSON string. Send `{"type":"save","id":1,"key":"slot"}` or
-`{"type":"load","id":2,"key":"slot"}`, then poll with
-`{"type":"result","id":3}` and read `window.__cyrusSessionResult`.
-Only one operation or unread result is accepted at a time. Saves use the
-`cyrus-sessions` IndexedDB database; preferences retain localStorage. Save transactions
-request strict IndexedDB durability and report `stored` only after completion. A load reports `committed` only after shared
-source validation and exclusive live replacement. Malformed documents, missing
-records and storage failures return contextual errors. These inspection requests
-do not enable menu save slots or establish complete gameplay restoration.
-The same diagnostic bridge accepts `{"type":"slots","id":4,"operation":{"type":"list"}}`.
-Slot operations are `list`, `create` with `description`, `overwrite` with
-`slot`, `revision` and `description`, and `load` or `delete` with `slot` and
-`revision`. Poll `result` as above. Creation and overwrite capture the current
-session. Load uses the same source preparation and exclusive commit as named loads, then
-applies original saved-world sample/dialogue cleanup and retains the live CD
-transport for ordinary world track selection.
-The separate `cyrus-save-slots` database publishes metadata and complete session
-text in one strict transaction. Listing reads metadata only, newest timestamp
-first with ascending slot numbers on ties. Creation allocates the first free
-manual slot from 2 through 299 inside the write transaction. Revision tokens reject
-stale overwrite, load and delete requests. Descriptions support 1–64 original input characters, including byte codes 11
-and 13 alongside printable ASCII. Other text is explicitly unsupported. Named diagnostic
-snapshots are unchanged. Reserved `quick_save` (slot 0) and `auto_save` (slot 1) operations capture the current session with fixed descriptions. F9 requests a quick save. Quit from a world context publishes the reserved autosave when a gameplay thumbnail exists, or discards it while the death override is active. Quit waits for the storage result. These operations share the same atomic publication and revision checks as authored saves.
-Retained-save death confirmation can load an existing slot through this host
-without capture mode. Missing slots, stale revisions and failed restoration
-report errors and retain the live session. Browser slot diagnostics retain an admitted
-save selection before capture and a load selection before document decoding.
-Save preparation reads metadata without writing; publication rejects a changed
-planned slot or stale overwrite revision. The authored Load page also uses this host without capture mode. It lists paginated saves and restores the selected revision. The authored Save page uses this host for description editing and create/overwrite.
-Slot metadata carries the optional gameplay thumbnail bytes (`null` when none was captured). Delete on an existing Load row asks
-for confirmation, removes the selected revision and refreshes the list.
-Run `testSessionStorage()` and `testSessionSlots()` from
-`dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify
-atomic publication, concurrent allocation, stale revisions and failed-write protection.
-Browser load preparation resolves each saved world ID only after its decoded
-script, animation and player sources agree. Rendered sources still require exact
-compatibility with the saved document.
+Bring your own GOG copy of *The Elder Scrolls Adventures: Redguard*. The browser
+build contains code only; your files are read in the page and never uploaded.
 
-```sh
-just web-build
-just run-web --install /path/to/Redguard
-```
+Click **Choose game folder** and select the outer GOG folder containing both
+`DOSBOX` and `Redguard`, so the companion CD media is found too. Select the
+folder again after every reload or after switching between game and viewer.
+Click or press a key to enable audio.
 
-The server validates the read-only install and provides its URL to both the game
-and viewer automatically. The WASM worker prepares startup and requested worlds
-from those original bytes in memory. Browser builds
-contain code only and do not link the local install or its exports into the web root.
-For an extracted browser archive, run:
+To serve the files instead, run the bundled server from the extracted browser
+archive (Python 3). `--install` is the inner folder containing `RGFX.EXE`:
 
 ```sh
 python3 viewer-server.py --directory . --page index.html --port 8080 \
   --install /path/to/Redguard
 ```
 
-Use the folder containing `RGFX.EXE` for `--install`. Open
-<http://localhost:8080>, expand the server option and click **Connect to server**.
-Stop the server with Ctrl+C.
+Open <http://localhost:8080>, expand **Connect to a game-file server instead**
+and click **Connect to server**. Stop the server with Ctrl+C. Any static host
+serving a `manifest.json` and the original bytes works; cross-origin hosts need
+CORS and byte-range support.
 
-Startup always shows a local folder picker and an expandable install-service URL
-field. All browsers use a directory file input. Choose the folder containing the
-installation and its GOG support files or sibling CDROM and Soundtrack folders.
-Selected files remain local and are never uploaded. The browser grants access only to that folder and its descendants.
-Select the folder again after reload or navigation between game and viewer.
+Launch options use the native flag names as URL parameters (combine with `&`,
+percent-encode values; booleans accept empty, `true`/`1` or `false`/`0`):
 
-The picker reports cancellation, validation failures and application preparation.
-Companion files are discovered throughout the selected folder, including nested
-GOG support directories. Local selection remembers only the preference `local`,
-not the files.
+| URL parameter | Native flag | Meaning |
+| --- | --- | --- |
+| `?install=URL` | `--install PATH` | Game-file server; `?install=local` forces the folder picker |
+| `?scene=START` | `--scene START` | Load a map stem or WORLD.INI ID directly |
+| `?view=x,y,z,qx,qy,qz,qw` | `--view=…` | One-shot inspection camera pose for the first world |
+| `?skip-startup` | `--skip-startup` | Skip the splash and open the book menu |
+| `?new-game` | `--new-game` | Start New Game from the open book |
+| `?movie=2` | `--movie 2` | Play a Movies-page cinematic (zero-based MENU.INI index) |
+| `?skip-movies` | `--skip-movies` | New Game without its introduction movie |
+| `?volume=0` | `--volume 0` | Master volume for this visit, 0–100, not saved |
+| `?mode=modern` | `--mode modern` | Every presentation area; `fog`, `sky` and `music` set one area |
 
-CD media uses the same paths as the native catalog and install server. Selection
-requires RGFX.EXE, fxart and maps; operation-specific missing media errors are
-reported during preparation rather than rejecting the entire install. Full game
-startup still requires the splash DLL.
+Without parameters the game picks its start like the native game: a fresh
+final-version install plays the Introduction, a valid autosave opens the book.
+Backtick opens the world picker, flycam and fidelity controls; F12 opens the
+cheat console in a world. See [Playing](../../docs/PLAYING.md) for controls and saves.
 
-URL `install`, the server default and the saved URL prefill the server field in
-that order; none starts loading automatically. `?install=local` leaves it empty.
-Click Connect to server to validate and load that source. A validated URL is saved
-in localStorage `cyrus-install`, shared with the viewer. Cross-origin services
-require CORS and byte-range support.
-A static original-file host with a manifest supports both game and viewer; no
-native exporter is required.
+Browser state stays in this site's storage for your browser profile:
 
-| Browser URL | Native CLI |
+| Key | Holds |
 | --- | --- |
-| `?install=URL` | `--install PATH` |
-| `?scene=START` | `--scene START` |
-| `?view=x,y,z,qx,qy,qz,qw` | `--view=x,y,z,qx,qy,qz,qw` |
-| `?skip-startup=true` | `--skip-startup` |
-| `?new-game=true` | `--new-game` |
-| `?movie=2` | `--movie 2` |
-| `?skip-movies=true` | `--skip-movies` |
-| `?volume=0` | `--volume 0` |
-| `?fog=modern` | `--fog modern` |
-| `?sky=modern` | `--sky modern` |
-| `?mode=modern` | `--mode modern` |
+| localStorage `cyrus-install` | The last game-file server URL or `local` (shared with the viewer) |
+| localStorage `cyrus-cheats`, `cyrus-console` | Cheat state and console preferences; installed files seed them when absent |
+| IndexedDB `cyrus-save-slots` | Save slots, metadata and thumbnails |
+| IndexedDB `cyrus-sessions` | Named diagnostic session snapshots |
 
-Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
-WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.
-Booleans `skip-startup`, `new-game` and `skip-movies` accept an empty value, `true`/`1`, and `false`/`0`.
-`view` supplies a one-shot inspection camera pose in scene coordinates with a
-unit quaternion, including world entry through the menu. It does not move the player.
-In a world, the world picker prepares the destination within the current session
-and updates the URL without reloading the page. It clears the one-shot inspection
-pose and preserves the install URL and other launch options. From startup or the
-menu, the picker still navigates to a direct scene launch.
-AI-driven browser tests must always supply the install to the server or in the URL,
-so the user never has to answer the prompt during testing.
+## Modules
 
-WASM downloads before Bevy starts; selected-host game assets load behind installed
-artwork. New Game and the temporary Load fallback wait for world dependencies.
-Movies read compressed Smacker ranges and play incrementally decoded first-track PCM; subtitle,
-skip and menu-return rules share the native implementation. Quit attempts tab
-closure and keeps running when refused. Backtick opens the world,
-flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and
-saved Controls settings. Gameplay and original-game comparison limits are unchanged.
+| Module | Responsibility |
+| --- | --- |
+| [main](src/main.rs) | App assembly, install source, URL options |
+| [startup](src/startup.rs) | Default entry from installed startup flags and the reserved autosave |
+| [assets](src/assets.rs) | Asset reads waiting on original-file preparation in the worker |
+| [session](src/session.rs) | Book and diagnostic save/load, slot storage and selection |
+| [storage](src/storage.rs), [preferences](src/preferences.rs) | Document storage for preferences, cheats and saves |
+| [cheats](src/cheats.rs), [console](src/console.rs) | CHT and CPF persistence, `CONSOLE.LOG` download |
+| [bindings](src/bindings.rs), [debug](src/debug.rs) | Saved key bindings, world picker navigation |
+| [capture](src/capture.rs) | Opt-in observation and diagnostic adapters (`?capture`) |
+| [session-storage.js](session-storage.js) | IndexedDB transactions used by `session` |
 
-Direct scene launches use the shared in-game presentation without an additional
-HTML control hint. Backtick opens the inspection controls.
+## Notes
 
-Not a default workspace member so day-to-day builds and tests stay lean.
+- Keep the URL table and the native flags identical: both parse through
+  `cyrus_app::launch` ([cyrus-app](../cyrus-app/src/launch.rs)).
+- Saves publish atomically with revision checks; a failed write or stale revision
+  leaves the stored slot and the live session unchanged.
+- AI-driven browser tests must pass the install on the server or in the URL so
+  nobody has to answer the picker.
 
-Browser audio activates on keyboard input or pointer release. Movies, menu effects and
-CD music share native playback rules; `--export-startup` exports the required CD tracks
-and installed assignments. Runtime exceptions and graphics context loss display an error
-instead of leaving an unexplained black screen.
+## Capture mode
 
-[cyrus-startup](../cyrus-startup/README.md) supplies splash, title, the book menu,
-settings, cinematic playback and world-entry loading. Hosts add it alongside
-cyrus-render and cyrus-audio.
+`?capture` enables read-only observation and diagnostic request globals for
+matched original/native/browser comparisons. They do not change gameplay and are
+absent without the parameter. Each request is a JSON string; poll the matching
+result and handle one request at a time. See [replay fixtures](../../dev/fixtures/README.md)
+and [setup](../../docs/SETUP.md) for the workflows that use them.
 
-Matched captures use `?capture=true` with `view` and either `scene` or menu entry. This enables the
-read-only `window.__cyrusCapture` observation after world entry, containing the
-requested world and live scene-space camera pose. It does not change simulation
-or camera behavior. See [tracked fixtures](../../dev/fixtures/README.md) for the
-original/native/browser replay workflow and local artifact rules.
-With `window.__cyrusInspectScripts = true`, the observation includes a page of up
-to 64 script actors. Set `window.__cyrusInspectScriptsOffset` to a nonnegative
-32-bit integer to inspect later actors. Missing or invalid offsets use zero. The same flag adds
-`script_hud` (the native `state` command's inventory counts and selected item).
+| Global | Purpose |
+| --- | --- |
+| `__cyrusCapture` | World, camera pose, `ready`, `textures` and the frame `boundary`; `__cyrusInspectScripts`/`__cyrusInspectSession` add script actors and staging |
+| `__cyrusStartup`, `__cyrusMenu` | Application state, startup presentation, game clock and book-menu selection |
+| `__cyrusSkyScrollRequest` | Apply a measured sky scroll direction and offset |
+| `__cyrusTextureFrameRequest` | Hold or release one texture animation frame |
+| `__cyrusAcceptanceRequest` | `place_player`, `mark_dead`, `add_item`, `load_scene` setup helpers |
+| `__cyrusSessionRequest` | Named session save/load and slot operations |
+| `__cyrusAudioRequest`, `__cyrusSampleRequest`, `__cyrusVoiceStopRequest` | Start or stop installed speech and effects through the shared sound adapters |
+| `__cyrusBoundLightImageRequest` | Read the CPU light image bound to one model primitive |
+| `__cyrusFrameCaptureRequest` | Read back pixels at a game-clock or wall-contact boundary |
 
-With `window.__cyrusInspectSession = true`, capture observation also includes
-`session`: the pending boundary operation, hidden staging counts, active live
-camera count and staged asset paths/load states. Only the boolean `true` enables
-this census; the field is absent otherwise. Both capture mode and this explicit
-opt-in are required. This read-only metadata does not advance or cancel loading.
+`dev/scripts/export-retained-frame.mjs` saves a retained frame capture as PNG.
 
-F12 opens the shared cheat console while in a world. Cheat state restores from
-localStorage `cyrus-cheats`, falling back to the read-only installed CHT only when
-local state is absent. SYSTEM.INI startup defaults apply afterwards. `savecheats`
-persists through the same browser storage helper as preferences. The Backtick debug
-menu's Cheat files section imports or downloads original-format CHT files.
-Import validates and saves before replacing live state; cancellation, invalid
-files and storage failures preserve the current state. Import also recovers from
-malformed local state. Clear the storage key to restore the installed seed.
-
-Capture observation `window.__cyrusCapture.ready` reports that the current rendered world has finished spawning. The replay waits for it before measuring and capturing the view.
-
-Console preferences use localStorage `cyrus-console`, retaining CPF bytes through
-rgpre. The optional installed CPF supplies defaults only when local state is
-absent. `console save` persists current preferences; `console write` downloads
-`CONSOLE.LOG`. Malformed stored CPF data blocks edits and saves and is reported
-by `console show`.
-
-In capture mode, freeze the sky with the original `fxskyspeed 0` console command,
-then assign a JSON string to `window.__cyrusSkyScrollRequest`:
-
-```js
-window.__cyrusSkyScrollRequest = JSON.stringify({
-  id: 1, world: window.__cyrusCapture.world, direction: 0, offset: [0, 0]
-});
-```
-
-Use the measured original direction and texel offsets for a comparison. The
-request is consumed once while InGame. `window.__cyrusSkyScrollResult` reports
-`id`, `accepted` and `error`. Acceptance queues the phase for the next sky update;
-wait for a subsequent rendered frame before capturing. A mismatched or unready
-world, malformed request or invalid phase is rejected without changing the sky.
-Submit one request at a time and check its result. This inspection control is
-absent without `capture`; it does not reproduce original-session random order.
-
-For acceptance runs that need a state a drive-by player cannot reach, assign a JSON string to
-`window.__cyrusAcceptanceRequest` in capture mode: `{id, action: "place_player", x, y, z, heading}`
-(map units, as `scripts` reports them), `{id, action: "mark_dead", index}` (the script actor at
-`index`) or `{id, action: "add_item", item}`. They call the same world services as the native
-control commands of the same names. The request is consumed once while InGame and
-`window.__cyrusAcceptanceResult` reports `id`, `applied` and `error`. These helpers are diagnostic
-setup, not gameplay, and are absent without `capture`.
-
-In capture mode, while the book menu is up, `window.__cyrusMenu` mirrors the native `state` command's
-`menu` (page, selected entry index, entries, running movie), refreshed every frame, so a driver can wait for
-the selection and page it needs before sending keys.
-
-The browser host selects `ViewCamera` for `cyrus_audio::follow_listener` before
-audio preferences and cue processing; rendering does not depend on audio.
-
-Capture mode also reports shared texture state in `window.__cyrusCapture.textures`.
-Set `window.__cyrusTextureFrameRequest` to a JSON string containing `id`, `world`,
-`image` and a zero-based `frame` to hold a measured frame. Read
-`window.__cyrusTextureFrameResult` for acceptance or an error; use `frame: null`
-to resume automatic requests. The world must be ready and match the request.
-Unknown images and invalid frames leave playback unchanged. Holds clear on
-world replacement and do not establish animation cadence parity.
-
-In capture mode, `window.__cyrusBoundLightImageRequest` accepts one JSON string
-containing `id`, exact unique node `name`, zero-based material-bearing child
-`primitive` in current `Children` order, expected numeric logical `world` and
-`generation`. Obtain the owner identity from the current script inspection.
-The request is consumed once in `PostUpdate`, including an error response outside
-InGame. Read `window.__cyrusBoundLightImageResult` and match its `id` before
-submitting another request. Success returns `ok: true` and `result` with the
-acquisition `frame`, `name`, `primitive` and actual material-bound CPU `bound_light_image`.
-Malformed requests return `id: null` when their identity cannot be decoded.
-Missing or duplicate names, changed world/generation, staged or mismatched
-prepared ownership and unavailable bytes produce errors. The adapter does not
-copy images when no request is pending. Acquisition after Update is not GPU
-readback or visual acceptance. Record matched camera, source/package, capture
-and retired-owner evidence separately. The request/result globals are diagnostic
-and do not persist game state.
-
-With `?capture`, `__cyrusAudioRequest` accepts JSON text containing `id`, current
-`generation`, actor `index`, a four-byte RTX `label`, and optional `effect` index.
-It prepares the installed voice and starts the ordinary control voice and optional
-generation-owned script effect. The effect must have an installed unbounded repeat
-count. `__cyrusAudioResult` reports pending, started or an error. Set
-`__cyrusVoiceStopRequest` to a request ID to exercise the examine view's speech-stop
-path; `__cyrusVoiceStopResult` acknowledges that ID. These diagnostic adapters do
-not alter installed repetition counts, source cursors or the audio drain policy.
-
-Installed startup acceptance uses the public browser entry point with an explicit
-install URL, isolated storage and presented-frame screenshots. Separate bounded
-runs stop at Introduction, publish an autosave from the first ready world update
-and reload default startup, or inspect explicit startup skip:
+## Testing
 
 ```sh
-node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT introduction
-node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT autosave
-node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT menu
+cargo test -p cyrus-web                         # host adapter tests, run natively
+just web-build                                  # wasm build into target/web
+just run-web --install /path/to/Redguard        # serve it with a read-only install
 ```
 
-With `?capture`, `window.__cyrusStartup` publishes the application state, startup
-presentation and simulation game seconds across the movie-to-world boundary.
-The observer reads state without advancing the clock.
-
-Each run has a three-minute endpoint bound; autosave reload has a separate
-90-second bound. Full movie completion is separate acceptance. Wall duration
-is not a game timing measurement. The result records installed movie metadata.
-
-Movie exit has separate installed acceptance through the authored public Escape
-skip points and the final exit, without replacing movie bytes or changing time:
-
-```sh
-node dev/scripts/test-browser-movie-handoff.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT
-```
-
-The driver verifies the installed destination, movie exit, clock start and the
-first rendered world endpoint. Inspect that frame for title/loading teardown.
-At ordinary update four, it checks the Introduction player heading and following camera offset, then stops animation callbacks in its
-isolated page before screenshot readback, then rejects any change in the observed endpoint during readback. Closing the
-context disposes that stopped page. Each seek has a 90-second bound and the whole
-run has a five-minute bound; decoding progress is distinct from a stall. This
-checks public skip exit, not natural playback of every movie frame.
-
-For a matched first-world presentation check without replaying Introduction, use
-`node dev/scripts/test-browser-world-entry.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT`.
-This documented New Game entry uses public `new-game` and `skip-movies` launch
-options and stops its disposable page at ordinary update four. It checks the
-installed destination, camera publication, active world-entry fade and prepared
-player, then retains a stable screenshot for comparison at that same update.
-It does not inspect attachments or establish camera/pixel parity by itself.
-
-The isolated `listener_publication` example uses the production
-`camera::driven_view_transform` with the public script camera update/glide and
-synchronous sound services. Build it with `cargo build -p cyrus-web --example
-listener_publication` (or the browser target/profile) through the shared queue.
-It consumes the explicitly exported local `positional_emitters` fixture, adds
-idle diagnostic player/camera roles, and records logical/render poses beside
-seven native/browser PCM observations. The audio crate documents the fixture and
-bounded recovery launcher. This is a controlled camera/audio integration scene,
-not a complete installed-room replay.
-
-With opt-in `?capture`, `__cyrusSampleRequest` accepts JSON `play`/`stop` actions
-with an id and effect for play, through the same shared `SoundRequest` adapter as
-native controls. `__cyrusSampleResult` acknowledges dispatch, not audible output.
-The acceptance request's `load_scene` action stages through the ordinary browser
-scene transition while preserving the running world until preparation succeeds.
-`__cyrusStartup.console_open` lets bounded drivers observe actual console input.
-`test-ambient-lifecycle-browser.mjs CDP PAGE INSTALL OUTPUT EMITTER LOOP_EFFECT`
-uses these public adapters, real placement and scene lifecycle with actual graph
-PCM, explicit installed files and executed-build provenance. It checks authored
-room movement/revisit, shared-pool retirement and later start/stop continuation.
-
-`test-world-deferred-capture.mjs CDP PAGE INSTALL OUTPUT [LOOP_EFFECT] [SCENE]`
-drives full-world public session capture/save/load with actual graph PCM. Under
-`?capture`, sample actions also accept `reload_bank`, `script_play` and `inspect`.
-Reload requests a real installed bank read through `AssetServer`; the driver holds
-that reader promise, while script play dispatches an ordinary owned cue. Inspection
-reports live transport count, pending bank admission and retained save selection.
-The driver verifies capture rejection preserves both existing save storage and
-selection, live output and queued admission, then saves and restores after release.
-This controlled reload does not imply ordinary gameplay routinely reloads banks.
-Slot selection is retained after capture admission and before the writer; a later
-writer failure keeps the admitted selection, as does an admitted load decode failure.
-
-The capture sample adapter's `animation` action takes an emitter generation/index
-and a typed `command` (`play`, `stop`, `forget`). Play includes an installed effect
-and optional rate offset. It resolves one bound emitter and its current logical
-placement, then dispatches the ordinary animation sound cue. The animation bank
-acceptance driver uses this adapter to test delayed starts, remembered-handle
-cancellation and fresh owner publication through public session load.
-
-With `?capture`, `window.__cyrusCapture.boundary` publishes the logical generation,
-ordinary update and consumed Q8 clock used to arm frame acquisition. Submit a JSON
-string to `window.__cyrusFrameCaptureRequest` with `id` and `boundary` using the
-control protocol's `clock` or `wall_contact` trigger. The render-extraction owner
-waits for that boundary and freezes selected-player state and presentation before
-requesting GPU readback. `window.__cyrusFrameCaptureResult` retains its boundary,
-width, height, texture format and raw `Uint8Array` pixels after delivery. Readback
-delay never replaces the boundary with the current actor state. A pending capture
-or unread result blocks another request; clear the result explicitly after saving
-it. Missing/skipped boundaries and world replacement fail, with a bounded deadline.
-This diagnostic API does not establish original/browser pixel or PCM parity.
-
-`exportRetainedFrame(evaluate, output)` in `dev/scripts/export-retained-frame.mjs`
-saves that retained buffer as PNG through bounded readback chunks. `evaluate`
-runs an awaited expression in the already-owned tab and returns its JSON value.
-The exporter keeps partial bytes and a receipt so interrupted transport resumes
-only against the same boundary and full GPU hash. A changed/reset result,
-truncated chunk or unsupported format cannot publish a completed image. It does
-not take a new screenshot, stop simulation or consume the retained result.
+Installed browser acceptance drivers live in `dev/scripts/` and take a Chrome
+DevTools URL, the page URL, an install URL and an output directory, for example
+`node dev/scripts/test-browser-startup.mjs CDP PAGE INSTALL OUTPUT introduction`
+(also `autosave`, `menu`), `test-browser-movie-handoff.mjs` and
+`test-browser-world-entry.mjs`. Run `testSessionStorage()` and `testSessionSlots()`
+from `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB.
+The `listener_publication` example is an isolated camera/audio scene
+(`cargo build -p cyrus-web --example listener_publication`).

@@ -1,127 +1,77 @@
-# Matched scene captures
+# Replay fixtures
 
-JSON fixtures describe a world, scene-space camera position and quaternion,
-viewport, and settling time. `just replay <fixture.json> <new-label>` produces
-`original.png`, `native.png`, `browser.png`, and a manifest under
-`magic/captures/<new-label>/`. Existing labels are rejected. No capture, install
-file, emulator state, or debugger instrument belongs in Git.
+Fixtures for repeatable comparisons between the original game, native cyrus
+and the browser build. No capture, install file, emulator state or debugger
+instrument belongs in Git: captures go under `magic/captures/`, and
+executable-specific tooling stays under `magic/`. Background on comparisons is
+in [docs/METHOD.md](../../docs/METHOD.md) and
+[docs/SETUP.md](../../docs/SETUP.md).
 
-Inspect the original image for a fully loaded scene. A measured camera pose and
-nonuniform pixels can also occur behind loading artwork; they do not establish
-rendering readiness. Reject that triplet and preserve it under a rejected label.
+| Fixture | Purpose |
+| --- | --- |
+| `belltowr.json`, `island.json`, `start.json` | Matched scene captures (below) |
+| `start-walk.jsonl` | Legacy control replay: START, one second walking forward |
+| `*.html`, `listener-publication.rs` | Audio and animation acceptance pages and examples; see [cyrus-audio](../../crates/cyrus-audio/README.md) |
 
-These are scene/viewpoint comparisons. Animation phases and gameplay updates are
-not synchronized. Settling times are host milliseconds, not original simulation
+## Matched scene captures
+
+A JSON fixture describes a world, a scene-space camera position and quaternion,
+the viewport and a settling time. `just replay <fixture.json> <new-label>`
+produces `original.png`, `native.png`, `browser.png` and a manifest under
+`magic/captures/<new-label>/`. Existing labels are rejected.
+
+These are scene and viewpoint comparisons. Animation and gameplay updates are
+not synchronized, and settling times are host milliseconds, not original
 ticks. **Unknown:** complete original/native/browser gameplay equivalence.
 
-1. Restore the original using the guarded bundle below with `--static-capture`.
-   This sets `[system] task_system=no` and `animation_system=no` in the writable
-   runtime before startup. Keep the install read-only. Start the owned original
-   instance, enter New Game, and inspect the loaded ship deck. Check F12 `oracle`
-   reports task 0 and animation 0, then close the console.
-2. Set `CYRUS_ORIGINAL_CAPTURE` to your executable original-game adapter under
-   `magic/`. The adapter contract below keeps executable-specific instrumentation
-   outside tracked files. Missing instrumentation fails the replay.
-3. Run `just run-native --fixture dev/fixtures/<world>.json`. This supplies the
-   fixture's world/view and resizes the window. `CYRUS_CONTROL_ADDR` selects the
-   native control endpoint for an independently managed instance.
-   Set `CYRUS_CAPTURE_NATIVE_CONTAINER` too when using a container other than
-   `cyrus-dev`. The runner requires a local Docker endpoint and checks its port
-   binding, container identity and running `/proc/1/exe` hash before and after
-   capturing. A matching executable on disk is insufficient.
-4. Build the browser with `just web-build`, then serve it with
-   `just run-web --install /absolute/path/to/Redguard`. Set
-   `CYRUS_CAPTURE_WEB_URL` to its game URL, including an explicit `?install=` URL
-   reachable from your capture browser.
-   Replay submits the prefilled server form once and rejects a different selected
-   URL before waiting for world readiness. It does not bypass the install picker.
-5. Set `CYRUS_CAPTURE_CDP` to a Chromium DevTools HTTP endpoint. Node 22 or newer
-   supplies the WebSocket client; ImageMagick checks image dimensions. Use a
-   dedicated browser for this automated replay. Interactive inspection uses the
-   shared T3 browser. The runner creates and closes its own browser tab.
-6. Run `just replay dev/fixtures/<world>.json <new-label>`. Inspect all three
-   images. The manifest records image hashes, fixture hash, source/build records,
-   native admission state, browser version and observed camera poses. Native PNGs
-   use `capture_gameplay_frame`; `native_capture.boundary` retains their owning
-   render update, simulation clock and selected actor. The earlier `native` state
-   only admits the run and must not be treated as the state of the raster. Scene
-   changes, reload generations, legacy screenshot replies and inconsistent clocks
-   reject acquisition. This does not synchronize original/browser animation or time.
+1. Prepare the original with the maintainer's guarded tooling bundle and
+   `--static-capture`, which disables the task and animation systems in a
+   writable runtime copy. Keep the install read-only. Check that F12 `oracle`
+   reports task 0 and animation 0.
+2. Set `CYRUS_ORIGINAL_CAPTURE` to your original-game adapter under `magic/`
+   (contract below). A missing adapter fails the replay.
+3. Run `just run-native --fixture dev/fixtures/<world>.json`, which loads the
+   fixture's world and view and sizes the window. `CYRUS_CONTROL_ADDR` and
+   `CYRUS_CAPTURE_NATIVE_CONTAINER` select another instance or container than
+   `cyrus-dev`.
+4. Build and serve the browser build (`just web-build`, then
+   `just run-web --install /absolute/path/to/Redguard`). Set
+   `CYRUS_CAPTURE_WEB_URL` to the game URL with an explicit `?install=` URL.
+5. Set `CYRUS_CAPTURE_CDP` to a dedicated Chromium DevTools endpoint (setup
+   below). Node 22 or newer and ImageMagick are required.
+6. Run `just replay dev/fixtures/<world>.json <new-label>` and inspect all three
+   images. Reject a triplet whose original image still shows loading artwork.
 
-`just retro --fixture <fixture.json> <new-label>` runs only the original adapter.
-The native application must already be running with the fixture's view for a full
-replay. A different world or camera fails instead of producing a misleading pair.
-Browser `?capture=true` exposes read-only `window.__cyrusCapture` only after entering
-a world. The replay validates this observation before capturing.
+`just retro --fixture <fixture.json> <new-label>` runs only the original
+adapter. Replay waits for each side's world to finish loading before settling,
+and rejects scene changes, reloads, a mismatched view or inconsistent clocks
+instead of producing a misleading triplet. Native frames come from
+`capture_gameplay_frame`; the browser exposes `window.__cyrusCapture` with
+`?capture=true`.
 
-## Build records
+**Verified:** `belltowr.json`, `island.json` and `start.json` record measured
+original camera poses: BELLTOWR frames the door and table, ISLAND terrain and
+nearby barrels, START the ship deck and water. ISLAND loads twice, so the
+adapter must reopen F12 after each load. Do not use them to claim animation or
+script fidelity.
 
-`run-game.sh` calls `build-native.sh`, which writes
-`magic/build-tools/native/cyrus.provenance.json`; `build-web.sh` writes
-`target/web/build-provenance.json`. Each records SHA-256 hashes of the produced
-artifacts, the Git revision, and a fingerprint of repository build inputs:
-Cargo manifests/lockfile, the toolchain file, `.cargo/`, `crates/`, and `dev/`.
-Untracked input files are included. Python bytecode caches are excluded; input
-symlinks are rejected. Install data and captures are outside this scope.
-The build fails if this snapshot changes during compilation.
+### Original adapter contract
 
-Check an existing record without starting a game:
+The executable receives absolute paths to the fixture and a new output
+directory. It drives the original through the fixture's console setup, waits
+for the world to load, pauses at the measured view and writes fresh
+`original.png` and `original.json`. The JSON contains `world`, `view` (seven
+scene-space numbers) and `image_sha256`, plus the emulator identity,
+measurement method and setup observations. It returns nonzero when loading or
+measurement fails, releases held keys when resuming, and never writes to the
+linked install. Copied screenshots and emulator save states are not live
+captures. Measure the view with the `cyrus-playtest` skill's debugger
+procedure; keep probes and raw measurements under `magic/`.
 
-```sh
-python3 dev/scripts/build-provenance.py verify magic/build-tools/native/cyrus.provenance.json
-python3 dev/scripts/build-provenance.py verify target/web/build-provenance.json
-python3 dev/scripts/test-build-provenance.py
-node --test dev/scripts/capture-provenance.test.mjs
-```
+### Headless capture browser
 
-To rebuild without launching either game, run `bash dev/scripts/build-native.sh`
-and `bash dev/scripts/build-web.sh`. Native builds preserve the inherited Cargo
-target and retain the executable outside it. Set `CYRUS_NATIVE_EXECUTABLE` to
-choose another retained path (basename `cyrus`); use the same value for launch
-and capture. `CYRUS_NATIVE_CHECKPOINT_DIR` selects the recovery directory and
-defaults to the executable's parent. Native launch and capture use the adjacent
-provenance record, including after the shared target is lost.
-
-These records identify repository inputs and resulting bytes; they do not claim
-a hermetic or bit-for-bit reproducible compiler environment. Replay rejects
-missing records, changed source, changed artifacts and a different running binary.
-Native and browser builds must have the same source snapshot as the checkout.
-
-Build records include the generated wasm-bindgen JavaScript snippets loaded by
-the application.
-
-Each browser replay uses a new isolated browser context. Chromium's debugger
-reports the executed JavaScript and compiled WASM bytes from both the page and
-asset worker. The runner compares their hashes with the build record and checks
-the actual HTML/CSS responses. Refetching a URL is not proof of previously loaded
-bytes. Missing observations, unexpected application scripts, and mismatched
-hashes reject the triplet. Context disposal closes its tabs and workers.
-
-The synthetic integration test exercises this observation against a dedicated
-Chromium CDP endpoint without loading game files. Set `CYRUS_PROVENANCE_CDP` to
-that endpoint and `CYRUS_PROVENANCE_HOST` to this machine's address reachable from
-the browser, then run `node dev/scripts/test-browser-provenance.mjs`. The test
-starts and closes a temporary HTTP server. It verifies both page/worker modules
-and rejects deliberately changed JavaScript and worker WASM. Stop the dedicated
-browser afterward. Unit tests also run in `just gates`.
-
-## Starter views
-
-**Verified:** `belltowr.json`, `island.json`, and `start.json` record measured
-original camera poses. Their cold startup uses the writable SYSTEM.INI settings above. Console setup
-also sets `task = 0` and `animation = 0` before loading. ISLAND loads twice; the
-adapter must reopen F12 after each load before sending another command. START
-uses its measured neutral ship-deck pose. Native/browser may advance supported runtime
-updates; the fixtures do not synchronize animation or gameplay. BELLTOWR frames
-the door and table, ISLAND frames terrain and nearby barrels, and START frames
-the ship deck and water. Do not use them to claim animation or script fidelity.
-
-## Headless browser setup
-
-For a Docker capture browser, serve the application with `--bind 0.0.0.0` and use
-the actual port printed by `vibepod-preview status`. The loopback default remains
-appropriate for shared T3 browser checks. For example, after setting
-`capture_port` to that port:
+Serve the browser build with `--bind 0.0.0.0` and use the port from
+`vibepod-preview status` as `capture_port`:
 
 ```sh
 docker run -d --rm --name cyrus-capture-browser \
@@ -133,83 +83,57 @@ export CYRUS_CAPTURE_CDP=http://127.0.0.1:9222
 export CYRUS_CAPTURE_WEB_URL="http://host.docker.internal:$capture_port/?install=http://host.docker.internal:$capture_port/original/"
 ```
 
-The secure-origin override is limited to this local test server and enables the
-asset service worker. Keep the image's default debugging ports. Choose a free
-host port/name if another session owns these. Stop your container with
-`docker stop cyrus-capture-browser` after capturing. Browser startup waits are
-bounded; failure logs remain beside any partial captures.
+The secure-origin override enables the asset service worker for this local
+server only. Stop the container with `docker stop cyrus-capture-browser`.
 
-## Original adapter contract
+## Build records
 
-The executable receives absolute paths to the fixture and a newly created output
-directory. It must drive the original through the fixture's console setup, wait
-for world loading, pause at the measured viewpoint, and create fresh
-`original.png` and `original.json`. The JSON contains `world`, `view` with seven
-scene-space numbers, and `image_sha256`. Include the executable/emulator identity,
-measurement method and setup observations as additional fields. Return nonzero
-when loading or measurement fails. A copied reference screenshot is not a live
-capture. The runner checks the measured view, image hash and viewport.
+`dev/scripts/build-native.sh` (called by `run-game.sh`) writes
+`magic/build-tools/native/cyrus.provenance.json`; `build-web.sh` writes
+`target/web/build-provenance.json`. Each holds artifact hashes, the Git
+revision and a fingerprint of the build inputs. Replay rejects missing records,
+changed sources or artifacts, a different running native binary, and browser
+JavaScript or WASM whose observed hashes differ from the record. Records
+identify inputs and outputs; they do not claim a reproducible build.
+`CYRUS_NATIVE_EXECUTABLE` and `CYRUS_NATIVE_CHECKPOINT_DIR` relocate the
+retained native binary and its recovery directory.
 
-Use the `cyrus-playtest` skill's debugger procedure to measure the original view.
-Keep executable-specific probes and raw measurements under `magic/`, archive the
-research text privately, and record only camera poses/setup in these fixtures.
-Maintainers can retrieve the complete corrected adapter, restore helper and cold
-verification records from their local guarded tooling bundle. Copy the restore helper and all five adjacent instruments under `magic/`.
-Use the bundle's restore command with `--static-capture`; its `--snapshot`
-argument points to the earlier tooling snapshot for the Docker/runtime templates.
-The helper checks archive and executable hashes, copies the install into a fresh
-writable runtime, and records the SYSTEM.INI change. It does not launch.
-It requires the recorded debug-enabled emulator binary. **Unknown:** reconstruction
-of that emulator from source and original CD/audio parity.
-
-The adapter must release held keys when resuming and must not write to the linked
-install. Use the original's writable runtime copy. Emulator save states are not
-accepted as evidence of a fresh world render.
+```sh
+python3 dev/scripts/build-provenance.py verify magic/build-tools/native/cyrus.provenance.json
+python3 dev/scripts/build-provenance.py verify target/web/build-provenance.json
+```
 
 ## Legacy fixtures
 
-`.jsonl` fixtures still send control commands and sleeps to a running native game,
-then call `compare.sh`. Their two current-view screenshots go under
-`magic/captures/legacy/`; they do not establish a matched original viewpoint.
-Baseline image comparisons still use `CYRUS_COMPARE_TOLERANCE` and local baseline
-images. Test pose rejection with `node --test dev/scripts/matched-capture.test.mjs`.
+`.jsonl` fixtures send control commands and sleeps to a running native game,
+then call `compare.sh`, writing current-view screenshots under
+`magic/captures/legacy/`. They do not establish a matched original viewpoint.
+`CYRUS_COMPARE_TOLERANCE` sets the baseline image tolerance.
 
-Replay waits for the current render instance to finish spawning on native and browser before applying the fixture settling time. Entering `InGame` alone can precede asynchronous geometry loading. Failed or unfinished loading does not produce an accepted triplet.
+## Acceptance drivers
 
-## Rune dial interaction
+- `python3 dev/scripts/dial-acceptance.py --port 7117 --case rune|empty` drives
+  CATACOMB `CTDIAL01` through the control port. Use a fresh
+  `--scene CATACOMB` process per case; `empty` is the negative inventory
+  control. It uses diagnostic placement and inventory setup, not a natural
+  route, and does not check timing, artwork or audio.
+- `python3 dev/scripts/torch-acceptance.py --addr 127.0.0.1:7167` checks the
+  burning-torch counter with `goldfinger` off and on in a fresh `START` world on
+  dry ground, and restores the prior values. Lighting input, artwork, audio and
+  water branches need separate checks.
 
-`python3 dev/scripts/dial-acceptance.py --port 7117 --case rune` drives installed
-CATACOMB `CTDIAL01` through the public control port. Start a fresh native process
-with `--scene CATACOMB` for each case, and serialize container runs with
-`flock /tmp/cyrus-live.lock`. Run `--case empty` in another fresh process as the
-negative inventory control. The driver requires a ready CATACOMB world, checks
-its displayed prompt before tapping Activate, observes the dial task, and checks
-inventory consumption, completion, released lockout and twelve later world
-updates. It checks the inserted-rune removal prompt. The empty control activates again
-without granting a rune. Any inspected
-actor failure fails the run. stdout contains the observations as JSONL.
+Both print JSONL observations on stdout; redirect them into an ignored artifact
+directory.
 
-Verified: the original and native ordinary dial observations end at
-`[34838,496,32833]`; the native rune observation consumes item 15 after displaying
-`INSERT RUNE INTO NOTCH`. Original rune insertion remains unverified. The fixture
-uses diagnostic placement and inventory setup, not a natural route to the puzzle.
-It does not assert frame timing, artwork, audio or puzzle completion.
-`python3 dev/scripts/test-dial-acceptance.py` checks the rejection controls,
-including a failure followed by otherwise successful continuation.
+## Testing
 
-### Native torch retention
+```sh
+node --test dev/scripts/matched-capture.test.mjs dev/scripts/capture-provenance.test.mjs
+python3 dev/scripts/test-build-provenance.py
+python3 dev/scripts/test-dial-acceptance.py
+python3 dev/scripts/test-torch-acceptance.py
+```
 
-Start a fresh native `START` world on dry ground, then run
-`python3 dev/scripts/torch-acceptance.py --addr 127.0.0.1:7167` and redirect stdout
-into an ignored artifact directory. The driver uses the public `set_torch`
-command to seed a burning counter at 73. Ordinary production updates must count
-it down with `goldfinger=0`, then refresh it to 100 and retain it with
-`goldfinger=1`. It requires four observations in each case after two game
-seconds of warmup, rejects script failures, and restores the prior cheat and
-torch values even on failure. Use an isolated process so other input cannot
-change the selected player or surface during the check.
-
-`python3 dev/scripts/test-torch-acceptance.py` checks rejection of missing
-continuation, a frozen counter, an unrefreshed counter, extinguishing, and a
-counter that increases with the cheat off. This verifies the counter service;
-lighting input, held artwork, audio and water branches require separate checks.
+`node dev/scripts/test-browser-provenance.mjs` checks browser byte observation
+against a dedicated Chromium endpoint (`CYRUS_PROVENANCE_CDP`,
+`CYRUS_PROVENANCE_HOST`) without game files.

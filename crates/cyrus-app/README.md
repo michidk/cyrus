@@ -1,45 +1,55 @@
 # cyrus-app
 
-Small presentation and launch helpers shared by the game and viewer.
+Small launch and presentation helpers shared by the game (`cyrus`, `cyrus-web`)
+and the viewer (`cyrus-viewer`): install selection, launch options, logging,
+window and egui setup, the `cache://` asset source and a generic loading
+overlay. It depends on Bevy and `cyrus-assets` (plus `cyrus-config` on native),
+never on game or viewer plugins, and installs no player, menu, camera, network
+or gameplay systems.
 
-- `launch::InstallArgs` defines `--install` and `REDGUARD_DIR`; `locate()` shares
-  native default-folder discovery and resolution of GOG library/package folders
-  and install subdirectories. It checks explicit/environment paths before
-  `install.json` in the config directory, then the executable folder and conventional folders. Missing or malformed saved
-  locations warn and fall back to discovery; discovered locations are remembered.
-  `select()` inserts the
-  install or displays the shared path field, Browse and Continue screen in the
-  application's existing egui context. Continue validates and saves the resolved
-  root, inserts `GameInstall`, and removes the picker. It never opens another
-  application window or starts another process. Hosts wait for the install before
-  preparing assets; the game prepares its initial images in a background task.
-  Cancel leaves preferences untouched. Noninteractive callers retain `locate()`
-  errors. Linux Browse uses a desktop file portal or Zenity; Windows and macOS
-  use native folder dialogs. `GameOptions` and `ViewerOptions` define the
-  launch names and validation used by both CLI and URL parameters.
-  The game's optional `view` inspection pose also accepts menu entry without
-  `scene`; the rendering host applies it when the first world is framed.
-- `logging::LogArgs` (native only) defines `--log`, `--log-file` and `--log-dir`.
-  `plugin()` returns the Bevy `LogPlugin` with a console layer and a daily rotating
-  file layer in the log directory, each with its own filter; `announce()` logs
-  the startup facts and `log_panics()` routes panics into the log. See `docs/SETUP.md`.
-- `browser_source` reads the validated install/cache URLs from the shared bootstrap.
-- `register_cache` registers the shared `cache://` asset source before Bevy's
-  `AssetPlugin` starts.
-- `window` creates the common native/browser window configuration.
-- `EguiPlugin` installs the pinned adapter and its WebGL shader adjustment.
-  The adjustment removes the unsupported binding-array directive together with
-  its condition, preserving the following uniform type on non-bindless devices.
-- `loading::LoadingOverlayPlugin` displays `loading::LoadingProgress`. The caller
-  owns progress, completion, and application state transitions. Native builds draw a Bevy
-  overlay. Browser builds update the existing HTML overlay; pages using that
-  handoff set `data-loading="application"` so the download loader retains it.
+## Modules
 
-This crate depends on Bevy and `cyrus-assets`, never on game or viewer plugins.
-It does not install player, menu, world-camera, network, or gameplay systems.
+| Module | Responsibility |
+| --- | --- |
+| [launch](src/launch.rs) | `InstallArgs` (`--install`, `REDGUARD_DIR`) with `locate()` and `select()`; `GameOptions` and `ViewerOptions`, shared by CLI flags and browser URL parameters (`from_query`) |
+| [native_install](src/native_install.rs) | Install discovery order, the remembered `install.json` location and the in-app folder picker |
+| [logging](src/logging.rs) | `LogArgs` (`--log`, `--log-file`, `--log-dir`): console plus daily rotating file log, `announce()`, `log_panics()` (native only) |
+| [loading](src/loading.rs) | `LoadingOverlayPlugin` displaying a host-owned `LoadingProgress` |
+| [lib](src/lib.rs) | `window()`, `EguiPlugin`, `register_cache()`, `browser_source()` |
 
-`loading` owns only generic progress presentation. Game settings, fidelity,
-audio listener selection and speech/subtitle integration belong to their game
-or host modules. The isolated app consumer in
-`dev/scripts/check-core-boundaries.sh` rejects gameplay and presentation-crate
-dependencies, even when the full workspace enables their features.
+## Usage
+
+```rust
+#[derive(clap::Parser)]
+struct Args { #[command(flatten)] install: cyrus_app::launch::InstallArgs }
+
+app.add_plugins(cyrus_app::EguiPlugin);       // before select()
+args.install.select(&mut app);                // inserts GameInstall, or shows the picker
+```
+
+Install lookup order and the log flags are documented for players in
+[docs/SETUP.md](../../docs/SETUP.md) (sections "Browser build" and "Logs").
+
+## Notes
+
+- `select()` shows the path field, Browse and Continue screen inside the
+  application's existing egui context; it never opens another window or
+  process. Continue validates and remembers the root; Cancel exits without
+  changing saved preferences. Non-interactive callers use `locate()` and keep its errors.
+- Browse uses `rfd`: the XDG desktop portal on Linux, native folder dialogs on
+  Windows and macOS.
+- `loading` owns only progress presentation; the caller owns progress,
+  completion and state transitions. In the browser it updates the page's HTML
+  overlay (pages set `data-loading="application"` to hand it over).
+- `register_cache()` must run before Bevy's `AssetPlugin`. `EguiPlugin` pins
+  `bevy_egui` and patches its WebGL shader for devices without binding arrays.
+- `dev/scripts/check-core-boundaries.sh` builds an isolated consumer of this
+  crate and rejects gameplay or presentation-crate dependencies.
+
+## Testing
+
+```sh
+cargo test -p cyrus-app
+just verify app
+dev/scripts/check-core-boundaries.sh
+```
