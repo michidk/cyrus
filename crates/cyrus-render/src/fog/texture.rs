@@ -361,7 +361,7 @@ fn advance(
             continue;
         };
         let normals = if animated.contains(entity) {
-            match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+            match mesh.attribute(crate::animation::ATTRIBUTE_FACE_NORMAL) {
                 Some(VertexAttributeValues::Float32x3(normals)) => Some(normals.as_slice()),
                 _ => continue,
             }

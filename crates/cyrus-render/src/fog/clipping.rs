@@ -539,6 +539,20 @@ fn draw_mesh(
         pixels.is_none_or(|p| p.len() == positions.len()),
         "original texture coordinate count mismatch"
     );
+    let face_normals = if animated {
+        let Some(VertexAttributeValues::Float32x3(values)) =
+            original.attribute(crate::animation::ATTRIBUTE_FACE_NORMAL)
+        else {
+            anyhow::bail!("missing animated face normals")
+        };
+        ensure!(
+            values.len() == positions.len(),
+            "face normal count mismatch"
+        );
+        Some(values)
+    } else {
+        None
+    };
     let camera_from_local = camera.inverse() * transform;
     let center = camera_from_local.transform_point3(Vec3::ZERO) * 20.0;
     if super::texture::admission::classify(
@@ -576,8 +590,8 @@ fn draw_mesh(
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("missing polygon corners"))?;
         let first = indices[0];
-        let normal = if animated {
-            normals[first]
+        let normal = if let Some(face_normals) = face_normals {
+            face_normals[first]
         } else {
             polygon
                 .normal
@@ -753,6 +767,44 @@ mod tests {
     }
 
     #[test]
+    fn animated_facing_uses_frame_face_normal_without_changing_shading() {
+        let mut source = mesh();
+        // The shading normal faces away, but the frame polygon faces the camera.
+        source.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0., 0., -1.]; 3]);
+        source.insert_attribute(
+            crate::animation::ATTRIBUTE_FACE_NORMAL,
+            vec![[0., 0., 1.]; 3],
+        );
+        let draw = |source: &Mesh| {
+            draw_mesh(
+                source,
+                &model(),
+                None,
+                Mat4::IDENTITY,
+                Mat4::IDENTITY,
+                Vec2::ONE,
+                [640., 480.],
+                &material(),
+                &Image::default(),
+                true,
+                &mut Preparation::default(),
+            )
+            .unwrap()
+        };
+        assert_eq!(draw(&source).count_vertices(), 6);
+        assert_eq!(
+            source.attribute(Mesh::ATTRIBUTE_NORMAL),
+            Some(&VertexAttributeValues::Float32x3(vec![[0., 0., -1.]; 3]))
+        );
+        // A subsequent frame turns the polygon away while retaining its shading.
+        source.insert_attribute(
+            crate::animation::ATTRIBUTE_FACE_NORMAL,
+            vec![[0., 0., -1.]; 3],
+        );
+        assert_eq!(draw(&source).count_vertices(), 0);
+    }
+
+    #[test]
     fn solid_tint_precedes_clipping_and_is_not_reapplied_to_retained_rgb() {
         let mut source = mesh();
         source.remove_attribute(Mesh::ATTRIBUTE_COLOR);
@@ -810,6 +862,10 @@ mod tests {
         assert_eq!(colors[0], colors[3]);
         // A subsequent pose can replace the original three positions without clipped indices.
         let mut moved = source.clone();
+        moved.insert_attribute(
+            crate::animation::ATTRIBUTE_FACE_NORMAL,
+            vec![[0., 0., 1.]; 3],
+        );
         moved.insert_attribute(
             Mesh::ATTRIBUTE_POSITION,
             vec![

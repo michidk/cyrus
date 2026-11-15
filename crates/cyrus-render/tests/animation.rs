@@ -63,6 +63,7 @@ fn frame_projection_keeps_authored_corner_normals_with_face_fallback() {
         frame.normals,
         [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 2.0]]
     );
+    assert_eq!(frame.face_normals, [[0.0, -1.0, 0.0]; 3]);
     model.corner_normals.clear();
     assert!(cyrus_render::animation::FrameGeometry::from_model(model, 1, &binding).is_err());
 }
@@ -197,6 +198,13 @@ fn explicit_pose_deforms_a_private_mesh_and_scene_change_restores_it() {
     assert_eq!(
         positions,
         &[[0.0, 0.0, 0.1], [-0.05, 0.0, 0.1], [0.0, -0.05, 0.1]]
+    );
+    assert_eq!(
+        meshes
+            .get(private)
+            .unwrap()
+            .attribute(cyrus_render::animation::ATTRIBUTE_FACE_NORMAL),
+        Some(&VertexAttributeValues::Float32x3(vec![[0., 0., 1.]; 3]))
     );
     // A retained pose must remain drawable if its private mesh asset is lost.
     let private = app.world().get::<Mesh3d>(primitive).unwrap().0.clone();

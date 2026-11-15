@@ -4,12 +4,13 @@ use bevy::asset::RenderAssetUsages;
 use bevy::camera::primitives::MeshAabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::gltf::GltfExtras;
-use bevy::mesh::VertexAttributeValues;
+use bevy::mesh::{MeshVertexAttribute, VertexAttributeValues};
 use bevy::prelude::{
     Added, AssetId, Assets, Changed, ChildOf, Commands, Component, Entity, Handle,
     IntoScheduleConfigs, Mesh, Mesh3d, Name, Or, Query, RemovedComponents, Res, ResMut, With,
     error,
 };
+use bevy::render::render_resource::VertexFormat;
 use cyrus_assets::animation::{AnimationModel, Animations};
 use cyrus_world::animation::{AnimationPose, AnimationRequest};
 use serde::{Deserialize, Serialize};
@@ -23,12 +24,20 @@ pub struct MeshFrameBinding {
     pub source_vertices: Vec<[u32; 2]>,
 }
 
+/// Per-vertex frame face normals for polygon admission, separate from shading normals.
+/// Uses export axes, retains authored magnitude, and follows the selected frame.
+/// Facing rule: <https://michidk.github.io/redguard-preservation/engine/texture-animation.html>.
+pub const ATTRIBUTE_FACE_NORMAL: MeshVertexAttribute =
+    MeshVertexAttribute::new("Model_FaceNormal", 83011, VertexFormat::Float32x3);
+
 /// One selected frame in GLB coordinates and primitive vertex order.
 pub struct FrameGeometry {
     /// Positions use rgpre's export axes and twenty engine units per GLB unit.
     pub positions: Vec<[f32; 3]>,
     /// Authored corner normals, or the frame's face normal where none is valid, in export axes.
     pub normals: Vec<[f32; 3]>,
+    /// Current frame face normals in primitive vertex order and export axes.
+    pub face_normals: Vec<[f32; 3]>,
 }
 
 impl FrameGeometry {
@@ -67,6 +76,7 @@ impl FrameGeometry {
         let mut output = FrameGeometry {
             positions: Vec::with_capacity(binding.source_vertices.len()),
             normals: Vec::with_capacity(binding.source_vertices.len()),
+            face_normals: Vec::with_capacity(binding.source_vertices.len()),
         };
         for &[vertex, face] in &binding.source_vertices {
             let polygon = model
@@ -85,6 +95,10 @@ impl FrameGeometry {
                 .get(face as usize)
                 .and_then(|corners| corners.get(corner))
                 .with_context(|| format!("frame {frame}: corner normals for face {face} absent"))?;
+            let &[fx, fy, fz] = normals
+                .get(face as usize)
+                .with_context(|| format!("frame {frame}: normal for face {face} absent"))?;
+            output.face_normals.push([-fx, -fy, fz]);
             let &[nx, ny, nz] = match authored {
                 Some(normal) => normal,
                 None => normals
@@ -253,6 +267,7 @@ pub(crate) fn apply_poses(
                         private.asset_usage = private_mesh_usage(layers);
                         private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
                         private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);
+                        private.insert_attribute(ATTRIBUTE_FACE_NORMAL, frame.face_normals);
                         private.final_aabb = None;
                         if let Some(bounds) = private.get_aabb() {
                             commands.entity(entity).insert(bounds);
@@ -308,6 +323,7 @@ pub(crate) fn apply_poses(
                 private.asset_usage = private_mesh_usage(layers);
                 private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
                 private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);
+                private.insert_attribute(ATTRIBUTE_FACE_NORMAL, frame.face_normals);
                 private.final_aabb = None;
                 if let Some(bounds) = private.get_aabb() {
                     commands.entity(entity).insert(bounds);
@@ -469,6 +485,7 @@ impl PreparedModelFrames {
                 let mut private = original.clone();
                 private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
                 private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);
+                private.insert_attribute(ATTRIBUTE_FACE_NORMAL, frame.face_normals);
                 private.final_aabb = None;
                 prepared.push((
                     *entity,

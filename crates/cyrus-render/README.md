@@ -59,6 +59,8 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
   [HUD](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md) and
   [console](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/console.md).
   Fix a rule there first, not only here.
+- Animated polygon admission uses the current frame face normal. Authored corner
+  normals remain separate shading inputs through pose changes and model replacement.
 - Presentation never advances script stages: logical poses, health, inventory
   and dialogue are owned by `cyrus-game`/`cyrus-script`; this crate presents them.
 - Camera-dependent terrain, clipping, animation meshes and effect assets update
