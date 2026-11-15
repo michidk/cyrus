@@ -5,6 +5,13 @@ use std::path::{Path, PathBuf};
 pub struct GameInstall {
     pub root: PathBuf,
 }
+/// Which renderer's art an install carries. Glide installs hold `fxart`; the software-only
+/// DOS install holds `3dart` with `TEXTURE.###` banks and shade/haze tables instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edition {
+    Glide,
+    Software,
+}
 pub const ENV_VAR: &str = "REDGUARD_DIR";
 pub const LINK_NAME: &str = "redguard";
 
@@ -82,12 +89,21 @@ impl GameInstall {
         let root = root
             .canonicalize()
             .map_err(|e| anyhow::anyhow!("{}: {e}", root.display()))?;
-        for required in ["fxart", "maps", "RGFX.EXE"] {
-            anyhow::ensure!(
-                root.join(required).exists(),
-                "{}: missing {required}; select your original Redguard installation",
-                root.display()
-            );
+        anyhow::ensure!(
+            root.join("maps").exists(),
+            "{}: missing maps; select your original Redguard installation",
+            root.display()
+        );
+        let glide = root.join("fxart").exists() && root.join("RGFX.EXE").exists();
+        let software = root.join("3dart").exists() && root.join("RG.EXE").exists();
+        if !glide && !software {
+            for required in ["fxart", "RGFX.EXE"] {
+                anyhow::ensure!(
+                    root.join(required).exists(),
+                    "{}: missing {required}; select your original Redguard installation",
+                    root.display()
+                );
+            }
         }
         Ok(Self { root })
     }
@@ -125,6 +141,14 @@ impl GameInstall {
     }
     pub fn maps(&self) -> PathBuf {
         self.root.join("maps")
+    }
+    /// Glide wins when both art folders exist, matching what the game launches by default.
+    pub fn edition(&self) -> Edition {
+        if self.root.join("fxart").exists() && self.root.join("RGFX.EXE").exists() {
+            Edition::Glide
+        } else {
+            Edition::Software
+        }
     }
     pub fn fxart(&self) -> PathBuf {
         self.root.join("fxart")

@@ -48,16 +48,19 @@ pub fn textures(
     palette: Option<Palette>,
     requested: Option<&std::collections::HashSet<u16>>,
 ) -> Result<TextureCache> {
+    let file_name = |path: &str| path.rsplit('/').next().unwrap_or("").to_ascii_uppercase();
+    // One install holds one bank family; Glide wins if both appear.
+    let software = !source
+        .manifest()
+        .files
+        .iter()
+        .any(|file| file_name(&file.path).starts_with("TEXBSI."));
+    let prefix = if software { "TEXTURE." } else { "TEXBSI." };
     let mut data = HashMap::new();
     for file in &source.manifest().files {
-        let name = file
-            .path
-            .rsplit('/')
-            .next()
-            .unwrap_or("")
-            .to_ascii_uppercase();
+        let name = file_name(&file.path);
         if let Some(id) = name
-            .strip_prefix("TEXBSI.")
+            .strip_prefix(prefix)
             .and_then(|id| id.parse::<u16>().ok())
             && let std::collections::hash_map::Entry::Vacant(entry) = data.entry(id)
         {
@@ -76,7 +79,11 @@ pub fn textures(
         .filter(|(id, _)| selected.as_ref().is_none_or(|ids| ids.contains(id)))
         .map(|(id, path)| Ok((id, source.read(path)?)))
         .collect::<Result<HashMap<_, _>>>()?;
-    Ok(TextureCache::from_data(data, palette))
+    if software {
+        Ok(TextureCache::from_software_data(data, palette)?)
+    } else {
+        Ok(TextureCache::from_data(data, palette))
+    }
 }
 /// Terrain texture bank the original engine hard-wires for WLD terrain (per the
 /// preservation crate's WLD exporter).

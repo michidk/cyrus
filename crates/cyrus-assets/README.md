@@ -464,3 +464,10 @@ CD installation admission or software gameplay-scene support, tracked in #2 and
 #91. The scanline and haze rules are documented in
 [preservation PR #339](https://github.com/michidk/redguard-preservation/pull/339). Catalog version 40 admits these derived previews. Existing Glide world
 preparation continues to use its own renderer contract.
+
+`GameInstall::open` admits a software-only DOS install (`3dart`, `maps`, `RG.EXE`, no `fxart` or
+`RGFX.EXE`) and reports `Edition::Software`; Glide wins when both art folders exist. Runtime
+texture preparation reads the software `TEXTURE.###` banks through preservation's software
+loader, not the Glide bank parser. **Verified:** with `REDGUARD_SOFTWARE_DIR` naming such an
+install, START loads and exports textures (`tests/software_edition.rs`). Menu, HUD, logbook, effect
+and weapon preparation still read `fxart` names and have no software path yet; the software gameplay scene is tracked on #91.
