@@ -172,6 +172,9 @@ fn begin_requested_world(
                     request.0
                 )));
                 commands.remove_resource::<super::WorldLoadRequest>();
+                // A later explicit request must ask AssetServer to load again. Retaining
+                // this failed handle bypasses its retry path even after the file is repaired.
+                *artwork.pending = None;
             }
             return;
         };
@@ -514,30 +517,36 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
-        world_entry_recreates_player(false, 0);
+        world_entry_recreates_player(false, 0, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_from_paused_book_recreates_the_retained_player() {
-        world_entry_recreates_player(true, 0);
+        world_entry_recreates_player(true, 0, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn destination_world_entry_presents_its_configured_artwork() {
-        world_entry_recreates_player(false, 2);
+        world_entry_recreates_player(false, 2, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn world_entry_recreates_player(from_book: bool, destination: u32) {
+    #[test]
+    fn world_entry_retries_repaired_loading_artwork() {
+        world_entry_recreates_player(false, 2, true);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn world_entry_recreates_player(from_book: bool, destination: u32, repair: bool) {
         use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
             eprintln!("skipped: no install (debug world loading)");
             return;
         };
         let cache = std::env::temp_dir().join(format!(
-            "cyrus-debug-loading-{}-{from_book}-{destination}",
+            "cyrus-debug-loading-{}-{from_book}-{destination}-{repair}",
             std::process::id()
         ));
         cyrus_assets::startup::export_menu(&install, &cache).unwrap();
@@ -562,15 +571,19 @@ mod tests {
             .collect::<Vec<_>>();
         let mut app = App::new();
         let directory = bevy::asset::io::memory::Dir::default();
-        directory.insert_asset(
-            std::path::Path::new(&format!("loading/{destination}.loading")),
-            serde_json::to_vec(&destination_artwork).unwrap(),
-        );
+        let path = format!("loading/{destination}.loading");
+        if !repair {
+            directory.insert_asset(
+                std::path::Path::new(&path),
+                serde_json::to_vec(&destination_artwork).unwrap(),
+            );
+        }
+        let source_directory = directory.clone();
         app.register_asset_source(
             "cache",
             bevy::asset::io::AssetSourceBuilder::new(move || {
                 Box::new(bevy::asset::io::memory::MemoryAssetReader {
-                    root: directory.clone(),
+                    root: source_directory.clone(),
                 })
             }),
         );
@@ -616,6 +629,27 @@ mod tests {
             heading: 512,
         });
         app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
+        if repair {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !app.world().contains_resource::<SceneLoadError>()
+                && std::time::Instant::now() < deadline
+            {
+                app.update();
+                std::thread::yield_now();
+            }
+            assert!(app.world().resource::<SceneLoadError>().0.contains(&path));
+            assert!(!app.world().contains_resource::<StartGame>());
+            assert!(app.world().get_entity(old_player).is_ok());
+            assert!(
+                !app.world()
+                    .contains_resource::<super::super::WorldLoadRequest>()
+            );
+            directory.insert_asset(
+                std::path::Path::new(&path),
+                serde_json::to_vec(&destination_artwork).unwrap(),
+            );
+            app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
+        }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while app.world().get_resource::<StartGame>().is_none()
             && std::time::Instant::now() < deadline

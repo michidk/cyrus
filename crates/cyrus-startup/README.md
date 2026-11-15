@@ -253,3 +253,5 @@ Reader paper glyphs obey the shared opaque-alpha boundary: style alpha 254 or
 installed headless `LogbookPlugin` regression checks the published image at all
 three boundary values. The rule is documented in preservation
 [subtitle glyphs](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/subtitles.md#glyphs).
+
+A failed destination loading-artwork request leaves the current player intact and reports the failing asset. After repairing the cache, repeating `WorldLoadRequest` retries the artwork load instead of retaining its failed handle. The installed-artwork regression exercises this failure/retry path and checks the selected full raster and player replacement.
