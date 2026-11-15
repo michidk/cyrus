@@ -358,6 +358,8 @@ The `Release` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. Both applications are built from this workspace.
+All downloads are compressed: Windows executables ship inside ZIP archives;
+Linux, macOS and browser packages use gzip-compressed tar archives.
 Each native build also produces `cyrus-with-mods-<target>.tar.gz` on Linux and
 macOS, or `cyrus-with-mods-<target>.zip` on Windows. It contains cyrus and every
 mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm

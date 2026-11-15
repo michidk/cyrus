@@ -39,8 +39,8 @@ class SmokeTest(unittest.TestCase):
                 artifacts = root / "artifacts"
                 artifacts.mkdir()
                 if windows:
-                    (artifacts / f"cyrus-{target}.exe").write_bytes(binary.read_bytes())
-                    (artifacts / f"cyrus-{target}.exe").chmod(0o755)
+                    with zipfile.ZipFile(artifacts / f"cyrus-{target}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+                        archive.write(binary, binary.name)
                 else:
                     with tarfile.open(artifacts / f"cyrus-{target}.tar.gz", "w:gz") as archive:
                         archive.add(binary, arcname="cyrus")

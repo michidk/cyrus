@@ -12,7 +12,8 @@ trap 'rm -rf "$stage"' EXIT
 case "${1:-}" in
     native|native-mods)
         platform="${2:?Rust target required}"
-        rm -f "$artifacts/cyrus-viewer-$platform".{tar.gz,exe}
+        rm -f "$artifacts/cyrus-viewer-$platform".{tar.gz,exe,zip}
+        rm -f "$artifacts/cyrus-$platform.exe"
         if [[ "$1" = native-mods ]]; then
             rm -f "$artifacts/cyrus-with-mods-$platform".{tar.gz,zip}
         fi
@@ -28,13 +29,19 @@ case "${1:-}" in
         cargo build --locked --release --target "$platform" "${packages[@]}"
         suffix=""
         if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
-        # Windows gets the bare executable; Unix archives keep the executable bit.
+        # Compress every download; Unix archives also keep the executable bit.
         for app in "${apps[@]}"; do
             # The launcher needs a sibling game; ship it in the complete bundle.
             [[ "$app" != cyrus-launcher ]] || continue
             binary="$build_root/$platform/release/$app$suffix"
             if [[ -n "$suffix" ]]; then
-                cp "$binary" "$artifacts/$app-$platform$suffix"
+                python3 - "$binary" "$artifacts/$app-$platform.zip" <<'PYZIP'
+from pathlib import Path
+import sys, zipfile
+binary, destination = map(Path, sys.argv[1:])
+with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.write(binary, binary.name)
+PYZIP
             else
                 tar -czf "$artifacts/$app-$platform.tar.gz" -C "$(dirname "$binary")" "$app"
             fi
