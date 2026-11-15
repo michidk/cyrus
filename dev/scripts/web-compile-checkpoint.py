@@ -83,6 +83,13 @@ def retain(directory, target, event, expected):
     units = directory / 'units'
     units.mkdir(parents=True, exist_ok=True)
     key = checkpoint.hashlib.sha256(json.dumps({'files': [str(p.relative_to(target)) for p in files], 'identity': compiler_identity(expected)}, sort_keys=True).encode()).hexdigest()
+    # Cargo emits fresh dependencies again after restoration. Detect their exact
+    # immutable checkpoint before copying and compressing them, so replay cannot
+    # delay recording newly completed units until after another interruption.
+    current_entries = {str(path.relative_to(target)): checkpoint.digest(path) for path in files}
+    current_key = key + '-' + checkpoint.hashlib.sha256(json.dumps(current_entries, sort_keys=True).encode()).hexdigest()
+    if (units / current_key).exists():
+        return
     with tempfile.TemporaryDirectory(dir=units) as temporary:
         staged = Path(temporary)
         entries = {}

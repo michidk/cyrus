@@ -34,6 +34,20 @@ class Recovery(unittest.TestCase):
     def store(self):
         units.retain(self.cache, self.target, self.event, self.identity)
 
+    def test_repeated_completed_unit_does_not_recompress_existing_bytes(self):
+        self.store()
+        with patch.object(units, 'pack', side_effect=AssertionError('recompressed completed unit')):
+            self.store()
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+
+    def test_changed_completed_unit_still_records_new_bytes(self):
+        self.store()
+        self.artifact.write_bytes(b'changed completed dependency')
+        self.store()
+        self.assertEqual(len(list((self.cache / 'units').glob('*/record.json'))), 2)
+
     def test_native_executable_recovers_after_unit_completion_before_final_seal(self):
         import json
         executable = self.target / 'debug/cyrus'
