@@ -25,6 +25,7 @@ dependencies = [
 name = "cyrus-mod-sdk"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "wasvy_macros",
  "wit-bindgen",
 ]
