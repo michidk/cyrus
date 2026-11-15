@@ -361,8 +361,11 @@ with frozen sky phase. Scrolling advances texture coordinates
 on the documented BIOS timer, using the per-world speed and a random initial
 direction. `SkyScrollSync` and MCP `set_sky_scroll` accept a captured direction
 and texture offsets. Browser [capture mode](../cyrus-web/README.md) accepts the
-same measured phase after world entry. The original session's shared random
-stream is not reproduced.
+same measured phase after world entry. The session's shared engine random
+stream supplies one draw when each outdoor sky is admitted, retaining its low
+11 bits as the direction. Repeated updates and snapshot restoration do not draw.
+The complete original cross-system draw order remains **Unknown**. The direction
+rule follows preservation's [initial scroll direction](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#initial-scroll-direction).
 
 Faithful cloud coordinates undo the scene export's Z-origin shift before using
 the original camera position. This combines preservation's

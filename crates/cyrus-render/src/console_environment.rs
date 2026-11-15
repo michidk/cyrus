@@ -350,7 +350,7 @@ mod tests {
         };
         assert!(submit(&mut app, "skysp 0").is_err());
         assert_eq!(app.world().resource::<EngineRandom>().state(), 1);
-        app.world_mut().spawn(crate::sky::Sky::new(1));
+        app.world_mut().spawn(crate::sky::Sky::new(1, 0));
         assert!(submit(&mut app, "skysp").is_err());
         assert_eq!(app.world().resource::<EngineRandom>().state(), 1);
         submit(&mut app, "skysp -257").unwrap();
