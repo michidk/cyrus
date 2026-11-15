@@ -16,17 +16,29 @@ function audioContext() {
 
 function position(player) {
     const elapsed = player.source ? Math.max(0, player.context.currentTime - player.started) : 0;
-    return (player.offset + Math.floor(Math.round(elapsed * player.context.sampleRate) * player.buffer.sampleRate / player.context.sampleRate)) % player.buffer.length;
+    return Math.min(player.offset + Math.floor(Math.round(elapsed * player.context.sampleRate) * player.buffer.sampleRate / player.context.sampleRate), player.buffer.length);
+}
+
+function watchEnd(player, source) {
+    source.onended = () => {
+        if (player.source === source) {
+            player.ended = true;
+            player.offset = player.buffer.length;
+            player.source = null;
+            source.disconnect();
+        }
+    };
 }
 
 function play(player) {
     const source = player.context.createBufferSource();
     source.buffer = player.buffer;
-    source.loop = true;
+    source.loop = false;
     source.connect(player.gain);
     player.started = player.context.currentTime;
     source.start(0, player.offset / player.buffer.sampleRate);
     player.source = source;
+    watchEnd(player, source);
 }
 
 export function createMusic(left, right, rate, volume, paused) {
@@ -37,7 +49,7 @@ export function createMusic(left, right, rate, volume, paused) {
     const gain = ctx.createGain();
     gain.gain.value = volume;
     gain.connect(ctx.destination);
-    const player = {context: ctx, buffer, gain, offset: 0, source: null, started: 0};
+    const player = {context: ctx, buffer, gain, offset: 0, source: null, started: 0, ended: false};
     if (!paused) {
         play(player);
         ctx.resume().catch(console.error);
@@ -53,10 +65,11 @@ export function updateMusic(id, volume, paused) {
     player.gain.gain.value = volume;
     if (paused && player.source) {
         player.offset = position(player);
-        player.source.stop();
-        player.source.disconnect();
+        const source = player.source;
         player.source = null;
-    } else if (!paused && !player.source) {
+        source.stop();
+        source.disconnect();
+    } else if (!paused && !player.source && !player.ended) {
         play(player);
         player.context.resume().catch(console.error);
     }
@@ -65,7 +78,7 @@ export function updateMusic(id, volume, paused) {
 export function musicFrames(id) {
     const player = players.get(id);
     if (!player) throw new Error('CD playback owner is absent');
-    return position(player);
+    return Math.min(position(player), player.buffer.length);
 }
 
 export function stopMusic(id) {
@@ -84,7 +97,7 @@ export function prepareMusic(left, right, rate, volume) {
     const player = players.get(id);
     const source = player.context.createBufferSource();
     source.buffer = player.buffer;
-    source.loop = true;
+    source.loop = false;
     source.connect(player.gain);
     player.prepared = source;
     return id;
@@ -99,6 +112,7 @@ export function publishMusic(id, retiring, paused) {
     if (!paused) {
         player.prepared.start(when, 0);
         player.source = player.prepared;
+        watchEnd(player, player.prepared);
         player.started = when;
         player.context.resume().catch(console.error);
     } else {
@@ -113,4 +127,10 @@ export function publishMusic(id, retiring, paused) {
         previous.gain.disconnect();
         players.delete(old);
     }
+}
+
+export function musicEnded(id) {
+    const player = players.get(id);
+    if (!player) throw new Error('CD playback owner is absent');
+    return player.ended;
 }

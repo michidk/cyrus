@@ -25,7 +25,7 @@ fn install() -> Option<GameInstall> {
 }
 
 #[test]
-fn installed_cd_transport_preserves_every_sample_and_the_loop_boundary() {
+fn installed_cd_transport_preserves_every_sample_and_ends_after_one_pass() {
     let Some(install) = install() else {
         return;
     };
@@ -53,10 +53,11 @@ fn installed_cd_transport_preserves_every_sample_and_the_loop_boundary() {
         peak = peak.max(expected.abs());
         energy += f64::from(expected).powi(2);
     }
+    assert!(!head.is_empty());
     assert_eq!(
-        playback.by_ref().take(head.len()).collect::<Vec<_>>(),
-        head,
-        "the next pass must retain the first stereo frame, without padding or duplication"
+        playback.next(),
+        None,
+        "the decoder must finish after one pass; replay belongs to world execution"
     );
     eprintln!(
         "installed CD track 2: frames={} rate={} peak={peak} rms={} exact_samples={count}",
