@@ -13,4 +13,4 @@ crate-type = ["cdylib"]
 cyrus-mod-sdk = { path = "../sdk" }
 
 [dev-dependencies]
-redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "b127cac1bac3aa4f5f45474239553b629d68bb5a" }
+redguard-preservation = "=0.12.5"
