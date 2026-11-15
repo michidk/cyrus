@@ -549,6 +549,12 @@ Use an unmodified final-version run and inspect its autosave state when comparin
 startup paths; a development-mode run can select a different entry path.
 Run `python3 dev/scripts/test-original-startup-capture.py` for the recording
 order and game-clock cutoff regression without game data.
+A successful audio capture also requires exactly one new, finalized WAV with
+at least one complete PCM frame. The timeline retains its sample rate, channel
+count, sample width and frame count. Missing, empty, ambiguous or truncated
+recordings fail even when game-clock progress succeeds. Silent PCM is valid;
+this check establishes sample availability, not waveform continuity or calibrated
+gain. Run `python3 dev/scripts/test-original-wave-admission.py` for these controls.
 
 The book menu reads `MENU.INI` through rgpre, using original geometry, page
 textures, indexed FNT glyphs, and GXA widgets. Up/Down navigates eligible
