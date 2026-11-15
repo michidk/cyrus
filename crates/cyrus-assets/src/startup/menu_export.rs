@@ -9,7 +9,6 @@ use crate::{
 };
 use anyhow::{Context, ensure};
 use rgpre::import::{
-    bsi::parse_bsi_file,
     fnt::parse_fnt,
     gxa::parse_gxa_file,
     menu_ini,
@@ -152,7 +151,10 @@ pub(crate) fn prepare_menu(
             if let TextureData::Texture { texture_id, .. } = face.texture_data
                 && !banks.contains_key(&texture_id)
             {
-                banks.insert(texture_id, read(&format!("fxart/TEXBSI.{texture_id:03}"))?);
+                banks.insert(
+                    texture_id,
+                    crate::preparation::Bank::read(source, texture_id)?,
+                );
             }
         }
         models.push((data, position));
@@ -160,7 +162,7 @@ pub(crate) fn prepare_menu(
     for page in pages.values() {
         for texture in page.textures.iter().flatten() {
             if let std::collections::btree_map::Entry::Vacant(entry) = banks.entry(texture.set) {
-                entry.insert(read(&format!("fxart/TEXBSI.{:03}", texture.set))?);
+                entry.insert(crate::preparation::Bank::read(source, texture.set)?);
             }
         }
     }
@@ -203,15 +205,14 @@ pub(crate) fn prepare_menu(
     let palette = Palette::parse(&palette_bytes).context("menu: REDGUARD.COL")?;
     let mut textures = Vec::new();
     let mut references = BTreeMap::new();
-    for (set, bytes) in banks {
-        let bank = parse_bsi_file(&bytes).with_context(|| format!("menu: TEXBSI.{set:03}"))?;
-        for (index, image) in bank.images.iter().enumerate() {
-            references.insert((set, index as u16), textures.len());
+    for (set, bank) in banks {
+        for (index, image) in bank.iter() {
+            references.insert((set, index), textures.len());
             textures.push(PageTexture {
                 width: image.width,
                 height: image.height,
                 indices: image.pixel_data.clone(),
-                rgba: image.decode_rgba(Some(&palette)),
+                rgba: bank.rgba(index, &palette).context("menu: bank image")?,
             });
         }
     }

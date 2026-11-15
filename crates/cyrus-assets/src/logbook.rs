@@ -256,7 +256,6 @@ pub(crate) fn prepare(
 ) -> anyhow::Result<()> {
     use anyhow::Context;
     use rgpre::import::{
-        bsi::parse_bsi_file,
         fnt::parse_fnt,
         gxa::parse_gxa_file,
         model3d::{TextureData, parse_3d_file},
@@ -292,14 +291,16 @@ pub(crate) fn prepare(
             if references.keys().any(|(bank, _)| *bank == texture_id) {
                 continue;
             }
-            let bank = parse_bsi_file(&read(&format!("fxart/TEXBSI.{texture_id:03}"))?)?;
-            for (index, image) in bank.images.iter().enumerate() {
-                references.insert((texture_id, index as u16), textures.len());
+            let bank = crate::preparation::Bank::read(source, texture_id)?;
+            for (index, image) in bank.iter() {
+                references.insert((texture_id, index), textures.len());
                 textures.push(PageTexture {
                     width: image.width,
                     height: image.height,
                     indices: image.pixel_data.clone(),
-                    rgba: image.decode_rgba(Some(&reader_palette)),
+                    rgba: bank
+                        .rgba(index, &reader_palette)
+                        .context("logbook: bank image")?,
                 });
             }
         }

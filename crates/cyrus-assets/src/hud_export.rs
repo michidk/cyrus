@@ -250,7 +250,7 @@ pub(crate) fn prepare(
     );
     let models =
         rgpre::import::rob::parse_rob_file(&inventory_models).context("hud: fxart/INVENTRY.ROB")?;
-    let examine = examine_artwork(&models, &definitions, &read)?;
+    let examine = examine_artwork(&models, &definitions, source)?;
     let examine_bytes = serde_json::to_vec(&examine)?;
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
@@ -493,7 +493,7 @@ fn model_extents(
 fn examine_artwork(
     models: &rgpre::import::rob::RobFile,
     definitions: &ItemIni,
-    read: &dyn Fn(&str) -> anyhow::Result<Vec<u8>>,
+    source: &dyn crate::source::ReadAssets,
 ) -> anyhow::Result<crate::examine::ExamineArtwork> {
     use crate::examine::{ExamineArtwork, ExamineFace, ExamineModel, ExamineTexture};
     use rgpre::import::model3d::TextureData;
@@ -539,19 +539,14 @@ fn examine_artwork(
                                 std::collections::btree_map::Entry::Occupied(entry) => {
                                     entry.into_mut()
                                 }
-                                std::collections::btree_map::Entry::Vacant(entry) => entry.insert(
-                                    rgpre::import::bsi::parse_bsi_file(&read(&format!(
-                                        "fxart/TEXBSI.{texture_id:03}"
-                                    ))?)
-                                    .with_context(|| format!("TEXBSI.{texture_id:03}"))?,
-                                ),
+                                std::collections::btree_map::Entry::Vacant(entry) => entry
+                                    .insert(crate::preparation::Bank::read(source, texture_id)?),
                             };
-                            let decoded =
-                                bank.images.get(usize::from(image_id)).with_context(|| {
-                                    format!(
-                                        "model {key}: TEXBSI.{texture_id:03} image {image_id} absent"
-                                    )
-                                })?;
+                            let decoded = bank.get(u16::from(image_id)).with_context(|| {
+                                format!(
+                                    "model {key}: TEXBSI.{texture_id:03} image {image_id} absent"
+                                )
+                            })?;
                             let id = artwork.textures.len();
                             references.insert(image_key, id);
                             artwork.textures.push(ExamineTexture {

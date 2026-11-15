@@ -62,8 +62,11 @@ memory. The viewer's catalog behaviour is described in
   through `rgpre`.
 - `GameInstall::open` also admits a software-only DOS install (`3dart`, `maps`,
   `RG.EXE`, no `fxart`) as `Edition::Software` and reads its `TEXTURE.###` banks;
-  Glide wins when both art folders exist. Menu, HUD, logbook, effect and weapon
-  preparation still need `fxart` (tracked on #91).
+  Glide wins when both art folders exist. Preparation resolves `fxart/X` to
+  `3dart/X` and `TEXBSI.###` to `TEXTURE.###` without `fxart`, and reads banks
+  through `preparation::Bank`. Software menu, HUD and logbook preparation still
+  fails: the software `MENU.ROB` holds four v2.6 models preservation does not
+  parse, and the logbook reads Glide-only `SYSTEM.INI` settings (tracked on #91).
 - Format or engine facts found here go to preservation's `docs/`, not into this
   README.
 

@@ -46,11 +46,100 @@ fn generated_path(path: &Path) -> Result<String> {
 pub(crate) fn path(source: &dyn ReadAssets, name: &str) -> Result<String> {
     let name = name.replace('\\', "/");
     crate::validate_path(&name)?;
+    let software = software_name(&name);
     source
         .manifest()
         .find(&name)
+        .or_else(|| {
+            software
+                .as_deref()
+                .and_then(|name| source.manifest().find(name))
+        })
         .map(|file| file.path.clone())
         .with_context(|| format!("missing original file {name}"))
+}
+
+/// The software install's name for a Glide art file: `fxart/X` is `3dart/X`, and `TEXBSI.###`
+/// banks are `TEXTURE.###`.
+fn software_name(name: &str) -> Option<String> {
+    let rest = name
+        .strip_prefix("fxart/")
+        .or_else(|| name.strip_prefix("FXART/"))?;
+    let upper = rest.to_ascii_uppercase();
+    Some(match upper.strip_prefix("TEXBSI.") {
+        Some(id) => format!("3dart/TEXTURE.{id}"),
+        None => format!("3dart/{rest}"),
+    })
+}
+
+/// One texture bank's images by image index, in either edition's format.
+pub(crate) struct Bank {
+    raw: Vec<u8>,
+    images: Vec<(rgpre::import::bsi::BsiImage, bool)>,
+}
+
+impl std::hash::Hash for Bank {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.raw.hash(state);
+    }
+}
+
+impl Bank {
+    /// Reads `fxart/TEXBSI.<id>`, or the software install's `3dart/TEXTURE.<id>`.
+    pub(crate) fn read(source: &dyn ReadAssets, id: u16) -> Result<Self> {
+        let name = format!("fxart/TEXBSI.{id:03}");
+        let bytes = read(source, &name)?;
+        Self::parse(
+            &bytes,
+            path(source, &name)?
+                .to_ascii_uppercase()
+                .contains("/TEXTURE."),
+        )
+        .with_context(|| format!("texture bank {id:03}"))
+    }
+    pub(crate) fn parse(bytes: &[u8], software: bool) -> Result<Self> {
+        let images = if software {
+            rgpre::import::software_texture::parse_texture_bank(bytes)?.into_bsi_images()
+        } else {
+            rgpre::import::bsi::parse_bsi_file(bytes)?
+                .images
+                .into_iter()
+                .map(|image| (image, true))
+                .collect()
+        };
+        Ok(Self {
+            raw: bytes.to_vec(),
+            images,
+        })
+    }
+    /// Images with their index, in bank order.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (u16, &rgpre::import::bsi::BsiImage)> {
+        self.images
+            .iter()
+            .map(|(image, _)| (image.image_index, image))
+    }
+    pub(crate) fn get(&self, index: u16) -> Option<&rgpre::import::bsi::BsiImage> {
+        self.images
+            .iter()
+            .map(|(image, _)| image)
+            .find(|image| image.image_index == index)
+    }
+    /// RGBA of frame zero; software records without the transparency flag are fully opaque.
+    pub(crate) fn rgba(
+        &self,
+        index: u16,
+        palette: &rgpre::import::palette::Palette,
+    ) -> Option<Vec<u8>> {
+        let (image, transparent) = self
+            .images
+            .iter()
+            .find(|(image, _)| image.image_index == index)?;
+        let mut rgba = image.decode_rgba(Some(palette));
+        if !transparent {
+            rgba.chunks_exact_mut(4).for_each(|pixel| pixel[3] = 255);
+        }
+        Some(rgba)
+    }
 }
 
 pub(crate) fn read(source: &dyn ReadAssets, name: &str) -> Result<Vec<u8>> {
