@@ -968,7 +968,7 @@ dependencies = [
 [[package]]
 name = "redguard-preservation"
 version = "0.12.5"
-source = "git+https://github.com/michidk/redguard-preservation?rev=b127cac1bac3aa4f5f45474239553b629d68bb5a#b127cac1bac3aa4f5f45474239553b629d68bb5a"
+source = "git+https://github.com/michidk/redguard-preservation?rev=5f67315b0cf954f582b8b2113b5cfc2470486f7b#5f67315b0cf954f582b8b2113b5cfc2470486f7b"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",
