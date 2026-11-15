@@ -514,7 +514,11 @@ impl App {
     }
 
     fn mods_page(&mut self, ui: &mut egui::Ui) {
-        if self.installed.mods.is_empty() && self.installed.problems.is_empty() {
+        let unavailable = self.installed.unavailable_active(&self.active);
+        if self.installed.mods.is_empty()
+            && self.installed.problems.is_empty()
+            && unavailable.is_empty()
+        {
             theme::section(ui, "No mods installed");
             ui.label(theme::muted(&format!(
                 "Mods go in {}.",
@@ -554,6 +558,22 @@ impl App {
                 }
                 for (folder, reason) in &self.installed.problems {
                     ui.label(egui::RichText::new(format!("{folder}: {reason}")).color(ERROR));
+                }
+                if !unavailable.is_empty() {
+                    theme::section(ui, "Unavailable active mods");
+                }
+                for id in &unavailable {
+                    theme::row(
+                        ui,
+                        id,
+                        "This active mod has no readable manifest. Disable it or restore its files.",
+                        |ui| {
+                            if theme::secondary(ui, "Disable").clicked() {
+                                self.active.remove(id);
+                                changed = true;
+                            }
+                        },
+                    );
                 }
             });
         if changed {

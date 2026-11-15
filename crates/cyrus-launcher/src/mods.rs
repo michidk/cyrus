@@ -45,6 +45,20 @@ pub struct Installed {
     pub problems: BTreeMap<String, String>,
 }
 
+impl Installed {
+    /// Active ids without a readable launcher manifest, in id order.
+    ///
+    /// Missing folders and malformed manifests remain active until the player disables them.
+    /// Listing them never changes the saved selection or hides the other installed mods.
+    pub fn unavailable_active(&self, active: &BTreeSet<String>) -> Vec<String> {
+        active
+            .iter()
+            .filter(|id| !self.mods.iter().any(|entry| entry.id == **id))
+            .cloned()
+            .collect()
+    }
+}
+
 /// Reads every folder of `dir` that has a `mod.toml`. A missing `dir` is no mods; a manifest that does
 /// not read is reported without hiding the others.
 pub fn scan(dir: &Path) -> anyhow::Result<Installed> {
@@ -146,6 +160,34 @@ mod tests {
         assert_eq!(installed.mods[0].description, "first");
         assert_eq!(installed.mods[1].version.as_deref(), Some("1"));
         assert_eq!(installed.problems.keys().collect::<Vec<_>>(), ["broken"]);
+    }
+
+    #[test]
+    fn unavailable_active_mods_can_be_removed_without_changing_valid_selections() {
+        let dir = tempfile::tempdir().unwrap();
+        let mods = dir.path().join("mods");
+        write(&mods, "available", "name = \"Available\"\n");
+        write(&mods, "broken", "name = [\n");
+        let file = dir.path().join("mods.json");
+        save_active(
+            &file,
+            &["available".into(), "broken".into(), "removed".into()].into(),
+        )
+        .unwrap();
+        let installed = scan(&mods).unwrap();
+        let mut active = load_active(&file).unwrap();
+        let unavailable = installed.unavailable_active(&active);
+        assert_eq!(unavailable, ["broken", "removed"]);
+        // Merely listing problems must not rewrite the player's selection.
+        assert_eq!(load_active(&file).unwrap(), active);
+        for id in unavailable {
+            active.remove(&id);
+        }
+        save_active(&file, &active).unwrap();
+        assert_eq!(load_active(&file).unwrap(), ["available".into()].into());
+        std::fs::remove_dir_all(&mods).unwrap();
+        let installed = scan(&mods).unwrap();
+        assert_eq!(installed.unavailable_active(&active), ["available"]);
     }
 
     #[test]

@@ -9,6 +9,10 @@ cheats. **Technical Support** opens the issue tracker. The Mods label is assembl
 the original bitmaps; the Cancel button keeps its original bitmap, because the artwork has no Q for
 a Quit label.
 
+The Mods dialog also lists enabled mods whose folders are missing or whose manifests cannot be
+read, with a Disable action. Opening the dialog keeps those selections until the player changes
+them, including when no readable mods remain installed.
+
 The launcher does not link the game. It reads and writes the files the game reads at startup:
 
 | File | Holds |
