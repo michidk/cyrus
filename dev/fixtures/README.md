@@ -68,6 +68,18 @@ linked install. Copied screenshots and emulator save states are not live
 captures. Measure the view with the `cyrus-playtest` skill's debugger
 procedure; keep probes and raw measurements under `magic/`.
 
+For selected-player comparisons, the adapter can also provide `player_pose`:
+`{"name":"CYRUS","frame":412,"position":[100,-200,300],"angles":[0,512,0]}`.
+These example values are synthetic. The adapter must derive the actual name,
+selected file frame, Q8 effective position and engine angles from the same
+presentation boundary as the original image. Native admission compares them
+exactly against the image's render-owned player receipt; a preceding control
+state or an animation group/progress value cannot substitute for that receipt.
+A rejected image stays available for diagnosis but produces no accepted manifest.
+This optional check binds the selected player's frame and placement, not runtime
+model-handle resolution, other actors, or browser animation phase. Captures
+without `player_pose` retain only the scene/viewpoint guarantee.
+
 ### Headless capture browser
 
 Serve the browser build with `--bind 0.0.0.0` and use the port from

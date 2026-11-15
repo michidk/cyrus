@@ -119,7 +119,19 @@ async function browser(f, output, build) {
     await cdp.close();
   }
 }
-export async function captureNativeFrame(state, generation, filename, send = command) {
+// The adapter supplies a presentation-owned selected-player pose in native Q8 coordinates
+// and engine angle units. Group/progress alone cannot identify a selected file frame.
+function checkPlayerPose(expected, actual) {
+  const vector = value => Array.isArray(value) && value.length === 3 && value.every(Number.isSafeInteger);
+  assert(typeof expected?.name === 'string' && expected.name.length > 0
+    && Number.isSafeInteger(expected.frame) && expected.frame >= 0
+    && vector(expected.position) && vector(expected.angles), 'original actor pose is incomplete');
+  assert(actual?.name === expected.name && actual.animation?.frame === expected.frame,
+    'render-owned actor pose has a different identity or file frame');
+  assert.deepEqual(actual.spatial?.effective?.position, expected.position, 'render-owned actor pose position differs');
+  assert.deepEqual(actual.spatial?.effective?.angles, expected.angles, 'render-owned actor pose angles differ');
+}
+export async function captureNativeFrame(state, generation, filename, send = command, expectedPlayer = null) {
   const result = await send({type: 'capture_gameplay_frame', path: filename});
   assert(result?.captured === true && typeof result.path === 'string'
     && path.resolve(result.path) === path.resolve(filename), 'native render capture did not complete the requested image');
@@ -136,6 +148,7 @@ export async function captureNativeFrame(state, generation, filename, send = com
     && Number.isSafeInteger(b.normal_frame_rate) && b.normal_frame_rate > 0
     && b.game_seconds === b.elapsed_scale / (256 * b.normal_frame_rate),
     'native render capture has inconsistent simulation time');
+  if (expectedPlayer !== null) checkPlayerPose(expectedPlayer, b.player);
   return result;
 }
 async function original(fixture, f, directory) {
@@ -175,7 +188,7 @@ export async function capture(fixture, label, originalOnly = false) {
   await sleep(f.settle_ms);
   const nativeImage = path.join(directory, 'native.png');
   assert(!existsSync(nativeImage), 'native screenshot already exists');
-  const nativeCapture = await captureNativeFrame(state, runtime.generation, nativeImage);
+  const nativeCapture = await captureNativeFrame(state, runtime.generation, nativeImage, command, observation.player_pose ?? null);
   await until(() => {
     if (!existsSync(nativeImage)) return false;
     return readFileSync(nativeImage).subarray(-12).equals(Buffer.from('0000000049454e44ae426082', 'hex'));

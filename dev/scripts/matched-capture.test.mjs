@@ -72,3 +72,27 @@ test('native image uses its owning render receipt rather than an earlier polled 
     {...response, boundary: {...boundary, render_frame: 0}},
   ]) await assert.rejects(captureNativeFrame(state, 1, 'frame.png', async () => bad));
 });
+
+test('matched actor capture rejects a changed presented pose despite matching polled state', async () => {
+  const pose = {name: 'CYRUS', frame: 412, position: [100, -200, 300], angles: [0, 512, 0]};
+  const player = {name: pose.name, animation: {current_group: 0, frame: pose.frame},
+    spatial: {effective: {position: pose.position, angles: pose.angles}}};
+  const state = {scene: 'START', scripts: {ordinary_updates: 10}, player};
+  const boundary = {scene: 'START', ready: true, execution: 'running', generation: 1,
+    event: 'render_frame', phase: 'render_extraction', render_frame: 17, update: 13,
+    elapsed_scale: 4608, normal_frame_rate: 12, game_seconds: 1.5, player};
+  const response = {captured: true, path: 'actor.png', boundary};
+  const take = (actual, expected = pose) => captureNativeFrame(state, 1, 'actor.png',
+    async () => ({...response, boundary: {...boundary, player: actual}}), expected);
+  assert.deepEqual(await take(player), response);
+  for (const actual of [null, {...player, name: 'OTHER'},
+    {...player, animation: {current_group: 0, frame: 413}},
+    {...player, animation: {current_group: 0}},
+    {...player, spatial: {effective: {...player.spatial.effective, position: [101, -200, 300]}}},
+    {...player, spatial: {effective: {...player.spatial.effective, angles: [0, 513, 0]}}},
+  ]) await assert.rejects(take(actual), /actor pose/);
+  for (const expected of [{...pose, frame: null}, {...pose, position: [100, -200]},
+    {...pose, angles: [0, NaN, 0]}, {...pose, name: ''}]) {
+    await assert.rejects(take(player, expected), /actor pose/);
+  }
+});
