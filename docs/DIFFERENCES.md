@@ -7,6 +7,19 @@ Engine facts behind each entry live in
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Unintended differences are bugs; report them in [GitHub issues](https://github.com/michidk/cyrus/issues), not here.
 
+## Stable gameplay timing
+
+**Verified:** the original clock estimates frame scale from measured FPS, smooths
+that estimate, and emits one nominal tick per update during its twelve-update
+warmup, as documented in preservation's
+[FPS-derived frame scale](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#fps-derived-frame-scale).
+Cyrus uses elapsed active time for automatic gameplay at the installed nominal
+rate. Scene entry, menu returns and resource preparation exclude suspended time;
+FPS changes do not require a speed adjustment period. This applies by default in
+both fidelity modes, as requested for consistent gameplay speed. The installed
+minimum FPS still bounds movement during a single long host stall. Explicit
+original-clock inspection and book animation retain the original clock API.
+
 ## 3dfx splash
 
 **Verified:** the GOG Windows launch plays the metallic `3DfxSpl2.dll` splash. Emulated Voodoo hardware,
@@ -97,7 +110,8 @@ every value is a Modern tuning choice:
   while calm water models reflect fully;
 - swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
   about their base, while collision keeps the installed placement;
-- depth of field focused on the player, and motion blur.
+- depth of field focused on the player, and subtle motion blur with a shutter
+  exposure of 15% of a frame.
 - the map's object and baked lights (lamps and fires) shine as point lights. Map light colours are
   signed and the original subtracts the negative channels; point lights only add, so each light
   shines with its positive channels and darkening-only lights are left out. Each lights a facing
@@ -226,13 +240,15 @@ for the moment before the first frame and effect sounds stop as they do for any 
 
 **Verified:** the original draws the book menu, the logbook scrolls and the examine view through Glide
 with bilinear texture filtering. cyrus draws them as meshes through a perspective camera with the same
-projection, placements and camera paths, into the original's 640 by 480 frame, which is then scaled to
-the window like the other startup pictures. Light levels follow the original's per-channel combine
+placements and camera paths. The book renders at the window's physical resolution, with the
+authored 4:3 composition kept visible and the 3D view extended into the remaining window area.
+The logbook and examine retain their 640 by 480 frame, scaled to the window.
+Light levels follow the original's per-channel combine
 (`floor(T * (L + 1) / 256)`, interpolated in screen space), applied in a shader. Page text, widgets and
 pictures are painted into the page textures on the CPU, as the original does.
 
-**Verified:** against the previous CPU renderer the settled book pages differ by a mean of about 1.5 out
-of 765 per pixel (roughly 0.5 % of pixels visibly) and the logbook by about 0.3. The remainder is the
+**Verified:** at 640 by 480, against the previous CPU renderer the settled book pages differ by a mean
+of about 1.5 out of 765 per pixel (roughly 0.5 % of pixels visibly) and the logbook by about 0.3. The remainder is the
 GPU's texture sampling and rounding, not different geometry. **Unknown:** whether the original's own
 sampling matches either to the last bit; it was not compared pixel by pixel.
 
@@ -276,7 +292,7 @@ East and Start hold Escape. The pad is read only while the window has focus.
 
 ## Optional anisotropic filtering
 
-Backtick's **Anisotropic filtering (up to 16×)** enables the Modern `anisotropic_filtering` fidelity
+Backtick's **Texture filtering** row enables the Modern `anisotropic_filtering` fidelity
 area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
 modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
 models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture
