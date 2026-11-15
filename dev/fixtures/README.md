@@ -69,12 +69,18 @@ captures. Measure the view with the `cyrus-playtest` skill's debugger
 procedure; keep probes and raw measurements under `magic/`.
 
 For selected-player comparisons, the adapter can also provide `player_pose`:
-`{"name":"CYRUS","frame":412,"position":[100,-200,300],"angles":[0,512,0]}`.
+`{"name":"CYRUS","frame_reference":412,"position":[100,-200,300],"angles":[0,512,0]}`.
 These example values are synthetic. The adapter must derive the actual name,
-selected file frame, Q8 effective position and engine angles from the same
+RAAN frame reference, Q8 effective position and engine angles from the same
 presentation boundary as the original image. Native admission compares them
 exactly against the image's render-owned player receipt; a preceding control
 state or an animation group/progress value cannot substitute for that receipt.
+The reference spans RAAN entries in their installed order, as
+`Animations::resolve_frame` documents. A local frame index or runtime model
+handle cannot be compared directly with the native `animation.frame` reference.
+The adapter must resolve the original model identity and add preceding RAAN
+frame counts before supplying `frame_reference`; an ambiguous `frame` field
+is rejected.
 A rejected image stays available for diagnosis but produces no accepted manifest.
 This optional check binds the selected player's frame and placement, not runtime
 model-handle resolution, other actors, or browser animation phase. Captures

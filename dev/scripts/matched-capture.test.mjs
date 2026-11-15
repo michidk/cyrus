@@ -74,8 +74,8 @@ test('native image uses its owning render receipt rather than an earlier polled 
 });
 
 test('matched actor capture rejects a changed presented pose despite matching polled state', async () => {
-  const pose = {name: 'CYRUS', frame: 412, position: [100, -200, 300], angles: [0, 512, 0]};
-  const player = {name: pose.name, animation: {current_group: 0, frame: pose.frame},
+  const pose = {name: 'CYRUS', frame_reference: 412, position: [100, -200, 300], angles: [0, 512, 0]};
+  const player = {name: pose.name, animation: {current_group: 0, frame: pose.frame_reference},
     spatial: {effective: {position: pose.position, angles: pose.angles}}};
   const state = {scene: 'START', scripts: {ordinary_updates: 10}, player};
   const boundary = {scene: 'START', ready: true, execution: 'running', generation: 1,
@@ -91,8 +91,10 @@ test('matched actor capture rejects a changed presented pose despite matching po
     {...player, spatial: {effective: {...player.spatial.effective, position: [101, -200, 300]}}},
     {...player, spatial: {effective: {...player.spatial.effective, angles: [0, 513, 0]}}},
   ]) await assert.rejects(take(actual), /actor pose/);
-  for (const expected of [{...pose, frame: null}, {...pose, position: [100, -200]},
-    {...pose, angles: [0, NaN, 0]}, {...pose, name: ''}]) {
+  for (const expected of [{...pose, frame: 12}, {...pose, frame_reference: null}, {...pose, position: [100, -200]},
+    {...pose, angles: [0, NaN, 0]}, {...pose, name: ''},
+    {name: pose.name, frame: 12, position: pose.position, angles: pose.angles},
+    {name: pose.name, frame: 412, position: pose.position, angles: pose.angles}]) {
     await assert.rejects(take(player, expected), /actor pose/);
   }
 });

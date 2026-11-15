@@ -120,14 +120,15 @@ async function browser(f, output, build) {
   }
 }
 // The adapter supplies a presentation-owned selected-player pose in native Q8 coordinates
-// and engine angle units. Group/progress alone cannot identify a selected file frame.
+// and engine angle units. Group/progress alone cannot identify a selected model frame.
 function checkPlayerPose(expected, actual) {
   const vector = value => Array.isArray(value) && value.length === 3 && value.every(Number.isSafeInteger);
-  assert(typeof expected?.name === 'string' && expected.name.length > 0
-    && Number.isSafeInteger(expected.frame) && expected.frame >= 0
+  assert(expected && Object.keys(expected).sort().join(',') === 'angles,frame_reference,name,position'
+    && typeof expected.name === 'string' && expected.name.length > 0
+    && Number.isSafeInteger(expected.frame_reference) && expected.frame_reference >= 0
     && vector(expected.position) && vector(expected.angles), 'original actor pose is incomplete');
-  assert(actual?.name === expected.name && actual.animation?.frame === expected.frame,
-    'render-owned actor pose has a different identity or file frame');
+  assert(actual?.name === expected.name && actual.animation?.frame === expected.frame_reference,
+    'render-owned actor pose has a different identity or RAAN frame reference');
   assert.deepEqual(actual.spatial?.effective?.position, expected.position, 'render-owned actor pose position differs');
   assert.deepEqual(actual.spatial?.effective?.angles, expected.angles, 'render-owned actor pose angles differ');
 }
