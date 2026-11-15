@@ -12,7 +12,8 @@ clarifies the menu application of the encoded-channel filtering rule in release 
 Book sampling quantizes fractional texture coordinates to four bits and floors
 each horizontal and vertical channel interpolation, following the released
 [software-Voodoo filter rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md).
-Other lit model views retain their existing filtering path. Backtick Flycam also flies
+**Verified:** book fragments also apply the released [ordered RGB565 framebuffer rule](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/fog.md#integer-precision-and-framebuffer-dithering)
+before display conversion. Other lit model views retain their existing filtering and framebuffer paths. Backtick Flycam also flies
 this camera in the book menu. While it is enabled the menu ignores the keyboard, unless Backtick's
 "Pass input to game" is ticked. Dialogs are
 drawn on a transparent layer over the scene. The logbook scrolls and the examine view are meshes
@@ -280,3 +281,13 @@ exact encoded levels produced by four-bit interpolation. It rejects both
 continuous interpolation and a point-sampled image without fractional levels.
 The complementary checkerboard check uses an explicit two-floor bound with
 `--four-bit`; its continuous-filter rounding bound remains separate.
+
+For the final book framebuffer regression, `dev/scripts/check-book-framebuffer.py prepare`
+writes a constant-colour disposable cache. Render that cache through the production
+application, then use `check CAPTURE --colour R G B --rectangle LEFT TOP RIGHT BOTTOM`
+on unpainted geometry at native 640×480. The checker verifies every ordered-dither
+phase and the expanded RGB565 channels. It rejects full-precision output and a
+reversed threshold phase. Restore the original cache afterward. Run
+`test-check-book-framebuffer.py` with Pillow for its command-line controls.
+The earlier complementary and stripe controls describe the intermediate filtering
+output; they do not admit final framebuffer captures after RGB565 storage.

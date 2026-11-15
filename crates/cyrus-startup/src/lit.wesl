@@ -57,6 +57,23 @@ fn book_sample(uv: vec2<f32>) -> vec3<f32> {
     return upper + floor((lower - upper) * weight.y);
 }
 
+// Published software-Voodoo 4x4 framebuffer storage, in encoded channels.
+// The book target uses top-left framebuffer coordinates before its display sprite.
+fn book_framebuffer(colour: vec3<f32>, position: vec2<f32>) -> vec3<f32> {
+    let matrix = array<u32, 16>(0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u,
+                                3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u);
+    let pixel = vec2<u32>(position);
+    let threshold = f32(matrix[(pixel.y % 4u) * 4u + pixel.x % 4u]);
+    let five = vec3<f32>(2.0) * colour - floor(colour / 16.0)
+        + floor(colour / 128.0) + threshold;
+    var stored = vec3<u32>(floor(five / 16.0));
+    stored.y = u32(floor((4.0 * colour.y - floor(colour.y / 16.0)
+        + floor(colour.y / 64.0) + threshold) / 16.0));
+    let red_blue = (stored << vec3<u32>(3u)) | (stored >> vec3<u32>(2u));
+    let green = (stored.y << 2u) | (stored.y >> 4u);
+    return vec3<f32>(f32(red_blue.x), f32(green), f32(red_blue.z));
+}
+
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var screen_level = in.level;
@@ -73,6 +90,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         raw = book_sample(in.uv);
     }
     let level = floor(clamp(screen_level.rgb, vec3(0.0), vec3(255.0)));
-    let lit = floor(raw * (level + screen_level.w) / 256.0);
+    var lit = floor(raw * (level + screen_level.w) / 256.0);
+    if four_bit_filter != 0u {
+        lit = book_framebuffer(lit, in.position.xy);
+    }
     return vec4(srgb_to_linear(lit / 255.0), texel.a);
 }
