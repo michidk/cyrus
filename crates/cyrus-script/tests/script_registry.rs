@@ -53099,3 +53099,6 @@ fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
 fn held_walk_forward_preserves_low_climb_without_stopping_controller() {
     held_walk_turn_in_states(&[LivingState::LOW_CLIMB], 0);
 }
+
+#[path = "script_registry/jump_movement.rs"]
+mod jump_movement_tests;

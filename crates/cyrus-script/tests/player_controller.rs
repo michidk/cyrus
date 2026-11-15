@@ -200,8 +200,8 @@ fn the_walk_key_with_only_left_or_right_selects_a_sidestep() {
 
 #[test]
 fn jumping_does_not_change_the_selector_and_activation_reaches_the_script_hook() {
-    // The jump key runs the controller's jump arbitration, not the walking selector, so the
-    // selector keeps returning the movement the other keys ask for.
+    // This selector has no current animation: the public controller applies directional
+    // jump replacement before invoking this movement choice.
     assert_eq!(
         select_sheathed_action(
             &PlayerInput {

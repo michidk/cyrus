@@ -365,6 +365,10 @@ impl ScriptWorld {
             let moved = match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
                 _ if sliding => Ok(()),
+                _ if jump_replaces_movement(input.held, holding, group) => {
+                    world.start_player_key_jump(id, query, inputs, timing, sounds)?;
+                    Ok(())
+                }
                 SheathedAction::Sidestep(strafe) => {
                     let function = match strafe {
                         super::super::locomotion::Strafe::Left => Native::MoveLeft,
@@ -494,6 +498,25 @@ impl ScriptWorld {
             control.jump_window = 0;
             return Ok(());
         }
+        self.start_player_key_jump(id, query, inputs, timing, sounds)
+    }
+
+    /// The controller's direct jump entry and the arbitration fallback share this entry.
+    /// The directional dispatch may replace its movement helper before arbitration runs.
+    fn start_player_key_jump(
+        &mut self,
+        id: super::ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        inputs: super::ScriptInputs<'_>,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let group = self.actors[id.index]
+            .animation
+            .as_ref()
+            .context("player jump entry animation unavailable")?
+            .playback
+            .current_group();
         if jump_key_refused(self.actor_surface(id)?, group) {
             return Ok(());
         }
@@ -1903,6 +1926,29 @@ fn walk_forward_is_scripted(armed: bool, surface: cyrus_assets::surface::Surface
     armed || surface.is_deep_water()
 }
 
+/// Directional jump entry replaces the step helper before the common arbitration.
+/// Follows preservation player.md "Ordinary controller dispatch".
+fn jump_replaces_movement(
+    held: &crate::player::input::PlayerInput,
+    holding_weapon: bool,
+    group: Option<AnimationGroup>,
+) -> bool {
+    if held.walk || !held.jump || !(held.forward || held.backward) {
+        return false;
+    }
+    if holding_weapon {
+        return !held.action;
+    }
+    if held.forward {
+        !matches!(group, Some(AnimationGroup::RUN | AnimationGroup::RUN_TORCH))
+    } else {
+        !matches!(
+            group,
+            Some(AnimationGroup::RUN_BACKWARD | AnimationGroup::WALK_BACKWARD_TORCH)
+        )
+    }
+}
+
 /// The jump entry the key arbitration starts refuses while the player is in deep water or in `anim_fight_land`, `anim_fight_land_attack`, `anim_fight_land_right` or `anim_fight_land_left` (preservation player.md "Jump-key arbitration").
 fn jump_key_refused(
     surface: cyrus_assets::surface::Surface,
@@ -2023,6 +2069,48 @@ fn terrain_crossing(
 mod airborne_tests {
     use super::*;
     use crate::player::input::PlayerInput;
+
+    #[test]
+    fn directional_jump_replaces_only_the_documented_movement_helpers() {
+        for (forward, group, replaces) in [
+            (true, AnimationGroup::RUN, false),
+            (true, AnimationGroup::RUN_TORCH, false),
+            (true, AnimationGroup::HAND_PLANT_LEDGE, true),
+            (false, AnimationGroup::RUN_BACKWARD, false),
+            (false, AnimationGroup::WALK_BACKWARD_TORCH, false),
+            (false, AnimationGroup::WALK_BACKWARD, true),
+        ] {
+            let held = PlayerInput {
+                forward,
+                backward: !forward,
+                jump: true,
+                ..Default::default()
+            };
+            assert_eq!(jump_replaces_movement(&held, false, Some(group)), replaces);
+            assert!(!jump_replaces_movement(
+                &PlayerInput { walk: true, ..held },
+                false,
+                Some(group)
+            ));
+            assert!(!jump_replaces_movement(
+                &PlayerInput {
+                    jump: false,
+                    ..held
+                },
+                false,
+                Some(group)
+            ));
+            assert!(jump_replaces_movement(&held, true, Some(group)));
+            assert!(!jump_replaces_movement(
+                &PlayerInput {
+                    action: true,
+                    ..held
+                },
+                true,
+                Some(group)
+            ));
+        }
+    }
 
     #[test]
     fn forward_steers_queued_motion_in_the_fall_groups_only() {

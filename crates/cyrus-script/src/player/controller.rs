@@ -57,8 +57,9 @@ pub enum SheathedAction {
 /// the caller's [ground turn](super::turn); the held walk key with only left or
 /// right selects a sidestep. Backward-only movement picks the walk or run helper by the same
 /// walk-mode rule as forward movement (verified against the original controller in an
-/// emulator). The jump key does not change the selection; the controller's jump-key arbitration runs
-/// after the selected movement, and activation is handled by the ordinary script hook, which owns
+/// emulator). This selector has no animation state: the caller must apply the directional
+/// jump replacement before invoking the selected movement helper, then run the common
+/// jump-key arbitration. Activation is handled by the ordinary script hook, which owns
 /// receiver prompts and held-key state.
 /// A return or idle selection does not suppress later animation continuation.
 pub fn select_sheathed_action(

@@ -77,3 +77,8 @@ workspace `redguard` link and report a skip when no install is present; with an
 install linked, a skip fails the gate. Runtime changes also need the headless,
 replay or original-game comparison described in [METHOD](../../docs/METHOD.md)
 and [SETUP](../../docs/SETUP.md).
+
+Held directional jump input applies the documented jump-entry replacement before
+calling a movement helper. In particular, Forward+Jump during a low climb leaves
+the ledge animation's pending idle request intact rather than queuing Run behind
+it. The common jump-key arbitration still runs after directional dispatch.
