@@ -1847,7 +1847,13 @@ interpolation, giving 7.8125 microsecond alignment resolution. Integer-grid
 alignment can underestimate fitted gain or reject an overlapping cue when the
 true onset lies between samples. The original coarse result is retained beside
 the refined anchors. Correlation 0.8, three independent windows spanning 300 ms,
-and the 10 ms drift limit are unchanged. Overlap annotations show where an
+and the 10 ms drift limit are unchanged. The normalized report also rejects a
+reference interval that extends beyond either recording endpoint, allowing one
+sample of fractional alignment resolution. `reference_duration_seconds` is the
+installed reference length, not a measured playback duration;
+`recorded_interval_complete` only establishes that the inferred source interval
+fits inside the recording. A matching middle fragment cannot admit a missing
+beginning or tail. Overlap annotations show where an
 admitted cue continues while another plays; they do not subtract another cue or
 admit obscured windows. These are window-continuity observations, not proof of
 every tail sample. Fitted gain describes the shared analysis band, not a

@@ -22,7 +22,20 @@ def report(monitor, references, input_seconds):
     results = []
     for reference in references:
         value = continuity.normalize(monitor, reference)
-        value['duration_seconds'] = len(reference) / continuity.RATE
+        value['reference_duration_seconds'] = len(reference) / continuity.RATE
+        value['recorded_interval_complete'] = False
+        if value['success']:
+            # Fractional alignment has one analysis-sample resolution. A shared
+            # middle fragment does not establish that the cue endpoints exist.
+            resolution = 1 / value['analysis_rate']
+            start = value['onset_seconds']
+            end = start + value['reference_duration_seconds']
+            value['recorded_interval_complete'] = (
+                start >= -resolution and
+                end <= len(monitor) / continuity.RATE + resolution)
+            if not value['recorded_interval_complete']:
+                value.update(success=False, error='reference interval extends outside recording',
+                             onset_seconds=None, median_gain=None)
         value['input_relative_onset_seconds'] = (
             value['onset_seconds'] - input_seconds if value['success'] else None)
         results.append(value)
@@ -34,7 +47,7 @@ def report(monitor, references, input_seconds):
             anchor['overlaps'] = [other for other, cue in enumerate(results)
                                   if other != index and cue['success']
                                   and max(start, cue['onset_seconds']) <
-                                  min(start + .1, cue['onset_seconds'] + cue['duration_seconds'])]
+                                  min(start + .1, cue['onset_seconds'] + cue['reference_duration_seconds'])]
     return dict(success=all(cue['success'] for cue in results),
                 input_seconds=input_seconds, references=results)
 
