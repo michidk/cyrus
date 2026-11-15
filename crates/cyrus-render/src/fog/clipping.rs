@@ -362,6 +362,10 @@ fn prepare(
             }
             Err(error) => {
                 error!("model {:?}: camera clipping failed: {error}", mesh.0.id());
+                if let Some(mut target) = meshes.get_mut(&draw.0) {
+                    *target = Mesh::new(PrimitiveTopology::TriangleList, default());
+                    draw.set_changed();
+                }
                 source.previous = Some(key);
                 source.pending = false;
             }
@@ -1081,6 +1085,63 @@ mod tests {
                 .0,
             replacement
         );
+        let expected_colors = app
+            .world()
+            .resource::<Assets<Mesh>>()
+            .get(&draw_mesh)
+            .unwrap()
+            .attribute(Mesh::ATTRIBUTE_COLOR)
+            .unwrap()
+            .clone();
+        for missing in [true, false] {
+            {
+                let mut assets = app.world_mut().resource_mut::<Assets<Mesh>>();
+                let mut source = assets.get_mut(&source_mesh).unwrap();
+                if missing {
+                    source.remove_attribute(Mesh::ATTRIBUTE_UV_1);
+                } else {
+                    source.insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[0.0, 1.0]]);
+                }
+            }
+            // Asset notifications arrive after preparation; consume the next boundary too.
+            app.update();
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<Mesh>>()
+                    .get(&draw_mesh)
+                    .unwrap()
+                    .count_vertices(),
+                0,
+                "rejected lighting inputs must not keep the previous lit draw"
+            );
+            app.world_mut()
+                .resource_mut::<Assets<Mesh>>()
+                .get_mut(&source_mesh)
+                .unwrap()
+                .insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[0.0, 1.0]; 3]);
+            app.update();
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<Mesh>>()
+                    .get(&draw_mesh)
+                    .unwrap()
+                    .count_vertices(),
+                6,
+                "corrected lighting inputs must restore the prepared draw"
+            );
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<Mesh>>()
+                    .get(&draw_mesh)
+                    .unwrap()
+                    .attribute(Mesh::ATTRIBUTE_COLOR),
+                Some(&expected_colors),
+                "corrected input must recover every prepared RGBA component"
+            );
+            assert_eq!(app.world().get::<Mesh3d>(source).unwrap().0, source_mesh);
+        }
         app.world_mut().entity_mut(source).despawn();
         assert!(app.world().get_entity(draw).is_err());
     }

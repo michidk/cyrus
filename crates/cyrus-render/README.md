@@ -183,6 +183,10 @@ control. Sky phase and the selected foam frame are held; the original water
 field is not synchronized. The original capture follows a book-menu return;
 these native/browser captures enter the world directly.
 
+Rejected model-lighting preparation clears the private clipped draw instead of
+retaining old geometry. Corrected source assets restore it through normal change
+notifications.
+
 Ordinary clipped-model draw meshes use the published
 [projection quantization rule](https://github.com/michidk/redguard-preservation/commit/c91863c44fafaf212e7b9928a3331c8242049cc1).
 Prepared screen coordinates lie on a 1/16-pixel grid and are recomputed when
