@@ -14,6 +14,9 @@ Glide environment preparation uses `world_skyfx` BSI artwork independently of
 [renderer selection contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/sky.md#gxa-assets).
 Missing Glide artwork is an error, even when software sky artwork is configured.
 Software sky compositing is not supplied by this preparation path.
+Catalog version 39 rebuilds world clipping from preservation's parsed
+`SYSTEM.INI` settings. Clipping retains the first matching setting and accepts
+inline semicolon comments, consistently with the other engine settings.
 
 
 
