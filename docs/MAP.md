@@ -147,8 +147,10 @@ module where it is defined and regenerate.
 ## `cyrus-launcher` — The launcher: what a player chooses before the game starts, and the command it starts it with.
 
 - `src/artwork.rs` — The original launcher's artwork, read from the player's own `REDGUARD.EXE`.
+- `src/cheats.rs` — The cheats a player can switch on, as the game's `REDGUARD.CHT` holds them.
 - `src/fidelity.rs` — The faithful or modern choice for each presentation area, as the game's `settings.toml` holds it.
 - `src/launch.rs` — What the launcher itself remembers, and how it starts the game.
+- `src/lettering.rs` — Button labels the original launcher has no bitmap for, assembled from the letters of the bitmaps it
 - `src/main.rs` — The launcher window: the original Redguard launcher, recreated, with its artwork read from the
 - `src/mods.rs` — The installed mods and which of them are switched on.
 - `src/theme.rs` — The launcher's look: the colours of the original launcher's leather and gold, and the few widgets
