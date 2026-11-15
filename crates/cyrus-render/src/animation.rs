@@ -528,7 +528,11 @@ impl bevy::prelude::Plugin for AnimationRenderPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_systems(
             bevy::prelude::PostUpdate,
-            (apply_poses, follow_private_mesh_visibility, crate::pose_override::apply)
+            (
+                apply_poses,
+                follow_private_mesh_visibility,
+                crate::pose_override::apply,
+            )
                 .chain()
                 .in_set(PoseRender)
                 .before(bevy::asset::AssetEventSystems),
