@@ -382,20 +382,20 @@ pub(crate) fn publish(
         let model = actors_api.eventmodel(index);
         let frames = actors_api.eventframe(index);
         let values = actors_api.eventpose(index);
-        if let (Some(&frame), &[x, y, z, qx, qy, qz, qw]) = (frames.first(), values.as_slice()) {
-            if !model.is_empty() {
-                host.captures.insert(
-                    token,
-                    (
-                        model,
-                        frame as usize,
-                        Mat4::from_rotation_translation(
-                            Quat::from_xyzw(qx, qy, qz, qw),
-                            Vec3::new(x, y, z),
-                        ),
+        if let (Some(&frame), &[x, y, z, qx, qy, qz, qw]) = (frames.first(), values.as_slice())
+            && !model.is_empty()
+        {
+            host.captures.insert(
+                token,
+                (
+                    model,
+                    frame as usize,
+                    Mat4::from_rotation_translation(
+                        Quat::from_xyzw(qx, qy, qz, qw),
+                        Vec3::new(x, y, z),
                     ),
-                );
-            }
+                ),
+            );
         }
     }
     host.models.clear();
@@ -463,16 +463,16 @@ pub(crate) fn publish(
     for node in host.retire_invalid() {
         commands.entity(node).try_remove::<PoseOverride>();
     }
-    if host.simulation.is_none() && !host.owners.is_empty() {
-        if let Some(scene) = scene
+    if host.simulation.is_none()
+        && !host.owners.is_empty()
+        && let Some(scene) = scene
             .as_deref()
             .and_then(|request| scenes.as_deref()?.get(&request.0))
             .filter(|s| Some(s.world) == current.map(|w| w.world))
-        {
-            match Simulation::world(scene) {
-                Ok(sim) => host.simulation = Some(sim),
-                Err(error) => error!("mod physics world {}: {error:#}", scene.world),
-            }
+    {
+        match Simulation::world(scene) {
+            Ok(sim) => host.simulation = Some(sim),
+            Err(error) => error!("mod physics world {}: {error:#}", scene.world),
         }
     }
 }

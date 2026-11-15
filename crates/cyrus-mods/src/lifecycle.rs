@@ -272,25 +272,6 @@ pub(crate) fn publish(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn opaque_tokens_distinguish_duplicate_names_and_replaced_worlds() {
-        let mut ids = Identities::default();
-        ids.reset(Some((1, 1)));
-        let first = ids.token(0, 0);
-        let second = ids.token(1, 0);
-        assert_ne!(first, second);
-        assert_eq!(ids.token(0, 0), first);
-        ids.reset(Some((1, 2)));
-        assert_ne!(ids.token(0, 0), first);
-        ids.reset(None);
-        ids.reset(Some((1, 3)));
-        assert_ne!(ids.token(0, 0), second);
-    }
-}
-
-#[cfg(test)]
 impl Lifecycle {
     pub(crate) fn fixture_death(id: u64) -> Self {
         let entry = Snapshot {
@@ -308,5 +289,24 @@ impl Lifecycle {
             snapshots: vec![entry.clone()],
             deaths: vec![entry],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn opaque_tokens_distinguish_duplicate_names_and_replaced_worlds() {
+        let mut ids = Identities::default();
+        ids.reset(Some((1, 1)));
+        let first = ids.token(0, 0);
+        let second = ids.token(1, 0);
+        assert_ne!(first, second);
+        assert_eq!(ids.token(0, 0), first);
+        ids.reset(Some((1, 2)));
+        assert_ne!(ids.token(0, 0), first);
+        ids.reset(None);
+        ids.reset(Some((1, 3)));
+        assert_ne!(ids.token(0, 0), second);
     }
 }

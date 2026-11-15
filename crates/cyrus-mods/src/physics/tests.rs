@@ -1,8 +1,10 @@
 //! Contact, constraint and resource ownership contracts through the host API.
 use super::*;
 fn fixture() -> Physics {
-    let mut host = Physics::default();
-    host.simulation = Some(Simulation::default());
+    let mut host = Physics {
+        simulation: Some(Simulation::default()),
+        ..Default::default()
+    };
     host.owners.insert(
         "test".into(),
         Lease {
