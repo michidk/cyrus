@@ -88,7 +88,9 @@ jobs:
         run: dev/scripts/genmap.sh --check
 
       - name: Check artifact packaging
-        run: python3 dev/scripts/test-build-artifacts.py
+        run: |
+          python3 dev/scripts/test-build-artifacts.py
+          python3 dev/scripts/test-smoke-native-artifacts.py
 
       - name: Check browser file selection and asset transport
         run: |

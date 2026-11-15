@@ -12,6 +12,13 @@ SCRIPT = Path(__file__).with_name("smoke-native-artifacts.py")
 
 
 class SmokeTest(unittest.TestCase):
+    def test_ci_runs_the_packaged_smoke_regressions(self):
+        workflow = (SCRIPT.parents[2] / ".github/workflows/ci.yml").read_text()
+        artifact_step = workflow.split("      - name: Check artifact packaging\n", 1)[1]
+        artifact_step = artifact_step.split("\n      - ", 1)[0]
+        self.assertIn("python3 dev/scripts/test-build-artifacts.py", artifact_step)
+        self.assertIn("python3 dev/scripts/test-smoke-native-artifacts.py", artifact_step)
+
     def test_both_workflows_smoke_shipped_payloads(self):
         for name in ("pr-artifacts.yml", "release.yml"):
             workflow = (SCRIPT.parents[2] / ".github/workflows" / name).read_text()
