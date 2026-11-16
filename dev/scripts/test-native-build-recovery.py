@@ -37,6 +37,7 @@ if sys.argv[1:2] == ['cyrus-native-recovery']:
 if sys.argv[1:] == ['--version']:
  print('cargo-test-version');sys.exit()
 root=Path.cwd();target=Path(os.environ['CARGO_TARGET_DIR'])
+(root/'arguments.json').write_text(json.dumps(sys.argv[1:]))
 with (root/'cargo.log').open('a') as f:f.write('build\\n')
 unit=target/'debug/deps/libdependency-abcd.rlib'
 if not unit.exists():
@@ -68,6 +69,24 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
                                 cwd=self.root, env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
+
+    def test_interrupted_crate_test_restores_units_without_publishing_game(self):
+        (self.root / 'interrupt').touch()
+        command = ['bash', 'dev/scripts/build-native-recovery.sh', '--test', 'cyrus-render', 'lighting']
+        first = subprocess.run(command, cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertEqual(first.returncode, 7, first.stdout + first.stderr)
+        shutil.rmtree(self.target)
+        (self.root / 'interrupt').unlink()
+        second = subprocess.run(command, cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertEqual((self.root / 'compiled.log').read_text().splitlines(), ['dependency'])
+        self.assertFalse(self.output.exists(), 'a test run must not publish a capture executable')
+        self.assertEqual(json.loads((self.root / 'arguments.json').read_text()),
+                         ['test', '-p', 'cyrus-render', '--message-format=json-render-diagnostics', 'lighting'])
+        third = subprocess.run(command, cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertEqual(third.returncode, 0, third.stdout + third.stderr)
+        self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 3,
+                         'retained compilation must never replace execution of the tests')
 
     def test_target_restore_runs_inside_the_same_hauler_lane_as_compilation(self):
         recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'

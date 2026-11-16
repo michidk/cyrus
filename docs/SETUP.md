@@ -2536,6 +2536,16 @@ source, compiler, Cargo and build environment. A failed/interrupted build cannot
 publish a final executable checkpoint. Run the reset/recovery controls with
 `python3 dev/scripts/test-native-build-recovery.py`.
 
+Crate tests can retain completed compilation units through the same queue lane:
+set `CYRUS_NATIVE_CHECKPOINT_DIR` to a persistent host directory, then run
+`bash dev/scripts/build-native-recovery.sh --test cyrus-render [test_filter]`.
+The optional filter selects tests using Cargo's ordinary name filtering. Test
+recovery restores compilation units with matching source and toolchain inputs,
+but always executes Cargo's tests again. It preserves a failing test's exit
+status and never publishes a capture executable or an executable provenance seal.
+Use a separate checkpoint directory for test runs and executable builds.
+
+
 `just run-native` uses this recovery path and mounts the retained executable
 read-only. Its default is `magic/build-tools/native/cyrus`; set
 `CYRUS_NATIVE_EXECUTABLE` consistently for launch and matched capture to change

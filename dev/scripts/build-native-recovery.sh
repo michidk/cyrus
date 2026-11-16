@@ -12,19 +12,31 @@ CARGO_HAULER_MAX_CONCURRENT=1 CARGO_HAULER_OVERLAP_EXECUTION=0 hauler daemon sta
 # compilation and recording so another build cannot observe a partially restored target.
 if [ -z "${CARGO_HAULER_INSIDE:-}" ]; then
     export PATH="$PWD/dev/scripts:$PATH"
-    cargo cyrus-native-recovery "${1:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE}"
+    cargo cyrus-native-recovery "${@:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE | --test PACKAGE [FILTER]}"
     exit
 fi
-output=$(realpath -m "${1:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE}")
-if [ "$(basename "$output")" != cyrus ]; then
-    echo 'native executable output must be named cyrus' >&2
-    exit 1
+test_package=
+test_filter=
+if [ "${1:-}" = --test ]; then
+    test_package="${2:?usage: build-native-recovery.sh --test PACKAGE [FILTER]}"
+    test_filter="${3:-}"
+    if [[ ! "$test_package" =~ ^cyrus(-[a-z0-9-]+)?$ ]] || [ "$#" -gt 3 ]; then
+        echo 'test recovery requires a cyrus package and an optional test filter' >&2
+        exit 1
+    fi
+    output=
+else
+    output=$(realpath -m "${1:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE}")
+    if [ "$(basename "$output")" != cyrus ]; then
+        echo 'native executable output must be named cyrus' >&2
+        exit 1
+    fi
+    case "$output" in
+        "$(realpath -m "$CARGO_TARGET_DIR")"/*)
+            echo 'retained executable output must be outside the shared Cargo target' >&2
+            exit 1 ;;
+    esac
 fi
-case "$output" in
-    "$(realpath -m "$CARGO_TARGET_DIR")"/*)
-        echo 'retained executable output must be outside the shared Cargo target' >&2
-        exit 1 ;;
-esac
 mkdir -p "$CYRUS_NATIVE_CHECKPOINT_DIR"
 exec {checkpoint_lock}>"$CYRUS_NATIVE_CHECKPOINT_DIR/build.lock"
 flock -n "$checkpoint_lock" || { echo 'native checkpoint build already running' >&2; exit 1; }
@@ -40,31 +52,35 @@ cleanup() {
 }
 trap cleanup EXIT
 python3 dev/scripts/build-provenance.py snapshot "$snapshot"
-configuration="package=cyrus profile=dev
+profile=dev
+if [ -n "$test_package" ]; then profile=test; fi
+configuration="package=${test_package:-cyrus} profile=$profile
 $(rustc -vV)
 $(cargo --version)
 $(env | LC_ALL=C sort | rg '^(CARGO_PROFILE_|CARGO_BUILD_RUSTFLAGS=|CARGO_ENCODED_RUSTFLAGS=|RUSTFLAGS=|RUSTC=|RUSTC_WRAPPER=|CARGO_TARGET_DIR=|CARGO_HOME=|RUSTUP_HOME=)' || true)"
-if python3 dev/scripts/web-build-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
-    "$snapshot" "$configuration" "$output"; then
-    python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
-    mv "$snapshot" "$output.provenance.json"
-    echo "restored validated native executable: $output"
-    exit
-else
-    status=$?
-    if [ "$status" != 3 ]; then exit "$status"; fi
-fi
-# A reset can follow Cargo's executable event before the final build seal.
-# Recover only that validated unit before considering another compilation.
-if python3 dev/scripts/web-compile-checkpoint.py restore-executable "$CYRUS_NATIVE_CHECKPOINT_DIR" \
-    "$snapshot" "$configuration" "$output"; then
-    python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
-    mv "$snapshot" "$output.provenance.json"
-    echo "restored completed native executable unit: $output"
-    exit
-else
-    status=$?
-    if [ "$status" != 3 ]; then exit "$status"; fi
+if [ -z "$test_package" ]; then
+    if python3 dev/scripts/web-build-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
+        "$snapshot" "$configuration" "$output"; then
+        python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
+        mv "$snapshot" "$output.provenance.json"
+        echo "restored validated native executable: $output"
+        exit
+    else
+        status=$?
+        if [ "$status" != 3 ]; then exit "$status"; fi
+    fi
+    # A reset can follow Cargo's executable event before the final build seal.
+    # Recover only that validated unit before considering another compilation.
+    if python3 dev/scripts/web-compile-checkpoint.py restore-executable "$CYRUS_NATIVE_CHECKPOINT_DIR" \
+        "$snapshot" "$configuration" "$output"; then
+        python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
+        mv "$snapshot" "$output.provenance.json"
+        echo "restored completed native executable unit: $output"
+        exit
+    else
+        status=$?
+        if [ "$status" != 3 ]; then exit "$status"; fi
+    fi
 fi
 python3 dev/scripts/web-compile-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
     "$snapshot" "$configuration" "$CARGO_TARGET_DIR"
@@ -72,7 +88,13 @@ python3 dev/scripts/web-compile-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_
 # or defer sealing an already completed executable.
 events="$CYRUS_NATIVE_CHECKPOINT_DIR/cargo-events.jsonl"
 : > "$events"
-cargo build -p cyrus --message-format=json-render-diagnostics > "$events" &
+if [ -n "$test_package" ]; then
+    arguments=(test -p "$test_package" --message-format=json-render-diagnostics)
+    if [ -n "$test_filter" ]; then arguments+=("$test_filter"); fi
+    cargo "${arguments[@]}" > "$events" &
+else
+    cargo build -p cyrus --message-format=json-render-diagnostics > "$events" &
+fi
 build_pid=$!
 tail --pid="$build_pid" -n +1 -f "$events" | \
     python3 dev/scripts/web-compile-checkpoint.py record "$CYRUS_NATIVE_CHECKPOINT_DIR" \
@@ -84,6 +106,17 @@ if [ "$status" != 0 ]; then
     wait "$recorder_pid" || true
     recorder_pid=
     exit "$status"
+fi
+if [ -n "$test_package" ]; then
+    wait "$recorder_pid"
+    recorder_pid=
+    python3 dev/scripts/build-provenance.py snapshot "$current"
+    if ! cmp -s "$snapshot" "$current"; then
+        echo 'source changed during native tests; result rejected' >&2
+        exit 1
+    fi
+    echo "completed retained native tests: $test_package"
+    exit
 fi
 # Completed Cargo output now owns the final checkpoint. Stop best-effort unit
 # recording before copying the executable so it cannot compete for host I/O.
