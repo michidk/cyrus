@@ -13,14 +13,14 @@ case "${1:-}" in
     native|native-mods|native-raytracing)
         platform="${2:?Rust target required}"
         artifact_suffix=""
-        features=()
+        build_args=(--locked --release --target "$platform")
         if [[ "$1" = native-raytracing ]]; then
             case "$platform" in
                 x86_64-unknown-linux-gnu|x86_64-pc-windows-msvc) ;;
                 *) echo "Ray-tracing packages are supported on Linux x64 and Windows x64: $platform" >&2; exit 2 ;;
             esac
             artifact_suffix=-raytracing
-            features=(--features cyrus/raytracing)
+            build_args+=(--features cyrus/raytracing)
             rm -f "$artifacts/cyrus-raytracing-$platform".{tar.gz,zip}
         else
             rm -f "$artifacts/cyrus-viewer-$platform".{tar.gz,exe,zip}
@@ -38,7 +38,7 @@ case "${1:-}" in
         fi
         packages=()
         for app in "${apps[@]}"; do packages+=(-p "$app"); done
-        cargo build --locked --release --target "$platform" "${packages[@]}" "${features[@]}"
+        cargo build "${build_args[@]}" "${packages[@]}"
         suffix=""
         if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
         # Compress every download; Unix archives also keep the executable bit.

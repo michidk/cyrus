@@ -24,6 +24,20 @@ defaults:
     shell: bash
 
 jobs:
+  packaging-macos:
+    name: Package with macOS Bash
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check native packaging with the system shell
+        run: >-
+          python3 dev/scripts/test-build-artifacts.py
+          ArtifactTest.test_native_platforms_and_optional_viewer
+          ArtifactTest.test_mod_bundle_delivers_launcher_beside_game_on_each_platform
+          ArtifactTest.test_raytracing_packages_preserve_standard_downloads
+          ArtifactTest.test_build_failure_produces_no_archive
+
   test:
     name: Test Suite
     runs-on: ubuntu-26.04
