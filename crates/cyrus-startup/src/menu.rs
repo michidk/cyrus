@@ -44,8 +44,6 @@ pub(super) enum MovieRequest {
 pub enum LaunchAction {
     /// The New Game entry.
     NewGame,
-    /// Enter the starting world without changing the session's movie-skip preference.
-    NewGameWithoutMovie,
     /// The Movies-page cinematic with this zero-based MENU.INI index; hidden entries play too.
     Movie(usize),
 }
@@ -54,7 +52,6 @@ pub enum LaunchAction {
 #[derive(Resource, Default, Debug)]
 pub struct LaunchRequest {
     pub action: Option<LaunchAction>,
-    automatic: bool,
     /// New Game enters its world without the introduction movie.
     pub skip_movies: bool,
 }
@@ -69,15 +66,6 @@ impl LaunchRequest {
                 movie.map(LaunchAction::Movie)
             },
             skip_movies,
-            automatic: false,
-        }
-    }
-
-    /// Default fresh-game entry. An explicit startup-to-menu command may cancel it.
-    pub fn automatic_new_game(skip_movies: bool) -> Self {
-        Self {
-            automatic: true,
-            ..Self::new(true, None, skip_movies)
         }
     }
 }
@@ -391,15 +379,11 @@ fn reset_for_new_game(commands: &mut Commands) {
 
 /// Runs the launch request once the book has its opening motion, as a key press on the entry would.
 pub(super) fn launch(
-    startup: Option<Res<super::StartupPresentation>>,
     mut request: ResMut<LaunchRequest>,
-    mut menu: ResMut<MenuState>,
+    menu: Res<MenuState>,
     mut commands: Commands,
     mut movies: MessageWriter<MovieRequest>,
 ) {
-    if request.automatic && startup.is_some_and(|startup| startup.skip) {
-        request.action = None;
-    }
     if request.action.is_none()
         || menu.motion.is_none()
         || menu.movie.is_some()
@@ -412,11 +396,6 @@ pub(super) fn launch(
         Some(LaunchAction::NewGame) => {
             reset_for_new_game(&mut commands);
             movies.write(MovieRequest::NewGame);
-        }
-        Some(LaunchAction::NewGameWithoutMovie) => {
-            reset_for_new_game(&mut commands);
-            menu.enter_world = Some(0);
-            menu.ready = false;
         }
         Some(LaunchAction::Movie(index)) => {
             movies.write(MovieRequest::Menu(index));
@@ -1379,7 +1358,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_menu_skip_cancels_automatic_introduction_but_not_new_game_shortcut() {
+    fn default_book_waits_and_explicit_new_game_shortcut_runs() {
         use bevy::ecs::system::RunSystemOnce;
         let mut world = World::new();
         world.init_resource::<Messages<MovieRequest>>();
@@ -1390,7 +1369,7 @@ mod tests {
             motion: Some(BookMotion::opening([1; 5])),
             ..default()
         });
-        world.insert_resource(LaunchRequest::automatic_new_game(false));
+        world.insert_resource(LaunchRequest::default());
         world.run_system_once(launch).unwrap();
         assert_eq!(world.resource::<LaunchRequest>().action, None);
         assert!(
@@ -1409,32 +1388,6 @@ mod tests {
                 .next(),
             Some(MovieRequest::NewGame)
         ));
-    }
-
-    #[test]
-    fn installed_direct_world_entry_does_not_disable_later_new_game_movies() {
-        use bevy::ecs::system::RunSystemOnce;
-        let mut world = World::new();
-        world.init_resource::<Messages<MovieRequest>>();
-        world.init_resource::<cyrus_script::script::ScriptActors>();
-        world.init_resource::<Messages<cyrus_audio::sound::SoundRequest>>();
-        world.insert_resource(MenuState {
-            motion: Some(BookMotion::opening([1; 5])),
-            ..default()
-        });
-        let mut request = LaunchRequest::automatic_new_game(false);
-        request.action = Some(LaunchAction::NewGameWithoutMovie);
-        world.insert_resource(request);
-        world.run_system_once(launch).unwrap();
-        assert_eq!(world.resource::<MenuState>().enter_world, Some(0));
-        assert!(!world.resource::<LaunchRequest>().skip_movies);
-        assert!(
-            world
-                .resource_mut::<Messages<MovieRequest>>()
-                .drain()
-                .next()
-                .is_none()
-        );
     }
 
     #[test]
