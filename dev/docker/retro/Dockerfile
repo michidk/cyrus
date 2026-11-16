@@ -1,6 +1,6 @@
 # Runs the original DOS game (GOG build) under DOSBox-X with its built-in
 # Voodoo emulation, on a virtual X display served to a browser over noVNC.
-FROM ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         dosbox-x xvfb x11vnc novnc websockify x11-utils xdotool scrot python3-pil \
