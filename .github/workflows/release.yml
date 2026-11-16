@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Dispatch from main with a tag: caches saved on a tag ref are invisible to the next release.
+  # Retry an existing tag using the current workflow from the default branch.
   workflow_dispatch:
     inputs:
       tag:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.repository }}-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}
+  group: release-${{ github.repository }}-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -29,25 +29,7 @@ defaults:
     shell: bash
 
 jobs:
-  dispatch:
-    name: Dispatch release on default branch
-    if: github.event_name == 'push'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    permissions:
-      actions: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-    steps:
-      # workflow_dispatch starts a run even when sent using GITHUB_TOKEN.
-      # Its default-branch scope makes saved caches reusable by later releases.
-      - name: Dispatch tagged source build
-        run: gh workflow run release.yml --ref "$DEFAULT_BRANCH" -f tag="$TAG_NAME"
-
   verify:
-    if: github.event_name == 'workflow_dispatch'
     name: Verify release (${{ matrix.stage }})
     runs-on: ubuntu-26.04
     strategy:
@@ -102,7 +84,6 @@ jobs:
 
   # Builds start alongside verify; publishing still requires it.
   native:
-    if: github.event_name == 'workflow_dispatch'
     name: Native (${{ matrix.target }})
     timeout-minutes: 90
     strategy:
@@ -124,6 +105,13 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
+      - name: Install current Bash on macOS
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: |
+          brew install bash
+          echo "$(brew --prefix bash)/bin" >> "$GITHUB_PATH"
       - name: Free Linux disk space
         if: runner.os == 'Linux'
         run: |
@@ -173,7 +161,6 @@ jobs:
           retention-days: 7
 
   web:
-    if: github.event_name == 'workflow_dispatch'
     # Four jobs use the hosted runner's cores while the swap file below absorbs linker peaks.
     env:
       CARGO_BUILD_JOBS: 4
@@ -310,3 +297,20 @@ jobs:
       - name: Deploy
         id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  completion:
+    name: Release complete
+    if: always()
+    needs: [verify, native, web, release, pages]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    env:
+      RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Require published release and deployed site
+        run: |
+          printf '%s\n' "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"' | tee -a "$GITHUB_STEP_SUMMARY"
+          if ! jq -e 'all(.[]; .result == "success")' <<< "$RESULTS" > /dev/null; then
+            echo '::error::Release incomplete. Every build, verification, publication and deployment job must succeed.'
+            exit 1
+          fi

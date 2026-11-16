@@ -406,18 +406,25 @@ Pull requests also run `PR artifacts`, which makes the same native packages,
 including the mod bundles, and the browser archive available from the run
 summary for seven days. It does not publish a release. Release builds run only for stable `vX.Y.Z`
 tags, either when pushed or dispatched from the default branch with a `tag` input
-such as `v0.2.0`. A tag push dispatches the build on the default branch; every
-build still checks out the specified tag. This saves compiled dependencies in
-the default-branch cache scope so later releases can restore them. The tag-push
-run only dispatches; follow the separate dispatched `Release` run for build and
-publication results. The first run for a platform or changed toolchain can
-still need a full build.
+such as `v0.2.0`. A tag push builds and publishes in that same run; there is
+no separate dispatch-only success. Every build checks out the specified tag.
+The `Release complete` job runs even after failures and requires verification,
+all native platforms, the browser bundle, publication and Pages deployment to
+succeed. A skipped publication or deployment therefore fails the run.
+Tag runs can restore default-branch CI caches, but caches they save belong to
+that tag. Manual retries on the default branch also save reusable caches.
+The first run for a platform or changed toolchain can still need a full build.
 
 Run `Bump Version & Tag` on `main` with `auto`, `patch`, `minor`, or `major`.
 It updates the shared workspace version and lockfile, commits, and atomically
 pushes the commit and tag using the configured releaser App. The tag push
 triggers `Release`. To retry an existing tag, dispatch `Release` on the default
-branch with that tag as its input.
+branch with that tag as its input. This uses the current workflow while keeping
+the tagged source unchanged. Tag and manual runs for the same version share a
+concurrency group. macOS release jobs install current Homebrew Bash before
+packaging, including when retrying tags whose scripts require a newer shell.
+CI tests native packaging with simulated compiler outputs under macOS system
+Bash, so shell compatibility failures are caught before tagging a release.
 
 `Release` checks that every workspace package matches the tag and runs lint and
 test gates in parallel while all platforms build. Both verification jobs reuse
