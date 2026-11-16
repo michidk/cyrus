@@ -63,6 +63,8 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
   normals remain separate shading inputs through pose changes and model replacement.
 - Presentation never advances script stages: logical poses, health, inventory
   and dialogue are owned by `cyrus-game`/`cyrus-script`; this crate presents them.
+- Stationary model colors consume in-place material and local-light table edits in the
+  same frame, before asset notifications publish.
 - Camera-dependent terrain, clipping, animation meshes and effect assets update
   before Bevy extracts assets, so camera and geometry reach the GPU in the same frame.
 - Material and shader changes often change the export schema: re-export worlds

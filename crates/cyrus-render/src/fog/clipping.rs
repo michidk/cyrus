@@ -284,6 +284,8 @@ fn prepare(
     // whose inputs are all unchanged keeps the draw it prepared last.
     let view_unchanged =
         previous_view.replace((camera, scale, viewport)) == Some((camera, scale, viewport));
+    // Asset events publish after preparation. Resource ticks also catch in-place edits
+    // made this frame, before those notifications can reach either cache guard.
     for (mesh, transform, material, mut source, animated) in &mut sources {
         if view_unchanged
             && !source.pending
@@ -291,6 +293,8 @@ fn prepare(
             && !mesh.is_changed()
             && !transform.is_changed()
             && !material.is_changed()
+            && !materials.is_changed()
+            && !images.is_changed()
             && !animated.as_ref().is_some_and(|pose| pose.is_changed())
             && !changed_meshes.contains(&mesh.0.id())
             && changed_materials
@@ -327,6 +331,7 @@ fn prepare(
             && !animated.as_ref().is_some_and(|pose| pose.is_changed())
             && !changed_meshes.contains(&mesh.0.id())
             && !changed_images.contains(&extension.lights.id())
+            && !images.is_changed()
         {
             source.pending = false;
             continue;
@@ -1151,6 +1156,91 @@ mod tests {
             .attribute(Mesh::ATTRIBUTE_COLOR)
             .unwrap()
             .clone();
+        // Drain publication before an isolated same-handle material edit.
+        app.update();
+        app.update();
+        app.update();
+        app.world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .get_mut(&source_mesh)
+            .unwrap()
+            .remove_attribute(Mesh::ATTRIBUTE_COLOR);
+        app.update();
+        app.update();
+        app.update();
+        let unlit_colors = app
+            .world()
+            .resource::<Assets<Mesh>>()
+            .get(&draw_mesh)
+            .unwrap()
+            .attribute(Mesh::ATTRIBUTE_COLOR)
+            .unwrap()
+            .clone();
+        {
+            let mut materials = app.world_mut().resource_mut::<Assets<SceneMaterial>>();
+            materials
+                .get_mut(&replacement)
+                .unwrap()
+                .extension
+                .fog
+                .ambient
+                .x = 10.0;
+        }
+        app.update();
+        assert_ne!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&unlit_colors),
+            "same-frame material edits must update a stationary model"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .get_mut(&source_mesh)
+            .unwrap()
+            .insert_attribute(
+                Mesh::ATTRIBUTE_COLOR,
+                mesh().attribute(Mesh::ATTRIBUTE_COLOR).unwrap().clone(),
+            );
+        app.update();
+        app.update();
+        app.update();
+        let light = app
+            .world()
+            .resource::<Assets<SceneMaterial>>()
+            .get(&replacement)
+            .unwrap()
+            .extension
+            .lights
+            .clone();
+        let mut records = vec![0_u8; 256 * 32];
+        for value in [0.0_f32, 0.0, 65_546.0, 100.0, 50.0, 50.0, 50.0, 100.0] {
+            records.extend(value.to_le_bytes());
+        }
+        app.world_mut()
+            .resource_mut::<Assets<Image>>()
+            .get_mut(&light)
+            .unwrap()
+            .data = Some(records);
+        app.update();
+        assert_ne!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&expected_colors),
+            "same-frame light-table edits must update retained model colors"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Image>>()
+            .get_mut(&light)
+            .unwrap()
+            .data = None;
+        app.update();
+        app.update();
         for missing in [true, false] {
             {
                 let mut assets = app.world_mut().resource_mut::<Assets<Mesh>>();
