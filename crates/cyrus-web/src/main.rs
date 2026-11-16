@@ -29,26 +29,11 @@ fn main() {
         .unwrap_or_else(|error| wasm_bindgen::throw_str(&error.to_string()));
     #[cfg(not(target_arch = "wasm32"))]
     let options = cyrus_app::launch::GameOptions::default();
-    #[cfg(target_arch = "wasm32")]
-    wasm_bindgen_futures::spawn_local(async move {
-        let entry = if startup::automatic(&options) {
-            Some(startup::installed_entry().await.unwrap_or_else(|error| {
-                wasm_bindgen::throw_str(&format!("browser startup: {error:#}"))
-            }))
-        } else {
-            None
-        };
-        run(options, entry);
-    });
-    #[cfg(not(target_arch = "wasm32"))]
-    run(options, None);
+    run(options);
 }
 
-fn run(
-    options: cyrus_app::launch::GameOptions,
-    entry: Option<cyrus_assets::startup::StartupEntry>,
-) {
-    let launch = startup::launch(&options, entry);
+fn run(options: cyrus_app::launch::GameOptions) {
+    let launch = startup::launch(&options);
     let scene = options.scene;
     let mut app = App::new();
     if let Some(view) = options.view {

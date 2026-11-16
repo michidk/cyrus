@@ -376,3 +376,10 @@ selection; already playing spans retain their filter. The option covers native
 backend audio and browser streaming audio. Direct WebAudio CD music retains the
 browser's conversion. Equal-rate playback and downsampling keep their existing
 backend paths.
+
+## Default startup opens the book
+
+**Verified:** cyrus opens the book after the splash and title on native and browser launches.
+Installed debug flags and the absence of an autosave do not automatically start a
+new game. This is an intentional launcher choice. Explicit New Game, movie, save
+and scene shortcuts retain their requested destinations.

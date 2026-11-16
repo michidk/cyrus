@@ -10,7 +10,7 @@ save slots) through `cyrus-config`, and applies the TCP control commands that
 ## Usage
 
 ```sh
-cargo run -p cyrus                              # splash, title, then the default start
+cargo run -p cyrus                              # splash, title, then the book menu
 cargo run -p cyrus -- --scene START             # load a world directly
 cargo run -p cyrus -- --headless --scene 27     # no window: preload, export, control server
 ```
@@ -67,9 +67,8 @@ opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for con
 
 - The install is never written. Local state lives where `cyrus-config` decides;
   local cheat and console files take precedence over the installed ones.
-- Default startup reads `SYSTEM.INI [debug] final_version`, `MENU.INI [general]
-  ignore_autosave` and the native autosave: a fresh final-version start plays
-  the Introduction, a valid autosave opens the book.
+- Default startup opens the book after the splash and title. Starting a world requires
+  New Game, loading a save, or an explicit launch shortcut.
 - Save slots hold cyrus session documents. Original `SAVEGAME.SAV` and `.TSG`
   files are not load inputs ([#93](https://github.com/michidk/cyrus/issues/93)).
 - Control commands and their wire contract, including frame and mixer capture

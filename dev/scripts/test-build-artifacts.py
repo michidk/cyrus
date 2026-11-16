@@ -106,12 +106,17 @@ done
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{linux}.tar.gz").exists())
         (self.root / "crates/cyrus-viewer/Cargo.toml").touch()
         windows = "x86_64-pc-windows-msvc"
+        stale = self.root / f"target/artifacts/cyrus-{windows}.exe"
+        stale.write_bytes(b"old uncompressed download")
         self.build("native", windows)
         for app in ("cyrus", "cyrus-viewer"):
-            self.assertTrue((self.root / f"target/artifacts/{app}-{windows}.exe").is_file())
+            with zipfile.ZipFile(self.root / f"target/artifacts/{app}-{windows}.zip") as archive:
+                self.assertEqual(archive.namelist(), [f"{app}.exe"])
+                self.assertEqual(archive.getinfo(f"{app}.exe").compress_type, zipfile.ZIP_DEFLATED)
+            self.assertFalse((self.root / f"target/artifacts/{app}-{windows}.exe").exists())
         (self.root / "crates/cyrus-viewer/Cargo.toml").unlink()
         self.build("native", windows)
-        self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.exe").exists())
+        self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.zip").exists())
 
     def mod_fixtures(self):
         for name in ("guest", "shader", "manifest-only"):
@@ -151,7 +156,7 @@ done
             self.assertEqual(set(files), expected)
             self.assertEqual(json.loads(files["game-config/mods.json"]), {"active": []})
             self.assertEqual(files["game-config/mods/guest/mod.wasm"], b"wasm\n")
-            self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{suffix or '.tar.gz'}").is_file())
+            self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{'.zip' if suffix else '.tar.gz'}").is_file())
 
     def test_native_mod_bundles_reject_external_overlay_links(self):
         self.mod_fixtures()

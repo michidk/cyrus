@@ -5,14 +5,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { connectCdp } from './capture-cdp.mjs';
 import { observeBrowserBuild } from './browser-provenance.mjs';
 
-const [endpoint, page, install, output, expectation = 'introduction'] = process.argv.slice(2);
+const [endpoint, page, install, output, expectation = 'menu'] = process.argv.slice(2);
 assert(endpoint && page && install && output, 'usage: node dev/scripts/test-browser-startup.mjs CDP_URL PAGE_URL INSTALL_URL OUTPUT [introduction|autosave|menu]');
 assert(['introduction', 'autosave', 'menu'].includes(expectation));
 mkdirSync(output, { recursive: true });
 const build = JSON.parse(readFileSync('target/web/build-provenance.json'));
 const cdp = await connectCdp(endpoint);
 const url = new URL(page);
-url.search = new URLSearchParams({ install: new URL(install).href, capture: '1', ...(expectation === 'menu' ? { 'skip-startup': '1' } : {}) });
+url.search = new URLSearchParams({ install: new URL(install).href, capture: '1', ...(expectation === 'introduction' ? { 'new-game': '1' } : {}) });
 const initialUrl = new URL(url);
 if (expectation === 'autosave') initialUrl.searchParams.set('scene', 'START');
 const samples = [], shots = [];
@@ -72,12 +72,11 @@ try {
     assert(!state.error, state.error);
     assert(!state.label?.startsWith('Failed:'), state.label);
     const movie = state.menu?.movie;
-    if (movie) assert(expectation === 'introduction', 'autosave or explicit menu skip dispatched a movie');
+    if (movie) assert(expectation === 'introduction', 'default book launch dispatched a movie');
     const event = JSON.stringify([state.startup?.state, state.startup?.presentation?.title_visible, !!movie, movie?.loading, state.menu?.ready, state.world?.ready]);
     if (event !== previous) { await shot(`transition-${shots.length}`); previous = event; }
     if (movie?.frame > 0 && !movie.loading && !moviePresented) {
       assert.equal(movie.name, 'INTRO.SMK');
-      assert(samples.some(sample => sample.startup?.presentation?.title_visible && !sample.menu?.movie), 'Introduction preceded the title');
       movieTiming = await evaluate(`window.cyrusGameAssets.read('movies/0.movie').then(bytes => {
         const {frames, frame_micros} = JSON.parse(new TextDecoder().decode(bytes));
         return {frames, frame_micros};
@@ -87,7 +86,7 @@ try {
       moviePresented = true; done = true; break;
     }
     if (state.menu?.ready && !movie) {
-      assert(expectation === 'menu' || stage === 'autosave', 'fresh browser startup opened the book instead of Introduction');
+      assert(expectation === 'menu' || stage === 'autosave', 'explicit New Game opened the book without dispatching Introduction');
       await shot(stage === 'autosave' ? 'autosave-book' : 'book'); done = true; break;
     }
     if (state.world?.ready && state.world.scripts?.globals?.world_loop_frame > 0) {

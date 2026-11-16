@@ -44,7 +44,7 @@ def smoke(artifacts: Path, target: str) -> None:
                     zipfile.BadZipFile, KeyError) as error:
                 raise RuntimeError(f"{package}: packaged {app} smoke failed: {error}") from error
 
-        extension = ".exe" if windows else ".tar.gz"
+        extension = ".zip" if windows else ".tar.gz"
         run(artifacts / f"cyrus-{target}{extension}", "cyrus", "game")
         viewer = artifacts / f"cyrus-viewer-{target}{extension}"
         if viewer.exists():
