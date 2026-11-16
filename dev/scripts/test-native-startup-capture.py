@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from PIL import Image
 
 SCRIPT = Path(__file__).with_name("native-startup-capture.py")
 
@@ -18,7 +19,7 @@ def state(phase="SelectingInstall", title=False, ready=False, movie=None, second
 
 
 class Capture(unittest.TestCase):
-    def capture(self, states, expected="menu"):
+    def capture(self, states, expected="menu", pixels=(200, 150, 100), write_image=True, write_delay=0):
         index = 0
         screenshots = []
 
@@ -31,6 +32,13 @@ class Capture(unittest.TestCase):
                     index += 1
                 else:
                     screenshots.append(command["path"])
+                    if write_image:
+                        def publish(path=host_shots / Path(command["path"]).name):
+                            Image.new("RGB", (4, 4), pixels).save(path)
+                        if write_delay:
+                            threading.Timer(write_delay, publish).start()
+                        else:
+                            publish()
                     result = {}
                 self.wfile.write((json.dumps({"ok": True, "result": result}) + "\n").encode())
 
@@ -40,9 +48,10 @@ class Capture(unittest.TestCase):
             try:
                 with tempfile.TemporaryDirectory() as directory:
                     trace = Path(directory) / "timeline.json"
+                    host_shots = Path(directory)
                     run = subprocess.run(
                         [sys.executable, str(SCRIPT), str(server.server_address[1]), str(trace),
-                         "--expect", expected, "--prepare-seconds", "0.2", "--seconds", "0.2",
+                         "--expect", expected, "--host-screenshot-dir", directory, "--prepare-seconds", "0.2", "--seconds", "0.2",
                          "--interval", "0.01"], capture_output=True, text=True, timeout=3,
                     )
                     record = json.loads(trace.read_text())
@@ -97,6 +106,24 @@ class Capture(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(record["stop"], "world-progress")
         self.assertEqual(count, 3)
+
+    def test_ready_book_waits_for_asynchronous_readback(self):
+        run, record, _, _ = self.capture([state("Menu", True, True)], write_delay=0.05)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue(record["success"])
+        self.assertGreaterEqual(record["elapsed"], 0.05)
+
+    def test_logically_ready_black_book_is_not_rendered_acceptance(self):
+        run, record, _, _ = self.capture([state("Menu", True, True)], pixels=(0, 0, 0))
+        self.assertNotEqual(run.returncode, 0, record)
+        self.assertEqual(record["stop"], "menu-raster-failed")
+        self.assertIn("entirely black", record["last_error"])
+
+    def test_missing_readback_does_not_complete_menu_capture(self):
+        run, record, _, _ = self.capture([state("Menu", True, True)], write_image=False)
+        self.assertNotEqual(run.returncode, 0, record)
+        self.assertEqual(record["stop"], "menu-raster-failed")
+        self.assertIn("not completed", record["last_error"])
 
     def test_title_alone_times_out_without_completing(self):
         run, record, _, _ = self.capture([state("Loading", True)])

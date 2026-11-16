@@ -2,12 +2,13 @@
 """Observe production native startup through its control port, preserving failures."""
 import argparse
 import json
+import uuid
 from pathlib import Path
 import socket
 import time
 
 
-def capture(port, output, expected, prepare_seconds, seconds, interval, screenshot_dir):
+def capture(port, output, expected, prepare_seconds, seconds, interval, screenshot_dir, host_screenshot_dir):
     started = time.monotonic()
     deadline = started + prepare_seconds
     presented = False
@@ -53,7 +54,7 @@ def capture(port, output, expected, prepare_seconds, seconds, interval, screensh
             break
         event = (phase, title, bool(movie), movie.get("loading"), bool(menu.get("ready")))
         if event != previous:
-            filename = f"startup-{len(shots):02}.png"
+            filename = f"startup-{uuid.uuid4().hex}.png"
             try:
                 request({"type": "screenshot", "path": f"{screenshot_dir}/{filename}"})
                 shots.append({"wall": now - started, "path": filename})
@@ -74,6 +75,26 @@ def capture(port, output, expected, prepare_seconds, seconds, interval, screensh
         if phase == "Menu" and not movie and menu.get("ready"):
             reason = "menu-ready" if expected == "menu" else "unexpected-menu"
             success = presented and expected == "menu"
+            if success:
+                from PIL import Image
+                error = None
+                image_path = host_screenshot_dir / shots[-1]["path"]
+                while time.monotonic() < deadline:
+                    try:
+                        with Image.open(image_path) as image:
+                            rgb = image.convert("RGB")
+                            rgb.load()
+                            visible = rgb.getbbox() is not None
+                        break
+                    except (OSError, ValueError):
+                        time.sleep(interval)
+                else:
+                    visible = False
+                    error = f"menu screenshot not completed: {image_path}"
+                if not visible:
+                    reason = "menu-raster-failed"
+                    error = error or f"menu screenshot is entirely black: {image_path}"
+                    success = False
             break
         time.sleep(interval)
     record = {"success": success, "expected": expected, "stop": reason,
@@ -93,12 +114,20 @@ def main():
     parser.add_argument("--seconds", type=float, default=45)
     parser.add_argument("--interval", type=float, default=0.15)
     parser.add_argument("--screenshot-dir", default="/out")
+    parser.add_argument("--host-screenshot-dir", type=Path, help="host mount of screenshot-dir; required for menu raster acceptance")
     args = parser.parse_args()
+    if args.expect == "menu":
+        if args.host_screenshot_dir is None:
+            parser.error("--expect menu requires --host-screenshot-dir and Pillow")
+        try:
+            from PIL import Image  # noqa: F401: validate the raster-check dependency before capture.
+        except ImportError:
+            parser.error("--expect menu requires Pillow in the observer Python environment")
     if min(args.prepare_seconds, args.seconds, args.interval) <= 0:
         parser.error("durations and interval must be positive")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     return not capture(args.port, args.output, args.expect, args.prepare_seconds,
-                       args.seconds, args.interval, args.screenshot_dir)
+                       args.seconds, args.interval, args.screenshot_dir, args.host_screenshot_dir)
 
 
 if __name__ == "__main__":

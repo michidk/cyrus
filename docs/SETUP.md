@@ -1049,7 +1049,11 @@ unsupported gameplay systems.
 
 Attach `python3 dev/scripts/native-startup-capture.py <control-port>
 <host-timeline.json> --expect movie` to a native production launch. Choose
-`--expect menu` for a book-menu launch or `--expect world` for world entry.
+`--expect menu --host-screenshot-dir <host-mount>` for a book-menu launch or
+`--expect world` for world entry. Book-menu acceptance requires Pillow in the
+observer Python environment and the host directory mounted at the game
+process's `--screenshot-dir`. It waits for a newly named completed PNG and
+rejects an entirely black book image, even when control reports the menu ready.
 Run the game with a host-mounted `CYRUS_CONFIG_DIR` and hold the shared
 `/tmp/cyrus-live.lock` for its lifetime. The observer does not launch the game,
 change its startup options, or acquire a second lock.
