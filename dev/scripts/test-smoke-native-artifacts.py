@@ -25,6 +25,38 @@ class SmokeTest(unittest.TestCase):
             self.assertIn('run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"', workflow)
             self.assertNotIn('binary="target/$BUILD_TARGET/release/', workflow)
 
+    def test_raytracing_payload_is_required_and_executed(self):
+        for target in ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                windows = "windows" in target
+                binary = root / ("cyrus.exe" if windows else "cyrus")
+                binary.write_text('#!/bin/sh\n[ "$1" = --help ] || exit 7\n')
+                binary.chmod(0o755)
+                package = root / f"cyrus-raytracing-{target}{'.zip' if windows else '.tar.gz'}"
+
+                def pack():
+                    if windows:
+                        with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
+                            archive.write(binary, binary.name)
+                    else:
+                        with tarfile.open(package, "w:gz") as archive:
+                            archive.add(binary, arcname=binary.name)
+
+                command = ["python3", str(SCRIPT), str(root), target, "--raytracing"]
+                pack()
+                good = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(good.returncode, 0, good.stderr)
+                binary.write_text("#!/bin/sh\nexit 9\n")
+                pack()
+                bad = subprocess.run(command, capture_output=True, text=True)
+                self.assertNotEqual(bad.returncode, 0)
+                self.assertIn("cyrus-raytracing", bad.stderr)
+                package.unlink()
+                missing = subprocess.run(command, capture_output=True, text=True)
+                self.assertNotEqual(missing.returncode, 0)
+                self.assertIn("cyrus-raytracing", missing.stderr)
+
     def test_packaged_executables_and_broken_bundle(self):
         for target in ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:

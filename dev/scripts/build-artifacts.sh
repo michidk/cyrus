@@ -10,15 +10,27 @@ stage=$(mktemp -d "$artifacts/package.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
 
 case "${1:-}" in
-    native|native-mods)
+    native|native-mods|native-raytracing)
         platform="${2:?Rust target required}"
-        rm -f "$artifacts/cyrus-viewer-$platform".{tar.gz,exe,zip}
-        rm -f "$artifacts/cyrus-$platform.exe"
+        artifact_suffix=""
+        features=()
+        if [[ "$1" = native-raytracing ]]; then
+            case "$platform" in
+                x86_64-unknown-linux-gnu|x86_64-pc-windows-msvc) ;;
+                *) echo "Ray-tracing packages are supported on Linux x64 and Windows x64: $platform" >&2; exit 2 ;;
+            esac
+            artifact_suffix=-raytracing
+            features=(--features cyrus/raytracing)
+            rm -f "$artifacts/cyrus-raytracing-$platform".{tar.gz,zip}
+        else
+            rm -f "$artifacts/cyrus-viewer-$platform".{tar.gz,exe,zip}
+            rm -f "$artifacts/cyrus-$platform.exe"
+        fi
         if [[ "$1" = native-mods ]]; then
             rm -f "$artifacts/cyrus-with-mods-$platform".{tar.gz,zip}
         fi
         apps=(cyrus)
-        if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
+        if [[ "$1" != native-raytracing && -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
         launcher=false
         if [[ "$1" = native-mods && -f crates/cyrus-launcher/Cargo.toml ]]; then
             apps+=(cyrus-launcher)
@@ -26,7 +38,7 @@ case "${1:-}" in
         fi
         packages=()
         for app in "${apps[@]}"; do packages+=(-p "$app"); done
-        cargo build --locked --release --target "$platform" "${packages[@]}"
+        cargo build --locked --release --target "$platform" "${packages[@]}" "${features[@]}"
         suffix=""
         if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
         # Compress every download; Unix archives also keep the executable bit.
@@ -35,7 +47,7 @@ case "${1:-}" in
             [[ "$app" != cyrus-launcher ]] || continue
             binary="$build_root/$platform/release/$app$suffix"
             if [[ -n "$suffix" ]]; then
-                python3 - "$binary" "$artifacts/$app-$platform.zip" <<'PYZIP'
+                python3 - "$binary" "$artifacts/$app$artifact_suffix-$platform.zip" <<'PYZIP'
 from pathlib import Path
 import sys, zipfile
 binary, destination = map(Path, sys.argv[1:])
@@ -43,7 +55,7 @@ with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
     archive.write(binary, binary.name)
 PYZIP
             else
-                tar -czf "$artifacts/$app-$platform.tar.gz" -C "$(dirname "$binary")" "$app"
+                tar -czf "$artifacts/$app$artifact_suffix-$platform.tar.gz" -C "$(dirname "$binary")" "$app"
             fi
         done
         if [[ "$1" = native-mods ]]; then
@@ -147,5 +159,5 @@ PY
         fi
         tar -czf "$artifacts/cyrus-browser.tar.gz" -C "$stage" browser
         ;;
-    *) echo 'usage: build-artifacts.sh native|native-mods <Rust target> | web' >&2; exit 2 ;;
+    *) echo 'usage: build-artifacts.sh native|native-mods|native-raytracing <Rust target> | web' >&2; exit 2 ;;
 esac

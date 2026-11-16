@@ -9,7 +9,7 @@ import tempfile
 import zipfile
 
 
-def smoke(artifacts: Path, target: str) -> None:
+def smoke(artifacts: Path, target: str, raytracing: bool = False) -> None:
     windows = "windows" in target
     suffix = ".exe" if windows else ""
     with tempfile.TemporaryDirectory(prefix="cyrus-package-smoke-") as directory:
@@ -45,6 +45,9 @@ def smoke(artifacts: Path, target: str) -> None:
                 raise RuntimeError(f"{package}: packaged {app} smoke failed: {error}") from error
 
         extension = ".zip" if windows else ".tar.gz"
+        if raytracing:
+            run(artifacts / f"cyrus-raytracing-{target}{extension}", "cyrus", "raytracing")
+            return
         run(artifacts / f"cyrus-{target}{extension}", "cyrus", "game")
         viewer = artifacts / f"cyrus-viewer-{target}{extension}"
         if viewer.exists():
@@ -54,9 +57,9 @@ def smoke(artifacts: Path, target: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("usage: smoke-native-artifacts.py ARTIFACT_DIRECTORY RUST_TARGET")
+    if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] != "--raytracing"):
+        sys.exit("usage: smoke-native-artifacts.py ARTIFACT_DIRECTORY RUST_TARGET [--raytracing]")
     try:
-        smoke(Path(sys.argv[1]).resolve(), sys.argv[2])
+        smoke(Path(sys.argv[1]).resolve(), sys.argv[2], len(sys.argv) == 4)
     except RuntimeError as error:
         sys.exit(str(error))

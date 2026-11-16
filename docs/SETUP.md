@@ -362,6 +362,14 @@ The `Release` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. Both applications are built from this workspace.
+
+Windows x64 and Linux x64 also have a separate `cyrus-raytracing-<target>`
+game archive, built with `cyrus/raytracing`. The standard archives retain their
+default feature set. The extra build requires a GPU with ray-query support to
+use traced lighting. Run `cyrus --mode modern --ray-tracing on` to enable it;
+Faithful lighting remains the default. There is no ray-tracing browser or macOS
+package. PR artifacts include the same extra native builds.
+
 All downloads are compressed: Windows executables ship inside ZIP archives;
 Linux, macOS and browser packages use gzip-compressed tar archives.
 Each native build also produces `cyrus-with-mods-<target>.tar.gz` on Linux and

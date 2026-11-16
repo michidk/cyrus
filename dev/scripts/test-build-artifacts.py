@@ -118,6 +118,38 @@ done
         self.build("native", windows)
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.zip").exists())
 
+    def test_raytracing_packages_preserve_standard_downloads(self):
+        for target, extension in (("x86_64-unknown-linux-gnu", ".tar.gz"),
+                                  ("x86_64-pc-windows-msvc", ".zip")):
+            with self.subTest(target=target):
+                (self.root / "crates/cyrus-viewer/Cargo.toml").touch()
+                self.build("native", target)
+                standard = self.root / f"target/artifacts/cyrus-{target}{extension}"
+                viewer = self.root / f"target/artifacts/cyrus-viewer-{target}{extension}"
+                originals = (standard.read_bytes(), viewer.read_bytes())
+                self.build("native-raytracing", target)
+                self.assertEqual((standard.read_bytes(), viewer.read_bytes()), originals)
+                package = self.root / f"target/artifacts/cyrus-raytracing-{target}{extension}"
+                if extension == ".zip":
+                    with zipfile.ZipFile(package) as archive:
+                        self.assertEqual(archive.namelist(), ["cyrus.exe"])
+                        self.assertEqual(archive.getinfo("cyrus.exe").compress_type,
+                                         zipfile.ZIP_DEFLATED)
+                else:
+                    self.assertEqual(self.members(package.name), {"cyrus"})
+                command = (self.root / "cargo-calls.txt").read_text().splitlines()[-1]
+                self.assertIn("--features cyrus/raytracing", command)
+                self.assertNotIn("cyrus-viewer", command)
+                self.assertNotIn("cyrus-launcher", command)
+
+    def test_raytracing_failure_removes_stale_download(self):
+        target = "x86_64-unknown-linux-gnu"
+        self.build("native-raytracing", target)
+        (self.root / "bin/cargo").write_text("#!/bin/bash\nexit 7\n")
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.build("native-raytracing", target)
+        self.assertFalse((self.root / f"target/artifacts/cyrus-raytracing-{target}.tar.gz").exists())
+
     def mod_fixtures(self):
         for name in ("guest", "shader", "manifest-only"):
             mod = self.root / "mods" / name
@@ -292,6 +324,12 @@ done
             self.assertIn("targets: ${{ matrix.target }}, wasm32-wasip2", native)
             self.assertIn('build-artifacts.sh native-mods "$BUILD_TARGET"', native)
             self.assertIn("target/artifacts/cyrus-with-mods-${{ matrix.target }}*", native)
+            self.assertIn('build-artifacts.sh native-raytracing "$BUILD_TARGET"', native)
+            self.assertIn('smoke-native-artifacts.py target/artifacts "$BUILD_TARGET" --raytracing', native)
+            self.assertIn("target/artifacts/cyrus-raytracing-${{ matrix.target }}*", native)
+            tracing_steps = native.split("      - name: Build and package ray-tracing game\n", 1)[1]
+            tracing_steps = tracing_steps.split("      - uses: actions/upload-artifact@", 1)[0]
+            self.assertEqual(tracing_steps.count("if: runner.os == 'Linux' || runner.os == 'Windows'"), 2)
 
     def test_mod_build_failure_does_not_leave_a_previous_bundle(self):
         self.mod_fixtures()
