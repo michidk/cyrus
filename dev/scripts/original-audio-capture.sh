@@ -39,11 +39,17 @@ conf_mount=()
 # Configure the host chord even when reusing an image built before this default.
 dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
 image=$("$here/ensure-retro-audio-runtime.sh")
+exec 9>/tmp/cyrus-live.lock
+if flock -w 30 9; then
+    :
+else
+    status=$?
+    echo 'original capture: live-run lock unavailable after 30s: /tmp/cyrus-live.lock' >&2
+    exit "$status"
+fi
 mkdir -p "$out/config"
 printf '%s\n' "$image" > "$out/reference-runtime.txt"
 docker image inspect --format '{{.Id}}' "$image" > "$out/reference-runtime.sha256"
-exec 9>/tmp/cyrus-live.lock
-flock 9
 python3 "$here/prepare-original-definitions.py" "$gog/extracted/app/Redguard" "$run/Redguard"
 if [ -n "${CYRUS_DOSBOX_AUTOEXEC:-}" ]; then
     conf="$run/dosbox-x.autoexec.conf"

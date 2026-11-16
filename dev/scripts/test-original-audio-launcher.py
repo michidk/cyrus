@@ -4,12 +4,40 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
 
 
 class AudioLauncher(unittest.TestCase):
+    def test_busy_live_run_lock_reports_a_bounded_failure_before_launch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'events.json').write_text('[]')
+            flock = root / 'flock'
+            flock.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$LOCK_ARGUMENTS"\nexit 75\n')
+            flock.chmod(0o755)
+            scripts = root / 'dev/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy2(Path(__file__).with_name('original-audio-capture.sh'), scripts)
+            runtime = scripts / 'ensure-retro-audio-runtime.sh'
+            runtime.write_text('#!/bin/sh\nprintf "%s\\n" cyrus-retro-audio:test\n')
+            runtime.chmod(0o755)
+            result = subprocess.run(
+                ['bash', str(scripts / 'original-audio-capture.sh'),
+                 str(root / 'events.json'), str(root / 'output'), '1'],
+                capture_output=True, text=True, timeout=3,
+                env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
+                     'LOCK_ARGUMENTS': str(root / 'lock-arguments'),
+                     'CYRUS_RETRO_RUN': str(root / 'run'),
+                     'CYRUS_RETRO_GOG': str(root / 'gog')},
+            )
+            self.assertEqual(result.returncode, 75, result.stderr)
+            self.assertIn('original capture: live-run lock unavailable after 30s', result.stderr)
+            self.assertEqual((root / 'lock-arguments').read_text().strip(), '-w 30 9')
+            self.assertFalse((root / 'output').exists())
+
     def test_state_reader_can_import_its_region_owner(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -44,12 +72,19 @@ elif args[0] == 'exec':
     sys.exit(result.returncode)
 ''')
             docker.chmod(0o755)
-            # Queue/lock coordination is outside this isolated payload contract.
             flock = root / 'flock'
             flock.write_text('#!/bin/sh\nexit 0\n')
             flock.chmod(0o755)
+            scripts = root / 'dev/scripts'
+            scripts.mkdir(parents=True)
+            for name in ('original-audio-capture.sh', 'prepare-original-definitions.py',
+                         'original-capture-inner.py', 'capture-hook.py', 'original-memory-region.py'):
+                shutil.copy2(Path(__file__).with_name(name), scripts / name)
+            runtime = scripts / 'ensure-retro-audio-runtime.sh'
+            runtime.write_text('#!/bin/sh\nprintf "%s\\n" cyrus-retro-audio:test\n')
+            runtime.chmod(0o755)
             result = subprocess.run(
-                ['bash', str(Path(__file__).with_name('original-audio-capture.sh')),
+                ['bash', str(scripts / 'original-audio-capture.sh'),
                  str(root / 'events.json'), str(root / 'output'), '1'],
                 capture_output=True, text=True, timeout=10,
                 env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
