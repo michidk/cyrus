@@ -99,6 +99,7 @@ jobs:
 
       - name: Check build and capture provenance
         run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil
           python3 dev/scripts/test-build-provenance.py
           python3 dev/scripts/test-cargo-wrapper.py
           python3 dev/scripts/test-original-startup-capture.py
