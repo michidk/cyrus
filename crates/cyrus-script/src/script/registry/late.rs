@@ -96,6 +96,7 @@ impl ScriptWorld {
     /// swim entry and walk exit group requests, the splash effect object (identifiers 0x2500 water,
     /// 0x2580 lava) and the splash sound. `effect_height` is the effect's Q8 Y from the support
     /// query (`None` without support); a host without effect or camera services creates no effect.
+    /// The actor must belong to this live world, including for an unchanged surface.
     #[allow(clippy::too_many_arguments)] // the handler's inputs: surfaces, clock, random, support, sink
     pub fn selected_surface_transition(
         &mut self,
@@ -107,6 +108,7 @@ impl ScriptWorld {
         effect_height: Option<i32>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        self.resolve(id)?;
         if returned == previous {
             return Ok(());
         }

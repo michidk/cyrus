@@ -44022,6 +44022,37 @@ fn surface_transition(
 }
 
 #[test]
+fn water_transition_rejects_retired_world_owner_before_effects() {
+    let (mut world, _, _) = static_model_fixture(cache());
+    let id = world.id(0).unwrap();
+    world.set_actor_surface(id, Surface::from_byte(1)).unwrap();
+    let retired = cyrus_script::script::ScriptActorId {
+        generation: id.generation.wrapping_add(1),
+        index: id.index,
+    };
+    for returned in [Surface::UNKNOWN, Surface::from_byte(1)] {
+        let mut sounds = Vec::new();
+        let error = world
+            .selected_surface_transition(
+                retired,
+                Surface::UNKNOWN,
+                returned,
+                1,
+                &mut cyrus_game::random::EngineRandom::default(),
+                None,
+                &mut |_, sound| {
+                    sounds.push(sound);
+                    Ok(())
+                },
+            )
+            .expect_err("retired world must not publish a water transition");
+        assert!(error.to_string().contains("stale"), "{error:#}");
+        assert!(sounds.is_empty());
+        assert_eq!(world.actor_surface(id).unwrap(), Surface::from_byte(1));
+    }
+}
+
+#[test]
 fn selected_surface_transition_requests_swim_groups_and_plays_the_splash_sound() {
     use cyrus_script::script::ScriptSound;
     // An unchanged returned surface does nothing, and neither does dry to dry.
