@@ -85,6 +85,12 @@ if [ "$status" != 0 ]; then
     recorder_pid=
     exit "$status"
 fi
+# Completed Cargo output now owns the final checkpoint. Stop best-effort unit
+# recording before copying the executable so it cannot compete for host I/O.
+# An interrupted unit remains unpublished; the final artifact is sealed below.
+kill "$recorder_pid" 2>/dev/null || true
+wait "$recorder_pid" || true
+recorder_pid=
 python3 dev/scripts/build-provenance.py snapshot "$current"
 if ! cmp -s "$snapshot" "$current"; then
     echo 'source changed during native build; executable checkpoint rejected' >&2
@@ -98,5 +104,3 @@ cp "$snapshot" "$current"
 python3 dev/scripts/build-provenance.py seal "$current" "$output"
 mv "$current" "$output.provenance.json"
 echo "retained validated native executable: $output"
-wait "$recorder_pid"
-recorder_pid=

@@ -156,6 +156,27 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
             stdout, stderr = process.communicate(timeout=15)
         self.assertEqual(process.returncode, 0, stdout + stderr)
 
+    def test_final_publication_stops_competing_unit_recording(self):
+        recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'
+        recorder.write_text("import sys,time,signal\nfrom pathlib import Path\n"
+                            "if sys.argv[1] == 'record':\n"
+                            " marker=Path('recorder-active');marker.touch()\n"
+                            " def stop(*args): marker.unlink();sys.exit(0)\n"
+                            " signal.signal(signal.SIGTERM,stop)\n"
+                            " while True: time.sleep(.01)\n" + recorder.read_text())
+        cargo = self.root / 'bin/fake-cargo'
+        cargo.write_text(cargo.read_text().replace(
+            "exe=target/'debug/cyrus'", "import time\n"
+            "while not (root/'recorder-active').exists(): time.sleep(.01)\n"
+            "exe=target/'debug/cyrus'"))
+        checkpoint = self.root / 'dev/scripts/web-build-checkpoint.py'
+        checkpoint.write_text("import sys\nfrom pathlib import Path\n"
+                              "if sys.argv[1] == 'store' and Path('recorder-active').exists():\n"
+                              " sys.exit('final executable publication competes with unit recording')\n"
+                              + checkpoint.read_text())
+        self.run_build()
+        self.assertTrue(Path(str(self.output) + '.provenance.json').exists())
+
     def test_changed_source_and_compiler_reject_reuse(self):
         self.run_build()
         for path in (self.source, self.root / 'compiler'):
