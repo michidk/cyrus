@@ -220,6 +220,12 @@ fn create(
     book: &MenuAsset,
     surfaces: Vec<PageTexture>,
 ) -> Result<BookScene, Vec<PageTexture>> {
+    let size = drawing
+        .windows
+        .single()
+        .map_or(UVec2::new(WIDTH, HEIGHT), |window| {
+            window.physical_size().max(UVec2::ONE)
+        });
     let BookDrawing {
         commands,
         images,
@@ -234,7 +240,11 @@ fn create(
     let Ok((sprite_entity, mut sprite)) = sprite.single_mut() else {
         return Err(surfaces);
     };
-    let target = images.add(super::view3d::target_image([0, 0, 0, 255]));
+    let target = images.add(super::view3d::target_image_sized(
+        size.x,
+        size.y,
+        [0, 0, 0, 255],
+    ));
     menu.image = target.clone();
     sprite.image = target.clone();
     let textures: Vec<Handle<Image>> = surfaces
@@ -424,6 +434,55 @@ pub(super) fn present(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn first_book_publication_uses_the_window_render_extent() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
+            eprintln!("skipped: no install (first book publication)");
+            return;
+        };
+        let cache = std::env::temp_dir().join(format!("cyrus-first-book-{}", std::process::id()));
+        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let book: MenuAsset =
+            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        let surfaces = book.textures.clone();
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<LitMaterial>>()
+            .init_resource::<Assets<MenuAsset>>()
+            .add_systems(Update, present);
+        let asset = app
+            .world_mut()
+            .resource_mut::<Assets<MenuAsset>>()
+            .add(book);
+        let mut menu = MenuState::default();
+        menu.asset = asset;
+        menu.painted = Some(Painted::Surfaces(surfaces));
+        app.insert_resource(menu);
+        let size = UVec2::new(1280, 720);
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(size.x, size.y);
+        app.world_mut().spawn(window);
+        app.world_mut().spawn((Sprite::default(), StartupContent));
+        app.update();
+        let scene = app.world().resource::<BookScene>();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&scene.target)
+                .unwrap()
+                .size(),
+            size
+        );
+        std::fs::remove_dir_all(cache).unwrap();
+    }
 
     #[test]
     fn book_fills_resized_windows_and_leaves_paused_backdrops_untouched() {
