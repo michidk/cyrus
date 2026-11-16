@@ -500,9 +500,15 @@ impl App {
         let mut changed = false;
         theme::row(
             ui,
+            "Skip the splash screen",
+            "Open the menu without the opening logos.",
+            |ui| changed = theme::toggle(ui, &mut self.options.skip_splash).changed(),
+        );
+        theme::row(
+            ui,
             "Skip the introduction movie",
             "Enter a new game without it.",
-            |ui| changed = theme::toggle(ui, &mut self.options.skip_movies).changed(),
+            |ui| changed |= theme::toggle(ui, &mut self.options.skip_movies).changed(),
         );
         if changed {
             self.record_save(Change::GameOptions(&self.options).save(cyrus_config::config_dir()));
