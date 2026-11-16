@@ -1,6 +1,6 @@
 # Runtime for cyrus without a GPU or screen: Xvfb + lavapipe (software Vulkan) + noVNC.
 # The binary is built on the host and bind-mounted; this image only has the libraries.
-FROM ubuntu:26.04@sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify xdotool mesa-vulkan-drivers vulkan-tools \
