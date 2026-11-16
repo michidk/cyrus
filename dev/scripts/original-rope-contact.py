@@ -32,6 +32,7 @@ class Driver:
         self.progress_record = {}
         self.schedule_command = None
         self.schedule_frame_scale = None
+        self.require_displacement = False
         self.attachment = False
         self.physical_release = False
         self.detach_release_after = None
@@ -198,6 +199,8 @@ class Driver:
 
     def exact_segment(self, command, frames, phase, key=None):
         request = dict(phase=phase, frames=frames, key=key)
+        if self.require_displacement and key == 'Up':
+            request['require_displacement'] = True
         if self.attachment:
             request['scenario'] = 'attachment'
         if self.physical_release:
@@ -302,6 +305,16 @@ def validate_snapshots(result, frames):
     return snapshots
 
 
+def validate_displacement(start, end):
+    """Require measured Q8 movement for a fixture that promises displacement."""
+    positions = [row['player'].get('position_q8') for row in (start, end)]
+    if any(not isinstance(position, list) or len(position) != 3
+           or any(type(value) is not int for value in position) for position in positions):
+        raise ValueError('movement capture requires a complete integer Q8 position')
+    if positions[0] == positions[1]:
+        raise ValueError('movement capture has no displacement despite acknowledged input')
+
+
 def validate_schedule(result, request):
     """Accept exact clocks only with a contiguous consumed-step acknowledgement."""
     frames, key = request['frames'], request['key']
@@ -333,6 +346,8 @@ def validate_schedule(result, request):
     if (type(start['clock_scale']) is not int or type(end['clock_scale']) is not int
             or end['clock_scale'] - start['clock_scale'] != elapsed or elapsed <= 0):
         raise ValueError('boundary clock differs from consumed frame scales')
+    if request.get('require_displacement'):
+        validate_displacement(start, end)
     snapshots = validate_snapshots(result, frames) if request.get('atomic_snapshots') else None
     edges_to_publish = [('start', start, True)]
     if release_after < frames:
@@ -420,6 +435,8 @@ def main():
     parser.add_argument('--ready-timeout', type=float, default=100)
     parser.add_argument('--pulse', type=float, default=.2)
     parser.add_argument('--schedule-command', help='local executable accepting a JSON schedule on stdin; returns boundary and consumed-step acknowledgements')
+    parser.add_argument('--require-displacement', action='store_true',
+                        help='reject stationary forward-input schedules; requires --schedule-command')
     parser.add_argument('--record', action='store_true',
                         help='record the DOSBox-X mixer with the Ctrl+Alt host modifier')
     parser.add_argument('--attack-key', default='Control_L')
@@ -442,6 +459,9 @@ def main():
             driver.detach_release_after = args.attack_frames
         if args.attachment and not args.schedule_command:
             parser.error('--attachment requires acknowledged --schedule-command boundaries')
+        if args.require_displacement and not args.schedule_command:
+            parser.error('--require-displacement requires --schedule-command')
+        driver.require_displacement = args.require_displacement
         driver.schedule_command = args.schedule_command
         driver.schedule_frame_scale = args.schedule_frame_scale
         if args.resume and args.progress is None:

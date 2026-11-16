@@ -252,6 +252,33 @@ class ExactSchedule(unittest.TestCase):
             with self.subTest(wrong=wrong), self.assertRaises((ValueError, RuntimeError)):
                 module.validate_schedule(wrong, request)
 
+    def test_required_displacement_needs_an_acknowledged_schedule(self):
+        result = subprocess.run([sys.executable, str(DRIVER), '--reader', 'absent',
+            '--require-displacement', '--place', 'absent'], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--require-displacement requires --schedule-command', result.stderr)
+
+    def test_required_displacement_rejects_stationary_or_missing_positions(self):
+        import copy
+        module = Readiness().module()
+        request = dict(phase='walk-in', frames=1, key='Up', require_displacement=True)
+        player = dict(drawn=True, falling=0, living=0, health=100, position_q8=[0, 0, 0])
+        result = dict(phase='walk-in', key='Up', normal_frame_rate=12, boundaries=[
+            dict(frame=10, clock_scale=0, input_state={'Up': True}, player=copy.deepcopy(player)),
+            dict(frame=11, clock_scale=256, input_state={'Up': False}, player=copy.deepcopy(player))],
+            steps=[dict(frame=10, frame_scale=256, input_state={'Up': True})])
+        with self.assertRaisesRegex(ValueError, 'no displacement'):
+            module.validate_schedule(result, request)
+        for position in [None, [1, 2], [True, 0, 0], [0.5, 0, 0]]:
+            result['boundaries'][1]['player']['position_q8'] = position
+            with self.subTest(position=position), self.assertRaisesRegex(ValueError, 'Q8 position'):
+                module.validate_schedule(result, request)
+        result['boundaries'][1]['player']['position_q8'] = [1, 0, 0]
+        self.assertEqual(len(module.validate_schedule(result, request)), 2)
+        result['boundaries'][1]['player']['position_q8'] = [0, 0, 0]
+        request['require_displacement'] = False
+        self.assertEqual(len(module.validate_schedule(result, request)), 2)
+
     def test_physical_snapshots_reject_duplicate_frames_and_inconsistent_state(self):
         import copy
         module = Readiness().module()

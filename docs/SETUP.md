@@ -1495,6 +1495,13 @@ debugger stops can change measured FPS, so exact boundary timing alone does not
 establish ordinary playback cadence or gameplay parity. Without this option,
 original host-input acquisition retains its conservative clock ranges.
 
+`original-rope-contact.py --require-displacement` additionally rejects a forward-input
+schedule whose starting and ending Q8 positions are identical. Use it for fixtures
+that promise movement, not intentional wall contacts. It requires `--schedule-command`
+and complete integer `position_q8` triples at both boundaries. Acknowledged keys
+and advancing clocks alone do not establish that a movement transition occurred.
+The `validate_displacement` helper applies the same admission to local movement rigs.
+
 `original-rope-contact.py --schedule-frame-scale N` requires every consumed
 instrumented update to use that measured Q8 scale; the backend must wait for an
 admissible start and the driver rejects a changed scale. `--attack-frames` and
