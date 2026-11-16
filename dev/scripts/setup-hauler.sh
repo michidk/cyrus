@@ -11,11 +11,26 @@ export CARGO_HAULER_OVERLAP_EXECUTION=0
 command -v npm >/dev/null || { echo "setup-hauler: no npm, skipping (builds use plain cargo)"; exit 0; }
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a==22&&b>=19)?0:1)' \
     || { echo "setup-hauler: Node >= 22.19 needed, skipping"; exit 0; }
-npm install -g --silent "cargo-hauler@$version"
-root="$(npm root -g)/cargo-hauler/dist"
+# Startup may already have restored the pinned CLI through a persistent symlink.
+# Reuse its actual package instead of asking npm to overwrite that launcher.
+if command -v hauler >/dev/null && [ "$(hauler --version 2>/dev/null || true)" = "cargo-hauler $version" ]; then
+    root="$(dirname "$(dirname "$(realpath "$(command -v hauler)")")")"
+else
+    npm install -g --silent "cargo-hauler@$version"
+    root="$(npm root -g)/cargo-hauler/dist"
+fi
 if command -v claude >/dev/null; then
-    claude plugin marketplace list 2>/dev/null | grep -q cargo-hauler-marketplace \
-        || claude plugin marketplace add "$root"
+    marketplace=$(claude plugin marketplace list --json | python3 -c '
+import json, sys
+print(next((entry.get("path") or entry.get("installLocation", "")
+            for entry in json.load(sys.stdin)
+            if entry["name"] == "cargo-hauler-marketplace"), ""))')
+    if [ "$marketplace" != "$root" ]; then
+        if [ -n "$marketplace" ]; then
+            claude plugin marketplace remove cargo-hauler-marketplace
+        fi
+        claude plugin marketplace add "$root"
+    fi
     # The installer's --scope project would bind to its own directory; run Claude's command here instead.
     claude plugin install cargo-hauler@cargo-hauler-marketplace --scope project
 fi
