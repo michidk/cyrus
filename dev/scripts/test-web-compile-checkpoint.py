@@ -133,10 +133,10 @@ class Recovery(unittest.TestCase):
         self.assertEqual(list(self.target.rglob("*")), [])
 
     def test_orchestration_changes_do_not_invalidate_identical_compilation(self):
-        self.identity = {'source': {'sha256': 'before', 'files': {'crates/app/lib.rs': 'same', 'dev/scripts/run.sh': 'before', 'dev/vendor/lib.rs': 'same'}}, 'configuration': 'flags'}
+        self.identity = {'source': {'revision': 'before-commit', 'sha256': 'before', 'files': {'crates/app/lib.rs': 'same', 'dev/scripts/run.sh': 'before', 'dev/vendor/lib.rs': 'same'}}, 'configuration': 'flags'}
         self.store()
         units.shutil.rmtree(self.target)
-        changed = {'source': {'sha256': 'after', 'files': {'crates/app/lib.rs': 'same', 'dev/scripts/run.sh': 'after', 'dev/vendor/lib.rs': 'same'}}, 'configuration': 'flags'}
+        changed = {'source': {'revision': 'after-commit', 'sha256': 'after', 'files': {'crates/app/lib.rs': 'same', 'dev/scripts/run.sh': 'after', 'dev/vendor/lib.rs': 'same'}}, 'configuration': 'flags'}
         self.assertEqual(units.restore(self.cache, self.target, changed), 3)
         changed['source']['files']['crates/app/lib.rs'] = 'changed'
         units.shutil.rmtree(self.target)

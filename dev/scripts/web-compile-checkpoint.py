@@ -22,10 +22,10 @@ spec.loader.exec_module(checkpoint)
 
 
 def compiler_identity(expected):
-    """Build orchestration is not a rustc input; retain compatibility with old units."""
+    """Match compiler inputs by content, independent of commit and orchestration."""
     source = expected['source']
     if isinstance(source, dict) and 'files' in source:
-        source = {**{k: v for k, v in source.items() if k not in ('files', 'sha256')},
+        source = {**{k: v for k, v in source.items() if k not in ('files', 'sha256', 'revision')},
                   'files': {k: v for k, v in source['files'].items() if not k.startswith(('dev/scripts/', 'dev/web/'))}}
     return {**expected, 'source': source}
 
