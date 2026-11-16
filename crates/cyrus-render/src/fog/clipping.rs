@@ -340,6 +340,12 @@ fn prepare(
             continue;
         };
         let Some(lights) = images.get(&extension.lights) else {
+            if let Some(mut target) = meshes.get_mut(&draw.0) {
+                *target = Mesh::new(PrimitiveTopology::TriangleList, default());
+                draw.set_changed();
+            }
+            // Retry even when the same handle returns with the previous inputs.
+            source.previous = None;
             continue;
         };
         let result = draw_mesh(
@@ -1290,6 +1296,37 @@ mod tests {
             );
             assert_eq!(app.world().get::<Mesh3d>(source).unwrap().0, source_mesh);
         }
+        app.update();
+        app.update();
+        let light_image = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .remove(light.id())
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .count_vertices(),
+            0,
+            "a missing runtime light table must retire the previous lit draw"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Image>>()
+            .insert(light.id(), light_image)
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&expected_colors),
+            "restoring the same light handle must rebuild every prepared color"
+        );
         app.world_mut().entity_mut(source).despawn();
         assert!(app.world().get_entity(draw).is_err());
     }
