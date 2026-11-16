@@ -6,6 +6,7 @@ reported by completed compilation units, their dep-info and Cargo fingerprints,
 and completed build-script output are retained. No profile/cache sweep is used.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import json
 import os
@@ -109,109 +110,113 @@ def retain(directory, target, event, expected):
             os.rename(staged, destination)
 
 
-def restore(directory, target, expected, retain_unpacked=None):
-    """Restore units, optionally retaining validated expansion across target resets.
-
-    CYRUS_COMPILE_RETAIN_UNPACKED=1 trades checkpoint storage for avoiding repeated
-    gzip expansion. Retained bytes are revalidated on every use, and Cargo still
-    owns freshness. Publication never replaces a live target file.
-    """
-    if retain_unpacked is None:
-        retain_unpacked = os.environ.get('CYRUS_COMPILE_RETAIN_UNPACKED') == '1'
+def restore_unit(unit, target, expected, retain_unpacked):
+    """Validate a complete unit before publishing any of its missing files."""
     restored = 0
-    for unit in sorted((directory / 'units').glob('*')):
-        if not re.fullmatch(r'[0-9a-f]{64}-[0-9a-f]{64}', unit.name):
-            continue  # An interrupted staging directory is never a completion.
-        record = json.loads((unit / 'record.json').read_text())
-        if compiler_identity(record['identity']) != compiler_identity(expected):
-            continue
-        pack(unit)
-        if retain_unpacked:
-            unpacked = unit / 'unpacked'
-            if not unpacked.exists():
-                # Publish only a whole validated unit. A reset leaves an ignored
-                # temporary directory, never a reusable partial expansion.
-                with tempfile.TemporaryDirectory(dir=unit) as temporary:
-                    view = Path(temporary)
-                    (view / 'units').mkdir()
-                    (view / 'units' / unit.name).symlink_to(unit.resolve(), target_is_directory=True)
-                    restore(view, view / 'files', expected, retain_unpacked=False)
-                    os.rename(view / 'files', unpacked)
-            target.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(dir=target) as temporary:
-                staged_root = Path(temporary)
-                pending = []
-                for name, digest in record['files'].items():
-                    relative = Path(name)
-                    if relative.is_absolute() or '..' in relative.parts:
-                        raise ValueError('unsafe compilation checkpoint path')
-                    source = unpacked / relative
-                    if source.is_symlink() or not source.is_file() or checkpoint.digest(source) != digest:
-                        raise ValueError('corrupt compilation checkpoint: ' + name)
-                    output = target / relative
-                    if not output.exists():
-                        staged = staged_root / relative
-                        staged.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(source, staged)
-                        pending.append((staged, output))
-                for staged, output in pending:
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        os.link(staged, output)
-                    except FileExistsError:
-                        continue
-                    restored += 1
-            continue
-        # Gzip random access repeatedly decompresses large compiler libraries.
-        # Validate and stage the entire unit in one forward pass before linking
-        # any member into the shared target. Staging shares the target filesystem.
+    record = json.loads((unit / 'record.json').read_text())
+    if compiler_identity(record['identity']) != compiler_identity(expected):
+        return 0
+    pack(unit)
+    if retain_unpacked:
+        unpacked = unit / 'unpacked'
+        if not unpacked.exists():
+            # Publish only a whole validated unit. A reset leaves an ignored
+            # temporary directory, never a reusable partial expansion.
+            with tempfile.TemporaryDirectory(dir=unit) as temporary:
+                view = Path(temporary)
+                (view / 'units').mkdir()
+                (view / 'units' / unit.name).symlink_to(unit.resolve(), target_is_directory=True)
+                restore(view, view / 'files', expected, retain_unpacked=False)
+                os.rename(view / 'files', unpacked)
         target.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=target) as temporary:
             staged_root = Path(temporary)
-            staged_files = []
-            seen = set()
-            with tarfile.open(unit / 'files.tar.gz', 'r|gz') as archive:
-                for member in archive:
-                    name = member.name
-                    if name not in record['files']:
-                        continue
-                    relative = Path(name)
-                    if relative.is_absolute() or '..' in relative.parts:
-                        raise ValueError('unsafe compilation checkpoint path')
-                    if name in seen or not member.isfile():
-                        raise ValueError('invalid compilation checkpoint member: ' + name)
-                    seen.add(name)
-                    output = target / relative
+            pending = []
+            for name, digest in record['files'].items():
+                relative = Path(name)
+                if relative.is_absolute() or '..' in relative.parts:
+                    raise ValueError('unsafe compilation checkpoint path')
+                source = unpacked / relative
+                if source.is_symlink() or not source.is_file() or checkpoint.digest(source) != digest:
+                    raise ValueError('corrupt compilation checkpoint: ' + name)
+                output = target / relative
+                if not output.exists():
                     staged = staged_root / relative
-                    write = not output.exists()
-                    if write:
-                        staged.parent.mkdir(parents=True, exist_ok=True)
-                    digest = checkpoint.hashlib.sha256()
-                    with archive.extractfile(member) as source:
-                        if write:
-                            with staged.open('wb') as destination:
-                                while block := source.read(1024 * 1024):
-                                    digest.update(block)
-                                    destination.write(block)
-                        else:
-                            while block := source.read(1024 * 1024):
-                                digest.update(block)
-                    if digest.hexdigest() != record['files'][name]:
-                        raise ValueError('corrupt compilation checkpoint: ' + name)
-                    if write:
-                        os.chmod(staged, member.mode)
-                        os.utime(staged, (member.mtime, member.mtime))
-                        staged_files.append((staged, output))
-            if seen != record['files'].keys():
-                raise ValueError('incomplete compilation checkpoint')
-            for staged, output in staged_files:
+                    staged.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, staged)
+                    pending.append((staged, output))
+            for staged, output in pending:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     os.link(staged, output)
                 except FileExistsError:
-                    continue  # Another shared-target owner published first.
+                    continue
                 restored += 1
+        return restored
+    # Gzip random access repeatedly decompresses large compiler libraries.
+    # Validate and stage the entire unit in one forward pass before linking
+    # any member into the shared target. Staging shares the target filesystem.
+    target.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=target) as temporary:
+        staged_root = Path(temporary)
+        staged_files = []
+        seen = set()
+        with tarfile.open(unit / 'files.tar.gz', 'r|gz') as archive:
+            for member in archive:
+                name = member.name
+                if name not in record['files']:
+                    continue
+                relative = Path(name)
+                if relative.is_absolute() or '..' in relative.parts:
+                    raise ValueError('unsafe compilation checkpoint path')
+                if name in seen or not member.isfile():
+                    raise ValueError('invalid compilation checkpoint member: ' + name)
+                seen.add(name)
+                output = target / relative
+                staged = staged_root / relative
+                write = not output.exists()
+                if write:
+                    staged.parent.mkdir(parents=True, exist_ok=True)
+                digest = checkpoint.hashlib.sha256()
+                with archive.extractfile(member) as source:
+                    if write:
+                        with staged.open('wb') as destination:
+                            while block := source.read(1024 * 1024):
+                                digest.update(block)
+                                destination.write(block)
+                    else:
+                        while block := source.read(1024 * 1024):
+                            digest.update(block)
+                if digest.hexdigest() != record['files'][name]:
+                    raise ValueError('corrupt compilation checkpoint: ' + name)
+                if write:
+                    os.chmod(staged, member.mode)
+                    os.utime(staged, (member.mtime, member.mtime))
+                    staged_files.append((staged, output))
+        if seen != record['files'].keys():
+            raise ValueError('incomplete compilation checkpoint')
+        for staged, output in staged_files:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.link(staged, output)
+            except FileExistsError:
+                continue  # Another shared-target owner published first.
+            restored += 1
     return restored
+
+
+def restore(directory, target, expected, retain_unpacked=None):
+    """Restore validated units concurrently within the caller's hauler lane.
+
+    CYRUS_COMPILE_RETAIN_UNPACKED=1 retains validated expansion across target
+    resets. Retained bytes are revalidated and live target files are preserved.
+    """
+    if retain_unpacked is None:
+        retain_unpacked = os.environ.get('CYRUS_COMPILE_RETAIN_UNPACKED') == '1'
+    units = [unit for unit in sorted((directory / 'units').glob('*'))
+             if re.fullmatch(r'[0-9a-f]{64}-[0-9a-f]{64}', unit.name)]
+    with ThreadPoolExecutor(max_workers=4) as workers:
+        return sum(workers.map(lambda unit: restore_unit(unit, target, expected, retain_unpacked), units))
 
 
 def restore_executable(directory, output, expected):

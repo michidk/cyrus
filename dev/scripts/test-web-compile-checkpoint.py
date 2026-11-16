@@ -6,6 +6,7 @@ import tempfile
 import subprocess
 import sys
 import unittest
+import threading
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('units', Path(__file__).with_name('web-compile-checkpoint.py'))
@@ -41,6 +42,26 @@ class Recovery(unittest.TestCase):
         units.shutil.rmtree(self.target)
         self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
         self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+
+    def test_independent_units_restore_concurrently_inside_one_request(self):
+        self.store()
+        other = self.artifact.with_name('libother-def.rlib')
+        other.write_bytes(b'another completed unit')
+        units.retain(self.cache, self.target,
+                     {'reason': 'compiler-artifact', 'target': {'name': 'other'},
+                      'filenames': [str(other)]}, self.identity)
+        barrier = threading.Barrier(2, timeout=3)
+        original = units.pack
+
+        def overlap(unit):
+            barrier.wait()
+            return original(unit)
+
+        units.shutil.rmtree(self.target)
+        with patch.object(units, 'pack', side_effect=overlap):
+            self.assertEqual(units.restore(self.cache, self.target, self.identity), 4)
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+        self.assertEqual(other.read_bytes(), b'another completed unit')
 
     def test_changed_completed_unit_still_records_new_bytes(self):
         self.store()
