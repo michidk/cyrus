@@ -180,7 +180,7 @@ done
                 with tarfile.open(path) as archive:
                     files = {m.name.removeprefix("./"): archive.extractfile(m).read()
                              for m in archive if m.isfile()}
-            expected = {f"cyrus{suffix}", "MODS.txt", "game-config/mods.json",
+            expected = {f"cyrus{suffix}", "game-config/mods.json",
                         "game-config/mods/guest/mod.toml", "game-config/mods/guest/mod.wasm",
                         "game-config/mods/shader/mod.toml", "game-config/mods/shader/effect.wesl",
                         "game-config/mods/manifest-only/mod.toml",
@@ -231,51 +231,15 @@ done
                 else:
                     with tarfile.open(str(stem) + ".tar.gz") as archive:
                         files = {m.name.removeprefix("./") for m in archive if m.isfile()}
-                        for app in ("cyrus", "cyrus-launcher", "play-cyrus.sh"):
+                        for app in ("cyrus", "cyrus-launcher"):
                             self.assertTrue(archive.getmember(f"./{app}").mode & 0o111)
                 self.assertIn(f"cyrus{suffix}", files)
                 self.assertIn(f"cyrus-launcher{suffix}", files)
-                self.assertIn("play-cyrus.cmd" if suffix else "play-cyrus.sh", files)
                 calls = (self.root / "cargo-calls.txt").read_text().splitlines()
                 build = [call for call in calls if call.startswith(
                     f"build --locked --release --target {platform} ")]
                 self.assertEqual(len(build), 1)
                 self.assertIn("-p cyrus-launcher", build[0])
-
-    def test_bundle_entry_selects_its_directory_and_preserves_config_override(self):
-        self.mod_fixtures()
-        launcher = self.root / "crates/cyrus-launcher"
-        launcher.mkdir()
-        (launcher / "Cargo.toml").touch()
-        platform = "x86_64-unknown-linux-gnu"
-        self.build("native-mods", platform)
-        extracted = self.root / "extracted bundle with spaces"
-        extracted.mkdir()
-        with tarfile.open(self.root / f"target/artifacts/cyrus-with-mods-{platform}.tar.gz") as archive:
-            archive.extractall(extracted)
-        probe = extracted / "cyrus-launcher"
-        probe.write_text('#!/bin/sh\npwd > "$ENTRY_REPORT"\nprintf "%s\\n" "${CYRUS_CONFIG_DIR-unset}" "$@" >> "$ENTRY_REPORT"\nexit 17\n')
-        probe.chmod(0o755)
-        entry = extracted / "play-cyrus.sh"
-        self.assertTrue(entry.is_file())
-        unrelated = self.root / "unrelated"
-        unrelated.mkdir()
-        for override in (None, str(self.root / "custom config")):
-            env = dict(self.env, ENTRY_REPORT=str(self.root / "entry-report"))
-            env.pop("CYRUS_CONFIG_DIR", None)
-            if override is not None:
-                env["CYRUS_CONFIG_DIR"] = override
-            result = subprocess.run([str(entry), "argument with spaces"], cwd=unrelated, env=env)
-            self.assertEqual(result.returncode, 17)
-            self.assertEqual((self.root / "entry-report").read_text().splitlines(),
-                             [str(extracted), override or "unset", "argument with spaces"])
-        platform = "x86_64-pc-windows-msvc"
-        self.build("native-mods", platform)
-        with zipfile.ZipFile(self.root / f"target/artifacts/cyrus-with-mods-{platform}.zip") as archive:
-            entry = archive.read("play-cyrus.cmd").decode()
-        self.assertIn('cd /d "%~dp0"', entry)
-        self.assertIn('cyrus-launcher.exe %*', entry)
-        self.assertNotIn("CYRUS_CONFIG_DIR", entry)
 
     def test_download_page_links_complete_launcher_bundles(self):
         class Links(HTMLParser):

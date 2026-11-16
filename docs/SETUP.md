@@ -380,10 +380,8 @@ default. Extract the whole archive and launch from the extracted directory,
 then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
 included `game-config` directory. When the revision includes `cyrus-launcher`,
 the bundle also includes that executable beside `cyrus`. Keep both in the same
-folder. Start `play-cyrus.cmd` on Windows or `play-cyrus.sh` on Linux/macOS to
-choose game files, mods and presentation settings before playing. These entry
-scripts select the extracted directory even when invoked from another working
-directory, and preserve an explicit `CYRUS_CONFIG_DIR` override. The ordinary game-only downloads remain available.
+folder. Run `cyrus-launcher` from the extracted folder to
+choose game files, mods and presentation settings before playing. The ordinary game-only downloads remain available.
 No package contains the original game data or the builder's local state.
 Native release and PR smoke checks run `--help` from the packaged game and viewer
 payloads and the bundled game, with a temporary config directory. They reject
