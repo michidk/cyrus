@@ -2546,6 +2546,9 @@ publish a final executable checkpoint. Run the reset/recovery controls with
 Crate tests can retain completed compilation units through the same queue lane:
 set `CYRUS_NATIVE_CHECKPOINT_DIR` to a persistent host directory, then run
 `bash dev/scripts/build-native-recovery.sh --test cyrus-render [test_filter]`.
+For a library-only regression, use `--test-lib PACKAGE [test_filter]` instead.
+It passes Cargo `--lib`, so unrelated integration-test executables are not compiled.
+This focused run does not replace `just verify PACKAGE` before landing a package change.
 The optional filter selects tests using Cargo's ordinary name filtering. Test
 recovery restores compilation units with matching source and toolchain inputs,
 but always executes Cargo's tests again. It preserves a failing test's exit

@@ -88,6 +88,21 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 3,
                          'retained compilation must never replace execution of the tests')
 
+    def test_library_recovery_selects_only_the_library_target(self):
+        command = ['bash', 'dev/scripts/build-native-recovery.sh', '--test-lib',
+                   'cyrus-startup', 'first_book_publication']
+        for _ in range(2):
+            result = subprocess.run(command, cwd=self.root, env=self.env,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(json.loads((self.root / 'arguments.json').read_text()),
+                             ['test', '-p', 'cyrus-startup', '--message-format=json-render-diagnostics',
+                              '--lib', 'first_book_publication'])
+            self.assertFalse(self.output.exists())
+            shutil.rmtree(self.target)
+        self.assertEqual((self.root / 'compiled.log').read_text().splitlines(), ['dependency'])
+        self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 2)
+
     def test_target_restore_runs_inside_the_same_hauler_lane_as_compilation(self):
         recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'
         recorder.write_text("import os,sys\n"

@@ -12,13 +12,15 @@ CARGO_HAULER_MAX_CONCURRENT=1 CARGO_HAULER_OVERLAP_EXECUTION=0 hauler daemon sta
 # compilation and recording so another build cannot observe a partially restored target.
 if [ -z "${CARGO_HAULER_INSIDE:-}" ]; then
     export PATH="$PWD/dev/scripts:$PATH"
-    cargo cyrus-native-recovery "${@:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE | --test PACKAGE [FILTER]}"
+    cargo cyrus-native-recovery "${@:?usage: build-native-recovery.sh OUTPUT_EXECUTABLE | --test PACKAGE [FILTER] | --test-lib PACKAGE [FILTER]}"
     exit
 fi
 test_package=
 test_filter=
-if [ "${1:-}" = --test ]; then
-    test_package="${2:?usage: build-native-recovery.sh --test PACKAGE [FILTER]}"
+test_library=0
+if [[ "${1:-}" == --test || "${1:-}" == --test-lib ]]; then
+    if [ "$1" = --test-lib ]; then test_library=1; fi
+    test_package="${2:?usage: build-native-recovery.sh --test[-lib] PACKAGE [FILTER]}"
     test_filter="${3:-}"
     if [[ ! "$test_package" =~ ^cyrus(-[a-z0-9-]+)?$ ]] || [ "$#" -gt 3 ]; then
         echo 'test recovery requires a cyrus package and an optional test filter' >&2
@@ -90,6 +92,7 @@ events="$CYRUS_NATIVE_CHECKPOINT_DIR/cargo-events.jsonl"
 : > "$events"
 if [ -n "$test_package" ]; then
     arguments=(test -p "$test_package" --message-format=json-render-diagnostics)
+    if (( test_library )); then arguments+=(--lib); fi
     if [ -n "$test_filter" ]; then arguments+=("$test_filter"); fi
     cargo "${arguments[@]}" > "$events" &
 else
