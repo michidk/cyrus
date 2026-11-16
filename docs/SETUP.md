@@ -220,7 +220,7 @@ and local diagnostics, restores `WORLD.INI` and `SYSTEM.INI` afterwards and stop
 container on success or failure. It rejects the canonical install as a writable
 run. It uses `cyrus-retro-contact:dev`, which runs the same guest configuration on
 Xvfb without the interactive preview services. Build it with the command above;
-`CYRUS_RETRO_IMAGE` can select an existing compatible image. The launcher passes
+`CYRUS_RETRO_IMAGE` can select an existing compatible image. `CYRUS_RETRO_INSTALL_ROOT` can select the host-mounted GOG extraction root. The launcher resolves this root, stages its driver under the output directory and uses explicit bind mounts so a missing source fails instead of becoming a directory. The launcher passes
 `-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
 F12 for the guest console.
 The contact image includes the full Python standard library. Its build checks

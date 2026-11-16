@@ -423,6 +423,8 @@ class ContactLauncher(unittest.TestCase):
             self.skipTest('contact launcher requires the host-mounted workspace root')
         with tempfile.TemporaryDirectory(dir=workspace) as directory:
             root = Path(directory)
+            install = root / 'install'
+            install.mkdir()
             run = root / 'run'
             (run / 'Redguard').mkdir(parents=True)
             world = run / 'Redguard/WORLD.INI'
@@ -453,6 +455,7 @@ class ContactLauncher(unittest.TestCase):
                  str(placement), str(root / 'output')],
                 env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
                          CONTACT_LOG=str(root / 'calls'),
+                         CYRUS_RETRO_INSTALL_ROOT=str(install),
                          CYRUS_RETRO_SYSTEM_INI=str(installed_system), CONTACT_SYSTEM=str(system)),
                 capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 7, result.stderr)
@@ -464,6 +467,11 @@ class ContactLauncher(unittest.TestCase):
             self.assertIn('-set dosbox hostkey=ctrlalt', calls[0])
             self.assertIn('CYRUS_CONFIG_DIR=/config', calls[0])
             self.assertIn('SYS_PTRACE', calls[0])
+            self.assertNotIn(str(DRIVER.parent.parent.parent), calls[0])
+            self.assertIn(f'src={install},dst=/gog,readonly', calls[0])
+            self.assertIn('--mount type=bind,src=', calls[0])
+            self.assertIn(f'src={root / "output/runtime/driver.py"},dst=/tmp/driver.py,readonly', calls[0])
+            self.assertEqual((root / 'output/runtime/driver.py').read_bytes(), DRIVER.read_bytes())
             name = calls[0].split('--name ')[1].split()[0]
             self.assertEqual(calls[-1], f'rm -f {name}')
             self.assertEqual((root / 'output/contact.stderr').read_text(), 'rejected\n')
@@ -476,6 +484,7 @@ class ContactLauncher(unittest.TestCase):
                  str(placement), str(root / 'locked-output')],
                 env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
                          CONTACT_LOG=str(root / 'calls'),
+                         CYRUS_RETRO_INSTALL_ROOT=str(install),
                          CYRUS_RETRO_SYSTEM_INI=str(installed_system)),
                 capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 75, result.stderr)

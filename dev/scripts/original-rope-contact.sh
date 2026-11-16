@@ -17,7 +17,7 @@ for path in "$run" "$reader" "$placement" "$output"; do
         *) echo "contact run paths must be inside /home/vibepod/workspaces: $path" >&2; exit 2 ;;
     esac
 done
-install_root="$(realpath "$root/magic/gog")"
+install_root="$(realpath -e "${CYRUS_RETRO_INSTALL_ROOT:-$root/magic/gog}")"
 case "$run/" in
     "$install_root/"*) echo 'the install is read-only; supply a prepared run directory' >&2; exit 2 ;;
 esac
@@ -84,14 +84,18 @@ for key in ('disable_text', 'disable_debug_text'):
 path.write_text(text)
 PYCONFIG
 sed -i 's/^start_world=.*/start_world=2/' "$world"
-mkdir -p "$output/config" "$output/audio"
+mkdir -p "$output/config" "$output/audio" "$output/runtime"
+cp -a "$root/dev/scripts/original-rope-contact.py" "$output/runtime/driver.py"
 docker run -d --name "$name" --cap-add SYS_PTRACE -e DISPLAY=:1 \
     -e CYRUS_CONFIG_DIR=/config \
-    -v "$run:/game" -v "$root/magic/gog:/gog:ro" \
-    -v "$root/magic/gog/extracted/app/game.gog:/game/game.gog:ro" \
-    -v "$output/config:/config" -v "$output/audio:/capture" \
-    -v "$reader:/tmp/state.py:ro" -v "$placement:/tmp/place.py:ro" \
-    -v "$root/dev/scripts/original-rope-contact.py:/tmp/driver.py:ro" \
+    --mount "type=bind,src=$run,dst=/game" \
+    --mount "type=bind,src=$install_root,dst=/gog,readonly" \
+    --mount "type=bind,src=$install_root/extracted/app/game.gog,dst=/game/game.gog,readonly" \
+    --mount "type=bind,src=$output/config,dst=/config" \
+    --mount "type=bind,src=$output/audio,dst=/capture" \
+    --mount "type=bind,src=$reader,dst=/tmp/state.py,readonly" \
+    --mount "type=bind,src=$placement,dst=/tmp/place.py,readonly" \
+    --mount "type=bind,src=$output/runtime/driver.py,dst=/tmp/driver.py,readonly" \
     "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" -set "dosbox hostkey=ctrlalt" -set "dosbox captures=/capture" >/dev/null
 created=1
 docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py --progress /config/rope-readiness.json \
