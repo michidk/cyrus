@@ -418,7 +418,9 @@ class ExactSchedule(unittest.TestCase):
 
 class ContactLauncher(unittest.TestCase):
     def test_failed_runtime_restores_world_and_stops_only_owned_container(self):
-        workspace = DRIVER.parents[2] / 'magic'
+        workspace = Path('/home/vibepod/workspaces')
+        if not workspace.is_dir():
+            self.skipTest('contact launcher requires the host-mounted workspace root')
         with tempfile.TemporaryDirectory(dir=workspace) as directory:
             root = Path(directory)
             run = root / 'run'
@@ -465,6 +467,22 @@ class ContactLauncher(unittest.TestCase):
             name = calls[0].split('--name ')[1].split()[0]
             self.assertEqual(calls[-1], f'rm -f {name}')
             self.assertEqual((root / 'output/contact.stderr').read_text(), 'rejected\n')
+
+            # Failed admission must report the rig step before touching a run or Docker.
+            (root / 'calls').unlink()
+            (tools / 'flock').write_text('#!/bin/sh\nexit 75\n')
+            result = subprocess.run(
+                ['bash', str(DRIVER.with_suffix('.sh')), str(run), str(reader),
+                 str(placement), str(root / 'locked-output')],
+                env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
+                         CONTACT_LOG=str(root / 'calls'),
+                         CYRUS_RETRO_SYSTEM_INI=str(installed_system)),
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 75, result.stderr)
+            self.assertIn('live-run lock unavailable after 30s: /tmp/cyrus-live.lock', result.stderr)
+            self.assertFalse((root / 'calls').exists())
+            self.assertEqual(world.read_text(), '[world]\nstart_world=9\n')
+            self.assertEqual(system.read_text(), '[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
 
 
 class PhysicalRelease(unittest.TestCase):

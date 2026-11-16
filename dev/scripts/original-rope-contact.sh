@@ -44,7 +44,13 @@ if [[ -n "${CYRUS_RETRO_IMAGE_ARCHIVE:-}" ]]; then
 fi
 mkdir -p "$output"
 exec 9>/tmp/cyrus-live.lock
-flock -w 600 9
+if flock -w 30 9; then
+    :
+else
+    status=$?
+    echo 'original capture: live-run lock unavailable after 30s: /tmp/cyrus-live.lock' >&2
+    exit "$status"
+fi
 name="cyrus-rope-contact-$$"
 cp -a "$world" "$output/WORLD.before"
 cp -a "$system" "$output/SYSTEM.before"
