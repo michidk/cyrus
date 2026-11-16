@@ -4,7 +4,7 @@ use cyrus_collision::ground::{SupportHistory, TerrainGround};
 use cyrus_script::script::{OrdinaryGroundQuery, ScriptActorSource, ScriptSound};
 
 #[test]
-fn forward_probe_into_deep_water_requests_the_swim_group_and_plays_the_splash() {
+fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once() {
     let (_, mut world, mut data, mut scene) = player_walking_fixture();
     // Texture 25 on the terrain resolves to deep water; the terrain surface sits inside the probe.
     scene.collision.texture_surfaces = Some(BTreeMap::from([(
@@ -69,6 +69,19 @@ fn forward_probe_into_deep_water_requests_the_swim_group_and_plays_the_splash() 
         world.actor_surface(player).unwrap(),
         cyrus_assets::surface::Surface::DEEPWATER
     );
+    let retired = cyrus_script::script::ScriptActorId {
+        generation: player.generation.wrapping_add(1),
+        index: player.index,
+    };
+    let error = world
+        .flush_surface_transitions(
+            retired,
+            1,
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| panic!("retired owner must not publish a transition"),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("stale"), "{error:#}");
     let mut sounds = vec![];
     world
         .flush_surface_transitions(

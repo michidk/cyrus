@@ -70,7 +70,8 @@ impl ScriptWorld {
     }
 
     /// Run the transitions the selected player's probes queued, oldest first. The caller owns the
-    /// random stream and sound sink and calls this right after the probe.
+    /// random stream and sound sink and calls this right after the probe. A stale actor owner
+    /// is rejected before consuming any queued transitions.
     pub fn flush_surface_transitions(
         &mut self,
         id: ScriptActorId,
@@ -78,6 +79,7 @@ impl ScriptWorld {
         random: &mut cyrus_game::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        self.resolve(id)?;
         for pending in std::mem::take(&mut self.pending_surface_transitions) {
             self.selected_surface_transition(
                 id,
