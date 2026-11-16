@@ -3,11 +3,13 @@
 //! The launcher window: the original Redguard launcher, recreated, with its artwork read from the
 //! player's own `REDGUARD.EXE`. Game Options holds the game files, the mods and the faithful or
 //! modern presentation. Without the artwork it shows plain buttons instead.
+mod picker;
 mod theme;
 
 use cyrus_launcher::artwork::{Artwork, BUTTON_POSITIONS, Button, Image};
 use cyrus_launcher::cheats::{self, Cheat};
 use cyrus_launcher::fidelity::{self, Area, Choices, Mode};
+use cyrus_launcher::install;
 use cyrus_launcher::launch::{self, Options};
 use cyrus_launcher::lettering;
 use cyrus_launcher::mods::{self, Installed};
@@ -114,6 +116,10 @@ struct App {
     launcher: PathBuf,
     options: Options,
     remembered: Option<PathBuf>,
+    /// The game folder found without asking (`REDGUARD_DIR` or the usual places).
+    found: Option<PathBuf>,
+    /// Shown instead of the launcher until a game folder is known.
+    picker: Option<picker::Picker>,
     installed: Installed,
     active: BTreeSet<String>,
     choices: Choices,
@@ -172,6 +178,8 @@ impl App {
             launcher: std::env::current_exe().unwrap_or_default(),
             options: Options::default(),
             remembered: launch::remembered_install(),
+            found: None,
+            picker: None,
             installed: Installed::default(),
             active: BTreeSet::new(),
             choices: Choices::default(),
@@ -188,6 +196,7 @@ impl App {
             Ok(options) => app.options = options,
             Err(error) => problems.push(format!("{error:#}")),
         }
+        app.find_install();
         match mods::scan(&mods::mods_dir()) {
             Ok(installed) => app.installed = installed,
             Err(error) => problems.push(format!("{error:#}")),
@@ -214,9 +223,45 @@ impl App {
         app
     }
 
+    /// Keeps the game folder that was chosen before if it still holds the game, else searches, else
+    /// asks. A folder that has gone away is dropped from this run only; nothing is rewritten.
+    fn find_install(&mut self) {
+        let known = self.options.install.clone().or(self.remembered.clone());
+        if known
+            .as_deref()
+            .is_some_and(|path| install::resolve(path).is_ok())
+        {
+            return;
+        }
+        self.options.install = None;
+        self.remembered = None;
+        let program = self.launcher.parent();
+        self.found = install::locate(&install::Machine::current(), program);
+        if self.found.is_none() {
+            self.picker = Some(picker::Picker::new(known.as_deref()));
+        }
+    }
+
+    /// The player chose `root`: use it for this launcher and remember it for the game.
+    fn install_chosen(&mut self, root: PathBuf) {
+        self.found = Some(root.clone());
+        self.select_install(Some(root.clone()));
+        if let Err(error) = install::remember(&root) {
+            self.problem = Some(format!("{error:#}"));
+        }
+        self.picker = None;
+        if let Some(problem) = self.problem.clone() {
+            self.dialog = Dialog::Error(problem);
+        }
+    }
+
     /// The game folder the artwork is read from: the one picked here, else the one the game remembered.
     fn game_folder(&self) -> Option<&PathBuf> {
-        self.options.install.as_ref().or(self.remembered.as_ref())
+        self.options
+            .install
+            .as_ref()
+            .or(self.remembered.as_ref())
+            .or(self.found.as_ref())
     }
 
     fn load_artwork(&mut self) {
@@ -656,8 +701,21 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let context = ui.ctx().clone();
+        let backdrop = egui::Frame::NONE.fill(Color32::from_rgb(40, 28, 18));
+        if let Some(mut picker) = self.picker.take() {
+            let outcome = egui::CentralPanel::default()
+                .frame(backdrop)
+                .show(ui, |ui| picker.show(ui))
+                .inner;
+            match outcome {
+                picker::Outcome::Waiting => self.picker = Some(picker),
+                picker::Outcome::Chosen(root) => self.install_chosen(root),
+                picker::Outcome::Quit => context.send_viewport_cmd(egui::ViewportCommand::Close),
+            }
+            return;
+        }
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(Color32::from_rgb(40, 28, 18)))
+            .frame(backdrop)
             .show(ui, |ui| self.screen(ui));
         self.dialogs(&context);
         // Enter starts the game and Escape backs out, as in the original.

@@ -7,6 +7,7 @@
 pub mod artwork;
 pub mod cheats;
 pub mod fidelity;
+pub mod install;
 pub mod launch;
 pub mod lettering;
 pub mod mods;
