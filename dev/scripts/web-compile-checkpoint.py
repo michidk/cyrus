@@ -109,7 +109,15 @@ def retain(directory, target, event, expected):
             os.rename(staged, destination)
 
 
-def restore(directory, target, expected):
+def restore(directory, target, expected, retain_unpacked=None):
+    """Restore units, optionally retaining validated expansion across target resets.
+
+    CYRUS_COMPILE_RETAIN_UNPACKED=1 trades checkpoint storage for avoiding repeated
+    gzip expansion. Retained bytes are revalidated on every use, and Cargo still
+    owns freshness. Publication never replaces a live target file.
+    """
+    if retain_unpacked is None:
+        retain_unpacked = os.environ.get('CYRUS_COMPILE_RETAIN_UNPACKED') == '1'
     restored = 0
     for unit in sorted((directory / 'units').glob('*')):
         if not re.fullmatch(r'[0-9a-f]{64}-[0-9a-f]{64}', unit.name):
@@ -118,6 +126,42 @@ def restore(directory, target, expected):
         if compiler_identity(record['identity']) != compiler_identity(expected):
             continue
         pack(unit)
+        if retain_unpacked:
+            unpacked = unit / 'unpacked'
+            if not unpacked.exists():
+                # Publish only a whole validated unit. A reset leaves an ignored
+                # temporary directory, never a reusable partial expansion.
+                with tempfile.TemporaryDirectory(dir=unit) as temporary:
+                    view = Path(temporary)
+                    (view / 'units').mkdir()
+                    (view / 'units' / unit.name).symlink_to(unit.resolve(), target_is_directory=True)
+                    restore(view, view / 'files', expected, retain_unpacked=False)
+                    os.rename(view / 'files', unpacked)
+            target.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=target) as temporary:
+                staged_root = Path(temporary)
+                pending = []
+                for name, digest in record['files'].items():
+                    relative = Path(name)
+                    if relative.is_absolute() or '..' in relative.parts:
+                        raise ValueError('unsafe compilation checkpoint path')
+                    source = unpacked / relative
+                    if source.is_symlink() or not source.is_file() or checkpoint.digest(source) != digest:
+                        raise ValueError('corrupt compilation checkpoint: ' + name)
+                    output = target / relative
+                    if not output.exists():
+                        staged = staged_root / relative
+                        staged.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(source, staged)
+                        pending.append((staged, output))
+                for staged, output in pending:
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        os.link(staged, output)
+                    except FileExistsError:
+                        continue
+                    restored += 1
+            continue
         # Gzip random access repeatedly decompresses large compiler libraries.
         # Validate and stage the entire unit in one forward pass before linking
         # any member into the shared target. Staging shares the target filesystem.

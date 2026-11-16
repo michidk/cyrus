@@ -105,6 +105,28 @@ class Recovery(unittest.TestCase):
         with patch.object(units.tarfile.TarFile, 'getmember', side_effect=AssertionError('random compressed archive seek')):
             self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
 
+    def test_retained_unpack_survives_target_loss_without_decoding_again(self):
+        self.store()
+        units.shutil.rmtree(self.target)
+        with patch.dict(units.os.environ, {'CYRUS_COMPILE_RETAIN_UNPACKED': '1'}):
+            self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+            units.shutil.rmtree(self.target)
+            with patch.object(units.tarfile, 'open', side_effect=AssertionError('decoded again')):
+                self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+
+    def test_retained_unpack_is_revalidated_before_target_publication(self):
+        self.store()
+        units.shutil.rmtree(self.target)
+        with patch.dict(units.os.environ, {'CYRUS_COMPILE_RETAIN_UNPACKED': '1'}):
+            units.restore(self.cache, self.target, self.identity)
+            units.shutil.rmtree(self.target)
+            retained = next((self.cache / 'units').glob('*/unpacked'))
+            (retained / self.artifact.relative_to(self.target)).write_bytes(b'corrupt')
+            with self.assertRaisesRegex(ValueError, 'corrupt compilation checkpoint'):
+                units.restore(self.cache, self.target, self.identity)
+        self.assertEqual(list(self.target.rglob('*')), [])
+
     def test_staging_uses_writable_target_not_its_managed_parent(self):
         self.store()
         temporary = units.tempfile.TemporaryDirectory

@@ -469,6 +469,11 @@ and unwritable. Build orchestration changes do not invalidate unchanged compiler
 inputs. No whole profile is copied or removed.
 The checkpoint directory contains build outputs only, never installed game data,
 and does not change the inherited Cargo target directory.
+Set `CYRUS_COMPILE_RETAIN_UNPACKED=1` to retain each validated unit's expanded
+files beside its compressed checkpoint. This uses more checkpoint storage but
+avoids repeating gzip expansion after another target reset. Every retained file
+is hashed again before publication; live target files are still preserved.
+An interrupted expansion is never reused as a completed unit.
 Run `python3 dev/scripts/test-web-compile-checkpoint.py` for interrupted-build,
 corruption, changed-input and shared-artifact preservation controls.
 
