@@ -82,6 +82,15 @@ fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once(
         )
         .unwrap_err();
     assert!(error.to_string().contains("stale"), "{error:#}");
+    let error = world
+        .flush_surface_transitions(
+            map,
+            1,
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| panic!("nonplayer must not publish the selected player's transition"),
+        )
+        .expect_err("water transition queue requires its selected player");
+    assert!(error.to_string().contains("selected player"), "{error:#}");
     let mut sounds = vec![];
     world
         .flush_surface_transitions(

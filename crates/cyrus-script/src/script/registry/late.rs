@@ -71,7 +71,8 @@ impl ScriptWorld {
 
     /// Run the transitions the selected player's probes queued, oldest first. The caller owns the
     /// random stream and sound sink and calls this right after the probe. A stale actor owner
-    /// is rejected before consuming any queued transitions.
+    /// or a same-world actor other than the selected player is rejected before consuming any
+    /// queued transitions.
     pub fn flush_surface_transitions(
         &mut self,
         id: ScriptActorId,
@@ -80,6 +81,12 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         self.resolve(id)?;
+        ensure!(
+            self.selected_player_index() == Some(id.index),
+            "world {} instance {}: surface transition flush requires selected player",
+            self.world,
+            id.index
+        );
         for pending in std::mem::take(&mut self.pending_surface_transitions) {
             self.selected_surface_transition(
                 id,
