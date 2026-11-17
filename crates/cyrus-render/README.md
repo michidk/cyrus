@@ -49,6 +49,9 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
 
 ## Notes
 
+The sky retires when its requested environment asset is unavailable and rebuilds
+from that asset when it becomes available again, including under the same handle.
+
 - Faithful by default. Deviations run only under their fidelity area
   (`Fog`, `Sky`, `Textures`, `Lighting`, `AnisotropicFiltering`). Modern
   lighting (`fog::modern_lighting`) is a separate PBR branch with optional

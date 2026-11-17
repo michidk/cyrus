@@ -69,7 +69,9 @@ fn apply_sky(
     mut clear: ResMut<ClearColor>,
     mut distance: ResMut<crate::fog::RenderDistance>,
 ) {
-    if active.source == Some(request.0.id()) || cameras.is_empty() {
+    if (active.source == Some(request.0.id()) && environments.contains(request.0.id()))
+        || cameras.is_empty()
+    {
         return;
     }
     // Remove the old world's sky even while the next sidecar is still loading.
@@ -355,6 +357,49 @@ mod tests {
             .unwrap();
         assert_eq!(image.data.as_ref().unwrap(), &pixels);
         assert_eq!(image.texture_descriptor.size.depth_or_array_layers, 1);
+        let removed = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .remove(outdoor.id())
+            .unwrap();
+        app.update();
+        assert!(
+            app.world().get::<Sky>(entity).is_none(),
+            "missing environment must retire its published sky"
+        );
+        assert!(
+            app.world()
+                .resource::<crate::fog::RenderDistance>()
+                .original
+                .is_none()
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .insert(outdoor.id(), removed)
+            .unwrap();
+        app.update();
+        let entity = app.world().resource::<ActiveEnvironment>().sky.unwrap();
+        let handle = &app
+            .world()
+            .get::<MeshMaterial3d<SkyMaterial>>(entity)
+            .unwrap()
+            .0;
+        let material = app
+            .world()
+            .resource::<Assets<SkyMaterial>>()
+            .get(handle)
+            .unwrap();
+        assert_eq!(material.plane, Vec4::new(-4500.0, 2000.0, 2.0, 1.0));
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&material.image)
+                .unwrap()
+                .data
+                .as_ref()
+                .unwrap(),
+            &pixels
+        );
         app.world_mut().resource_mut::<Fidelity>().sky = Mode::Modern;
         app.update();
         assert_eq!(
