@@ -36,6 +36,7 @@ class Driver:
         self.attachment = False
         self.physical_release = False
         self.detach_release_after = None
+        self.continue_version_prompt = False
 
     def input(self, action, key):
         subprocess.run(['xdotool', action, key], check=True, timeout=5)
@@ -101,7 +102,7 @@ class Driver:
             self.key('Escape')
 
     def journal(self, path, resume, placement):
-        identity = dict(reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
+        identity = dict(continue_version_prompt=self.continue_version_prompt, reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
                         schedule_command=self.schedule_command,
                         schedule_frame_scale=self.schedule_frame_scale,
                         attachment=self.attachment, physical_release=self.physical_release,
@@ -158,7 +159,7 @@ class Driver:
             return dict(readiness=readiness, actor_count=len(actors), selected_count=len(selected),
                         reader=state.get('readiness'), frame=state['counters']['mainloop_frame'],
                         counters=state['counters'], player=selected[0] if len(selected) == 1 else None,
-                        console_mode=state.get('console_mode'),
+                        startup_prompt=state.get('startup_prompt'), console_mode=state.get('console_mode'),
                         game_seconds=state.get('game_seconds'), clock_end=state.get('clock_end'),
                         input_state=state.get('input_state', {}))
         except subprocess.CalledProcessError as error:
@@ -253,6 +254,25 @@ class Driver:
                 self.progress_record['last_progress_poll'] = self.progress_record['polls']
             self.progress_record['last_observation'] = row
             self.save()
+            if self.continue_version_prompt and row.get('startup_prompt'):
+                if row['startup_prompt'] != 'version_information' or row['readiness'] != 'actor_absent':
+                    raise RuntimeError('startup prompt lacks an unambiguous pre-world version binding')
+                action = self.progress_record.get('startup_input')
+                if action == 'started':
+                    raise RuntimeError('startup input was interrupted; use a fresh run, never replay it')
+                if action is None:
+                    # Persist intent before input: a reset must not replay a key into gameplay.
+                    self.progress_record['startup_input'] = 'started'
+                    self.save()
+                    windows = subprocess.check_output(
+                        ['xdotool', 'search', '--name', 'DOSBox'], text=True, timeout=5).splitlines()
+                    if len(windows) != 1:
+                        raise RuntimeError('startup input requires exactly one DOSBox window')
+                    subprocess.run(['xdotool', 'windowfocus', '--sync', windows[0]],
+                                   check=True, timeout=5)
+                    self.key('Return')
+                    self.progress_record['startup_input'] = 'complete'
+                    self.save()
             if row['readiness'] == 'selected' and row['frame'] > 2:
                 return row
             if time.monotonic() >= deadline:
@@ -432,6 +452,8 @@ def main():
     parser.add_argument('--continuation-frames', type=int, default=12)
     parser.add_argument('--schedule-frame-scale', type=int, help='require this measured consumed scale at every instrumented update')
     parser.add_argument('--timeout', type=float, default=35)
+    parser.add_argument('--continue-version-prompt', action='store_true',
+                        help='acknowledge one reader-verified pre-world version_information prompt')
     parser.add_argument('--ready-timeout', type=float, default=100)
     parser.add_argument('--pulse', type=float, default=.2)
     parser.add_argument('--schedule-command', help='local executable accepting a JSON schedule on stdin; returns boundary and consumed-step acknowledgements')
@@ -453,6 +475,7 @@ def main():
             lock = stack.enter_context(args.progress.with_suffix('.lock').open('a'))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         driver = Driver(args.reader, args.timeout, args.pulse)
+        driver.continue_version_prompt = args.continue_version_prompt
         driver.attachment = args.attachment
         driver.physical_release = args.physical_release
         if args.landing_frames:

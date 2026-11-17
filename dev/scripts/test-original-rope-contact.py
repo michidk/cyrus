@@ -175,6 +175,63 @@ class Readiness(unittest.TestCase):
         self.assertEqual(row['readiness'], 'reader_failed')
         self.assertEqual(row['stderr'], 'binding signature absent')
 
+    def test_reader_preserves_verified_startup_prompt(self):
+        from unittest.mock import patch
+        m = self.module()
+        result = subprocess.CompletedProcess([], 0, json.dumps(dict(actors=[],
+            counters=dict(mainloop_frame=0), startup_prompt='version_information')), '')
+        with patch.object(m.subprocess, 'run', return_value=result):
+            self.assertEqual(m.Driver('unused', 1, .01).observe()['startup_prompt'],
+                             'version_information')
+
+    def test_version_prompt_requires_opt_in_and_is_acknowledged_only_once(self):
+        from unittest.mock import Mock, patch
+        m = self.module()
+        for enabled in [False, True]:
+            driver = m.Driver('unused', 1, .01)
+            driver.continue_version_prompt = enabled
+            prompt = dict(readiness='actor_absent', actor_count=0, frame=0,
+                          startup_prompt='version_information')
+            driver.observe = Mock(side_effect=[prompt, prompt,
+                dict(readiness='selected', actor_count=1, frame=3)])
+            driver.key = Mock()
+            with patch.object(m.subprocess, 'check_output', return_value='42\n'), \
+                    patch.object(m.subprocess, 'run') as run:
+                self.assertEqual(driver.ready(2)['frame'], 3)
+            self.assertEqual(driver.key.call_count, int(enabled))
+            if enabled:
+                driver.key.assert_called_once_with('Return')
+                run.assert_called_once_with(['xdotool', 'windowfocus', '--sync', '42'],
+                                            check=True, timeout=5)
+                self.assertEqual(driver.progress_record['startup_input'], 'complete')
+
+    def test_interrupted_startup_input_cannot_be_replayed(self):
+        from unittest.mock import Mock
+        m = self.module()
+        driver = m.Driver('unused', 1, .01)
+        driver.continue_version_prompt = True
+        driver.progress_record['startup_input'] = 'started'
+        driver.observe = Mock(return_value=dict(readiness='actor_absent', frame=0,
+            startup_prompt='version_information'))
+        driver.key = Mock()
+        with self.assertRaisesRegex(RuntimeError, 'interrupted'):
+            driver.ready(2)
+        driver.key.assert_not_called()
+
+    def test_ambiguous_startup_evidence_never_sends_a_key(self):
+        from unittest.mock import Mock
+        m = self.module()
+        for readiness, prompt in [('selected', 'version_information'),
+                                  ('actor_absent', 'unknown')]:
+            driver = m.Driver('unused', 1, .01)
+            driver.continue_version_prompt = True
+            driver.observe = Mock(return_value=dict(readiness=readiness, frame=0,
+                                                    startup_prompt=prompt))
+            driver.key = Mock()
+            with self.assertRaisesRegex(RuntimeError, 'unambiguous'):
+                driver.ready(2)
+            driver.key.assert_not_called()
+
     def test_loading_observations_progress_to_selected_without_input(self):
         m = self.module()
         driver = m.Driver('unused', 1, .01)

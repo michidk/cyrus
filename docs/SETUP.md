@@ -1294,6 +1294,17 @@ concurrent drivers. Direct driver invocations opt in with `--progress PATH`.
 Observations retain host timestamps, elapsed readiness time and engine counters;
 the journal records the latest observation and last progress poll.
 
+For a reader that positively identifies the pre-world Version Information screen,
+`--continue-version-prompt` permits one Return acknowledgement before world readiness.
+The reader must emit `startup_prompt: "version_information"` only while that screen
+is visible and the actor list is absent. A zero frame count or missing actor list
+alone is insufficient. The driver focuses the single DOSBox window, records input
+intent in its readiness journal before pressing Return, and never repeats that key
+while the prompt remains visible. Interrupted input intent requires a fresh run;
+resuming cannot replay the acknowledgement into gameplay. The option is disabled
+by default and belongs to the journal identity. World readiness still requires a
+selected player and advancing update frames.
+
 The original rope driver accepts `--record` to capture DOSBox-X mixer audio
 only after a valid placed baseline. It stops the recorder on completion or
 failure; the launcher mounts the run output's `audio/` as the capture directory.
