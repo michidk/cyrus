@@ -69,6 +69,8 @@ from that asset when it becomes available again, including under the same handle
 - Faithful sky, terrain, opaque models and placed flats store fogged colors at the original RGB565
   precision with the documented four-by-four framebuffer dither. Blended flats reconstruct
   the stored destination channels and subtract their dither before alpha blending.
+  The Faithful sun first stores its sky destination, then uses that same integer
+  destination reconstruction and separately truncated source/destination blend terms.
   The Modern sky projection and lighting-effect branches retain full precision.
 - Faithful by default. Deviations run only under their fidelity area
   (`Fog`, `Sky`, `Textures`, `Lighting`, `AnisotropicFiltering`). Modern

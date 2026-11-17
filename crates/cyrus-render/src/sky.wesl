@@ -1,7 +1,7 @@
 import bevy_pbr::render::mesh_view_bindings::view;
 import constants::MATERIAL_BIND_GROUP;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
-import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_dither};
+import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_dither, framebuffer_blend_integer};
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var sky: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
@@ -196,7 +196,14 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
                 opacity = textureSampleLevel(sun, sun_sampler, uv, 0.0).r;
             }
             opacity *= sky_parameters.day_night.w;
-            color = srgb_to_linear(mix(linear_to_srgb(color), sky_parameters.sun_color.rgb, opacity));
+            if sky_parameters.scroll.z == 0.0 && sky_parameters.modern_sky.w == 0.0
+                && sky_parameters.day_night.w == 1.0 {
+                let pixel = vec2<u32>(in.position.xy - view.main_pass_viewport.xy);
+                let destination = framebuffer_dither(color, pixel);
+                color = framebuffer_blend_integer(destination, sky_parameters.sun_color.rgb, alpha, pixel);
+            } else {
+                color = srgb_to_linear(mix(linear_to_srgb(color), sky_parameters.sun_color.rgb, opacity));
+            }
         }
     }
     if sky_parameters.modern_sky.w > 0.0 {

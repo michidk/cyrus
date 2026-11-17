@@ -3,6 +3,7 @@
 
 Usage: test-framebuffer-blend.py ORIGINAL BEFORE AFTER LEFT TOP RIGHT BOTTOM
 Camera, texture frame, lighting and crop must match in all three screenshots.
+Optional: append --control LEFT TOP RIGHT BOTTOM for an unchanged background crop.
 """
 import sys
 from PIL import Image, ImageChops, ImageStat
@@ -28,6 +29,16 @@ if __name__ == '__main__':
     images = [Image.open(path) for path in sys.argv[1:4]]
     try:
         check(*images, tuple(map(int, sys.argv[4:8])))
+        if len(sys.argv) > 8:
+            if len(sys.argv) != 13 or sys.argv[8] != '--control':
+                raise AssertionError('expected --control LEFT TOP RIGHT BOTTOM')
+            bounds = tuple(map(int, sys.argv[9:13]))
+            left, top, right, bottom = bounds
+            if not (0 <= left < right <= images[1].width and 0 <= top < bottom <= images[1].height):
+                raise AssertionError('control crop is empty or outside the framebuffer')
+            if images[1].convert('RGB').crop(bounds).tobytes() != images[2].convert('RGB').crop(bounds).tobytes():
+                raise AssertionError('unblended control crop changed')
+            print(f'unchanged blend control: {(right-left)*(bottom-top)} pixels')
     finally:
         for image in images:
             image.close()
