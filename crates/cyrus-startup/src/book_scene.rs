@@ -221,12 +221,11 @@ fn create(
     book: &MenuAsset,
     surfaces: Vec<PageTexture>,
 ) -> Result<BookScene, Vec<PageTexture>> {
-    let size = drawing
-        .windows
-        .single()
-        .map_or(UVec2::new(WIDTH, HEIGHT), |window| {
-            window.physical_size().max(UVec2::ONE)
-        });
+    let window = drawing.windows.single().ok();
+    let size = window.map_or(UVec2::new(WIDTH, HEIGHT), |window| {
+        window.physical_size().max(UVec2::ONE)
+    });
+    let logical_size = window.map(|window| Vec2::new(window.width(), window.height()));
     let BookDrawing {
         commands,
         images,
@@ -248,6 +247,12 @@ fn create(
     ));
     menu.image = target.clone();
     sprite.image = target.clone();
+    if let Some(logical_size) = logical_size {
+        let scale = super::viewport_scale(logical_size);
+        if scale > 0.0 {
+            sprite.custom_size = Some(logical_size / scale);
+        }
+    }
     let textures: Vec<Handle<Image>> = surfaces
         .into_iter()
         .map(|s| {
@@ -282,7 +287,10 @@ fn create(
             BookCamera,
             super::view3d::view_camera(target.clone(), BOOK_LAYER, Color::BLACK),
         ))
-        .insert(camera_transform(pose.camera, pose.pitch));
+        .insert((
+            camera_transform(pose.camera, pose.pitch),
+            super::view3d::fitted_projection(size),
+        ));
     Ok(BookScene {
         target,
         textures,
@@ -483,7 +491,7 @@ mod tests {
         menu.painted = Some(Painted::Surfaces(surfaces));
         menu.motion = Some(motion);
         app.insert_resource(menu);
-        let size = UVec2::new(1280, 720);
+        let size = UVec2::new(720, 1280);
         let mut window = Window::default();
         window.resolution.set_physical_resolution(size.x, size.y);
         app.world_mut().spawn(window);
@@ -498,12 +506,34 @@ mod tests {
                 .size(),
             size
         );
+        let projection = app
+            .world_mut()
+            .query_filtered::<&Projection, With<BookCamera>>()
+            .single(app.world())
+            .unwrap();
+        let Projection::Perspective(actual) = projection else {
+            panic!("book camera must be perspective");
+        };
+        // Portrait fitting preserves the original horizontal half-field tangent.
+        // Camera projection updates can repair aspect automatically, but not the field of view.
+        assert!(((actual.fov / 2.0).tan() * (size.x as f32 / size.y as f32) - 0.788).abs() < 1e-6);
+        assert_eq!(actual.aspect_ratio, size.x as f32 / size.y as f32);
         let camera = app
             .world_mut()
             .query_filtered::<&Transform, With<BookCamera>>()
             .single(app.world())
             .unwrap();
         assert_eq!(*camera, camera_transform(pose.camera, pose.pitch));
+        let sprite = app
+            .world_mut()
+            .query_filtered::<&Sprite, BookSprite>()
+            .single(app.world())
+            .unwrap();
+        let logical_size = size.as_vec2();
+        assert_eq!(
+            sprite.custom_size,
+            Some(logical_size / super::super::viewport_scale(logical_size))
+        );
         let scene = app.world().resource::<BookScene>();
         let meshes = app.world().resource::<Assets<Mesh>>();
         let book = app
