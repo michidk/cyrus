@@ -1,7 +1,7 @@
 name = "Blood particles"
 description = "Directional droplets and a brief fine spray on health loss, rendered with Hanabi."
 version = "0.1.0"
-author = "cyrus contributors"
+author = "michidk"
 
 [[setting]]
 key = "amount"

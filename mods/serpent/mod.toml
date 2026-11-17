@@ -1,7 +1,7 @@
 name = "Sea Serpent"
 description = "Restores the sea serpent in the Spine that was cut from the game: it appears when you come near and fights. Takes effect after a restart."
 version = "0.1.0"
-author = "cyrus"
+author = "michidk"
 
 # ISLAND ships the serpent's whole script, but it sits behind an `End` at offset 4 that loops on
 # itself, so it never runs. Letting that End fall through runs it: the serpent stays hidden until

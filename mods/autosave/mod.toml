@@ -1,7 +1,7 @@
 name = "Autosave"
 description = "Save periodically during safe gameplay to the reserved autosave slot."
 version = "0.1.0"
-author = "cyrus contributors"
+author = "michidk"
 
 [[setting]]
 key = "interval"
