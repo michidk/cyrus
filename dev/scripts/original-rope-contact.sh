@@ -39,8 +39,13 @@ if [[ ! -f "$world" || -L "$world" || ! -f "$run/game.ins" ]]; then
     echo 'requires a prepared writable run with a real WORLD.INI and game.ins' >&2
     exit 2
 fi
+# Recover before acquiring the live lock; image restoration is not a game run.
+image="${CYRUS_RETRO_IMAGE:-}"
 if [[ -n "${CYRUS_RETRO_IMAGE_ARCHIVE:-}" ]]; then
-    "$root/dev/scripts/ensure-runtime-image.sh" "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" "$CYRUS_RETRO_IMAGE_ARCHIVE"
+    image="${image:-cyrus-retro-contact:dev}"
+    "$root/dev/scripts/ensure-runtime-image.sh" "$image" "$CYRUS_RETRO_IMAGE_ARCHIVE"
+elif [[ -z "$image" ]]; then
+    image=$("$root/dev/scripts/ensure-retro-capture-runtime.sh")
 fi
 mkdir -p "$output"
 exec 9>/tmp/cyrus-live.lock
@@ -96,7 +101,7 @@ docker run -d --name "$name" --cap-add SYS_PTRACE -e DISPLAY=:1 \
     --mount "type=bind,src=$reader,dst=/tmp/state.py,readonly" \
     --mount "type=bind,src=$placement,dst=/tmp/place.py,readonly" \
     --mount "type=bind,src=$output/runtime/driver.py,dst=/tmp/driver.py,readonly" \
-    "${CYRUS_RETRO_IMAGE:-cyrus-retro-contact:dev}" -set "dosbox hostkey=ctrlalt" -set "dosbox captures=/capture" >/dev/null
+    "$image" -set "dosbox hostkey=ctrlalt" -set "dosbox captures=/capture" >/dev/null
 created=1
 docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py --progress /config/rope-readiness.json \
     "$@" --place python3 /tmp/place.py >> "$output/contact.jsonl" 2>> "$output/contact.stderr"

@@ -2182,7 +2182,10 @@ continues to reject unequal clock bounds without a tolerance.
 The optional `dev/scripts/sdl-frame-capture.c` interposer captures an original
 SDL2 software surface at `SDL_UpdateWindowSurface` or its rectangle variant.
 `dev/docker/retro/Dockerfile.capture` builds an independent runtime with that
-interposer. Run `dev/scripts/ensure-retro-capture-runtime.sh` before taking the
+interposer. `original-rope-contact.sh` recovers and selects this source-keyed
+runtime automatically before taking its per-run live-game lock. Explicit
+`CYRUS_RETRO_IMAGE` and `CYRUS_RETRO_IMAGE_ARCHIVE` overrides retain their meaning.
+Other callers run `dev/scripts/ensure-retro-capture-runtime.sh` before taking the
 live-game lock; it prints the runtime image name. The name includes a hash of the
 Dockerfile, entry point, emulator configuration and both interposer sources.
 A Dockerfile-specific allowlist keeps the build context limited to the capture

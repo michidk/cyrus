@@ -465,6 +465,14 @@ class ContactLauncher(unittest.TestCase):
             reader.touch()
             placement = root / 'place.py'
             placement.touch()
+            scripts = root / 'dev/scripts'
+            scripts.mkdir(parents=True)
+            launcher = scripts / 'original-rope-contact.sh'
+            launcher.write_bytes(DRIVER.with_suffix('.sh').read_bytes())
+            (scripts / DRIVER.name).write_bytes(DRIVER.read_bytes())
+            recovery = scripts / 'ensure-retro-capture-runtime.sh'
+            recovery.write_text('#!/bin/sh\necho recovered > "$CONTACT_RECOVERY"\necho cyrus-restored:fixture\n')
+            recovery.chmod(0o755)
             tools = root / 'tools'
             tools.mkdir()
             (tools / 'flock').write_text('#!/bin/sh\nexit 0\n')
@@ -478,10 +486,10 @@ class ContactLauncher(unittest.TestCase):
             for tool in tools.iterdir():
                 tool.chmod(0o755)
             result = subprocess.run(
-                ['bash', str(DRIVER.with_suffix('.sh')), str(run), str(reader),
+                ['bash', str(launcher), str(run), str(reader),
                  str(placement), str(root / 'output')],
                 env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
-                         CONTACT_LOG=str(root / 'calls'),
+                         CONTACT_LOG=str(root / 'calls'), CONTACT_RECOVERY=str(root / 'recovered'),
                          CYRUS_RETRO_INSTALL_ROOT=str(install),
                          CYRUS_RETRO_SYSTEM_INI=str(installed_system), CONTACT_SYSTEM=str(system)),
                 capture_output=True, text=True, timeout=5)
@@ -490,7 +498,8 @@ class ContactLauncher(unittest.TestCase):
             self.assertEqual(system.read_text(), '[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
             self.assertEqual((root / 'output/SYSTEM.before').read_text(), system.read_text())
             calls = (root / 'calls').read_text().splitlines()
-            self.assertIn('cyrus-retro-contact:dev', calls[0])
+            self.assertTrue((root / 'recovered').exists(), 'default launcher must recover its runtime before starting Docker')
+            self.assertIn('cyrus-restored:fixture', calls[0])
             self.assertIn('-set dosbox hostkey=ctrlalt', calls[0])
             self.assertIn('CYRUS_CONFIG_DIR=/config', calls[0])
             self.assertIn('SYS_PTRACE', calls[0])
@@ -507,10 +516,10 @@ class ContactLauncher(unittest.TestCase):
             (root / 'calls').unlink()
             (tools / 'flock').write_text('#!/bin/sh\nexit 75\n')
             result = subprocess.run(
-                ['bash', str(DRIVER.with_suffix('.sh')), str(run), str(reader),
+                ['bash', str(launcher), str(run), str(reader),
                  str(placement), str(root / 'locked-output')],
                 env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
-                         CONTACT_LOG=str(root / 'calls'),
+                         CONTACT_LOG=str(root / 'calls'), CONTACT_RECOVERY=str(root / 'recovered'),
                          CYRUS_RETRO_INSTALL_ROOT=str(install),
                          CYRUS_RETRO_SYSTEM_INI=str(installed_system)),
                 capture_output=True, text=True, timeout=5)
@@ -519,6 +528,37 @@ class ContactLauncher(unittest.TestCase):
             self.assertFalse((root / 'calls').exists())
             self.assertEqual(world.read_text(), '[world]\nstart_world=9\n')
             self.assertEqual(system.read_text(), '[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
+
+            # Recovery failure must stop before lock admission, output creation or config edits.
+            recovery.write_text('#!/bin/sh\necho "capture runtime restore failed" >&2\nexit 42\n')
+            (tools / 'flock').write_text('#!/bin/sh\nexit 0\n')
+            result = subprocess.run(
+                ['bash', str(launcher), str(run), str(reader), str(placement),
+                 str(root / 'recovery-failed-output')],
+                env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
+                         CONTACT_LOG=str(root / 'calls'), CONTACT_RECOVERY=str(root / 'recovered'),
+                         CYRUS_RETRO_INSTALL_ROOT=str(install),
+                         CYRUS_RETRO_SYSTEM_INI=str(installed_system)),
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 42, result.stderr)
+            self.assertIn('capture runtime restore failed', result.stderr)
+            self.assertFalse((root / 'calls').exists())
+            self.assertFalse((root / 'recovery-failed-output').exists())
+            self.assertEqual(world.read_text(), '[world]\nstart_world=9\n')
+            self.assertEqual(system.read_text(), '[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
+
+            # An explicit runtime stays authoritative and bypasses default recovery.
+            result = subprocess.run(
+                ['bash', str(launcher), str(run), str(reader), str(placement),
+                 str(root / 'override-output')],
+                env=dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
+                         CONTACT_LOG=str(root / 'calls'), CONTACT_SYSTEM=str(system),
+                         CYRUS_RETRO_INSTALL_ROOT=str(install), CYRUS_RETRO_IMAGE='custom-runtime:fixture',
+                         CYRUS_RETRO_SYSTEM_INI=str(installed_system)),
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 7, result.stderr)
+            self.assertIn('custom-runtime:fixture', (root / 'calls').read_text())
+            self.assertNotIn('capture runtime restore failed', result.stderr)
 
 
 class PhysicalRelease(unittest.TestCase):
