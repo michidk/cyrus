@@ -40,7 +40,7 @@ app.add_plugins(cyrus_startup::LoadingPlugin);
   a world (WORLD.INI ID or map stem) at marker zero through the same loading path.
 - `MenuState` exposes menu status to control; `QuitRequest` asks the browser host
   to close its tab.
-- The book render target uses the physical window extent on its first publication and follows later window resizes.
+- The book render target uses the physical window extent on its first publication and follows later window resizes. The initial camera and model frames use the current authored book motion pose.
 - Hosts serve book storage requests through the `SaveLoadHost` and
   `LastGameLoader` resources; the session itself is captured and restored by
   [cyrus-session](../cyrus-session/README.md).

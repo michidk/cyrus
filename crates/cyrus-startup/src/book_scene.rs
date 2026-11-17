@@ -159,6 +159,7 @@ fn spawn_groups(
     book: &MenuAsset,
     textures: &[Handle<Image>],
     images: &mut Assets<Image>,
+    pose: &BookPose,
 ) -> Vec<Group> {
     let mut grouped: BTreeMap<(usize, Option<usize>, [u8; 4]), Vec<usize>> = BTreeMap::new();
     for (index, model) in book.models.iter().enumerate() {
@@ -194,8 +195,8 @@ fn spawn_groups(
             mesh: Handle::default(),
         };
         let first = Shown {
-            frame: 0,
-            depth: 0.0,
+            frame: pose.frames[model],
+            depth: pose.depth[model],
         };
         let mesh = meshes.add(group_mesh(book, &group, first));
         commands.spawn((
@@ -257,7 +258,11 @@ fn create(
             ))
         })
         .collect();
-    let groups = spawn_groups(commands, meshes, materials, book, &textures, images);
+    let pose = menu
+        .motion
+        .as_ref()
+        .map_or_else(BookPose::default, |motion| motion.pose.clone());
+    let groups = spawn_groups(commands, meshes, materials, book, &textures, images, &pose);
     let overlay = images.add(super::view3d::texture_image(
         WIDTH as u16,
         HEIGHT as u16,
@@ -271,19 +276,26 @@ fn create(
             ChildOf(sprite_entity),
         ))
         .id();
-    commands.spawn((
-        StartupContent,
-        BookCamera,
-        super::view3d::view_camera(target.clone(), BOOK_LAYER, Color::BLACK),
-    ));
+    commands
+        .spawn((
+            StartupContent,
+            BookCamera,
+            super::view3d::view_camera(target.clone(), BOOK_LAYER, Color::BLACK),
+        ))
+        .insert(camera_transform(pose.camera, pose.pitch));
     Ok(BookScene {
         target,
         textures,
         overlay,
         overlay_entity,
         groups,
-        shown: [None; 5],
-        camera: None,
+        shown: std::array::from_fn(|model| {
+            Some(Shown {
+                frame: pose.frames[model],
+                depth: pose.depth[model],
+            })
+        }),
+        camera: Some((pose.camera, pose.pitch)),
         was_flying: false,
     })
 }
@@ -416,7 +428,7 @@ pub(super) fn present(
             return;
         };
         match create(&mut drawing, &mut menu, book, surfaces) {
-            // The resource appears at the next command flush; the pose syncs from the next frame.
+            // The resource and its initial pose appear together at the next command flush.
             Ok(created) => drawing.commands.insert_resource(created),
             Err(surfaces) => menu.painted = Some(Painted::Surfaces(surfaces)),
         }
@@ -437,7 +449,7 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn first_book_publication_uses_the_window_render_extent() {
+    fn first_book_publication_uses_the_window_extent_and_authored_pose() {
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -452,6 +464,10 @@ mod tests {
         let book: MenuAsset =
             serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
         let surfaces = book.textures.clone();
+        let motion = super::super::book_motion::BookMotion::opening(std::array::from_fn(|index| {
+            book.models[index].frames.len()
+        }));
+        let pose = motion.pose.clone();
         let mut app = App::new();
         app.init_resource::<Assets<Image>>()
             .init_resource::<Assets<Mesh>>()
@@ -465,6 +481,7 @@ mod tests {
         let mut menu = MenuState::default();
         menu.asset = asset;
         menu.painted = Some(Painted::Surfaces(surfaces));
+        menu.motion = Some(motion);
         app.insert_resource(menu);
         let size = UVec2::new(1280, 720);
         let mut window = Window::default();
@@ -481,6 +498,36 @@ mod tests {
                 .size(),
             size
         );
+        let camera = app
+            .world_mut()
+            .query_filtered::<&Transform, With<BookCamera>>()
+            .single(app.world())
+            .unwrap();
+        assert_eq!(*camera, camera_transform(pose.camera, pose.pitch));
+        let scene = app.world().resource::<BookScene>();
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        let book = app
+            .world()
+            .resource::<Assets<MenuAsset>>()
+            .get(&app.world().resource::<MenuState>().asset)
+            .unwrap();
+        for group in &scene.groups {
+            let wanted = Shown {
+                frame: pose.frames[group.model],
+                depth: pose.depth[group.model],
+            };
+            assert_eq!(
+                meshes
+                    .get(&group.mesh)
+                    .unwrap()
+                    .attribute(Mesh::ATTRIBUTE_POSITION),
+                Some(&bevy::mesh::VertexAttributeValues::Float32x3(positions(
+                    &book.models[group.model],
+                    &group.faces,
+                    wanted
+                )))
+            );
+        }
         std::fs::remove_dir_all(cache).unwrap();
     }
 
