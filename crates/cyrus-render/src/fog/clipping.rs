@@ -332,6 +332,9 @@ fn prepare(
                     .previous
                     .as_ref()
                     .is_some_and(|previous| !changed_images.contains(&previous.4.lights.id())))
+            && draws
+                .get(source.draw)
+                .is_ok_and(|(draw, _)| meshes.contains(&draw.0))
         {
             continue;
         }
@@ -356,6 +359,7 @@ fn prepare(
             draw_material.0 = material.0.clone();
         }
         if source.previous.as_ref() == Some(&key)
+            && meshes.contains(&draw.0)
             && !meshes_changed
             && !animated.as_ref().is_some_and(|pose| pose.is_changed())
             && !changed_meshes.contains(&mesh.0.id())
@@ -387,6 +391,8 @@ fn prepare(
             Ok(prepared) => {
                 if let Some(mut target) = meshes.get_mut(&draw.0) {
                     *target = prepared;
+                } else {
+                    draw.0 = meshes.add(prepared);
                 }
                 // Bevy re-reads a mesh's place in its vertex buffers only for entities whose `Mesh3d` or
                 // bounds changed; this draw has no bounds, so a rewritten mesh that moved would
@@ -400,6 +406,8 @@ fn prepare(
                 if let Some(mut target) = meshes.get_mut(&draw.0) {
                     *target = Mesh::new(PrimitiveTopology::TriangleList, default());
                     draw.set_changed();
+                } else {
+                    draw.0 = meshes.add(Mesh::new(PrimitiveTopology::TriangleList, default()));
                 }
                 source.previous = Some(key);
                 source.pending = false;
@@ -1441,6 +1449,23 @@ mod tests {
         );
         app.update();
         app.update();
+        app.world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .remove(draw_mesh.id())
+            .unwrap();
+        app.update();
+        let recovered = &app.world().get::<Mesh3d>(draw).unwrap().0;
+        assert_ne!(recovered, &source_mesh);
+        assert_eq!(app.world().get::<Mesh3d>(source).unwrap().0, source_mesh);
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(recovered)
+                .expect("a missing prepared output must be rebuilt from its source")
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&prepared_colors),
+            "recovered output must retain every prepared RGBA component"
+        );
         app.world_mut().entity_mut(source).despawn();
         assert!(app.world().get_entity(draw).is_err());
     }
