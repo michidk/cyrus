@@ -1477,13 +1477,24 @@ impl ScriptWorld {
                     support.as_ref(),
                     query.scene.settings.standing_height,
                 )?;
+                let effect_position = if previous.is_water()
+                    || surface.is_water()
+                    || previous == Surface::LAVA
+                    || surface == Surface::LAVA
+                {
+                    self.surface_effect_position(id, effect_height)?
+                } else {
+                    None
+                };
                 self.pending_surface_transitions
                     .push(super::SurfaceTransition {
                         previous,
                         returned: surface,
                         stored: surface,
                         sound_position: Some(self.sight_position(id.index)?),
-                        effect_height,
+                        effect: super::SurfaceEffectPlacement::Captured {
+                            position: effect_position,
+                        },
                     });
             }
         }

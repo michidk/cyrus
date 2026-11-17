@@ -117,7 +117,9 @@ impl ScriptWorld {
                 returned,
                 stored: self.actors[id.index].surface.unwrap_or_default(),
                 sound_position: None,
-                effect_height,
+                effect: super::SurfaceEffectPlacement::Immediate {
+                    height: effect_height,
+                },
             },
             ticks,
             random,
@@ -138,7 +140,7 @@ impl ScriptWorld {
             returned,
             stored,
             sound_position,
-            effect_height,
+            effect,
         } = transition;
         if returned == previous {
             return Ok(());
@@ -147,7 +149,7 @@ impl ScriptWorld {
         let deep = |surface: Surface| surface.is_deep_water();
         if !in_water(stored) && !in_water(previous) {
             if stored == Surface::LAVA || previous == Surface::LAVA {
-                self.spawn_transition_effect(id, 0x2580, effect_height)?;
+                self.spawn_transition_effect(id, 0x2580, effect)?;
             }
             return Ok(());
         }
@@ -183,7 +185,7 @@ impl ScriptWorld {
             };
             self.request_ordinary_group(id, group, false, ticks, sounds)?;
         }
-        self.spawn_transition_effect(id, 0x2500, effect_height)?;
+        self.spawn_transition_effect(id, 0x2500, effect)?;
         let effect = if !in_water(stored) || (in_water(previous) && !deep(stored)) {
             70
         } else {
@@ -212,13 +214,33 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         descriptor: u32,
-        height: Option<i32>,
+        placement: super::SurfaceEffectPlacement,
     ) -> Result<()> {
-        let (Some(height), Some(camera)) = (height, self.camera.as_ref()) else {
-            return Ok(());
-        };
         if self.effects.is_none() {
             return Ok(());
+        }
+        let position = match placement {
+            super::SurfaceEffectPlacement::Immediate { height } => {
+                self.surface_effect_position(id, height)?
+            }
+            super::SurfaceEffectPlacement::Captured { position } => position,
+        };
+        if let Some(position) = position {
+            self.spawn_environment_effect(descriptor, position)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn surface_effect_position(
+        &self,
+        id: ScriptActorId,
+        height: Option<i32>,
+    ) -> Result<Option<[i32; 3]>> {
+        let (Some(height), Some(camera)) = (height, self.camera.as_ref()) else {
+            return Ok(None);
+        };
+        if self.effects.is_none() {
+            return Ok(None);
         }
         let position = self.spatial(id)?.local.position;
         let bearing = crate::script::spatial::query_bearing(
@@ -227,7 +249,7 @@ impl ScriptWorld {
         );
         let heading = wrap(1024 + i32::from(bearing)) as u16;
         let [x, _, z] = cyrus_world::transform::translate_forward(position, heading, 0x800)?;
-        self.spawn_environment_effect(descriptor, [x, height, z])
+        Ok(Some([x, height, z]))
     }
 
     /// Q8 Y of a transition effect for the selected support: the support height plus standing

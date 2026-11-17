@@ -124,7 +124,7 @@ fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once(
 
 /// The support handler publishes a splash at the actor before the accepted walk translates it.
 #[test]
-fn walking_water_entry_sound_uses_the_support_query_position() {
+fn walking_water_entry_keeps_query_time_sound_and_effect_positions() {
     let (_, mut world, mut data, mut scene) = player_walking_fixture();
     // Texture 25 on the terrain resolves to deep water; the terrain surface sits inside the probe.
     scene.collision.texture_surfaces = Some(BTreeMap::from([(
@@ -162,12 +162,21 @@ fn walking_water_entry_sound_uses_the_support_query_position() {
     let player = world.id(index).unwrap();
     let map = world.id(0).unwrap();
     world
-        .place_selected_player([512 * 256, -1536, 512 * 256], 0)
+        .place_selected_player([512 * 256, -1536, 512 * 256 + 240], 0)
         .unwrap();
     let prepared = world
         .prepare_ordinary_collision_query(player, &scene, &data, [512, 512], &[player, map])
         .unwrap();
     let before = world.spatial(player).unwrap().local.position;
+    world
+        .initialize_camera_pose(cyrus_script::script::camera::CameraPose {
+            position: [before[0], 0, before[2] - 100 * 256],
+            angles: [0; 3],
+        })
+        .unwrap();
+    world
+        .prepare_environment_effects(&super::water_model_tests::effects())
+        .unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let held = cyrus_script::player::input::PlayerInput {
         forward: true,
@@ -222,6 +231,13 @@ fn walking_water_entry_sound_uses_the_support_query_position() {
         [before],
         "entry splash belongs to the support query, before walking from {before:?} to {after:?}"
     );
+    let effects: Vec<_> = world.environmental_effects().unwrap().active().collect();
+    assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].1.descriptor, 0x2500);
+    // The camera is directly behind the probe: the splash starts eight map units toward it.
+    // Start just below a map-unit boundary so the later walk changes the visible integer position.
+    assert_eq!(effects[0].1.position[0], before[0] >> 8);
+    assert_eq!(effects[0].1.position[2], (before[2] >> 8) - 8);
 }
 
 /// Deferred probes must retain each transition's surface instead of reading the final one twice.

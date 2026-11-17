@@ -5495,7 +5495,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 }
 /// A selected-player surface update: previous, returned and stored surfaces at the update,
-/// plus the splash effect's Q8 height and sound position. Deferred dispatch retains query-time values.
+/// plus the splash effect placement and sound position. Deferred dispatch retains query-time values.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SurfaceTransition {
     pub previous: Surface,
@@ -5503,7 +5503,15 @@ pub(super) struct SurfaceTransition {
     pub stored: Surface,
     /// Queued probes capture their position; immediate handlers sample only if they emit a sound.
     pub sound_position: Option<[i32; 3]>,
-    pub effect_height: Option<i32>,
+    pub effect: SurfaceEffectPlacement,
+}
+
+/// Immediate transitions resolve a support height against live actor/camera poses; deferred
+/// queries capture the final Q8 effect point, including the camera-relative offset.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum SurfaceEffectPlacement {
+    Immediate { height: Option<i32> },
+    Captured { position: Option<[i32; 3]> },
 }
 
 /// The actor-record triples a position or angle property names: the local pose, the previous

@@ -89,3 +89,6 @@ animation selection without replacing the actor's latest surface.
 
 Water-transition sounds retain the support-query position when an accepted walk
 moves the player before the queued sound is flushed.
+
+Deferred water/lava effects retain their query-time camera-relative placement,
+so walking before dispatch cannot move the splash to the player's later position.
