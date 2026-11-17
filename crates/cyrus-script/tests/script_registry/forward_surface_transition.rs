@@ -69,6 +69,8 @@ fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once(
         world.actor_surface(player).unwrap(),
         cyrus_assets::surface::Surface::DEEPWATER
     );
+    // An idempotent selection is not retirement and must preserve the queued transition.
+    assert_eq!(world.select_player(false).unwrap(), player);
     let retired = cyrus_script::script::ScriptActorId {
         generation: player.generation.wrapping_add(1),
         index: player.index,
@@ -118,6 +120,45 @@ fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once(
             1,
             &mut cyrus_game::random::EngineRandom::default(),
             &mut |_, _| panic!("transition run twice"),
+        )
+        .unwrap();
+    // Another probe belongs to CYRUS, even if the public selector changes before dispatch.
+    world
+        .set_actor_surface(player, cyrus_assets::surface::Surface::SAND)
+        .unwrap();
+    world
+        .query_player_forward_support(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            before,
+            &mut history,
+            false,
+        )
+        .unwrap();
+    let alternate = world.select_player(true).unwrap();
+    world
+        .flush_surface_transitions(
+            alternate,
+            1,
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| {
+                panic!("replacement player inherited the retired selection's water transition")
+            },
+        )
+        .unwrap();
+    world.select_player(false).unwrap();
+    world
+        .flush_surface_transitions(
+            player,
+            1,
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| panic!("retired selection's transition returned after selecting it again"),
         )
         .unwrap();
 }

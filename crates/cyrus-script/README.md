@@ -92,3 +92,6 @@ moves the player before the queued sound is flushed.
 
 Deferred water/lava effects retain their query-time camera-relative placement,
 so walking before dispatch cannot move the splash to the player's later position.
+
+Changing the selected player retires pending water/lava transitions from the outgoing
+selection; reselecting the same player preserves pending dispatch.

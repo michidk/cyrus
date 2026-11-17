@@ -3469,6 +3469,11 @@ impl ScriptWorld {
             })
             .transpose()?;
 
+        // Deferred probes belong to the outgoing selection, never its replacement.
+        // Re-selecting the same role preserves its pending work.
+        if self.selected_player_index() != Some(selected) {
+            self.pending_surface_transitions.clear();
+        }
         self.globals.player_swapped = swapped;
         if let Some(camera) = next_camera {
             self.camera = Some(camera);
