@@ -34,6 +34,20 @@ class MemoryRegion(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'found 0'):
             region.locate(memory, [(0, 40)], b'anchor', 3, 40)
 
+    def test_large_mapping_is_scanned_with_bounded_reads_and_boundary_overlap(self):
+        class BoundedMemory(io.BytesIO):
+            def read(self, size=-1):
+                if size < 0 or size > 65536:
+                    raise AssertionError(f'unbounded process-memory read: {size}')
+                return super().read(size)
+
+        # The signature crosses a scan boundary and the region starts inside
+        # a coalesced mapping, rather than at its first byte.
+        anchor = 65534
+        memory = BoundedMemory(bytes(anchor) + b'anchor' + bytes(70000))
+        self.assertEqual(region.locate(memory, [(0, len(memory.getvalue()))],
+                                       b'anchor', 3, 40), anchor - 3)
+
     def test_absent_signature_never_falls_back_to_mapping_start(self):
         with self.assertRaisesRegex(ValueError, 'found 0'):
             region.locate(io.BytesIO(bytes(80)), [(0, 80)], b'anchor', 3, 40)

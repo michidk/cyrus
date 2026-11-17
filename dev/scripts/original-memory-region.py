@@ -14,18 +14,31 @@ def locate(memory, ranges, signature, anchor_offset, region_size):
     for start, end in ranges:
         if end - start < region_size:
             continue
-        try:
-            memory.seek(start)
-            blob = memory.read(end - start)
-        except OSError:
-            # A process mapping can disappear after its maps snapshot.
-            continue
-        match = blob.find(signature, anchor_offset)
-        while match != -1:
-            base = start + match - anchor_offset
-            if base + region_size <= end:
-                candidates.add(base)
-            match = blob.find(signature, match + 1)
+        # A coalesced anonymous mapping can include far more than guest RAM.
+        # Search only possible anchor positions, retaining overlap so signatures
+        # spanning a read boundary are still found without copying the mapping.
+        position = start + anchor_offset
+        limit = end - region_size + anchor_offset + len(signature)
+        overlap = b''
+        while position < limit:
+            try:
+                memory.seek(position)
+                chunk = memory.read(min(65536, limit - position))
+            except OSError:
+                # A process mapping can disappear after its maps snapshot.
+                break
+            if not chunk:
+                break
+            blob = overlap + chunk
+            origin = position - len(overlap)
+            match = blob.find(signature)
+            while match != -1:
+                base = origin + match - anchor_offset
+                if base >= start and base + region_size <= end:
+                    candidates.add(base)
+                match = blob.find(signature, match + 1)
+            position += len(chunk)
+            overlap = blob[-(len(signature) - 1):] if len(signature) > 1 else b''
     if len(candidates) != 1:
         raise ValueError(f'original memory region: expected one binding, found {len(candidates)}')
     return candidates.pop()
