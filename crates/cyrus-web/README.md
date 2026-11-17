@@ -41,7 +41,7 @@ percent-encode values; booleans accept empty, `true`/`1` or `false`/`0`):
 | `?skip-startup` | `--skip-startup` | Skip the splash and open the book menu |
 | `?new-game` | `--new-game` | Start New Game from the open book |
 | `?movie=2` | `--movie 2` | Play a Movies-page cinematic (zero-based MENU.INI index) |
-| `?skip-movies` | `--skip-movies` | New Game without its introduction movie |
+| `?skip-movies` | `--skip-movies` | Skip every movie except those opened from the Movies menu and the ending |
 | `?volume=0` | `--volume 0` | Master volume for this visit, 0–100, not saved |
 | `?mode=modern` | `--mode modern` | Every presentation area; `fog`, `sky` and `music` set one area |
 

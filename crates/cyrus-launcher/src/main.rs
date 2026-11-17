@@ -545,8 +545,8 @@ impl App {
         let mut changed = false;
         theme::row(
             ui,
-            "Skip the introduction movie",
-            "Enter a new game without it.",
+            "Skip movies",
+            "Play no movies except those opened from the Movies menu.",
             |ui| changed = theme::toggle(ui, &mut self.options.skip_movies).changed(),
         );
         if changed {
@@ -732,7 +732,7 @@ impl eframe::App for App {
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("cyrus")
+            .with_title(concat!("Cyrus Launcher v", env!("CARGO_PKG_VERSION")))
             .with_inner_size([WIDTH, HEIGHT])
             .with_resizable(false)
             .with_maximize_button(false),

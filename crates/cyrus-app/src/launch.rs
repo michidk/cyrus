@@ -54,7 +54,7 @@ pub struct GameOptions {
     /// book. Plays hidden entries too. Implies --skip-startup.
     #[arg(long, value_name = "INDEX", conflicts_with = "scene")]
     pub movie: Option<usize>,
-    /// Enter a new game without its introduction movie, from this launch and from the menu entry.
+    /// Play no movies except those opened from the Movies menu (the ending still plays).
     #[arg(long)]
     pub skip_movies: bool,
     /// Master output volume for this launch, in percent; 0 silences all audio. Not saved.
