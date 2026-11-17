@@ -586,16 +586,17 @@ impl App {
             .max_height(330.0)
             .show(ui, |ui| {
                 for entry in &self.installed.mods {
-                    let byline = match (&entry.version, &entry.author) {
-                        (Some(version), Some(author)) => format!("v{version} by {author}. "),
-                        (Some(version), None) => format!("v{version}. "),
-                        (None, Some(author)) => format!("By {author}. "),
-                        (None, None) => String::new(),
-                    };
+                    let version = entry.version.as_ref().map(|version| format!("v{version}"));
+                    let byline = entry
+                        .author
+                        .as_ref()
+                        .map(|author| format!("By {author}. "))
+                        .unwrap_or_default();
                     let mut on = self.active.contains(&entry.id);
-                    theme::row(
+                    theme::titled_row(
                         ui,
                         &entry.name,
+                        version.as_deref(),
                         &format!("{byline}{}", entry.description),
                         |ui| {
                             if theme::toggle(ui, &mut on).changed() {
