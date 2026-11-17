@@ -24,9 +24,11 @@ def prepare(install, run):
         raise ValueError(f'original install definition absent: {install / "soup386/SOUP386.DEF"}')
     if not (install / 'system').is_dir():
         raise ValueError(f'original install presentation directory absent: {install / "system"}')
+    if not (install / 'fonts').is_dir():
+        raise ValueError(f'original install font directory absent: {install / "fonts"}')
     if not run.is_dir():
         raise ValueError(f'original writable run directory absent: {run}')
-    for directory in ('soup386', 'system'):
+    for directory in ('soup386', 'system', 'fonts'):
         fill_missing(install / directory, run / directory)
 
 

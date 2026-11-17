@@ -45,6 +45,7 @@ class AudioLauncher(unittest.TestCase):
             (install / 'soup386').mkdir(parents=True)
             (install / 'soup386/SOUP386.DEF').write_text('synthetic definition')
             (install / 'system').mkdir()
+            (install / 'fonts').mkdir()
             (root / 'run/Redguard').mkdir(parents=True)
             (root / 'container').mkdir()
             (root / 'events.json').write_text('[]')

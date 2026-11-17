@@ -247,7 +247,8 @@ diagnostics while preserving direct-world admission and other run settings;
 Executable-specific readers can use `dev/scripts/original-memory-region.py` to
 locate their guest region from a local signature and its offset. Supply readable
 anonymous process mapping ranges and the required region size. The helper accounts
-for a region beginning inside a coalesced mapping and rejects absent, ambiguous
+for a region beginning inside a coalesced mapping, scans in bounded chunks,
+and rejects absent, ambiguous
 or truncated-region candidates. Keep signatures and executable bindings in the
 local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
 
@@ -770,7 +771,7 @@ writes saves); `dev/scripts/run-retro.sh` makes one under `magic/retro-run/` and
 copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
 For independent original audio captures, `original-audio-capture.sh` repairs missing
-`soup386` and `system` files in the writable run copy before launch, using
+`soup386`, `system` and `fonts` files in the writable run copy before launch, using
 `prepare-original-definitions.py INSTALLED_REDGUARD RUN_REDGUARD`. Existing
 per-run files are preserved. Linked definition destinations are rejected so
 recovery cannot write into the install.
