@@ -104,3 +104,6 @@ no animation receiver, so subsequent ordinary updates can continue.
 
 High-ledge frame-threshold requests preserve excluded receivers' animation owners
 and complete without a receiver, just like ordinary animation requests.
+
+The near and far ledge scans each gather a fresh record table. Rejected near
+records cannot occupy the farther scan's slots or suppress its climbable ledges.

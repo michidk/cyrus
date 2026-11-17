@@ -48869,6 +48869,11 @@ fn selected_jump_high_ledge_without_animation_receiver_completes_transition() {
     grounded_jump_selects_ledges(false, LedgeReceiver::Absent);
 }
 
+#[test]
+fn selected_jump_rescans_far_ledges_after_four_rejected_near_records() {
+    grounded_jump_selects_ledges_with_near_obstacles(false, LedgeReceiver::Eligible, true);
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LedgeReceiver {
     Eligible,
@@ -48877,6 +48882,14 @@ enum LedgeReceiver {
 }
 
 fn grounded_jump_selects_ledges(native_jump: bool, receiver: LedgeReceiver) {
+    grounded_jump_selects_ledges_with_near_obstacles(native_jump, receiver, false);
+}
+
+fn grounded_jump_selects_ledges_with_near_obstacles(
+    native_jump: bool,
+    receiver: LedgeReceiver,
+    blocked_near_pass: bool,
+) {
     use cyrus_assets::collision::{CollisionGeometry, CollisionModel, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_script::script::{
@@ -48892,6 +48905,9 @@ fn grounded_jump_selects_ledges(native_jump: bool, receiver: LedgeReceiver) {
         (-44, 86, 11),
         (-45, 32, 0),
     ] {
+        if blocked_near_pass && top != -13 {
+            continue;
+        }
         if receiver != LedgeReceiver::Eligible
             && expected_group != AnimationGroup::PULL_UP_LEDGE.index()
         {
@@ -49027,6 +49043,31 @@ fn grounded_jump_selects_ledges(native_jump: bool, receiver: LedgeReceiver) {
                 },
             },
         );
+        if blocked_near_pass {
+            let far = scene.collision.models.get_mut("LEDGE").unwrap();
+            for vertex in &mut far.geometry.vertices {
+                if vertex[2] == 60. {
+                    vertex[2] = 84.;
+                }
+            }
+            let mut near: CollisionModel =
+                serde_json::from_value(serde_json::to_value(&*far).unwrap()).unwrap();
+            for vertex in &mut near.geometry.vertices {
+                vertex[1] = if vertex[1] == top as f32 { 100. } else { 120. };
+                vertex[2] = if vertex[2] == 84. { 60. } else { 80. };
+            }
+            scene.collision.models.insert("LOW_NEAR".into(), near);
+            // Four rejected tops fill the first pass's table. The farther pass must
+            // start a fresh table before considering the climbable platform.
+            for id in 301..305 {
+                scene.collision.placements.push(StaticPlacement {
+                    id,
+                    model: "LOW_NEAR".into(),
+                    position: [512, 0, 512],
+                    rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+                });
+            }
+        }
         scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
         let prepared = world
             .prepare_ordinary_collision_query(player, &scene, &data, [522, 542], &[player, map])

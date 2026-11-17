@@ -351,8 +351,8 @@ impl ScriptWorld {
             }
             Ok((body_fits, head_fits))
         };
-        let mut records: Vec<LedgeRecord> = Vec::new();
         for offset in LEDGE_SCAN_PASSES {
+            let mut records: Vec<LedgeRecord> = Vec::new();
             let forward = LEDGE_SCAN_REACH + offset;
             let top_start = place([0, LEDGE_SCAN_HALF_HEIGHT, forward])?;
             let top_end = place([0, -LEDGE_SCAN_HALF_HEIGHT, forward])?;
