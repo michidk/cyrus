@@ -1076,7 +1076,10 @@ exited, including when an unrelated server still occupies the control port. The 
 path must be identical in the game and observer. The same host-config and
 per-run lock requirements apply. This observer dismisses the prepared title,
 stops waiting for gameplay as soon as its clock advances, then records two
-Escape/book/Continue cycles. Each book PNG must finish decoding and contain
+Escape/book/Continue cycles. Each visit retains the first observed `Menu` state
+and an entry PNG even if it is black, before waiting for readiness. This state
+contains a control-sample frame number; the asynchronous PNG is not claimed to
+belong to that exact frame. The separate ready-book PNG must finish decoding and contain
 visible pixels; each Continue must return to `InGame` and advance its clock.
 A unique path prevents an earlier run's image from satisfying a request.
 `--seconds` bounds the whole observation, including asynchronous image writes,

@@ -16,28 +16,33 @@ SCRIPT = Path(__file__).with_name("native-book-capture.py")
 
 
 class Capture(unittest.TestCase):
-    def run_capture(self, black=False, delay=0, resume=True, context="in_game", advance_frames=True, title=False, unavailable=None, release_delay=0, seconds=1, press_delay=0, process_pid=None):
+    def run_capture(self, black=False, delay=0, resume=True, context="in_game", advance_frames=True, title=False, unavailable=None, release_delay=0, seconds=1, press_delay=0, process_pid=None, black_before_ready=False, menu_ready_after=3):
         phase = "Loading" if title else "InGame"
         frame = 0
         clock = 1
         commands = []
         writers = []
         releases = 0
+        menu_samples = 0
+        ready = True
 
         class Handler(socketserver.StreamRequestHandler):
             def handle(self):
-                nonlocal phase, frame, clock, releases
+                nonlocal phase, frame, clock, releases, menu_samples, ready
                 command = json.loads(self.rfile.readline())["cmd"]
                 commands.append(command)
                 kind = command["type"]
                 if kind == "state":
+                    if phase == "Menu":
+                        menu_samples += 1
+                    ready = not black_before_ready or phase != "Menu" or menu_samples >= menu_ready_after
                     frame += int(advance_frames)
                     if phase == "InGame" and resume:
                         clock += 1
                     result = {"state": phase, "frame": frame,
                               "clock": {"game_seconds": clock},
                               "scene_ready": title, "startup": {"title_visible": title},
-                              "menu": {"ready": True, "context": context, "unavailable": unavailable}}
+                              "menu": {"ready": ready, "context": context, "unavailable": unavailable}}
                 elif kind == "input":
                     if command["action"] == "release":
                         releases += 1
@@ -48,9 +53,10 @@ class Capture(unittest.TestCase):
                         phase = "Menu" if phase == "InGame" else "InGame"
                     result = {}
                 elif kind == "screenshot":
+                    shot_black = black or (black_before_ready and not ready)
                     def write():
                         time.sleep(delay)
-                        Image.new("RGB", (8, 8), "black" if black else "gold").save(command["path"])
+                        Image.new("RGB", (8, 8), "black" if shot_black else "gold").save(command["path"])
                     writer = threading.Thread(target=write)
                     writers.append(writer)
                     writer.start()
@@ -94,6 +100,22 @@ class Capture(unittest.TestCase):
         run, receipt, _ = self.run_capture(process_pid=os.getpid())
         self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
         self.assertTrue(receipt["success"])
+
+    def test_records_black_entry_before_the_settled_book_becomes_ready(self):
+        run, receipt, _ = self.run_capture(black_before_ready=True)
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+        first = receipt["visits"][0]["first_menu"]
+        self.assertFalse(first["state"]["menu"]["ready"])
+        self.assertEqual(first["screenshot"]["nonblack_pixels"], 0)
+        self.assertEqual(receipt["visits"][0]["screenshot"]["nonblack_pixels"], 64)
+        self.assertLess(first["state"]["frame"], receipt["visits"][0]["entry"]["frame"])
+
+    def test_entry_evidence_survives_a_readiness_timeout(self):
+        run, receipt, _ = self.run_capture(black_before_ready=True, menu_ready_after=1000000)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("deadline", receipt["error"])
+        self.assertEqual(receipt["visits"][0]["first_menu"]["screenshot"]["nonblack_pixels"], 0)
+        self.assertNotIn("resumed", receipt["visits"][0])
 
     def test_two_visits_wait_for_written_pngs_and_clock_progress(self):
         run, receipt, commands = self.run_capture(delay=0.1)

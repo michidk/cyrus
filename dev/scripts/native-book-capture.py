@@ -58,11 +58,11 @@ def capture(port, output, screenshot_dir, seconds=120, interval=0.1, process_pid
         before = request({"type": "state"})["frame"]
         try:
             request({"type": "input", "key": name, "action": "press"})
-            wait_state(lambda state: state["frame"] > before)
+            return wait_state(lambda state: state["frame"] > before)
         finally:
             request({"type": "input", "key": name, "action": "release"}, release=True)
 
-    def screenshot():
+    def screenshot(*, allow_black=False):
         path = screenshot_dir / f"book-{uuid.uuid4().hex}.png"
         request({"type": "screenshot", "path": str(path)})
         while time.monotonic() < deadline:
@@ -74,7 +74,7 @@ def capture(port, output, screenshot_dir, seconds=120, interval=0.1, process_pid
                     visible = sum(any(pixel) for pixel in zip(pixels[::3], pixels[1::3], pixels[2::3]))
                     result = {"path": str(path), "pixels": rgb.width * rgb.height,
                               "nonblack_pixels": visible}
-                if not visible:
+                if not visible and not allow_black:
                     raise ValueError(f"{record['stage']}: screenshot is entirely black: {path}")
                 return result
             except (OSError, SyntaxError):
@@ -90,13 +90,19 @@ def capture(port, output, screenshot_dir, seconds=120, interval=0.1, process_pid
                    (state.get("clock") or {}).get("game_seconds", 0) > 0)
         for index in range(2):
             record["stage"] = f"book-{index + 1}"
-            key("Escape")
-            state = wait_state(lambda state: state.get("state") == "Menu" and
-                               (state.get("menu") or {}).get("ready"))
+            state = key("Escape")
+            if state.get("state") != "Menu":
+                state = wait_state(lambda state: state.get("state") == "Menu")
             if state["menu"].get("context") != "in_game":
                 raise ValueError(f"unexpected book context: {state['menu'].get('context')}")
-            visit = {"entry": state, "screenshot": screenshot()}
+            # Keep entry diagnostics even if readiness or the settled readback later fails.
+            visit = {"first_menu": {"state": state}}
             record["visits"].append(visit)
+            visit["first_menu"]["screenshot"] = screenshot(allow_black=True)
+            state = wait_state(lambda state: state.get("state") == "Menu" and
+                               (state.get("menu") or {}).get("ready"))
+            visit["entry"] = state
+            visit["screenshot"] = screenshot()
             record["stage"] = f"continue-{index + 1}"
             key("Escape")
             resumed = wait_state(lambda state: state.get("state") == "InGame")
