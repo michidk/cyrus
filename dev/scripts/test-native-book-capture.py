@@ -15,16 +15,17 @@ SCRIPT = Path(__file__).with_name("native-book-capture.py")
 
 
 class Capture(unittest.TestCase):
-    def run_capture(self, black=False, delay=0, resume=True, context="in_game", advance_frames=True, title=False, unavailable=None):
+    def run_capture(self, black=False, delay=0, resume=True, context="in_game", advance_frames=True, title=False, unavailable=None, release_delay=0, seconds=1, press_delay=0):
         phase = "Loading" if title else "InGame"
         frame = 0
         clock = 1
         commands = []
         writers = []
+        releases = 0
 
         class Handler(socketserver.StreamRequestHandler):
             def handle(self):
-                nonlocal phase, frame, clock
+                nonlocal phase, frame, clock, releases
                 command = json.loads(self.rfile.readline())["cmd"]
                 commands.append(command)
                 kind = command["type"]
@@ -37,7 +38,12 @@ class Capture(unittest.TestCase):
                               "scene_ready": title, "startup": {"title_visible": title},
                               "menu": {"ready": True, "context": context, "unavailable": unavailable}}
                 elif kind == "input":
+                    if command["action"] == "release":
+                        releases += 1
+                        if releases == 1:
+                            time.sleep(release_delay)
                     if command["action"] == "press":
+                        time.sleep(press_delay)
                         phase = "Menu" if phase == "InGame" else "InGame"
                     result = {}
                 elif kind == "screenshot":
@@ -50,7 +56,11 @@ class Capture(unittest.TestCase):
                     result = {}
                 else:
                     raise AssertionError(command)
-                self.wfile.write((json.dumps({"id": 1, "ok": True, "result": result}) + "\n").encode())
+                try:
+                    self.wfile.write((json.dumps({"id": 1, "ok": True, "result": result}) + "\n").encode())
+                except BrokenPipeError:
+                    # Deadline tests deliberately close before the delayed response.
+                    pass
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -60,8 +70,8 @@ class Capture(unittest.TestCase):
                 try:
                     run = subprocess.run([sys.executable, str(SCRIPT), str(server.server_address[1]),
                                           str(root / "receipt.json"), "--screenshot-dir", str(root),
-                                          "--seconds", "1", "--interval", "0.01"],
-                                         text=True, capture_output=True, timeout=5)
+                                          "--seconds", str(seconds), "--interval", "0.01"],
+                                         text=True, capture_output=True, timeout=max(5, seconds + 2))
                 finally:
                     server.shutdown()
                     thread.join()
@@ -87,6 +97,19 @@ class Capture(unittest.TestCase):
         inputs = [c for c in commands if c["type"] == "input"]
         self.assertEqual([c["key"] for c in inputs[:2]], ["Enter", "Enter"])
         self.assertEqual(len(receipt["visits"]), 2)
+
+    def test_busy_release_uses_remaining_run_budget(self):
+        run, receipt, _ = self.run_capture(release_delay=2.2, seconds=5)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertTrue(receipt["success"])
+        self.assertEqual(len(receipt["visits"]), 2)
+
+    def test_press_acknowledgement_timeout_still_attempts_release(self):
+        run, receipt, commands = self.run_capture(press_delay=0.75, seconds=0.5)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("input Escape press", receipt["error"])
+        self.assertEqual([c["action"] for c in commands if c["type"] == "input"],
+                         ["press", "release"])
 
     def test_black_book_fails_and_preserves_the_stage(self):
         run, receipt, _ = self.run_capture(black=True)

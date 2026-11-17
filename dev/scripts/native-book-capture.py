@@ -14,16 +14,23 @@ def capture(port, output, screenshot_dir, seconds=120, interval=0.1):
     deadline = time.monotonic() + seconds
     record = {"success": False, "stage": "world", "visits": [], "error": None}
 
-    def request(command):
+    def request(command, *, release=False):
         remaining = deadline - time.monotonic()
-        if remaining <= 0:
+        if remaining <= 0 and not release:
             raise TimeoutError(f"{record['stage']}: run deadline expired")
-        with socket.create_connection(("127.0.0.1", port), timeout=min(remaining, 30)) as connection:
-            connection.settimeout(min(remaining, 30))
-            connection.sendall((json.dumps({"id": 1, "cmd": command}) + "\n").encode())
-            response = json.loads(connection.makefile("rb").readline())
+        # A release uses the normal budget while the run is live. After expiry,
+        # allow only a bounded cleanup attempt so failure cannot strand a held key.
+        timeout = min(remaining, 30) if remaining > 0 else 2
+        label = " ".join(str(command[key]) for key in ("type", "key", "action") if key in command)
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=timeout) as connection:
+                connection.settimeout(timeout)
+                connection.sendall((json.dumps({"id": 1, "cmd": command}) + "\n").encode())
+                response = json.loads(connection.makefile("rb").readline())
+        except OSError as error:
+            raise type(error)(f"{record['stage']}: {label}: {error}") from error
         if response.get("ok") is not True:
-            raise ValueError(f"{command['type']}: control rejected request: {response}")
+            raise ValueError(f"{label}: control rejected request: {response}")
         return response["result"]
 
     def wait_state(predicate):
@@ -43,18 +50,11 @@ def capture(port, output, screenshot_dir, seconds=120, interval=0.1):
 
     def key(name):
         before = request({"type": "state"})["frame"]
-        request({"type": "input", "key": name, "action": "press"})
         try:
+            request({"type": "input", "key": name, "action": "press"})
             wait_state(lambda state: state["frame"] > before)
         finally:
-            # Release even when the observation deadline expired.
-            with socket.create_connection(("127.0.0.1", port), timeout=2) as connection:
-                connection.settimeout(2)
-                connection.sendall((json.dumps({"id": 1, "cmd": {
-                    "type": "input", "key": name, "action": "release"}}) + "\n").encode())
-                response = json.loads(connection.makefile("rb").readline())
-                if response.get("ok") is not True:
-                    raise ValueError(f"{name}: release rejected: {response}")
+            request({"type": "input", "key": name, "action": "release"}, release=True)
 
     def screenshot():
         path = screenshot_dir / f"book-{uuid.uuid4().hex}.png"

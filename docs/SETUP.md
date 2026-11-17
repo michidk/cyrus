@@ -1077,7 +1077,9 @@ Escape/book/Continue cycles. Each book PNG must finish decoding and contain
 visible pixels; each Continue must return to `InGame` and advance its clock.
 A unique path prevents an earlier run's image from satisfying a request.
 `--seconds` bounds the whole observation, including asynchronous image writes,
-and the receipt retains the exact failing stage and error. This checks visible
+and the receipt retains the exact failing stage and control command. Key-release
+acknowledgements use the remaining run budget; after expiry the observer makes
+a separate bounded release attempt. This checks visible
 book entry and continuation; it does not prove original-game pixel parity or
 acceptance on a different graphics adapter.
 
