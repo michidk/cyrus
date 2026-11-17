@@ -33,6 +33,16 @@ struct Source {
     pending: bool,
 }
 
+impl Source {
+    fn discard_draw(&mut self, draw: &mut Mesh3d, meshes: &mut Assets<Mesh>) {
+        if let Some(mut target) = meshes.get_mut(&draw.0) {
+            *target = Mesh::new(PrimitiveTopology::TriangleList, default());
+        }
+        self.previous = None;
+        self.pending = true;
+    }
+}
+
 #[derive(Component)]
 pub(super) struct Draw;
 
@@ -326,7 +336,11 @@ fn prepare(
             continue;
         }
         source.pending = true;
+        let Ok((mut draw, mut draw_material)) = draws.get_mut(source.draw) else {
+            continue;
+        };
         let Some(material_asset) = materials.get(&material.0) else {
+            source.discard_draw(&mut draw, &mut meshes);
             continue;
         };
         let extension = &material_asset.extension;
@@ -338,9 +352,6 @@ fn prepare(
             extension.clone(),
             viewport,
         );
-        let Ok((mut draw, mut draw_material)) = draws.get_mut(source.draw) else {
-            continue;
-        };
         if draw_material.0 != material.0 {
             draw_material.0 = material.0.clone();
         }
@@ -354,16 +365,9 @@ fn prepare(
             source.pending = false;
             continue;
         }
-        let Some(original) = meshes.get(&mesh.0) else {
-            continue;
-        };
-        let Some(lights) = images.get(&extension.lights) else {
-            if let Some(mut target) = meshes.get_mut(&draw.0) {
-                *target = Mesh::new(PrimitiveTopology::TriangleList, default());
-                draw.set_changed();
-            }
-            // Retry even when the same handle returns with the previous inputs.
-            source.previous = None;
+        let (Some(original), Some(lights)) = (meshes.get(&mesh.0), images.get(&extension.lights))
+        else {
+            source.discard_draw(&mut draw, &mut meshes);
             continue;
         };
         let result = draw_mesh(
@@ -1374,6 +1378,69 @@ mod tests {
                 .any(|event| matches!(event, AssetEvent::Modified { id } if *id == draw_mesh.id())),
             "prepared output uploads must not invalidate their own settled source"
         );
+        let prepared_colors = VertexAttributeValues::Float32x4(vec![recolored; 6]);
+        let mesh_asset = app
+            .world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .remove(source_mesh.id())
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .count_vertices(),
+            0,
+            "a missing source mesh must retire the previous lit draw"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .insert(source_mesh.id(), mesh_asset)
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&prepared_colors),
+            "restoring the same source mesh handle must recover the lit draw"
+        );
+        app.update();
+        app.update();
+        let material_asset = app
+            .world_mut()
+            .resource_mut::<Assets<SceneMaterial>>()
+            .remove(replacement.id())
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .count_vertices(),
+            0,
+            "a missing source material must retire the previous lit draw"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<SceneMaterial>>()
+            .insert(replacement.id(), material_asset)
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&prepared_colors),
+            "restoring the same material handle must recover the lit draw"
+        );
+        app.update();
+        app.update();
         app.world_mut().entity_mut(source).despawn();
         assert!(app.world().get_entity(draw).is_err());
     }
