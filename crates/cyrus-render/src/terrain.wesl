@@ -11,7 +11,7 @@ import bevy_pbr::render::{
 import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::{srgb_to_linear, linear_to_srgb};
 import package::scene_shading::{SceneFog, fog, material_slot, point_sampled, scene_fog_at_position};
-import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
+import package::glide_fog::{framebuffer_dither, blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::{base_color_level, base_color_size, sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
 import package::terrain_surface::{water_wave, water_ripple, shore_foam, shore_wetness};
@@ -257,6 +257,9 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     }
     var out: FragmentOutput;
     out.color = vec4(scene_fog_at_position(color, depth, fog_position), base.a);
+@if(!MODERN_LIGHTING) {
+    out.color = vec4(framebuffer_dither(out.color.rgb, vec2<u32>(in.position.xy - view.viewport.xy)), out.color.a);
+}
     // The water weight in the alpha marks reflecting pixels for the modern screen pass, which
     // restores an opaque alpha.
 @if(MODERN_LIGHTING)

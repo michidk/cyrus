@@ -47,11 +47,18 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
 (native builds only) enables Bevy Solari for ray-traced Modern lighting; the
 `cyrus` crate forwards it.
 
+A terrain-only crop from a public control-port screenshot can be checked with
+`python3 dev/scripts/test-terrain-framebuffer.py SCREENSHOT LEFT TOP RIGHT BOTTOM`
+(requires Pillow). Select varied, unobscured Faithful terrain; HUD and models use
+separate presentation paths. The check rejects full-precision channels and blank crops.
+
 ## Notes
 
 The sky retires when its requested environment asset is unavailable and rebuilds
 from that asset when it becomes available again, including under the same handle.
 
+- Faithful terrain stores fogged colors at the original RGB565 precision with the
+  documented four-by-four framebuffer dither. Modern lighting retains full precision.
 - Faithful by default. Deviations run only under their fidelity area
   (`Fog`, `Sky`, `Textures`, `Lighting`, `AnisotropicFiltering`). Modern
   lighting (`fog::modern_lighting`) is a separate PBR branch with optional
