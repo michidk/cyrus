@@ -122,6 +122,108 @@ fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once(
         .unwrap();
 }
 
+/// The support handler publishes a splash at the actor before the accepted walk translates it.
+#[test]
+fn walking_water_entry_sound_uses_the_support_query_position() {
+    let (_, mut world, mut data, mut scene) = player_walking_fixture();
+    // Texture 25 on the terrain resolves to deep water; the terrain surface sits inside the probe.
+    scene.collision.texture_surfaces = Some(BTreeMap::from([(
+        (302 << 7) | 25,
+        cyrus_assets::surface::Surface::DEEPWATER,
+    )]));
+    scene.terrain = Some(
+        TerrainGround::new(
+            vec![18; 256 * 256],
+            vec![false; 256 * 256],
+            Some(vec![25; 256 * 256]),
+        )
+        .unwrap(),
+    );
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap();
+    for group in [AnimationGroup::SWIM_FORWARD, AnimationGroup::SWIM_BACKWARD] {
+        definition["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "group_index":group.index(),"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]
+            }));
+    }
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    world
+        .place_selected_player([512 * 256, -1536, 512 * 256], 0)
+        .unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [512, 512], &[player, map])
+        .unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    world.begin_player_movement_update(player, 0).unwrap();
+    let held = cyrus_script::player::input::PlayerInput {
+        forward: true,
+        ..Default::default()
+    };
+    let mut positions = vec![];
+    world
+        .advance_player_controller(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            cyrus_script::clock::ClockStep {
+                frame_scale: 256,
+                nominal_ticks: 1,
+                fine_ticks: 0,
+            },
+            cyrus_script::script::ScriptInputs {
+                player_controller: Some(cyrus_script::script::PlayerControllerInput {
+                    held: &held,
+                    walk_mode: true,
+                    auto_defend: false,
+                    steer: None,
+                    claim: None,
+                    probes: None,
+                }),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |owner, sound| {
+                assert_eq!(owner, player);
+                if let ScriptSound::Positional {
+                    effect: 71,
+                    position,
+                    ..
+                } = sound
+                {
+                    positions.push(position);
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+    let after = world.spatial(player).unwrap().local.position;
+    assert_ne!(after, before, "fixture must accept walking displacement");
+    assert_eq!(
+        positions,
+        [before],
+        "entry splash belongs to the support query, before walking from {before:?} to {after:?}"
+    );
+}
+
 /// Deferred probes must retain each transition's surface instead of reading the final one twice.
 #[test]
 fn queued_water_entry_and_exit_keep_their_own_surface_selection() {

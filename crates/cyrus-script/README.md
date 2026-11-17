@@ -86,3 +86,6 @@ it. The common jump-key arbitration still runs after directional dispatch.
 Deferred selected-player water transitions retain the stored surface from each
 support probe. Flushing several transitions preserves their entry/exit sound and
 animation selection without replacing the actor's latest surface.
+
+Water-transition sounds retain the support-query position when an accepted walk
+moves the player before the queued sound is flushed.

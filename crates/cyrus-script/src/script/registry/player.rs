@@ -1482,6 +1482,7 @@ impl ScriptWorld {
                         previous,
                         returned: surface,
                         stored: surface,
+                        sound_position: Some(self.sight_position(id.index)?),
                         effect_height,
                     });
             }

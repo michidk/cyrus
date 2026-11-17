@@ -116,6 +116,7 @@ impl ScriptWorld {
                 previous,
                 returned,
                 stored: self.actors[id.index].surface.unwrap_or_default(),
+                sound_position: None,
                 effect_height,
             },
             ticks,
@@ -136,6 +137,7 @@ impl ScriptWorld {
             previous,
             returned,
             stored,
+            sound_position,
             effect_height,
         } = transition;
         if returned == previous {
@@ -188,7 +190,10 @@ impl ScriptWorld {
             71
         };
         let rate_offset_hz = random.rnd(64)? - 32;
-        let position = self.sight_position(id.index)?;
+        let position = match sound_position {
+            Some(position) => position,
+            None => self.sight_position(id.index)?,
+        };
         sounds(
             id,
             super::super::ScriptSound::Positional {

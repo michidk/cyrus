@@ -5495,12 +5495,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 }
 /// A selected-player surface update: previous, returned and stored surfaces at the update,
-/// plus the splash effect's Q8 height. A deferred dispatch must not read a later stored surface.
+/// plus the splash effect's Q8 height and sound position. Deferred dispatch retains query-time values.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SurfaceTransition {
     pub previous: Surface,
     pub returned: Surface,
     pub stored: Surface,
+    /// Queued probes capture their position; immediate handlers sample only if they emit a sound.
+    pub sound_position: Option<[i32; 3]>,
     pub effect_height: Option<i32>,
 }
 
