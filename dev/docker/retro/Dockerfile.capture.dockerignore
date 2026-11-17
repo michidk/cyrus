@@ -1,0 +1,9 @@
+**
+!dev
+!dev/docker
+!dev/docker/retro
+!dev/docker/retro/contact-entrypoint.sh
+!dev/docker/retro/dosbox-x.conf
+!dev/scripts
+!dev/scripts/sdl-frame-capture.c
+!dev/scripts/sdl-mixer-capture.c

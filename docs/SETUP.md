@@ -2168,7 +2168,15 @@ continues to reject unequal clock bounds without a tolerance.
 The optional `dev/scripts/sdl-frame-capture.c` interposer captures an original
 SDL2 software surface at `SDL_UpdateWindowSurface` or its rectangle variant.
 `dev/docker/retro/Dockerfile.capture` builds an independent runtime with that
-interposer. Set `LD_PRELOAD=/usr/local/lib/sdl-frame-capture.so` on DOSBox only,
+interposer. Run `dev/scripts/ensure-retro-capture-runtime.sh` before taking the
+live-game lock; it prints the runtime image name. The name includes a hash of the
+Dockerfile, entry point, emulator configuration and both interposer sources.
+A Dockerfile-specific allowlist keeps the build context limited to the capture
+sources and emulator configuration. The helper retains the completed image under
+`magic/build-tools/` and restores
+it after a Docker reset instead of pulling an unavailable local tag. Build and
+restore diagnostics go to stderr so stdout remains usable as an image argument.
+Set `LD_PRELOAD=/usr/local/lib/sdl-frame-capture.so` on DOSBox only,
 and set `CYRUS_FRAME_CAPTURE_DIR` to a host-mounted request directory. This does
 not start a preview. OpenGL output is unsupported by this capture path.
 
