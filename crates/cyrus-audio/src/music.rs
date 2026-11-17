@@ -68,11 +68,15 @@ impl Plugin for MusicPlugin {
         let credits_track = credits_track;
         app.init_resource::<Music>()
             .add_systems(OnEnter(cyrus_game::AppState::Menu), start_menu_track)
+            .add_systems(OnExit(cyrus_game::AppState::Menu), cancel_menu_track)
             .add_systems(
                 Update,
                 (
                     stop_for_world_entry.run_if(resource_exists_and_changed::<SceneRequest>),
                     start_world_track,
+                    start_menu_track
+                        .run_if(resource_exists::<PendingMenuMusic>)
+                        .run_if(in_state(cyrus_game::AppState::Menu)),
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
                     credits_track,
                     finish_track,
@@ -189,18 +193,32 @@ fn request(assets: &AssetServer, music: &mut Music, track: u32) {
     music.load = Some(assets.load(format!("cache://music/{track:02}.wav")));
 }
 
+/// Book entry retains its request until the installed audio settings are available.
+#[derive(Resource)]
+struct PendingMenuMusic;
+
+fn cancel_menu_track(mut commands: Commands) {
+    commands.remove_resource::<PendingMenuMusic>();
+}
+
 fn start_menu_track(
+    mut commands: Commands,
     death: Option<Res<cyrus_script::script::DeathBookEntry>>,
     confirmation: Option<Res<cyrus_script::script::LastGameEntry>>,
     ending: Option<Res<cyrus_script::script::EndingEntry>>,
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
-    settings: Option<Res<SoundSettings>>,
-    audio: Option<Res<Assets<AudioSource>>>,
+    enabled: (Option<Res<SoundSettings>>, Option<Res<Assets<AudioSource>>>),
     mut music: ResMut<Music>,
 ) {
+    let (settings, audio) = enabled;
+    commands.remove_resource::<PendingMenuMusic>();
     // The ending pauses the CD instead of starting the book's track.
     if death.is_some() || confirmation.is_some() || ending.is_some() {
+        return;
+    }
+    if settings.is_none() || audio.is_none() {
+        commands.insert_resource(PendingMenuMusic);
         return;
     }
     if music_enabled(&settings, &audio) {

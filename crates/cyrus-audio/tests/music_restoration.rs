@@ -257,3 +257,79 @@ fn prepared_world_music_waits_for_gameplay_admission() {
     assert_eq!(owners.single(app.world()).unwrap(), owner);
     assert!(players.iter(app.world()).any(|playback| !playback.paused));
 }
+
+#[test]
+fn book_music_waits_for_installed_settings_and_cancels_on_exit() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (book CD settings admission)");
+        return;
+    };
+    let settings =
+        SoundSettings::parse(&std::fs::read_to_string(install.root.join("SYSTEM.INI")).unwrap());
+    assert!(settings.music);
+    for leave_before_settings in [false, true] {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ))
+        .insert_state(cyrus_game::AppState::Menu)
+        .init_resource::<CurrentScene>()
+        .init_asset::<bevy::audio::AudioSource>()
+        .init_asset::<MusicTransport>()
+        .insert_resource(install.clone())
+        .add_plugins(MusicPlugin);
+        app.update();
+        assert_eq!(app.world().resource::<Music>().track, None);
+        if leave_before_settings {
+            app.world_mut()
+                .resource_mut::<NextState<cyrus_game::AppState>>()
+                .set(cyrus_game::AppState::Loading);
+            app.update();
+        }
+        app.insert_resource(settings.clone());
+        app.update();
+        assert_eq!(
+            app.world().resource::<Music>().track,
+            if leave_before_settings { None } else { Some(2) },
+            "book music must wait for settings, but an exited book must not start music"
+        );
+        if !leave_before_settings {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                app.update();
+                let playback = app.world_mut().query_filtered::<
+                    &bevy::audio::PlaybackSettings,
+                    With<bevy::audio::AudioPlayer<MusicTransport>>,
+                >().iter(app.world()).copied().collect::<Vec<_>>();
+                if let [playback] = playback.as_slice() {
+                    assert!(!playback.paused);
+                    assert_eq!(
+                        playback.volume.to_linear(),
+                        cyrus_audio::music::redbook_gain(settings.redbook_volume)
+                    );
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "late book settings never published installed CD playback"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            // Public restoration installs a stopped owner; unrelated preference updates must
+            // not replay the already-consumed book entry request.
+            let saved: MusicSnapshot = serde_json::from_value(serde_json::json!({
+                "version":1,"track":null,"gain":1.0,"playback":null
+            }))
+            .unwrap();
+            app.insert_resource(Music::from_snapshot(saved, None).unwrap().music);
+            app.world_mut().resource_mut::<SoundSettings>().speech = false;
+            app.update();
+            assert_eq!(app.world().resource::<Music>().track, None);
+        }
+    }
+}

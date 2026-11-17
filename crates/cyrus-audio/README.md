@@ -32,7 +32,9 @@ pages.
 Hosts add `SoundPlugin` and `MusicPlugin`, supply an `AudioListener` (game hosts
 schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`) and order
 Update as `ApplyPreferences` → world `AnimationSystems` → `PlayCues`. Startup
-holds `AudioReadiness { prepare }` false until the title appears. Headless hosts
+holds `AudioReadiness { prepare }` false until the title appears. Book CD entry
+waits for installed sound settings and the audio asset store; leaving the book
+cancels that pending request. Preference updates do not replay a consumed entry. Headless hosts
 omit Bevy's audio backend and keep request and ownership state.
 
 ## Notes
