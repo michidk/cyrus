@@ -401,7 +401,7 @@ gameplay acceptance.
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
-After the release is published, `Release` deploys GitHub Pages: the landing page
+After the release is published, `Deploy released browser` deploys GitHub Pages: the landing page
 from `dev/pages/index.html` at the root, the game under `game/`, and the viewer
 under `viewer/`. The landing page links directly to the latest Windows x64,
 Linux x64, macOS Apple Silicon and macOS Intel game packages.
@@ -414,29 +414,38 @@ Pull requests also run `PR artifacts`, which makes the same native packages,
 including the mod bundles, and the browser archive available from the run
 summary for seven days. It does not publish a release. Release builds run only for stable `vX.Y.Z`
 tags, either when pushed or dispatched from the default branch with a `tag` input
-such as `v0.2.0`. A tag push builds and publishes in that same run; there is
-no separate dispatch-only success. Every build checks out the specified tag.
-The `Release complete` job runs even after failures and requires verification,
-all native platforms, the browser bundle, publication and Pages deployment to
-succeed. A skipped publication or deployment therefore fails the run.
-Tag runs can restore default-branch CI caches, but caches they save belong to
-that tag. Manual retries on the default branch also save reusable caches.
-The first run for a platform or changed toolchain can still need a full build.
+such as `v0.2.0`. Orcastrate manages `release.yml` from the shared `rust/release`
+template in `michidk/workflows`. The template owns tag validation, Cargo version
+checks, release notes, checksums, publication and the final completion check.
+A failed, cancelled or skipped build or publication makes `Release complete` fail.
 
-Run `Bump Version & Tag` on `main` with `auto`, `patch`, `minor`, or `major`.
-It updates the shared workspace version and lockfile, commits, and atomically
-pushes the commit and tag using the configured releaser App. The tag push
-triggers `Release`. To retry an existing tag, dispatch `Release` on the default
-branch with that tag as its input. This uses the current workflow while keeping
-the tagged source unchanged. Tag and manual runs for the same version share a
-concurrency group. macOS release jobs install current Homebrew Bash before
-packaging, including when retrying tags whose scripts require a newer shell.
-CI tests native packaging with simulated compiler outputs under macOS system
-Bash, so shell compatibility failures are caught before tagging a release.
+The repository-owned `build-release.yml` is a reusable workflow accepting the
+tag. It owns the game-specific verification, platform builds, packaging and
+smoke tests, and uploads `release-*` artifacts for the managed workflow to
+publish. It does not create tags or releases. Native packaging remains covered
+by CI under macOS system Bash; release builds install current Bash on macOS.
 
-`Release` checks that every workspace package matches the tag and runs lint and
-test gates in parallel while all platforms build. Both verification jobs reuse
-the matching CI caches. Nothing is published unless every job succeeds.
+Run the Orcastrate-managed `Bump Version & Tag` on `main` with `auto`, `patch`,
+`minor`, or `major`. It updates the shared workspace version and lockfile,
+publishes a GitHub-signed App commit with the configured co-author trailers,
+verifies its signature, and creates the tag. A concurrent branch update fails
+instead of overwriting newer work. The tag push triggers `Release`.
+To retry an existing tag, dispatch `Release` on the default branch with that
+tag as its input. Tagged source stays unchanged; retries use the current
+workflow. Attempts for the same tag share a concurrency group.
+
+Publication uses the release App token so GitHub starts `deploy-release.yml`
+on the `release: published` event. That repository-owned workflow downloads
+the published browser archive and deploys Pages. Its manual `tag` input retries
+deployment without rebuilding or republishing. Check its result separately
+from the release run. Generic release changes belong in the central template;
+regenerate the managed files with Orcastrate instead of editing their bodies.
+
+`build-release.yml` checks that every workspace package matches the tag and
+runs lint and test gates in parallel with platform builds. Verification jobs
+reuse the matching CI caches. Tag runs can restore default-branch caches, but
+caches they save belong to that tag. Manual retries on the default branch also
+save reusable caches. A new platform or toolchain can still need a full build.
 Verification and native Linux builds remove preinstalled SDKs only when less than
 12 GiB is free; browser builds still free space for their additional swap. The macOS
 Intel build uses the Intel runner pool, independently of Apple Silicon capacity.

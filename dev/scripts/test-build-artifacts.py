@@ -318,7 +318,7 @@ done
         self.assertFalse((self.root / "target").exists())
 
     def test_native_workflows_build_and_upload_mod_bundles(self):
-        for name in ("pr-artifacts.yml", "release.yml"):
+        for name in ("pr-artifacts.yml", "build-release.yml"):
             workflow = (Path(__file__).parents[2] / ".github/workflows" / name).read_text()
             native = workflow.split("  native:\n", 1)[1].split("\n  web:", 1)[0]
             self.assertIn("targets: ${{ matrix.target }}, wasm32-wasip2", native)
@@ -425,67 +425,6 @@ echo wasm > "$out/${app}_bg.wasm"
             for suffix in (".js", "_bg.wasm"):
                 self.assertTrue((self.root / f"target/web/pkg/{app}{suffix}").is_file())
         self.assertTrue((self.root / "target/web/index.html").is_file())
-
-    def test_release_publishes_all_packages_and_skips_published_versions(self):
-        workflow = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
-        script = workflow.split("      - name: Create release with all packages and publish\n", 1)[1]
-        script = script.split("        run: |\n", 1)[1]
-        script = script.split("\n\n", 1)[0]
-        script = "\n".join(line[10:] for line in script.splitlines())
-        gh = self.root / "bin/gh"
-        gh.write_text('''#!/bin/bash
-set -euo pipefail
-if [[ "$1" = api ]]; then
-    if [[ "$RELEASE_STATE" = missing ]]; then echo '[]';
-    else printf '[{"tag_name":"v0.1.1","draft":%s}]\\n' "$RELEASE_STATE"; fi
-else
-    printf '%s\\n' "$*" >> release-calls.txt
-fi
-''')
-        gh.chmod(0o755)
-        artifacts = self.root / "artifacts"
-        artifacts.mkdir()
-        for name in ("native.tar.gz", "browser.tar.gz", "SHA256SUMS"):
-            (artifacts / name).write_text(name)
-        (self.root / "CHANGELOG.md").write_text("Release notes")
-        env = dict(self.env, GH_REPO="michidk/cyrus", TAG_NAME="v0.1.1")
-        for state in ("missing", "true", "false"):
-            calls = self.root / "release-calls.txt"
-            calls.unlink(missing_ok=True)
-            subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=self.root,
-                           env=dict(env, RELEASE_STATE=state), check=True)
-            commands = calls.read_text().splitlines() if calls.exists() else []
-            if state == "false":
-                self.assertEqual(commands, [])
-                continue
-            self.assertEqual(commands[-1], "release edit v0.1.1 --draft=false")
-            for name in ("native.tar.gz", "browser.tar.gz", "SHA256SUMS"):
-                self.assertIn(f"artifacts/{name}", commands[0])
-            self.assertIn("--notes-file CHANGELOG.md", "\n".join(commands))
-
-    def test_release_completion_rejects_failed_cancelled_or_skipped_jobs(self):
-        workflow = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
-        completion = workflow.split("  completion:\n", 1)[1]
-        script = completion.split("        run: |\n", 1)[1]
-        script = "\n".join(line[10:] for line in script.splitlines())
-        jobs = ("verify", "native", "web", "release", "pages")
-        for job in jobs:
-            for result in ("success", "failure", "cancelled", "skipped"):
-                with self.subTest(job=job, result=result):
-                    results = {name: {"result": "success"} for name in jobs}
-                    results[job]["result"] = result
-                    summary = self.root / "summary.md"
-                    summary.unlink(missing_ok=True)
-                    run = subprocess.run(
-                        ["bash", "-euo", "pipefail", "-c", script], cwd=self.root,
-                        env=dict(self.env, RESULTS=json.dumps(results),
-                                 GITHUB_STEP_SUMMARY=str(summary)),
-                        capture_output=True, text=True)
-                    self.assertEqual(run.returncode, 0 if result == "success" else 1,
-                                     run.stdout + run.stderr)
-                    self.assertIn(f"{job}: {result}", summary.read_text())
-                    if result != "success":
-                        self.assertIn("::error::Release incomplete", run.stdout)
 
     def test_build_failure_produces_no_archive(self):
         (self.root / "bin/cargo").write_text("#!/bin/bash\nexit 7\n")

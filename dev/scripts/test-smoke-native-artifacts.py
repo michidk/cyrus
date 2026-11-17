@@ -20,7 +20,7 @@ class SmokeTest(unittest.TestCase):
         self.assertIn("python3 dev/scripts/test-smoke-native-artifacts.py", artifact_step)
 
     def test_both_workflows_smoke_shipped_payloads(self):
-        for name in ("pr-artifacts.yml", "release.yml"):
+        for name in ("pr-artifacts.yml", "build-release.yml"):
             workflow = (SCRIPT.parents[2] / ".github/workflows" / name).read_text()
             self.assertIn('run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"', workflow)
             self.assertNotIn('binary="target/$BUILD_TARGET/release/', workflow)

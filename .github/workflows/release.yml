@@ -1,15 +1,22 @@
+# @orcastrate
+# template: rust/release
+# params:
+#   manifest_paths: [crates/cyrus/Cargo.toml]
+#   build_workflow: ./.github/workflows/build-release.yml
+#   publish_release: true
+# @end-orcastrate
+
 name: Release
 
 on:
   push:
     tags: ["v*"]
-  # Retry an existing tag using the current workflow from the default branch.
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag, for example v0.2.0
-        required: true
+        description: Existing stable release tag; omit when running on a tag
         type: string
+        required: false
 
 permissions:
   contents: read
@@ -18,196 +25,66 @@ concurrency:
   group: release-${{ github.repository }}-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
-env:
-  TAG_NAME: ${{ inputs.tag || github.ref_name }}
-  CARGO_INCREMENTAL: 0
-  CARGO_NET_RETRY: 10
-  RUSTUP_MAX_RETRIES: 10
-
 defaults:
   run:
     shell: bash
 
+env:
+
+  TAG_NAME: ${{ inputs.tag || github.ref_name }}
+  PUBLISH_RELEASE: "true"
+
 jobs:
   verify:
-    name: Verify release (${{ matrix.stage }})
+    name: Verify release
     runs-on: ubuntu-26.04
-    strategy:
-      fail-fast: false
-      matrix:
-        stage: [lints, test]
-    env:
-      # Match CI so release verification can restore its compiled dependencies.
-      RUSTFLAGS: "-D warnings"
-      RUST_BACKTRACE: short
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
-      - name: Validate release tag
+      - name: Validate release tag and publishing token
         run: |
           if [[ ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo '::error::Select a stable vX.Y.Z release tag.'
             exit 1
           fi
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
-      - name: Free disk space
-        run: |
-          # Keep 12 GiB for compilation; avoid minutes of SDK removal when it fits.
-          if (( $(df -Pk / | awk 'NR == 2 {print $4}') < 12 * 1024 * 1024 )); then
-            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          fi
-          df -h /
-      - name: Install Bevy's Linux libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: ${{ matrix.stage }}
-          cache-workspace-crates: true
-      - name: Verify workspace versions match tag
+
+      - name: Cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Verify Cargo version matches tag
         run: |
           metadata="$(cargo metadata --locked --no-deps --format-version 1)"
-          versions="$(jq -er '.workspace_members as $members | [.packages[] | select(.id as $id | $members | index($id)) | .version] | unique | join("\n")' <<< "$metadata")"
-          if [[ "$versions" != "${TAG_NAME#v}" ]]; then
-            printf '::error::Workspace versions %s do not match tag %s.\n' "$versions" "$TAG_NAME"
+
+          version="$(jq -er --arg manifest 'crates/cyrus/Cargo.toml' \
+            '.packages[] | select((.manifest_path | gsub("\\\\"; "/")) == ((env.GITHUB_WORKSPACE | gsub("\\\\"; "/")) + "/" + $manifest)) | .version' <<< "$metadata")"
+          if [[ "$version" != "${TAG_NAME#v}" ]]; then
+            printf '::error::Cargo version %s does not match tag %s.\n' "$version" "$TAG_NAME"
             exit 1
           fi
-      - name: Run gates
-        env:
-          GATE_STAGE: ${{ matrix.stage }}
-          RUST_MIN_STACK: 8388608
-        run: bash dev/scripts/gates.sh "$GATE_STAGE"
 
-  # Builds start alongside verify; publishing still requires it.
-  native:
-    name: Native (${{ matrix.target }})
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-          - os: windows-2025
-            target: x86_64-pc-windows-msvc
-          # Keep Intel builds independent of the ARM hosted-runner capacity pool.
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: macos-15
-            target: aarch64-apple-darwin
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: refs/tags/${{ env.TAG_NAME }}
-          persist-credentials: false
-      - name: Install current Bash on macOS
-        if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-        run: |
-          brew install bash
-          echo "$(brew --prefix bash)/bin" >> "$GITHUB_PATH"
-      - name: Free Linux disk space
-        if: runner.os == 'Linux'
-        run: |
-          # Keep 12 GiB for compilation; avoid minutes of SDK removal when it fits.
-          if (( $(df -Pk / | awk 'NR == 2 {print $4}') < 12 * 1024 * 1024 )); then
-            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          fi
-          df -h /
-      - name: Install Bevy's Linux libraries
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          targets: ${{ matrix.target }}, wasm32-wasip2
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: artifacts-${{ matrix.target }}
-          cache-workspace-crates: true
-      - name: Build and package
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: bash dev/scripts/build-artifacts.sh native-mods "$BUILD_TARGET"
-      - name: Smoke packaged native executables
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"
-      - name: Build and package ray-tracing game
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: bash dev/scripts/build-artifacts.sh native-raytracing "$BUILD_TARGET"
-      - name: Smoke packaged ray-tracing game
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-        run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET" --raytracing
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: native-${{ matrix.target }}
-          path: |
-            target/artifacts/cyrus-${{ matrix.target }}*
-            target/artifacts/cyrus-with-mods-${{ matrix.target }}*
-            target/artifacts/cyrus-viewer-${{ matrix.target }}*
-            target/artifacts/cyrus-raytracing-${{ matrix.target }}*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
 
-  web:
-    # Four jobs use the hosted runner's cores while the swap file below absorbs linker peaks.
-    env:
-      CARGO_BUILD_JOBS: 4
-    name: Browser bundles
-    runs-on: ubuntu-26.04
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: refs/tags/${{ env.TAG_NAME }}
-          persist-credentials: false
-      - name: Free disk space
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-      - name: Add swap for parallel link-time optimization
-        run: |
-          sudo fallocate -l 12G /swapfile-cyrus
-          sudo chmod 600 /swapfile-cyrus
-          sudo mkswap /swapfile-cyrus
-          sudo swapon /swapfile-cyrus
-          free -h
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: artifacts-web
-          cache-workspace-crates: true
-      - name: Read wasm-bindgen version
-        id: bindgen
-        run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)" >> "$GITHUB_OUTPUT"
-      - name: Install matching wasm-bindgen
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2
-        with:
-          tool: wasm-bindgen@${{ steps.bindgen.outputs.version }}
-      - name: Build and package
-        run: /usr/bin/time -v bash dev/scripts/build-artifacts.sh web
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: browser
-          path: target/artifacts/cyrus-browser.tar.gz
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
+
+
+  build:
+    name: Build and verify release artifacts
+    needs: verify
+    uses: ./.github/workflows/build-release.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
 
   release:
-    name: Publish GitHub release
-    needs: [verify, native, web]
+    name: Create GitHub release
+    needs: build
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
@@ -215,20 +92,33 @@ jobs:
     env:
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Create release App token
+        id: release-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - name: Checkout full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: refs/tags/${{ env.TAG_NAME }}
           fetch-depth: 0
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
+
       - name: Generate release changelog
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
         with:
           config: cliff.toml
           args: --current --strip header --output CHANGELOG.md
+
+
       - name: Download build artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
+          pattern: release-*
           path: artifacts
           merge-multiple: true
 
@@ -236,81 +126,44 @@ jobs:
         working-directory: artifacts
         run: sha256sum -- * > SHA256SUMS
 
-      - name: Create release with all packages and publish
+
+      - name: Create or update draft, then publish if enabled
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Publishing with GITHUB_TOKEN would suppress release-triggered workflows.
+          GH_TOKEN: ${{ env.PUBLISH_RELEASE == 'true' && steps.release-token.outputs.token || github.token }}
         run: |
           release_state="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" |
             jq -r --arg tag "$TAG_NAME" '.[] | select(.tag_name == $tag) | .draft')"
           if [[ "$release_state" == "false" ]]; then
             echo 'Release is already published; leaving it unchanged.'
             exit 0
-          elif [[ "$release_state" == "true" ]]; then
+          fi
+          if [[ "$release_state" == "true" ]]; then
+
             gh release upload "$TAG_NAME" artifacts/* --clobber
+
             gh release edit "$TAG_NAME" --notes-file CHANGELOG.md
           else
             gh release create "$TAG_NAME" artifacts/* --verify-tag --draft \
               --title "${TAG_NAME#v}" --notes-file CHANGELOG.md
           fi
-          gh release edit "$TAG_NAME" --draft=false
-
-  pages:
-    # Deploy only after the release is complete; the site is the released browser bundle.
-    name: Deploy browser build to GitHub Pages
-    needs: release
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: refs/tags/${{ env.TAG_NAME }}
-          persist-credentials: false
-          sparse-checkout: |
-            dev/pages
-            .github/workflows/cyrus-banner.webp
-          sparse-checkout-cone-mode: false
-      - name: Download browser bundle
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          name: browser
-          path: bundle
-      - name: Assemble site
-        # Shared engine files stay at the root so one service worker covers game/ and viewer/.
-        run: |
-          tar -xzf bundle/cyrus-browser.tar.gz -C bundle
-          mv bundle/browser site
-          mkdir site/game site/viewer
-          sed 's|<head>|<head><base href="../">|' site/index.html > site/game/index.html
-          sed 's|<head>|<head><base href="../">|' site/viewer.html > site/viewer/index.html
-          grep -q '<base href="../">' site/game/index.html site/viewer/index.html
-          rm site/viewer.html
-          cp dev/pages/index.html dev/pages/*.webp .github/workflows/cyrus-banner.webp site/
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: site
-      - name: Deploy
-        id: deploy
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+          if [[ "$PUBLISH_RELEASE" == "true" ]]; then
+            gh release edit "$TAG_NAME" --draft=false
+          fi
 
   completion:
     name: Release complete
     if: always()
-    needs: [verify, native, web, release, pages]
+    needs: [verify, build, release]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
       RESULTS: ${{ toJSON(needs) }}
     steps:
-      - name: Require published release and deployed site
+      - name: Require every release job to succeed
         run: |
           printf '%s\n' "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"' | tee -a "$GITHUB_STEP_SUMMARY"
           if ! jq -e 'all(.[]; .result == "success")' <<< "$RESULTS" > /dev/null; then
-            echo '::error::Release incomplete. Every build, verification, publication and deployment job must succeed.'
+            echo '::error::Release incomplete. Verification, builds and publication must succeed.'
             exit 1
           fi
