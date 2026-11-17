@@ -2190,6 +2190,9 @@ SDL2 software surface at `SDL_UpdateWindowSurface` or its rectangle variant.
 interposer. `original-rope-contact.sh` recovers and selects this source-keyed
 runtime automatically before taking its per-run live-game lock. Explicit
 `CYRUS_RETRO_IMAGE` and `CYRUS_RETRO_IMAGE_ARCHIVE` overrides retain their meaning.
+A fresh run without `Redguard/glide2x.ovl` receives a read-only bind of the
+installed `DOSBOX/glide2x_emu.ovl`; an existing run overlay is preserved. If
+neither exists, the launcher rejects admission before editing configuration.
 Other callers run `dev/scripts/ensure-retro-capture-runtime.sh` before taking the
 live-game lock; it prints the runtime image name. The name includes a hash of the
 Dockerfile, entry point, emulator configuration and both interposer sources.

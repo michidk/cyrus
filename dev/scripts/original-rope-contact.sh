@@ -39,6 +39,17 @@ if [[ ! -f "$world" || -L "$world" || ! -f "$run/game.ins" ]]; then
     echo 'requires a prepared writable run with a real WORLD.INI and game.ins' >&2
     exit 2
 fi
+# Fresh GOG runs do not contain the DOSBox Glide overlay beside RGFX.EXE.
+# Supply it read-only from the install, retaining an explicitly prepared run overlay.
+overlay_mount=()
+if [[ ! -s "$run/Redguard/glide2x.ovl" ]]; then
+    overlay="$install_root/extracted/app/DOSBOX/glide2x_emu.ovl"
+    if [[ ! -s "$overlay" ]]; then
+        echo "original capture: Glide emulation overlay unavailable: $overlay" >&2
+        exit 2
+    fi
+    overlay_mount=(--mount "type=bind,src=$overlay,dst=/game/Redguard/glide2x.ovl,readonly")
+fi
 # Recover before acquiring the live lock; image restoration is not a game run.
 image="${CYRUS_RETRO_IMAGE:-}"
 if [[ -n "${CYRUS_RETRO_IMAGE_ARCHIVE:-}" ]]; then
@@ -101,6 +112,7 @@ docker run -d --name "$name" --cap-add SYS_PTRACE -e DISPLAY=:1 \
     --mount "type=bind,src=$reader,dst=/tmp/state.py,readonly" \
     --mount "type=bind,src=$placement,dst=/tmp/place.py,readonly" \
     --mount "type=bind,src=$output/runtime/driver.py,dst=/tmp/driver.py,readonly" \
+    "${overlay_mount[@]}" \
     "$image" -set "dosbox hostkey=ctrlalt" -set "dosbox captures=/capture" >/dev/null
 created=1
 docker exec "$name" python3 /tmp/driver.py --reader /tmp/state.py --progress /config/rope-readiness.json \

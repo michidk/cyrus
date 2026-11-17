@@ -452,6 +452,9 @@ class ContactLauncher(unittest.TestCase):
             root = Path(directory)
             install = root / 'install'
             install.mkdir()
+            overlay = install / 'extracted/app/DOSBOX/glide2x_emu.ovl'
+            overlay.parent.mkdir(parents=True)
+            overlay.write_text('fixture overlay')
             run = root / 'run'
             (run / 'Redguard').mkdir(parents=True)
             world = run / 'Redguard/WORLD.INI'
@@ -500,6 +503,8 @@ class ContactLauncher(unittest.TestCase):
             calls = (root / 'calls').read_text().splitlines()
             self.assertTrue((root / 'recovered').exists(), 'default launcher must recover its runtime before starting Docker')
             self.assertIn('cyrus-restored:fixture', calls[0])
+            self.assertIn(f'src={overlay},dst=/game/Redguard/glide2x.ovl,readonly', calls[0],
+                          'fresh runs must receive the installed Glide emulation overlay')
             self.assertIn('-set dosbox hostkey=ctrlalt', calls[0])
             self.assertIn('CYRUS_CONFIG_DIR=/config', calls[0])
             self.assertIn('SYS_PTRACE', calls[0])
@@ -559,6 +564,35 @@ class ContactLauncher(unittest.TestCase):
             self.assertEqual(result.returncode, 7, result.stderr)
             self.assertIn('custom-runtime:fixture', (root / 'calls').read_text())
             self.assertNotIn('capture runtime restore failed', result.stderr)
+
+            # Preserve a prepared run overlay even when the install overlay is unavailable.
+            run_overlay = run / 'Redguard/glide2x.ovl'
+            run_overlay.write_text('prepared overlay')
+            overlay.unlink()
+            (root / 'calls').unlink()
+            env = dict(os.environ, PATH=f'{tools}:{os.environ["PATH"]}',
+                       CONTACT_LOG=str(root / 'calls'), CONTACT_SYSTEM=str(system),
+                       CYRUS_RETRO_INSTALL_ROOT=str(install), CYRUS_RETRO_IMAGE='custom-runtime:fixture',
+                       CYRUS_RETRO_SYSTEM_INI=str(installed_system))
+            result = subprocess.run(
+                ['bash', str(launcher), str(run), str(reader), str(placement),
+                 str(root / 'prepared-overlay-output')], env=env,
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 7, result.stderr)
+            self.assertNotIn('dst=/game/Redguard/glide2x.ovl', (root / 'calls').read_text())
+            self.assertEqual(run_overlay.read_text(), 'prepared overlay')
+
+            # Never start a doomed original process without either overlay source.
+            run_overlay.unlink()
+            (root / 'calls').unlink()
+            result = subprocess.run(
+                ['bash', str(launcher), str(run), str(reader), str(placement),
+                 str(root / 'missing-overlay-output')], env=env,
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('Glide emulation overlay unavailable', result.stderr)
+            self.assertFalse((root / 'calls').exists())
+            self.assertFalse((root / 'missing-overlay-output').exists())
 
 
 class PhysicalRelease(unittest.TestCase):
