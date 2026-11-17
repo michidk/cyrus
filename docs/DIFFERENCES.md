@@ -20,6 +20,16 @@ both fidelity modes, as requested for consistent gameplay speed. The installed
 minimum FPS still bounds movement during a single long host stall. Explicit
 original-clock inspection and book animation retain the original clock API.
 
+## Ambient sound loops at high frame rates
+
+**Inferred** from the AmbientSound task contract and the clock above: the task forgets its
+remembered sample slot, without stopping the sample, whenever its elapsed input
+(`runs * frame scale >> 8`) reads zero. At the original's 12 to 20 FPS only a new task's
+first run reads zero, and a new task has no slot yet. At higher frame rates several early
+runs read zero and each would start another copy of the loop, so ambient water on the
+opening ship stacked up. Cyrus forgets the slot only on an explicit sound reset, which
+keeps the one loop per task that the original plays. This applies in both fidelity modes.
+
 ## 3dfx splash
 
 **Verified:** the GOG Windows launch plays the metallic `3DfxSpl2.dll` splash. Emulated Voodoo hardware,
