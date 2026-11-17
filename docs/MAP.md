@@ -485,7 +485,7 @@ module where it is defined and regenerate.
 
 - `src/audit.rs` — Headless WORLD.INI audit through the normal preload, export and script preparation paths.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
-- `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
+- `src/cheats.rs` — Native CHT restore and save in the installation's own `REDGUARD.CHT`, shared with the original game.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/control/effect_geometry.rs` — Bounded read-only transient geometry acquisition after presentation publication.

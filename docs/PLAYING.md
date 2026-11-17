@@ -13,7 +13,7 @@ extract it. cyrus includes no game data. Download a native package from the
 [releases](https://github.com/michidk/cyrus/releases), extract it and run `cyrus`.
 Choose the inner `Redguard` folder containing `RGFX.EXE`, `maps` and `fxart`.
 Keep the surrounding GOG folder intact so companion CD media remains available.
-The install is read-only; cyrus keeps its own settings and saves elsewhere.
+The install is read-only apart from its `REDGUARD.CHT` cheat file; cyrus keeps its own settings and saves elsewhere.
 
 For the browser build, choose the outer GOG folder containing both `DOSBOX` and
 `Redguard`. Select it again after reloading the page. Click or press a key in the

@@ -209,10 +209,7 @@ impl App {
             Ok(choices) => app.choices = choices,
             Err(error) => problems.push(format!("{error:#}")),
         }
-        match cheats::load(
-            &cheats::local_file(),
-            app.game_folder().map(PathBuf::as_path),
-        ) {
+        match cheats::load(app.game_folder().map(PathBuf::as_path)) {
             Ok(state) => app.cheats = state,
             Err(error) => problems.push(format!("{error:#}")),
         }
@@ -504,11 +501,10 @@ impl App {
     }
 
     fn select_install(&mut self, install: Option<PathBuf>) {
-        match self.options.select_install(
-            install,
-            self.remembered.as_deref(),
-            &cheats::local_file(),
-        ) {
+        match self
+            .options
+            .select_install(install, self.remembered.as_deref())
+        {
             Ok(state) => {
                 self.cheats = state;
                 self.record_save(
@@ -652,9 +648,12 @@ impl App {
             changed = true;
         }
         if changed {
-            self.problem = cheats::save(&cheats::local_file(), &self.cheats)
-                .err()
-                .map(|error| format!("{error:#}"));
+            self.problem = match self.game_folder() {
+                Some(folder) => cheats::save(folder, &self.cheats)
+                    .err()
+                    .map(|error| format!("{error:#}")),
+                None => Some("Choose your game files before changing cheats.".into()),
+            };
         }
     }
 

@@ -974,9 +974,9 @@ inspection inputs do not establish production scheduling or gameplay readiness.
 
 Native TCP/MCP `cheat {name, value?}` toggles a named state or assigns a raw
 unsigned integer. Use `oracle` to inspect values and support status and
-`savecheats` to write `REDGUARD.CHT` in the config directory. Startup reads that local file
-first, then the installed CHT file, then empty state. Malformed files remain
-errors without being overwritten. The install stays read-only.
+`savecheats` to write the install's own `REDGUARD.CHT`, which the launcher and the original
+game share. Startup reads that file, or empty state when it is missing. Malformed files remain
+errors without being overwritten. Nothing else is written into the install.
 
 F12 opens the console in a world; F12 or Escape closes it. Gameplay also accepts
 a cheat name followed by Enter. TCP/MCP `console {open?, line?}` uses the same
