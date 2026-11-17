@@ -457,7 +457,7 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn first_book_publication_uses_the_window_extent_and_authored_pose() {
+    fn repeated_book_publication_uses_fresh_targets_and_the_authored_pose() {
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -472,10 +472,7 @@ mod tests {
         let book: MenuAsset =
             serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
         let surfaces = book.textures.clone();
-        let motion = super::super::book_motion::BookMotion::opening(std::array::from_fn(|index| {
-            book.models[index].frames.len()
-        }));
-        let pose = motion.pose.clone();
+        let frame_counts = std::array::from_fn(|index| book.models[index].frames.len());
         let mut app = App::new();
         app.init_resource::<Assets<Image>>()
             .init_resource::<Assets<Mesh>>()
@@ -486,76 +483,104 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<MenuAsset>>()
             .add(book);
-        let mut menu = MenuState::default();
-        menu.asset = asset;
-        menu.painted = Some(Painted::Surfaces(surfaces));
-        menu.motion = Some(motion);
-        app.insert_resource(menu);
         let size = UVec2::new(720, 1280);
         let mut window = Window::default();
         window.resolution.set_physical_resolution(size.x, size.y);
         app.world_mut().spawn(window);
-        app.world_mut().spawn((Sprite::default(), StartupContent));
-        app.update();
-        let scene = app.world().resource::<BookScene>();
-        assert_eq!(
-            app.world()
-                .resource::<Assets<Image>>()
-                .get(&scene.target)
-                .unwrap()
-                .size(),
-            size
-        );
-        let projection = app
-            .world_mut()
-            .query_filtered::<&Projection, With<BookCamera>>()
-            .single(app.world())
-            .unwrap();
-        let Projection::Perspective(actual) = projection else {
-            panic!("book camera must be perspective");
-        };
-        // Portrait fitting preserves the original horizontal half-field tangent.
-        // Camera projection updates can repair aspect automatically, but not the field of view.
-        assert!(((actual.fov / 2.0).tan() * (size.x as f32 / size.y as f32) - 0.788).abs() < 1e-6);
-        assert_eq!(actual.aspect_ratio, size.x as f32 / size.y as f32);
-        let camera = app
-            .world_mut()
-            .query_filtered::<&Transform, With<BookCamera>>()
-            .single(app.world())
-            .unwrap();
-        assert_eq!(*camera, camera_transform(pose.camera, pose.pitch));
-        let sprite = app
-            .world_mut()
-            .query_filtered::<&Sprite, BookSprite>()
-            .single(app.world())
-            .unwrap();
-        let logical_size = size.as_vec2();
-        assert_eq!(
-            sprite.custom_size,
-            Some(logical_size / super::super::viewport_scale(logical_size))
-        );
-        let scene = app.world().resource::<BookScene>();
-        let meshes = app.world().resource::<Assets<Mesh>>();
-        let book = app
-            .world()
-            .resource::<Assets<MenuAsset>>()
-            .get(&app.world().resource::<MenuState>().asset)
-            .unwrap();
-        for group in &scene.groups {
-            let wanted = Shown {
-                frame: pose.frames[group.model],
-                depth: pose.depth[group.model],
-            };
+        let mut previous_target = None;
+        for _visit in 0..2 {
+            let motion = super::super::book_motion::BookMotion::opening(frame_counts);
+            let pose = motion.pose.clone();
+            let mut menu = MenuState::default();
+            menu.asset = asset.clone();
+            menu.painted = Some(Painted::Surfaces(surfaces.clone()));
+            menu.motion = Some(motion);
+            app.insert_resource(menu);
+            app.world_mut().spawn((Sprite::default(), StartupContent));
+            app.update();
+            let target = app.world().resource::<BookScene>().target.id();
+            assert_ne!(
+                previous_target,
+                Some(target),
+                "re-entry must own a fresh render target"
+            );
+            previous_target = Some(target);
+            let scene = app.world().resource::<BookScene>();
             assert_eq!(
-                meshes
-                    .get(&group.mesh)
+                app.world()
+                    .resource::<Assets<Image>>()
+                    .get(&scene.target)
                     .unwrap()
-                    .attribute(Mesh::ATTRIBUTE_POSITION),
-                Some(&bevy::mesh::VertexAttributeValues::Float32x3(positions(
-                    &book.models[group.model],
-                    &group.faces,
-                    wanted
-                )))
+                    .size(),
+                size
+            );
+            let projection = app
+                .world_mut()
+                .query_filtered::<&Projection, With<BookCamera>>()
+                .single(app.world())
+                .unwrap();
+            let Projection::Perspective(actual) = projection else {
+                panic!("book camera must be perspective");
+            };
+            // Portrait fitting preserves the original horizontal half-field tangent.
+            // Camera projection updates can repair aspect automatically, but not the field of view.
+            assert!(
+                ((actual.fov / 2.0).tan() * (size.x as f32 / size.y as f32) - 0.788).abs() < 1e-6
+            );
+            assert_eq!(actual.aspect_ratio, size.x as f32 / size.y as f32);
+            let camera = app
+                .world_mut()
+                .query_filtered::<&Transform, With<BookCamera>>()
+                .single(app.world())
+                .unwrap();
+            assert_eq!(*camera, camera_transform(pose.camera, pose.pitch));
+            let sprite = app
+                .world_mut()
+                .query_filtered::<&Sprite, BookSprite>()
+                .single(app.world())
+                .unwrap();
+            let logical_size = size.as_vec2();
+            assert_eq!(
+                sprite.custom_size,
+                Some(logical_size / super::super::viewport_scale(logical_size))
+            );
+            let scene = app.world().resource::<BookScene>();
+            let meshes = app.world().resource::<Assets<Mesh>>();
+            let book = app
+                .world()
+                .resource::<Assets<MenuAsset>>()
+                .get(&app.world().resource::<MenuState>().asset)
+                .unwrap();
+            for group in &scene.groups {
+                let wanted = Shown {
+                    frame: pose.frames[group.model],
+                    depth: pose.depth[group.model],
+                };
+                assert_eq!(
+                    meshes
+                        .get(&group.mesh)
+                        .unwrap()
+                        .attribute(Mesh::ATTRIBUTE_POSITION),
+                    Some(&bevy::mesh::VertexAttributeValues::Float32x3(positions(
+                        &book.models[group.model],
+                        &group.faces,
+                        wanted
+                    )))
+                );
+            }
+            // Use the production content teardown, then release the per-entry resources.
+            use bevy::ecs::system::RunSystemOnce;
+            app.world_mut()
+                .run_system_once(super::super::remove_content)
+                .unwrap();
+            app.world_mut().remove_resource::<BookScene>();
+            app.world_mut().remove_resource::<MenuState>();
+            assert_eq!(
+                app.world_mut()
+                    .query_filtered::<Entity, With<BookCamera>>()
+                    .iter(app.world())
+                    .count(),
+                0
             );
         }
         std::fs::remove_dir_all(cache).unwrap();
