@@ -62,6 +62,7 @@ title artwork is an accepted difference, see
   [fog](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/fog.md#integer-precision-and-framebuffer-dithering)
   rules; dialogs keep their original 4:3 coordinates.
 - Examine model caches belong to their gameplay panel; leaving and re-entering gameplay republishes the model even when its item and pose are unchanged.
+- Examine scenes refresh when the loaded world lighting or palette changes, even at an unchanged item pose, following preservation's [examine view rules](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/hud.md#examine-view).
 - The portable menu cache (`cache/menu/book.menu`) carries a schema version;
   changing what it stores means bumping it so older exports are rejected.
 - Preferences persist before they apply; saving one setting leaves unedited

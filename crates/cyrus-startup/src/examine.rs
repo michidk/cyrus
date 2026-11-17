@@ -41,8 +41,14 @@ struct Panel;
 #[derive(Component, Default)]
 struct ViewCache {
     model: LitModel,
-    previous: Option<(String, ViewerPose)>,
+    previous: Option<ViewFrame>,
 }
+struct ViewFrame {
+    name: String,
+    pose: ViewerPose,
+    look: ExamineLook,
+}
+
 #[derive(Component)]
 struct Canvas;
 
@@ -165,26 +171,28 @@ fn draw(
     else {
         return;
     };
-    let current = (name.clone(), pose);
-    if previous.as_ref() == Some(&current) && model.is_shown() {
-        return;
-    }
     let (Some(art), Some(look)) = (assets.get(&artwork.0), screen.look.as_ref()) else {
         return;
     };
+    if previous.as_ref().is_some_and(|previous| {
+        previous.name == name && previous.pose == pose && &previous.look == look
+    }) && model.is_shown()
+    {
+        return;
+    }
     let built = art
         .models
         .get(&name)
         .ok_or_else(|| anyhow::anyhow!("examine: model {name} is not in the exported artwork"))
         .and_then(|found| build_scene(art, found, &pose, look));
+    let key = texture_key(&name, look);
+    let current = ViewFrame {
+        name,
+        pose,
+        look: look.clone(),
+    };
     match built {
-        Ok(scene) => model.show(
-            &mut commands,
-            &mut assets_3d,
-            &scene,
-            EXAMINE_LAYER,
-            texture_key(&name, look),
-        ),
+        Ok(scene) => model.show(&mut commands, &mut assets_3d, &scene, EXAMINE_LAYER, key),
         Err(error) => {
             warn!("examine view: {error:#}");
             screen.error = Some(format!("{error:#}"));
@@ -426,8 +434,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn repeated_gameplay_entry_republishes_the_same_examine_model() {
+    fn examine_app() -> App {
         use bevy::asset::io::{
             AssetSourceBuilder,
             memory::{Dir, MemoryAssetReader},
@@ -458,6 +465,12 @@ mod tests {
         .init_asset::<Mesh>()
         .init_asset::<super::super::view3d::LitMaterial>()
         .add_plugins(ExaminePlugin);
+        app
+    }
+
+    #[test]
+    fn repeated_gameplay_entry_republishes_the_same_examine_model() {
+        let mut app = examine_app();
         let mut first = None;
         for visit in 0..2 {
             app.world_mut()
@@ -517,6 +530,71 @@ mod tests {
                 0
             );
         }
+    }
+
+    #[test]
+    fn changed_world_lighting_relights_an_unchanged_examine_pose() {
+        let mut app = examine_app();
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::InGame);
+        app.update();
+        {
+            let mut screen = app.world_mut().resource_mut::<ExamineScreen>();
+            screen.open = true;
+            screen.model = Some("TEST".into());
+            screen.pose = Some(pose());
+            screen.look = Some(look());
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            app.update();
+            if app.world_mut().query::<&Mesh3d>().iter(app.world()).count() == 1 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "examine model did not load"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let colours = |app: &mut App| {
+            let mesh = app
+                .world_mut()
+                .query::<&Mesh3d>()
+                .single(app.world())
+                .unwrap()
+                .0
+                .clone();
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR)
+                .unwrap()
+                .clone()
+        };
+        let first = colours(&mut app);
+        app.world_mut()
+            .resource_mut::<ExamineScreen>()
+            .look
+            .as_mut()
+            .unwrap()
+            .ambient = [128.0; 3];
+        app.update();
+        let next = colours(&mut app);
+        assert_ne!(
+            first, next,
+            "changed world lighting must invalidate the stationary view"
+        );
+        let bevy::mesh::VertexAttributeValues::Float32x4(levels) = next else {
+            panic!("expected lighting attributes");
+        };
+        assert!(
+            levels
+                .iter()
+                .all(|level| *level == [128.0, 128.0, 128.0, 1.0])
+        );
     }
 
     #[test]
