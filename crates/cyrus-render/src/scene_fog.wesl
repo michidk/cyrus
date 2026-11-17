@@ -211,9 +211,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     }
 }
     out.color = vec4(out.color.rgb + lamp_glow(input, texture_rgb, color), out.color.a);
-    if model.compositing.x < 0.0 {
-        out.color = vec4(framebuffer_dither(out.color.rgb, vec2<u32>(in.position.xy - view.viewport.xy)), out.color.a);
-    }
+    out.color = vec4(framebuffer_dither(out.color.rgb, vec2<u32>(in.position.xy - view.viewport.xy)), out.color.a);
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }

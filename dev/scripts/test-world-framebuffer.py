@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Check an opaque world surface crop from the public screenshot command.
+"""Check a world surface crop from the public screenshot command.
 
 Usage: test-world-framebuffer.py SCREENSHOT LEFT TOP RIGHT BOTTOM
-The caller must select unobscured Faithful terrain or opaque models, excluding HUD and flats.
+The caller must select unobscured Faithful terrain, models or placed flats, excluding HUD.
 """
 import sys
 from PIL import Image

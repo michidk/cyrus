@@ -47,10 +47,10 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
 (native builds only) enables Bevy Solari for ray-traced Modern lighting; the
 `cyrus` crate forwards it.
 
-Check an opaque world surface crop from a public control-port screenshot with
+Check a world surface crop from a public control-port screenshot with
 `python3 dev/scripts/test-world-framebuffer.py SCREENSHOT LEFT TOP RIGHT BOTTOM`
-(requires Pillow). Select varied, unobscured Faithful terrain or models. HUD and
-flats use separate presentation paths. The check rejects full-precision channels and blank crops.
+(requires Pillow). Select varied, unobscured Faithful terrain, models or placed
+flats. Exclude the HUD. The check rejects full-precision channels and blank crops.
 
 ## Notes
 
