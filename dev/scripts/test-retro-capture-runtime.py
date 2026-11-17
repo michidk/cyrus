@@ -12,6 +12,37 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CaptureRuntime(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('CYRUS_RETRO_CAPTURE_SMOKE_IMAGE'),
+                         'set CYRUS_RETRO_CAPTURE_SMOKE_IMAGE for the real screenshot runtime')
+    def test_version_prompt_reader_can_capture_rgb_screen(self):
+        image = os.environ['CYRUS_RETRO_CAPTURE_SMOKE_IMAGE']
+        probe = r"""
+import json, os, subprocess, time
+from PIL import Image
+server = subprocess.Popen(['Xvfb', ':77', '-screen', '0', '1024x768x24', '-nolisten', 'tcp'])
+try:
+    deadline = time.monotonic() + 5
+    while True:
+        result = subprocess.run(['scrot', '-o', '/tmp/prompt.png'],
+                                env={**os.environ, 'DISPLAY': ':77'}, capture_output=True)
+        if result.returncode == 0:
+            break
+        if server.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError(result.stderr.decode())
+        time.sleep(.1)
+    screen = Image.open('/tmp/prompt.png').convert('RGB')
+    assert screen.size == (1024, 768), screen.size
+    assert len(screen.crop((192, 248, 375, 264)).tobytes()) == 183 * 16 * 3
+    print(json.dumps(dict(size=list(screen.size), mode=screen.mode)))
+finally:
+    server.terminate()
+    server.wait(timeout=5)
+"""
+        result = subprocess.run(['docker', 'run', '--rm', '--entrypoint', 'python3', image,
+                                 '-c', probe], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {'size': [1024, 768], 'mode': 'RGB'})
+
     def test_build_restore_and_source_changes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
