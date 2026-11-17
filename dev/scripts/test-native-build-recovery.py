@@ -45,7 +45,9 @@ if not unit.exists():
  with (root/'compiled.log').open('a') as f:f.write('dependency\\n')
  print(json.dumps(dict(reason='compiler-artifact',filenames=[str(unit)],package_id='dependency',target=dict(name='dependency'))),flush=True)
 if (root/'interrupt').exists():sys.exit(7)
-exe=target/'debug/cyrus';exe.write_text('#!/bin/sh\\necho executable\\n');exe.chmod(0o755)
+exe=target/'debug/cyrus'
+stale=(root/'simulate-shared').exists() and (target/'debug/.fingerprint/cyrus-abcd/bin-cyrus').exists()
+exe.write_text('#!/bin/sh\\necho '+('peer' if stale else 'executable')+'\\n');exe.chmod(0o755)
 print(json.dumps(dict(reason='compiler-artifact',filenames=[str(exe)],package_id='cyrus',target=dict(name='cyrus'))),flush=True)
 if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('changed during build')
 ''',
@@ -56,6 +58,7 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.source = self.root / 'crates/cyrus/src/main.rs'
         self.source.parent.mkdir(parents=True)
         self.source.write_text('source')
+        (self.source.parent.parent / 'Cargo.toml').write_text('[package]\nname = \"cyrus\"\nversion = \"0.1.0\"\n')
         (self.root / 'compiler').write_text('compiler-one')
         subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
         (self.root / '.git/HEAD').write_text('1' * 40 + '\n')
@@ -69,6 +72,23 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
                                 cwd=self.root, env=self.env, capture_output=True, text=True)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
+
+    def test_shared_target_rebuilds_workspace_without_removing_dependency_outputs(self):
+        (self.root / 'simulate-shared').touch()
+        workspace_stamp = self.target / 'debug/.fingerprint/cyrus-abcd/invoked.timestamp'
+        dependency_stamp = self.target / 'debug/.fingerprint/dependency-abcd/invoked.timestamp'
+        for stamp in (workspace_stamp, dependency_stamp):
+            stamp.parent.mkdir(parents=True)
+            stamp.write_text('peer build')
+        (workspace_stamp.parent / 'bin-cyrus').write_text('peer fingerprint')
+        dependency = self.target / 'debug/deps/libdependency-abcd.rlib'
+        dependency.parent.mkdir(parents=True)
+        dependency.write_text('retained dependency')
+        self.run_build()
+        self.assertIn('echo executable', self.output.read_text())
+        self.assertTrue(dependency_stamp.exists())
+        self.assertEqual(dependency.read_text(), 'retained dependency')
+        self.assertFalse((self.root / 'compiled.log').exists())
 
     def test_interrupted_crate_test_restores_units_without_publishing_game(self):
         (self.root / 'interrupt').touch()

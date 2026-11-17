@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import shutil
+import tomllib
 
 
 INPUTS = ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo", "crates", "dev")
@@ -45,13 +47,37 @@ def seal(root, before, artifacts):
     }}
 
 
+def invalidate_native(root, snapshot, target):
+    """Recheck local packages after shared-target reuse; preserve artifacts and registry dependencies."""
+    packages = set()
+    for name in snapshot["files"]:
+        if Path(name).name == "Cargo.toml":
+            manifest = tomllib.loads((root / name).read_text())
+            package = manifest.get("package", {}).get("name")
+            if package:
+                packages.add(package)
+    fingerprints = target / "debug" / ".fingerprint"
+    invalidated = 0
+    if fingerprints.is_dir():
+        for unit in fingerprints.iterdir():
+            if unit.name.rsplit("-", 1)[0] in packages and unit.is_dir():
+                shutil.rmtree(unit)
+                invalidated += 1
+    print(f"invalidated {invalidated} local native freshness records; artifacts retained")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("snapshot", "seal", "verify"))
+    parser.add_argument("operation", choices=("snapshot", "seal", "verify", "invalidate-native"))
     parser.add_argument("record", type=Path)
     parser.add_argument("artifacts", nargs="*")
     args = parser.parse_args()
     root = Path.cwd()
+    if args.operation == "invalidate-native":
+        if len(args.artifacts) != 1:
+            parser.error("invalidate-native requires the native Cargo target directory")
+        invalidate_native(root, json.loads(args.record.read_text()), Path(args.artifacts[0]))
+        return
     if args.operation == "snapshot":
         record = source(root)
     else:

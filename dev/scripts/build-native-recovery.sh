@@ -56,7 +56,8 @@ trap cleanup EXIT
 python3 dev/scripts/build-provenance.py snapshot "$snapshot"
 profile=dev
 if [ -n "$test_package" ]; then profile=test; fi
-configuration="package=${test_package:-cyrus} profile=$profile
+configuration="native_freshness=local-fingerprints-v2
+package=${test_package:-cyrus} profile=$profile
 $(rustc -vV)
 $(cargo --version)
 $(env | LC_ALL=C sort | rg '^(CARGO_PROFILE_|CARGO_BUILD_RUSTFLAGS=|CARGO_ENCODED_RUSTFLAGS=|RUSTFLAGS=|RUSTC=|RUSTC_WRAPPER=|CARGO_TARGET_DIR=|CARGO_HOME=|RUSTUP_HOME=)' || true)"
@@ -86,6 +87,9 @@ if [ -z "$test_package" ]; then
 fi
 python3 dev/scripts/web-compile-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
     "$snapshot" "$configuration" "$CARGO_TARGET_DIR"
+# Cargo's relative workspace metadata can reuse another checkout's local packages.
+# Recheck only local package fingerprints, inside this lane, after restoring retained units.
+python3 dev/scripts/build-provenance.py invalidate-native "$snapshot" "$CARGO_TARGET_DIR"
 # Spool Cargo events on the host so unit compression cannot backpressure Cargo
 # or defer sealing an already completed executable.
 events="$CYRUS_NATIVE_CHECKPOINT_DIR/cargo-events.jsonl"

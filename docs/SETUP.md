@@ -2583,6 +2583,11 @@ compilation and checkpoint recording together; restoration cannot overlap anothe
 queued Cargo build. Completed Cargo units are retained as they are
 reported, using the same hashed unit recovery as browser builds. Restoration
 never replaces existing shared compilation files; Cargo checks their freshness.
+Before compilation, the recovery lane invalidates
+local-package fingerprint records so a shared target cannot substitute another
+checkout’s local code or embedded shaders. Compiled artifacts and dependency
+outputs remain in place. Older executable seals from before this freshness
+boundary are not reused.
 Cargo events spool to the host independently of unit compression. A successful
 Cargo exit seals the final executable before waiting for the unit archive backlog,
 so slow checkpoint compression cannot defer executable retention. The wrapper
