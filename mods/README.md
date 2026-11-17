@@ -5,11 +5,12 @@ build does not load mods. Mods start disabled: open the Backtick menu and select
 **Mods** to enable them and edit their settings.
 
 - **Players:** the `cyrus-with-mods-<target>` release downloads contain every
-  bundled mod. Extract the whole archive and run cyrus from that directory so it
-  finds `game-config/mods` (`CYRUS_CONFIG_DIR` overrides the location).
+  bundled mod. Extract the whole archive; the mods sit in the `mods/` folder beside
+  the programs.
 - **From source:** `just mods` builds every mod with a `Cargo.toml` for
   `wasm32-wasip2` against the SDK in `mods/sdk`, copies manifest-only mods, and
-  installs them into `game-config/mods/<folder>/`.
+  installs them into `mods/<folder>/` beside the debug game build
+  (`<target>/debug/mods`), which `just run` uses.
 
 | Mod | Kind | Effect |
 | --- | --- | --- |
@@ -36,7 +37,7 @@ was not compared); nothing was played through.
 ## Writing a mod
 
 A mod is a folder holding `mod.toml` plus any of `mod.wasm`, shader files and a
-`files/` folder. Drop it into `game-config/mods/` while the game runs and it appears
+`files/` folder. Drop it into the `mods/` folder beside the game while the game runs and it appears
 in the Mods window; delete it and it goes. Copy a bundled mod as a start.
 
 **Manifest.** `name` is required; `description`, `version` and `author` are shown in
@@ -53,7 +54,7 @@ use cyrus_mod_sdk::{Cx, Key, Mod};
 struct Hello;
 
 impl Mod for Hello {
-    const ID: &'static str = "hello"; // the folder name under game-config/mods
+    const ID: &'static str = "hello"; // the folder name under mods/
     fn frame(cx: &Cx) {
         if cx.input.down(Key::INSERT) {
             cx.hud.show("hello");

@@ -43,8 +43,8 @@ genmap:
 build:
     cargo build --workspace
 
-# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into the config dir mods folder
-# (game-config/mods in a checkout); a Rust example, so it runs the same on every platform
+# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into the mods folder beside the
+# debug game build (<target>/debug/mods); a Rust example, so it runs the same on every platform
 mods:
     cargo run -p cyrus-mods --example install_mods
 

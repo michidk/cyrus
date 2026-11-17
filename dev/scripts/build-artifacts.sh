@@ -103,9 +103,8 @@ launcher, where you choose game options and mods; Play starts the game.
 You can also start cyrus directly. Options such as --fullscreen are listed by
 cyrus --help.
 
-The mods folder beside the programs holds the bundled mods. Your own mods go in
-the mods folder of your Cyrus settings folder, which the launcher shows. Settings
-are stored per user, in your system's usual place; CYRUS_CONFIG_DIR overrides
+The mods folder beside the programs holds the bundled mods; put your own mods
+there too, one folder each. Settings are stored per user, in your system's usual place; CYRUS_CONFIG_DIR overrides
 the location. Every bundled mod starts disabled: enable the ones you want in the
 launcher or in the game (Backtick, then Mods). Movement and camera mods can
 conflict when enabled together.
