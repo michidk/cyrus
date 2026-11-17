@@ -93,6 +93,9 @@ Script checks for the browser movie path and book rendering, in `dev/scripts/`:
 | `check-book-filter.py prepare` / `compare` / `sample-grid` | Four-bit book texture filtering, via disposable `book.menu` caches |
 | `check-book-framebuffer.py prepare` / `check` | Ordered-dither RGB565 output on a constant-colour cache |
 
+The model material uses 16-byte uniform bindings so the book, logbook and examine
+views work on WebGL devices that require aligned uniform blocks.
+
 The Python checkers need Pillow and have their own tests
 (`test-check-book-filter.py`, `test-check-book-framebuffer.py`). They replace
 the menu cache, never the install; restore the original cache afterwards.

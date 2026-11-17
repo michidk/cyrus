@@ -8,7 +8,7 @@ import bevy_render::color_operations::srgb_to_linear;
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var lit_texture: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var lit_sampler: sampler;
-@group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> four_bit_filter: u32;
+@group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> four_bit_filter: vec4<u32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -86,12 +86,12 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     var raw = round(texel.rgb * 255.0);
-    if four_bit_filter != 0u {
+    if four_bit_filter.x != 0u {
         raw = book_sample(in.uv);
     }
     let level = floor(clamp(screen_level.rgb, vec3(0.0), vec3(255.0)));
     var lit = floor(raw * (level + screen_level.w) / 256.0);
-    if four_bit_filter != 0u {
+    if four_bit_filter.x != 0u {
         lit = book_framebuffer(lit, in.position.xy);
     }
     return vec4(srgb_to_linear(lit / 255.0), texel.a);

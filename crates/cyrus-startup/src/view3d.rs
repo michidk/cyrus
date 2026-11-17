@@ -206,7 +206,8 @@ pub struct LitMaterial {
     #[sampler(1)]
     texture: Handle<Image>,
     #[uniform(2)]
-    four_bit_filter: u32,
+    // WebGL uniform blocks require a 16-byte binding, including this scalar flag.
+    four_bit_filter: UVec4,
 }
 
 impl LitMaterial {
@@ -214,7 +215,7 @@ impl LitMaterial {
     pub(super) fn book(texture: Handle<Image>) -> Self {
         Self {
             texture,
-            four_bit_filter: 1,
+            four_bit_filter: UVec4::new(1, 0, 0, 0),
         }
     }
 }
@@ -337,7 +338,7 @@ impl LitModel {
                         Mesh3d(meshes.add(texture_mesh(scene, texture))),
                         MeshMaterial3d(materials.add(LitMaterial {
                             texture: handle.clone(),
-                            four_bit_filter: 0,
+                            four_bit_filter: UVec4::ZERO,
                         })),
                         LitMesh(layer),
                         Transform::IDENTITY,
@@ -366,6 +367,22 @@ impl LitModel {
 mod tests {
     use super::*;
     use bevy::mesh::VertexAttributeValues;
+
+    #[test]
+    fn book_filter_uniform_supports_webgl_binding_alignment() {
+        use bevy::render::render_resource::encase::UniformBuffer;
+
+        let material = LitMaterial::book(Handle::default());
+        let mut buffer = UniformBuffer::new(Vec::<u8>::new());
+        buffer.write(&material.four_bit_filter).unwrap();
+        let bytes = buffer.into_inner();
+        assert_eq!(
+            bytes.len() % 16,
+            0,
+            "WebGL uniform bindings need 16-byte size"
+        );
+        assert_eq!(&bytes[..4], &1u32.to_le_bytes());
+    }
 
     #[test]
     fn book_projection_preserves_the_complete_authored_frame_without_stretching() {
