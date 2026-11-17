@@ -197,7 +197,7 @@ impl App {
             Err(error) => problems.push(format!("{error:#}")),
         }
         app.find_install();
-        match mods::scan(&mods::mods_dir()) {
+        match mods::scan_all() {
             Ok(installed) => app.installed = installed,
             Err(error) => problems.push(format!("{error:#}")),
         }
@@ -564,7 +564,7 @@ impl App {
         {
             theme::section(ui, "No mods installed");
             ui.label(theme::muted(&format!(
-                "Mods go in {}.",
+                "Mods go in {} or in a mods folder beside the launcher.",
                 mods::mods_dir().display()
             )));
             return;

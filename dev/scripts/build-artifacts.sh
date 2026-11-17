@@ -60,7 +60,7 @@ PYZIP
         done
         if [[ "$1" = native-mods ]]; then
             bundle="$stage/bundled"
-            mkdir -p "$bundle/game-config/mods"
+            mkdir -p "$bundle/mods"
             cp "$build_root/$platform/release/cyrus$suffix" "$bundle/"
             if [[ "$launcher" = true ]]; then
                 cp "$build_root/$platform/release/cyrus-launcher$suffix" "$bundle/"
@@ -70,7 +70,7 @@ PYZIP
                 [[ -f "$manifest" ]] || continue
                 dir="${manifest%/mod.toml}"
                 id="${dir##*/}"
-                out="$bundle/game-config/mods/$id"
+                out="$bundle/mods/$id"
                 mkdir -p "$out"
                 cp "$manifest" "$out/"
                 if [[ -f "$dir/Cargo.toml" ]]; then
@@ -87,7 +87,6 @@ PYZIP
                 count=$((count + 1))
             done
             if (( count == 0 )); then echo 'No bundled mod manifests found' >&2; exit 1; fi
-            printf '{"active":[]}\n' > "$bundle/game-config/mods.json"
             cat > "$bundle/README.txt" <<'EOF'
 Cyrus: a native rebuild of The Elder Scrolls Adventures: Redguard
 
@@ -104,11 +103,12 @@ launcher, where you choose game options and mods; Play starts the game.
 You can also start cyrus directly. Options such as --fullscreen are listed by
 cyrus --help.
 
-Settings, saves and mods live in the game-config folder beside the programs.
-Start from this folder so they are found; CYRUS_CONFIG_DIR overrides the
-location. Every mod in this package is installed but disabled: enable the ones
-you want in the launcher or in the game (Backtick, then Mods). Movement and
-camera mods can conflict when enabled together.
+The mods folder beside the programs holds the bundled mods. Your own mods go in
+the mods folder of your Cyrus settings folder, which the launcher shows. Settings
+are stored per user, in your system's usual place; CYRUS_CONFIG_DIR overrides
+the location. Every bundled mod starts disabled: enable the ones you want in the
+launcher or in the game (Backtick, then Mods). Movement and camera mods can
+conflict when enabled together.
 
 Reports are welcome at https://github.com/michidk/cyrus/issues
 EOF

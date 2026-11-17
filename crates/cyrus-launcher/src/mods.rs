@@ -1,6 +1,6 @@
 //! The installed mods and which of them are switched on.
 //!
-//! A mod is a folder under `mods/` in the config directory with a `mod.toml`. Only the fields a
+//! A mod is a folder with a `mod.toml` under `mods/` in the config directory or beside the program. Only the fields a
 //! player reads in a list are taken from it here; the game reads the rest. The set of active mods is
 //! `mods.json`, which the game reads at startup.
 use anyhow::Context;
@@ -8,9 +8,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-/// The installed mods folder in the config directory.
+/// The folder for the player's own mods, in the config directory.
 pub fn mods_dir() -> PathBuf {
-    cyrus_config::config_dir().join("mods")
+    cyrus_config::user_mods_dir()
+}
+
+/// The mods of every mods folder: the player's own and the ones beside the program, the player's
+/// winning on a shared id.
+pub fn scan_all() -> anyhow::Result<Installed> {
+    let mut all = Installed::default();
+    for dir in cyrus_config::mods_dirs() {
+        let found = scan(&dir)?;
+        for entry in found.mods {
+            if !all.mods.iter().any(|seen| seen.id == entry.id) {
+                all.mods.push(entry);
+            }
+        }
+        for (id, reason) in found.problems {
+            all.problems.entry(id).or_insert(reason);
+        }
+    }
+    all.mods.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(all)
 }
 
 /// The file listing the active mods, as the game reads it.

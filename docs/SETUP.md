@@ -384,9 +384,10 @@ Each native build also produces `cyrus-with-mods-<target>.tar.gz` on Linux and
 macOS, or `cyrus-with-mods-<target>.zip` on Windows. It contains cyrus and every
 mod with a `mods/*/mod.toml` in that source revision, including compiled Wasm
 guests, shaders and authored file overlays. Mods are installed but disabled by
-default. Extract the whole archive and launch from the extracted directory,
-then open Backtick and select Mods to enable them. `CYRUS_CONFIG_DIR` overrides the
-included `game-config` directory. When the revision includes `cyrus-launcher`,
+default. Extract the whole archive and launch from the extracted directory;
+the bundled mods sit in its `mods/` folder, your own go in the `mods/` folder of
+your config directory, and settings are stored per user. Open Backtick and select
+Mods to enable them. `CYRUS_CONFIG_DIR` overrides the config directory. When the revision includes `cyrus-launcher`,
 the bundle also includes that executable beside `cyrus`. Keep both in the same
 folder. Start `cyrus-launcher` from the extracted folder to
 choose game files, mods and presentation settings before playing. The ordinary game-only downloads remain available.
