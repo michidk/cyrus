@@ -39,8 +39,18 @@ pub(super) struct Draw;
 #[derive(Component)]
 struct Inspected;
 
+// Asset publication also mutably borrows the mesh store. Remember its final tick so
+// preparation detects new input edits without treating its own draw uploads as inputs.
+#[derive(Resource, Default)]
+struct PublishedMeshes(Option<bevy::ecs::change_detection::Tick>);
+
+fn remember_published_meshes(meshes: Res<Assets<Mesh>>, mut published: ResMut<PublishedMeshes>) {
+    published.0 = Some(meshes.last_changed());
+}
+
 pub(super) fn register(app: &mut App) {
-    app.add_systems(Update, bind.after(super::apply_scene_fog))
+    app.init_resource::<PublishedMeshes>()
+        .add_systems(Update, bind.after(super::apply_scene_fog))
         .add_systems(
             PostUpdate,
             prepare
@@ -48,6 +58,10 @@ pub(super) fn register(app: &mut App) {
                 .after(bevy::camera::CameraUpdateSystems)
                 .after(crate::animation::apply_poses)
                 .before(bevy::asset::AssetEventSystems),
+        )
+        .add_systems(
+            PostUpdate,
+            remember_published_meshes.after(bevy::asset::AssetEventSystems),
         )
         .add_systems(PostUpdate, swap_for_modern_lighting.before(prepare))
         .add_systems(
@@ -229,6 +243,7 @@ fn prepare(
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<SceneMaterial>>,
     images: Res<Assets<Image>>,
+    published_meshes: Res<PublishedMeshes>,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
     mut image_events: MessageReader<AssetEvent<Image>>,
     material_events: Option<MessageReader<AssetEvent<SceneMaterial>>>,
@@ -286,11 +301,13 @@ fn prepare(
         previous_view.replace((camera, scale, viewport)) == Some((camera, scale, viewport));
     // Asset events publish after preparation. Resource ticks also catch in-place edits
     // made this frame, before those notifications can reach either cache guard.
+    let meshes_changed = published_meshes.0 != Some(meshes.last_changed());
     for (mesh, transform, material, mut source, animated) in &mut sources {
         if view_unchanged
             && !source.pending
             && !source.is_added()
             && !mesh.is_changed()
+            && !meshes_changed
             && !transform.is_changed()
             && !material.is_changed()
             && !materials.is_changed()
@@ -328,6 +345,7 @@ fn prepare(
             draw_material.0 = material.0.clone();
         }
         if source.previous.as_ref() == Some(&key)
+            && !meshes_changed
             && !animated.as_ref().is_some_and(|pose| pose.is_changed())
             && !changed_meshes.contains(&mesh.0.id())
             && !changed_images.contains(&extension.lights.id())
@@ -1326,6 +1344,35 @@ mod tests {
                 .attribute(Mesh::ATTRIBUTE_COLOR),
             Some(&expected_colors),
             "restoring the same light handle must rebuild every prepared color"
+        );
+        app.update();
+        app.update();
+        let recolored = [1.0 / 255.0, 2.0 / 255.0, 3.0 / 255.0, 0.0];
+        app.world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .get_mut(&source_mesh)
+            .unwrap()
+            .insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![recolored; 3]);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR),
+            Some(&VertexAttributeValues::Float32x4(vec![recolored; 6])),
+            "same-frame source prelighting edits must update a stationary draw"
+        );
+        app.update();
+        app.update();
+        app.update();
+        mesh_events.clear(app.world().resource::<Messages<AssetEvent<Mesh>>>());
+        app.update();
+        assert!(
+            !mesh_events
+                .read(app.world().resource::<Messages<AssetEvent<Mesh>>>())
+                .any(|event| matches!(event, AssetEvent::Modified { id } if *id == draw_mesh.id())),
+            "prepared output uploads must not invalidate their own settled source"
         );
         app.world_mut().entity_mut(source).despawn();
         assert!(app.world().get_entity(draw).is_err());
