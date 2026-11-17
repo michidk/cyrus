@@ -1,7 +1,7 @@
 name = "Unofficial Redguard Patch"
 description = "Fixes bugs and typos of the original game and restores content that never ran because of scripting errors: topics that were never offered, counters that never advanced, flags that were never set, dialogue and log lines in the wrong place, and about ninety misspelt or mispunctuated lines. Takes effect after a restart."
 version = "1.01"
-author = "Dillonn241 (patch), cyrus (port)"
+author = "Dillonn241 (patch), michidk (port)"
 
 # A port of Dillonn241's Unofficial Redguard Patch 1.01. Every change is a few words of data (a flag
 # to set, a fragment of a line to correct), none is a copy of game data, and the install is never

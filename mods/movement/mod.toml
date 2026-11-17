@@ -1,7 +1,7 @@
 name = "Modern movement"
 description = "Third-person movement like current action games: the mouse orbits the camera, the keys move the player relative to it at full speed at once, and the animations only show the movement. A drawn weapon keeps the player facing the camera's way."
 version = "0.6.0"
-author = "cyrus"
+author = "michidk"
 
 [[setting]]
 key = "keys"

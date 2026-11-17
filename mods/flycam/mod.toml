@@ -1,7 +1,7 @@
 name = "Fly camera (Insert)"
 description = "Insert toggles a free first-person camera: WASD to fly, Space/Left Shift up and down, mouse to look."
 version = "0.1.0"
-author = "cyrus"
+author = "michidk"
 
 [[setting]]
 key = "speed"
