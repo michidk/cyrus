@@ -13533,6 +13533,60 @@ fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
 }
 
 #[test]
+fn finished_ledge_climb_releases_a_static_receiver_and_continues_ordinary_updates() {
+    use cyrus_script::script::{LivingState, OrdinaryInputs, ScriptInputs};
+    for animation_system in [false, true] {
+        let mut scripts = cache();
+        scripts.updates.animation_system = animation_system;
+        scripts.actors.get_mut("LOGIC").unwrap().attributes[Attribute::Collide] = 0;
+        for placement in &mut scripts.instances {
+            placement.active = 1;
+            placement.object_type = PlacementType::MODEL;
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (world, data, models) = static_model_fixture(scripts.clone());
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["control"]["living_state"] = LivingState::CLIMB_FINISHED.byte().into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let ids = [id, world.id(1).unwrap()];
+        world.refresh_model_presentations(&data, &ids).unwrap();
+        let scene = ordinary_collision_scene(world.world, models);
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+        for update in 1..=2 {
+            world
+                .update_ordinary(
+                    &data,
+                    [10, 30],
+                    OrdinaryInputs {
+                        scripts: ScriptInputs {
+                            nominal_ticks: Some(1),
+                            fine_ticks: Some(1),
+                            frame_scale: Some(256),
+                            ..Default::default()
+                        },
+                        scene: Some(&scene),
+                    },
+                    &mut cyrus_game::random::EngineRandom::default(),
+                    &mut |_, _| panic!("absent ledge receiver must not emit animation audio"),
+                    100,
+                )
+                .unwrap();
+            let actor = &world.actors()[id.index];
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            assert_eq!(
+                actor.control_state().unwrap().living_state,
+                LivingState::ORDINARY,
+                "finished climb must release living-state ownership without an animation receiver"
+            );
+            assert_eq!(actor.runtime().unwrap().variables(), [4 + update]);
+            assert_eq!(world.animation_frame(id).unwrap(), None);
+        }
+    }
+}
+
+#[test]
 fn static_slide_termination_applies_hurt_and_continues_without_animation() {
     use cyrus_script::script::{OrdinaryInputs, ScriptInputs};
     for animation_system in [false, true] {

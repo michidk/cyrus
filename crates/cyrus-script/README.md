@@ -98,3 +98,6 @@ selection; reselecting the same player preserves pending dispatch.
 
 Deferred transition animation requests retain the support-query motion and torch
 selection, so later movement cannot reverse the swim or deep-water exit request.
+
+A finished ledge climb releases its living state even when the restored actor has
+no animation receiver, so subsequent ordinary updates can continue.

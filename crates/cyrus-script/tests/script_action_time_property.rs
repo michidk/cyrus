@@ -439,7 +439,10 @@ fn missing_late_collision_input_keeps_timer_before_its_consumer_and_sticks_failu
 fn a_falling_byte_in_a_ledge_state_runs_the_late_stage_without_the_ground_response() {
     // The original skips the obstacle wrapper and the ground response in living states 10 to 19
     // (the ledge transition replaces the latter), so a nonselected actor keeps its falling byte.
-    for state in 10..=19u8 {
+    // A finished climb with no animation receiver releases its living state before this stage.
+    for state in (10..=19u8)
+        .filter(|&state| state != cyrus_script::script::LivingState::CLIMB_FINISHED.byte())
+    {
         let (mut world, data, mut scene) = automatic_fixture(0);
         scene.settings.post_collide_height = 8;
         let id = world.id(0).unwrap();

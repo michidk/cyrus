@@ -540,6 +540,8 @@ impl ScriptWorld {
 
     /// `CLIMB_FINISHED`, at the start of the ordinary update: a climb group still playing keeps it and
     /// drops its pending replacement; otherwise the default group is forced and the state clears.
+    /// An absent animation receiver cannot retain climb ownership. See preservation's
+    /// `engine/player.md`, “Ledge transition”, and `engine/animation.md`, “Receiver eligibility”.
     pub(super) fn finish_ledge_climb(
         &mut self,
         id: ScriptActorId,
@@ -551,6 +553,7 @@ impl ScriptWorld {
             return Ok(());
         }
         let Some(animation) = self.actors[index].animation.as_mut() else {
+            self.set_living(index, LivingState::ORDINARY);
             return Ok(());
         };
         if matches!(
