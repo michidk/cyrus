@@ -55,13 +55,30 @@ pub fn section(ui: &mut egui::Ui, title: &str) {
 
 /// One setting: its name and a short explanation on the left, its control on the right.
 pub fn row(ui: &mut egui::Ui, title: &str, detail: &str, control: impl FnOnce(&mut egui::Ui)) {
+    titled_row(ui, title, None, detail, control);
+}
+
+/// A [`row`] whose title is followed by a muted `note`, such as a version.
+pub fn titled_row(
+    ui: &mut egui::Ui,
+    title: &str,
+    note: Option<&str>,
+    detail: &str,
+    control: impl FnOnce(&mut egui::Ui),
+) {
     ui.horizontal(|ui| {
         ui.set_min_height(33.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             control(ui);
             ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                 ui.spacing_mut().item_spacing.y = 1.0;
-                ui.label(egui::RichText::new(title).color(PARCHMENT));
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(egui::RichText::new(title).color(PARCHMENT));
+                    if let Some(note) = note {
+                        ui.label(muted(note));
+                    }
+                });
                 ui.add(egui::Label::new(muted(detail)).truncate());
             });
         });
