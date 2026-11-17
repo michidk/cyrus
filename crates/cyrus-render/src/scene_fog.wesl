@@ -13,7 +13,7 @@ import bevy_pbr::render::pbr_functions::premultiply_alpha;
 import bevy_pbr::render::pbr_functions::apply_pbr_lighting;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
 import package::scene_shading::{fog, point_sampled, scene_color, scene_fog_at_position};
-import package::glide_fog::{fog_table_position, framebuffer_blend_integer};
+import package::glide_fog::{fog_table_position, framebuffer_blend_integer, framebuffer_dither};
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
 import package::model_lights::{apply_local_lights, load_model_material, model};
@@ -211,6 +211,9 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     }
 }
     out.color = vec4(out.color.rgb + lamp_glow(input, texture_rgb, color), out.color.a);
+    if model.compositing.x < 0.0 {
+        out.color = vec4(framebuffer_dither(out.color.rgb, vec2<u32>(in.position.xy - view.viewport.xy)), out.color.a);
+    }
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }
