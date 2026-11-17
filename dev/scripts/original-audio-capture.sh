@@ -85,6 +85,10 @@ docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTR
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
     "${conf_mount[@]}" "$image" "${dosbox_host_args[@]}" >/dev/null
 cleanup() {
+    # Bind-mounted run output must remain removable by the invoking host user.
+    # find does not follow the read-only install symlinks in the run directory.
+    docker exec "$name" sh -c 'find /game /capture-config -xdev -user root -exec chown -h "$1" {} +' \
+        sh "$(id -u):$(id -g)" >/dev/null 2>&1 || true
     docker rm -f "$name" >/dev/null 2>&1 || true
     [ -z "${conf:-}" ] || rm -f "$conf"
 }

@@ -61,11 +61,15 @@ print('{"reader": "bound"}')
 import json, os, pathlib, shutil, subprocess, sys
 root = pathlib.Path(os.environ['CAPTURE_TEST'])
 args = sys.argv[1:]
+with (root / 'docker-calls.jsonl').open('a') as calls:
+    calls.write(json.dumps(args) + '\\n')
 if args[0] == 'cp':
     shutil.copy2(args[1], root / 'container' / args[2].split(':', 1)[1].rsplit('/', 1)[1])
 elif args[0] == 'run' and '-d' in args:
     (root / 'launch.json').write_text(json.dumps(args))
-elif args[0] == 'exec':
+elif args[0] == 'exec' and 'python3' in args:
+    if os.environ.get('CAPTURE_FAIL'):
+        sys.exit(23)
     result = subprocess.run([sys.executable, str(root / 'container/original-state.py')])
     if result.returncode == 0:
         (root / 'run/capture/fixture.wav').write_bytes(b'RIFFfixture')
@@ -94,9 +98,31 @@ elif args[0] == 'exec':
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / 'output/audio.wav').read_bytes(), b'RIFFfixture')
             self.assertIn('bound', (root / 'output/timeline.json').read_text())
+            calls = [json.loads(line) for line in (root / 'docker-calls.jsonl').read_text().splitlines()]
+            cleanup = [call for call in calls if call[0] == 'exec' and 'sh' in call]
+            self.assertEqual(len(cleanup), 1, calls)
+            self.assertIn(f'{os.getuid()}:{os.getgid()}', cleanup[0])
+            self.assertIn('find /game /capture-config -xdev -user root', cleanup[0][4])
+            self.assertEqual(calls[-1][:2], ['rm', '-f'])
+            self.assertLess(calls.index(cleanup[0]), len(calls) - 1)
             launch = json.loads((root / 'launch.json').read_text())
             self.assertIn('CYRUS_CONFIG_DIR=/capture-config', launch)
             self.assertIn(f"{root / 'output/config'}:/capture-config", launch)
+            (root / 'docker-calls.jsonl').unlink()
+            failed = subprocess.run(
+                ['bash', str(scripts / 'original-audio-capture.sh'),
+                 str(root / 'events.json'), str(root / 'failed-output'), '1'],
+                capture_output=True, text=True, timeout=10,
+                env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
+                     'CAPTURE_TEST': str(root), 'CAPTURE_FAIL': '1',
+                     'CYRUS_RETRO_RUN': str(root / 'run'),
+                     'CYRUS_RETRO_GOG': str(root / 'gog'), 'CYRUS_STATE_READER': str(reader)},
+            )
+            self.assertEqual(failed.returncode, 23, failed.stderr)
+            calls = [json.loads(line) for line in (root / 'docker-calls.jsonl').read_text().splitlines()]
+            self.assertEqual(calls[-2][0], 'exec')
+            self.assertIn(f'{os.getuid()}:{os.getgid()}', calls[-2])
+            self.assertEqual(calls[-1][:2], ['rm', '-f'])
 
 
 if __name__ == '__main__':
