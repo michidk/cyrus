@@ -55,6 +55,8 @@ omit Bevy's audio backend and keep request and ownership state.
 - `Panned` and `Music` checkpoints restore exact decoder progress but exclude
   resampler and device buffers, so restoration is not a gapless splice. Capture
   rejects in-flight preparation, including starts still waiting for the browser bank.
+- Examine description requests wait for installed sound settings and per-label
+  voice preparation before acknowledging playback. Closing cancels a pending request.
 - World teardown retires the whole sample pool, including unowned control voices.
 
 ## Testing

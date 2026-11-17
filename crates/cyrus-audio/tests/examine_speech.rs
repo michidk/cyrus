@@ -142,6 +142,52 @@ fn check_examine(label: [u8; 4]) -> Result<()> {
         1,
         "completed examine request replayed its voice"
     );
+    if !device {
+        // Reuse the prepared installed voice to isolate settings admission from
+        // acquisition latency. A reply promises playback, not just a known clip.
+        let settings = app
+            .world_mut()
+            .remove_resource::<cyrus_audio::sound::SoundSettings>()
+            .unwrap();
+        {
+            let mut screen = app.world_mut().resource_mut::<ExamineScreen>();
+            screen.speech_stop = true;
+            screen.speech_request = Some(label);
+            screen.speech_reply = None;
+        }
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(
+            app.world().resource::<ExamineScreen>().speech_request,
+            Some(label),
+            "examine voice was acknowledged before installed settings arrived"
+        );
+        assert_eq!(app.world().resource::<ExamineScreen>().speech_reply, None);
+        assert_eq!(
+            app.world_mut()
+                .query::<&AudioPlayer<Panned>>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        app.insert_resource(settings);
+        app.update();
+        assert_eq!(app.world().resource::<ExamineScreen>().speech_request, None);
+        assert_eq!(
+            app.world().resource::<ExamineScreen>().speech_reply,
+            Some(Some(seconds))
+        );
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&AudioPlayer<Panned>>()
+                .iter(app.world())
+                .count(),
+            1,
+            "late-settings examine voice must start exactly once"
+        );
+    }
     if device {
         let end = Instant::now() + Duration::from_secs(15);
         while app

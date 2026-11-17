@@ -772,6 +772,7 @@ fn positional(
 /// without an asset server still answer that no playable clip is available.
 #[derive(bevy::ecs::system::SystemParam)]
 struct ExamineAssets<'w> {
+    settings: Option<Res<'w, SoundSettings>>,
     server: Option<Res<'w, AssetServer>>,
     clips: Option<Res<'w, Assets<dialogue::DialogueClip>>>,
     sources: Option<Res<'w, Assets<AudioSource>>>,
@@ -840,7 +841,7 @@ impl ExaminePreparation {
 }
 
 /// Start an examine description without creating a dialogue subtitle. Pending
-/// per-label dependencies retain the request; only a completed text-only entry
+/// installed settings and per-label dependencies retain the request; only a completed text-only entry
 /// answers that no clip is available. Closing drops pending acquisition.
 fn examine_speech(
     screen: Option<ResMut<cyrus_script::item_viewer::ExamineScreen>>,
@@ -866,6 +867,9 @@ fn examine_speech(
         preparation.clear();
         return;
     };
+    if assets.settings.is_none() {
+        return;
+    }
     let name = String::from_utf8_lossy(&label);
     let key = speech
         .0
@@ -1288,6 +1292,7 @@ mod examine_speech_tests {
     fn a_requested_label_starts_its_clip_and_reports_the_length_or_its_absence() {
         let mut app = App::new();
         app.add_message::<SoundRequest>()
+            .insert_resource(SoundSettings::parse(""))
             .init_resource::<Speech>()
             .init_resource::<ExamineScreen>()
             .init_resource::<Channels>()
