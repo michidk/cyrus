@@ -95,3 +95,6 @@ so walking before dispatch cannot move the splash to the player's later position
 
 Changing the selected player retires pending water/lava transitions from the outgoing
 selection; reselecting the same player preserves pending dispatch.
+
+Deferred transition animation requests retain the support-query motion and torch
+selection, so later movement cannot reverse the swim or deep-water exit request.

@@ -5509,6 +5509,14 @@ pub(super) struct SurfaceTransition {
     /// Queued probes capture their position; immediate handlers sample only if they emit a sound.
     pub sound_position: Option<[i32; 3]>,
     pub effect: SurfaceEffectPlacement,
+    pub animation: SurfaceAnimationRequest,
+}
+
+/// Deferred transitions retain the request selected by the probe's motion and torch state.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum SurfaceAnimationRequest {
+    Immediate,
+    Captured(Option<AnimationGroup>),
 }
 
 /// Immediate transitions resolve a support height against live actor/camera poses; deferred

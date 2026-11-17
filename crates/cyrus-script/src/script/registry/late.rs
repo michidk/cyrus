@@ -117,6 +117,7 @@ impl ScriptWorld {
                 returned,
                 stored: self.actors[id.index].surface.unwrap_or_default(),
                 sound_position: None,
+                animation: super::SurfaceAnimationRequest::Immediate,
                 effect: super::SurfaceEffectPlacement::Immediate {
                     height: effect_height,
                 },
@@ -141,52 +142,29 @@ impl ScriptWorld {
             stored,
             sound_position,
             effect,
+            animation,
         } = transition;
         if returned == previous {
             return Ok(());
         }
         let in_water = |surface: Surface| surface.is_water();
-        let deep = |surface: Surface| surface.is_deep_water();
         if !in_water(stored) && !in_water(previous) {
             if stored == Surface::LAVA || previous == Surface::LAVA {
                 self.spawn_transition_effect(id, 0x2580, effect)?;
             }
             return Ok(());
         }
-        let control = self.actors[id.index]
-            .control
-            .as_ref()
-            .context("surface transition control unavailable")?;
-        // Walking retains its own direction byte; both forward producers enter and leave
-        // deep water facing forward (preservation player.md, water transition effects).
-        let forward = matches!(
-            control.motion_direction,
-            MotionDirection::FORWARD | MotionDirection::WALK_FORWARD
-        );
-        let torch = control.torch_burning != 0;
-        if deep(stored) {
-            self.request_ordinary_group(
-                id,
-                if forward {
-                    AnimationGroup::SWIM_FORWARD
-                } else {
-                    AnimationGroup::SWIM_BACKWARD
-                },
-                false,
-                ticks,
-                sounds,
-            )?;
-        } else if deep(previous) {
-            let group = match (forward, torch) {
-                (true, false) => AnimationGroup::RUN,
-                (true, true) => AnimationGroup::RUN_TORCH,
-                (false, false) => AnimationGroup::RUN_BACKWARD,
-                (false, true) => AnimationGroup::WALK_BACKWARD_TORCH,
-            };
+        let group = match animation {
+            super::SurfaceAnimationRequest::Immediate => {
+                self.surface_transition_animation(id, previous, stored)?
+            }
+            super::SurfaceAnimationRequest::Captured(group) => group,
+        };
+        if let Some(group) = group {
             self.request_ordinary_group(id, group, false, ticks, sounds)?;
         }
         self.spawn_transition_effect(id, 0x2500, effect)?;
-        let effect = if !in_water(stored) || (in_water(previous) && !deep(stored)) {
+        let effect = if !in_water(stored) || (in_water(previous) && !stored.is_deep_water()) {
             70
         } else {
             71
@@ -206,6 +184,41 @@ impl ScriptWorld {
                 start_index: None,
             },
         )
+    }
+
+    /// Choose the water transition request from the actor state at the surface update
+    /// (preservation player.md, water and lava transition effects).
+    pub(super) fn surface_transition_animation(
+        &self,
+        id: ScriptActorId,
+        previous: Surface,
+        stored: Surface,
+    ) -> Result<Option<AnimationGroup>> {
+        if !stored.is_deep_water() && !previous.is_deep_water() {
+            return Ok(None);
+        }
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("surface transition control unavailable")?;
+        let forward = matches!(
+            control.motion_direction,
+            MotionDirection::FORWARD | MotionDirection::WALK_FORWARD
+        );
+        Ok(Some(if stored.is_deep_water() {
+            if forward {
+                AnimationGroup::SWIM_FORWARD
+            } else {
+                AnimationGroup::SWIM_BACKWARD
+            }
+        } else {
+            match (forward, control.torch_burning != 0) {
+                (true, false) => AnimationGroup::RUN,
+                (true, true) => AnimationGroup::RUN_TORCH,
+                (false, false) => AnimationGroup::RUN_BACKWARD,
+                (false, true) => AnimationGroup::WALK_BACKWARD_TORCH,
+            }
+        }))
     }
 
     /// The transition's effect object: the actor's X/Z moved eight map units toward the camera,

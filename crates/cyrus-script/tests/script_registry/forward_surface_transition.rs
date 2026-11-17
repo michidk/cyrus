@@ -300,7 +300,12 @@ fn queued_water_entry_and_exit_keep_their_own_surface_selection() {
         .iter_mut()
         .find(|actor| actor["script_name"] == "CYRUS")
         .unwrap();
-    for group in [AnimationGroup::SWIM_FORWARD, AnimationGroup::SWIM_BACKWARD] {
+    for group in [
+        AnimationGroup::SWIM_FORWARD,
+        AnimationGroup::SWIM_BACKWARD,
+        AnimationGroup::RUN,
+        AnimationGroup::RUN_BACKWARD,
+    ] {
         definition["animation_groups"]
             .as_array_mut()
             .unwrap()
@@ -322,6 +327,9 @@ fn queued_water_entry_and_exit_keep_their_own_surface_selection() {
             .prepare_ordinary_collision_query(player, &scene, &data, [512, 512], &[player, map])
             .unwrap();
         world
+            .apply_ordinary_directional_motion(player, 2, 0)
+            .unwrap();
+        world
             .query_player_forward_support(
                 player,
                 OrdinaryGroundQuery {
@@ -338,6 +346,10 @@ fn queued_water_entry_and_exit_keep_their_own_surface_selection() {
             .unwrap();
         assert_eq!(world.actor_surface(player).unwrap(), surface);
     }
+    // Later motion must not change either probe's already selected forward animation.
+    world
+        .apply_ordinary_directional_motion(player, 3, 0)
+        .unwrap();
     let mut effects = vec![];
     world
         .flush_surface_transitions(
@@ -355,6 +367,10 @@ fn queued_water_entry_and_exit_keep_their_own_surface_selection() {
         .unwrap();
     // Preservation player.md: entering deep water selects 71, leaving it selects 70.
     assert_eq!(effects, [71, 70]);
+    assert_eq!(
+        world.inspect(player.index, 1)["actors"][0]["animation"]["current_group"],
+        AnimationGroup::RUN.index()
+    );
     assert_eq!(world.actor_surface(player).unwrap(), Surface::SAND);
     world
         .flush_surface_transitions(

@@ -1492,6 +1492,9 @@ impl ScriptWorld {
                         returned: surface,
                         stored: surface,
                         sound_position: Some(self.sight_position(id.index)?),
+                        animation: super::SurfaceAnimationRequest::Captured(
+                            self.surface_transition_animation(id, previous, surface)?,
+                        ),
                         effect: super::SurfaceEffectPlacement::Captured {
                             position: effect_position,
                         },
