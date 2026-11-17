@@ -151,6 +151,11 @@ fn place(entry: &Entry, art: &Artwork) -> Option<Placed> {
         Art::Original(index) => art.buttons.get(index)?.clone(),
         Art::Mods => lettering::label(art, &lettering::MODS)?,
     };
+    let button = Button {
+        up: lettering::cut_out(&button.up),
+        focus: lettering::cut_out(&button.focus),
+        down: lettering::cut_out(&button.down),
+    };
     let x = (slot_x + slot.up.width).saturating_sub(button.up.width);
     let y = (slot_y + slot.up.height / 2).saturating_sub(button.up.height / 2);
     Some(Placed {
