@@ -3278,6 +3278,7 @@ name = "cyrus-launcher"
 version = "1.3.0"
 dependencies = [
  "anyhow",
+ "cyrus-assets",
  "cyrus-config",
  "cyrus-game",
  "eframe",

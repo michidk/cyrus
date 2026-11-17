@@ -3,7 +3,7 @@
 The window that starts cyrus: the original Redguard launcher, recreated, with its
 background and buttons read at run time from the player's own `REDGUARD.EXE`
 (plain buttons when that file is not found; nothing is shipped). **Play Redguard**
-starts the `cyrus` executable beside the launcher and closes it. **Mods** switches
+starts the `cyrus` executable beside the launcher and closes it. When no game folder is saved or found, the launcher first asks for it and remembers the choice for the game and the asset viewer. **Mods** switches
 installed mods on or off, **Game Options** holds the game folder, the intro-movie
 switch, the faithful or modern choice per presentation area and the cheats, and
 **Technical Support** opens the issue tracker. The launcher does not link the game
@@ -20,6 +20,8 @@ bundles ship it beside `cyrus` (see [setup](../../docs/SETUP.md#releases)).
 | [theme](src/theme.rs) | Colours and widgets matching the original leather and gold |
 | [mods](src/mods.rs), [fidelity](src/fidelity.rs), [cheats](src/cheats.rs) | The mod, fidelity and cheat choices as the game's files hold them |
 | [settings](src/settings.rs) | Saves only the configuration group the player changed |
+| [install](src/install.rs) | Finds the Redguard folder by the game's own rules, without linking the game |
+| [picker](src/picker.rs) | The first screen when no game folder is known: choose it, then the launcher opens |
 | [launch](src/launch.rs) | The launcher's own choices and the command that starts the game |
 
 ## Files

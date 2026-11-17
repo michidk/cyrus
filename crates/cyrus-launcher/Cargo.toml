@@ -24,4 +24,5 @@ rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] 
 # The launcher keeps its own list of fidelity areas so that it does not link the game; this pins it
 # to the game's list.
 cyrus-game.workspace = true
+cyrus-assets = { workspace = true, features = ["native"] }
 tempfile = "=3.27.0"
