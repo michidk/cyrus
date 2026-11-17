@@ -1,7 +1,7 @@
 import bevy_pbr::render::mesh_view_bindings::view;
 import constants::MATERIAL_BIND_GROUP;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
-import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer};
+import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_dither};
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var sky: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
@@ -201,6 +201,11 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     if sky_parameters.modern_sky.w > 0.0 {
         color = modern_sky(color, clouds, ray);
+    }
+    // Faithful sky colors share the published framebuffer storage precision.
+    // Keep the Modern sky projection and lighting effects at their existing precision.
+    if sky_parameters.scroll.z == 0.0 && sky_parameters.modern_sky.w == 0.0 {
+        color = framebuffer_dither(color, vec2<u32>(in.position.xy - view.main_pass_viewport.xy));
     }
     return vec4(color, 1.0);
 }
