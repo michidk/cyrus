@@ -82,3 +82,7 @@ Held directional jump input applies the documented jump-entry replacement before
 calling a movement helper. In particular, Forward+Jump during a low climb leaves
 the ledge animation's pending idle request intact rather than queuing Run behind
 it. The common jump-key arbitration still runs after directional dispatch.
+
+Deferred selected-player water transitions retain the stored surface from each
+support probe. Flushing several transitions preserves their entry/exit sound and
+animation selection without replacing the actor's latest surface.

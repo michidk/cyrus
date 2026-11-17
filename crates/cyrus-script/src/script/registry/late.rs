@@ -88,15 +88,7 @@ impl ScriptWorld {
             id.index
         );
         for pending in std::mem::take(&mut self.pending_surface_transitions) {
-            self.selected_surface_transition(
-                id,
-                pending.previous,
-                pending.returned,
-                ticks,
-                random,
-                pending.effect_height,
-                sounds,
-            )?;
+            self.apply_surface_transition(id, pending, ticks, random, sounds)?;
         }
         Ok(())
     }
@@ -118,10 +110,37 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         self.resolve(id)?;
+        self.apply_surface_transition(
+            id,
+            super::SurfaceTransition {
+                previous,
+                returned,
+                stored: self.actors[id.index].surface.unwrap_or_default(),
+                effect_height,
+            },
+            ticks,
+            random,
+            sounds,
+        )
+    }
+
+    fn apply_surface_transition(
+        &mut self,
+        id: ScriptActorId,
+        transition: super::SurfaceTransition,
+        ticks: u32,
+        random: &mut cyrus_game::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let super::SurfaceTransition {
+            previous,
+            returned,
+            stored,
+            effect_height,
+        } = transition;
         if returned == previous {
             return Ok(());
         }
-        let stored = self.actors[id.index].surface.unwrap_or_default();
         let in_water = |surface: Surface| surface.is_water();
         let deep = |surface: Surface| surface.is_deep_water();
         if !in_water(stored) && !in_water(previous) {

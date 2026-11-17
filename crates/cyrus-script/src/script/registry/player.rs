@@ -1478,9 +1478,10 @@ impl ScriptWorld {
                     query.scene.settings.standing_height,
                 )?;
                 self.pending_surface_transitions
-                    .push(super::PendingSurfaceTransition {
+                    .push(super::SurfaceTransition {
                         previous,
                         returned: surface,
+                        stored: surface,
                         effect_height,
                     });
             }

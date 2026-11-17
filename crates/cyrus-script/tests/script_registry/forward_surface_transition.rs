@@ -122,6 +122,91 @@ fn forward_probe_retains_water_transition_after_rejected_owner_and_flushes_once(
         .unwrap();
 }
 
+/// Deferred probes must retain each transition's surface instead of reading the final one twice.
+#[test]
+fn queued_water_entry_and_exit_keep_their_own_surface_selection() {
+    use cyrus_assets::surface::Surface;
+    let (_, mut world, mut data, mut scene) = player_walking_fixture();
+    scene.terrain = Some(
+        TerrainGround::new(
+            vec![18; 256 * 256],
+            vec![false; 256 * 256],
+            Some(vec![25; 256 * 256]),
+        )
+        .unwrap(),
+    );
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap();
+    for group in [AnimationGroup::SWIM_FORWARD, AnimationGroup::SWIM_BACKWARD] {
+        definition["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "group_index":group.index(),"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]
+            }));
+    }
+    let player = world.selected_player().unwrap();
+    let map = world.id(0).unwrap();
+    world
+        .place_selected_player([512 * 256, -1536, 512 * 256], 0)
+        .unwrap();
+    let before = world.spatial(player).unwrap().local.position;
+    let mut history = SupportHistory::new(0, 0);
+    for surface in [Surface::DEEPWATER, Surface::SAND] {
+        scene.collision.texture_surfaces = Some(BTreeMap::from([((302 << 7) | 25, surface)]));
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [512, 512], &[player, map])
+            .unwrap();
+        world
+            .query_player_forward_support(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                before,
+                &mut history,
+                false,
+            )
+            .unwrap();
+        assert_eq!(world.actor_surface(player).unwrap(), surface);
+    }
+    let mut effects = vec![];
+    world
+        .flush_surface_transitions(
+            player,
+            1,
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |owner, sound| {
+                assert_eq!(owner, player);
+                if let ScriptSound::Positional { effect, .. } = sound {
+                    effects.push(effect);
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+    // Preservation player.md: entering deep water selects 71, leaving it selects 70.
+    assert_eq!(effects, [71, 70]);
+    assert_eq!(world.actor_surface(player).unwrap(), Surface::SAND);
+    world
+        .flush_surface_transitions(
+            player,
+            1,
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| panic!("transition published twice"),
+        )
+        .unwrap();
+}
+
 /// A sidestep onto a different surface queues the transition like a forward probe, and it needs
 /// the shared engine random stream to flush it; without one the step fails and halts the world.
 #[test]

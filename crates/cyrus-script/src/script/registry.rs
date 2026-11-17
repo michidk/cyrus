@@ -794,7 +794,7 @@ pub struct ScriptWorld {
     surface_veto: Option<bool>,
     /// Water and lava transitions the selected player's forward probes noticed, in query order;
     /// the caller that owns the random stream and sound sink runs them right after the probe.
-    pending_surface_transitions: Vec<PendingSurfaceTransition>,
+    pending_surface_transitions: Vec<SurfaceTransition>,
     /// Whether the actor now updating was rolled back this update (the original's shared changed
     /// flag): the stable-position or water rollback restored its pose. Cleared as each ordinary
     /// update starts; never saved.
@@ -5494,12 +5494,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .with_context(|| format!("object target {target:?}"))
     }
 }
-/// A surface change a selected-player support query returned: the saved previous surface, the
-/// returned one, and the splash effect's Q8 height from that query's support.
+/// A selected-player surface update: previous, returned and stored surfaces at the update,
+/// plus the splash effect's Q8 height. A deferred dispatch must not read a later stored surface.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct PendingSurfaceTransition {
+pub(super) struct SurfaceTransition {
     pub previous: Surface,
     pub returned: Surface,
+    pub stored: Surface,
     pub effect_height: Option<i32>,
 }
 
