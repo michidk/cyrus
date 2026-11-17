@@ -1,6 +1,6 @@
 //! Native-only WebAssembly mods: discovery, activation, hot reload and the hook API.
 //!
-//! A mod is a folder under `mods/<id>/` in the game's config directory (`cyrus_config::config_dir`) with a `mod.toml`
+//! A mod is a folder `<id>/` with a `mod.toml` under `mods/` in the game's config directory (`cyrus_config::config_dir`) or in a `mods/` folder beside the program (the bundled mods; the player's own wins on a shared id)
 //! (`name`, `description`) and any of:
 //!
 //! - `mod.wasm`: a WebAssembly component run by wasvy against `wit/cyrus.wit`
@@ -52,9 +52,18 @@ wasvy::auto_host_components! {
     module = cyrus_bindings,
 }
 
-/// The installed mods, one folder each, in the game's config directory.
-fn mods_dir() -> PathBuf {
-    cyrus_config::config_dir().join("mods")
+/// Asset source of the player's own mods; the ones beside the program use [`BUNDLED_SOURCE`].
+const USER_SOURCE: &str = "mods";
+const BUNDLED_SOURCE: &str = "bundled-mods";
+
+/// The `mods://` or `bundled-mods://` path of a mod's wasm module, by where the mod lives.
+fn wasm_path(id: &str) -> String {
+    let source = if cyrus_config::user_mods_dir().join(id).is_dir() {
+        USER_SOURCE
+    } else {
+        BUNDLED_SOURCE
+    };
+    format!("{source}://{id}/mod.wasm")
 }
 
 /// Which mods are active.
@@ -64,12 +73,18 @@ fn active_file() -> PathBuf {
 /// A mod's folder of replacement game files.
 const FILES_DIR: &str = "files";
 
-/// Registers the `mods://` asset source; call before the asset plugin is added.
+/// Registers the `mods://` and `bundled-mods://` asset sources; call before the asset plugin is added.
 pub fn register_source(app: &mut App) {
     app.register_asset_source(
-        "mods",
-        AssetSourceBuilder::platform_default(&absolute(&mods_dir()), None),
+        USER_SOURCE,
+        AssetSourceBuilder::platform_default(&absolute(&cyrus_config::user_mods_dir()), None),
     );
+    if let Some(bundled) = cyrus_config::bundled_mods_dir() {
+        app.register_asset_source(
+            BUNDLED_SOURCE,
+            AssetSourceBuilder::platform_default(&absolute(&bundled), None),
+        );
+    }
 }
 
 /// The ids of the active mods in id order, read straight from disk so it can run before any
@@ -289,20 +304,25 @@ impl Entry {
     }
 }
 
-/// The folders of the mods folder that hold a mod.toml; none when the folder does not exist.
+/// The folders of the mods folders that hold a mod.toml; the player's own wins over a bundled mod
+/// with the same id. A mods folder that does not exist has none.
 fn mod_folders() -> anyhow::Result<Vec<PathBuf>> {
-    let dirs = match std::fs::read_dir(mods_dir()) {
-        Ok(dirs) => dirs,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error).with_context(|| mods_dir().display().to_string()),
-    };
-    let mut folders = Vec::new();
-    for dir in dirs {
-        let dir = dir
-            .with_context(|| mods_dir().display().to_string())?
-            .path();
-        if dir.join("mod.toml").is_file() {
-            folders.push(dir);
+    let mut folders: Vec<PathBuf> = Vec::new();
+    for root in cyrus_config::mods_dirs() {
+        let dirs = match std::fs::read_dir(&root) {
+            Ok(dirs) => dirs,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error).with_context(|| root.display().to_string()),
+        };
+        for dir in dirs {
+            let dir = dir.with_context(|| root.display().to_string())?.path();
+            if dir.join("mod.toml").is_file()
+                && !folders
+                    .iter()
+                    .any(|seen| seen.file_name() == dir.file_name())
+            {
+                folders.push(dir);
+            }
         }
     }
     Ok(folders)
@@ -483,7 +503,7 @@ fn absolute(path: &Path) -> String {
 }
 
 fn mod_file(id: &str, file: &str) -> PathBuf {
-    mods_dir().join(id).join(file)
+    cyrus_config::mod_dir(id).join(file)
 }
 
 /// Starts and stops wasm instances and installs the active shader replacements.
@@ -564,10 +584,7 @@ fn start_and_stop_instances(catalog: &mut Catalog, mods: &mut Mods) {
     for entry in &mut catalog.entries {
         match (entry.active && entry.has_wasm, entry.instance) {
             (true, None) => {
-                let instance = mods.spawn(
-                    format!("mods://{}/mod.wasm", entry.id),
-                    Some(entry.manifest.name.clone()),
-                );
+                let instance = mods.spawn(wasm_path(&entry.id), Some(entry.manifest.name.clone()));
                 mods.enable_access(instance, ModAccess::World);
                 entry.instance = Some(instance);
             }
@@ -640,7 +657,7 @@ fn watch(
         if entry.modified.is_some() && modified != entry.modified {
             info!("mods: reloading {}", entry.id);
             if entry.instance.is_some() {
-                asset_server.reload(format!("mods://{}/mod.wasm", entry.id));
+                asset_server.reload(wasm_path(&entry.id));
             }
             shader_changed |= !entry.manifest.shaders.is_empty();
         }
@@ -685,7 +702,7 @@ fn window(
         if catalog.entries.is_empty() && catalog.problems.is_empty() {
             ui.label(format!(
                 "No mods in {}. `just mods` installs the bundled ones.",
-                mods_dir().display()
+                cyrus_config::user_mods_dir().display()
             ));
         }
         let mut toggled = false;

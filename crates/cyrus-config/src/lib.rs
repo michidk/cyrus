@@ -104,6 +104,41 @@ pub fn config_dir() -> &'static Path {
     &dirs().config
 }
 
+/// The mods the player installed: `mods/` in the config directory.
+pub fn user_mods_dir() -> PathBuf {
+    config_dir().join("mods")
+}
+
+/// The mods shipped with the program: `mods/` beside the executable. `None` in the browser, or
+/// when the executable's folder is unknown.
+pub fn bundled_mods_dir() -> Option<PathBuf> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let exe = std::env::current_exe().ok()?;
+        Some(exe.parent()?.join("mods"))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+}
+
+/// Every folder mods are read from, the player's own first so it overrides a bundled mod of the same id.
+pub fn mods_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![user_mods_dir()];
+    dirs.extend(bundled_mods_dir().filter(|bundled| *bundled != dirs[0]));
+    dirs
+}
+
+/// The folder of the mod `id`: the first of [`mods_dirs`] that has it, else the player's.
+pub fn mod_dir(id: &str) -> PathBuf {
+    let dirs = mods_dirs();
+    dirs.iter()
+        .map(|dir| dir.join(id))
+        .find(|folder| folder.is_dir())
+        .unwrap_or_else(|| dirs[0].join(id))
+}
+
 /// Regenerable files exported from the install.
 pub fn cache_dir() -> &'static Path {
     &dirs().cache

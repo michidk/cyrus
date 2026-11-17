@@ -180,14 +180,13 @@ done
                 with tarfile.open(path) as archive:
                     files = {m.name.removeprefix("./"): archive.extractfile(m).read()
                              for m in archive if m.isfile()}
-            expected = {f"cyrus{suffix}", "README.txt", "game-config/mods.json",
-                        "game-config/mods/guest/mod.toml", "game-config/mods/guest/mod.wasm",
-                        "game-config/mods/shader/mod.toml", "game-config/mods/shader/effect.wesl",
-                        "game-config/mods/manifest-only/mod.toml",
-                        "game-config/mods/manifest-only/files/maps/custom.txt"}
+            expected = {f"cyrus{suffix}", "README.txt",
+                        "mods/guest/mod.toml", "mods/guest/mod.wasm",
+                        "mods/shader/mod.toml", "mods/shader/effect.wesl",
+                        "mods/manifest-only/mod.toml",
+                        "mods/manifest-only/files/maps/custom.txt"}
             self.assertEqual(set(files), expected)
-            self.assertEqual(json.loads(files["game-config/mods.json"]), {"active": []})
-            self.assertEqual(files["game-config/mods/guest/mod.wasm"], b"wasm\n")
+            self.assertEqual(files["mods/guest/mod.wasm"], b"wasm\n")
             self.assertTrue((self.root / f"target/artifacts/cyrus-{platform}{'.zip' if suffix else '.tar.gz'}").is_file())
 
     def test_native_mod_bundles_reject_external_overlay_links(self):
@@ -207,7 +206,7 @@ done
                     cwd=self.root, env=self.env, capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("symbolic link", result.stderr)
-                self.assertIn("game-config/mods/manifest-only/files/maps/external.txt", result.stderr)
+                self.assertIn("mods/manifest-only/files/maps/external.txt", result.stderr)
                 self.assertFalse(archive.exists())
                 self.assertFalse(list(archive.parent.glob("package.*")))
 
@@ -280,7 +279,7 @@ done
         self.build("native-mods", platform)
         path = build_root / f"artifacts/cyrus-with-mods-{platform}.tar.gz"
         with tarfile.open(path) as archive:
-            self.assertEqual(archive.extractfile("./game-config/mods/guest/mod.wasm").read(), b"wasm\n")
+            self.assertEqual(archive.extractfile("./mods/guest/mod.wasm").read(), b"wasm\n")
         self.assertFalse((self.root / "target").exists())
 
     def test_native_workflows_build_and_upload_mod_bundles(self):

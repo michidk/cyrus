@@ -7,7 +7,7 @@ separate crate so wasmtime stays out of the browser build and out of the crates
 that define the game; `cyrus-web` never depends on it. The bundled mods, the SDK
 and the authoring guide live in [`mods/`](../../mods/README.md).
 
-A mod is a folder `game-config/mods/<id>/` with a `mod.toml` and any of
+A mod is a folder `mods/<id>/` in the config directory (or in a `mods/` folder beside the program, for bundled mods) with a `mod.toml` and any of
 `mod.wasm` (a component built against `wit/cyrus.wit`), `[[shader]]`
 replacements, data patches (`[[script-patch]]`, `[[ini-patch]]`,
 `[[text-patch]]`) and a `files/` overlay of the install.
