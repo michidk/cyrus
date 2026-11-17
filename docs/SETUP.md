@@ -600,6 +600,14 @@ byte as a mixer scale, which clamps to 400% and corrupts music-level references.
 This reference-runtime correction changes neither the game executable nor cyrus's
 music gain. `ensure-retro-audio-runtime.sh` validates the runtime marker and retains
 an image checkpoint keyed by its build inputs; it never restarts a preview.
+For emulator-filter attribution, set `CYRUS_CAPTURE_SB_FILTER=disabled` on an
+independent original audio capture. This passes the explicit Sound Blaster filter
+bypass to DOSBox-X; ordinary captures preserve the reference configuration. Each
+output records `default` or `disabled` in `sb-filter.txt`. Keep the default capture
+as the reference; the bypass is a diagnostic control, not a game setting.
+Run `python3 dev/scripts/test-original-audio-launcher.py` to verify both launch
+payloads and their labels without game data.
+
 Run `python3 dev/scripts/test-retro-cd-volume.py` for the failed-before CD control
 and duplicate-patch rejection checks.
 

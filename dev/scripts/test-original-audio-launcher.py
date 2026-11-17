@@ -110,8 +110,25 @@ elif args[0] == 'exec' and 'python3' in args:
             self.assertEqual(calls[-1][:2], ['rm', '-f'])
             self.assertLess(calls.index(cleanup[0]), len(calls) - 1)
             launch = json.loads((root / 'launch.json').read_text())
+            self.assertNotIn('sblaster disable filtering=true', launch)
             self.assertIn('CYRUS_CONFIG_DIR=/capture-config', launch)
             self.assertIn(f"{root / 'output/config'}:/capture-config", launch)
+            # A diagnostic filter control must reach DOSBox as one setting,
+            # and be recorded separately from the ordinary reference capture.
+            controlled = subprocess.run(
+                ['bash', str(scripts / 'original-audio-capture.sh'),
+                 str(root / 'events.json'), str(root / 'unfiltered-output'), '1'],
+                capture_output=True, text=True, timeout=10,
+                env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
+                     'CAPTURE_TEST': str(root), 'CYRUS_CAPTURE_SB_FILTER': 'disabled',
+                     'CYRUS_RETRO_RUN': str(root / 'run'),
+                     'CYRUS_RETRO_GOG': str(root / 'gog'), 'CYRUS_STATE_READER': str(reader)},
+            )
+            self.assertEqual(controlled.returncode, 0, controlled.stderr)
+            diagnostic_launch = json.loads((root / 'launch.json').read_text())
+            self.assertIn('sblaster disable filtering=true', diagnostic_launch)
+            self.assertEqual((root / 'unfiltered-output/sb-filter.txt').read_text(), 'disabled\n')
+            self.assertEqual((root / 'output/sb-filter.txt').read_text(), 'default\n')
             (root / 'docker-calls.jsonl').unlink()
             failed = subprocess.run(
                 ['bash', str(scripts / 'original-audio-capture.sh'),

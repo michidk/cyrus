@@ -7,6 +7,9 @@
 # Optional: CYRUS_CAPTURE_STARTUP=1 arms recording at a DOS prompt before launching
 #           RGFX.EXE and stops at the first positive world-loop frame (or seconds).
 #           Use an unmodified final-version run for startup-order comparisons.
+# Optional: CYRUS_CAPTURE_SB_FILTER=disabled bypasses the emulator Sound Blaster
+#           filter for attribution only; default preserves the reference configuration.
+#           The selected control is recorded in <out>/sb-filter.txt.
 # Optional: CYRUS_CAPTURE_HOOK (a python script copied to the container and run with the state
 #           reader when the recorder starts (arguments: reader, CYRUS_HOOK_DELAY, then CYRUS_HOOK_ARGS), for timed placement; CYRUS_HOOK_ARGS are its arguments),
 #           CYRUS_SHOT_INTERVAL (seconds between framebuffer screenshots, written to
@@ -38,6 +41,12 @@ name=audio-capture-$$
 conf_mount=()
 # Configure the host chord even when reusing an image built before this default.
 dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
+sb_filter=${CYRUS_CAPTURE_SB_FILTER:-default}
+case "$sb_filter" in
+    default) ;;
+    disabled) dosbox_host_args+=(-set "sblaster disable filtering=true") ;;
+    *) echo 'original capture: CYRUS_CAPTURE_SB_FILTER must be default or disabled' >&2; exit 2 ;;
+esac
 image=$("$here/ensure-retro-audio-runtime.sh")
 exec 9>/tmp/cyrus-live.lock
 if flock -w 30 9; then
@@ -48,6 +57,7 @@ else
     exit "$status"
 fi
 mkdir -p "$out/config"
+printf '%s\n' "$sb_filter" > "$out/sb-filter.txt"
 printf '%s\n' "$image" > "$out/reference-runtime.txt"
 docker image inspect --format '{{.Id}}' "$image" > "$out/reference-runtime.sha256"
 python3 "$here/prepare-original-definitions.py" "$gog/extracted/app/Redguard" "$run/Redguard"
