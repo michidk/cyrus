@@ -28,8 +28,16 @@ movie_mount=()
 if [ -f "$install/../game.gog" ]; then
     movie_mount=(-v "$install/../game.gog:/game.gog:ro")
 fi
+config_mount=()
+config_dir=/repo/game-config
+if [ -n "${CYRUS_CONFIG_DIR:-}" ]; then
+    host_config=$(realpath -m "$CYRUS_CONFIG_DIR")
+    mkdir -p "$host_config"
+    config_mount=(-v "$host_config:/cyrus-config")
+    config_dir=/cyrus-config
+fi
 docker run -d --rm --name cyrus-dev -p 127.0.0.1:7117:7117 \
-    "${startup_mount[@]}" "${movie_mount[@]}" -v "$CYRUS_NATIVE_EXECUTABLE:/app/cyrus:ro" -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e CYRUS_CONFIG_DIR=/repo/game-config -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
+    "${startup_mount[@]}" "${movie_mount[@]}" "${config_mount[@]}" -v "$CYRUS_NATIVE_EXECUTABLE:/app/cyrus:ro" -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e "CYRUS_CONFIG_DIR=$config_dir" -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
     cyrus-dev:dev /app/cyrus "$@" >/dev/null
 echo "cyrus-dev running; control port 127.0.0.1:7117; logs: docker logs -f cyrus-dev; stop: docker rm -f cyrus-dev"
 if [ "${#viewport[@]}" -eq 2 ]; then

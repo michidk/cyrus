@@ -167,6 +167,18 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.assertIn('/app/cyrus', calls)
         self.assertEqual(calls[-2:], ['--scene', 'TEST'])
         self.assertFalse((self.root / 'target').exists())
+        self.assertIn('CYRUS_CONFIG_DIR=/repo/game-config', calls)
+        self.env['CYRUS_CONFIG_DIR'] = str(self.root / 'run state/config')
+        (self.root / 'docker.log').unlink()
+        result = subprocess.run(['bash', 'dev/scripts/run-game.sh', '--scene', 'TEST'],
+                                cwd=self.root, env={**self.env, 'PATH': str(self.root / 'bin') + ':' + os.environ['PATH']},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = (self.root / 'docker.log').read_text().splitlines()
+        self.assertIn(str(self.root / 'run state/config') + ':/cyrus-config', calls)
+        self.assertIn('CYRUS_CONFIG_DIR=/cyrus-config', calls)
+        self.assertNotIn('CYRUS_CONFIG_DIR=/repo/game-config', calls)
+        self.assertTrue((self.root / 'run state/config').is_dir())
 
     def test_completed_executable_is_sealed_before_slow_unit_recording(self):
         recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'

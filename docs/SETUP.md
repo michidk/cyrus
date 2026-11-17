@@ -285,7 +285,9 @@ working directory, else the platform directories (on Linux `~/.config/cyrus`, `~
 and `~/.local/state/cyrus/logs`). This document calls them the config, cache and log
 directory. In a checkout they are `game-config/`, `game-config/cache/` and
 `game-config/logs/`: `cargo run` and `cargo test` pin `CYRUS_CONFIG_DIR` to the checkout's
-`game-config/` (`.cargo/config.toml`), and `just run-native` pins it inside the container.
+`game-config/` (`.cargo/config.toml`). `just run-native` uses that checkout directory
+by default; an explicit `CYRUS_CONFIG_DIR=/absolute/host/path` instead mounts that
+directory at `/cyrus-config` and uses it for the container's config, cache and logs.
 A binary started by hand from a directory without `game-config/` uses the platform
 directories. On Windows, logs normally live in `%LOCALAPPDATA%\cyrus\data\logs`;
 paste that path into File Explorer and open the newest `cyrus.YYYY-MM-DD.log`.
