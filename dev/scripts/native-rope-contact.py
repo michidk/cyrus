@@ -46,6 +46,15 @@ def compare_interval(original, native, tolerance):
         raise ValueError(f'timing mismatch: original {a, b}, native {c, d}, budget {tolerance}')
 
 
+def require_start_group(expected, boundary):
+    """A timing match cannot admit a different or unobserved animation owner."""
+    original = expected.get('start', {}).get('player', {}).get('group')
+    actors = boundary.get('player', {}).get('actors', [])
+    native = (actors[0].get('animation') or {}).get('current_group') if len(actors) == 1 else None
+    if type(original) is not int or type(native) is not int or original != native:
+        raise ValueError(f'starting animation group unavailable or different: original {original}, native {native}')
+
+
 def planned_updates(expected, step_seconds, tolerance=0):
     """Refuse an unreachable exact interval before sending gameplay input."""
     target = sum(expected['duration']) / 2
@@ -333,6 +342,7 @@ class Driver:
         release_updates = planned_updates(pulse, step_seconds, self.clock_tolerance) if pulse else updates
         if pulse and not 0 < release_updates < updates:
             raise ValueError('native pulse requires a released continuation')
+        require_start_group(expected, probe[-1])
         events = [dict(after_updates=offset, **(
             dict(key=key, action=action) if key else {}))
             for offset, action in [(0, 'press'), (release_updates, 'release')]]
@@ -343,6 +353,7 @@ class Driver:
         rows = response['boundaries']
         if len(rows) != len(events):
             raise RuntimeError('native schedule did not report both boundaries')
+        require_start_group(expected, rows[0])
         boundaries = []
         for row, event in zip(rows, events):
             edge = ('start' if event['after_updates'] == 0 else

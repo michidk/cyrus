@@ -1450,7 +1450,13 @@ chooses an attempted update count, but acceptance uses only the actual clocks
 returned with the boundary acknowledgements. Each acknowledgement also identifies
 the world generation, ordinary update and selected actor state before that update.
 Its timestamp excludes the forthcoming update, even when frame scales vary.
-Skipped boundaries or a changed generation reject the attempt. Setup state reads
+Skipped boundaries or a changed generation reject the attempt. The final
+observation-only probe must report the same current animation group as the
+original phase's starting boundary. Missing animation state or a different group
+rejects the attempt before the gameplay schedule. The driver checks the actual
+scheduled starting boundary again, since playback can change after the probe.
+This checks the current group only; it does not establish matching animation
+frame progress or complete controller state. Setup state reads
 still bracket actor reads so their uncertainty remains visible. `--clock-tolerance SECONDS` declares the
 maximum timing error, including both runs' boundary uncertainty; the default is
 exact. A mismatch fails before any displacement/contact comparison is emitted.

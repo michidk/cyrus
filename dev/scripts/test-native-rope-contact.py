@@ -140,6 +140,14 @@ class Comparison(unittest.TestCase):
 
     def scheduled(self, driver, player, clocks, end=None, mutate=None, step=1 / 12):
         calls = []
+        player.setdefault('group', 2)
+        if end is not None:
+            end.setdefault('group', 2)
+        def actor(value):
+            return dict(control=dict(weapon_drawn=value['drawn'], falling_state=value['falling'],
+                living_state=value['living'], rope_attached=value.get('rope_attached')),
+                attributes=[0, 0, 0, value['health']], animation=dict(current_group=value['group']),
+                spatial={'effective': {'position': [v * 256 for v in value['position']]}})
         def call(kind, **args):
             if kind == 'state':
                 raise AssertionError('render FPS is not a simulation interval')
@@ -147,21 +155,46 @@ class Comparison(unittest.TestCase):
             calls.append(args['events'])
             if len(calls) == 1:
                 return {'boundaries': [dict(after_updates=i, update=10+i, generation=8,
-                    game_seconds=i*step) for i in range(2)]}
+                    game_seconds=i*step, player={'actors': [actor(player)]}) for i in range(2)]}
             self.assertEqual(args['events'][0]['after_updates'], 0)
             rows = []
             for event, clock, value in zip(args['events'], clocks, [player, end or player]):
-                actor = dict(control=dict(weapon_drawn=value['drawn'], falling_state=value['falling'],
-                    living_state=value['living'], rope_attached=value.get('rope_attached')),
-                    attributes=[0, 0, 0, value['health']],
-                    spatial={'effective': {'position': [v * 256 for v in value['position']]}})
                 rows.append(dict(event, update=20 + event['after_updates'], generation=8,
-                    game_seconds=clock, player={'actors': [actor]}))
+                    game_seconds=clock, player={'actors': [actor(value)]}))
             if mutate:
                 mutate(rows)
             return {'boundaries': rows}
         driver.call = call
         return calls
+
+    def test_different_or_missing_start_group_never_sends_gameplay(self):
+        for original_group, native_group in [(3, 2), (None, 2), (3, None)]:
+            with self.subTest(original=original_group, native=native_group):
+                output = io.StringIO()
+                driver = contact.Driver('unused', 1, output)
+                player = dict(drawn=True, falling=0, living=0, health=100,
+                              position=[0, 0, 0], group=native_group)
+                calls = self.scheduled(driver, player, [0, 1])
+                expected = dict(duration=[1, 1], start={'player': dict(player, group=original_group)},
+                                end={'player': player})
+                with self.assertRaisesRegex(ValueError, 'starting animation group'):
+                    driver.timed_segment('walk-in', expected, 'ArrowUp')
+                self.assertEqual(len(calls), 1)
+                self.assertTrue(all('key' not in event for event in calls[0]))
+                self.assertNotIn('"comparison": "matched"', output.getvalue())
+
+    def test_group_changed_after_probe_rejects_completed_schedule(self):
+        output = io.StringIO()
+        driver = contact.Driver('unused', 1, output)
+        player = dict(drawn=True, falling=0, living=0, health=100,
+                      position=[0, 0, 0], group=3)
+        def change_group(rows):
+            rows[0]['player']['actors'][0]['animation']['current_group'] = 2
+        calls = self.scheduled(driver, player, [0, 1], mutate=change_group)
+        with self.assertRaisesRegex(ValueError, 'starting animation group'):
+            driver.timed_segment('walk-in', dict(duration=[1, 1], start={'player': player}), 'ArrowUp')
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn('"comparison": "matched"', output.getvalue())
 
     def test_pulse_releases_before_supported_landing_and_checks_both_intervals(self):
         driver = contact.Driver('unused', 1, io.StringIO())
@@ -174,12 +207,13 @@ class Comparison(unittest.TestCase):
             def call(kind, **args):
                 calls.append(args['events'])
                 if len(calls)==1:
-                    return dict(boundaries=[dict(after_updates=i,update=i,generation=1,game_seconds=i/6) for i in (0,1)])
+                    return dict(boundaries=[dict(after_updates=i,update=i,generation=1,game_seconds=i/6,
+                        player={'actors': [dict(animation={'current_group': 80})]}) for i in (0,1)])
                 rows=[]
                 for event in args['events']:
                     i=event['after_updates'];value=dict(player,rope_attached=i==0 or (failure=='reattached' and i==3),
                         falling=24 if failure=='airborne' and i==3 else 0,
-                        group=65 if i==2 and failure!='no-landing' else 0)
+                        group=80 if i==0 else 65 if i==2 and failure!='no-landing' else 0)
                     actor=dict(control=dict(weapon_drawn=False,falling_state=value['falling'],living_state=0,
                         rope_attached=value['rope_attached'],queued_motion=0),attributes=[0,0,0,100],
                         animation=dict(current_group=value['group']),spatial={'effective':{'position':[256,512,768]}})
@@ -262,7 +296,7 @@ class Comparison(unittest.TestCase):
         player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0])
         self.scheduled(driver, player, [0, 1], mutate=lambda rows: rows[1].update(update=99))
         with self.assertRaisesRegex(RuntimeError, 'unavailable ordinary boundaries'):
-            driver.timed_segment('walk-in', {'duration': [1, 1]}, 'ArrowUp')
+            driver.timed_segment('walk-in', {'duration': [1, 1], 'start': {'player': player}}, 'ArrowUp')
         self.assertNotIn('displacement', output.getvalue())
 
     def test_overshot_input_interval_never_emits_comparison(self):
@@ -271,7 +305,7 @@ class Comparison(unittest.TestCase):
         player = dict(drawn=True, falling=0, living=0, health=100, position=[0, 0, 0])
         self.scheduled(driver, player, [0, 2])
         with self.assertRaisesRegex(ValueError, 'timing mismatch'):
-            driver.timed_segment('walk-in', {'duration': [1, 1]}, 'ArrowUp')
+            driver.timed_segment('walk-in', {'duration': [1, 1], 'start': {'player': player}}, 'ArrowUp')
         self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['comparison'], 'rejected')
         self.assertNotIn('displacement', output.getvalue())
 
