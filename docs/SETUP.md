@@ -1067,6 +1067,20 @@ Run the game with a host-mounted `CYRUS_CONFIG_DIR` and hold the shared
 `/tmp/cyrus-live.lock` for its lifetime. The observer does not launch the game,
 change its startup options, or acquire a second lock.
 
+For gameplay Escape/Continue checks, launch natively with `--scene ISLAND` and
+attach `python3 dev/scripts/native-book-capture.py <control-port>
+<receipt.json> --screenshot-dir <absolute-host-config>/screenshots`. The screenshot
+path must be identical in the game and observer. The same host-config and
+per-run lock requirements apply. This observer dismisses the prepared title,
+stops waiting for gameplay as soon as its clock advances, then records two
+Escape/book/Continue cycles. Each book PNG must finish decoding and contain
+visible pixels; each Continue must return to `InGame` and advance its clock.
+A unique path prevents an earlier run's image from satisfying a request.
+`--seconds` bounds the whole observation, including asynchronous image writes,
+and the receipt retains the exact failing stage and error. This checks visible
+book entry and continuation; it does not prove original-game pixel parity or
+acceptance on a different graphics adapter.
+
 Preparation has its own `--prepare-seconds` deadline, default 180 seconds.
 The presentation deadline, `--seconds`, defaults to 45 seconds and starts
 when the title becomes visible. These are capture limits, not fidelity timing

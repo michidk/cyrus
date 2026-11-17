@@ -120,6 +120,7 @@ jobs:
           python3 dev/scripts/test-native-startup-capture.py
           python3 dev/scripts/test-retro-capture-runtime.py
           python3 dev/scripts/test-ensure-runtime-image.py
+          python3 dev/scripts/test-native-book-capture.py
           node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
 
       - name: Check surface audio

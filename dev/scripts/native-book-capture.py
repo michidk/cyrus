@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Record bounded Escape/Continue book visits on an already running native game."""
+import argparse
+import json
+from pathlib import Path
+import socket
+import time
+import uuid
+
+
+def capture(port, output, screenshot_dir, seconds=120, interval=0.1):
+    from PIL import Image
+
+    deadline = time.monotonic() + seconds
+    record = {"success": False, "stage": "world", "visits": [], "error": None}
+
+    def request(command):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"{record['stage']}: run deadline expired")
+        with socket.create_connection(("127.0.0.1", port), timeout=min(remaining, 30)) as connection:
+            connection.settimeout(min(remaining, 30))
+            connection.sendall((json.dumps({"id": 1, "cmd": command}) + "\n").encode())
+            response = json.loads(connection.makefile("rb").readline())
+        if response.get("ok") is not True:
+            raise ValueError(f"{command['type']}: control rejected request: {response}")
+        return response["result"]
+
+    def wait_state(predicate):
+        last_error = None
+        while time.monotonic() < deadline:
+            try:
+                state = request({"type": "state"})
+                problem = (state.get("startup") or {}).get("error") or (state.get("menu") or {}).get("unavailable")
+                if problem:
+                    raise ValueError(f"{record['stage']}: game reported: {problem}")
+                if predicate(state):
+                    return state
+            except (ConnectionError, TimeoutError) as error:
+                last_error = str(error)
+            time.sleep(interval)
+        raise TimeoutError(f"{record['stage']}: run deadline expired; last control error: {last_error}")
+
+    def key(name):
+        before = request({"type": "state"})["frame"]
+        request({"type": "input", "key": name, "action": "press"})
+        try:
+            wait_state(lambda state: state["frame"] > before)
+        finally:
+            # Release even when the observation deadline expired.
+            with socket.create_connection(("127.0.0.1", port), timeout=2) as connection:
+                connection.settimeout(2)
+                connection.sendall((json.dumps({"id": 1, "cmd": {
+                    "type": "input", "key": name, "action": "release"}}) + "\n").encode())
+                response = json.loads(connection.makefile("rb").readline())
+                if response.get("ok") is not True:
+                    raise ValueError(f"{name}: release rejected: {response}")
+
+    def screenshot():
+        path = screenshot_dir / f"book-{uuid.uuid4().hex}.png"
+        request({"type": "screenshot", "path": str(path)})
+        while time.monotonic() < deadline:
+            try:
+                with Image.open(path) as image:
+                    rgb = image.convert("RGB")
+                    rgb.load()
+                    pixels = rgb.tobytes()
+                    visible = sum(any(pixel) for pixel in zip(pixels[::3], pixels[1::3], pixels[2::3]))
+                    result = {"path": str(path), "pixels": rgb.width * rgb.height,
+                              "nonblack_pixels": visible}
+                if not visible:
+                    raise ValueError(f"{record['stage']}: screenshot is entirely black: {path}")
+                return result
+            except (OSError, SyntaxError):
+                time.sleep(interval)
+        raise TimeoutError(f"{record['stage']}: screenshot did not complete before run deadline: {path}")
+
+    try:
+        state = wait_state(lambda state: state.get("state") == "InGame" or (
+            state.get("scene_ready") and (state.get("startup") or {}).get("title_visible")))
+        if state.get("state") != "InGame":
+            key("Enter")
+        wait_state(lambda state: state.get("state") == "InGame" and
+                   (state.get("clock") or {}).get("game_seconds", 0) > 0)
+        for index in range(2):
+            record["stage"] = f"book-{index + 1}"
+            key("Escape")
+            state = wait_state(lambda state: state.get("state") == "Menu" and
+                               (state.get("menu") or {}).get("ready"))
+            if state["menu"].get("context") != "in_game":
+                raise ValueError(f"unexpected book context: {state['menu'].get('context')}")
+            visit = {"entry": state, "screenshot": screenshot()}
+            record["visits"].append(visit)
+            record["stage"] = f"continue-{index + 1}"
+            key("Escape")
+            resumed = wait_state(lambda state: state.get("state") == "InGame")
+            baseline = resumed["clock"]["game_seconds"]
+            visit["resumed"] = wait_state(lambda state: state.get("state") == "InGame" and
+                                          state["clock"]["game_seconds"] > baseline)
+        record["success"] = True
+        record["stage"] = "complete"
+    except (OSError, ValueError, KeyError) as error:
+        record["error"] = f"{type(error).__name__}: {error}"
+    finally:
+        output.write_text(json.dumps(record, indent=2) + "\n")
+    return record
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("port", type=int)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--screenshot-dir", type=Path, required=True)
+    parser.add_argument("--seconds", type=float, default=120)
+    parser.add_argument("--interval", type=float, default=0.1)
+    args = parser.parse_args()
+    if args.seconds <= 0 or args.interval <= 0:
+        parser.error("seconds and interval must be positive")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.screenshot_dir.mkdir(parents=True, exist_ok=True)
+    result = capture(args.port, args.output, args.screenshot_dir, args.seconds, args.interval)
+    print(json.dumps(result))
+    raise SystemExit(0 if result["success"] else 1)
