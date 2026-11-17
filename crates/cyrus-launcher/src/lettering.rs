@@ -102,6 +102,29 @@ fn join(parts: &[Image]) -> Option<Image> {
     })
 }
 
+/// `image` with its parchment made transparent, leaving the lettering and its shadow. The parchment
+/// baked into a bitmap is a different piece of the map than the one behind the button, so left opaque
+/// it shows as a patch with seams. Lettering is red to yellow (saturated) or the dark shadow.
+pub fn cut_out(image: &Image) -> Image {
+    let mut image = image.clone();
+    for pixel in image.rgba.as_chunks_mut::<4>().0 {
+        let (high, low) = (
+            pixel[..3].iter().max().copied().unwrap_or(0) as f32,
+            pixel[..3].iter().min().copied().unwrap_or(0) as f32,
+        );
+        let lettering = high < LETTERING_DARK || (high - low) / high > LETTERING_SATURATION;
+        if !lettering {
+            pixel[3] = 0;
+        }
+    }
+    image
+}
+
+/// A pixel is lettering when its brightest channel is below this (the shadow)...
+const LETTERING_DARK: f32 = 110.0;
+/// ...or when its saturation is above this (the red, orange and yellow letters; parchment is paler).
+const LETTERING_SATURATION: f32 = 0.55;
+
 /// A label made of `strips`, in the three states of an original button, at the height of the Game
 /// Options bitmap. `None` when a strip's bitmap is not the one the strips were measured on.
 pub fn label(art: &Artwork, strips: &[Strip]) -> Option<Button> {
@@ -149,6 +172,22 @@ mod tests {
             buttons: buttons.into_iter().map(button).collect(),
             sounds: Default::default(),
         }
+    }
+
+    #[test]
+    fn only_the_parchment_becomes_transparent() {
+        let image = Image {
+            width: 4,
+            height: 1,
+            rgba: vec![
+                230, 200, 130, 255, // parchment
+                220, 30, 20, 255, // red letter
+                255, 220, 0, 255, // yellow letter
+                40, 20, 10, 255, // shadow
+            ],
+        };
+        let alphas: Vec<u8> = cut_out(&image).rgba.chunks(4).map(|p| p[3]).collect();
+        assert_eq!(alphas, [0, 255, 255, 255]);
     }
 
     #[test]
