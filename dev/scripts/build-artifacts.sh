@@ -64,20 +64,6 @@ PYZIP
             cp "$build_root/$platform/release/cyrus$suffix" "$bundle/"
             if [[ "$launcher" = true ]]; then
                 cp "$build_root/$platform/release/cyrus-launcher$suffix" "$bundle/"
-                if [[ -n "$suffix" ]]; then
-                    cat > "$bundle/play-cyrus.cmd" <<'CMD'
-@echo off
-cd /d "%~dp0" || exit /b 1
-cyrus-launcher.exe %*
-CMD
-                else
-                    cat > "$bundle/play-cyrus.sh" <<'SH'
-#!/bin/sh
-CDPATH= cd "$(dirname "$0")" || exit 1
-exec ./cyrus-launcher "$@"
-SH
-                    chmod +x "$bundle/play-cyrus.sh"
-                fi
             fi
             count=0
             for manifest in mods/*/mod.toml; do
@@ -102,17 +88,29 @@ SH
             done
             if (( count == 0 )); then echo 'No bundled mod manifests found' >&2; exit 1; fi
             printf '{"active":[]}\n' > "$bundle/game-config/mods.json"
-            cat > "$bundle/MODS.txt" <<'EOF'
-This package contains cyrus and every bundled mod in this source revision.
-When cyrus-launcher is included, start play-cyrus.cmd (Windows) or
-play-cyrus.sh (Linux/macOS). Keep all extracted files together. These entry
-scripts select the bundle directory so its mods are available from any caller.
-Extract the entire archive and run from the extracted directory so it uses
-the included game-config folder. CYRUS_CONFIG_DIR overrides that location.
-Open Backtick, then Mods, to enable mods and adjust their settings.
-Mods are installed but disabled by default. Choose which to enable; movement
-and camera mods can conflict when enabled together.
-The original game files are not included. Supply your own GOG installation.
+            cat > "$bundle/README.txt" <<'EOF'
+Cyrus: a native rebuild of The Elder Scrolls Adventures: Redguard
+
+You need your own copy of the game (for example from GOG). It is not included.
+Extract the whole archive into a folder of its own that you can write to, not
+inside your game folder, and keep all files together.
+
+Start cyrus-launcher. It looks for your game by itself: the folder it remembered
+from an earlier start, the REDGUARD_DIR setting, its own folder and the folders
+around it, and the usual GOG folders. If it finds none, it asks once for the
+folder that contains your game and remembers your choice. It then shows the
+launcher, where you choose game options and mods; Play starts the game.
+
+You can also start cyrus directly. Options such as --fullscreen are listed by
+cyrus --help.
+
+Settings, saves and mods live in the game-config folder beside the programs.
+Start from this folder so they are found; CYRUS_CONFIG_DIR overrides the
+location. Every mod in this package is installed but disabled: enable the ones
+you want in the launcher or in the game (Backtick, then Mods). Movement and
+camera mods can conflict when enabled together.
+
+Reports are welcome at https://github.com/michidk/cyrus/issues
 EOF
             # Never retain links to builder-local files or let zip dereference them.
             python3 - "$bundle" <<'PYLINKS'
