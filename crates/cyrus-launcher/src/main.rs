@@ -197,7 +197,7 @@ impl App {
             Err(error) => problems.push(format!("{error:#}")),
         }
         app.find_install();
-        match mods::scan_all() {
+        match mods::scan(&mods::mods_dir()) {
             Ok(installed) => app.installed = installed,
             Err(error) => problems.push(format!("{error:#}")),
         }
@@ -224,10 +224,15 @@ impl App {
     /// asks. A folder that has gone away is dropped from this run only; nothing is rewritten.
     fn find_install(&mut self) {
         let known = self.options.install.clone().or(self.remembered.clone());
-        if known
+        if let Some(root) = known
             .as_deref()
-            .is_some_and(|path| install::resolve(path).is_ok())
+            .and_then(|path| install::resolve(path).ok())
         {
+            // Shown and passed on as resolved, so a path saved as `\\?\D:\...` reads `D:\...`.
+            match self.options.install {
+                Some(_) => self.options.install = Some(root),
+                None => self.remembered = Some(root),
+            }
             return;
         }
         self.options.install = None;
@@ -564,7 +569,7 @@ impl App {
         {
             theme::section(ui, "No mods installed");
             ui.label(theme::muted(&format!(
-                "Mods go in {} or in a mods folder beside the launcher.",
+                "Mods go in {}.",
                 mods::mods_dir().display()
             )));
             return;

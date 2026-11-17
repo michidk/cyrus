@@ -1,5 +1,5 @@
 //! Builds the bundled mods (`mods/*`) for `wasm32-wasip2` and installs them into the mods folder
-//! of the game's config directory, on any platform: `cargo run -p cyrus-mods --example install_mods`
+//! beside the game built with the same profile (`<target>/debug/mods` for `just run`), on any platform: `cargo run -p cyrus-mods --example install_mods`
 //! (`just mods`). A mod folder is one with a `mod.toml`; one with a `Cargo.toml` too is built, one
 //! without (a manifest only, such as `serpent`) is copied as it is.
 use anyhow::{Context, Result, bail, ensure};
@@ -9,7 +9,13 @@ use std::process::Command;
 fn main() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let bundled = root.join("mods");
-    let installed = cyrus_config::config_dir().join("mods");
+    // This example runs from `<target>/<profile>/examples/`; the game sits in `<target>/<profile>/`.
+    let exe = std::env::current_exe().context("locating this program")?;
+    let installed = exe
+        .parent()
+        .and_then(Path::parent)
+        .context("the example is not inside a Cargo target directory")?
+        .join("mods");
     let mut mods = Vec::new();
     for item in std::fs::read_dir(&bundled).with_context(|| bundled.display().to_string())? {
         let dir = item?.path();

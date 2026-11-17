@@ -77,13 +77,26 @@ fn is_install(root: &Path) -> bool {
             || (root.join("3dart").exists() && root.join("RG.EXE").exists()))
 }
 
+/// `path` resolved, without the `\\?\` prefix Windows adds to a canonical drive path, so the
+/// player sees and the game receives `D:\Games\Redguard`.
+fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    path.canonicalize().map(without_verbatim_prefix)
+}
+
+/// `\\?\D:\x` as `D:\x`; any other path, including a verbatim UNC path, unchanged.
+fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|text| text.strip_prefix(r"\\?\")) {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 /// The install `selected` names: the folder itself, a folder inside it, or a GOG or package folder
 /// around it. Read-only.
 pub fn resolve(selected: &Path) -> anyhow::Result<PathBuf> {
-    let selected = selected
-        .canonicalize()
+    let selected = canonical(selected)
         .with_context(|| format!("{}: this folder cannot be opened", selected.display()))?;
-    let open = |path: &Path| path.canonicalize().ok().filter(|root| is_install(root));
+    let open = |path: &Path| canonical(path).ok().filter(|root| is_install(root));
     if let Some(root) = selected.ancestors().find_map(open) {
         return Ok(root);
     }
@@ -127,6 +140,20 @@ pub fn remember(root: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drive_paths_lose_the_verbatim_prefix() {
+        let plain = |text: &str| without_verbatim_prefix(PathBuf::from(text));
+        assert_eq!(
+            plain(r"\\?\D:\Games\Redguard"),
+            PathBuf::from(r"D:\Games\Redguard")
+        );
+        assert_eq!(
+            plain(r"\\?\UNC\server\share"),
+            PathBuf::from(r"\\?\UNC\server\share")
+        );
+        assert_eq!(plain("/home/redguard"), PathBuf::from("/home/redguard"));
+    }
 
     fn glide(root: &Path) {
         std::fs::create_dir_all(root.join("fxart")).unwrap();
