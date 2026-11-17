@@ -105,7 +105,7 @@ mod hud;
 pub use registry::{
     ActorEvent, ActorFlatDraw, ActorPrelight, ActorPresence, ActorSnapshot, AnimationData,
     CameraDrive, CameraFrameState, DamageEvent, DeathEvent, EnvironmentalEffect,
-    EnvironmentalEffects, GroundKind, NATIVE_LOG_LIMIT, NativeCall, PublishedCamera,
+    EnvironmentalEffects, GroundKind, LedgeTiming, NATIVE_LOG_LIMIT, NativeCall, PublishedCamera,
     SavedPlacement, SelectedDeathState, SelectedHealthState,
 };
 mod inventory;

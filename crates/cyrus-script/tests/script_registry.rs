@@ -48851,20 +48851,32 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
 
 #[test]
 fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
-    grounded_jump_selects_ledges(false, false);
+    grounded_jump_selects_ledges(false, LedgeReceiver::Eligible);
 }
 
 #[test]
 fn selected_native_jump_selects_low_and_high_ledges_before_queued_jump() {
-    grounded_jump_selects_ledges(true, false);
+    grounded_jump_selects_ledges(true, LedgeReceiver::Eligible);
 }
 
 #[test]
 fn excluded_high_ledge_receiver_keeps_its_animation_owner() {
-    grounded_jump_selects_ledges(false, true);
+    grounded_jump_selects_ledges(false, LedgeReceiver::Excluded);
 }
 
-fn grounded_jump_selects_ledges(native_jump: bool, excluded: bool) {
+#[test]
+fn selected_jump_high_ledge_without_animation_receiver_completes_transition() {
+    grounded_jump_selects_ledges(false, LedgeReceiver::Absent);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LedgeReceiver {
+    Eligible,
+    Excluded,
+    Absent,
+}
+
+fn grounded_jump_selects_ledges(native_jump: bool, receiver: LedgeReceiver) {
     use cyrus_assets::collision::{CollisionGeometry, CollisionModel, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_script::script::{
@@ -48880,7 +48892,9 @@ fn grounded_jump_selects_ledges(native_jump: bool, excluded: bool) {
         (-44, 86, 11),
         (-45, 32, 0),
     ] {
-        if excluded && expected_group != AnimationGroup::PULL_UP_LEDGE.index() {
+        if receiver != LedgeReceiver::Eligible
+            && expected_group != AnimationGroup::PULL_UP_LEDGE.index()
+        {
             continue;
         }
         let (scripts, world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
@@ -48943,9 +48957,17 @@ fn grounded_jump_selects_ledges(native_jump: bool, excluded: bool) {
                 100,
             )
             .unwrap();
-        if excluded {
+        if receiver != LedgeReceiver::Eligible {
             let mut saved = movement_snapshot(&world, &scripts, &data);
-            saved["actors"][index]["control"]["object_update_excluded"] = true.into();
+            match receiver {
+                LedgeReceiver::Excluded => {
+                    saved["actors"][index]["control"]["object_update_excluded"] = true.into();
+                }
+                LedgeReceiver::Absent => {
+                    saved["actors"][index]["animation"] = serde_json::Value::Null;
+                }
+                LedgeReceiver::Eligible => unreachable!(),
+            }
             let globals = std::mem::take(world.globals_mut());
             world = restore_navigation_owner(saved, &scripts, &data).unwrap();
             *world.globals_mut() = globals;
@@ -49021,7 +49043,36 @@ fn grounded_jump_selects_ledges(native_jump: bool, excluded: bool) {
             ..Default::default()
         };
         let mut emitted = Vec::new();
-        if native_jump {
+        if receiver == LedgeReceiver::Absent {
+            assert!(
+                !world
+                    .begin_ordinary_jump(
+                        player,
+                        &data,
+                        8,
+                        false,
+                        cyrus_script::script::ObstacleEnvironment {
+                            selected_player: Some(player),
+                            auto_grab: false,
+                            item_system_ready: false,
+                            shell_execution: false,
+                            ticks: 0,
+                        },
+                        Some((
+                            query,
+                            cyrus_script::script::LedgeTiming {
+                                fine_ticks: 0,
+                                frame_scale: Some(256),
+                            }
+                        )),
+                        &mut |_, sound| {
+                            emitted.push(sound);
+                            Ok(())
+                        },
+                    )
+                    .unwrap()
+            );
+        } else if native_jump {
             let activation = cyrus_script::script::ActivationInputs {
                 player,
                 actors: BTreeMap::new(),
@@ -49093,26 +49144,26 @@ fn grounded_jump_selects_ledges(native_jump: bool, excluded: bool) {
                 )
                 .unwrap();
         }
-        if excluded {
+        if receiver != LedgeReceiver::Eligible {
             assert!(
                 emitted.is_empty(),
-                "excluded climb must not retire or start audio ownership"
+                "ineligible climb must not retire or start audio ownership"
             );
         }
         let inspected = world.inspect(index, 1);
         let actor = &inspected["actors"][0];
         assert_eq!(
             actor["animation"]["current_group"],
-            if excluded {
-                AnimationGroup::PANIC.index()
-            } else {
-                expected_group
+            match receiver {
+                LedgeReceiver::Eligible => serde_json::Value::from(expected_group),
+                LedgeReceiver::Excluded => serde_json::Value::from(AnimationGroup::PANIC.index()),
+                LedgeReceiver::Absent => serde_json::Value::Null,
             },
             "top {top}"
         );
         assert_eq!(
             actor["control"]["living_state"],
-            if excluded {
+            if receiver != LedgeReceiver::Eligible {
                 cyrus_script::script::LivingState::CLIMB_FINISHED.byte()
             } else {
                 expected_living

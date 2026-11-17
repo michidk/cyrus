@@ -326,6 +326,7 @@ impl ScriptWorld {
         // Frame-threshold requests share ordinary receiver eligibility.
         // Preservation engine/animation.md, “Receiver eligibility”.
         if self.updates.animation_system
+            && self.actors[index].animation.is_some()
             && !self.actors[index]
                 .control
                 .as_ref()
@@ -500,16 +501,16 @@ impl ScriptWorld {
         from_frame: i32,
     ) -> Result<u8> {
         let index = ctx.index;
-        let playback = &self.actors[index]
+        let Some(playback) = self.actors[index]
             .animation
             .as_ref()
-            .context("ledge climb animation unavailable")?
-            .playback;
-        if playback.current_group() != Some(group) {
+            .map(|animation| &animation.playback)
+            .filter(|playback| playback.current_group() == Some(group))
+        else {
             self.set_living(index, LivingState::CLIMB_FINISHED);
             self.clear_ledge_motion(index);
             return Ok(1);
-        }
+        };
         let (_, _, frame) = playback.frame_wait_state()?;
         let frame = usize::from(frame);
         let (&step, &rise) = forward.get(frame).zip(height.get(frame)).with_context(|| {

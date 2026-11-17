@@ -102,5 +102,5 @@ selection, so later movement cannot reverse the swim or deep-water exit request.
 A finished ledge climb releases its living state even when the restored actor has
 no animation receiver, so subsequent ordinary updates can continue.
 
-High-ledge frame-threshold requests preserve excluded receivers' animation owners,
-just like ordinary animation requests.
+High-ledge frame-threshold requests preserve excluded receivers' animation owners
+and complete without a receiver, just like ordinary animation requests.
