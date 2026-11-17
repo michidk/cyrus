@@ -67,6 +67,10 @@ memory. The viewer's catalog behaviour is described in
 - Format or engine facts found here go to preservation's `docs/`, not into this
   README.
 
+The book cache stores upload-ready palette and texture colours following the
+[preserved startup palette contract](https://github.com/michidk/redguard-preservation/pull/343).
+Generic COL parsing retains the file bytes.
+
 ## Testing
 
 ```sh

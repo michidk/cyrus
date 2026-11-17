@@ -109,6 +109,24 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     }
     let menu: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+    let palette_bytes = std::fs::read(install.root.join("fxart/REDGUARD.COL")).unwrap();
+    let file_palette = rgpre::import::palette::Palette::parse(&palette_bytes).unwrap();
+    let book: cyrus_assets::menu::MenuAsset = serde_json::from_value(menu.clone()).unwrap();
+    for (index, channels) in file_palette.colors.iter().enumerate() {
+        let expected = if index == 0 {
+            [0; 3]
+        } else {
+            channels.map(|channel| (channel >> 2) << 2)
+        };
+        assert_eq!(book.palette[index], expected, "book palette entry {index}");
+    }
+    for texture in &book.textures {
+        for (index, rgba) in texture.indices.iter().zip(texture.rgba.as_chunks::<4>().0) {
+            if *index != 0 {
+                assert_eq!(&rgba[..3], &book.palette[usize::from(*index)]);
+            }
+        }
+    }
     assert_eq!(
         menu["clock"],
         serde_json::json!({

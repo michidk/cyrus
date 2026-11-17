@@ -5,8 +5,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Menu cache revision including installed mini-confirmation artwork and font styles.
-pub const MENU_VERSION: u32 = 17;
+/// Menu cache revision including the startup book palette upload precision.
+pub const MENU_VERSION: u32 = 18;
 
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {

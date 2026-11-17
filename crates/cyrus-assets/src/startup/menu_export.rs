@@ -200,7 +200,12 @@ pub(crate) fn prepare_menu(
     {
         return Ok(());
     }
-    let palette = Palette::parse(&palette_bytes).context("menu: REDGUARD.COL")?;
+    let mut palette = Palette::parse(&palette_bytes).context("menu: REDGUARD.COL")?;
+    // Startup book colours use the world upload, not the direct RGB table (preservation PR #343).
+    palette.colors = palette
+        .colors
+        .map(|rgb| rgb.map(|channel| (channel >> 2) << 2));
+    palette.colors[0] = [0; 3];
     let mut textures = Vec::new();
     let mut references = BTreeMap::new();
     for (set, bytes) in banks {
