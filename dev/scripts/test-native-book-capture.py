@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise book roundtrip capture through the public control protocol and CLI."""
 import json
+import os
 from pathlib import Path
 import socketserver
 import subprocess
@@ -15,7 +16,7 @@ SCRIPT = Path(__file__).with_name("native-book-capture.py")
 
 
 class Capture(unittest.TestCase):
-    def run_capture(self, black=False, delay=0, resume=True, context="in_game", advance_frames=True, title=False, unavailable=None, release_delay=0, seconds=1, press_delay=0):
+    def run_capture(self, black=False, delay=0, resume=True, context="in_game", advance_frames=True, title=False, unavailable=None, release_delay=0, seconds=1, press_delay=0, process_pid=None):
         phase = "Loading" if title else "InGame"
         frame = 0
         clock = 1
@@ -70,7 +71,8 @@ class Capture(unittest.TestCase):
                 try:
                     run = subprocess.run([sys.executable, str(SCRIPT), str(server.server_address[1]),
                                           str(root / "receipt.json"), "--screenshot-dir", str(root),
-                                          "--seconds", str(seconds), "--interval", "0.01"],
+                                          "--seconds", str(seconds), "--interval", "0.01",
+                                          *(["--process-pid", str(process_pid)] if process_pid else [])],
                                          text=True, capture_output=True, timeout=max(5, seconds + 2))
                 finally:
                     server.shutdown()
@@ -79,6 +81,19 @@ class Capture(unittest.TestCase):
                         writer.join()
             receipt = json.loads((root / "receipt.json").read_text())
         return run, receipt, commands
+
+    def test_exited_game_rejects_an_unrelated_live_control_server(self):
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        run, receipt, commands = self.run_capture(process_pid=child.pid)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("game process exited", receipt["error"])
+        self.assertEqual(commands, [])
+
+    def test_live_game_process_allows_roundtrip(self):
+        run, receipt, _ = self.run_capture(process_pid=os.getpid())
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+        self.assertTrue(receipt["success"])
 
     def test_two_visits_wait_for_written_pngs_and_clock_progress(self):
         run, receipt, commands = self.run_capture(delay=0.1)

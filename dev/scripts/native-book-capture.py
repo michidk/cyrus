@@ -2,19 +2,25 @@
 """Record bounded Escape/Continue book visits on an already running native game."""
 import argparse
 import json
+import os
 from pathlib import Path
 import socket
 import time
 import uuid
 
 
-def capture(port, output, screenshot_dir, seconds=120, interval=0.1):
+def capture(port, output, screenshot_dir, seconds=120, interval=0.1, process_pid=None):
     from PIL import Image
 
     deadline = time.monotonic() + seconds
     record = {"success": False, "stage": "world", "visits": [], "error": None}
 
     def request(command, *, release=False):
+        if process_pid is not None:
+            try:
+                os.kill(process_pid, 0)
+            except ProcessLookupError as error:
+                raise ValueError(f"{record['stage']}: game process exited: {process_pid}") from error
         remaining = deadline - time.monotonic()
         if remaining <= 0 and not release:
             raise TimeoutError(f"{record['stage']}: run deadline expired")
@@ -113,11 +119,14 @@ if __name__ == "__main__":
     parser.add_argument("--screenshot-dir", type=Path, required=True)
     parser.add_argument("--seconds", type=float, default=120)
     parser.add_argument("--interval", type=float, default=0.1)
+    parser.add_argument("--process-pid", type=int, help="local game process whose lifetime bounds capture")
     args = parser.parse_args()
+    if args.process_pid is not None and args.process_pid <= 0:
+        parser.error("process-pid must be positive")
     if args.seconds <= 0 or args.interval <= 0:
         parser.error("seconds and interval must be positive")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.screenshot_dir.mkdir(parents=True, exist_ok=True)
-    result = capture(args.port, args.output, args.screenshot_dir, args.seconds, args.interval)
+    result = capture(args.port, args.output, args.screenshot_dir, args.seconds, args.interval, args.process_pid)
     print(json.dumps(result))
     raise SystemExit(0 if result["success"] else 1)

@@ -1069,7 +1069,10 @@ change its startup options, or acquire a second lock.
 
 For gameplay Escape/Continue checks, launch natively with `--scene ISLAND` and
 attach `python3 dev/scripts/native-book-capture.py <control-port>
-<receipt.json> --screenshot-dir <absolute-host-config>/screenshots`. The screenshot
+<receipt.json> --screenshot-dir <absolute-host-config>/screenshots`.
+Pass `--process-pid "$game_pid"` when the game runs on the observer host; the
+observer checks that process before every control request and fails if it has
+exited, including when an unrelated server still occupies the control port. The screenshot
 path must be identical in the game and observer. The same host-config and
 per-run lock requirements apply. This observer dismisses the prepared title,
 stops waiting for gameplay as soon as its clock advances, then records two
