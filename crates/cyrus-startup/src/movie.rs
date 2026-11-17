@@ -308,10 +308,19 @@ pub(super) fn drive(
         if playback.load.is_some() || playback.playing.is_some() {
             continue;
         }
-        if launch.skip_movies && matches!(request, MovieRequest::NewGame) {
-            menu.enter_world = Some(0);
-            menu.ready = false;
-            continue;
+        if launch.skip_movies {
+            match request {
+                MovieRequest::NewGame => {
+                    menu.enter_world = Some(0);
+                    menu.ready = false;
+                    continue;
+                }
+                MovieRequest::Script(_, then_load) => {
+                    resume_script_world(&mut commands, &mut menu, *then_load);
+                    continue;
+                }
+                MovieRequest::Menu(_) => {}
+            }
         }
         #[cfg(not(target_arch = "wasm32"))]
         let root = install.root.clone();

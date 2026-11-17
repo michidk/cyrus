@@ -35,7 +35,7 @@ config directory chosen by `cyrus-config`:
 | `settings.toml` | The `[fidelity]` table, one `faithful` or `modern` per area; other keys are kept |
 | `install.json` | The game folder the game remembered, shown and used for the artwork |
 | `REDGUARD.CHT` | The cheats; starts from the install's copy when there is no local one |
-| `launcher.json` | The launcher's own choices (a picked game folder, skip the intro movie) |
+| `launcher.json` | The launcher's own choices (a picked game folder, skip movies) |
 
 ## Notes
 

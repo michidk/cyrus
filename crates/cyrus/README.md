@@ -28,7 +28,7 @@ lists the folders). Launch options share their names with the browser's URL para
 | `--view=x,y,z,qx,qy,qz,qw` | One-shot inspection camera pose for the first world (unit quaternion) |
 | `--skip-startup` | Skip the splash and open the book menu |
 | `--new-game`, `--movie INDEX` | Start New Game, or play a Movies-page cinematic (zero-based MENU.INI index), from the open book |
-| `--skip-movies` | New Game without its introduction movie |
+| `--skip-movies` | Skip every movie except those opened from the Movies menu and the ending |
 | `--volume PERCENT` | Master volume 0–100 for this launch, not saved; use `--volume 0` in automated runs |
 | `--mode`, `--fog`, `--sky`, `--music` | `faithful` or `modern`; `--mode` sets every area including modern lighting, per-area flags override it |
 | `--ray-tracing on\|off` | Solari ray tracing under Modern lighting, in builds with `--features raytracing` |

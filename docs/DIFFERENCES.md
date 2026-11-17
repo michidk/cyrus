@@ -38,11 +38,12 @@ install. It scales to cover the window, so a window narrower than 16:9 crops the
 the top and bottom. The "Version" and status labels still use the installed font and palette, placed as in the
 original on the artwork's centred 4:3 region; a window much wider than 16:9 can crop them.
 
-## Skipped introduction movie
+## Skipped movies
 
-**Verified:** New Game plays the introduction movie before entering the world. `--skip-movies`
-(browser `?skip-movies=true`) enters the world without it, from the menu entry as well as from
-`--new-game`. The default plays it. The ending movie is not affected.
+**Verified:** New Game plays the introduction movie before entering the world, and scripts play
+movies during the game. `--skip-movies` (browser `?skip-movies=true`) enters the world without the
+introduction and resumes the world after a script movie without playing it. Movies opened from the
+Movies menu and the ending movie still play. The default plays everything.
 
 ## CD data noise at the start of track 2
 
