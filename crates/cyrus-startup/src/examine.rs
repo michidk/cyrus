@@ -37,6 +37,12 @@ impl AssetLoader for Loader {
 struct Artwork(Handle<ExamineArtwork>);
 #[derive(Component)]
 struct Panel;
+
+#[derive(Component, Default)]
+struct ViewCache {
+    model: LitModel,
+    previous: Option<(String, ViewerPose)>,
+}
 #[derive(Component)]
 struct Canvas;
 
@@ -78,6 +84,7 @@ fn setup(
     commands
         .spawn((
             Panel,
+            ViewCache::default(),
             GlobalZIndex(105),
             Visibility::Hidden,
             Node {
@@ -128,21 +135,19 @@ fn texture_key(name: &str, look: &ExamineLook) -> u64 {
     hasher.finish()
 }
 
-#[allow(clippy::too_many_arguments)] // Reads one asset and updates its presentation node and scene.
 fn draw(
     artwork: Option<Res<Artwork>>,
     assets: Res<Assets<ExamineArtwork>>,
     mut screen: ResMut<ExamineScreen>,
     mut commands: Commands,
     mut assets_3d: LitAssets,
-    mut panels: Query<&mut Visibility, With<Panel>>,
+    mut panels: Query<(&mut Visibility, &mut ViewCache), With<Panel>>,
     mut cameras: Query<&mut Camera, With<ExamineCamera>>,
-    mut model: Local<LitModel>,
-    mut previous: Local<Option<(String, ViewerPose)>>,
 ) {
-    let Ok(mut panel) = panels.single_mut() else {
+    let Ok((mut panel, mut cache)) = panels.single_mut() else {
         return;
     };
+    let ViewCache { model, previous } = &mut *cache;
     *panel = if screen.open {
         Visibility::Visible
     } else {
@@ -418,6 +423,99 @@ mod tests {
             pitch: 0,
             roll: 0,
             position: [0.0, 0.0, 400.0],
+        }
+    }
+
+    #[test]
+    fn repeated_gameplay_entry_republishes_the_same_examine_model() {
+        use bevy::asset::io::{
+            AssetSourceBuilder,
+            memory::{Dir, MemoryAssetReader},
+        };
+        let (mut artwork, model) = quad(0);
+        artwork.models.insert("TEST".into(), model);
+        let directory = Dir::default();
+        directory.insert_asset(
+            std::path::Path::new("hud/examine.models"),
+            serde_json::to_vec(&artwork).unwrap(),
+        );
+        let mut app = App::new();
+        app.register_asset_source(
+            "cache",
+            AssetSourceBuilder::new(move || {
+                Box::new(MemoryAssetReader {
+                    root: directory.clone(),
+                })
+            }),
+        )
+        .add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ))
+        .init_state::<AppState>()
+        .init_asset::<Image>()
+        .init_asset::<Mesh>()
+        .init_asset::<super::super::view3d::LitMaterial>()
+        .add_plugins(ExaminePlugin);
+        let mut first = None;
+        for visit in 0..2 {
+            app.world_mut()
+                .resource_mut::<NextState<AppState>>()
+                .set(AppState::InGame);
+            app.update();
+            {
+                let mut screen = app.world_mut().resource_mut::<ExamineScreen>();
+                screen.open = true;
+                screen.model = Some("TEST".into());
+                screen.pose = Some(pose());
+                screen.look = Some(look());
+            }
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                app.update();
+                if !app.world().resource::<Assets<ExamineArtwork>>().is_empty() {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "examine artwork did not load"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            app.update();
+            let meshes: Vec<_> = app
+                .world_mut()
+                .query::<&Mesh3d>()
+                .iter(app.world())
+                .map(|mesh| mesh.0.clone())
+                .collect();
+            assert_eq!(
+                meshes.len(),
+                1,
+                "visit {visit}: examine must publish its model after gameplay entry"
+            );
+            let positions = app
+                .world()
+                .resource::<Assets<Mesh>>()
+                .get(&meshes[0])
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_POSITION)
+                .unwrap()
+                .clone();
+            if let Some(first) = first.as_ref() {
+                assert_eq!(first, &positions);
+            } else {
+                first = Some(positions);
+            }
+            app.world_mut()
+                .resource_mut::<NextState<AppState>>()
+                .set(AppState::Menu);
+            app.update();
+            assert_eq!(
+                app.world_mut().query::<&Mesh3d>().iter(app.world()).count(),
+                0
+            );
         }
     }
 
