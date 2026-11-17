@@ -803,8 +803,10 @@ fn model_view(
 }
 
 fn camera_input(ui: &mut egui::Ui, ctx: &egui::Context, viewer: &mut Viewer, time: &Time) {
+    // The scene fills the whole panel and the controls drawn before this overlap it; only the
+    // area below them takes camera input.
     let rect = ui.available_rect_before_wrap().intersect(ui.clip_rect());
-    viewer.viewport = rect;
+    viewer.viewport = ui.max_rect().intersect(ui.clip_rect());
     viewer.pixels_per_point = ctx.pixels_per_point();
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
     if response.clicked()
