@@ -20,7 +20,7 @@ pub struct SkyScrollSync {
 }
 
 impl SkyScrollSync {
-    /// Apply a captured 2048-step direction and offsets in texels on the next render update.
+    /// Apply a captured 2048-step direction and texel offsets once the sky materials are ready.
     /// This does not reproduce the rest of the original session's shared random stream.
     pub fn set(&mut self, direction: u16, offset: [f32; 2]) -> anyhow::Result<()> {
         anyhow::ensure!(direction < 2048, "sky direction must be below 2048");
@@ -171,7 +171,11 @@ fn animate_sky(
     let tick = (elapsed.as_secs_f64() * (1_193_182.0 / 65_536.0)).floor() as u64;
     let modern = u8::from(fidelity.mode(Area::Sky) == Mode::Modern) as f32;
     let modern_fog = u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32;
-    let reference = if skies.is_empty() {
+    let reference = if skies.is_empty()
+        || skies
+            .iter()
+            .any(|(_, handle)| !materials.contains(&handle.0))
+    {
         None
     } else {
         reference.pending.take()
@@ -365,5 +369,34 @@ mod tests {
             .advance_by(Duration::from_nanos(824_000_000));
         app.update();
         assert_eq!(scroll(&app), Vec4::new(-47.584, 19.368_753, 1.0, 0.0));
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<SkyMaterial>>()
+            .remove(handle.id())
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<SkyScrollSync>()
+            .set(2047, [31.0, -27.0])
+            .unwrap();
+        app.update();
+        app.world_mut()
+            .resource_mut::<Assets<SkyMaterial>>()
+            .insert(handle.id(), material)
+            .unwrap();
+        app.update();
+        assert_eq!(
+            scroll(&app),
+            Vec4::new(31.0, -27.0, 1.0, 0.0),
+            "sky synchronization must wait for its bound material"
+        );
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(55));
+        app.update();
+        assert_ne!(
+            scroll(&app).truncate().truncate(),
+            Vec2::new(31.0, -27.0),
+            "applied sky synchronization must not replay on the next tick"
+        );
     }
 }

@@ -67,6 +67,8 @@ Core-only and headless assemblies omit these plugins. The `raytracing` feature
   table edits in the same frame, before asset notifications publish. Missing source
   meshes, source materials or runtime light tables retire the prepared draw until the
   inputs return, including restoration under the same handles.
+- Captured sky synchronization waits for bound sky materials, then applies once without
+  replaying the requested offsets on later sky ticks.
 - Camera-dependent terrain, clipping, animation meshes and effect assets update
   before Bevy extracts assets, so camera and geometry reach the GPU in the same frame.
 - Material and shader changes often change the export schema: re-export worlds
