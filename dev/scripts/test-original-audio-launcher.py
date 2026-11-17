@@ -63,10 +63,14 @@ root = pathlib.Path(os.environ['CAPTURE_TEST'])
 args = sys.argv[1:]
 with (root / 'docker-calls.jsonl').open('a') as calls:
     calls.write(json.dumps(args) + '\\n')
+if args[0] == 'run' and 'sh' in args and os.environ.get('CAPTURE_RECOVERY_FAIL'):
+    sys.exit(17)
 if args[0] == 'cp':
     shutil.copy2(args[1], root / 'container' / args[2].split(':', 1)[1].rsplit('/', 1)[1])
 elif args[0] == 'run' and '-d' in args:
     (root / 'launch.json').write_text(json.dumps(args))
+elif args[0] == 'exec' and 'sh' in args and os.environ.get('CAPTURE_CONTAINER_EXITED'):
+    sys.exit(1)
 elif args[0] == 'exec' and 'python3' in args:
     if os.environ.get('CAPTURE_FAIL'):
         sys.exit(23)
@@ -123,6 +127,36 @@ elif args[0] == 'exec' and 'python3' in args:
             self.assertEqual(calls[-2][0], 'exec')
             self.assertIn(f'{os.getuid()}:{os.getgid()}', calls[-2])
             self.assertEqual(calls[-1][:2], ['rm', '-f'])
+            (root / 'docker-calls.jsonl').unlink()
+            exited = subprocess.run(
+                ['bash', str(scripts / 'original-audio-capture.sh'),
+                 str(root / 'events.json'), str(root / 'exited-output'), '1'],
+                capture_output=True, text=True, timeout=10,
+                env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
+                     'CAPTURE_TEST': str(root), 'CAPTURE_CONTAINER_EXITED': '1',
+                     'CYRUS_RETRO_RUN': str(root / 'run'),
+                     'CYRUS_RETRO_GOG': str(root / 'gog'), 'CYRUS_STATE_READER': str(reader)},
+            )
+            self.assertEqual(exited.returncode, 0, exited.stderr)
+            calls = [json.loads(line) for line in (root / 'docker-calls.jsonl').read_text().splitlines()]
+            recovery = [call for call in calls if call[0] == 'run' and 'sh' in call]
+            self.assertEqual(len(recovery), 1, calls)
+            self.assertIn(f'{root / "run"}:/game', recovery[0])
+            self.assertIn(f'{root / "exited-output/config"}:/capture-config', recovery[0])
+            self.assertIn(f'{os.getuid()}:{os.getgid()}', recovery[0])
+            self.assertEqual(calls[-1][:2], ['rm', '-f'])
+            broken_cleanup = subprocess.run(
+                ['bash', str(scripts / 'original-audio-capture.sh'),
+                 str(root / 'events.json'), str(root / 'broken-output'), '1'],
+                capture_output=True, text=True, timeout=10,
+                env={**os.environ, 'PATH': f"{root}:{os.environ['PATH']}",
+                     'CAPTURE_TEST': str(root), 'CAPTURE_CONTAINER_EXITED': '1',
+                     'CAPTURE_RECOVERY_FAIL': '1', 'CYRUS_RETRO_RUN': str(root / 'run'),
+                     'CYRUS_RETRO_GOG': str(root / 'gog'), 'CYRUS_STATE_READER': str(reader)},
+            )
+            self.assertNotEqual(broken_cleanup.returncode, 0)
+            self.assertIn('could not restore writable output ownership', broken_cleanup.stderr)
+
 
 
 if __name__ == '__main__':

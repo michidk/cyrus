@@ -85,12 +85,21 @@ docker run -d --rm --name "$name" --memory 2g --memory-swap 2g --cap-add SYS_PTR
     -v "$run:/game" -v "$gog:/gog:ro" -v "$gog/extracted/app/game.gog:/game/game.gog:ro" \
     "${conf_mount[@]}" "$image" "${dosbox_host_args[@]}" >/dev/null
 cleanup() {
-    # Bind-mounted run output must remain removable by the invoking host user.
-    # find does not follow the read-only install symlinks in the run directory.
-    docker exec "$name" sh -c 'find /game /capture-config -xdev -user root -exec chown -h "$1" {} +' \
-        sh "$(id -u):$(id -g)" >/dev/null 2>&1 || true
+    local status=$? owner
+    owner="$(id -u):$(id -g)"
+    # The game can exit and auto-remove its container before this trap runs.
+    # Recovery mounts only writable output and never follows install symlinks.
+    if ! docker exec "$name" sh -c 'find /game /capture-config -xdev -user root -exec chown -h "$1" {} +' \
+        sh "$owner" >/dev/null 2>&1; then
+        if ! docker run --rm --entrypoint sh -v "$run:/game" -v "$out/config:/capture-config" "$image" \
+            -c 'find /game /capture-config -xdev -user root -exec chown -h "$1" {} +' sh "$owner"; then
+            echo 'original capture: could not restore writable output ownership' >&2
+            if [ "$status" -eq 0 ]; then status=1; fi
+        fi
+    fi
     docker rm -f "$name" >/dev/null 2>&1 || true
     [ -z "${conf:-}" ] || rm -f "$conf"
+    return "$status"
 }
 trap cleanup EXIT
 docker cp "$repo/dev/scripts/original-capture-inner.py" "$name:/tmp/inner.py"
