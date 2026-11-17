@@ -57,7 +57,7 @@ the installed `final_version` setting; the tested GOG install enables it.
 | Input | Action |
 | --- | --- |
 | Escape, then release | Open the gameplay book; close or back out of other screens |
-| F1 | Show original compatibility versions; Enter or Action confirms |
+| F1 | Show original compatibility versions; Enter, Escape or Action closes it |
 | F2 / F3 | Open Save / Load |
 | F4 / F5 / F6 | Open Display / Sound / Controls |
 | F7 | Toggle auto-defend |

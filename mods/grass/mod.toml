@@ -1,4 +1,5 @@
 name = "Terrain grass"
+author = "michidk"
 description = "Seeded blades matching the terrain's green texels, with distance LOD and wind. Native raster rendering."
 version = "0.1.0"
 [[shader]]

@@ -110,11 +110,10 @@ fn drive(
                 return;
             };
             let input = input.p0();
-            let confirming = input
-                .devices()
-                .keys
-                .is_some_and(|keys| keys.pressed(KeyCode::Enter))
-                || input.pressed(Action::Use);
+            let confirming =
+                input.devices().keys.is_some_and(|keys| {
+                    keys.pressed(KeyCode::Enter) || keys.pressed(KeyCode::Escape)
+                }) || input.pressed(Action::Use);
             if active.confirmed && !confirming {
                 next.set(AppState::InGame);
                 return;
@@ -307,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn installed_version_dialog_ignores_escape_and_waits_for_confirmation_release() {
+    fn installed_version_dialog_closes_with_escape_or_enter_after_release() {
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -366,30 +365,26 @@ mod tests {
                 .iter()
                 .any(|pixel| pixel[3] > 0)
         );
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::Escape);
-        app.update();
-        assert!(matches!(
-            app.world().resource::<NextState<AppState>>(),
-            NextState::Unchanged
-        ));
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::Enter);
-        app.update();
-        assert!(matches!(
-            app.world().resource::<NextState<AppState>>(),
-            NextState::Unchanged
-        ));
-        app.world_mut()
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .release(KeyCode::Enter);
-        app.update();
-        assert!(matches!(
-            app.world().resource::<NextState<AppState>>(),
-            NextState::Pending(AppState::InGame)
-        ));
+        for key in [KeyCode::Escape, KeyCode::Enter] {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(key);
+            app.update();
+            assert!(matches!(
+                app.world().resource::<NextState<AppState>>(),
+                NextState::Unchanged
+            ));
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .release(key);
+            app.update();
+            assert!(matches!(
+                app.world().resource::<NextState<AppState>>(),
+                NextState::Pending(AppState::InGame)
+            ));
+            app.insert_resource(NextState::<AppState>::Unchanged);
+            app.world_mut().resource_mut::<Presentation>().confirmed = false;
+        }
     }
     #[test]
     fn credits_present_reader_records_and_escape_returns_without_a_movie() {
