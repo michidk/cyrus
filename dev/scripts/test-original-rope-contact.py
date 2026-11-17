@@ -639,6 +639,26 @@ class ContactLauncher(unittest.TestCase):
             self.assertNotIn('dst=/game/Redguard/glide2x.ovl', (root / 'calls').read_text())
             self.assertEqual(run_overlay.read_text(), 'prepared overlay')
 
+            # A final-version run opens the book instead of the requested world.
+            (root / 'calls').unlink()
+            for final_version in ('1', 'unexpected', None):
+                debug = '' if final_version is None else f'final_version={final_version}\n'
+                contents = '[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\n' + debug
+                system.write_text(contents)
+                result = subprocess.run(
+                    ['bash', str(launcher), str(run), str(reader), str(placement),
+                     str(root / 'final-version-output')], env=env,
+                    capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn('final_version must be 0 for direct-world capture', result.stderr)
+                self.assertFalse((root / 'calls').exists())
+                self.assertFalse((root / 'final-version-output').exists())
+                self.assertEqual(system.read_text(), contents)
+                self.assertEqual(world.read_text(), '[world]\nstart_world=9\n')
+            system.write_text('[system]\ndisable_text=no\ndisable_debug_text=no\n[debug]\nfinal_version=0\n')
+            # Restore the call record expected by the missing-overlay control below.
+            (root / 'calls').touch()
+
             # Never start a doomed original process without either overlay source.
             run_overlay.unlink()
             (root / 'calls').unlink()

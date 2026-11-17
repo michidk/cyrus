@@ -39,6 +39,24 @@ if [[ ! -f "$world" || -L "$world" || ! -f "$run/game.ins" ]]; then
     echo 'requires a prepared writable run with a real WORLD.INI and game.ins' >&2
     exit 2
 fi
+# This driver observes a world, not the final-version book startup path.
+python3 - "$system" <<'PYADMISSION'
+import configparser
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+config = configparser.ConfigParser(interpolation=None)
+try:
+    config.read_string(path.read_text())
+    admitted = config.getint('debug', 'final_version') == 0
+except (OSError, UnicodeError, configparser.Error, ValueError):
+    admitted = False
+if not admitted:
+    print(f'original contact: {path} [debug] final_version must be 0 for direct-world capture; '
+          'use the startup capture driver for final-version book entry', file=sys.stderr)
+    sys.exit(2)
+PYADMISSION
 # Fresh GOG runs do not contain the DOSBox Glide overlay beside RGFX.EXE.
 # Supply it read-only from the install, retaining an explicitly prepared run overlay.
 overlay_mount=()

@@ -231,6 +231,11 @@ reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
 recorder chord must not open the guest console. A local config override must place
 `hostkey=ctrlalt` in `[dosbox]`, not `[sdl]`.
 
+The contact launcher requires a prepared run with `[debug] final_version=0` and
+rejects other or missing values before runtime recovery or live-lock admission.
+Final-version runs enter the book instead of the direct world; use the original
+startup capture driver for that path. This check never changes the run setting.
+
 The reader and placement adapter are local diagnostics kept outside tracked
 files. The reader follows the `original-state.py` JSON contract; the placement
 adapter runs as `python3 /tmp/place.py`, with that reader at `/tmp/state.py`.
