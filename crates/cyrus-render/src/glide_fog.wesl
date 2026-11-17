@@ -41,18 +41,26 @@ fn blend_fog_integer(linear_rgb: vec3<f32>, fog_rgb: vec3<f32>, density: f32) ->
 
 // Constant/texture alpha arithmetic before framebuffer storage quantization,
 // preservation model-lighting.md and sky.md.
-fn framebuffer_blend_integer(destination: vec3<f32>, tint: vec3<f32>, alpha: u32) -> vec3<f32> {
+fn framebuffer_blend_integer(destination: vec3<f32>, tint: vec3<f32>, alpha: u32, pixel: vec2<u32>) -> vec3<f32> {
     let encoded = vec3<u32>(round(clamp(linear_to_srgb(destination), vec3(0.0), vec3(1.0)) * 255.0));
+    // Reconstruct stored fields without bit replication, then undo destination dither.
+    let stored = encoded & vec3(248u, 252u, 248u);
+    let inverse_dither = 15u - framebuffer_threshold(pixel);
+    let destination_channels = (stored * vec3(2u, 4u, 2u) + vec3(inverse_dither)) / vec3(2u, 4u, 2u);
     let source = vec3<u32>(round(clamp(tint, vec3(0.0), vec3(1.0)) * 255.0));
     let blended = (source * (alpha + 1u)) / vec3(256u)
-        + (encoded * (256u - alpha)) / vec3(256u);
+        + (destination_channels * (256u - alpha)) / vec3(256u);
     return srgb_to_linear(vec3<f32>(min(blended, vec3(255u))) / 255.0);
+}
+
+fn framebuffer_threshold(pixel: vec2<u32>) -> u32 {
+    let thresholds = array<u32, 16>(0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u, 3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u);
+    return thresholds[(pixel.y % 4u) * 4u + pixel.x % 4u];
 }
 
 // Stored framebuffer channels, preservation docs/engine/fog.md.
 fn framebuffer_dither(linear_rgb: vec3<f32>, pixel: vec2<u32>) -> vec3<f32> {
-    let thresholds = array<u32, 16>(0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u, 3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u);
-    let threshold = thresholds[(pixel.y % 4u) * 4u + pixel.x % 4u];
+    let threshold = framebuffer_threshold(pixel);
     let color = vec3<u32>(round(clamp(linear_to_srgb(linear_rgb), vec3(0.0), vec3(1.0)) * 255.0));
     let red_blue = min((2u * color - color / 16u + color / 128u + vec3(threshold)) / 16u, vec3(31u));
     let green = min((4u * color.y - color.y / 16u + color.y / 64u + threshold) / 16u, 63u);

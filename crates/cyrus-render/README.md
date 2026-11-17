@@ -52,13 +52,20 @@ Check a world surface crop from a public control-port screenshot with
 (requires Pillow). Select varied, unobscured Faithful terrain, models or placed
 flats. Exclude the HUD. The check rejects full-precision channels and blank crops.
 
+Compare a held-frame blended-flat crop before and after a rendering change with
+`python3 dev/scripts/test-framebuffer-blend.py ORIGINAL BEFORE AFTER LEFT TOP RIGHT BOTTOM`
+(requires Pillow). Use the same camera, texture frame and lighting in every image.
+The check requires a strict reduction in RGB error against the original screenshot.
+
 ## Notes
 
 The sky retires when its requested environment asset is unavailable and rebuilds
 from that asset when it becomes available again, including under the same handle.
 
-- Faithful terrain and opaque models store fogged colors at the original RGB565
-  precision with the documented four-by-four framebuffer dither. Modern lighting retains full precision.
+- Faithful terrain, opaque models and placed flats store fogged colors at the original RGB565
+  precision with the documented four-by-four framebuffer dither. Blended flats reconstruct
+  the stored destination channels and subtract their dither before alpha blending.
+  Modern lighting retains full precision.
 - Faithful by default. Deviations run only under their fidelity area
   (`Fog`, `Sky`, `Textures`, `Lighting`, `AnisotropicFiltering`). Modern
   lighting (`fog::modern_lighting`) is a separate PBR branch with optional

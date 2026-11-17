@@ -191,6 +191,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     lit_out.color = vec4(modern_lit(input, srgb_to_linear(texture_rgb) * (in.color * in.position.w), depth), select(base.a, 0.0, model.surface.x != 0.0 && input.N.y > 0.7));
     return lit_out;
 }
+    let framebuffer_pixel = vec2<u32>(in.position.xy - view.viewport.xy);
     var encoded = texture_rgb * (in.color * in.position.w);
 @if(PREPARED_MODEL) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
@@ -205,13 +206,13 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
         var result = scene_fog_at_position(color, depth, fog_table_position(depth));
         if model.compositing.x < 254.0 {
             let destination = textureLoad(view_transmission_texture, vec2<i32>(in.position.xy), 0).rgb;
-            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(model.compositing.x) & 255u);
+            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(model.compositing.x) & 255u, framebuffer_pixel);
         }
         out.color = vec4(result, 1.0);
     }
 }
     out.color = vec4(out.color.rgb + lamp_glow(input, texture_rgb, color), out.color.a);
-    out.color = vec4(framebuffer_dither(out.color.rgb, vec2<u32>(in.position.xy - view.viewport.xy)), out.color.a);
+    out.color = vec4(framebuffer_dither(out.color.rgb, framebuffer_pixel), out.color.a);
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }
