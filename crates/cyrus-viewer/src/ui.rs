@@ -558,10 +558,8 @@ pub fn draw(
             panel
         })
         .show(&mut viewport_ui, |ui| {
-            if let Some(preview) = &preview {
-                if viewer.render_loading {
-                    loading_bar(ui, viewer.load_fraction, &viewer.load_status);
-                }
+            // While frames, textures or audio load, the one centred bar stands in for the preview.
+            if let Some(preview) = preview.as_ref().filter(|_| !viewer.render_loading) {
                 if !matches!(
                     &preview.content,
                     Content::Model { data: Some(_), .. }
@@ -622,7 +620,11 @@ pub fn draw(
             } else {
                 ui.vertical_centered(|ui| {
                     ui.add_space((ui.available_height() * 0.5 - 40.).max(0.));
-                    if viewer.indexing || viewer.preparing || viewer.pending.is_some() {
+                    if viewer.indexing
+                        || viewer.preparing
+                        || viewer.pending.is_some()
+                        || viewer.render_loading
+                    {
                         loading_bar(ui, viewer.load_fraction, &viewer.load_status);
                         ui.heading(if viewer.indexing {
                             "Reading archive index…"
