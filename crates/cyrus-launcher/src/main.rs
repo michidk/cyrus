@@ -582,54 +582,52 @@ impl App {
         theme::section(ui, "Mods");
         ui.label(theme::muted("Active mods load when the game starts."));
         let mut changed = false;
-        egui::ScrollArea::vertical()
-            .max_height(330.0)
-            .show(ui, |ui| {
-                for entry in &self.installed.mods {
-                    let version = entry.version.as_ref().map(|version| format!("v{version}"));
-                    let byline = entry
-                        .author
-                        .as_ref()
-                        .map(|author| format!("By {author}. "))
-                        .unwrap_or_default();
-                    let mut on = self.active.contains(&entry.id);
-                    theme::titled_row(
-                        ui,
-                        &entry.name,
-                        version.as_deref(),
-                        &format!("{byline}{}", entry.description),
-                        |ui| {
-                            if theme::toggle(ui, &mut on).changed() {
-                                changed = true;
-                            }
-                        },
-                    );
-                    if on {
-                        self.active.insert(entry.id.clone());
-                    } else {
-                        self.active.remove(&entry.id);
-                    }
+        theme::list(ui).show(ui, |ui| {
+            for entry in &self.installed.mods {
+                let version = entry.version.as_ref().map(|version| format!("v{version}"));
+                let byline = entry
+                    .author
+                    .as_ref()
+                    .map(|author| format!("By {author}. "))
+                    .unwrap_or_default();
+                let mut on = self.active.contains(&entry.id);
+                theme::titled_row(
+                    ui,
+                    &entry.name,
+                    version.as_deref(),
+                    &format!("{byline}{}", entry.description),
+                    |ui| {
+                        if theme::toggle(ui, &mut on).changed() {
+                            changed = true;
+                        }
+                    },
+                );
+                if on {
+                    self.active.insert(entry.id.clone());
+                } else {
+                    self.active.remove(&entry.id);
                 }
-                for (folder, reason) in &self.installed.problems {
-                    ui.label(egui::RichText::new(format!("{folder}: {reason}")).color(ERROR));
-                }
-                if !unavailable.is_empty() {
-                    theme::section(ui, "Unavailable active mods");
-                }
-                for id in &unavailable {
-                    theme::row(
-                        ui,
-                        id,
-                        "This active mod has no readable manifest. Disable it or restore its files.",
-                        |ui| {
-                            if theme::secondary(ui, "Disable").clicked() {
-                                self.active.remove(id);
-                                changed = true;
-                            }
-                        },
-                    );
-                }
-            });
+            }
+            for (folder, reason) in &self.installed.problems {
+                ui.label(egui::RichText::new(format!("{folder}: {reason}")).color(ERROR));
+            }
+            if !unavailable.is_empty() {
+                theme::section(ui, "Unavailable active mods");
+            }
+            for id in &unavailable {
+                theme::row(
+                    ui,
+                    id,
+                    "This active mod has no readable manifest. Disable it or restore its files.",
+                    |ui| {
+                        if theme::secondary(ui, "Disable").clicked() {
+                            self.active.remove(id);
+                            changed = true;
+                        }
+                    },
+                );
+            }
+        });
         if changed {
             self.record_save(Change::Mods(&self.active).save(cyrus_config::config_dir()));
         }
@@ -694,20 +692,18 @@ impl App {
                 ui.label(theme::muted("Custom"));
             }
         });
-        egui::ScrollArea::vertical()
-            .max_height(230.0)
-            .show(ui, |ui| {
-                for area in Area::ALL {
-                    let mut modern = self.choices.mode(area) == Mode::Modern;
-                    theme::row(ui, area.label(), area.modern_effect(), |ui| {
-                        if theme::toggle(ui, &mut modern).changed() {
-                            self.choices
-                                .set(area, if modern { Mode::Modern } else { Mode::Faithful });
-                            changed = true;
-                        }
-                    });
-                }
-            });
+        theme::list(ui).show(ui, |ui| {
+            for area in Area::ALL {
+                let mut modern = self.choices.mode(area) == Mode::Modern;
+                theme::row(ui, area.label(), area.modern_effect(), |ui| {
+                    if theme::toggle(ui, &mut modern).changed() {
+                        self.choices
+                            .set(area, if modern { Mode::Modern } else { Mode::Faithful });
+                        changed = true;
+                    }
+                });
+            }
+        });
         if changed {
             self.record_save(Change::Presentation(&self.choices).save(cyrus_config::config_dir()));
         }

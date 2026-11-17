@@ -17,6 +17,19 @@ pub fn muted(text: &str) -> egui::RichText {
 }
 
 /// A centred dialog with a gold title and rule; the main screen is dimmed behind it.
+/// The gap kept between a dialog and the top and bottom of the window.
+const DIALOG_MARGIN: f32 = 24.0;
+
+/// Room below a dialog's scrolling list for its footer buttons.
+const FOOTER_ROOM: f32 = 64.0;
+
+/// A scrolling list that takes the height the dialog has left, with its scrollbar always shown.
+pub fn list(ui: &mut egui::Ui) -> egui::ScrollArea {
+    egui::ScrollArea::vertical()
+        .max_height((ui.available_height() - FOOTER_ROOM).max(120.0))
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+}
+
 pub fn dialog(context: &egui::Context, title: &str, contents: impl FnOnce(&mut egui::Ui)) {
     egui::Window::new(title)
         .title_bar(false)
@@ -25,6 +38,7 @@ pub fn dialog(context: &egui::Context, title: &str, contents: impl FnOnce(&mut e
         .min_width(DIALOG_WIDTH)
         .max_width(DIALOG_WIDTH)
         .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .max_height(context.content_rect().height() - 2.0 * DIALOG_MARGIN)
         .frame(
             egui::Frame::window(&context.global_style())
                 .fill(INK)
