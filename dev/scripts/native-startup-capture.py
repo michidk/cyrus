@@ -2,13 +2,14 @@
 """Observe production native startup through its control port, preserving failures."""
 import argparse
 import json
+import os
 import uuid
 from pathlib import Path
 import socket
 import time
 
 
-def capture(port, output, expected, prepare_seconds, seconds, interval, screenshot_dir, host_screenshot_dir):
+def capture(port, output, expected, prepare_seconds, seconds, interval, screenshot_dir, host_screenshot_dir, process_pid=None):
     started = time.monotonic()
     deadline = started + prepare_seconds
     presented = False
@@ -19,7 +20,15 @@ def capture(port, output, expected, prepare_seconds, seconds, interval, screensh
     reason = "preparation-timeout"
     success = False
 
+    def check_process():
+        if process_pid is not None:
+            try:
+                os.kill(process_pid, 0)
+            except ProcessLookupError as failure:
+                raise ValueError(f"game process exited: {process_pid}") from failure
+
     def request(command):
+        check_process()
         with socket.create_connection(("127.0.0.1", port), timeout=1) as connection:
             connection.settimeout(10 if command["type"] == "screenshot" else 1)
             connection.sendall((json.dumps({"id": 1, "cmd": command}) + "\n").encode())
@@ -29,6 +38,12 @@ def capture(port, output, expected, prepare_seconds, seconds, interval, screensh
             return response["result"]
 
     while time.monotonic() < deadline:
+        try:
+            check_process()
+        except ValueError as failure:
+            reason = "game-exited"
+            error = str(failure)
+            break
         try:
             state = request({"type": "state"})
             if not isinstance(state, dict):
@@ -97,6 +112,13 @@ def capture(port, output, expected, prepare_seconds, seconds, interval, screensh
                     success = False
             break
         time.sleep(interval)
+    if success:
+        try:
+            check_process()
+        except ValueError as failure:
+            success = False
+            reason = "game-exited"
+            error = str(failure)
     record = {"success": success, "expected": expected, "stop": reason,
               "elapsed": time.monotonic() - started, "last_error": error,
               "shots": shots, "samples": trace}
@@ -115,6 +137,7 @@ def main():
     parser.add_argument("--interval", type=float, default=0.15)
     parser.add_argument("--screenshot-dir", default="/out")
     parser.add_argument("--host-screenshot-dir", type=Path, help="host mount of screenshot-dir; required for menu raster acceptance")
+    parser.add_argument("--process-pid", type=int, help="reject captures after the owning game exits")
     args = parser.parse_args()
     if args.expect == "menu":
         if args.host_screenshot_dir is None:
@@ -127,7 +150,7 @@ def main():
         parser.error("durations and interval must be positive")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     return not capture(args.port, args.output, args.expect, args.prepare_seconds,
-                       args.seconds, args.interval, args.screenshot_dir, args.host_screenshot_dir)
+                       args.seconds, args.interval, args.screenshot_dir, args.host_screenshot_dir, args.process_pid)
 
 
 if __name__ == "__main__":

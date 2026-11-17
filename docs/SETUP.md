@@ -1064,8 +1064,10 @@ observer Python environment and the host directory mounted at the game
 process's `--screenshot-dir`. It waits for a newly named completed PNG and
 rejects an entirely black book image, even when control reports the menu ready.
 Run the game with a host-mounted `CYRUS_CONFIG_DIR` and hold the shared
-`/tmp/cyrus-live.lock` for its lifetime. The observer does not launch the game,
-change its startup options, or acquire a second lock.
+`/tmp/cyrus-live.lock` for its lifetime. Pass `--process-pid "$game_pid"` when the game runs on the observer host.
+The observer rejects an exited owner before sending control requests and before
+admitting a successful capture, even if another server occupies the port.
+The observer does not launch the game, change its startup options, or acquire a second lock.
 
 For gameplay Escape/Continue checks, launch natively with `--scene ISLAND` and
 attach `python3 dev/scripts/native-book-capture.py <control-port>

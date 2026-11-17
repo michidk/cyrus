@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check startup capture completion through a real local control socket."""
 import json
+import os
 from pathlib import Path
 import socketserver
 import subprocess
@@ -19,7 +20,7 @@ def state(phase="SelectingInstall", title=False, ready=False, movie=None, second
 
 
 class Capture(unittest.TestCase):
-    def capture(self, states, expected="menu", pixels=(200, 150, 100), write_image=True, write_delay=0):
+    def capture(self, states, expected="menu", pixels=(200, 150, 100), write_image=True, write_delay=0, process_pid=None, after_shot=None):
         index = 0
         screenshots = []
 
@@ -39,6 +40,8 @@ class Capture(unittest.TestCase):
                             threading.Timer(write_delay, publish).start()
                         else:
                             publish()
+                    if after_shot:
+                        after_shot(len(screenshots))
                     result = {}
                 self.wfile.write((json.dumps({"ok": True, "result": result}) + "\n").encode())
 
@@ -52,13 +55,50 @@ class Capture(unittest.TestCase):
                     run = subprocess.run(
                         [sys.executable, str(SCRIPT), str(server.server_address[1]), str(trace),
                          "--expect", expected, "--host-screenshot-dir", directory, "--prepare-seconds", "0.2", "--seconds", "0.2",
-                         "--interval", "0.01"], capture_output=True, text=True, timeout=3,
+                         "--interval", "0.01", *([] if process_pid is None else ["--process-pid", str(process_pid)])], capture_output=True, text=True, timeout=3,
                     )
                     record = json.loads(trace.read_text())
             finally:
                 server.shutdown()
                 worker.join()
         return run, record, screenshots, index
+
+    def test_exited_game_rejects_another_servers_ready_book(self):
+        exited = subprocess.Popen([sys.executable, "-c", "pass"])
+        exited.wait()
+        run, record, shots, count = self.capture([
+            state("Loading", True), state("Menu", True, True),
+        ], process_pid=exited.pid)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertEqual(record["stop"], "game-exited")
+        self.assertIn("game process exited", record["last_error"])
+        self.assertEqual(count, 0)
+        self.assertEqual(shots, [])
+
+    def test_live_game_allows_ready_book_capture(self):
+        run, record, _, _ = self.capture([
+            state("Loading", True), state("Menu", True, True),
+        ], process_pid=os.getpid())
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue(record["success"])
+
+    def test_exit_during_ready_readback_rejects_success(self):
+        game = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"])
+        def exit_on_ready(count):
+            if count == 2:
+                game.terminate()
+                game.wait()
+        try:
+            run, record, _, _ = self.capture([
+                state("Loading", True), state("Menu", True, True),
+            ], process_pid=game.pid, after_shot=exit_on_ready)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertEqual(record["stop"], "game-exited")
+            self.assertFalse(record["success"])
+        finally:
+            if game.poll() is None:
+                game.terminate()
+                game.wait()
 
     def test_preparation_screenshot_does_not_make_a_successful_capture(self):
         run, record, shots, _ = self.capture([state()])
