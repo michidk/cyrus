@@ -13,6 +13,8 @@ pub const GAME: &str = if cfg!(windows) { "cyrus.exe" } else { "cyrus" };
 pub struct Options {
     /// A game-files folder the player picked here. Empty leaves the search to the game.
     pub install: Option<PathBuf>,
+    /// Go straight to the book menu, without the splash screen.
+    pub skip_splash: bool,
     /// Enter a new game without its introduction movie.
     pub skip_movies: bool,
 }
@@ -63,6 +65,9 @@ impl Options {
         if let Some(install) = &self.install {
             args.extend([OsString::from("--install"), install.into()]);
         }
+        if self.skip_splash {
+            args.push("--skip-startup".into());
+        }
         if self.skip_movies {
             args.push("--skip-movies".into());
         }
@@ -103,6 +108,7 @@ mod tests {
     fn options_become_the_games_arguments() {
         let options = Options {
             install: Some("D:/Games/Redguard".into()),
+            skip_splash: true,
             skip_movies: true,
         };
         let args: Vec<_> = options
@@ -110,7 +116,15 @@ mod tests {
             .into_iter()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
-        assert_eq!(args, ["--install", "D:/Games/Redguard", "--skip-movies"]);
+        assert_eq!(
+            args,
+            [
+                "--install",
+                "D:/Games/Redguard",
+                "--skip-startup",
+                "--skip-movies"
+            ]
+        );
     }
 
     #[test]
@@ -120,6 +134,7 @@ mod tests {
         assert_eq!(Options::load(&file).unwrap(), Options::default());
         let options = Options {
             install: None,
+            skip_splash: true,
             skip_movies: true,
         };
         options.save(&file).unwrap();
@@ -180,6 +195,7 @@ mod tests {
         std::fs::write(candidate.join("REDGUARD.CHT"), b"invalid").unwrap();
         let mut options = Options {
             install: Some("previous".into()),
+            skip_splash: false,
             skip_movies: true,
         };
         let before = options.clone();

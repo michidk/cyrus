@@ -4,8 +4,8 @@ The window that starts cyrus: the original Redguard launcher, recreated, with it
 background and buttons read at run time from the player's own `REDGUARD.EXE`
 (plain buttons when that file is not found; nothing is shipped). **Play Redguard**
 starts the `cyrus` executable beside the launcher and closes it. When no game folder is saved or found, the launcher first asks for it and remembers the choice for the game and the asset viewer. **Mods** switches
-installed mods on or off, **Game Options** holds the game folder, the intro-movie
-switch, the faithful or modern choice per presentation area and the cheats, and
+installed mods on or off, **Game Options** holds the game folder, the splash-screen and
+movie switches, the faithful or modern choice per presentation area and the cheats, and
 **Technical Support** opens the issue tracker. The launcher does not link the game
 and uses eframe with the glow backend, so wgpu stays out of the binary. Release
 bundles ship it beside `cyrus` (see [setup](../../docs/SETUP.md#releases)).
@@ -35,7 +35,7 @@ config directory chosen by `cyrus-config`:
 | `settings.toml` | The `[fidelity]` table, one `faithful` or `modern` per area; other keys are kept |
 | `install.json` | The game folder the game remembered, shown and used for the artwork |
 | `REDGUARD.CHT` | The cheats; starts from the install's copy when there is no local one |
-| `launcher.json` | The launcher's own choices (a picked game folder, skip movies) |
+| `launcher.json` | The launcher's own choices (a picked game folder, skip the splash, skip movies) |
 
 ## Notes
 
