@@ -1967,13 +1967,35 @@ fn ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_pla
         && request.volume == -40
         && request.rate_offset_hz == 2000
         && !request.object_update_excluded));
+    // At a high frame rate (scale 50, about 60 fps) the early runs' elapsed input reads zero;
+    // the remembered slots stay, so the loops are updated instead of started again.
+    world
+        .advance(
+            id,
+            ScriptStage::Tasks,
+            ScriptInputs {
+                frame_scale: Some(50),
+                ..inputs
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(
+        driver.0.lock().unwrap()[4..]
+            .iter()
+            .map(|request| request.channel)
+            .collect::<Vec<_>>(),
+        [Some(4), Some(7)]
+    );
     world
         .advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 30)
         .unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
     assert_eq!(
         driver.0.lock().unwrap().len(),
-        4,
+        6,
         "TaskStop issues no playback update"
     );
     world
@@ -1990,8 +2012,8 @@ fn ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_pla
         )
         .unwrap();
     let requests = driver.0.lock().unwrap();
-    assert_eq!(requests.len(), 5);
-    assert_eq!((requests[4].effect, requests[4].channel), (2, None));
+    assert_eq!(requests.len(), 7);
+    assert_eq!((requests[6].effect, requests[6].channel), (2, None));
 }
 
 fn lockout_data(value: i32, activate: bool) -> Scripts {
