@@ -549,11 +549,13 @@ pub fn draw(
     let scene = preview
         .as_ref()
         .is_some_and(|p| viewer.shows_3d(&p.content));
+    // The 3D scene shows through, but the margin stays so the tab row does not move between modes.
+    let panel = egui::Frame::central_panel(&ctx.style_of(egui::Theme::Dark));
     egui::CentralPanel::default()
         .frame(if scene {
-            egui::Frame::NONE
+            egui::Frame::NONE.inner_margin(panel.inner_margin)
         } else {
-            egui::Frame::central_panel(&ctx.style_of(egui::Theme::Dark))
+            panel
         })
         .show(&mut viewport_ui, |ui| {
             if let Some(preview) = &preview {
