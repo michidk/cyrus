@@ -323,7 +323,14 @@ impl ScriptWorld {
             Some(point[1]),
             Some(point[2].wrapping_add(dz)),
         )?;
-        if self.updates.animation_system {
+        // Frame-threshold requests share ordinary receiver eligibility.
+        // Preservation engine/animation.md, “Receiver eligibility”.
+        if self.updates.animation_system
+            && !self.actors[index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.object_update_excluded)
+        {
             let position = super::animation_sound_position(self.spatial.as_ref(), index);
             let surface = self.actors[index].surface;
             let animation = self.actors[id.index]

@@ -48851,15 +48851,20 @@ fn ordinary_update_carries_backward_jump_before_scripts_at_retained_heading() {
 
 #[test]
 fn grounded_jump_key_selects_low_and_high_ledges_before_queued_jump() {
-    grounded_jump_selects_ledges(false);
+    grounded_jump_selects_ledges(false, false);
 }
 
 #[test]
 fn selected_native_jump_selects_low_and_high_ledges_before_queued_jump() {
-    grounded_jump_selects_ledges(true);
+    grounded_jump_selects_ledges(true, false);
 }
 
-fn grounded_jump_selects_ledges(native_jump: bool) {
+#[test]
+fn excluded_high_ledge_receiver_keeps_its_animation_owner() {
+    grounded_jump_selects_ledges(false, true);
+}
+
+fn grounded_jump_selects_ledges(native_jump: bool, excluded: bool) {
     use cyrus_assets::collision::{CollisionGeometry, CollisionModel, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_script::script::{
@@ -48875,6 +48880,9 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
         (-44, 86, 11),
         (-45, 32, 0),
     ] {
+        if excluded && expected_group != AnimationGroup::PULL_UP_LEDGE.index() {
+            continue;
+        }
         let (scripts, world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
             if native_jump {
                 let function_id = u16::try_from(scripts.definition.functions.len()).unwrap();
@@ -48935,6 +48943,14 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                 100,
             )
             .unwrap();
+        if excluded {
+            let mut saved = movement_snapshot(&world, &scripts, &data);
+            saved["actors"][index]["control"]["object_update_excluded"] = true.into();
+            let globals = std::mem::take(world.globals_mut());
+            world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+            *world.globals_mut() = globals;
+        }
+        let player = world.id(index).unwrap();
         world
             .place_selected_player([522 * 256, -1536, 542 * 256], 0)
             .unwrap();
@@ -49004,6 +49020,7 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
             jump: true,
             ..Default::default()
         };
+        let mut emitted = Vec::new();
         if native_jump {
             let activation = cyrus_script::script::ActivationInputs {
                 player,
@@ -49035,7 +49052,10 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                         frame_scale: Some(256),
                         ..Default::default()
                     },
-                    Some(&mut |_, _| Ok(())),
+                    Some(&mut |_, sound| {
+                        emitted.push(sound);
+                        Ok(())
+                    }),
                     None,
                     100,
                 )
@@ -49066,18 +49086,37 @@ fn grounded_jump_selects_ledges(native_jump: bool) {
                         ..Default::default()
                     },
                     &mut cyrus_game::random::EngineRandom::default(),
-                    &mut |_, _| Ok(()),
+                    &mut |_, sound| {
+                        emitted.push(sound);
+                        Ok(())
+                    },
                 )
                 .unwrap();
+        }
+        if excluded {
+            assert!(
+                emitted.is_empty(),
+                "excluded climb must not retire or start audio ownership"
+            );
         }
         let inspected = world.inspect(index, 1);
         let actor = &inspected["actors"][0];
         assert_eq!(
-            actor["animation"]["current_group"], expected_group,
+            actor["animation"]["current_group"],
+            if excluded {
+                AnimationGroup::PANIC.index()
+            } else {
+                expected_group
+            },
             "top {top}"
         );
         assert_eq!(
-            actor["control"]["living_state"], expected_living,
+            actor["control"]["living_state"],
+            if excluded {
+                cyrus_script::script::LivingState::CLIMB_FINISHED.byte()
+            } else {
+                expected_living
+            },
             "top {top}"
         );
         assert_eq!(
