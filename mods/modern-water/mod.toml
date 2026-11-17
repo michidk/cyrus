@@ -1,4 +1,5 @@
 name = "Modern water"
+author = "michidk"
 description = "Crossing waves, ripples, shore foam and wet sand in place of the original table wave. Reflections come from Modern Lighting in the base game."
 
 [[shader]]
