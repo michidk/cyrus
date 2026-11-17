@@ -3,7 +3,7 @@ FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da0
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dosbox-x xvfb xdotool python3 python3-pil gcc libc6-dev libsdl2-dev \
-    pulseaudio pulseaudio-utils libasound2-plugins && rm -rf /var/lib/apt/lists/*
+    pulseaudio pulseaudio-utils libasound2-plugins libcap2-bin && setcap -r /usr/bin/dosbox-x && rm -rf /var/lib/apt/lists/*
 COPY dev/scripts/sdl-frame-capture.c dev/scripts/sdl-mixer-capture.c /tmp/
 RUN cc -std=c11 -Wall -Wextra -Werror -shared -fPIC $(sdl2-config --cflags) \
     /tmp/sdl-frame-capture.c -o /usr/local/lib/sdl-frame-capture.so -ldl -pthread -lSDL2 \

@@ -2195,6 +2195,10 @@ sources and emulator configuration. The helper retains the completed image under
 `magic/build-tools/` and restores
 it after a Docker reset instead of pulling an unavailable local tag. Build and
 restore diagnostics go to stderr so stdout remains usable as an image argument.
+The capture image removes the packaged DOSBox network capability so non-root
+launches load the interposers. File capabilities trigger secure loader execution,
+which ignores these preload paths. Validate a rebuilt image with
+`python3 dev/scripts/test-retro-capture-loader.py IMAGE`.
 Set `LD_PRELOAD=/usr/local/lib/sdl-frame-capture.so` on DOSBox only,
 and set `CYRUS_FRAME_CAPTURE_DIR` to a host-mounted request directory. This does
 not start a preview. OpenGL output is unsupported by this capture path.
