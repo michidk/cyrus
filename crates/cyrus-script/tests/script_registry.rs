@@ -12851,6 +12851,79 @@ fn ordinary_slide_direction_boundary_and_scaled_turn_rate() {
 }
 
 #[test]
+fn ordinary_static_model_slope_continues_without_an_animation_receiver() {
+    use cyrus_collision::ground::{GroundSupport, SelectedSupport, SupportSource};
+    use cyrus_script::script::{OrdinaryGroundQuery, OrdinarySlopeInputs};
+    let (mut world, data, models) = static_model_fixture(cache());
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    assert_eq!(world.animation_frame(id).unwrap(), None);
+    world.refresh_model_presentations(&data, &[other]).unwrap();
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.settings.slide_speed = Some(8);
+    world
+        .prepare_ordinary_collision_shape(id, &data, &scene)
+        .unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    let support = SelectedSupport::Primary {
+        source: SupportSource::Terrain,
+        support: GroundSupport {
+            height: 20.0,
+            normal: [0, -100, 200],
+        },
+    };
+    let query = || OrdinaryGroundQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        distance: 50,
+        sidedness: false,
+    };
+    let inputs = || OrdinarySlopeInputs {
+        selected_player: None,
+        holding_weapon: false,
+        combat_active: false,
+        frame_scale: 64,
+        ticks: 0,
+    };
+    for distance in [256, 512] {
+        world
+            .resolve_ordinary_slope(id, Some(&support), query(), inputs(), &mut |_, _| {
+                panic!("static slope must not emit animation sound")
+            })
+            .expect("static model must complete slope response without an animation receiver");
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [2560, 4608, 7680 + distance]
+        );
+        assert_eq!(world.model_support(id).unwrap().actor, Some(other));
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                control.sliding_state,
+                control.sliding_distance,
+                control.move_counter
+            ),
+            (1, distance, 0x30)
+        );
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+    }
+    let before = world.spatial(id).unwrap().local;
+    world
+        .resolve_ordinary_slope(id, None, query(), inputs(), &mut |_, _| {
+            panic!("static fallback must not emit animation sound")
+        })
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.position, before.position);
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().sliding_distance,
+        512
+    );
+}
+
+#[test]
 fn ordinary_slope_updates_shared_animation_then_requeries_retained_support() {
     assert_ordinary_slope_animation_switch(1);
 }

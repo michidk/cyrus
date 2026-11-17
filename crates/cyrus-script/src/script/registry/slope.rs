@@ -439,7 +439,9 @@ impl ScriptWorld {
 
     /// Execute the admitted slope helper, including ordered turn/slide requests,
     /// translation and a second primary support query. The selected player's turn also
-    /// rebuilds its rotation matrix and angle history.
+    /// rebuilds its rotation matrix and angle history. Static models complete the same
+    /// displacement and bookkeeping; the shared request gate skips absent animation receivers.
+    /// Follows preservation v0.12.5 player.md Ordinary slope response and SOUP.md PlayAnimation.
     pub fn resolve_ordinary_slope(
         &mut self,
         id: ScriptActorId,
@@ -456,10 +458,6 @@ impl ScriptWorld {
             self.world
         );
         let actor = &self.actors[index];
-        let animation = actor
-            .animation
-            .as_ref()
-            .context("ordinary slope animation unavailable")?;
         let control = actor
             .control
             .as_ref()
@@ -473,9 +471,14 @@ impl ScriptWorld {
             }
             _ => None,
         }) else {
-            if !animation.playback.current_group().is_some_and(|group| {
-                (AnimationGroup::SLIDE..=AnimationGroup::SLIDE_BACKWARD_TORCH).contains(&group)
-            }) {
+            if !actor
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group())
+                .is_some_and(|group| {
+                    (AnimationGroup::SLIDE..=AnimationGroup::SLIDE_BACKWARD_TORCH).contains(&group)
+                })
+            {
                 self.request_ordinary_group(
                     id,
                     if torch {
