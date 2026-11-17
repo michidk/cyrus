@@ -1,9 +1,8 @@
 //! The cheats a player can switch on, as the game's `REDGUARD.CHT` holds them.
 //!
-//! The file is the engine's 64-slot cheat state; preservation owns its format and the cheat names. The
-//! game reads the copy in the config directory before the one in the install and never writes the
-//! install, so the launcher does the same: it starts from whichever file the game would read and writes
-//! the config directory's copy. The three startup slots the game takes from `SYSTEM.INI` (`task`,
+//! The file is the engine's 64-slot cheat state; preservation owns its format and the cheat names. It is
+//! the install's own `REDGUARD.CHT`, shared with the original game: the launcher and the game both read
+//! and write that file. The three startup slots the game takes from `SYSTEM.INI` (`task`,
 //! `animation`, `nodemarker`), the two commands (`oracle`, `savecheats`) and `oddjob`, which no gameplay
 //! check reads, are kept as they are and not offered.
 use anyhow::Context;
@@ -12,9 +11,9 @@ use rgpre::import::cht::{
 };
 use std::path::{Path, PathBuf};
 
-/// The cheat file the launcher and the game write, in the config directory.
-pub fn local_file() -> PathBuf {
-    cyrus_config::config_dir().join("REDGUARD.CHT")
+/// The cheat file of a game folder.
+pub fn file(install: &Path) -> PathBuf {
+    install.join("REDGUARD.CHT")
 }
 
 /// The cheats with a gameplay effect, in the order the window lists them.
@@ -156,27 +155,19 @@ fn read(file: &Path) -> anyhow::Result<Option<State>> {
     Ok(Some(state))
 }
 
-/// The state the game starts from: `local` if it exists, else `install` (a game folder's own file),
-/// else everything off.
-pub fn load(local: &Path, install: Option<&Path>) -> anyhow::Result<State> {
-    if let Some(state) = read(local)? {
-        return Ok(state);
-    }
-    if let Some(folder) = install
-        && let Some(state) = read(&folder.join("REDGUARD.CHT"))?
-    {
-        return Ok(state);
-    }
-    Ok(State::default())
+/// The cheats saved in `install`'s file; everything off when there is no folder or no file.
+pub fn load(install: Option<&Path>) -> anyhow::Result<State> {
+    Ok(match install {
+        Some(folder) => read(&file(folder))?.unwrap_or_default(),
+        None => State::default(),
+    })
 }
 
-/// Writes `state` to `local`.
-pub fn save(local: &Path, state: &State) -> anyhow::Result<()> {
-    if let Some(parent) = local.parent() {
-        std::fs::create_dir_all(parent).with_context(|| parent.display().to_string())?;
-    }
-    std::fs::write(local, encode_cht_file(&state.slots))
-        .with_context(|| format!("{}: saving cheats", local.display()))
+/// Writes `state` to `install`'s cheat file.
+pub fn save(install: &Path, state: &State) -> anyhow::Result<()> {
+    let path = file(install);
+    std::fs::write(&path, encode_cht_file(&state.slots))
+        .with_context(|| format!("{}: saving cheats", path.display()))
 }
 
 #[cfg(test)]
@@ -200,35 +191,17 @@ mod tests {
     }
 
     #[test]
-    fn missing_files_are_everything_off() {
+    fn a_missing_file_or_folder_is_everything_off() {
         let dir = tempfile::tempdir().unwrap();
-        let state = load(&dir.path().join("none.CHT"), Some(dir.path())).unwrap();
-        assert!(!state.any_on());
-    }
-
-    #[test]
-    fn the_local_file_wins_over_the_installs() {
-        let dir = tempfile::tempdir().unwrap();
-        let install = dir.path().join("install");
-        std::fs::create_dir(&install).unwrap();
-        file_with(&install.join("REDGUARD.CHT"), &[("magiccarpet", 1)]);
-        assert!(
-            load(&dir.path().join("none"), Some(&install))
-                .unwrap()
-                .is_on(Cheat::MagicCarpet)
-        );
-        let local = dir.path().join("local.CHT");
-        file_with(&local, &[("drevil", 1)]);
-        let state = load(&local, Some(&install)).unwrap();
-        assert!(state.is_on(Cheat::DrEvil) && !state.is_on(Cheat::MagicCarpet));
+        assert!(!load(Some(dir.path())).unwrap().any_on());
+        assert!(!load(None).unwrap().any_on());
     }
 
     #[test]
     fn saving_turns_cheats_off_and_keeps_the_slots_not_offered() {
         let dir = tempfile::tempdir().unwrap();
-        let local = dir.path().join("REDGUARD.CHT");
         file_with(
-            &local,
+            &file(dir.path()),
             &[
                 ("task", 1),
                 ("animation", 1),
@@ -236,11 +209,11 @@ mod tests {
                 ("drno", 1),
             ],
         );
-        let mut state = load(&local, None).unwrap();
+        let mut state = load(Some(dir.path())).unwrap();
         assert!(state.any_on());
         state.clear();
-        save(&local, &state).unwrap();
-        let after = load(&local, None).unwrap();
+        save(dir.path(), &state).unwrap();
+        let after = load(Some(dir.path())).unwrap();
         assert!(!after.any_on());
         let kept = |name| after.slots[CHEAT_NAMES.iter().position(|n| *n == name).unwrap()];
         assert_eq!(
@@ -262,9 +235,8 @@ mod tests {
     #[test]
     fn a_file_of_the_wrong_size_names_the_file() {
         let dir = tempfile::tempdir().unwrap();
-        let local = dir.path().join("REDGUARD.CHT");
-        std::fs::write(&local, [0u8; 10]).unwrap();
-        let error = format!("{:#}", load(&local, None).unwrap_err());
+        std::fs::write(file(dir.path()), [0u8; 10]).unwrap();
+        let error = format!("{:#}", load(Some(dir.path())).unwrap_err());
         assert!(
             error.contains("REDGUARD.CHT") && error.contains("256"),
             "{error}"

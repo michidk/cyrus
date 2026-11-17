@@ -42,19 +42,15 @@ impl Options {
             .with_context(|| format!("{}: saving launcher options", file.display()))
     }
 
-    /// Selects a folder and resolves the cheat state the game will read from it.
-    ///
-    /// The config-directory cheat file takes precedence over the selected install, then the
-    /// remembered install when automatic search is selected. A read or parse error leaves these
-    /// options unchanged. The caller replaces its displayed cheat state with the returned value.
-    /// This only reads cheat files; choosing an install never writes into either install.
+    /// Selects a folder and reads the cheats saved in it (or in the remembered install when
+    /// automatic search is selected). A read or parse error leaves these options unchanged. The
+    /// caller replaces its displayed cheat state with the returned value.
     pub fn select_install(
         &mut self,
         install: Option<PathBuf>,
         remembered: Option<&Path>,
-        local_cheats: &Path,
     ) -> anyhow::Result<crate::cheats::State> {
-        let state = crate::cheats::load(local_cheats, install.as_deref().or(remembered))?;
+        let state = crate::cheats::load(install.as_deref().or(remembered))?;
         self.install = install;
         Ok(state)
     }
@@ -142,49 +138,34 @@ mod tests {
     }
 
     #[test]
-    fn selecting_an_install_refreshes_cheats_and_preserves_local_precedence() {
+    fn selecting_an_install_reads_the_cheats_saved_in_it() {
         use crate::cheats::{self, Cheat, State};
         let dir = tempfile::tempdir().unwrap();
         let first = dir.path().join("first install");
         let second = dir.path().join("second install");
-        let local = dir.path().join("config/REDGUARD.CHT");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
         let mut first_state = State::default();
         first_state.set(Cheat::MagicCarpet, true);
-        cheats::save(&first.join("REDGUARD.CHT"), &first_state).unwrap();
+        cheats::save(&first, &first_state).unwrap();
         let mut second_state = State::default();
         second_state.set(Cheat::DrEvil, true);
-        cheats::save(&second.join("REDGUARD.CHT"), &second_state).unwrap();
+        cheats::save(&second, &second_state).unwrap();
         let mut options = Options::default();
         assert_eq!(
-            options
-                .select_install(Some(first.clone()), None, &local)
-                .unwrap(),
+            options.select_install(Some(first.clone()), None).unwrap(),
             first_state
         );
         assert_eq!(
-            options
-                .select_install(Some(second.clone()), None, &local)
-                .unwrap(),
+            options.select_install(Some(second.clone()), None).unwrap(),
             second_state
         );
-        assert_eq!(options.install, Some(second.clone()));
+        assert_eq!(options.install, Some(second));
         assert_eq!(
-            options.select_install(None, Some(&first), &local).unwrap(),
+            options.select_install(None, Some(&first)).unwrap(),
             first_state
         );
         assert!(options.install.is_none());
-        cheats::save(&local, &second_state).unwrap();
-        assert_eq!(
-            options
-                .select_install(Some(first.clone()), None, &local)
-                .unwrap(),
-            second_state
-        );
-        assert_eq!(options.install, Some(first));
-        assert_eq!(
-            cheats::load(&second.join("REDGUARD.CHT"), None).unwrap(),
-            second_state
-        );
     }
 
     #[test]
@@ -200,7 +181,7 @@ mod tests {
         };
         let before = options.clone();
         let error = options
-            .select_install(Some(candidate.clone()), None, &dir.path().join("local.CHT"))
+            .select_install(Some(candidate.clone()), None)
             .unwrap_err();
         assert!(format!("{error:#}").contains("REDGUARD.CHT"));
         assert_eq!(options, before);

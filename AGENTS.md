@@ -26,7 +26,9 @@ acceptance, status and session claims. The maintainer's agents also follow
    (`crates/cyrus-assets/assets/title.png`), a higher-resolution redraw of the original
    title that the maintainer chose to ship. If unsure
    whether something counts, it does: leave it in `magic/` and say so.
-2. **The install is read-only.** cyrus never writes into the game directory.
+2. **The install is read-only,** with one exception: `REDGUARD.CHT`, the original
+   game's own cheat file, is read and written in place by the game and the launcher.
+   cyrus writes nothing else into the game directory.
    Local state lives where the config crate says: `CYRUS_CONFIG_DIR`, else an
    existing checkout-local state directory (`cargo` pins it),
    else the platform config, cache and state directories.
