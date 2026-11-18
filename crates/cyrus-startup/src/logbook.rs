@@ -437,6 +437,14 @@ fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) 
         image.as_mut()[destination..destination + 640 * 4]
             .copy_from_slice(&artwork.paper.rgba[start..start + 640 * 4]);
     }
+    // Opaque paper expansion precedes the reader's framebuffer storage. The matched
+    // original keeps zero and reduces nonzero palette channels by one (preservation
+    // PR #352); glyph colours are a separate draw and do not take this reduction.
+    for pixel in image.pixels_mut() {
+        for channel in &mut pixel.0[..3] {
+            *channel = channel.saturating_sub(1);
+        }
+    }
     for line in book.lines() {
         let y = i64::from(line.y) - i64::from(book.offset());
         if !(0..480).contains(&y) {
@@ -803,7 +811,8 @@ mod tests {
                 } else {
                     std::array::from_fn(|c| {
                         ((u32::from(colour[c]) * u32::from(alpha)
-                            + u32::from(artwork.paper.rgba[at + c]) * u32::from(255 - alpha)
+                            + u32::from(artwork.paper.rgba[at + c].saturating_sub(1))
+                                * u32::from(255 - alpha)
                             + 127)
                             / 255) as u8
                     })
@@ -863,9 +872,9 @@ mod tests {
                 let data = image.data.as_ref().unwrap();
                 // Published storage rule at thresholds 0, 8, 12 and 4.
                 for (x, y, expected) in [
-                    (0, 0, [247, 211, 140, 255]),
+                    (0, 0, [247, 211, 132, 255]),
                     (1, 0, [255, 211, 140, 255]),
-                    (0, 1, [255, 215, 140, 255]),
+                    (0, 1, [255, 211, 140, 255]),
                     (1, 1, [247, 211, 140, 255]),
                 ] {
                     let at = (y * 640 + x) * 4;

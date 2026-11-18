@@ -104,3 +104,5 @@ views work on WebGL devices that require aligned uniform blocks.
 The Python checkers need Pillow and have their own tests
 (`test-check-book-filter.py`, `test-check-book-framebuffer.py`). They replace
 the menu cache, never the install; restore the original cache afterwards.
+
+The reader paper reduces nonzero expanded palette channels by one before storage, following the original raster comparison documented in [preservation PR #352](https://github.com/michidk/redguard-preservation/pull/352). This presentation rule uses the published parser unchanged.
