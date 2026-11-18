@@ -25,7 +25,7 @@ follow camera in `cyrus-script` (`script::camera`).
 | [player_model](src/player_model.rs), [weapon_model](src/weapon_model.rs) | Actor frame-source replacement from `.player-models/`; equipped weapon models |
 | [script_transform](src/script_transform.rs), [flat](src/flat.rs) | Script actor poses on bound scene nodes; camera-facing placed flats (MPSF) |
 | [hud](src/hud.rs) | `HudPlugin`: candle, compass, logbook icon, notices, power-ups, active item, prompt, inventory screen |
-| [hud/artwork](src/hud/artwork.rs) | Ordered RGB565 storage of opaque HUD, inventory and map artwork at each logical screen position |
+| [hud/artwork](src/hud/artwork.rs) | Ordered RGB565 storage of opaque HUD artwork, including retained world fog for the island map |
 | [console](src/console.rs) | F12 console paper and bitmap font for the shared editor |
 | [subtitles](src/subtitles.rs) | `SubtitlePlugin` (native only): RTX voice-line text in the bottom band |
 | [persistence](src/persistence.rs), [presentation_clock](src/presentation_clock.rs) | Snapshots and replacement of presentation state for session restore |

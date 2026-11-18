@@ -558,6 +558,8 @@ fn island_map_draw(
     screen: Option<Res<cyrus_script::island_map::IslandMapScreen>>,
     hud_handle: Option<Res<HudHandle>>,
     huds: Res<Assets<HudAsset>>,
+    environment: Res<crate::environment::EnvironmentRequest>,
+    environments: Res<Assets<crate::environment::Environment>>,
     assets: Res<AssetServer>,
     mut overlays: Query<&mut Visibility, With<IslandMapOverlay>>,
     stages: Query<(Entity, Option<&Children>), With<IslandMapStage>>,
@@ -577,6 +579,9 @@ fn island_map_draw(
     }
     visibility.set_if_neq(Visibility::Inherited);
     let Some(hud) = huds.get(&handle.0) else {
+        return;
+    };
+    let Some(environment) = environments.get(&environment.0) else {
         return;
     };
     let art = &hud.island_map;
@@ -601,12 +606,14 @@ fn island_map_draw(
         let top = (480 - i32::from(art.map[1])) / 2;
         parent.spawn((
             StoredArtwork,
+            artwork::ArtworkFog(environment.background),
             ImageNode::new(assets.load("cache://hud/mapmap-00.png")),
             place([0, top], art.map),
             ZIndex(1),
         ));
         parent.spawn((
             StoredArtwork,
+            artwork::ArtworkFog(environment.background),
             ImageNode::new(assets.load(format!("cache://hud/cross-{frame:02}.png"))),
             place(screen.cross, cross_size),
             ZIndex(2),

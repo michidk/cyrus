@@ -6,19 +6,30 @@ use std::collections::HashMap;
 #[derive(Component)]
 pub(super) struct StoredArtwork;
 
+/// World fog remains active for island-map artwork, at zero table density.
+#[derive(Component, Clone, Copy)]
+pub(super) struct ArtworkFog(pub [u8; 3]);
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ArtworkVariant {
+    source: AssetId<Image>,
+    origin: [u32; 2],
+    fog: Option<[u8; 3]>,
+}
+
 #[derive(Default, Resource)]
 pub(super) struct ArtworkStorage {
-    variants: HashMap<(AssetId<Image>, [u32; 2]), Handle<Image>>,
+    variants: HashMap<ArtworkVariant, Handle<Image>>,
     sources: HashMap<AssetId<Image>, Handle<Image>>,
 }
 
 /// Source images remain immutable: the same icon can occupy different grid cells.
 pub(super) fn store_artwork(
-    mut nodes: Query<(&Node, &mut ImageNode), With<StoredArtwork>>,
+    mut nodes: Query<(&Node, &mut ImageNode, Option<&ArtworkFog>), With<StoredArtwork>>,
     mut images: ResMut<Assets<Image>>,
     mut storage: ResMut<ArtworkStorage>,
 ) {
-    for (node, mut image_node) in &mut nodes {
+    for (node, mut image_node, fog) in &mut nodes {
         let (Val::Percent(x), Val::Percent(y)) = (node.left, node.top) else {
             continue;
         };
@@ -29,7 +40,12 @@ pub(super) fn store_artwork(
             .get(&image_node.image.id())
             .cloned()
             .unwrap_or_else(|| image_node.image.clone());
-        let key = (source.id(), origin);
+        let fog = fog.map(|fog| fog.0);
+        let key = ArtworkVariant {
+            source: source.id(),
+            origin,
+            fog,
+        };
         if let Some(stored) = storage.variants.get(&key) {
             if image_node.image != *stored {
                 image_node.image = stored.clone();
@@ -53,8 +69,16 @@ pub(super) fn store_artwork(
             // Translucent artwork must be stored after destination blending; leave that
             // separate composition path intact rather than quantizing its source colour.
             if pixel[3] == 255 {
+                let mut colour = [pixel[0], pixel[1], pixel[2]];
+                if let Some(fog) = fog {
+                    // At density zero the fixed-point fog factor is still 1/256.
+                    colour = std::array::from_fn(|channel| {
+                        let c = i32::from(colour[channel]);
+                        (c + (i32::from(fog[channel]) - c).div_euclid(256)) as u8
+                    });
+                }
                 let colour = cyrus_assets::framebuffer::store(
-                    [pixel[0], pixel[1], pixel[2]],
+                    colour,
                     origin[0] + index as u32 % width,
                     origin[1] + index as u32 / width,
                 );
@@ -75,6 +99,65 @@ mod tests {
         asset::RenderAssetUsages,
         render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     };
+
+    #[test]
+    fn island_map_applies_zero_density_world_fog_before_framebuffer_storage() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .init_resource::<ArtworkStorage>()
+            .add_systems(Update, store_artwork);
+        let source = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(Image::new(
+                Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                vec![252, 204, 124, 255],
+                TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            ));
+        let map = app
+            .world_mut()
+            .spawn((
+                StoredArtwork,
+                ArtworkFog([200, 190, 250]),
+                super::super::place([3, 1], [1, 1]),
+                ImageNode::new(source.clone()),
+            ))
+            .id();
+        let inventory = app
+            .world_mut()
+            .spawn((
+                StoredArtwork,
+                super::super::place([3, 1], [1, 1]),
+                ImageNode::new(source),
+            ))
+            .id();
+        app.update();
+        for (entity, expected) in [
+            (map, [247, 203, 123, 255]),
+            (inventory, [255, 203, 123, 255]),
+        ] {
+            let handle = &app.world().get::<ImageNode>(entity).unwrap().image;
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<Image>>()
+                    .get(handle)
+                    .unwrap()
+                    .data
+                    .as_deref()
+                    .unwrap(),
+                expected
+            );
+        }
+        let count = app.world().resource::<Assets<Image>>().len();
+        app.update();
+        assert_eq!(app.world().resource::<Assets<Image>>().len(), count);
+    }
 
     #[test]
     fn artwork_stores_opaque_pixels_at_each_grid_origin_without_mutating_source() {

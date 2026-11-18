@@ -221,6 +221,11 @@ not decoded), accepts six game-controller button codes as keys (controller input
 with the palette read last; cyrus decodes each image with its own palette. cyrus keeps the simulation clock
 frozen for the screen's duration like the inventory screen does and does not switch the music mode.
 
+**Verified:** map artwork includes the current world's zero-density integer fog step before RGB565 storage.
+The original leaves framebuffer column 639 in the world fog-clear colour; cyrus covers the full viewport
+with the installed map artwork. This single-column coverage difference is retained instead of adding an
+empty edge to the native screen.
+
 ## Native catalogue and script coverage
 
 **Verified:** `dev/scripts/native-audit.py` reads native declarations and decoded calls from
