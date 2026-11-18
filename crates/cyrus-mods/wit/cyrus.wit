@@ -1,6 +1,6 @@
 /// The cyrus mod API: one resource per hook. Mods query the component of the
 /// same name (it lives on a single host entity) and wrap it with the resource.
-/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles`, `saves`, `geometry`, `physics` and `hud` with `QueryFor::Mut` and `input`, `settings`,
+/// Query `camera`, `movement`, `collision`, `natives`, `memory`, `effects`, `particles`, `saves`, `geometry`, `physics`, `scenery` and `hud` with `QueryFor::Mut` and `input`, `settings`,
 /// `player`, `damage`, `terrain`, `environment`, `actors` and `lifecycle` with `QueryFor::Ref`;
 /// wasvy rejects method calls through the other mutability. Method names are
 /// single words because wasvy looks host methods up by their WIT name verbatim.
@@ -326,6 +326,25 @@ interface components {
   resource effects {
     constructor(component: component);
     set: func(slot: string, params: list<f32>);
+  }
+
+  /// The loaded world's placed static models, which a mod may tilt about their base each frame,
+  /// such as plants swaying in the wind. Indices are valid for one `revision`; it changes when
+  /// pieces come or go, such as on a world change. A piece no mod tilts this frame rests at its
+  /// installed placement, so a mod that stops leaves the scenery as the original draws it. Only
+  /// the drawn model moves; collision keeps the installed placement.
+  /// wasvy:type-path=cyrus_mods::scenery::Scenery
+  resource scenery {
+    constructor(component: component);
+    revision: func() -> u64;
+    count: func() -> u32;
+    /// The installed model name, upper case, such as "PALMTR01"; empty for an unknown index.
+    model: func(index: u32) -> string;
+    /// World position of the bottom of its bounds, scene units; empty for an unknown index.
+    base: func(index: u32) -> list<f32>;
+    /// Tilt the piece this frame by a world-space rotation quaternion x, y, z, w about its base.
+    /// Ignored for an unknown index, a stale revision or a rotation that is not four finite values.
+    tilt: func(index: u32, rotation: list<f32>);
   }
 
   /// Text lines drawn in the top-left corner over the game. A line shows for the frame it was

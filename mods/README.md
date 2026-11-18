@@ -17,6 +17,7 @@ build does not load mods. Mods start disabled: open the Backtick menu and select
 | `autosave` | Wasm | Periodic saves during eligible gameplay ([below](#save-service)) |
 | `grass` | Wasm + shader | Seeded grass blades on green terrain with distance bands and wind |
 | `ragdolls` | Wasm | Articulated visual death physics |
+| `sway` | Wasm | Palm trees and plants sway in the wind, with Faithful or Modern lighting |
 | `blood` | Wasm | A brief spray of red particles when the player or an actor loses health |
 | `modern-water` | Wasm + shader | Crossing waves, ripples, shore foam and wet sand (reflections are the base game's Modern Lighting) |
 | `flycam` | Wasm | Insert toggles a free camera: WASD, Space/Left Shift, mouse look; the player stays put |
@@ -149,6 +150,14 @@ Clear cached placement when `cx.geometry.lease()` changes. Budgets and error cod
 are in [`sdk/src/geometry.rs`](sdk/src/geometry.rs). Do not ship installed images
 or mesh data in a mod.
 
+## Scenery tilts
+
+[`sway`](sway/src) is the example. `cx.scenery` lists the loaded world's placed static
+models by installed model name with the world position of their base, valid for one
+`revision()`. `cx.scenery.tilt(index, rotation)` turns a piece's drawn model about its
+base for this frame; a piece no mod tilts rests at its installed placement, and
+collision always keeps it.
+
 ## Death observations and owned physics
 
 [`ragdolls`](ragdolls/src) is the example. `cx.lifecycle` gives opaque `ActorId`s,
@@ -171,8 +180,8 @@ cargo run -p cyrus -- --scene START                  # then enable the mod under
 
 A `--headless` run does not load mods. For a guest/host check without an install,
 build a mod with `cargo build --release --target wasm32-wasip2 --manifest-path mods/<mod>/Cargo.toml`,
-point `CYRUS_BLOOD_WASM` or `CYRUS_GRASS_WASM` at the built `.wasm` (under
+point `CYRUS_BLOOD_WASM`, `CYRUS_GRASS_WASM` or `CYRUS_SWAY_WASM` at the built `.wasm` (under
 `wasm32-wasip2/release/` in the Cargo target directory) and run
 `cargo test -p cyrus-mods --lib wasm_blood_particles -- --ignored` or
-`wasm_grass_geometry`. `CYRUS_PARTICLE_CAPTURE=<new.png>` adds an offscreen GPU
+`wasm_grass_geometry` or `wasm_sway_tilts_near_plants_only`. `CYRUS_PARTICLE_CAPTURE=<new.png>` adds an offscreen GPU
 capture (needs Vulkan).

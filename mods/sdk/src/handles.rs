@@ -3,7 +3,7 @@
 //! resources already mutate through the host.
 use crate::bindings::cyrus::mods::components as raw;
 use crate::keys::{Action, Key};
-use crate::math::{Pose, Vec3};
+use crate::math::{Pose, Quat, Vec3};
 use crate::state::Persist;
 
 /// The view camera.
@@ -379,7 +379,6 @@ impl Hud {
 pub struct Input(pub(crate) raw::Input);
 
 impl Input {
-
     /// The key is held.
     pub fn down(&self, key: Key) -> bool {
         self.0.pressed(key.name())
@@ -450,5 +449,34 @@ impl Memory {
     pub fn save<T: Persist>(&self, name: &str, value: Option<&T>) {
         let values = value.map_or_else(Vec::new, T::pack);
         self.raw.save(&self.key(name), &values);
+    }
+}
+
+/// The loaded world's placed static models, which a mod may tilt about their base each frame.
+pub struct Scenery(pub(crate) raw::Scenery);
+
+impl Scenery {
+    /// Changes when pieces come or go; indices are valid for one revision.
+    pub fn revision(&self) -> u64 {
+        self.0.revision()
+    }
+    pub fn count(&self) -> u32 {
+        self.0.count()
+    }
+    /// The installed model name, upper case, such as `PALMTR01`.
+    pub fn model(&self, index: u32) -> String {
+        self.0.model(index)
+    }
+    /// World position of the bottom of its bounds.
+    pub fn base(&self, index: u32) -> Option<Vec3> {
+        let &[x, y, z] = &self.0.base(index)[..] else {
+            return None;
+        };
+        Some(Vec3::new(x, y, z))
+    }
+    /// Tilt the piece this frame by a world-space rotation about its base. Untilted pieces rest.
+    pub fn tilt(&self, index: u32, rotation: Quat) {
+        self.0
+            .tilt(index, &[rotation.x, rotation.y, rotation.z, rotation.w]);
     }
 }

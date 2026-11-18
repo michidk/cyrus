@@ -127,8 +127,6 @@ every value is a Modern tuning choice:
   drawn in the reflected direction, and the horizon colour where neither is on screen; open water
   reflects at most half its colour, so a sea seen at a grazing angle does not turn into the sky,
   while calm water models reflect fully;
-- swaying plants: placed models whose installed name contains `PALM`, `TREE` or `PLANT` tilt
-  about their base, while collision keeps the installed placement;
 - depth of field focused on the player, and subtle motion blur with a shutter
   exposure of 15% of a frame.
 - the map's object and baked lights (lamps and fires) shine as point lights. Map light colours are
@@ -362,6 +360,13 @@ marks. See the [mod authoring example](../mods/README.md#damage-driven-particles
 The native `autosave` mod requests a reserved-slot save after a configurable amount of
 eligible play, default 300 seconds. It defaults to inactive. This is a mod preference.
 See [the mod service contract](../mods/README.md#save-service).
+
+## Optional swaying plants mod
+
+The bundled `mods/sway` mod, disabled by default, tilts placed static models whose installed
+name contains `PALM`, `TREE` or `PLANT` about their base in a wind, with Faithful or Modern
+lighting. The original draws them still; collision keeps the installed placement. This is a
+mod preference, formerly a Modern lighting effect.
 
 ## Optional terrain grass mod
 

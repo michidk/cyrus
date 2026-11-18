@@ -455,6 +455,7 @@ pub(crate) fn spawn_host(mut commands: Commands) {
         .insert((
             crate::lifecycle::Lifecycle::default(),
             crate::physics::Physics::default(),
+            crate::scenery::Scenery::default(),
         ));
 }
 
@@ -963,3 +964,7 @@ mod gameplay_runtime_test;
 #[cfg(test)]
 #[path = "grass_runtime_test.rs"]
 mod grass_runtime_test;
+
+#[cfg(test)]
+#[path = "sway_runtime_test.rs"]
+mod sway_runtime_test;

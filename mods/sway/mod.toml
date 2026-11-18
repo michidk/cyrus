@@ -1,0 +1,12 @@
+name = "Swaying plants"
+author = "michidk"
+description = "Palm trees and plants sway in the wind. Works with Faithful and Modern lighting."
+version = "0.1.0"
+
+[[setting]]
+key = "strength"
+label = "Sway strength"
+type = "number"
+default = 1
+min = 0
+max = 3

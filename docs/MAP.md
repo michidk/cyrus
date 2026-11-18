@@ -180,7 +180,9 @@ module where it is defined and regenerate.
 - `src/physics/description.rs` — Atomic validation of owned assembly requests at the guest boundary.
 - `src/physics/solver.rs` — Fixed-step visual rigid bodies and read-only installed world collision.
 - `src/physics/tests.rs` — Contact, constraint and resource ownership contracts through the host API.
+- `src/scenery.rs` — Placed static scenery mods may tilt about its base, such as swaying plants.
 - `src/settings.rs` — Mod settings: declared as `[[setting]]` in a mod's `mod.toml`, edited in the Mods window,
+- `src/sway_runtime_test.rs` — Load the actual sway component against the scenery hook.
 - `src/terrain.rs` — Bounded, revision-scoped reads of retained terrain geometry and installed image pixels.
 
 ## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.
@@ -205,7 +207,6 @@ module where it is defined and regenerate.
 - `src/fog/modern_lighting/candle.rs` — The candle the player carries at night.
 - `src/fog/modern_lighting/day_night.rs` — A day/night cycle for the modern lighting.
 - `src/fog/modern_lighting/effects.rs` — The modern lighting's optional effects, switched from the debug menu's effects panel and the
-- `src/fog/modern_lighting/foliage.rs` — Palm trees and plants that sway in the wind.
 - `src/fog/modern_lighting/glow.rs` — Lamps and fires that glow under the modern lighting.
 - `src/fog/modern_lighting/lights.rs` — The sun, ambient light, object lights and baked lights the modern lighting shades the world with.
 - `src/fog/modern_lighting/plugin.rs` — The modern lighting plugin, its camera effects and teardown, and the light marker the light
@@ -239,6 +240,7 @@ module where it is defined and regenerate.
 - `src/pose_override.rs` — Owned deformation of a frozen vertex-frame mesh. Gameplay poses remain authoritative.
 - `src/presentation_clock.rs` — Presentation time continuation rebased independently of the host real-time epoch.
 - `src/sampling.rs` — ROB sampling attributes and effective palette keys from preservation's GLTF contract.
+- `src/scenery.rs` — Placed static models a provider may tilt about their base ([`crate::hooks::Scenery`]).
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/sky/persistence.rs` — Sky continuation with caller-prepared images and no random draw or scroll advance.

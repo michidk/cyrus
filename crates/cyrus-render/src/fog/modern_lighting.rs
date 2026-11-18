@@ -17,13 +17,11 @@
 //! The day/night cycle (`day_night`) moves and tints these lights by the hour, `candle` lights the
 //! player at night, and `effects`
 //! holds the optional effects: tonemapping and grading, automatic exposure, god rays, the sky
-//! glow, water reflections and the lens flare (`post`), swaying plants (`foliage`), depth of
-//! field and motion blur.
+//! glow, water reflections and the lens flare (`post`), depth of field and motion blur.
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 pub(super) mod candle;
 pub(super) mod day_night;
 mod effects;
-mod foliage;
 mod glow;
 pub(super) mod lights;
 mod plugin;
