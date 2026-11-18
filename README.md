@@ -67,9 +67,16 @@ game-file server, URL options and building from source.
 
 ## Videos
 
-| [▶ Watch cyrus v0.5.0](https://youtu.be/pG4tS6XbdIw) | [▶ Watch the cyrus editor](https://youtu.be/B1s0oL_fFGU) |
-| --- | --- |
-| [![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/mqdefault.jpg)](https://youtu.be/pG4tS6XbdIw) | [![Watch the cyrus editor on YouTube](https://i.ytimg.com/vi/B1s0oL_fFGU/mqdefault.jpg)](https://youtu.be/B1s0oL_fFGU) |
+<table align="center">
+  <tr>
+    <th align="center"><a href="https://youtu.be/pG4tS6XbdIw">▶ Watch cyrus v0.5.0</a></th>
+    <th align="center"><a href="https://youtu.be/B1s0oL_fFGU">▶ Watch the cyrus editor</a></th>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://youtu.be/pG4tS6XbdIw"><img src="https://i.ytimg.com/vi/pG4tS6XbdIw/mqdefault.jpg" width="320" alt="Watch cyrus v0.5.0 on YouTube"></a></td>
+    <td align="center"><a href="https://youtu.be/B1s0oL_fFGU"><img src="https://i.ytimg.com/vi/B1s0oL_fFGU/mqdefault.jpg" width="320" alt="Watch the cyrus editor on YouTube"></a></td>
+  </tr>
+</table>
 
 ## Asset viewer
 
