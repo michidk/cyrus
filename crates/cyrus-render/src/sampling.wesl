@@ -124,10 +124,18 @@ fn anisotropic_axis(dx: vec2<f32>, dy: vec2<f32>) -> vec3<f32> {
     return vec3(major, count);
 }
 
+// A footprint wider than this in texture coordinates is a jump between two cells' tile
+// coordinates, not a real footprint: each terrain cell maps its own tile, so the derivatives of
+// pixel blocks on a cell border span the tile and would smear it into a line along the border.
+const TILE_SEAM: f32 = 0.5;
+
 fn sample_encoded(uv: vec2<f32>, point: bool, world_palette: bool) -> vec3<f32> {
     let size = vec2<f32>(base_color_size());
-    let axis = anisotropic_axis(dpdx(uv) * size, dpdy(uv) * size);
-    if fog.lighting.z == 0.0 { return sample_encoded_single(uv, point, world_palette); }
+    let dx = dpdx(uv);
+    let dy = dpdy(uv);
+    let axis = anisotropic_axis(dx * size, dy * size);
+    let seam = max(max(abs(dx.x), abs(dx.y)), max(abs(dy.x), abs(dy.y))) > TILE_SEAM;
+    if fog.lighting.z == 0.0 || seam { return sample_encoded_single(uv, point, world_palette); }
     var sum = vec3(0.0);
     for (var i = 0u; i < u32(axis.z); i++) {
         sum += sample_encoded_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5), false, world_palette);
