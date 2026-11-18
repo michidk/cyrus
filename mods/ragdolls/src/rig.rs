@@ -300,6 +300,10 @@ fn anatomy(profile: Profile) -> Vec<Bone> {
     b
 }
 
+/// Width of the band around a joint, as a fraction of the model's height, in which a vertex is
+/// shared between the joint's two bones.
+const JOINT_BLEND: f32 = 0.05;
+
 fn distance(p: Vec3, a: Vec3, b: Vec3) -> f32 {
     let d = b - a;
     let t = ((p - a).dot(d) / d.dot(d).max(1e-8)).clamp(0., 1.);
@@ -429,16 +433,40 @@ pub fn fit(
             });
         }
     }
+    // Vertices near a joint follow both of its bones, so polygons spanning it bend instead of
+    // tearing apart when the limb rotates.
+    let band = extent.y * JOINT_BLEND;
     for &p in reference {
-        let (body, _) = template
+        let mut near = template
             .iter()
             .enumerate()
             .map(|(i, b)| (i, distance(p, map(b.a), map(b.b))))
-            .min_by(|a, b| a.1.total_cmp(&b.1))?;
-        assembly.weights.push(vec![VertexWeight {
-            body: bodies[body],
-            weight: 1.,
-        }]);
+            .collect::<Vec<_>>();
+        near.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let (first, d1) = *near.first()?;
+        let jointed = |other: usize| {
+            template[first].parent == Some(other) || template[other].parent == Some(first)
+        };
+        let weights = match near.get(1) {
+            Some(&(second, d2)) if jointed(second) && d2 - d1 < band => {
+                let share = 0.5 * (1. - (d2 - d1) / band);
+                vec![
+                    VertexWeight {
+                        body: bodies[first],
+                        weight: 1. - share,
+                    },
+                    VertexWeight {
+                        body: bodies[second],
+                        weight: share,
+                    },
+                ]
+            }
+            _ => vec![VertexWeight {
+                body: bodies[first],
+                weight: 1.,
+            }],
+        };
+        assembly.weights.push(weights);
     }
     for (index, attachment) in attachments.iter().enumerate() {
         let (body, _) = centers
@@ -549,6 +577,9 @@ mod installed {
                     )
                     .unwrap_or_else(|| panic!("{name} frame {frame}: cannot fit"));
                     assert_eq!(rig.weights.len(), current.len());
+                    assert!(rig.weights.iter().all(|weights| {
+                        (weights.iter().map(|w| w.weight).sum::<f32>() - 1.).abs() < 1e-4
+                    }));
                     assert!(rig.bodies().len() > 1);
                     for body in rig.bodies() {
                         assert!(
@@ -601,6 +632,10 @@ mod installed {
         .unwrap();
         assert!(left.bodies()[0].impulse.x > 0.);
         assert_eq!(left.bodies()[0].impulse, -right.bodies()[0].impulse);
+        assert!(
+            left.weights.iter().any(|weights| weights.len() == 2),
+            "vertices at a joint follow both bones"
+        );
         let unknown = fit(Profile::Biped, &vertices, &vertices, pose, None, 1., &[]).unwrap();
         assert_eq!(unknown.bodies()[0].impulse, Vec3::ZERO);
     }

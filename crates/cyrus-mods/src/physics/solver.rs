@@ -39,6 +39,23 @@ pub(super) struct Simulation {
     pub(super) soft_bodies: rp::SoftBodySet,
     pub(super) ccd: rp::CCDSolver,
     pub(super) accumulator: f64,
+    /// Pairs of one assembly's bodies that touch or overlap in the claimed pose, stored in both
+    /// orders. They never collide; every other pair of assembly bodies does, so limbs cannot fold
+    /// through the torso.
+    pub(super) resting: std::collections::HashSet<(rp::RigidBodyHandle, rp::RigidBodyHandle)>,
+}
+
+/// Bodies closer than this in the claimed pose are treated as touching, in world units.
+pub(super) const REST_GAP: f32 = 0.05;
+
+struct RestingPairs<'a>(&'a std::collections::HashSet<(rp::RigidBodyHandle, rp::RigidBodyHandle)>);
+impl rp::PhysicsHooks for RestingPairs<'_> {
+    fn filter_contact_pair(&self, context: &rp::PairFilterContext) -> Option<rp::SolverFlags> {
+        match (context.rigid_body1, context.rigid_body2) {
+            (Some(a), Some(b)) if self.0.contains(&(a, b)) => None,
+            _ => Some(rp::SolverFlags::COMPUTE_RIGID_IMPULSES),
+        }
+    }
 }
 impl Default for Simulation {
     fn default() -> Self {
@@ -54,6 +71,7 @@ impl Default for Simulation {
             soft_bodies: rp::SoftBodySet::default(),
             ccd: rp::CCDSolver::new(),
             accumulator: 0.,
+            resting: Default::default(),
         }
     }
 }
@@ -78,13 +96,15 @@ impl Simulation {
                 &mut self.multibodies,
                 &mut self.soft_bodies,
                 &mut self.ccd,
-                &(),
+                &RestingPairs(&self.resting),
                 &(),
             );
             self.accumulator -= STEP;
         }
     }
     pub(super) fn remove(&mut self, handles: &[rp::RigidBodyHandle]) {
+        self.resting
+            .retain(|(a, b)| !handles.contains(a) && !handles.contains(b));
         for &handle in handles {
             self.bodies.remove(
                 handle,
