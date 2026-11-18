@@ -98,7 +98,7 @@ if [ -n "$test_package" ]; then
     arguments=(test -p "$test_package" --message-format=json-render-diagnostics)
     if (( test_library )); then arguments+=(--lib); fi
     if [ -n "$test_filter" ]; then arguments+=("$test_filter"); fi
-    cargo "${arguments[@]}" > "$events" &
+    cargo "${arguments[@]}" -- --nocapture > "$events" &
 else
     cargo build -p cyrus --message-format=json-render-diagnostics > "$events" &
 fi
@@ -120,6 +120,10 @@ if [ -n "$test_package" ]; then
     python3 dev/scripts/build-provenance.py snapshot "$current"
     if ! cmp -s "$snapshot" "$current"; then
         echo 'source changed during native tests; result rejected' >&2
+        exit 1
+    fi
+    if [ -e "${REDGUARD_DIR:-$PWD/redguard}/RGFX.EXE" ] && grep -q 'skipped: no install' "$events"; then
+        echo 'native recovery: install tests skipped although the configured install is present' >&2
         exit 1
     fi
     echo "completed retained native tests: $test_package"

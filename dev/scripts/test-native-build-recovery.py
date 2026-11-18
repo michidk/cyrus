@@ -37,6 +37,7 @@ if sys.argv[1:2] == ['cyrus-native-recovery']:
 if sys.argv[1:] == ['--version']:
  print('cargo-test-version');sys.exit()
 root=Path.cwd();target=Path(os.environ['CARGO_TARGET_DIR'])
+if (root/'skip-install').exists():print('skipped: no install',flush=True)
 (root/'arguments.json').write_text(json.dumps(sys.argv[1:]))
 with (root/'cargo.log').open('a') as f:f.write('build\\n')
 unit=target/'debug/deps/libdependency-abcd.rlib'
@@ -102,11 +103,31 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.assertEqual((self.root / 'compiled.log').read_text().splitlines(), ['dependency'])
         self.assertFalse(self.output.exists(), 'a test run must not publish a capture executable')
         self.assertEqual(json.loads((self.root / 'arguments.json').read_text()),
-                         ['test', '-p', 'cyrus-render', '--message-format=json-render-diagnostics', 'lighting'])
+                         ['test', '-p', 'cyrus-render', '--message-format=json-render-diagnostics',
+                          'lighting', '--', '--nocapture'])
         third = subprocess.run(command, cwd=self.root, env=self.env, capture_output=True, text=True)
         self.assertEqual(third.returncode, 0, third.stdout + third.stderr)
         self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 3,
                          'retained compilation must never replace execution of the tests')
+
+    def test_test_recovery_rejects_install_skips_when_an_install_is_present(self):
+        install = self.root / 'install'
+        install.mkdir()
+        (install / 'RGFX.EXE').write_text('installed fixture')
+        (self.root / 'skip-install').touch()
+        command = ['bash', 'dev/scripts/build-native-recovery.sh', '--test', 'cyrus-script']
+        result = subprocess.run(command, cwd=self.root,
+                                env={**self.env, 'REDGUARD_DIR': str(install)},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('install tests skipped', result.stderr)
+        self.assertFalse(self.output.exists())
+        (install / 'RGFX.EXE').unlink()
+        result = subprocess.run(command, cwd=self.root,
+                                env={**self.env, 'REDGUARD_DIR': str(install)},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('skipped: no install', result.stdout)
 
     def test_library_recovery_selects_only_the_library_target(self):
         command = ['bash', 'dev/scripts/build-native-recovery.sh', '--test-lib',
@@ -117,7 +138,7 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(json.loads((self.root / 'arguments.json').read_text()),
                              ['test', '-p', 'cyrus-startup', '--message-format=json-render-diagnostics',
-                              '--lib', 'first_book_publication'])
+                              '--lib', 'first_book_publication', '--', '--nocapture'])
             self.assertFalse(self.output.exists())
             shutil.rmtree(self.target)
         self.assertEqual((self.root / 'compiled.log').read_text().splitlines(), ['dependency'])
