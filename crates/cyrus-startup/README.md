@@ -109,3 +109,5 @@ the menu cache, never the install; restore the original cache afterwards.
 The reader paper reduces nonzero expanded palette channels by one before storage, following the original raster comparison documented in [preservation PR #352](https://github.com/michidk/redguard-preservation/pull/352). This presentation rule uses the published parser unchanged.
 
 Logbook scrolls use the published software-Voodoo four-bit encoded-channel filter before lighting and RGB565 storage. `dev/scripts/check-book-filter.py sample-grid --framebuffer` checks a full-brightness stripe fixture through the production reader screenshot; it rejects continuous filtering while admitting stored integer-filter samples.
+
+World-loading fades composite the black rectangle in encoded framebuffer channels, with RGB565 destination reconstruction and ordered storage, following preservation’s HUD, sky and movie blend contracts. The logical twelve-per-tick opacity remains available to presentation capture.

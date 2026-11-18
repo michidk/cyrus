@@ -53,6 +53,7 @@ pub(crate) fn spawn(
                 ..default()
             },
             BackgroundColor(Color::BLACK.with_alpha(opacity(0.0, rate, fading_in))),
+            Visibility::Inherited,
             GlobalZIndex(i32::MAX),
         ))
         .id()

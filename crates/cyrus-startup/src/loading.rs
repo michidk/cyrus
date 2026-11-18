@@ -69,6 +69,12 @@ pub(super) fn register(app: &mut App) {
                 .after(cyrus_script::script::OrdinaryUpdates)
                 .after(poll),
         )
+        .add_systems(
+            Update,
+            present_loading_fade
+                .after(super::fade::advance)
+                .run_if(in_state(AppState::Loading)),
+        )
         .add_systems(OnEnter(AppState::InGame), fade_in_world)
         .add_systems(OnExit(AppState::Loading), cleanup);
 }
@@ -487,12 +493,63 @@ fn poll(
 }
 
 /// The first world view fades in from the black left by the loading fade-out.
-fn fade_in_world(mut fades: Query<&mut super::fade::Fade>) {
-    for mut fade in &mut fades {
+fn fade_in_world(mut fades: Query<(&mut super::fade::Fade, &mut Visibility)>) {
+    for (mut fade, mut visibility) in &mut fades {
         if fade.black() {
             fade.reverse();
+            *visibility = Visibility::Inherited;
         }
     }
+}
+
+#[derive(PartialEq)]
+struct LoadingRasterKey(bevy::asset::AssetId<Image>, u16, (usize, usize));
+
+/// Composite the installed black rectangle in encoded framebuffer channels.
+/// Preservation's HUD rectangle, movie blend and sky destination-reconstruction
+/// contracts apply before the next RGB565 store, rather than linear UI blending.
+fn present_loading_fade(
+    game: Option<Res<StartGame>>,
+    mut images: ResMut<Assets<Image>>,
+    mut fades: Query<(&BackgroundColor, &mut Visibility), With<super::fade::Fade>>,
+    mut previous: Local<Option<LoadingRasterKey>>,
+) {
+    let Some(game) = game.filter(|game| !game.background.is_empty()) else {
+        return;
+    };
+    let mut opacity = 0;
+    for (colour, mut visibility) in &mut fades {
+        opacity = (colour.0.alpha() * 256.0).round() as u16;
+        *visibility = Visibility::Hidden;
+    }
+    let key = LoadingRasterKey(game.image.id(), opacity, game.progress);
+    if previous.as_ref() == Some(&key) {
+        return;
+    }
+    let Some(mut image) = images.get_mut(&game.image) else {
+        return;
+    };
+    let mut pixels = game.background.clone();
+    paint_progress(&mut pixels, &game.font, game.progress.0, game.progress.1);
+    for (index, pixel) in pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+        let x = index as u32 % 640;
+        let y = index as u32 / 640;
+        let mut colour = cyrus_assets::framebuffer::store([pixel[0], pixel[1], pixel[2]], x, y);
+        if opacity != 0 {
+            const DITHER: [u32; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+            let inverse = 15 - DITHER[((y % 4) * 4 + x % 4) as usize];
+            colour = std::array::from_fn(|channel| {
+                let (mask, scale) = if channel == 1 { (252, 4) } else { (248, 2) };
+                let destination = (u32::from(colour[channel] & mask) * scale + inverse) / scale;
+                (destination * (256 - u32::from(opacity.min(256))) / 256) as u8
+            });
+            colour = cyrus_assets::framebuffer::store(colour, x, y);
+        }
+        pixel[..3].copy_from_slice(&colour);
+        pixel[3] = 255;
+    }
+    image.data = Some(pixels);
+    *previous = Some(key);
 }
 
 fn update_progress(game: &mut StartGame, images: &mut Assets<Image>, done: usize, total: usize) {
@@ -557,6 +614,76 @@ mod tests {
         Artwork,
         Menu,
     }
+    #[test]
+    fn loading_fade_stores_encoded_channels_at_the_requested_tick() {
+        use bevy::{
+            asset::RenderAssetUsages,
+            render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+        };
+        let mut app = App::new();
+        app.init_resource::<Assets<Image>>()
+            .add_systems(Update, present_loading_fade);
+        let image = app
+            .world_mut()
+            .resource_mut::<Assets<Image>>()
+            .add(Image::new(
+                Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                vec![128, 64, 32, 255],
+                TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            ));
+        app.insert_resource(StartGame {
+            image: image.clone(),
+            background: vec![128, 64, 32, 255],
+            ..default()
+        });
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let fade = super::super::fade::spawn(
+            &mut Commands::new(&mut queue, app.world()),
+            cyrus_assets::script::ClockSettings {
+                normal_frame_rate: 12,
+                min_frame_rate: 6,
+                max_frame_rate: 60,
+                use_smooth_fps: false,
+                use_smooth_divisor: false,
+            },
+            true,
+        );
+        queue.apply(app.world_mut());
+        for (opacity, expected) in [
+            (160, [41, 20, 8, 255]),
+            (0, [123, 60, 24, 255]),
+            (256, [0, 0, 0, 255]),
+        ] {
+            app.world_mut().get_mut::<BackgroundColor>(fade).unwrap().0 =
+                Color::BLACK.with_alpha(opacity as f32 / 256.0);
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<Image>>()
+                    .get(&image)
+                    .unwrap()
+                    .data
+                    .as_deref()
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(
+                *app.world().get::<Visibility>(fade).unwrap(),
+                Visibility::Hidden
+            );
+            assert_eq!(
+                app.world().get::<BackgroundColor>(fade).unwrap().0.alpha(),
+                opacity as f32 / 256.0
+            );
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
