@@ -1,29 +1,32 @@
-<div align="center">
+<h1 align="center">cyrus</h1>
 
-<img src=".github/workflows/cyrus-banner.webp" alt="A green dragon watches an airship cross Redguard's island landscape" width="1200">
+<p align="center">
+  A faithful rebuild of <em>The Elder Scrolls Adventures: Redguard</em> in Rust and Bevy.<br>
+  Bring your own GOG install. cyrus ships no game data.
+</p>
 
-# cyrus
+<p align="center">
+  <a href="#run-cyrus">Get started</a> ·
+  <a href="https://michidk.github.io/cyrus/game/">Browser game</a> ·
+  <a href="#asset-viewer">Asset viewer</a> ·
+  <a href="docs/PLAYING.md">Playing guide</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-**A faithful rebuild of *The Elder Scrolls Adventures: Redguard* in Rust and Bevy**
+<p align="center">
+  <a href="https://github.com/michidk/cyrus/releases/latest"><img src="https://img.shields.io/github/v/release/michidk/cyrus?color=green" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+  <a href="https://discord.com/invite/xjCCyqbxkp"><img src="https://img.shields.io/badge/Discord-Redguard%20community-5865F2?logo=discord&amp;logoColor=white" alt="Redguard community on Discord"></a>
+</p>
 
-Bring your own GOG install. cyrus ships no game data.
-
-[Playing and controls](docs/PLAYING.md) · [Setup](docs/SETUP.md) · [Delivery issues](https://github.com/michidk/cyrus/issues/92) · [How cyrus is built](docs/METHOD.md) · [Contributing](CONTRIBUTING.md)
-
-</div>
+<p align="center">
+  <img src=".github/workflows/cyrus-banner.webp" alt="A green dragon watches an airship cross Redguard's island landscape" width="800">
+</p>
 
 > [!IMPORTANT]
 > cyrus is early in development. You can start a new game, play in its worlds
 > and save and resume, but a complete gameplay and fidelity playthrough has not
 > been accepted.
-
-| Watch cyrus v0.5.0 | Watch the cyrus editor |
-| --- | --- |
-| [![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/mqdefault.jpg)](https://youtu.be/pG4tS6XbdIw) | [![Watch the cyrus editor on YouTube](https://i.ytimg.com/vi/B1s0oL_fFGU/mqdefault.jpg)](https://youtu.be/B1s0oL_fFGU) |
-
-## Name
-
-cyrus is named after [Cyrus](https://en.uesp.net/wiki/Redguard:Cyrus), the main character of *Redguard*.
 
 ## What works today
 
@@ -44,29 +47,14 @@ Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
 
 ## Run cyrus
 
-You need the GOG release of *The Elder Scrolls Adventures: Redguard*, Rust, and
-`just`. Extract the game, then provide its `Redguard` directory:
+Buy and install or extract the GOG release of *The Elder Scrolls Adventures: Redguard*. Then:
 
-```sh
-just run --install /path/to/GOG/extracted/app/Redguard
-```
+1. Download the `cyrus` package for Windows, Linux or macOS from the [latest release](https://github.com/michidk/cyrus/releases/latest).
+2. Extract the archive and start `cyrus.exe` on Windows or `cyrus` on Linux and macOS.
+3. Choose the inner `Redguard` folder containing `RGFX.EXE`, `maps` and `fxart`. Keep the surrounding GOG folder intact so companion CD media remains available.
+4. Choose **New Game** in the book menu. Use the in-game options to configure display, sound and controls.
 
-Without `--install`, both native applications use `REDGUARD_DIR`, a remembered
-location, or the default local/GOG folders, including a `redguard` symlink in the
-working directory. If no usable install is found, a window lets you enter a
-folder or browse for it, and remembers it for both the game and viewer.
-Prebuilt packages for Windows, Linux and macOS are on the
-[releases page](https://github.com/michidk/cyrus/releases/latest); see
-[Playing](docs/PLAYING.md#start).
-
-Use `just run --scene START` to open a world directly. The
-[setup guide](docs/SETUP.md) covers the browser build, the original game runner,
-and all available commands.
-
-The game install remains read-only. cyrus stores settings, saves, caches and
-logs in `CYRUS_CONFIG_DIR` when that is set, else in an existing `game-config/`
-folder in the directory you launch from, else in your user profile's standard
-folders (on Linux `~/.config/cyrus`, `~/.cache/cyrus` and `~/.local/state/cyrus`).
+See [Playing and controls](docs/PLAYING.md) for saving, resuming and key bindings. To build from source or select an install on the command line, see [Advanced use](#advanced-use).
 
 ## Web version
 
@@ -77,14 +65,19 @@ Open the [browser build](https://michidk.github.io/cyrus/game/) and click
 reloading. The [browser guide](crates/cyrus-web/README.md) covers the bundled
 game-file server, URL options and building from source.
 
+## Videos
+
+| [▶ Watch cyrus v0.5.0](https://youtu.be/pG4tS6XbdIw) | [▶ Watch the cyrus editor](https://youtu.be/B1s0oL_fFGU) |
+| --- | --- |
+| [![Watch cyrus v0.5.0 on YouTube](https://i.ytimg.com/vi/pG4tS6XbdIw/mqdefault.jpg)](https://youtu.be/pG4tS6XbdIw) | [![Watch the cyrus editor on YouTube](https://i.ytimg.com/vi/B1s0oL_fFGU/mqdefault.jpg)](https://youtu.be/B1s0oL_fFGU) |
+
 ## Asset viewer
 
 cyrus ships a separate asset viewer for Redguard's files: models, worlds,
 textures, fonts, animations, scripts, audio and movies. Download a
 prebuilt `cyrus-viewer` archive from the
 [latest release](https://github.com/michidk/cyrus/releases/latest) or open the
-[browser viewer](https://michidk.github.io/cyrus/viewer/) directly. From source,
-run `cargo run -p cyrus-viewer -- --install /path/to/Redguard`. See the
+[browser viewer](https://michidk.github.io/cyrus/viewer/) directly. See the
 [viewer guide](crates/cyrus-viewer/README.md) for previews, controls, and browser
 setup. The viewer uses a modern inspection interface and generic rendering.
 
@@ -97,7 +90,7 @@ setup. The viewer uses a modern inspection interface and generic rendering.
 cyrus is two applications, the game and the asset viewer, and sits beside two other Redguard projects:
 
 - [Redguard Preservation](https://github.com/michidk/redguard-preservation) ([docs](https://michidk.github.io/redguard-preservation/)): the file format, engine and configuration documentation cyrus is built from, and the `redguard-preservation` crate that parses the game's files.
-- [Maiko](https://github.com/michidk/maiko) ([site](https://michidk.github.io/maiko/)): runs the original game natively on Windows and Linux, without DOSBox, by translating the original executable.
+- [Maiko](https://github.com/michidk/maiko) ([site](https://michidk.github.io/maiko/)): runs the original game natively on Windows, Linux and macOS, without DOSBox, by translating the original executable.
 
 ## Faithful by default
 
@@ -139,5 +132,29 @@ Each crate also has its own `README.md`.
 
 cyrus is written entirely by LLM coding agents (Codex and Claude Code), directed
 and reviewed by the maintainer against the original game.
+
+## Advanced use
+
+Building from source requires Rust and `just`, plus the platform dependencies in the [setup guide](docs/SETUP.md). From the repository root:
+
+```sh
+just run --install /path/to/GOG/extracted/app/Redguard
+```
+
+Without `--install`, both native applications use `REDGUARD_DIR`, a remembered location, or the default local/GOG folders, including a `redguard` symlink in the working directory. If no usable install is found, the folder picker remembers your selection for both the game and viewer.
+
+For the asset viewer, run `cargo run -p cyrus-viewer -- --install /path/to/Redguard`.
+
+Use `just run --scene START` to open a world directly. The [setup guide](docs/SETUP.md) covers the browser build, the original game runner and all available commands.
+
+cyrus stores settings, saves, caches and logs in `CYRUS_CONFIG_DIR` when set, otherwise in an existing `game-config/` folder in the working directory, or in your user profile's standard folders. On Linux these are `~/.config/cyrus`, `~/.cache/cyrus` and `~/.local/state/cyrus`.
+
+## Name
+
+cyrus is named after [Cyrus](https://en.uesp.net/wiki/Redguard:Cyrus), the main character of *Redguard*.
+
+## License
+
+cyrus is released under the [MIT license](LICENSE).
 
 *cyrus is not affiliated with Bethesda Softworks.*
