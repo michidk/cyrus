@@ -55,6 +55,15 @@ for timing comparisons and debugger traces to establish call order and values.
 If a helper-only prediction disagrees with the recording, trace the remaining
 update before implementing or tuning constants to fit the endpoint.
 
+`python3 dev/scripts/compare-player-position.py --reference reference.json
+--native native.json` compares normalized position observations at equal elapsed
+clock units. Each input is an array of `{elapsed_scale, position_q8}` records;
+callers establish the same units, origin and coordinate space. The tool linearly
+interpolates reference positions and reports the bracketing observations and
+signed residuals. It refuses extrapolation and never interpolates animation or
+controller state. Matching positions alone do not establish matching support
+state or completed-update boundaries.
+
 World-loading checks enumerate WORLD.INI and export every entry, including
 worlds sharing a map with different palettes. Successful export proves loading
 coverage; visual fidelity still requires comparison with the original.
