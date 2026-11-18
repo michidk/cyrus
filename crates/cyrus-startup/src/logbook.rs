@@ -482,7 +482,27 @@ fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) 
             pen_x += font.advance(ch);
         }
     }
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        let colour = reader_framebuffer([pixel[0], pixel[1], pixel[2]], x, y);
+        pixel.0[..3].copy_from_slice(&colour);
+    }
     image
+}
+
+/// Encoded-channel storage from preservation's framebuffer dithering contract.
+fn reader_framebuffer(colour: [u8; 3], x: u32, y: u32) -> [u8; 3] {
+    const THRESHOLDS: [u32; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    let threshold = THRESHOLDS[((y % 4) * 4 + x % 4) as usize];
+    std::array::from_fn(|channel| {
+        let c = u32::from(colour[channel]);
+        if channel == 1 {
+            let stored = ((4 * c - c / 16 + c / 64 + threshold) / 16).min(63);
+            ((stored << 2) | (stored >> 4)) as u8
+        } else {
+            let stored = ((2 * c - c / 16 + c / 128 + threshold) / 16).min(31);
+            ((stored << 3) | (stored >> 2)) as u8
+        }
+    })
 }
 
 /// The two rotating scrolls as lit triangles in the reader's view space.
@@ -490,7 +510,7 @@ fn build_scene(artwork: &LogbookArtwork, rotation: i32) -> LitScene {
     #[allow(clippy::approx_constant)] // Original table's decimal period.
     let sample = |angle: i32| (f64::from(wrap(angle)) * 6.2831852 / 2048.).sin() as f32;
     let (sin, cos) = (sample(rotation), sample(rotation + 512));
-    let mut scene = LitScene::default();
+    let mut scene = LitScene::framebuffer();
     for texture in &artwork.textures {
         scene
             .textures
@@ -790,13 +810,74 @@ mod tests {
                 };
                 assert_eq!(
                     &data[at..at + 3],
-                    &expected,
+                    &reader_framebuffer(expected, x as u32, y as u32),
                     "published reader alpha {alpha}, pixel {x},{y}"
                 );
                 checked += 1;
             });
             assert!(checked > 0);
             eprintln!("reader alpha {alpha}: {checked} published installed glyph pixels exact");
+        }
+    }
+
+    #[test]
+    fn installed_reader_publishes_paper_with_ordered_framebuffer_precision() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
+            eprintln!("skipped: no install (reader framebuffer)");
+            return;
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let mut files = cyrus_assets::game::prepare(&source, "menu/book.menu").unwrap();
+        files.extend(cyrus_assets::game::prepare(&source, "logbook/reader.logbook").unwrap());
+        let mut artwork: LogbookArtwork =
+            serde_json::from_slice(&files["logbook/reader.logbook"]).unwrap();
+        for pixel in artwork.paper.rgba.as_chunks_mut::<4>().0 {
+            pixel.copy_from_slice(&[252, 212, 140, 255]);
+        }
+        files.insert(
+            "logbook/reader.logbook".into(),
+            serde_json::to_vec(&artwork).unwrap(),
+        );
+        let mut app = standalone_asset_app(&files.into_iter().collect::<Vec<_>>(), false);
+        {
+            let mut screen = app.world_mut().resource_mut::<LogbookScreen>();
+            screen.book = Some(cyrus_script::logbook::Logbook::new(&[]).unwrap());
+            screen.open = true;
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            app.update();
+            let handle = app
+                .world_mut()
+                .query_filtered::<&ImageNode, With<Page>>()
+                .single(app.world())
+                .unwrap()
+                .image
+                .clone();
+            if let Some(image) = app.world().resource::<Assets<Image>>().get(&handle) {
+                let data = image.data.as_ref().unwrap();
+                // Published storage rule at thresholds 0, 8, 12 and 4.
+                for (x, y, expected) in [
+                    (0, 0, [247, 211, 140, 255]),
+                    (1, 0, [255, 211, 140, 255]),
+                    (0, 1, [255, 215, 140, 255]),
+                    (1, 1, [247, 211, 140, 255]),
+                ] {
+                    let at = (y * 640 + x) * 4;
+                    assert_eq!(&data[at..at + 4], &expected, "stored reader pixel {x},{y}");
+                }
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "reader publication timed out"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
 

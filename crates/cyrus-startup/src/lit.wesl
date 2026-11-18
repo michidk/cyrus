@@ -91,7 +91,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let level = floor(clamp(screen_level.rgb, vec3(0.0), vec3(255.0)));
     var lit = floor(raw * (level + screen_level.w) / 256.0);
-    if four_bit_filter.x != 0u {
+    if four_bit_filter.x != 0u || four_bit_filter.y != 0u {
         lit = book_framebuffer(lit, in.position.xy);
     }
     return vec4(srgb_to_linear(lit / 255.0), texel.a);
