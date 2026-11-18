@@ -23,6 +23,8 @@ const MARCH_STEPS: i32 = 48;
 const FIRST_STEP: f32 = 0.5;
 const FIRST_STEP_PER_DISTANCE: f32 = 0.01;
 const STEP_GROWTH: f32 = 1.12;
+// Halvings between the last step in front of the scene and the first behind it.
+const REFINE_STEPS: i32 = 6;
 // The most open water reflects, so a sea seen at a grazing angle keeps its own colour instead of
 // mirroring the sky outright; calm water reflects fully. A Modern tuning choice.
 const SEA_REFLECTANCE: f32 = 0.5;
@@ -98,23 +100,40 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
         let first = max(FIRST_STEP, length(origin - view.world_position) * FIRST_STEP_PER_DISTANCE);
         var travelled = first;
         var stride = first;
+        var missed = 0.0;
         for (var i = 0; i < MARCH_STEPS; i++) {
-            let probe = project(origin + ray * travelled);
+            var probe = project(origin + ray * travelled);
             if probe.z <= 0.0 || !on_screen(probe.xy) { break; }
-            let scene_depth = depth_at(probe.xy);
             // Reverse depth: the scene is in front of the ray where its depth is larger. Water,
             // whose alpha still carries its weight, never blocks a ray that leaves it: at grazing
             // angles the distance tolerance would otherwise find the sea itself.
-            let probe_color = textureSampleLevel(screen, screen_sampler, probe.xy, 0.0);
-            if scene_depth > probe.z && probe_color.a >= 1.0 {
+            var probe_color = textureSampleLevel(screen, screen_sampler, probe.xy, 0.0);
+            if depth_at(probe.xy) > probe.z && probe_color.a >= 1.0 {
+                // The crossing lies between the last step in front of the scene and this one;
+                // halving towards it keeps the reflection from snapping to the coarse steps.
+                var ahead = missed;
+                var behind = travelled;
+                for (var j = 0; j < REFINE_STEPS; j++) {
+                    let middle = 0.5 * (ahead + behind);
+                    let candidate = project(origin + ray * middle);
+                    if candidate.z > 0.0 && on_screen(candidate.xy) && depth_at(candidate.xy) > candidate.z
+                        && textureSampleLevel(screen, screen_sampler, candidate.xy, 0.0).a >= 1.0 {
+                        behind = middle;
+                    } else {
+                        ahead = middle;
+                    }
+                }
+                probe = project(origin + ray * behind);
+                probe_color = textureSampleLevel(screen, screen_sampler, probe.xy, 0.0);
                 let ray_distance = view_distance(probe.xy, probe.z);
-                let gap = ray_distance - view_distance(probe.xy, scene_depth);
+                let gap = ray_distance - view_distance(probe.xy, depth_at(probe.xy));
                 if gap < 1.0 + ray_distance * 0.03 {
                     let edge = min(min(probe.x, 1.0 - probe.x), min(probe.y, 1.0 - probe.y));
                     reflected = mix(reflected, probe_color.rgb, smoothstep(0.0, 0.08, edge));
                     break;
                 }
             }
+            missed = travelled;
             travelled += stride;
             stride *= STEP_GROWTH;
         }
