@@ -197,6 +197,7 @@ impl Physics {
             return 4;
         }
         let mut bodies = Vec::new();
+        let mut colliders = Vec::new();
         let mut inverse_rest = Vec::new();
         for body in &desc.bodies {
             let position = pose(body.pose);
@@ -222,14 +223,33 @@ impl Physics {
             .friction(0.8)
             .collision_groups(rp::InteractionGroups::new(
                 rp::Group::GROUP_2,
-                rp::Group::GROUP_1,
+                rp::Group::GROUP_1 | rp::Group::GROUP_2,
                 rp::InteractionTestMode::And,
-            ));
-            sim.colliders
-                .insert_with_parent(collider, handle, &mut sim.bodies);
+            ))
+            .active_hooks(rp::ActiveHooks::FILTER_CONTACT_PAIRS);
+            colliders.push(
+                sim.colliders
+                    .insert_with_parent(collider, handle, &mut sim.bodies),
+            );
             sim.bodies[handle].add_force(vector(body.acceleration) * body.mass, true);
             sim.bodies[handle].apply_impulse(vector(body.impulse), true);
             bodies.push(handle);
+        }
+        for (i, &first) in colliders.iter().enumerate() {
+            for (j, &second) in colliders.iter().enumerate().skip(i + 1) {
+                let (a, b) = (&sim.colliders[first], &sim.colliders[second]);
+                let touching = rapier3d::parry::query::distance(
+                    a.position(),
+                    a.shape(),
+                    b.position(),
+                    b.shape(),
+                )
+                .map_or(true, |gap| gap.distance < solver::REST_GAP);
+                if touching {
+                    sim.resting.insert((bodies[i], bodies[j]));
+                    sim.resting.insert((bodies[j], bodies[i]));
+                }
+            }
         }
         for joint in desc.joints {
             let [a, b] = joint.bodies;

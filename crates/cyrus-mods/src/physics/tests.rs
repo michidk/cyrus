@@ -88,6 +88,28 @@ fn joints_preserve_anchors_and_limit_relative_rotation() {
     );
 }
 #[test]
+fn bodies_of_one_assembly_collide_unless_they_touch_when_claimed() {
+    let mut host = fixture();
+    // Spheres of radius 0.5 one unit apart: 0-1 and 1-2 touch when claimed, 0 and 2 do not.
+    assert_eq!(host.claim("test".into(), 1, assembly(3, false)), 0);
+    let handles = host.claims[&1].bodies.clone();
+    let sim = host.simulation.as_mut().unwrap();
+    assert!(sim.resting.contains(&(handles[0], handles[1])));
+    assert!(sim.resting.contains(&(handles[2], handles[1])));
+    assert!(!sim.resting.contains(&(handles[0], handles[2])));
+    sim.bodies[handles[2]].set_linvel(vector([-6., 0., 0.]), true);
+    for _ in 0..120 {
+        sim.advance(1. / 120.);
+    }
+    let gap = sim.bodies[handles[2]].translation().x - sim.bodies[handles[0]].translation().x;
+    assert!(
+        gap > 0.9,
+        "the far body must stop at the first, not pass through it: {gap}"
+    );
+    sim.remove(&handles);
+    assert!(sim.resting.is_empty());
+}
+#[test]
 fn requests_reject_atomically_and_fixed_time_caps_catch_up() {
     let mut host = fixture();
     let mut invalid: serde_json::Value = serde_json::from_str(&assembly(2, true)).unwrap();
