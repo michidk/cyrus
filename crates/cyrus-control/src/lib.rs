@@ -199,6 +199,18 @@ pub enum Command {
         #[serde(default)]
         heading: u16,
     },
+    /// Atomically place the logical player and retain the placement plus every completed
+    /// ordinary update. `updates` must be 1..=255. Coordinates are map units.
+    /// Replies with `observations`, including logical player snapshots, generation, update,
+    /// elapsed Q8 nominal ticks and installed normal rate. Does not override simulation timing.
+    TracePlayer {
+        x: i32,
+        y: i32,
+        z: i32,
+        #[serde(default)]
+        heading: u16,
+        updates: u16,
+    },
     /// Write one attribute byte of the script actor at `index` (as `scripts` lists them); for
     /// acceptance runs, for example health zero to reach a script's death branch.
     SetAttribute {
@@ -514,6 +526,13 @@ pub mod server;
 #[cfg(test)]
 mod frame_boundary_tests {
     use super::FrameBoundary;
+    #[test]
+    fn player_trace_request_round_trips_placement_and_update_bound() {
+        let value = serde_json::json!({"type":"trace_player","x":-10,"y":20,"z":30,"heading":40,"updates":21});
+        let command: super::Command = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(command).unwrap(), value);
+    }
+
     #[test]
     fn observed_clock_waits_and_rejects_a_skipped_or_retired_boundary() {
         let target = FrameBoundary::Clock {

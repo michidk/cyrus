@@ -88,6 +88,11 @@ request, so do not add them up as independent defects; an absent failure does
 not prove an unexercised operation works. A failed world is recorded, the rest
 are attempted, and the command then exits unsuccessfully.
 
+The control port's `trace_player` request applies placement and starts a bounded
+logical trace in one command. It records the initial pose before simulation and
+one snapshot after every completed ordinary update, without network polling gaps
+or changes to simulation timing. See [the protocol](../cyrus-control/README.md).
+
 ## Testing
 
 ```sh

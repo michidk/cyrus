@@ -5,6 +5,7 @@ mod effect_geometry;
 mod frame_capture;
 mod input_schedule;
 mod light_image;
+mod player_trace;
 mod rendered_actor;
 
 use bevy::prelude::*;
@@ -59,6 +60,7 @@ impl Plugin for ControlPlugin {
         );
         app.init_resource::<frame_capture::FrameCaptures>();
         app.add_systems(PostUpdate, light_image::respond);
+        app.add_systems(PostUpdate, player_trace::respond);
         app.add_systems(
             PostUpdate,
             effect_geometry::respond.after(bevy::asset::AssetEventSystems),
@@ -152,6 +154,7 @@ struct Inspection<'w, 's> {
     effect_geometry_pending: Option<Res<'w, effect_geometry::PendingEffectGeometry>>,
     input_scheduler: ResMut<'w, input_schedule::InputScheduler>,
     frame_captures: ResMut<'w, frame_capture::FrameCaptures>,
+    player_trace_pending: Option<Res<'w, player_trace::PendingTrace>>,
 }
 
 // Control dispatch joins input, session state and presentation resources.
@@ -208,6 +211,7 @@ fn handle(
         effect_geometry_pending,
         mut input_scheduler,
         mut frame_captures,
+        player_trace_pending,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, mut flycam, mut reference, mut ray_tracing): (
@@ -443,6 +447,15 @@ fn handle(
                 Ok(json!({"selected": id}))
             })()
             .map_err(|error| format!("{error:#}")),
+            Command::TracePlayer { x, y, z, heading, updates } => {
+                commands.queue(move |world: &mut World| {
+                    if let Err(error) = player_trace::start(world, id, reply.clone(), [x, y, z], heading, updates) {
+                        let _ = reply.send(Response::err(id, format!("{error:#}")));
+                    }
+                });
+                break;
+            }
+            Command::PlacePlayer { .. } if player_trace_pending.is_some() => Err("player trace owns placement until completion".into()),
             Command::PlacePlayer { x, y, z, heading } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
@@ -1445,6 +1458,226 @@ mod tests {
                 environment_path: "test.environment".into(),
             });
         app
+    }
+
+    #[test]
+    fn public_player_trace_records_placement_and_every_ordinary_update() {
+        use cyrus_script::{
+            clock::SimulationClock,
+            script::{OrdinaryInputs, ScriptActors, ScriptInputs},
+        };
+        let mut app = script_app_with_player(true);
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            world.prepare_spatial().unwrap();
+            let player = world.selected_player().unwrap();
+            world
+                .initialize_player_spatial(player, [0; 3], [0; 3])
+                .unwrap();
+        }
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        clock.advance(0);
+        app.insert_resource(clock);
+        #[derive(Resource)]
+        struct TraceOrdinary(u32);
+        app.insert_resource(TraceOrdinary(1));
+        app.add_systems(
+            Update,
+            |run: Res<TraceOrdinary>,
+             mut actors: ResMut<ScriptActors>,
+             mut clock: ResMut<SimulationClock>,
+             animations: Res<Assets<cyrus_assets::animation::Animations>>,
+             prepared: Res<cyrus_world::lifecycle::PreparedWorld>,
+             mut random: ResMut<cyrus_game::random::EngineRandom>| {
+                for _ in 0..run.0 {
+                    let world = actors.current.as_mut().unwrap();
+                    clock.advance((world.ordinary_updates() as u32 + 1) * 3);
+                    world
+                        .update_ordinary(
+                            animations.get(&prepared.animations).unwrap(),
+                            [0; 2],
+                            OrdinaryInputs {
+                                scripts: ScriptInputs {
+                                    nominal_ticks: Some(clock.step().nominal_ticks),
+                                    frame_scale: Some(clock.step().frame_scale),
+                                    ..default()
+                                },
+                                scene: None,
+                            },
+                            &mut random,
+                            &mut |_, _| Ok(()),
+                            100,
+                        )
+                        .unwrap();
+                    world
+                        .place_selected_player(
+                            [
+                                (10 + world.ordinary_updates() as i32) * 256,
+                                20 * 256,
+                                30 * 256,
+                            ],
+                            0,
+                        )
+                        .unwrap();
+                }
+            },
+        );
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        let request = serde_json::from_value(json!({"id":93,"cmd":{
+            "type":"trace_player","x":10,"y":20,"z":30,"heading":0,"updates":3
+        }}))
+        .unwrap();
+        tx.send(Pending {
+            request,
+            reply: reply.clone(),
+        })
+        .unwrap();
+        app.update();
+        assert!(responses.try_recv().is_err());
+        app.world_mut().resource_mut::<TraceOrdinary>().0 = 0;
+        for _ in 0..2 {
+            app.update();
+            assert!(
+                responses.try_recv().is_err(),
+                "paused frames cannot complete the trace"
+            );
+        }
+        app.world_mut().resource_mut::<TraceOrdinary>().0 = 1;
+        for _ in 0..1 {
+            app.update();
+            assert!(
+                responses.try_recv().is_err(),
+                "trace must wait for all requested updates"
+            );
+        }
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert!(response.ok, "{:?}", response.error);
+        let result = response.result.unwrap();
+        let rows = result["observations"].as_array().unwrap();
+        assert_eq!(rows.len(), 4);
+        for (index, row) in rows.iter().enumerate() {
+            assert_eq!(row["after_updates"], index);
+            assert_eq!(row["update"], index);
+            assert_eq!(
+                row["player"]["spatial"]["local"]["position"],
+                json!([(10 + index) * 256, 20 * 256, 30 * 256])
+            );
+            assert!(row["player"]["animation"].is_null() || row["player"]["animation"].is_object());
+            assert_eq!(row["player"]["control"]["falling_state"], 0);
+            assert_eq!(row["normal_frame_rate"], 12);
+            if index > 0 {
+                assert!(row["elapsed_scale"].as_u64() > rows[index - 1]["elapsed_scale"].as_u64());
+            }
+        }
+        assert!(responses.try_recv().is_err());
+        app.world_mut().resource_mut::<TraceOrdinary>().0 = 2;
+        let request = serde_json::from_value(json!({"id":94,"cmd":{
+            "type":"trace_player","x":10,"y":20,"z":30,"updates":3
+        }}))
+        .unwrap();
+        tx.send(Pending { request, reply }).unwrap();
+        app.update();
+        let rejected = responses.try_recv().unwrap();
+        assert!(!rejected.ok);
+        assert!(rejected.error.unwrap().contains("ordinary update skipped"));
+    }
+
+    #[test]
+    fn public_player_trace_rejects_invalid_bounds_and_absent_clock() {
+        for (updates, error) in [
+            (0, "updates must be 1..=255"),
+            (256, "updates must be 1..=255"),
+            (1, "game clock absent"),
+        ] {
+            let mut app = app();
+            let (tx, rx) = channel();
+            app.insert_resource(Inbox(Mutex::new(rx)));
+            let (reply, responses) = channel();
+            let request = serde_json::from_value(json!({"id":94,"cmd":{
+                "type":"trace_player","x":10,"y":20,"z":30,"updates":updates
+            }}))
+            .unwrap();
+            tx.send(Pending { request, reply }).unwrap();
+            app.update();
+            let response = responses.try_recv().unwrap();
+            assert!(!response.ok);
+            assert!(response.error.unwrap().contains(error));
+        }
+    }
+
+    #[test]
+    fn public_player_trace_rejects_world_retirement_and_conflicting_placement() {
+        use cyrus_script::{clock::SimulationClock, script::ScriptActors};
+        let mut app = script_app_with_player(true);
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            world.prepare_spatial().unwrap();
+            let player = world.selected_player().unwrap();
+            world
+                .initialize_player_spatial(player, [0; 3], [0; 3])
+                .unwrap();
+        }
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        clock.advance(0);
+        app.insert_resource(clock);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        for (id, cmd) in [
+            (
+                95,
+                json!({"type":"trace_player","x":10,"y":20,"z":30,"updates":2}),
+            ),
+            (96, json!({"type":"place_player","x":99,"y":99,"z":99})),
+        ] {
+            tx.send(Pending {
+                request: serde_json::from_value(json!({"id":id,"cmd":cmd})).unwrap(),
+                reply: reply.clone(),
+            })
+            .unwrap();
+        }
+        app.update();
+        assert!(responses.try_recv().is_err());
+        app.update();
+        let rejected = responses.try_recv().unwrap();
+        assert_eq!(rejected.id, 96);
+        assert!(rejected.error.unwrap().contains("owns placement"));
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors.current.as_ref().unwrap();
+        assert_eq!(
+            world
+                .spatial(world.selected_player().unwrap())
+                .unwrap()
+                .local
+                .position,
+            [2560, 5120, 7680]
+        );
+        app.world_mut().resource_mut::<ScriptActors>().current = None;
+        app.update();
+        let rejected = responses.try_recv().unwrap();
+        assert_eq!(rejected.id, 95);
+        let error = rejected.error.unwrap();
+        assert!(error.contains("world retired"));
+        assert!(error.contains("observations:"));
     }
 
     #[test]

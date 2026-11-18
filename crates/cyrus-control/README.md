@@ -35,7 +35,7 @@ reference for its fields. Command groups:
 | Capture | `screenshot {path}`, `capture_presentation_frame {path}`, `capture_gameplay_frame {path, pcm_path?, boundary?}` |
 | Fidelity and rendering | `set_fidelity {area, mode}`, `ray_tracing`, `ray_tracing_reference`, `set_day_night`, `set_modern_effect`, `set_sky_scroll`, `hold_texture_frame` |
 | Audio and movies | `play_sound {effect, position?}`, `play_speech {label}`, `stop_sounds`, `queue_movie {movie}` |
-| Gameplay setup | `place_player`, `set_attribute`, `mark_dead`, `select_item`, `show_item`, `set_torch`, `cheat {name, value?}`, `console {open?, line?}`, `script_load_world` |
+| Gameplay setup | `place_player`, `trace_player`, `set_attribute`, `mark_dead`, `select_item`, `show_item`, `set_torch`, `cheat {name, value?}`, `console {open?, line?}`, `script_load_world` |
 | Saves | `session_capture`, `session_load`, `session_slots` and their `*_result` polls |
 | Script inspection | `scripts`, `script_summary`, `bind_script_animation`, `step_script` |
 | Render inspection | `bound_light_image`, `rendered_actor`, `effect_geometry` |
@@ -58,7 +58,8 @@ player, fidelity, the clock, and per-screen detail such as `menu`, `console`,
   or step explicitly. They never enable gameplay, change the simulation clock
   or establish parity with the original on their own.
 - Deferred commands (`schedule_input`, `acquire_input`, `capture_gameplay_frame`,
-  `capture_presentation_frame`, `rendered_actor`, `effect_geometry`, session operations) reply later or are
+  `capture_presentation_frame`, `rendered_actor`, `effect_geometry`, `trace_player`,
+  session operations) reply later or are
   polled; at most one of each may be pending.
 - `capture_presentation_frame` freezes the application state and render-frame
   number at extraction, including loading and menu frames. It shares the bounded
@@ -68,6 +69,15 @@ player, fidelity, the clock, and per-screen detail such as `menu`, `console`,
   for the captured frame. With `CYRUS_MIXER_CAPTURE_DIR` set to an empty
   directory on Linux it also returns a mixer `pcm_generation` receipt (see
   [the cpal vendor note](../../dev/vendor/cpal/README.md)).
+- `trace_player {x, y, z, heading?, updates}` places the logical player and replies
+  after 1 through 255 ordinary updates with `observations`. Offset zero is captured
+  atomically with placement; each later offset records a completed ordinary update,
+  its generation, absolute update, elapsed Q8 nominal ticks, game seconds, installed
+  normal rate and full selected-player snapshot. Spatial coordinates in that snapshot
+  are Q8, not map units. Paused frames add no observations. Missing updates, world or
+  player replacement, changed clock units and a 120-second deadline reject the trace
+  and retain partial observations in the error. This observes the existing cadence;
+  equal update ordinals do not establish equal elapsed time between games.
 - The browser build has no control port.
 
 ## Testing

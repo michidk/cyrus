@@ -494,6 +494,7 @@ module where it is defined and regenerate.
 - `src/control/frame_capture.rs` — Bounded native screenshots whose clock and PCM delivery cursor belong to the extracted frame.
 - `src/control/input_schedule.rs` — Diagnostic input delivery at admitted ordinary simulation boundaries.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
+- `src/control/player_trace.rs` — Atomic logical placement and bounded observations of completed ordinary updates.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
