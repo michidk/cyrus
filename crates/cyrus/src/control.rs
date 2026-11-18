@@ -355,8 +355,14 @@ fn handle(
                     json!({"effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
+            Command::CapturePresentationFrame { path } => {
+                match frame_captures.arm(id, path.into(), None, reply.clone(), None, frame_capture::CaptureKind::Presentation) {
+                    Ok(()) => continue,
+                    Err(error) => Err(error.to_string()),
+                }
+            }
             Command::CaptureGameplayFrame { path, pcm_path, boundary } => {
-                match frame_captures.arm(id, path.into(), pcm_path.map(Into::into), reply.clone(), boundary) {
+                match frame_captures.arm(id, path.into(), pcm_path.map(Into::into), reply.clone(), boundary, frame_capture::CaptureKind::Gameplay) {
                     Ok(()) => break,
                     Err(error) => Err(format!("{error:#}")),
                 }
@@ -1629,6 +1635,83 @@ mod tests {
                 .count(),
             0
         );
+    }
+
+    #[test]
+    fn presentation_capture_freezes_loading_state_without_a_ready_world() {
+        use bevy::asset::RenderAssetUsages;
+        use bevy::render::{
+            render_resource::{Extent3d, TextureDimension, TextureFormat},
+            view::screenshot::{Screenshot, ScreenshotCaptured},
+        };
+        let mut app = frame_app();
+        app.insert_resource(State::new(cyrus_game::AppState::Loading));
+        app.world_mut()
+            .remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
+        app.world_mut()
+            .remove_resource::<cyrus_render::ReadyScene>();
+        app.world_mut()
+            .remove_resource::<cyrus_script::script::ScriptActors>();
+        app.world_mut()
+            .remove_resource::<cyrus_script::clock::SimulationClock>();
+        let path =
+            std::env::temp_dir().join(format!("cyrus-loading-frame-{}.png", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let (tx, rx) = channel();
+        let (reply, results) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        tx.send(Pending {
+            request: Request {
+                id: 42,
+                cmd: serde_json::from_value(json!({
+                    "type": "capture_presentation_frame", "path": path,
+                }))
+                .unwrap(),
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(results.try_recv().is_err());
+        let entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<Screenshot>>()
+            .single(app.world())
+            .unwrap();
+        app.insert_resource(State::new(cyrus_game::AppState::Menu));
+        let image = Image::new_fill(
+            Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            &[12, 34, 56, 255],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::MAIN_WORLD,
+        );
+        app.world_mut()
+            .trigger(ScreenshotCaptured { entity, image });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let response = loop {
+            app.update();
+            if let Ok(response) = results.try_recv() {
+                break response;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "capture did not finish"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        assert!(response.ok, "{:?}", response.error);
+        let result = response.result.unwrap();
+        assert_eq!(result["boundary"]["state"], "Loading");
+        assert_eq!(result["boundary"]["phase"], "render_extraction");
+        assert!(result["boundary"]["render_frame"].is_u64());
+        assert!(result["boundary"].get("player").is_none());
+        assert_eq!(&std::fs::read(&path).unwrap()[..8], b"\x89PNG\r\n\x1a\n");
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

@@ -5,7 +5,8 @@ install, assembles the Bevy app from the assets, world, game and presentation
 plugins ([cyrus-startup](../cyrus-startup/README.md), cyrus-render, cyrus-audio)
 and runs it. It owns native local state (settings, preferences, cheats, console,
 save slots) through `cyrus-config`, and applies the TCP control commands that
-`cyrus-control` frames. The browser counterpart is [cyrus-web](../cyrus-web/README.md).
+`cyrus-control` frames. Presentation captures retain application state at render extraction, including
+loading and menu transitions; gameplay captures additionally require a ready world. The browser counterpart is [cyrus-web](../cyrus-web/README.md).
 
 ## Usage
 

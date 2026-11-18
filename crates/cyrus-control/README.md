@@ -32,7 +32,7 @@ reference for its fields. Command groups:
 | --- | --- |
 | Session | `ping`, `state`, `skip_startup`, `load_scene {name}`, `quit` |
 | Input and camera | `input {key, action}` (Bevy `KeyCode` names; `press`, `release`, `tap`), `schedule_input`, `acquire_input`, `flycam`, `teleport`, `reset_camera` |
-| Capture | `screenshot {path}`, `capture_gameplay_frame {path, pcm_path?, boundary?}` |
+| Capture | `screenshot {path}`, `capture_presentation_frame {path}`, `capture_gameplay_frame {path, pcm_path?, boundary?}` |
 | Fidelity and rendering | `set_fidelity {area, mode}`, `ray_tracing`, `ray_tracing_reference`, `set_day_night`, `set_modern_effect`, `set_sky_scroll`, `hold_texture_frame` |
 | Audio and movies | `play_sound {effect, position?}`, `play_speech {label}`, `stop_sounds`, `queue_movie {movie}` |
 | Gameplay setup | `place_player`, `set_attribute`, `mark_dead`, `select_item`, `show_item`, `set_torch`, `cheat {name, value?}`, `console {open?, line?}`, `script_load_world` |
@@ -58,8 +58,12 @@ player, fidelity, the clock, and per-screen detail such as `menu`, `console`,
   or step explicitly. They never enable gameplay, change the simulation clock
   or establish parity with the original on their own.
 - Deferred commands (`schedule_input`, `acquire_input`, `capture_gameplay_frame`,
-  `rendered_actor`, `effect_geometry`, session operations) reply later or are
+  `capture_presentation_frame`, `rendered_actor`, `effect_geometry`, session operations) reply later or are
   polled; at most one of each may be pending.
+- `capture_presentation_frame` freezes the application state and render-frame
+  number at extraction, including loading and menu frames. It shares the bounded
+  asynchronous readback queue with gameplay capture, without requiring a ready
+  world or claiming a gameplay clock.
 - `capture_gameplay_frame` freezes the clock, selected actor and presentation
   for the captured frame. With `CYRUS_MIXER_CAPTURE_DIR` set to an empty
   directory on Linux it also returns a mixer `pcm_generation` receipt (see

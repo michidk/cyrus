@@ -170,6 +170,11 @@ pub enum Command {
     Screenshot {
         path: String,
     },
+    /// Capture any application presentation, including loading and menu transitions.
+    /// Freezes application state at render extraction and completes after PNG writing.
+    CapturePresentationFrame {
+        path: String,
+    },
     /// Freeze the clock/actor state for the frame submitted to the primary-window screenshot.
     /// Completes asynchronously after PNG writing. Optional PCM is a raw stereo s16 delivery cursor.
     CaptureGameplayFrame {

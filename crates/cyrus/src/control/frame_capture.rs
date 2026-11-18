@@ -15,7 +15,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone, Copy)]
+pub(super) enum CaptureKind {
+    Gameplay,
+    Presentation,
+}
+
 struct Request {
+    kind: CaptureKind,
     id: u64,
     path: PathBuf,
     pcm_path: Option<PathBuf>,
@@ -47,6 +54,7 @@ impl FrameCaptures {
         pcm_path: Option<PathBuf>,
         reply: Sender<Response>,
         boundary: Option<cyrus_control::FrameBoundary>,
+        kind: CaptureKind,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.queued.is_none() && self.active.is_none(),
@@ -62,6 +70,7 @@ impl FrameCaptures {
             path.display()
         );
         self.queued = Some(Request {
+            kind,
             id,
             path,
             pcm_path,
@@ -79,6 +88,32 @@ struct FrozenFrame {
     path: PathBuf,
     completed: Sender<Result<Value, String>>,
     writing: Arc<AtomicBool>,
+}
+
+fn presentation_boundary(world: &mut World) -> anyhow::Result<Value> {
+    anyhow::ensure!(
+        world
+            .query_filtered::<Entity, With<bevy::window::PrimaryWindow>>()
+            .iter(world)
+            .count()
+            == 1,
+        "presentation frame requires one primary window"
+    );
+    anyhow::ensure!(
+        world.query::<&Screenshot>().iter(world).next().is_none(),
+        "another screenshot is pending"
+    );
+    let state = world
+        .get_resource::<State<cyrus_game::AppState>>()
+        .ok_or_else(|| anyhow::anyhow!("presentation frame: application state unavailable"))?;
+    let frame = world
+        .get_resource::<bevy::diagnostic::FrameCount>()
+        .ok_or_else(|| anyhow::anyhow!("presentation frame: render frame counter unavailable"))?
+        .0;
+    Ok(json!({
+        "state": format!("{:?}", state.get()), "render_frame": frame,
+        "event": "render_frame", "phase": "render_extraction",
+    }))
 }
 
 fn boundary(world: &mut World, pcm_path: Option<&PathBuf>) -> anyhow::Result<Value> {
@@ -255,7 +290,10 @@ pub(super) fn capture(world: &mut World) {
         }
         Ok(true) => {}
     }
-    let result = boundary(world, request.pcm_path.as_ref());
+    let result = match request.kind {
+        CaptureKind::Gameplay => boundary(world, request.pcm_path.as_ref()),
+        CaptureKind::Presentation => presentation_boundary(world),
+    };
     let snapshot = match result {
         Ok(snapshot) => snapshot,
         Err(error) => {
@@ -334,6 +372,7 @@ mod tests {
             queued: None,
             active: Some(Active {
                 request: Request {
+                    kind: CaptureKind::Gameplay,
                     id: 9,
                     path: PathBuf::from("unused.png"),
                     pcm_path: None,
@@ -352,7 +391,14 @@ mod tests {
         assert!(
             world
                 .resource_mut::<FrameCaptures>()
-                .arm(10, PathBuf::from("next.png"), None, reply.clone(), None)
+                .arm(
+                    10,
+                    PathBuf::from("next.png"),
+                    None,
+                    reply.clone(),
+                    None,
+                    CaptureKind::Gameplay
+                )
                 .is_err()
         );
         completed
@@ -363,7 +409,14 @@ mod tests {
         assert!(
             world
                 .resource_mut::<FrameCaptures>()
-                .arm(10, PathBuf::from("next.png"), None, reply, None)
+                .arm(
+                    10,
+                    PathBuf::from("next.png"),
+                    None,
+                    reply,
+                    None,
+                    CaptureKind::Gameplay
+                )
                 .is_ok()
         );
     }
