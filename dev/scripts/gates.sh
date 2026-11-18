@@ -13,6 +13,7 @@ if [ -z "${REDGUARD_DIR+x}" ] && [ -d redguard ]; then
     export REDGUARD_DIR="$(cd redguard && pwd -P)"
 fi
 if [[ "$stage" == all || "$stage" == check || "$stage" == lints ]]; then
+    python3 -B dev/scripts/test-original-update-recorder.py
     python3 -B dev/scripts/test-preservation-release.py
     python3 -B dev/scripts/check-preservation-release.py
 fi
