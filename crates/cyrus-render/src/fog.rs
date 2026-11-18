@@ -1045,8 +1045,12 @@ fn prepare_model_geometry<'a>(
         && base.base_color_texture.is_some()
         && let Some(key) = crate::sampling::chroma_key(material_extras, extras)?
     {
-        chroma_key = Vec3::from_array(key.map(f32::from))
-            .extend(u8::from(attributes.is_some_and(|flags| flags & 2 != 0)) as f32);
+        let image_key = crate::sampling::image_chroma_key(material_extras)?;
+        // w: 0 unkeyed, 1 keyed by palette entry zero, 2 keyed by the image's own key.
+        let keyed = attributes.is_some_and(|flags| flags & 2 != 0);
+        chroma_key = Vec3::from_array(image_key.unwrap_or(key).map(f32::from)).extend(f32::from(
+            u8::from(keyed) * if image_key.is_some() { 2 } else { 1 },
+        ));
         if flat.is_none() && attributes.is_some_and(|flags| flags & 4 == 0) {
             let image = images
                 .get(base.base_color_texture.as_ref().unwrap())

@@ -177,17 +177,17 @@ fn sample_flat(uv: vec2<f32>) -> vec3<f32> {
     return footprint_average(footprint, center);
 }
 
-// `zero` is both the colour of exported index zero and the chroma key, in encoded bytes.
-fn sample_model(coordinate: vec2<i32>, allocation: vec4<u32>, level: u32, point: bool, zero: vec3<f32>) -> vec3<f32> {
+// `zero` is the colour of exported index zero and `key` the chroma key, in encoded bytes.
+fn sample_model(coordinate: vec2<i32>, allocation: vec4<u32>, level: u32, point: bool, zero: vec3<f32>, key: vec3<f32>) -> vec3<f32> {
     let scale = exp2(f32(level + 18u));
     let position = vec2<f32>(coordinate) / scale;
     let axis = anisotropic_axis(dpdx(position), dpdy(position));
     let center = sample_model_single(coordinate, allocation, level, point, zero);
-    if fog.lighting.z == 0.0 || matches_chroma(center, zero) { return center; }
+    if fog.lighting.z == 0.0 || matches_chroma(center, key) { return center; }
     var footprint = Footprint(vec3(0.0), 0.0);
     for (var i = 0u; i < u32(axis.z); i++) {
         let offset = axis.xy * ((f32(i) + 0.5) / axis.z - 0.5) * scale;
-        add_tap(&footprint, sample_model_single(coordinate + vec2<i32>(offset), allocation, level, false, zero), zero);
+        add_tap(&footprint, sample_model_single(coordinate + vec2<i32>(offset), allocation, level, false, zero), key);
     }
     return footprint_average(footprint, center);
 }

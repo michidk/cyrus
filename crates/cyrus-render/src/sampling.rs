@@ -76,6 +76,19 @@ pub(super) fn chroma_key(extras: Option<&str>, geometry: &str) -> anyhow::Result
     Ok(Some(texture.chroma_key_rgb))
 }
 
+/// Image-specific chroma key written by asset preparation for textures whose world `FLAT` record
+/// enables it; it replaces palette entry zero as the key.
+pub(super) fn image_chroma_key(extras: Option<&str>) -> anyhow::Result<Option<[u8; 3]>> {
+    #[derive(serde::Deserialize)]
+    struct Extras {
+        cyrus_texture_key: Option<[u8; 3]>,
+    }
+    Ok(extras
+        .map(serde_json::from_str::<Extras>)
+        .transpose()?
+        .and_then(|extras| extras.cyrus_texture_key))
+}
+
 /// Original pixel-space pairs from the preservation GLB export, before row reversal.
 pub(super) fn pixel_coordinates(extras: &str, count: usize) -> anyhow::Result<Vec<[f32; 2]>> {
     #[derive(serde::Deserialize)]
@@ -106,6 +119,17 @@ pub(super) fn pixel_coordinates(extras: &str, count: usize) -> anyhow::Result<Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_chroma_keys_are_optional_material_metadata() {
+        assert_eq!(image_chroma_key(None).unwrap(), None);
+        assert_eq!(image_chroma_key(Some("{}")).unwrap(), None);
+        assert_eq!(
+            image_chroma_key(Some(r#"{"cyrus_texture_key":[12,56,0]}"#)).unwrap(),
+            Some([12, 56, 0])
+        );
+        assert!(image_chroma_key(Some(r#"{"cyrus_texture_key":[12]}"#)).is_err());
+    }
 
     #[test]
     fn original_pixels_preserve_signed_fractional_coordinates_and_reject_stale_exports() {
