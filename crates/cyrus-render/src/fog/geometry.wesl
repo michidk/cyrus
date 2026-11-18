@@ -63,6 +63,16 @@ fn fragment(in: GeometryVertex, @builtin(front_facing) is_front: bool) -> Fragme
     lit.material.perceptual_roughness = 1.0;
     lit.material.reflectance = vec3(0.0);
     var out: FragmentOutput;
-    out.color = vec4(scene_fog_at_position(apply_pbr_lighting(lit).rgb, depth, fog_table_position(depth)), 1.0);
+    var color = apply_pbr_lighting(lit).rgb;
+    // Faithful lighting has no scene lights; light the surface like an original model instead:
+    // the world's ambient plus its directional light on the side facing it, in 0..255 units.
+    if fog.lighting.x == 0.0 {
+        var normal = normalize(in.normal);
+        if !is_front { normal = -normal; }
+        let weight = max(0.0, -dot(fog.direction.xyz, normal));
+        let light = clamp(fog.ambient.xyz + weight * fog.directional.xyz, vec3(0.0), vec3(255.0));
+        color = in.color * light / 255.0;
+    }
+    out.color = vec4(scene_fog_at_position(color, depth, fog_table_position(depth)), 1.0);
     return out;
 }

@@ -369,8 +369,10 @@ See [the mod service contract](../mods/README.md#save-service).
 `mods/grass`, disabled by default. It reads terrain UVs and installed texture
 pixels through bounded host hooks. Seeded blades, distance bands, density and wind
 are guest policy. This optional appearance is not original engine behavior.
-The host supplies scene-lit owned meshes and cleanup. This base has raster Modern
-lighting; ray-traced grass stand-ins are unavailable. The shared geometry shader
+The host supplies scene-lit owned meshes and cleanup. Under Modern lighting they take
+the scene's lights; under Faithful lighting they take the world's ambient and
+directional model light, as original models do. Ray-traced grass stand-ins are
+unavailable. The shared geometry shader
 library follows the existing first-active-mod shader replacement rule.
 ## Audio resampling
 
