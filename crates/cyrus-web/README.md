@@ -30,6 +30,8 @@ and click **Connect to server**. Stop the server with Ctrl+C. Any static host
 serving a `manifest.json` and the original bytes works; cross-origin hosts need
 CORS and byte-range support.
 
+## Advanced launch options
+
 Launch options use the native flag names as URL parameters (combine with `&`,
 percent-encode values; booleans accept empty, `true`/`1` or `false`/`0`):
 
@@ -45,12 +47,13 @@ percent-encode values; booleans accept empty, `true`/`1` or `false`/`0`):
 | `?volume=0` | `--volume 0` | Master volume for this visit, 0–100, not saved |
 | `?mode=modern` | `--mode modern` | Every presentation area; `fog`, `sky` and `music` set one area |
 
-Without parameters the game picks its start like the native game: a fresh
-final-version install plays the Introduction, a valid autosave opens the book.
+Without launch parameters, the game opens the book after the splash and title, matching native startup. Choose New Game or load a save to enter a world.
 Backtick opens the world picker, flycam and fidelity controls; F12 opens the
 cheat console in a world. See [Playing](../../docs/PLAYING.md) for controls and saves.
 
 Script world changes use the shared loading artwork and fade lifecycle; the URL follows the committed destination without reloading the page.
+
+## Browser storage
 
 Browser state stays in this site's storage for your browser profile:
 

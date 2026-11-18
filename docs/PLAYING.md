@@ -79,7 +79,7 @@ right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
 player control. Its camera movement does not move Cyrus through the world. In the book menu it
 flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
 the **Pass input to game** option beside it is ticked.
-The bundled `flycam` mod (see `mods/README.md`) is a second fly camera: activate it in the
+The bundled `flycam` mod (see [bundled mods](../mods/README.md)) is a second fly camera: activate it in the
 Mods window under Backtick, then Insert toggles it; its speed is a setting of the mod.
 
 The controls and the follow camera are always the original's; Modern mode changes only how the
@@ -88,7 +88,7 @@ installed joystick controls (South attacks or activates, East jumps, West looks,
 modifier; rebind them on the Controls page), Start opens the book and Back the inventory. In the book,
 the logbook and the inventory, the D-pad or left stick moves the selection, South confirms and East or
 Start goes back. Mouse look, camera-relative W, A, S and D movement and analog steering come from the
-bundled `movement` mod (see `mods/README.md`): activate it in the Mods window under Backtick. In a
+bundled `movement` mod (see [bundled mods](../mods/README.md)): activate it in the Mods window under Backtick. In a
 browser, click the game to lock the cursor for its mouse look, also after Escape released it.
 
 ## Save and resume

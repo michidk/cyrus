@@ -9,9 +9,7 @@ owners (`cyrus-game`, `cyrus-script`, `cyrus-world`, `cyrus-audio`,
 `cyrus-render`, `cyrus-assets`); none of them depends on this crate. It does no
 I/O: hosts resolve installed assets and store the document.
 
-This is unfinished work. Diagnostic capture and load paths exist, but accepted
-end-to-end save/load from the original menu is not complete. The document is a
-cyrus format, not the original game's save format.
+For player-facing save and load behavior, see [Save and resume](../../docs/PLAYING.md#save-and-resume). This page describes the shared implementation and its boundaries. The document is a cyrus format, not the original game's save format.
 
 ## Modules
 

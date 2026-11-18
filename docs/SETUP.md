@@ -1,7 +1,20 @@
-# SETUP — running cyrus and the original
+<a id="setup--running-cyrus-and-the-original"></a>
 
-For player controls, saving, resuming and current limitations, see
-[Playing cyrus](PLAYING.md). This guide covers setup and developer tools.
+# Setup and developer reference
+
+To play a downloaded package, start with [Playing cyrus](PLAYING.md#start). This page covers source builds, configuration, and developer diagnostics; the capture and comparison procedures are not prerequisites for normal play.
+
+| Task | Start here |
+| --- | --- |
+| Build and run from source | [Requirements](#you-need), [link the install](#link-the-install), [run](#run) |
+| Use the asset viewer | [Asset viewer](#asset-viewer) |
+| Build or serve the browser version | [Browser build](#browser-build) |
+| Understand release packages | [Releases](#releases) |
+| Find diagnostic output | [Logs](#logs) |
+| Run the original for comparison | [The original game](#the-original-game) |
+| Drive or inspect a running game | [Control port](#driving-the-game-from-an-agent), [runtime inspection](#runtime-inspection-and-acceptance) |
+| Capture and compare presentation | [Native startup](#native-startup-capture), [world captures](#world-audit-and-matched-captures) |
+| Recover interrupted checks | [Runtime probes](#interrupted-runtime-probes), [completed stages](#retaining-completed-acceptance-stages), [native compilation](#recovering-native-compilation-after-a-reset) |
 
 ## You need
 
@@ -22,7 +35,7 @@ For player controls, saving, resuming and current limitations, see
   are reported when an operation needs them; startup still requires its splash DLL.
 - Stable Rust (`rust-toolchain.toml`), `just`, and for a window Bevy's usual
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
-- Docker, for the original game and for the virtual-display runner.
+- Docker only for the original-game and virtual-display runners. Native source runs do not require it.
 
 ### Native Windows verification
 
@@ -59,7 +72,7 @@ the linker from replacing a running `cyrus.exe`.
 ln -s /path/to/GOG/extracted/app/Redguard redguard   # or: export REDGUARD_DIR=...
 ```
 
-The link is gitignored. cyrus only reads from it.
+The link is gitignored. See the [playing guide](PLAYING.md#start) for installation storage behavior, including the native cheat-file exception.
 
 ## Run
 
@@ -77,203 +90,6 @@ cargo run -p cyrus -- --export-startup    # export startup, menu, starting world
 just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
-
-`dev/scripts/start-duel.py --port 7117` drives a running native cyrus (launched with `--skip-startup`
-and no `--scene`) through the START pirate duel with installed keys only and exits 0 once both
-pirates are defeated; the story then loads the next world by itself.
-
-Compare movement and collision against the original at an equal update rate. Both builds step by the
-frame scale the clock measures (the original shows 16 to 23 frames a second in its overlay; the dev
-container renders about 6, which the clock clamps at `min_frame_rate`), and contact sequences depend on it:
-on the HIDEINT boat walk the original itself ended in two different places in two runs, and cyrus
-reproduced the second at frame scale 192. Run cyrus on a scratch copy of the install (under
-`/home/vibepod/workspaces`, so Docker can mount it) whose `SYSTEM.INI` sets `min_frame_rate=16`: the clock then
-steps at 192 even when the host is slower, and game time runs slower than wall time.
-
-`dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT` loads each named world
-through the same port, lets its scripts run and prints every actor whose script failed (exit 1 if
-any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
-scene that polls it; add `--expect-transition` when that scene ends in a world change (the usual
-outcome), and the sweep follows it into the destination world and inspects that world instead of
-reporting the replacement as a failure. Run native cyrus with a real-time audio sink: ALSA's `null` device drains faster than real time, which
-shortens every voiced line (**Verified:** the START story from the last kill to the world change took
-30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
-prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
-The sink uses signed 16-bit stereo at 48000 Hz, matching the monitor calibration signal.
-An unspecified sink rate can select 44100 Hz and resample a 48000 Hz calibration twice,
-so an unchanged player volume does not establish unity gain.
-
-For native book PCM acquisition, recover the runtime with
-`dev/scripts/ensure-book-audio-runtime.sh IMAGE /absolute/path/to/local-image.tar`.
-It restores the supplied archive or builds `Dockerfile.sound-acceptance`, checks software
-Vulkan and the PulseAudio ALSA plugin together, and seals a newly built image only after
-that check passes. Mount the current `paced-audio.sh` when reusing an older image.
-Use the same live sink for calibration and the acknowledged public transition; retain
-its sink/player settings and reference hashes. A paced recording alone does not admit
-waveform continuity or calibrated production gain. The transition recorder retains its
-monotonic PCM/input epoch in `result.json` so separately sampled game clocks can be
-bound to that recording without reconstructing wall time.
-
-`paired-book-audio.py` records a known unity signal and a public transition in one
-monitor WAV while an independent clock observer runs. Use a private paced runtime
-and a host-mounted evidence/config directory:
-
-```sh
-python3 paired-book-audio.py --producer dosbox-x \
-  --clock-command 'python3 /evidence/clock-observer.py' \
-  --ready-command 'python3 /evidence/check-ready.py' \
-  capture /evidence/paired -- python3 /evidence/transition.py
-```
-
-The readiness command observes the settled source page. The clock command emits
-JSON lines with monotonic `before`/`after` read bounds and `game_seconds`.
-The transition command uses the recorder's epoch and emits the ordinary `sent`,
-`acknowledged`, `from` and `to` event. It owns its bounded audio tail. The clock
-observer is terminated when that driver finishes, so a longer observer timeout
-cannot add unrelated repeated cues to the transition window.
-
-Calibration temporarily mutes exactly one named game producer while the known
-signal plays. The original unmuted player settings are restored and compared
-before public input, including after calibration failure. Other producers are
-untouched. This prevents a quiet producer's constant sample offset from corrupting
-strict unity; it does not change the transition's production volume. Recording
-ownership is protected by a per-output lock.
-
-Run `check-paired-book-audio.py RECORDING REPORT --reference EFFECT.wav` for each
-installed cue. Its phase windows come from recorded events, with the existing
-recorder pacing allowance retained as PCM/wall epoch uncertainty. It requires
-strict stereo unity, unchanged player settings, cue continuity, and observed
-clock samples bracketing that uncertainty. Shared epoch error is retained when
-bounding cue cadence; host time is never interpolated into game time.
-
-For different recording sample rates, play the retained source recording through
-the target sink with `paced-monitor-check.py --reference SOURCE.wav`. Then run
-`book-audio-transfer.py CAPTURE SOURCE.wav REPORT --reference EFFECT.wav` for each
-cue. It requires admitted explicit-unity playback of that source hash and cue
-continuity at both boundaries, and reports the measured transfer ratio per cue.
-It does not assume a generic resampler response or authorize changing production
-gain to compensate for a frequency-dependent recording path.
-
-
-`dev/scripts/world-pursuit.py --port 7117 DRINT EXTPALAC` exercises combat actors' lost-sight routing:
-it places the selected player (`place_player`) next to the nearest living combat actor, then holds it
-far away, and prints failed actors, a world-level script error and how many actors reached
-lost-sight timing and routed pursuit (exit 1 on a failure). The `teleport` command moves only the
-render transform, so it cannot be used for this. Run one world per process.
-
-`dev/scripts/native-audit.py --scripts game-config/cache` lists the natives that the exported
-installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows
-up there, though a mention does not prove the handler works.
-
-`--matrix` prints structural source pointers. `--behavior-matrix` prints the reviewed behavior
-scope, owning issue, public caller, inspected test assertions, evidence references and remaining
-limits for each called native. The reviewed snapshot lives in
-`dev/scripts/native-behavior.json`, with its source revision and review method. Unreviewed entries
-are `unaudited`, not `missing`. `partial` means some behavior exists but the stated scope still
-has implementation or acceptance gaps; `missing` requires an explicit review finding. `done`
-requires recorded original/native/browser acceptance for that scope. References are reviewed
-evidence, not automatically verified by the tool. A test name or source mention never promotes
-a status. Use `--behavior PATH` for a separately reviewed catalogue. Check the reporting contract
-without Cargo with `python3 dev/scripts/test-native-audit.py`.
-
-In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
-`window.__cyrusInspectScripts = true` adds the first 64 script actors (the `scripts` command's
-data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key
-events (a software-rendered tab runs at about 2 frames per second, so its key holds are long).
-
-`dev/scripts/original-duel.py` plays the same duel in the original under DOSBox-X with the same bot
-policy (xdotool keys; positions, yaw and health read from the emulator's memory by a reader kept
-under `magic/tools/`, because it holds executable addresses). The
-container is started with `--cap-add SYS_PTRACE`, and the run copy's `maps` link is replaced by a
-real directory: the game saves `MAPS\\<world>.TSG` when it leaves a world and hangs if the
-emulator cannot create that file. `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
-the two logs: pirate health falls in whole 10-point hits, both pirates are defeated, the story
-reaches the next world, the player arrives at the same place and heading, and the delay after the
-last kill agrees within a factor of two. **Verified** (runs PASS): both place the player at
-(38112, -278, 36352) facing 256 in world 1 (a later run's arrival sample, taken while the player was
-already turning, differed by 127 units and 45 heading units). Pacing is compared in each engine's
-own game seconds (the original: frames over its measured frame rate; cyrus: `state.clock`), and
-that is not frame-rate independent: the guards' and pirates' attack cadence is counted per update
-in both engines. With cyrus at 3 to 7 frames per second here and the original at 8 to 13, a
-catacomb guard (`original-idle.py --world 2`) lands a 10-point hit every 0.65 to 0.94 game seconds
-in the original and every 1.0 to 1.7 in cyrus, but every 12 engine frames in the original against
-10 in cyrus, so the two agree per update. The story after the duel took 41 to 45 game seconds in
-the original and 28 to 36 in cyrus; its cause is not found. Animation groups seen at the samples
-overlap (death groups 122 and 124, attack groups 102 to 104 in both); frame-synchronised replay,
-camera and audio are not compared.
-
-`dev/scripts/original-idle.py --world N` starts the original in world N with no input and logs the
-player's health and the nearby combat actors; the same world run natively (`load_scene`) shows
-whether the idle player dies in both. In the catacomb (world 2) both die to the same two guards.
-
-For a bounded original rope contact probe, use a prepared writable run directory
-with its shared assets linked as described above:
-
-```sh
-docker build -f dev/docker/retro/Dockerfile.contact \
-    -t cyrus-retro-contact:dev dev/docker/retro
-bash dev/scripts/original-rope-contact.sh RUN READER.py PLACE.py OUTPUT
-```
-
-The launcher holds the host live-run lock for one run, mounts the host config
-and local diagnostics, restores `WORLD.INI` and `SYSTEM.INI` afterwards and stops its own
-container on success or failure. It rejects the canonical install as a writable
-run. It uses `cyrus-retro-contact:dev`, which runs the same guest configuration on
-Xvfb without the interactive preview services. Build it with the command above;
-`CYRUS_RETRO_IMAGE` can select an existing compatible image. `CYRUS_RETRO_INSTALL_ROOT` can select the host-mounted GOG extraction root. The launcher resolves this root, stages its driver under the output directory and uses explicit bind mounts so a missing source fails instead of becoming a directory. The launcher passes
-`-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
-F12 for the guest console.
-The contact image includes the full Python standard library. Its build checks
-that `ctypes` can resolve the process-tracing entry point used by atomic boundary
-readers; an image with only `python3-minimal` cannot run those readers.
-Original audio capture also configures this modifier explicitly, including when
-reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
-recorder chord must not open the guest console. A local config override must place
-`hostkey=ctrlalt` in `[dosbox]`, not `[sdl]`.
-
-The contact launcher requires a prepared run with `[debug] final_version=0` and
-rejects other or missing values before runtime recovery or live-lock admission.
-Final-version runs enter the book instead of the direct world; use the original
-startup capture driver for that path. This check never changes the run setting.
-
-The reader and placement adapter are local diagnostics kept outside tracked
-files. The reader follows the `original-state.py` JSON contract; the placement
-adapter runs as `python3 /tmp/place.py`, with that reader at `/tmp/state.py`.
-Neither adapter may modify installed assets. The launcher reads installed text-suppression settings from
-`SYSTEM.INI` and applies them in the writable run to avoid inherited developer
-diagnostics while preserving direct-world admission and other run settings;
-`CYRUS_RETRO_SYSTEM_INI` can select an explicit baseline file.
-
-Executable-specific readers can use `dev/scripts/original-memory-region.py` to
-locate their guest region from a local signature and its offset. Supply readable
-anonymous process mapping ranges and the required region size. The helper accounts
-for a region beginning inside a coalesced mapping, scans in bounded chunks,
-and rejects absent, ambiguous
-or truncated-region candidates. Keep signatures and executable bindings in the
-local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
-
-The reader must report top-level `console_mode` as `closed`, `overlay` or
-`interactive`, derived from active console state and its modal/nonmodal mode.
-The public driver requires `interactive` as well as a paused world clock;
-a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
-checks that console entry paused world updates before sending commands, grants
-and draws the sword through console/input, then invokes placement. Escape closes
-each command entry. Underscores in object and attribute names use a held Shift
-with the minus key through the polling interval; they are not literal xdotool
-key names. Shift is released even when character entry fails. The JSONL record
-includes selected-player state and world clock through walking, attack and continuation. A sheathed, falling or
-nonordinary living state fails before movement. Held inputs are released on
-failure, and stalled world progress has a wall-clock cutoff. Capture mixer audio
-separately to assess clank: a successful exit alone does not prove contact,
-attachment or sound equivalence. Match placement, heading and observed game-time
-input duration in the native comparison. Run the driver and launcher controls
-with `python3 dev/scripts/test-original-rope-contact.py`.
-
-`dev/scripts/new-game-compare.py` loads START, waits for the idle player to die, chooses NEW in the
-death book (INTRO.SMK plays first and is skipped with Enter; the install's parent must hold the CD
-image) and compares the script globals, HUD and inventory with the first start. Measured: inventory,
-compass, power-ups and flags are identical; only timing-driven values differ (frame counters, health
-mid-fight, the retained death position, the script choice highlight).
 
 Headless mode creates no camera or audio backend. Control state reports a null
 camera position; player input, preload, world export and protocol commands remain
@@ -336,7 +152,7 @@ Entry waits for both sidecars and settles against dry terrain and static models.
 Unavailable markers, unsupported terrain, and missing player definitions report a
 player-entry error. Bounded sheathed forward walking uses the ordinary player
 update. Complete installed traversal, dynamic ground support and the original
-follow camera remain unverified; use the fly camera mod (`) for inspection.
+follow camera remain unverified; use the Backtick menu's inspection camera for viewing.
 The game camera uses the original Glide horizontal field of view, including on
 viewport resize. Its inspection position is independent of the original follow
 camera; matching the projection alone does not establish a matched view.
@@ -915,9 +731,8 @@ Press Backtick and use **Flycam** to switch between inspection
 and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
-Backtick world selections show the installed loading screen while the destination assets
-Free flight is also available as the bundled `flycam` mod (see `mods/README.md`), toggled with Insert.
-load, then recreate the player at marker zero and return to the gameplay camera.
+Backtick world selections show the installed loading screen while the destination assets load, then recreate the player at marker zero and return to the gameplay camera.
+Free flight is also available as the bundled [flycam mod](../mods/README.md), toggled with Insert.
 Changing fidelity does not detach the view. Detaching preserves the player
 position. Initial placement uses the installed player marker. The ordinary player
 update supports bounded sheathed forward, backward and lateral movement; complete installed traversal
@@ -1075,6 +890,207 @@ effects report unsupported.
 **Unknown:** the original gameplay effect of `oddjob`; its raw state still
 supports toggling, assignment and persistence. These commands do not enable
 unsupported gameplay systems.
+
+## Runtime inspection and acceptance
+
+These procedures target developers comparing specific behaviors against the original. Use the [playing guide](PLAYING.md) for normal gameplay.
+
+`dev/scripts/start-duel.py --port 7117` drives a running native cyrus (launched with `--skip-startup`
+and no `--scene`) through the START pirate duel with installed keys only and exits 0 once both
+pirates are defeated; the story then loads the next world by itself.
+
+Compare movement and collision against the original at an equal update rate. Both builds step by the
+frame scale the clock measures (the original shows 16 to 23 frames a second in its overlay; the dev
+container renders about 6, which the clock clamps at `min_frame_rate`), and contact sequences depend on it:
+on the HIDEINT boat walk the original itself ended in two different places in two runs, and cyrus
+reproduced the second at frame scale 192. Run cyrus on a scratch copy of the install (under
+`/home/vibepod/workspaces`, so Docker can mount it) whose `SYSTEM.INI` sets `min_frame_rate=16`: the clock then
+steps at 192 even when the host is slower, and game time runs slower than wall time.
+
+`dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT` loads each named world
+through the same port, lets its scripts run and prints every actor whose script failed (exit 1 if
+any); `--flag CATACOMB:scene2=1` first sets a global flag through the console to start the story
+scene that polls it; add `--expect-transition` when that scene ends in a world change (the usual
+outcome), and the sweep follows it into the destination world and inspects that world instead of
+reporting the replacement as a failure. Run native cyrus with a real-time audio sink: ALSA's `null` device drains faster than real time, which
+shortens every voiced line (**Verified:** the START story from the last kill to the world change took
+30 game seconds with it and 43 with a paced sink, the original's 41 to 45). In the dev container,
+prefix the command with `paced-audio.sh`, which starts a PulseAudio null sink behind ALSA's default device.
+The sink uses signed 16-bit stereo at 48000 Hz, matching the monitor calibration signal.
+An unspecified sink rate can select 44100 Hz and resample a 48000 Hz calibration twice,
+so an unchanged player volume does not establish unity gain.
+
+For native book PCM acquisition, recover the runtime with
+`dev/scripts/ensure-book-audio-runtime.sh IMAGE /absolute/path/to/local-image.tar`.
+It restores the supplied archive or builds `Dockerfile.sound-acceptance`, checks software
+Vulkan and the PulseAudio ALSA plugin together, and seals a newly built image only after
+that check passes. Mount the current `paced-audio.sh` when reusing an older image.
+Use the same live sink for calibration and the acknowledged public transition; retain
+its sink/player settings and reference hashes. A paced recording alone does not admit
+waveform continuity or calibrated production gain. The transition recorder retains its
+monotonic PCM/input epoch in `result.json` so separately sampled game clocks can be
+bound to that recording without reconstructing wall time.
+
+`paired-book-audio.py` records a known unity signal and a public transition in one
+monitor WAV while an independent clock observer runs. Use a private paced runtime
+and a host-mounted evidence/config directory:
+
+```sh
+python3 paired-book-audio.py --producer dosbox-x \
+  --clock-command 'python3 /evidence/clock-observer.py' \
+  --ready-command 'python3 /evidence/check-ready.py' \
+  capture /evidence/paired -- python3 /evidence/transition.py
+```
+
+The readiness command observes the settled source page. The clock command emits
+JSON lines with monotonic `before`/`after` read bounds and `game_seconds`.
+The transition command uses the recorder's epoch and emits the ordinary `sent`,
+`acknowledged`, `from` and `to` event. It owns its bounded audio tail. The clock
+observer is terminated when that driver finishes, so a longer observer timeout
+cannot add unrelated repeated cues to the transition window.
+
+Calibration temporarily mutes exactly one named game producer while the known
+signal plays. The original unmuted player settings are restored and compared
+before public input, including after calibration failure. Other producers are
+untouched. This prevents a quiet producer's constant sample offset from corrupting
+strict unity; it does not change the transition's production volume. Recording
+ownership is protected by a per-output lock.
+
+Run `check-paired-book-audio.py RECORDING REPORT --reference EFFECT.wav` for each
+installed cue. Its phase windows come from recorded events, with the existing
+recorder pacing allowance retained as PCM/wall epoch uncertainty. It requires
+strict stereo unity, unchanged player settings, cue continuity, and observed
+clock samples bracketing that uncertainty. Shared epoch error is retained when
+bounding cue cadence; host time is never interpolated into game time.
+
+For different recording sample rates, play the retained source recording through
+the target sink with `paced-monitor-check.py --reference SOURCE.wav`. Then run
+`book-audio-transfer.py CAPTURE SOURCE.wav REPORT --reference EFFECT.wav` for each
+cue. It requires admitted explicit-unity playback of that source hash and cue
+continuity at both boundaries, and reports the measured transfer ratio per cue.
+It does not assume a generic resampler response or authorize changing production
+gain to compensate for a frequency-dependent recording path.
+
+
+`dev/scripts/world-pursuit.py --port 7117 DRINT EXTPALAC` exercises combat actors' lost-sight routing:
+it places the selected player (`place_player`) next to the nearest living combat actor, then holds it
+far away, and prints failed actors, a world-level script error and how many actors reached
+lost-sight timing and routed pursuit (exit 1 on a failure). The `teleport` command moves only the
+render transform, so it cannot be used for this. Run one world per process.
+
+`dev/scripts/native-audit.py --scripts game-config/cache` lists the natives that the exported
+installed scripts call and that no Rust source mentions (exit 1 if any): a forgotten handler shows
+up there, though a mention does not prove the handler works.
+
+`--matrix` prints structural source pointers. `--behavior-matrix` prints the reviewed behavior
+scope, owning issue, public caller, inspected test assertions, evidence references and remaining
+limits for each called native. The reviewed snapshot lives in
+`dev/scripts/native-behavior.json`, with its source revision and review method. Unreviewed entries
+are `unaudited`, not `missing`. `partial` means some behavior exists but the stated scope still
+has implementation or acceptance gaps; `missing` requires an explicit review finding. `done`
+requires recorded original/native/browser acceptance for that scope. References are reviewed
+evidence, not automatically verified by the tool. A test name or source mention never promotes
+a status. Use `--behavior PATH` for a separately reviewed catalogue. Check the reporting contract
+without Cargo with `python3 dev/scripts/test-native-audit.py`.
+
+In the browser build, `?capture=1` publishes `window.__cyrusCapture`; setting
+`window.__cyrusInspectScripts = true` adds the first 64 script actors (the `scripts` command's
+data). `dev/scripts/start-duel-web.js` evaluated in the page plays the same duel with DOM key
+events (a software-rendered tab runs at about 2 frames per second, so its key holds are long).
+
+`dev/scripts/original-duel.py` plays the same duel in the original under DOSBox-X with the same bot
+policy (xdotool keys; positions, yaw and health read from the emulator's memory by a reader kept
+under `magic/tools/`, because it holds executable addresses). The
+container is started with `--cap-add SYS_PTRACE`, and the run copy's `maps` link is replaced by a
+real directory: the game saves `MAPS\\<world>.TSG` when it leaves a world and hangs if the
+emulator cannot create that file. `dev/scripts/compare-duel.py ORIGINAL.log NATIVE.log` compares
+the two logs: pirate health falls in whole 10-point hits, both pirates are defeated, the story
+reaches the next world, the player arrives at the same place and heading, and the delay after the
+last kill agrees within a factor of two. **Verified** (runs PASS): both place the player at
+(38112, -278, 36352) facing 256 in world 1 (a later run's arrival sample, taken while the player was
+already turning, differed by 127 units and 45 heading units). Pacing is compared in each engine's
+own game seconds (the original: frames over its measured frame rate; cyrus: `state.clock`), and
+that is not frame-rate independent: the guards' and pirates' attack cadence is counted per update
+in both engines. With cyrus at 3 to 7 frames per second here and the original at 8 to 13, a
+catacomb guard (`original-idle.py --world 2`) lands a 10-point hit every 0.65 to 0.94 game seconds
+in the original and every 1.0 to 1.7 in cyrus, but every 12 engine frames in the original against
+10 in cyrus, so the two agree per update. The story after the duel took 41 to 45 game seconds in
+the original and 28 to 36 in cyrus; its cause is not found. Animation groups seen at the samples
+overlap (death groups 122 and 124, attack groups 102 to 104 in both); frame-synchronised replay,
+camera and audio are not compared.
+
+`dev/scripts/original-idle.py --world N` starts the original in world N with no input and logs the
+player's health and the nearby combat actors; the same world run natively (`load_scene`) shows
+whether the idle player dies in both. In the catacomb (world 2) both die to the same two guards.
+
+For a bounded original rope contact probe, use a prepared writable run directory
+with its shared assets linked as described above:
+
+```sh
+docker build -f dev/docker/retro/Dockerfile.contact \
+    -t cyrus-retro-contact:dev dev/docker/retro
+bash dev/scripts/original-rope-contact.sh RUN READER.py PLACE.py OUTPUT
+```
+
+The launcher holds the host live-run lock for one run, mounts the host config
+and local diagnostics, restores `WORLD.INI` and `SYSTEM.INI` afterwards and stops its own
+container on success or failure. It rejects the canonical install as a writable
+run. It uses `cyrus-retro-contact:dev`, which runs the same guest configuration on
+Xvfb without the interactive preview services. Build it with the command above;
+`CYRUS_RETRO_IMAGE` can select an existing compatible image. `CYRUS_RETRO_INSTALL_ROOT` can select the host-mounted GOG extraction root. The launcher resolves this root, stages its driver under the output directory and uses explicit bind mounts so a missing source fails instead of becoming a directory. The launcher passes
+`-set "dosbox hostkey=ctrlalt"` to set DOSBox-X’s host modifier to Ctrl+Alt, leaving
+F12 for the guest console.
+The contact image includes the full Python standard library. Its build checks
+that `ctypes` can resolve the process-tracing entry point used by atomic boundary
+readers; an image with only `python3-minimal` cannot run those readers.
+Original audio capture also configures this modifier explicitly, including when
+reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
+recorder chord must not open the guest console. A local config override must place
+`hostkey=ctrlalt` in `[dosbox]`, not `[sdl]`.
+
+The contact launcher requires a prepared run with `[debug] final_version=0` and
+rejects other or missing values before runtime recovery or live-lock admission.
+Final-version runs enter the book instead of the direct world; use the original
+startup capture driver for that path. This check never changes the run setting.
+
+The reader and placement adapter are local diagnostics kept outside tracked
+files. The reader follows the `original-state.py` JSON contract; the placement
+adapter runs as `python3 /tmp/place.py`, with that reader at `/tmp/state.py`.
+Neither adapter may modify installed assets. The launcher reads installed text-suppression settings from
+`SYSTEM.INI` and applies them in the writable run to avoid inherited developer
+diagnostics while preserving direct-world admission and other run settings;
+`CYRUS_RETRO_SYSTEM_INI` can select an explicit baseline file.
+
+Executable-specific readers can use `dev/scripts/original-memory-region.py` to
+locate their guest region from a local signature and its offset. Supply readable
+anonymous process mapping ranges and the required region size. The helper accounts
+for a region beginning inside a coalesced mapping, scans in bounded chunks,
+and rejects absent, ambiguous
+or truncated-region candidates. Keep signatures and executable bindings in the
+local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
+
+The reader must report top-level `console_mode` as `closed`, `overlay` or
+`interactive`, derived from active console state and its modal/nonmodal mode.
+The public driver requires `interactive` as well as a paused world clock;
+a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
+checks that console entry paused world updates before sending commands, grants
+and draws the sword through console/input, then invokes placement. Escape closes
+each command entry. Underscores in object and attribute names use a held Shift
+with the minus key through the polling interval; they are not literal xdotool
+key names. Shift is released even when character entry fails. The JSONL record
+includes selected-player state and world clock through walking, attack and continuation. A sheathed, falling or
+nonordinary living state fails before movement. Held inputs are released on
+failure, and stalled world progress has a wall-clock cutoff. Capture mixer audio
+separately to assess clank: a successful exit alone does not prove contact,
+attachment or sound equivalence. Match placement, heading and observed game-time
+input duration in the native comparison. Run the driver and launcher controls
+with `python3 dev/scripts/test-original-rope-contact.py`.
+
+`dev/scripts/new-game-compare.py` loads START, waits for the idle player to die, chooses NEW in the
+death book (INTRO.SMK plays first and is skipped with Enter; the install's parent must hold the CD
+image) and compares the script globals, HUD and inventory with the first start. Measured: inventory,
+compass, power-ups and flags are identical; only timing-driven values differ (frame counters, health
+mid-fight, the retained death position, the script choice highlight).
 
 ## Native startup capture
 
