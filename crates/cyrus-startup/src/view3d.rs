@@ -183,7 +183,7 @@ pub(super) struct LitFace {
 /// The triangles of one view and the RGBA textures they index.
 #[derive(Default)]
 pub(super) struct LitScene {
-    /// Apply the published framebuffer storage precision to model fragments.
+    /// Apply encoded four-bit filtering and framebuffer storage to model fragments.
     pub framebuffer: bool,
     pub textures: Vec<(u16, u16, Vec<u8>)>,
     pub faces: Vec<LitFace>,
@@ -191,7 +191,7 @@ pub(super) struct LitScene {
 }
 
 impl LitScene {
-    /// A view whose model fragments use the software framebuffer storage rule.
+    /// A view whose model fragments use software texture and framebuffer precision.
     pub fn framebuffer() -> Self {
         Self {
             framebuffer: true,
@@ -348,7 +348,7 @@ impl LitModel {
                         Mesh3d(meshes.add(texture_mesh(scene, texture))),
                         MeshMaterial3d(materials.add(LitMaterial {
                             texture: handle.clone(),
-                            four_bit_filter: UVec4::new(0, u32::from(scene.framebuffer), 0, 0),
+                            four_bit_filter: UVec4::new(u32::from(scene.framebuffer), 0, 0, 0),
                         })),
                         LitMesh(layer),
                         Transform::IDENTITY,
