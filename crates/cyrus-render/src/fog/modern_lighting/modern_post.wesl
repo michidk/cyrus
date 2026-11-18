@@ -16,10 +16,13 @@ struct ModernPost {
 @group(0) @binding(3) var<uniform> view: View;
 @group(0) @binding(4) var<uniform> settings: ModernPost;
 
-// Reflection march: steps, the first step and its growth, in world units.
+// Reflection march: steps, the shortest first step and the step growth, in world units. The first
+// step also grows with the surface's distance from the camera, so a ray from open water reaches
+// far shores and islands (about 2300 first steps in all) instead of ending short of them.
 const MARCH_STEPS: i32 = 48;
 const FIRST_STEP: f32 = 0.5;
-const STEP_GROWTH: f32 = 1.1;
+const FIRST_STEP_PER_DISTANCE: f32 = 0.01;
+const STEP_GROWTH: f32 = 1.12;
 // The most open water reflects, so a sea seen at a grazing angle keeps its own colour instead of
 // mirroring the sky outright; calm water reflects fully. A Modern tuning choice.
 const SEA_REFLECTANCE: f32 = 0.5;
@@ -92,8 +95,9 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
     if ray.y > 0.0 {
         let sky = sky_towards(ray);
         reflected = mix(reflected, max(sky.rgb, color), sky.w);
-        var travelled = FIRST_STEP;
-        var stride = FIRST_STEP;
+        let first = max(FIRST_STEP, length(origin - view.world_position) * FIRST_STEP_PER_DISTANCE);
+        var travelled = first;
+        var stride = first;
         for (var i = 0; i < MARCH_STEPS; i++) {
             let probe = project(origin + ray * travelled);
             if probe.z <= 0.0 || !on_screen(probe.xy) { break; }
