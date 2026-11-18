@@ -77,6 +77,7 @@ pub(super) struct ModelState {
     pub matrix: Option<[[f32; 3]; 3]>,
     pub current: Option<ModelPresentation>,
     pub weapon: Option<super::super::attachment::EquippedWeapon>,
+    pub torch_light: Option<cyrus_assets::environment::LocalLight>,
 }
 
 impl Default for ModelState {
@@ -93,6 +94,7 @@ impl Default for ModelState {
             matrix: None,
             current: None,
             weapon: None,
+            torch_light: None,
         }
     }
 }
@@ -479,6 +481,9 @@ impl ScriptWorld {
         let order = self
             .ordinary_actors([camera[0] >> 8, camera[2] >> 8])?
             .to_vec();
+        for actor in &mut self.actors {
+            actor.model.torch_light = None;
+        }
         for id in order {
             let actor = &self.actors[id.index];
             if !matches!(
@@ -523,6 +528,34 @@ impl ScriptWorld {
                 // The refresh of a drawn model also keeps the rotation words it applied.
                 if let Some(animation) = self.actors[id.index].animation.as_mut() {
                     animation.playback.refresh_rotation_history();
+                }
+                if self.actors[id.index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| {
+                        control
+                            .held_item
+                            .is_some_and(|item| self.torches.contains_key(&u16::from(item)))
+                    })
+                {
+                    let selected_player = self
+                        .selected_player()
+                        .context("torch selected player unavailable")?;
+                    let hud = inputs.hud.context("torch inventory unavailable")?;
+                    self.refresh_actor_torch_attachment(
+                        id,
+                        data,
+                        super::WeaponInputs {
+                            selected_player,
+                            item_system_ready: hud.inventory_ready()?,
+                            shell_execution: inputs
+                                .shell_execution
+                                .context("torch shell context unavailable")?,
+                        },
+                        random
+                            .as_deref_mut()
+                            .context("torch random stream unavailable")?,
+                    )?;
                 }
                 let actor = &self.actors[id.index];
                 if actor.attributes[Attribute::Weapon] == 0
@@ -1344,6 +1377,105 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Publish an installed held torch at the admitted actor's grip pair.
+    /// A burning torch emits the radius and encoded RGB strengths documented in
+    /// preservation's `engine/model-lighting.md#held-torch-light`.
+    /// This consumes the shared color draw once per admitted model update.
+    pub fn refresh_actor_torch_attachment(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        inputs: super::WeaponInputs,
+        random: &mut cyrus_game::random::EngineRandom,
+    ) -> Result<()> {
+        use super::super::attachment::{
+            DisplayAttachment, TRANSIENT_MODEL_CAPACITY, prepare_weapon_attachment,
+        };
+        self.require_model_identity(data)?;
+        self.resolve(inputs.selected_player)?;
+        let index = self.resolve(id)?;
+        self.actors[index].model.torch_light = None;
+        if !inputs.item_system_ready || inputs.shell_execution {
+            return Ok(());
+        }
+        let actor = &self.actors[index];
+        let Some(control) = actor.control.as_ref() else {
+            return Ok(());
+        };
+        let Some(item) = control.held_item else {
+            return Ok(());
+        };
+        let Some(definition) = self.torches.get(&u16::from(item)) else {
+            return Ok(());
+        };
+        if matches!(
+            control.living_state,
+            LivingState::LIGHTING_TORCH | LivingState::DOUSING_TORCH
+        ) || actor
+            .model
+            .current
+            .as_ref()
+            .is_none_or(|model| model.animation.is_none())
+            || self.display_attachments.len() >= TRANSIENT_MODEL_CAPACITY
+        {
+            return Ok(());
+        }
+        ensure!(
+            data.models.contains_key(&definition.model),
+            "item {item}: torch model {} unavailable",
+            definition.model
+        );
+        let metadata = data.actor(actor.name())?;
+        let mut vertices = [[0; 3]; 2];
+        for (vertex, field) in vertices.iter_mut().zip(["grip0", "grip1"]) {
+            let source = super::raex_word(Some(control), metadata, field).with_context(|| {
+                format!("actor {} torch RAEX {field} unavailable", actor.name())
+            })?;
+            *vertex = if self.updates.dummy_model_manager {
+                [0; 3]
+            } else {
+                self.actor_animation_source_vertex(id, data, i32::from(source))?
+            };
+        }
+        let pose = self.spatial(id)?.local;
+        let geometry = prepare_weapon_attachment(
+            vertices,
+            [0; 3],
+            pose.matrix,
+            pose.position.map(|value| value as f32 / 256.0),
+            pose.wrapped_angles()[2],
+            true,
+        )?;
+        let position = geometry.combat_endpoints(definition.length)?[1];
+        let model = definition.model.clone();
+        let burning = control.torch_burning != 0;
+        self.store_hand_words(id, &geometry)?;
+        self.display_attachments.push(DisplayAttachment {
+            actor: id,
+            model,
+            hilt: false,
+            geometry,
+        });
+        if burning {
+            const COLORS: [[i16; 3]; 8] = [
+                [230, 220, 70],
+                [235, 225, 80],
+                [240, 230, 90],
+                [245, 235, 100],
+                [250, 240, 70],
+                [255, 245, 80],
+                [255, 250, 90],
+                [255, 255, 100],
+            ];
+            self.actors[index].model.torch_light = Some(cyrus_assets::environment::LocalLight {
+                position,
+                radius: 2816,
+                rgb: COLORS[random.quick_rnd(7) as usize],
+            });
+        }
+        Ok(())
+    }
+
     /// The actor's `hand_pos` and `hand_angle` words: the retained attachment point (Q8) and
     /// angles the equipped-weapon placements and the display natives store, and scripts may
     /// rewrite.
@@ -1644,6 +1776,8 @@ pub(super) struct ModelSnapshot {
     matrix: Option<[[u32; 3]; 3]>,
     current: Option<ModelPresentationSnapshot>,
     weapon: Option<super::super::attachment::EquippedWeaponSnapshot>,
+    #[serde(default)]
+    torch_light: Option<cyrus_assets::environment::LocalLight>,
 }
 impl ModelSnapshot {
     pub(super) fn has_static_model(&self) -> bool {
@@ -1663,6 +1797,7 @@ impl ModelState {
         ModelSnapshot {
             prepared: self.prepared,
             weapon: self.weapon.as_ref().map(|weapon| weapon.snapshot()),
+            torch_light: self.torch_light.clone(),
             support_actor: self.support.actor.map(|id| (id.generation, id.index)),
             ledge_support: self.ledge_support.map(|id| (id.generation, id.index)),
             support_static: self.support.static_placement,
@@ -1775,6 +1910,7 @@ impl ModelState {
             );
         }
         Ok(Self {
+            torch_light: saved.torch_light,
             weapon,
             prepared: saved.prepared,
             ledge_support: saved

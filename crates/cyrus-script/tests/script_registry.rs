@@ -92,6 +92,7 @@ fn cache() -> Scripts {
     let mut scripts = Scripts {
         version: 30,
         weapons: Default::default(),
+        torches: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -35177,6 +35178,13 @@ fn display_model_fixture(
 ) -> (ScriptWorld, cyrus_assets::animation::Animations, Scripts) {
     use cyrus_assets::animation::AnimationModel;
     let mut scripts = cache();
+    scripts.torches.insert(
+        45,
+        weapon::Torch {
+            model: "HAND".into(),
+            length: 17,
+        },
+    );
     // The two item natives follow the two model natives in the function table.
     let [hand_id, hilt_id, _, _] = [
         Native::DisplayHandModel,
@@ -35308,6 +35316,73 @@ fn run_display_script(
         None,
         20,
     )
+}
+
+#[test]
+fn burning_held_torch_publishes_tip_light_and_dousing_removes_it() {
+    use cyrus_script::script::{WeaponInputs, WorldRestoreContext, WorldSnapshotSources};
+    let (mut world, data, scripts) = display_model_fixture("hand", "hilt", [0; 3], false, vec![]);
+    let mut random = cyrus_game::random::EngineRandom::default();
+    for (held, burning, living, ready, shell, emits) in [
+        (Some(45), 89, 0, true, false, true),
+        (None, 89, 0, true, false, false),
+        (Some(45), 0, 0, true, false, false),
+        (Some(45), 89, 33, true, false, false),
+        (Some(45), 89, 34, true, false, false),
+        (Some(45), 89, 0, false, false, false),
+        (Some(45), 89, 0, true, true, false),
+    ] {
+        let collision = Default::default();
+        let sources = WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        saved["actors"][0]["control"]["held_item"] = serde_json::json!(held);
+        saved["actors"][0]["control"]["torch_burning"] = burning.into();
+        saved["actors"][0]["control"]["living_state"] = living.into();
+        let generation = world.generation() + 1;
+        world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation,
+                globals: std::mem::take(world.globals_mut()),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        world.refresh_model_presentations(&data, &[id]).unwrap();
+        world
+            .refresh_actor_torch_attachment(
+                id,
+                &data,
+                WeaponInputs {
+                    selected_player: id,
+                    item_system_ready: ready,
+                    shell_execution: shell,
+                },
+                &mut random,
+            )
+            .unwrap();
+        let lights = world.held_torch_lights();
+        assert_eq!(lights.len(), usize::from(emits));
+        if emits {
+            let light = &lights[0];
+            assert_eq!(light.radius, 2816);
+            let attachment = world.display_attachments().last().unwrap();
+            assert_eq!(
+                light.position,
+                attachment.geometry.combat_endpoints(17).unwrap()[1]
+            );
+            assert!(light.rgb.into_iter().all(|channel| channel > 0));
+        }
+    }
 }
 
 #[test]

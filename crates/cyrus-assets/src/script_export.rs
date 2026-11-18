@@ -303,9 +303,11 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let shells = world_shells(source, &system, world, &actors)?;
+    let geometry = crate::script::weapon::prepare_world_source(source, &system, world, registry)?;
     let mut scripts = Scripts {
         version: 30,
-        weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
+        weapons: geometry.weapons,
+        torches: geometry.torches,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_2),

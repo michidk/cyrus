@@ -591,6 +591,9 @@ pub struct Scripts {
     pub version: u32,
     /// Installed hand/hilt model identities and signed ROB weapon lengths.
     pub weapons: BTreeMap<u16, weapon::Weapon>,
+    /// Installed type-three held model identities and signed negative-Y bounds.
+    #[serde(default)]
+    pub torches: BTreeMap<u16, weapon::Torch>,
     /// Contiguous installed attack table, shared by all combat-capable actors.
     pub combat_attacks: Vec<combat::Attack>,
     /// Contiguous installed defense table used by the four receiver defense slots.
@@ -644,7 +647,12 @@ impl Scripts {
     pub fn content_identity(&self) -> anyhow::Result<String> {
         let bytes = serde_json::to_vec(&(
             self.version,
-            (&self.combat_attacks, &self.combat_defenses, &self.weapons),
+            (
+                &self.combat_attacks,
+                &self.combat_defenses,
+                &self.weapons,
+                &self.torches,
+            ),
             (
                 self.in_combat_threshold,
                 self.lineup_distance,

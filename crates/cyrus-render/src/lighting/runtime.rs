@@ -63,6 +63,7 @@ pub(crate) struct RuntimeLights {
     previous: Option<(AssetId<Environment>, [i32; 2])>,
     image: Handle<Image>,
     previous_lights: Vec<LocalLight>,
+    previous_transient: Vec<LocalLight>,
 }
 
 pub(crate) fn region(target: [i32; 2]) -> [i32; 2] {
@@ -198,12 +199,28 @@ impl RuntimeLights {
         target: [i32; 2],
         images: &mut Assets<Image>,
     ) -> Handle<Image> {
+        self.update_with_transient(source, lights, &[], target, images)
+    }
+
+    /// Held-item emissions bypass the authored spatial-list region filter.
+    pub(crate) fn update_with_transient(
+        &mut self,
+        source: AssetId<Environment>,
+        lights: &[LocalLight],
+        transient: &[LocalLight],
+        target: [i32; 2],
+        images: &mut Assets<Image>,
+    ) -> Handle<Image> {
         let origin = region(target);
         if self.previous != Some((source, origin))
             || self.previous_lights != lights
+            || self.previous_transient != transient
             || !images.contains(&self.image)
         {
-            let image = texture(&selected(lights, origin));
+            let mut active = selected(lights, origin);
+            active.extend(transient.iter());
+            let image = texture(&active);
+            self.previous_transient = transient.to_vec();
             self.previous_lights = lights.to_vec();
             if let Some(mut old) = images.get_mut(&self.image) {
                 *old = image;
@@ -219,6 +236,30 @@ impl RuntimeLights {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn held_emission_bypasses_spatial_selection_and_expires_without_camera_motion() {
+        let mut runtime = RuntimeLights::default();
+        let mut images = Assets::<Image>::default();
+        let source = Handle::<Environment>::default().id();
+        let light = LocalLight {
+            position: [60000, 0, 60000],
+            radius: 2816,
+            rgb: [255, 245, 80],
+        };
+        assert!(selected(std::slice::from_ref(&light), [0, 0]).is_empty());
+        let handle = runtime.update_with_transient(source, &[], &[light], [0, 0], &mut images);
+        assert_eq!(
+            images.get(&handle).unwrap().texture_descriptor.size.height,
+            257
+        );
+        let same = runtime.update_with_transient(source, &[], &[], [0, 0], &mut images);
+        assert_eq!(handle, same);
+        assert_eq!(
+            images.get(&same).unwrap().texture_descriptor.size.height,
+            256
+        );
+    }
 
     #[test]
     fn retained_light_changes_replace_texture_without_camera_or_source_change() {

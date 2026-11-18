@@ -590,11 +590,15 @@ fn apply_scene_fog(
             .then_some(current)
         });
     let retained_lights = retained_world.map(|current| current.object_lights());
-    let light_texture = lights.update_for_map_target(
+    let transient = retained_world
+        .map(|world| world.held_torch_lights())
+        .unwrap_or_default();
+    let light_texture = lights.update_with_transient(
         request.0.id(),
         retained_lights
             .as_deref()
             .unwrap_or(&environment.object_lights),
+        &transient,
         light_view.position(
             position,
             retained_world

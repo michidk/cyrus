@@ -17,6 +17,7 @@ fn cache() -> Scripts {
     let mut scripts = Scripts {
         version: 30,
         weapons: Default::default(),
+        torches: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],

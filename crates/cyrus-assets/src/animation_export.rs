@@ -226,6 +226,9 @@ pub(crate) fn prepare(
         );
     }
     let mut names = BTreeSet::new();
+    for torch in scripts.torches.values() {
+        names.insert(torch.model.clone());
+    }
     for weapon in scripts.weapons.values() {
         names.insert(weapon.hand_model.clone());
         names.insert(weapon.hilt_model.clone());
@@ -284,6 +287,7 @@ pub(crate) fn prepare(
         .weapons
         .values()
         .flat_map(|weapon| [weapon.hand_model.clone(), weapon.hilt_model.clone()])
+        .chain(scripts.torches.values().map(|torch| torch.model.clone()))
         .collect();
     let weapon_archive = if weapon_names.is_empty() {
         None

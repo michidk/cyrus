@@ -123,3 +123,9 @@ compilation alone does not establish it.
 Model preparation subtracts the camera origin before applying the view basis,
 including backface tests, to preserve camera-relative precision far from the world origin.
 See preservation’s [view projection contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/projection.md).
+
+Faithful held-torch lights consume the script world's grip-derived tip, recovered
+radius and encoded RGB strengths through the model local-light shader. Transient
+emissions bypass authored map-light region selection. After matched TAVERN
+readbacks, run `python3 dev/scripts/test-held-torch-light.py before.png after.png`
+(with Pillow) to assert positive brightening on the wall crop.

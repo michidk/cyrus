@@ -116,3 +116,7 @@ records cannot occupy the farther scan's slots or suppress its climbable ledges.
 Ledge fitting truncates signed Q8 trial coordinates toward zero before testing
 the body and head spheres, following preservation 0.13.2
 ([ledge record classification](https://github.com/michidk/redguard-preservation/blob/v0.13.2/docs/engine/player.md#ledge-record-classification)).
+
+Held torches publish their installed model attachment and transient tip light during
+the admitted model update. The burn counter alone does not equip a torch; the held
+item, completed lighting transition, item system and shell context gate emission.

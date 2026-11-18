@@ -17,6 +17,21 @@ pub struct Weapon {
     pub length: i32,
 }
 
+/// Installed type-three held model and signed negative-Y bound in map units.
+/// Source: preservation's attachment and held-torch lighting contracts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Torch {
+    pub model: String,
+    pub length: i32,
+}
+
+/// Prepared installed attachment definitions, kept separate by item type.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ItemGeometry {
+    pub weapons: std::collections::BTreeMap<u16, Weapon>,
+    pub torches: std::collections::BTreeMap<u16, Torch>,
+}
+
 /// Prepare weapon geometry from the selected world's primary ROB registry.
 /// World loading replaces the configured map extension before item initialization.
 /// Reuse loaded registry bytes when supplied; standalone exports read the source.
@@ -27,7 +42,7 @@ pub fn prepare_world_source(
     system: &rgpre::import::system_ini::SystemIni,
     world: u32,
     registry: Option<&rgpre::import::registry::Registry>,
-) -> anyhow::Result<BTreeMap<u16, Weapon>> {
+) -> anyhow::Result<ItemGeometry> {
     use anyhow::Context;
     let item_path = system
         .system
@@ -36,12 +51,19 @@ pub fn prepare_world_source(
         .context("weapon geometry: SYSTEM.INI [system] item_ini absent")?;
     let items =
         rgpre::import::item_ini::ItemIni::parse(&crate::preparation::text(source, item_path)?)?;
-    if !items
-        .items
-        .values()
-        .any(|item| item.item_type == Some(rgpre::import::item_ini::ItemType::Weapon))
-    {
-        return Ok(BTreeMap::new());
+    if !items.items.values().any(|item| {
+        matches!(
+            item.item_type,
+            Some(
+                rgpre::import::item_ini::ItemType::Weapon
+                    | rgpre::import::item_ini::ItemType::Torch
+            )
+        )
+    }) {
+        return Ok(ItemGeometry {
+            weapons: BTreeMap::new(),
+            torches: BTreeMap::new(),
+        });
     }
     let archive = world_archive_path(source, world)?;
     let loaded;
@@ -68,8 +90,12 @@ pub fn prepare_world_source(
     };
     let models = rgpre::import::rob::parse_rob_file(bytes)
         .with_context(|| format!("world {world} weapon geometry: {archive}"))?;
-    prepare(&items, &models.segments)
-        .with_context(|| format!("world {world} weapon geometry: {archive}"))
+    Ok(ItemGeometry {
+        weapons: prepare(&items, &models.segments)
+            .with_context(|| format!("world {world} weapon geometry: {archive}"))?,
+        torches: prepare_torches(&items, &models.segments)
+            .with_context(|| format!("world {world} torch geometry: {archive}"))?,
+    })
 }
 
 #[cfg(feature = "parsers")]
@@ -129,6 +155,39 @@ fn prepare(
         );
     }
     Ok(weapons)
+}
+
+#[cfg(feature = "parsers")]
+fn prepare_torches(
+    items: &rgpre::import::item_ini::ItemIni,
+    segments: &[rgpre::import::rob::RobSegment],
+) -> anyhow::Result<BTreeMap<u16, Torch>> {
+    use anyhow::Context;
+    items
+        .items
+        .iter()
+        .filter(|(_, item)| item.item_type == Some(rgpre::import::item_ini::ItemType::Torch))
+        .map(|(&id, item)| {
+            let path = item
+                .game_object_file
+                .as_deref()
+                .with_context(|| format!("item {id}: game_object_file absent"))?;
+            let model = crate::animation::model_key(path);
+            let segment = segments
+                .iter()
+                .find(|segment| crate::animation::model_key(&segment.name()) == model)
+                .with_context(|| {
+                    format!("item {id}: game_object_file {path:?}: ROB model {model} absent")
+                })?;
+            Ok((
+                u16::try_from(id).with_context(|| format!("item {id}: ID outside u16 range"))?,
+                Torch {
+                    model,
+                    length: segment.bbox.negative_y as i32,
+                },
+            ))
+        })
+        .collect()
 }
 
 #[cfg(all(test, feature = "parsers"))]
@@ -198,6 +257,28 @@ mod tests {
             data_size: 0,
             data: vec![],
         }
+    }
+
+    #[test]
+    fn torch_uses_installed_game_model_negative_y_instead_of_extent() {
+        let items =
+            ItemIni::parse("[ITEMS]\ntype[45]=3\ngame_object_file[45]=3dart\\TORCH.3D\n").unwrap();
+        let mut model = segment(*b"TORCH\0\0\0", 999);
+        model.bbox.negative_y = u32::MAX;
+        let prepared = prepare_torches(&items, &[model]).unwrap();
+        assert_eq!(
+            prepared[&45],
+            Torch {
+                model: "TORCH".into(),
+                length: -1
+            }
+        );
+        assert!(
+            prepare_torches(&items, &[])
+                .unwrap_err()
+                .to_string()
+                .contains("item 45")
+        );
     }
 
     #[test]

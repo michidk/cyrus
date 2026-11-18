@@ -3,7 +3,7 @@
 //! A torch burns while the actor's counter is nonzero. Lighting and dousing are lifecycle states
 //! 33 and 34 that play `anim_light_torch` and `anim_unlight_torch`; the counter changes once the group reaches
 //! the actor's lighting or dousing frame threshold. Presentation of the held torch and its light
-//! belongs to the attachment owner and is not modelled here.
+//! belongs to the model attachment owner; it publishes the transient light for rendering.
 use super::{GameHost, ScriptActorId, ScriptWorld};
 use crate::script::JumpMotion;
 use crate::script::LivingState;

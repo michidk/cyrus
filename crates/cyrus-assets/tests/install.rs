@@ -50,7 +50,8 @@ fn weapon_preparation_reuses_loaded_world_archive() {
         rgpre::import::system_ini::SystemIni::parse(&source.text("SYSTEM.INI").unwrap()).unwrap();
     let expected =
         cyrus_assets::script::weapon::prepare_world_source(&source, &system, 0, None).unwrap();
-    assert!(!expected.is_empty());
+    assert!(!expected.weapons.is_empty());
+    assert!(!expected.torches.is_empty());
     let actual = cyrus_assets::script::weapon::prepare_world_source(
         &NoArchiveReads(&source),
         &system,
@@ -96,6 +97,16 @@ fn every_world_exports_valid_animation_geometry() {
                 serde_json::from_slice(&std::fs::read(path.with_extension("animations"))?)?;
             anyhow::ensure!(animations.world == world.index, "animation world mismatch");
             animations.validate()?;
+            let scripts: cyrus_assets::script::Scripts =
+                serde_json::from_slice(&std::fs::read(path.with_extension("scripts"))?)?;
+            for (item, torch) in scripts.torches {
+                anyhow::ensure!(
+                    animations.models.contains_key(&torch.model),
+                    "world {} item {item}: torch model {} missing from frame sources",
+                    world.index,
+                    torch.model
+                );
+            }
             for actor in animations.metadata["actors"].as_array().unwrap() {
                 let Some(groups) = actor.get("animation_groups") else {
                     continue;

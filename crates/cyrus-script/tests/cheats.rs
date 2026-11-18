@@ -578,6 +578,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
     let mut scripts = Scripts {
         version: 30,
         weapons: Default::default(),
+        torches: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],

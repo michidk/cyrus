@@ -212,6 +212,7 @@ mod shortcut_tests {
         let mut data = Scripts {
             version: 30,
             weapons: Default::default(),
+            torches: Default::default(),
             combat_attacks: vec![],
             combat_defenses: vec![],
             in_combat_threshold: None,

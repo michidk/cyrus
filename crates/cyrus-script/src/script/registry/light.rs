@@ -228,6 +228,14 @@ impl super::ScriptActor {
 }
 
 impl super::ScriptWorld {
+    /// Transient held-torch emissions, submitted after spatial object-light selection.
+    pub fn held_torch_lights(&self) -> Vec<cyrus_assets::environment::LocalLight> {
+        self.actors
+            .iter()
+            .filter_map(|actor| actor.model.torch_light.clone())
+            .collect()
+    }
+
     /// Enabled authored object lights in original map order. Runtime mutation and
     /// region selection remain separate from this retained-state projection.
     pub fn object_lights(&self) -> Vec<cyrus_assets::environment::LocalLight> {
