@@ -155,3 +155,17 @@ python3 dev/scripts/test-torch-acceptance.py
 `node dev/scripts/test-browser-provenance.mjs` checks browser byte observation
 against a dedicated Chromium endpoint (`CYRUS_PROVENANCE_CDP`,
 `CYRUS_PROVENANCE_HOST`) without game files.
+
+### Static sky comparisons
+
+An adapter comparing a sky with movement disabled must stop native sky motion
+before setting measured texture offsets. `synchronizeStaticSky(direction, offset,
+send)` from `dev/scripts/matched-capture.mjs` submits `fxskyspeed 0`, requires its
+successful console report, closes the console and then submits `set_sky_scroll`.
+The `send` callback uses the normal control-port command contract. Setting offsets
+alone lets the next presentation tick move them again.
+
+Read back both camera poses and inspect the original image before choosing an
+unobscured sky rectangle. A matching pose or a low pixel error does not establish
+that the rectangle contains sky. This native adapter helper does not establish
+browser acceptance or acceptance of the separate indexed software-sky path.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkView, submitCaptureInstall, captureNativeFrame } from './matched-capture.mjs';
+import { checkView, submitCaptureInstall, captureNativeFrame, synchronizeStaticSky } from './matched-capture.mjs';
 
 test('matching quaternion signs describe the same capture orientation', () => {
   checkView([1, 2, 3, 0, 0, 0, 1], [1, 2, 3, 0, 0, 0, -1]);
@@ -97,4 +97,36 @@ test('matched actor capture rejects a changed presented pose despite matching po
     {name: pose.name, frame: 412, position: pose.position, angles: pose.angles}]) {
     await assert.rejects(take(player, expected), /actor pose/);
   }
+});
+
+
+test('static sky synchronization stops motion before setting the measured offsets', async () => {
+  const calls = [];
+  const send = async command => {
+    calls.push(command);
+    return {console: {lines: [{report: true, text: 'fxskyspeed = 0'}]}};
+  };
+  await synchronizeStaticSky(17, [1.5, -2], send);
+  assert.deepEqual(calls, [
+    {type: 'console', line: 'fxskyspeed 0'},
+    {type: 'console', open: false},
+    {type: 'set_sky_scroll', direction: 17, offset: [1.5, -2]},
+  ]);
+});
+
+test('failed or malformed static sky admission cannot submit offsets', async () => {
+  const calls = [];
+  const send = async command => {
+    calls.push(command);
+    return {console: {lines: [
+      {report: true, text: 'fxskyspeed = 0'},
+      {report: true, text: 'sky is still loading'},
+    ]}};
+  };
+  await assert.rejects(synchronizeStaticSky(0, [0, 0], send), /did not succeed/);
+  assert.equal(calls.length, 1);
+  for (const [direction, offset] of [[2048, [0, 0]], [0, [NaN, 0]], [0, [257, 0]]]) {
+    await assert.rejects(synchronizeStaticSky(direction, offset, send));
+  }
+  assert.equal(calls.length, 1);
 });

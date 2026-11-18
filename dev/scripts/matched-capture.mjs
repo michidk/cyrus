@@ -31,6 +31,17 @@ export function checkView(expected, actual) {
   const dot = expected.slice(3).reduce((sum, v, i) => sum + v * actual[i + 3], 0);
   assert(Math.abs(Math.abs(dot) - 1) < 0.00001, 'camera orientation differs from fixture');
 }
+// A static reference needs both a stopped clock-independent sky and matching offsets.
+export async function synchronizeStaticSky(direction, offset, send = command) {
+  assert(Number.isInteger(direction) && direction >= 0 && direction < 2048, 'sky direction');
+  assert(Array.isArray(offset) && offset.length === 2
+    && offset.every(v => Number.isFinite(v) && Math.abs(v) <= 256), 'sky offsets');
+  const result = await send({type: 'console', line: 'fxskyspeed 0'});
+  assert(result?.console?.lines?.filter(line => line.report).at(-1)?.text === 'fxskyspeed = 0',
+    'static sky speed command did not succeed');
+  await send({type: 'console', open: false});
+  return send({type: 'set_sky_scroll', direction, offset});
+}
 function run(program, args) {
   const r = spawnSync(program, args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`${program}: ${r.error || r.stderr || r.stdout}`);
