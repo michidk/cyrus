@@ -232,17 +232,17 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // Terrain lighting modulates encoded texture RGB before scene fog.
     var encoded: vec3<f32>;
 @if(!PREPARED_TERRAIN)
-    encoded = sample_encoded(surface.uv, point_sampled(), true) * (in.color * in.position.w);
+    encoded = sample_encoded(surface.uv, point_sampled(), true, vec3(-1.0)) * (in.color * in.position.w);
 @if(PREPARED_TERRAIN) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
     let light = vec3(color_channel(in.red, offset), color_channel(in.green, offset), color_channel(in.blue, offset));
-    encoded = floor(round(sample_encoded(surface.uv, point_sampled(), true) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
+    encoded = floor(round(sample_encoded(surface.uv, point_sampled(), true, vec3(-1.0)) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
 }
     var color = srgb_to_linear(encoded);
 @if(MODERN_LIGHTING) {
     // Wet sand is darker; foam is near white.
     let foam_color = vec3(0.80, 0.86, 0.88);
-    let albedo = srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true));
+    let albedo = srgb_to_linear(sample_encoded(surface.uv, point_sampled(), true, vec3(-1.0)));
     // `fog.lighting.w`: the modern lighting's glossy water switch.
     color = modern_lit(input, mix(albedo * (1.0 - 0.45 * wet), foam_color, foam), water_mask * fog.lighting.w, wet,
         normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * 0.05));

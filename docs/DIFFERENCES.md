@@ -343,7 +343,9 @@ Backtick's **Texture filtering** row enables the Modern `anisotropic_filtering` 
 area independently of lighting. Like every area it defaults to Faithful; `--mode modern` and **All
 modern** turn it on, and **All Faithful** restores the original sampling. World terrain, water,
 models, flats, clouds and sun then average up to sixteen bilinear samples along the longer texture
-footprint, which also replaces the Modern `textures` point sampling. Other colour images use linear
+footprint, which also replaces the Modern `textures` point sampling. Whether a chroma-keyed texel
+is cut out is still decided by the original sample at the pixel centre, and keyed samples are left
+out of the average, so palm fronds and other keyed models keep their holes. Other colour images use linear
 samplers with a hardware anisotropy limit of sixteen. The indexed world paths integrate their
 existing source textures without mipmaps, which costs GPU time. Turning it off restores the image
 samplers.

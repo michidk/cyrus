@@ -159,7 +159,7 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
             )?))
         })
         .transpose()?;
-    let (json, bytes) = if let Some(terrain) = &terrain {
+    let (mut json, bytes) = if let Some(terrain) = &terrain {
         gltf::convert_wld_scene_to_gltf(
             terrain,
             TERRAIN_TEXBSI_ID,
@@ -177,6 +177,21 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
             false,
         )?
     };
+    for material in &mut json.materials {
+        let Some((bank, image)) = material.name.as_deref().and_then(glide_image) else {
+            continue;
+        };
+        if let Some(key) = image_chroma_key(&rgm, &mut cache, bank, image) {
+            let mut extras: serde_json::Map<String, serde_json::Value> = material
+                .extras
+                .as_deref()
+                .map(|raw| serde_json::from_str(raw.get()))
+                .transpose()?
+                .unwrap_or_default();
+            extras.insert("cyrus_texture_key".into(), serde_json::json!(key));
+            material.extras = Some(serde_json::value::to_raw_value(&extras)?);
+        }
+    }
     report_textures(source, &cache);
     Ok(WorldGeometry {
         entry,
@@ -189,6 +204,43 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
         glb: gltf::to_glb(&json, &bytes)?,
     })
 }
+/// Bank and image of a Glide texture material, from preservation's material name
+/// `TEXBSI.<bank> / <image name> (image <id>)`.
+// shortcut: the name is the only link from an exported material to its image; read the key from
+// preservation's material metadata once it carries the FLAT image key.
+fn glide_image(name: &str) -> Option<(u16, u8)> {
+    let (bank, rest) = name.strip_prefix("TEXBSI.")?.split_once(" / ")?;
+    let image = rest.rsplit_once("(image ")?.1.strip_suffix(')')?;
+    Some((bank.parse().ok()?, image.parse().ok()?))
+}
+
+/// Chroma key of a texture image whose world `FLAT` record sets flag bit 1: the world palette
+/// colour of the image's first stored texel, instead of palette entry zero.
+/// See redguard-preservation `docs/formats/RGM.md#flat`.
+fn image_chroma_key(
+    rgm: &rgm::RgmFile,
+    cache: &mut TextureCache,
+    bank: u16,
+    image: u8,
+) -> Option<[u8; 3]> {
+    let flags = rgm
+        .flat_texture_attributes(bank << 7 | u16::from(image))?
+        .flags;
+    if flags & 2 == 0 {
+        return None;
+    }
+    let (rgba, width, height) = cache.get_image_rgba(bank, image)?;
+    // Exported rows are reversed, so the first stored row is the last exported one.
+    let first = (usize::from(height).checked_sub(1)? * usize::from(width)) * 4;
+    let texel = rgba.get(first..first + 4)?;
+    // Entry zero exports transparent; its uploaded colour is black.
+    Some(if texel[3] == 0 {
+        [0; 3]
+    } else {
+        [texel[0], texel[1], texel[2]]
+    })
+}
+
 /// Numeric identity preserves world variants; a map stem selects its first authored variant.
 pub fn resolve_world<'a>(
     worlds: &'a world_ini::WorldIni,
@@ -286,5 +338,22 @@ pub(crate) fn report_textures(source: &dyn ReadAssets, cache: &TextureCache) {
             reason: reason.clone(),
             count: 1,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn glide_material_names_give_bank_and_image() {
+        assert_eq!(
+            super::glide_image("TEXBSI.357 / D57000 (image 0)"),
+            Some((357, 0))
+        );
+        assert_eq!(
+            super::glide_image("TEXBSI.302 / C02012 (image 12)"),
+            Some((302, 12))
+        );
+        assert_eq!(super::glide_image("TEXTURE.357 / D57000 (image 0)"), None);
+        assert_eq!(super::glide_image("TEXBSI.357 / D57000"), None);
     }
 }

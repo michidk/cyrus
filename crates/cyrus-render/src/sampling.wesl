@@ -129,40 +129,65 @@ fn anisotropic_axis(dx: vec2<f32>, dy: vec2<f32>) -> vec3<f32> {
 // pixel blocks on a cell border span the tile and would smear it into a line along the border.
 const TILE_SEAM: f32 = 0.5;
 
-fn sample_encoded(uv: vec2<f32>, point: bool, world_palette: bool) -> vec3<f32> {
+// Footprint taps that are not chroma keyed; the average of keyed and unkeyed taps would never
+// equal the key, so keyed texels would draw as dark solid texels instead of being cut out.
+struct Footprint {
+    sum: vec3<f32>,
+    count: f32,
+}
+
+fn add_tap(footprint: ptr<function, Footprint>, tap: vec3<f32>, key: vec3<f32>) {
+    if !matches_chroma(tap, key) {
+        (*footprint).sum += tap;
+        (*footprint).count += 1.0;
+    }
+}
+
+// The cut-out decision stays with the unfiltered centre sample, as without footprint filtering.
+fn footprint_average(footprint: Footprint, center: vec3<f32>) -> vec3<f32> {
+    return select(center, footprint.sum / footprint.count, footprint.count > 0.0);
+}
+
+// `key` is the chroma key in encoded bytes; a negative key never matches.
+fn sample_encoded(uv: vec2<f32>, point: bool, world_palette: bool, key: vec3<f32>) -> vec3<f32> {
     let size = vec2<f32>(base_color_size());
     let dx = dpdx(uv);
     let dy = dpdy(uv);
     let axis = anisotropic_axis(dx * size, dy * size);
     let seam = max(max(abs(dx.x), abs(dx.y)), max(abs(dy.x), abs(dy.y))) > TILE_SEAM;
-    if fog.lighting.z == 0.0 || seam { return sample_encoded_single(uv, point, world_palette); }
-    var sum = vec3(0.0);
+    let center = sample_encoded_single(uv, point, world_palette);
+    if fog.lighting.z == 0.0 || seam || matches_chroma(center, key) { return center; }
+    var footprint = Footprint(vec3(0.0), 0.0);
     for (var i = 0u; i < u32(axis.z); i++) {
-        sum += sample_encoded_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5), false, world_palette);
+        add_tap(&footprint, sample_encoded_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5), false, world_palette), key);
     }
-    return sum / axis.z;
+    return footprint_average(footprint, center);
 }
 
+// Flats key exported index zero, which samples as black.
 fn sample_flat(uv: vec2<f32>) -> vec3<f32> {
     let size = vec2<f32>(base_color_size());
     let axis = anisotropic_axis(dpdx(uv) * size, dpdy(uv) * size);
-    if fog.lighting.z == 0.0 { return sample_flat_single(uv); }
-    var sum = vec3(0.0);
+    let center = sample_flat_single(uv);
+    if fog.lighting.z == 0.0 || matches_chroma(center, vec3(0.0)) { return center; }
+    var footprint = Footprint(vec3(0.0), 0.0);
     for (var i = 0u; i < u32(axis.z); i++) {
-        sum += sample_flat_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5));
+        add_tap(&footprint, sample_flat_single(uv + axis.xy / size * ((f32(i) + 0.5) / axis.z - 0.5)), vec3(0.0));
     }
-    return sum / axis.z;
+    return footprint_average(footprint, center);
 }
 
-fn sample_model(coordinate: vec2<i32>, allocation: vec4<u32>, level: u32, point: bool, zero: vec3<f32>) -> vec3<f32> {
+// `zero` is the colour of exported index zero and `key` the chroma key, in encoded bytes.
+fn sample_model(coordinate: vec2<i32>, allocation: vec4<u32>, level: u32, point: bool, zero: vec3<f32>, key: vec3<f32>) -> vec3<f32> {
     let scale = exp2(f32(level + 18u));
     let position = vec2<f32>(coordinate) / scale;
     let axis = anisotropic_axis(dpdx(position), dpdy(position));
-    if fog.lighting.z == 0.0 { return sample_model_single(coordinate, allocation, level, point, zero); }
-    var sum = vec3(0.0);
+    let center = sample_model_single(coordinate, allocation, level, point, zero);
+    if fog.lighting.z == 0.0 || matches_chroma(center, key) { return center; }
+    var footprint = Footprint(vec3(0.0), 0.0);
     for (var i = 0u; i < u32(axis.z); i++) {
         let offset = axis.xy * ((f32(i) + 0.5) / axis.z - 0.5) * scale;
-        sum += sample_model_single(coordinate + vec2<i32>(offset), allocation, level, false, zero);
+        add_tap(&footprint, sample_model_single(coordinate + vec2<i32>(offset), allocation, level, false, zero), key);
     }
-    return sum / axis.z;
+    return footprint_average(footprint, center);
 }

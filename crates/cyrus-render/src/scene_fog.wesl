@@ -166,7 +166,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     var texture_rgb = linear_to_srgb(base.rgb);
     var texture_key = model.chroma_key.rgb;
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
-        texture_rgb = sample_encoded(surface.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false);
+        texture_rgb = sample_encoded(surface.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false, select(vec3(-1.0), model.chroma_key.rgb, model.chroma_key.w != 0.0));
         if model.compositing.x >= 0.0 {
             texture_rgb = sample_flat(surface.uv);
             texture_key = vec3(0.0);
@@ -176,8 +176,9 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     if model.texture_layout.x != 0u {
         let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
         let coordinate = texture_coordinates(in.texture_a, in.texture_b, in.texture_c, in.texture_d, in.texture_e, offset);
-        texture_key = vec3(0.0);
-        texture_rgb = sample_model(coordinate, model.texture_layout, u32(model.texture_scale.z), point_sampled() || (u32(model.parameters.w) & 1u) != 0u, texture_key);
+        // Prepared texels are six-bit world palette colours; index zero, the default key, is black.
+        texture_key = select(vec3(0.0), floor(model.chroma_key.rgb / 4.0) * 4.0, model.chroma_key.w > 1.0);
+        texture_rgb = sample_model(coordinate, model.texture_layout, u32(model.texture_scale.z), point_sampled() || (u32(model.parameters.w) & 1u) != 0u, vec3(0.0), texture_key);
     }
 }
     if model.chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, texture_key) {
