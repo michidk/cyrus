@@ -32,6 +32,7 @@ fn snapshot(
         "elapsed_scale": clock.elapsed_frame_scale(),
         "game_seconds": clock.game_seconds(),
         "normal_frame_rate": clock.settings().normal_frame_rate,
+        "clock_step": (world.ordinary_updates() != first).then(|| clock.step()),
         "player": world.inspect(player.index, 1)["actors"][0],
     }))
 }

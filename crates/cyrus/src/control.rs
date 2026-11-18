@@ -1620,6 +1620,14 @@ mod tests {
             assert_eq!(row["normal_frame_rate"], 12);
             if index > 0 {
                 assert!(row["elapsed_scale"].as_u64() > rows[index - 1]["elapsed_scale"].as_u64());
+                assert_eq!(
+                    row["clock_step"],
+                    json!({
+                        "frame_scale": 256, "nominal_ticks": 1, "fine_ticks": 8
+                    })
+                );
+            } else {
+                assert!(row["clock_step"].is_null());
             }
         }
         assert!(responses.try_recv().is_err());

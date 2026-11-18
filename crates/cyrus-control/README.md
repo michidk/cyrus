@@ -73,8 +73,11 @@ player, fidelity, the clock, and per-screen detail such as `menu`, `console`,
   after 1 through 255 ordinary updates with `observations`. Offset zero is captured
   atomically with placement; each later offset records a completed ordinary update,
   its generation, absolute update, elapsed Q8 nominal ticks, game seconds, installed
-  normal rate and full selected-player snapshot. Spatial coordinates in that snapshot
-  are Q8, not map units. Paused frames add no observations. Missing updates, world or
+  normal rate and full selected-player snapshot. `clock_step` reports the movement
+  `frame_scale`, whole `nominal_ticks` and `fine_ticks` consumed by that update; it
+  is null for placement, which consumes no update. Spatial coordinates in the
+  player snapshot are Q8, not map units. Local coordinates hold the current actor
+  pose; effective coordinates may retain an earlier composed pose. Paused frames add no observations. Missing updates, world or
   player replacement, changed clock units and a 120-second deadline reject the trace
   and retain partial observations in the error. This observes the existing cadence;
   equal update ordinals do not establish equal elapsed time between games.
