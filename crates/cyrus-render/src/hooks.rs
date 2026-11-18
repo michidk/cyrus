@@ -51,3 +51,29 @@ impl EffectSlots {
         surface.x > 0.0 && surface.z > 0.0
     }
 }
+
+/// Placed static scenery a provider may tilt, in a stable order until `revision` changes: each
+/// piece's installed model name and the world position of its base. Refreshed every frame.
+#[derive(Resource, Default)]
+pub struct Scenery {
+    /// Changes whenever pieces appear or go, such as on a world change; indices are valid for one revision.
+    pub revision: u64,
+    pub pieces: Vec<SceneryPiece>,
+}
+
+/// One placed static model.
+#[derive(Clone, Debug)]
+pub struct SceneryPiece {
+    pub entity: Entity,
+    /// The installed model name, such as `PALMTR01`.
+    pub model: String,
+    /// World position of the bottom of its bounds, which a tilt pivots about.
+    pub base: Vec3,
+}
+
+/// Tilts providers asked for this frame, by [`Scenery`] index: a world-space rotation about the
+/// piece's base. A piece no provider tilts rests at its installed placement, so a provider that
+/// stops writing leaves the scenery as the original draws it. Only the drawn transform moves;
+/// collision reads the installed placement.
+#[derive(Resource, Default)]
+pub struct SceneryTilts(pub HashMap<u32, Quat>);

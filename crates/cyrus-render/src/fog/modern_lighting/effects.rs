@@ -6,8 +6,8 @@
 //! the sun's shadows, the object lights, glossy water, and ambient occlusion, contact shadows,
 //! anti-aliasing and bloom on the camera. The effects: tonemapping with colour grading,
 //! automatic exposure, sun shafts through Bevy's volumetric fog, depth of field and motion blur
-//! on the camera; the sky glow and stars (`sky.wesl`), water reflections and the lens flare
-//! (`post`), and swaying plants (`foliage`).
+//! on the camera; the sky glow and stars (`sky.wesl`), and water reflections and the lens flare
+//! (`post`).
 use super::lights::Sun;
 use crate::{camera::ViewCamera, sky::SkyMaterial};
 use bevy::{
@@ -71,8 +71,6 @@ pub struct ModernEffects {
     pub sky: bool,
     /// Screen-space reflections on water.
     pub water_reflections: bool,
-    /// Palm trees and plants sway in the wind.
-    pub foliage: bool,
     /// Blurs what is far nearer and farther than the player.
     pub depth_of_field: bool,
     /// Lens aperture in f-stops; lower blurs more.
@@ -102,7 +100,6 @@ impl Default for ModernEffects {
             lens_flare: true,
             sky: true,
             water_reflections: true,
-            foliage: true,
             depth_of_field: true,
             aperture: 0.12,
             motion_blur: true,
@@ -127,7 +124,6 @@ pub enum Effect {
     LensFlare,
     Sky,
     WaterReflections,
-    Foliage,
     DepthOfField,
     MotionBlur,
 }
@@ -144,7 +140,7 @@ impl Effect {
         Self::WaterGloss,
     ];
 
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 15] = [
         Self::Shadows,
         Self::AmbientOcclusion,
         Self::ContactShadows,
@@ -158,7 +154,6 @@ impl Effect {
         Self::LensFlare,
         Self::Sky,
         Self::WaterReflections,
-        Self::Foliage,
         Self::DepthOfField,
         Self::MotionBlur,
     ];
@@ -179,7 +174,6 @@ impl Effect {
             Self::LensFlare => "Lens flare and sun glare",
             Self::Sky => "Sky glow and stars",
             Self::WaterReflections => "Water reflections",
-            Self::Foliage => "Swaying plants",
             Self::DepthOfField => "Depth of field",
             Self::MotionBlur => "Motion blur",
         }
@@ -203,7 +197,6 @@ impl ModernEffects {
             Effect::LensFlare => &mut self.lens_flare,
             Effect::Sky => &mut self.sky,
             Effect::WaterReflections => &mut self.water_reflections,
-            Effect::Foliage => &mut self.foliage,
             Effect::DepthOfField => &mut self.depth_of_field,
             Effect::MotionBlur => &mut self.motion_blur,
         }
@@ -654,7 +647,6 @@ mod tests {
                 && !effects.lens_flare
                 && !effects.sky
                 && !effects.water_reflections
-                && !effects.foliage
                 && !effects.depth_of_field
                 && !effects.motion_blur
         );

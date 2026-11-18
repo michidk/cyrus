@@ -2,7 +2,6 @@
 //! module shares.
 use super::day_night::{self, DayNight, Daylight};
 use super::effects::{self, AutoExposureAssets, ModernEffects, ShaftVolume};
-use super::foliage;
 use super::lights::sync_lights;
 use super::post::{self, ModernPost, PostPlugin};
 use super::shadows;
@@ -45,7 +44,6 @@ impl Plugin for ModernLightingPlugin {
         .add_systems(
             Update,
             (
-                foliage::find_plants,
                 (
                     (
                         day_night::advance,
@@ -63,7 +61,6 @@ impl Plugin for ModernLightingPlugin {
                     effects::switch_lights,
                     effects::focus,
                     effects::sun_shafts,
-                    foliage::sway,
                     post::update_post,
                     shadows::add_twins,
                     super::glow::find_lamps,
@@ -152,7 +149,7 @@ fn configure_camera(
 }
 
 /// Everything `restore` puts back: the modern cameras, the lights and volumes it spawned, the
-/// day/night and candle state, swaying plants, shadow twins and shared materials.
+/// day/night and candle state, shadow twins and shared materials.
 #[allow(clippy::type_complexity)]
 #[derive(bevy::ecs::system::SystemParam)]
 struct Modernized<'w, 's> {
@@ -173,7 +170,6 @@ struct Modernized<'w, 's> {
         )>,
     >,
     auto_exposure: Res<'w, AutoExposureAssets>,
-    plants: foliage::Swaying<'w, 's>,
     twins: Query<'w, 's, Entity, With<shadows::ShadowTwin>>,
     twinned: Query<'w, 's, Entity, With<shadows::Twinned>>,
     shared: ResMut<'w, SharedMaterials>,
@@ -196,7 +192,6 @@ fn restore(mut commands: Commands, modernized: Modernized) {
         cameras,
         removed,
         auto_exposure,
-        mut plants,
         twins,
         twinned,
         mut shared,
@@ -223,7 +218,6 @@ fn restore(mut commands: Commands, modernized: Modernized) {
     for entity in &removed {
         commands.entity(entity).despawn();
     }
-    foliage::settle(&mut commands, &mut plants);
     shadows::remove_twins(&mut commands, &twins, &twinned);
     sharing::unshare(
         &mut commands,
@@ -259,8 +253,6 @@ mod tests {
             effects::focus,
             effects::sun_shafts,
             effects::sky_glow,
-            foliage::find_plants,
-            foliage::sway,
             post::update_post,
             shadows::add_twins,
             shadows::follow,

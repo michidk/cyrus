@@ -26,6 +26,7 @@ mod lifecycle;
 mod ownership;
 mod particles;
 mod physics;
+mod scenery;
 mod settings;
 mod terrain;
 
@@ -163,6 +164,8 @@ impl Plugin for ModsPlugin {
             .insert_resource(settings)
             .init_resource::<cyrus_render::hooks::WorldFacts>()
             .init_resource::<cyrus_render::hooks::EffectSlots>()
+            .init_resource::<cyrus_render::hooks::Scenery>()
+            .init_resource::<cyrus_render::hooks::SceneryTilts>()
             .init_resource::<cyrus_render::camera::CameraTakeover>()
             .init_resource::<cyrus_script::player::input::MovementWish>()
             .init_resource::<cyrus_script::player::input::LocomotionClaimed>()
@@ -197,6 +200,7 @@ impl Plugin for ModsPlugin {
                     terrain::publish,
                     lifecycle::publish,
                     physics::publish,
+                    scenery::publish,
                 )
                     .chain(),
             )

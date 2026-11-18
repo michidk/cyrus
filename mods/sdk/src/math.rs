@@ -141,6 +141,17 @@ impl Quat {
         }
     }
 
+    /// A rotation of `angle` radians about the unit `axis`.
+    pub fn from_axis_angle(axis: Vec3, angle: f32) -> Self {
+        let (s, c) = (angle * 0.5).sin_cos();
+        Quat {
+            x: axis.x * s,
+            y: axis.y * s,
+            z: axis.z * s,
+            w: c,
+        }
+    }
+
     /// Rotate `v`: v + 2w(u×v) + 2u×(u×v) with u the vector part.
     pub fn rotate(self, v: Vec3) -> Vec3 {
         let u = Vec3::new(self.x, self.y, self.z);

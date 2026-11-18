@@ -39,7 +39,7 @@ pub use effects::{Damage, DamageEvent, ParticleBurst, Particles};
 pub use gameplay::{SaveStatus, Saves};
 pub use handles::{
     Actor, Actors, Camera, Claim, Collision, Contact, Effects, Environment, Hud, Input, Lighting,
-    Memory, Movement, NativeCall, Natives, Player, Settings, TerrainSurface, Water,
+    Memory, Movement, NativeCall, Natives, Player, Scenery, Settings, TerrainSurface, Water,
 };
 pub use keys::{Action, Key};
 pub use math::{Pose, Quat, Vec3};
@@ -95,6 +95,7 @@ pub struct Cx {
     pub geometry: Geometry,
     pub lifecycle: Lifecycle,
     pub physics: Physics,
+    pub scenery: Scenery,
 }
 
 /// The memory key this SDK keeps the last seen world generation under; the tilde keeps it apart
@@ -103,7 +104,7 @@ const WORLD_GENERATION: &str = "~world-generation";
 
 /// Hooks in query order. wasvy panics when a method is called through the other mutability, so
 /// the hooks whose host methods take `&mut self` are queried `Mut` and the others `Ref`.
-fn query_for() -> [QueryFor; 19] {
+fn query_for() -> [QueryFor; 20] {
     [
         QueryFor::Ref(raw::Actors::type_path()),
         QueryFor::Mut(raw::Camera::type_path()),
@@ -124,6 +125,7 @@ fn query_for() -> [QueryFor; 19] {
         QueryFor::Mut(raw::Geometry::type_path()),
         QueryFor::Ref(raw::Lifecycle::type_path()),
         QueryFor::Mut(raw::Physics::type_path()),
+        QueryFor::Mut(raw::Scenery::type_path()),
     ]
 }
 
@@ -186,6 +188,7 @@ pub fn run<M: Mod>(query: Query) {
                 raw: raw::Particles::new(row.component(13)),
                 id: M::ID,
             },
+            scenery: Scenery(raw::Scenery::new(row.component(19))),
         };
         M::frame(&cx);
     }

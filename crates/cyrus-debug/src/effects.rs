@@ -98,7 +98,7 @@ fn settings(ui: &mut egui::Ui, effects: &mut ModernEffects, effect: Effect) {
         Effect::WaterReflections => {
             ui.label("Reflects the scenery and sky on screen; the horizon colour elsewhere.");
         }
-        Effect::LensFlare | Effect::Sky | Effect::Foliage | Effect::MotionBlur => {}
+        Effect::LensFlare | Effect::Sky | Effect::MotionBlur => {}
         Effect::Shadows
         | Effect::AmbientOcclusion
         | Effect::ContactShadows

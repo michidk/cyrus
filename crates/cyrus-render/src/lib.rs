@@ -15,6 +15,7 @@ pub mod persistence;
 pub mod player_model;
 pub mod presentation_clock;
 mod sampling;
+mod scenery;
 pub mod script_transform;
 mod sky;
 #[cfg(not(target_arch = "wasm32"))]
@@ -35,6 +36,7 @@ pub struct WorldRenderPlugin;
 impl Plugin for WorldRenderPlugin {
     fn build(&self, app: &mut App) {
         flat::register(app);
+        scenery::register(app);
         app.add_systems(Update, apply_anisotropic_samplers);
         app.add_plugins(persistence::SceneIdentityPlugin);
         app.add_plugins((
