@@ -58,6 +58,16 @@ fn clear_attempt(mut commands: Commands) {
     commands.remove_resource::<LastAttempt>();
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct LoadingEntry<'w> {
+    game: Option<Res<'w, cyrus_startup::StartGame>>,
+    reload: Option<Res<'w, ReloadScene>>,
+    startup: Option<Res<'w, cyrus_startup::StartupPresentation>>,
+    error: Option<Res<'w, SceneLoadError>>,
+    state: Option<Res<'w, State<AppState>>>,
+}
+
+// Script reloads wait for startup to select installed artwork and enter Loading.
 fn load_requested(
     mut commands: Commands,
     request: Res<SceneRequest>,
@@ -65,13 +75,20 @@ fn load_requested(
     current: Res<CurrentScene>,
     pending: Option<Res<Preparation>>,
     last: Option<Res<LastAttempt>>,
-    (game, reload): (
-        Option<Res<cyrus_startup::StartGame>>,
-        Option<Res<ReloadScene>>,
-    ),
+    entry: LoadingEntry,
 ) {
+    let LoadingEntry {
+        game,
+        reload,
+        startup,
+        error,
+        state,
+    } = entry;
     let name = request.0.to_ascii_uppercase();
-    if pending.is_some()
+    if (startup.is_some()
+        && (reload.is_some() || error.is_some())
+        && state.is_some_and(|state| *state.get() != AppState::Loading))
+        || pending.is_some()
         || (!request.is_changed() && last.is_some_and(|last| last.0 == name))
         || (game.is_none() && reload.is_none() && current.name == name)
     {
@@ -235,6 +252,43 @@ mod tests {
         app.update();
         assert!(app.world().contains_resource::<Preparation>());
         assert!(!app.world().contains_resource::<ReloadScene>());
+    }
+
+    #[test]
+    fn script_reload_waits_for_loading_presentation_before_preparing() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+            .insert_state(AppState::InGame)
+            .insert_resource(GameInstall {
+                root: std::env::temp_dir().join("cyrus-absent-install"),
+            })
+            .init_resource::<cyrus_startup::StartupPresentation>()
+            .init_resource::<CurrentScene>()
+            .insert_resource(SceneRequest("3".into()))
+            .add_systems(Update, load_requested);
+        let mut commands = app.world_mut().commands();
+        cyrus_script::script::request_world(&mut commands, [5, 9, 2560]).unwrap();
+        app.world_mut().flush();
+        app.update();
+        assert!(!app.world().contains_resource::<Preparation>());
+        assert!(app.world().contains_resource::<ReloadScene>());
+        app.world_mut().remove_resource::<ReloadScene>();
+        app.insert_resource(SceneLoadError(
+            "World 5 loading artwork: unavailable".into(),
+        ));
+        app.update();
+        assert!(!app.world().contains_resource::<Preparation>());
+        app.insert_resource(ReloadScene);
+        app.insert_state(AppState::Loading);
+        app.update();
+        assert!(app.world().contains_resource::<Preparation>());
+        assert!(!app.world().contains_resource::<ReloadScene>());
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_script::player::placement::MarkerEntry>()
+                .marker,
+            9
+        );
     }
 
     #[test]

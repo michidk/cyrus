@@ -50,6 +50,8 @@ final-version install plays the Introduction, a valid autosave opens the book.
 Backtick opens the world picker, flycam and fidelity controls; F12 opens the
 cheat console in a world. See [Playing](../../docs/PLAYING.md) for controls and saves.
 
+Script world changes use the shared loading artwork and fade lifecycle; the URL follows the committed destination without reloading the page.
+
 Browser state stays in this site's storage for your browser profile:
 
 | Key | Holds |

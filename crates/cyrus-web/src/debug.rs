@@ -10,23 +10,19 @@ fn initialize_web_world(mut picker: ResMut<WorldPicker>) {
 #[cfg(any(target_arch = "wasm32", test))]
 fn update_web_world(
     mut commands: Commands,
-    assets: Res<AssetServer>,
-    state: (
-        Res<State<cyrus_game::AppState>>,
-        Option<Res<cyrus_startup::StartGame>>,
-    ),
     mut picker: ResMut<WorldPicker>,
     mut flycam: Option<ResMut<cyrus_render::camera::DetachedView>>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
-    authored: Option<(
-        Res<cyrus_world::lifecycle::ReloadScene>,
-        Res<cyrus_world::lifecycle::SceneRequest>,
-    )>,
 ) {
-    let (state, entry) = state;
     if picker.current != current.name {
         picker.current.clone_from(&current.name);
         picker.selected.clone_from(&current.name);
+        #[cfg(target_arch = "wasm32")]
+        if let Some(window) = web_sys::window()
+            && let Err(error) = set_scene(&window, &current.name)
+        {
+            error!("load world {}: {error:?}", current.name);
+        }
     }
     if let Some(requested) = picker.pending.take() {
         if let Some(flycam) = flycam.as_mut() {
@@ -34,142 +30,20 @@ fn update_web_world(
         }
         commands.remove_resource::<cyrus_render::camera::InitialView>();
         commands.insert_resource(cyrus_startup::WorldLoadRequest(requested));
-        return;
-    }
-    // Script `LoadWorld` and console `load` raise `ReloadScene` with the request; the browser has
-    // no native preparation thread, so authored transitions stage their destination caches.
-    let authored = authored.map(|(_, request)| request.0.clone());
-    if authored.is_some() {
-        commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
-    }
-    let Some(requested) = authored else {
-        return;
-    };
-    if *state.get() == cyrus_game::AppState::Loading || entry.is_some() {
-        return;
-    }
-    let in_game = *state.get() == cyrus_game::AppState::InGame;
-    if in_game {
-        // The running world stays until every sidecar of the destination has loaded; a failure
-        // reports `SceneLoadError` and leaves it in place.
-        let prepared =
-            cyrus_world::lifecycle::PreparedWorld::from_cache(requested.clone(), &assets);
-        let handles = [
-            prepared.animations.clone().untyped(),
-            prepared.scripts.clone().untyped(),
-            assets
-                .load::<cyrus_script::player::data::PlayerScene>(prepared.player_path.clone())
-                .untyped(),
-            assets
-                .load::<bevy::gltf::Gltf>(prepared.scene_path.clone())
-                .untyped(),
-            assets
-                .load::<cyrus_assets::environment::Environment>(prepared.environment_path.clone())
-                .untyped(),
-        ]
-        .into();
-        commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
-        commands.insert_resource(cyrus_world::lifecycle::WorldPreparationPending);
-        commands.insert_resource(StagedWorld {
-            requested,
-            prepared,
-            handles,
-        });
-    } else {
-        #[cfg(target_arch = "wasm32")]
-        if let Some(window) = web_sys::window()
-            && let Err(error) = set_scene(&window, &requested, true)
-        {
-            error!("load world {requested}: {error:?}");
-        }
-    }
-}
-
-/// A world selection waiting for its sidecars. Replaced by a newer selection.
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Resource)]
-struct StagedWorld {
-    requested: String,
-    prepared: cyrus_world::lifecycle::PreparedWorld,
-    handles: Vec<UntypedHandle>,
-}
-
-/// Sidecar handles of the committed world, kept so the consumers reuse the loaded assets.
-#[cfg(any(target_arch = "wasm32", test))]
-#[derive(Resource)]
-#[allow(
-    dead_code,
-    reason = "owns the handles that keep the committed world's assets loaded"
-)]
-struct CommittedWorldHandles(Vec<UntypedHandle>);
-
-/// Swap the world caches once the staged world has loaded, or report why it cannot.
-#[cfg(any(target_arch = "wasm32", test))]
-fn commit_staged_world(
-    mut commands: Commands,
-    assets: Res<AssetServer>,
-    staged: Option<Res<StagedWorld>>,
-    current: Res<cyrus_world::lifecycle::CurrentScene>,
-) {
-    use bevy::asset::LoadState;
-    let Some(staged) = staged else {
-        return;
-    };
-    let mut loading = false;
-    for handle in &staged.handles {
-        match assets.get_load_state(handle.id()) {
-            Some(LoadState::Failed(error)) => {
-                let message = format!("World {}: {error}", staged.requested);
-                error!("{message}");
-                commands.remove_resource::<StagedWorld>();
-                commands.remove_resource::<cyrus_world::lifecycle::WorldPreparationPending>();
-                commands.insert_resource(cyrus_world::lifecycle::SceneLoadError(message));
-                commands
-                    .insert_resource(cyrus_world::lifecycle::SceneRequest(current.name.clone()));
-                return;
-            }
-            Some(LoadState::Loaded) => {}
-            _ => loading = true,
-        }
-    }
-    if loading {
-        return;
-    }
-    commands.remove_resource::<cyrus_render::camera::InitialView>();
-    commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
-        staged.requested.clone(),
-    ));
-    commands.insert_resource(staged.prepared.clone());
-    commands.insert_resource(CommittedWorldHandles(staged.handles.clone()));
-    commands.remove_resource::<StagedWorld>();
-    commands.remove_resource::<cyrus_world::lifecycle::WorldPreparationPending>();
-    #[cfg(target_arch = "wasm32")]
-    if let Some(window) = web_sys::window()
-        && let Err(error) = set_scene(&window, &staged.requested, false)
-    {
-        error!("load world {}: {error:?}", staged.requested);
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-fn set_scene(
-    window: &web_sys::Window,
-    scene: &str,
-    reload: bool,
-) -> Result<(), wasm_bindgen::JsValue> {
+fn set_scene(window: &web_sys::Window, scene: &str) -> Result<(), wasm_bindgen::JsValue> {
     let params = web_sys::UrlSearchParams::new_with_str(&window.location().search()?)?;
     params.set("scene", scene);
     params.delete("view");
     let query = params.to_string().as_string().unwrap_or_default();
-    if reload {
-        window.location().set_search(&query)
-    } else {
-        window.history()?.replace_state_with_url(
-            &wasm_bindgen::JsValue::NULL,
-            "",
-            Some(&format!("?{query}")),
-        )
-    }
+    window.history()?.replace_state_with_url(
+        &wasm_bindgen::JsValue::NULL,
+        "",
+        Some(&format!("?{query}")),
+    )
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -191,9 +65,7 @@ pub fn register(app: &mut App) {
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Startup, initialize_web_world).add_systems(
         Update,
-        (update_web_world, commit_staged_world)
-            .chain()
-            .before(cyrus_world::lifecycle::WorldChange),
+        update_web_world.before(cyrus_world::lifecycle::WorldChange),
     );
     #[cfg(not(target_arch = "wasm32"))]
     let _ = app;
@@ -230,7 +102,7 @@ mod tests {
             pending: requested.map(str::to_owned),
             ..default()
         })
-        .add_systems(Update, (update_web_world, commit_staged_world).chain());
+        .add_systems(Update, update_web_world);
         if authored {
             app.insert_resource(cyrus_world::lifecycle::ReloadScene);
         }
@@ -255,7 +127,6 @@ mod tests {
                 .resource::<cyrus_render::camera::DetachedView>()
                 .enabled
         );
-        assert!(!app.world().contains_resource::<StagedWorld>());
         assert!(
             !app.world()
                 .contains_resource::<cyrus_render::camera::InitialView>()
@@ -270,57 +141,40 @@ mod tests {
     }
 
     #[test]
-    fn a_destination_that_fails_to_load_reports_the_error_and_keeps_the_running_world() {
-        // The unit app has no `cache` asset source, so every sidecar of the destination fails.
-        let mut app = selection_app(None, true);
-        app.insert_resource(cyrus_world::lifecycle::SceneRequest("0".into()));
-        for _ in 0..4 {
-            app.update();
-        }
-        assert!(!app.world().contains_resource::<StagedWorld>());
+    fn authored_world_load_is_retained_for_shared_loading_presentation() {
+        let mut app = selection_app(None, false);
+        let mut commands = app.world_mut().commands();
+        cyrus_script::script::request_world(&mut commands, [5, 9, 2560]).unwrap();
+        app.world_mut().flush();
+        app.update();
         assert!(
-            !app.world()
-                .contains_resource::<cyrus_world::lifecycle::WorldPreparationPending>()
+            app.world()
+                .contains_resource::<cyrus_world::lifecycle::ReloadScene>()
         );
-        let error = app
-            .world()
-            .resource::<cyrus_world::lifecycle::SceneLoadError>();
-        assert!(error.0.starts_with("World 0:"), "{}", error.0);
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_world::lifecycle::SceneRequest>()
+                .0,
+            "5"
+        );
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_script::player::placement::MarkerEntry>()
+                .marker,
+            9
+        );
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_script::player::placement::MarkerEntry>()
+                .heading,
+            512
+        );
         assert_eq!(
             app.world()
                 .resource::<cyrus_world::lifecycle::PreparedWorld>()
                 .requested_name,
             "ISLAND"
         );
-        assert_eq!(
-            app.world()
-                .resource::<cyrus_world::lifecycle::SceneRequest>()
-                .0,
-            "ISLAND"
-        );
-        assert!(
-            app.world()
-                .contains_resource::<cyrus_render::camera::InitialView>()
-        );
-    }
-
-    #[test]
-    fn authored_world_load_stages_the_destination_once() {
-        let mut app = selection_app(None, true);
-        app.world_mut()
-            .insert_resource(cyrus_world::lifecycle::SceneRequest("13".into()));
-        app.update();
-        assert!(
-            !app.world()
-                .contains_resource::<cyrus_world::lifecycle::ReloadScene>()
-        );
-        let staged = app.world().resource::<StagedWorld>();
-        assert_eq!(staged.requested, "13");
-        assert_eq!(staged.prepared.scene_path.to_string(), "cache://13.glb");
-        // No further request: the next update only polls the staged load.
-        app.world_mut().remove_resource::<StagedWorld>();
-        app.update();
-        assert!(!app.world().contains_resource::<StagedWorld>());
     }
 
     #[test]

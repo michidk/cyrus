@@ -81,9 +81,16 @@ struct ArtworkAssets<'w, 's> {
     preparation: Local<'s, Option<(String, bevy::tasks::Task<anyhow::Result<()>>)>>,
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct WorldRequests<'w> {
+    inspection: Option<Res<'w, super::WorldLoadRequest>>,
+    reload: Option<Res<'w, cyrus_world::lifecycle::ReloadScene>>,
+    scene: Option<Res<'w, cyrus_world::lifecycle::SceneRequest>>,
+}
+
 fn begin_requested_world(
     mut commands: Commands,
-    request: Option<Res<super::WorldLoadRequest>>,
+    requests: WorldRequests,
     assets: (
         Res<AssetServer>,
         Res<Assets<MenuAsset>>,
@@ -96,6 +103,19 @@ fn begin_requested_world(
 ) {
     let (assets, menus, mut images) = assets;
     let (state, time) = timing;
+    let WorldRequests {
+        inspection,
+        reload,
+        scene,
+    } = requests;
+    let scripted = reload.is_some() && inspection.is_none();
+    let request = inspection.as_ref().map(|request| &request.0).or_else(|| {
+        if scripted {
+            scene.as_ref().map(|scene| &scene.0)
+        } else {
+            None
+        }
+    });
     let Some(request) = request else { return };
     if !matches!(state.get(), AppState::InGame | AppState::Menu) {
         return;
@@ -107,22 +127,23 @@ fn begin_requested_world(
         if let Some(bevy::asset::LoadState::Failed(error)) =
             assets.get_load_state(startup.menu.id())
         {
-            let message = format!("World {} loading artwork: {error}", request.0);
+            let message = format!("World {} loading artwork: {error}", *request);
             error!("{message}");
             commands.insert_resource(SceneLoadError(message));
             commands.remove_resource::<super::WorldLoadRequest>();
+            commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
             // Re-enter the loader on the next explicit request after cache repair.
             startup.menu = Handle::default();
         }
         return;
     };
-    let (world, pictures) = if request.0 == book.new_game.world.to_string() {
+    let (world, pictures) = if *request == book.new_game.world.to_string() {
         (book.new_game.world, &book.new_game.loading)
     } else {
         if artwork
             .pending
             .as_ref()
-            .is_none_or(|(world, _)| *world != request.0)
+            .is_none_or(|(world, _)| *world != *request)
         {
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(install) = artwork.install.as_ref() {
@@ -131,9 +152,9 @@ fn begin_requested_world(
                 if artwork
                     .preparation
                     .as_ref()
-                    .is_none_or(|(world, _)| *world != request.0)
+                    .is_none_or(|(world, _)| *world != *request)
                 {
-                    let name = request.0.clone();
+                    let name = request.clone();
                     *artwork.preparation = Some((
                         name.clone(),
                         IoTaskPool::get().spawn(async move {
@@ -154,15 +175,16 @@ fn begin_requested_world(
                 if let Err(error) = result {
                     commands.insert_resource(SceneLoadError(format!(
                         "World {} loading artwork: {error:#}",
-                        request.0
+                        *request
                     )));
                     commands.remove_resource::<super::WorldLoadRequest>();
+                    commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
                     return;
                 }
             }
             *artwork.pending = Some((
-                request.0.clone(),
-                assets.load(format!("cache://loading/{}.loading", request.0)),
+                request.clone(),
+                assets.load(format!("cache://loading/{request}.loading")),
             ));
         }
         let handle = &artwork.pending.as_ref().unwrap().1;
@@ -171,9 +193,10 @@ fn begin_requested_world(
             {
                 commands.insert_resource(SceneLoadError(format!(
                     "World {} loading artwork: {error}",
-                    request.0
+                    *request
                 )));
                 commands.remove_resource::<super::WorldLoadRequest>();
+                commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
                 // A later explicit request must ask AssetServer to load again. Retaining
                 // this failed handle bypasses its retry path even after the file is repaired.
                 *artwork.pending = None;
@@ -182,9 +205,11 @@ fn begin_requested_world(
         };
         (artwork.world, &artwork.pictures)
     };
-    commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.0.clone()));
+    commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.clone()));
     commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
-    commands.insert_resource(cyrus_script::player::placement::MarkerEntry::default());
+    if !scripted {
+        commands.insert_resource(cyrus_script::player::placement::MarkerEntry::default());
+    }
     commands.remove_resource::<super::WorldLoadRequest>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
     commands.remove_resource::<cyrus_script::PausedGameplay>();
@@ -265,6 +290,9 @@ fn poll(
                 .is_some_and(|game| game.image != Handle::default())
         })
         .map(|clock| clock.settings());
+    let loading_fade_in = fade_clock.is_some()
+        && (game.as_ref().is_some_and(|game| !game.faded_in)
+            || fades.iter().any(super::fade::Fade::fading_in));
     if let (Some(game), Some(settings)) = (game.as_mut(), fade_clock)
         && !game.faded_in
     {
@@ -318,7 +346,11 @@ fn poll(
                     let done = offset + loaded + 1 + usize::from(spawned);
                     update_progress(game, &mut images, done, total);
                 }
-                if loaded == handles.0.len() && spawned && startup.error.is_none() {
+                if loaded == handles.0.len()
+                    && spawned
+                    && startup.error.is_none()
+                    && !loading_fade_in
+                {
                     let fade_out = game.as_ref().and_then(|game| game.fade_out);
                     match (fade_out, fade_clock) {
                         (None, Some(settings)) => {
@@ -526,31 +558,37 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
-        world_entry_recreates_player(false, 0, None);
+        world_entry_recreates_player(false, 0, None, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_from_paused_book_recreates_the_retained_player() {
-        world_entry_recreates_player(true, 0, None);
+        world_entry_recreates_player(true, 0, None, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn destination_world_entry_presents_its_configured_artwork() {
-        world_entry_recreates_player(false, 2, None);
+        world_entry_recreates_player(false, 2, None, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_loading_artwork() {
-        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork));
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork), false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_book_asset() {
-        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu));
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu), false);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn script_world_request_presents_artwork_and_preserves_entry() {
+        world_entry_recreates_player(false, 5, None, true);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -558,6 +596,7 @@ mod tests {
         from_book: bool,
         destination: u32,
         repair: Option<MissingAsset>,
+        scripted: bool,
     ) {
         use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
@@ -661,8 +700,15 @@ mod tests {
             marker: 9,
             heading: 512,
         });
-        app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
-        if repair.is_some() {
+        if scripted {
+            let mut commands = app.world_mut().commands();
+            cyrus_script::script::request_world(&mut commands, [destination as i32, 9, 2560])
+                .unwrap();
+            app.world_mut().flush();
+        } else {
+            app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
+        }
+        if matches!(repair, Some(MissingAsset::Artwork | MissingAsset::Menu)) {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             while !app.world().contains_resource::<SceneLoadError>()
                 && std::time::Instant::now() < deadline
@@ -708,7 +754,14 @@ mod tests {
         assert_eq!(
             *app.world()
                 .resource::<cyrus_script::player::placement::MarkerEntry>(),
-            default()
+            if scripted {
+                cyrus_script::player::placement::MarkerEntry {
+                    marker: 9,
+                    heading: 512,
+                }
+            } else {
+                default()
+            }
         );
         app.update();
         assert_eq!(
@@ -717,9 +770,106 @@ mod tests {
         );
         assert!(app.world().get_entity(old_player).is_err());
         assert!(!app.world().get::<Camera>(camera).unwrap().is_active);
-        app.world_mut()
-            .resource_mut::<NextState<AppState>>()
-            .set(AppState::InGame);
+        // The host consumes this marker when it admits destination preparation.
+        assert!(
+            app.world_mut()
+                .remove_resource::<cyrus_world::lifecycle::ReloadScene>()
+                .is_some()
+        );
+        if scripted {
+            use bevy::world_serialization::{WorldAsset, WorldSerializationPlugin};
+            app.add_plugins(WorldSerializationPlugin)
+                .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                    std::time::Duration::from_secs_f64(1.0 / 12.0),
+                ))
+                .insert_resource(
+                    cyrus_script::clock::SimulationClock::new(
+                        cyrus_assets::script::ClockSettings {
+                            normal_frame_rate: 12,
+                            min_frame_rate: 6,
+                            max_frame_rate: 60,
+                            use_smooth_fps: false,
+                            use_smooth_divisor: false,
+                        },
+                    )
+                    .unwrap(),
+                )
+                .insert_resource(super::super::Playback {
+                    count: 0,
+                    live: None,
+                    title: default(),
+                    title_fills_window: false,
+                    elapsed: 0.0,
+                    failed: false,
+                })
+                .add_systems(
+                    Update,
+                    (
+                        poll.run_if(in_state(AppState::Loading)),
+                        super::super::fade::advance,
+                    )
+                        .chain(),
+                )
+                .add_systems(OnEnter(AppState::InGame), fade_in_world)
+                .add_systems(OnExit(AppState::Loading), cleanup);
+            app.world_mut()
+                .resource_mut::<StartupPresentation>()
+                .title_visible = true;
+            let root = app
+                .world_mut()
+                .resource_mut::<Assets<WorldAsset>>()
+                .add(WorldAsset::new(World::new()));
+            app.world_mut().spawn(WorldAssetRoot(root));
+            app.insert_resource(PreparedWorld {
+                requested_name: destination.to_string(),
+                world: Some(destination),
+                animations: default(),
+                scripts: default(),
+                player_path: "empty.player".into(),
+                scene_path: "empty.glb".into(),
+                environment_path: "empty.environment".into(),
+            })
+            .insert_resource(WorldAssets(Vec::new()));
+            let mut saw_fade = false;
+            let mut saw_clear_artwork = false;
+            for _ in 0..100 {
+                app.update();
+                let loading = *app.world().resource::<State<AppState>>().get() == AppState::Loading;
+                let colors = app
+                    .world_mut()
+                    .query_filtered::<&BackgroundColor, With<super::super::WorldEntryFade>>()
+                    .iter(app.world())
+                    .map(|color| color.0.alpha())
+                    .collect::<Vec<_>>();
+                saw_fade |= !colors.is_empty();
+                saw_clear_artwork |= loading && saw_fade && colors.is_empty();
+                if !loading {
+                    break;
+                }
+            }
+            assert!(saw_fade, "script entry omitted its loading fade");
+            assert!(
+                saw_clear_artwork,
+                "ready caches hid artwork behind overlapping fades"
+            );
+            assert_eq!(
+                *app.world().resource::<State<AppState>>().get(),
+                AppState::InGame
+            );
+            assert!(!app.world().contains_resource::<StartGame>());
+            assert!(
+                app.world_mut()
+                    .query::<&super::super::WorldEntryFade>()
+                    .iter(app.world())
+                    .next()
+                    .is_some(),
+                "world entry must retain the final black overlay until gameplay publishes"
+            );
+        } else {
+            app.world_mut()
+                .resource_mut::<NextState<AppState>>()
+                .set(AppState::InGame);
+        }
         app.update();
         let new_player = app
             .world_mut()

@@ -6,7 +6,7 @@ plugins ([cyrus-startup](../cyrus-startup/README.md), cyrus-render, cyrus-audio)
 and runs it. It owns native local state (settings, preferences, cheats, console,
 save slots) through `cyrus-config`, and applies the TCP control commands that
 `cyrus-control` frames. Presentation captures retain application state at render extraction, including
-loading and menu transitions; gameplay captures additionally require a ready world. The browser counterpart is [cyrus-web](../cyrus-web/README.md).
+loading and menu transitions; gameplay captures additionally require a ready world. Script reload preparation starts after the installed loading presentation enters Loading, retaining the requested marker and heading. The browser counterpart is [cyrus-web](../cyrus-web/README.md).
 
 ## Usage
 

@@ -146,6 +146,7 @@ fn load_new_game(
     if !startup.loading_visible() || prepared.is_some() {
         return;
     }
+    commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
     commands.insert_resource(cyrus_world::lifecycle::PreparedWorld::from_cache(
         request.0.clone(),
         &assets,

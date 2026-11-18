@@ -56,6 +56,11 @@ pub(crate) fn spawn(
 }
 
 impl Fade {
+    /// True while loading artwork is being uncovered.
+    pub(crate) fn fading_in(&self) -> bool {
+        self.fading_in
+    }
+
     /// True once a fade-out is fully black.
     pub(crate) fn black(&self) -> bool {
         !self.fading_in && opacity(self.elapsed, self.clock.normal_frame_rate, false) >= 1.0
