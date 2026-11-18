@@ -110,9 +110,17 @@ fn presentation_boundary(world: &mut World) -> anyhow::Result<Value> {
         .get_resource::<bevy::diagnostic::FrameCount>()
         .ok_or_else(|| anyhow::anyhow!("presentation frame: render frame counter unavailable"))?
         .0;
+    let state = format!("{:?}", state.get());
+    let mut fade_opacity_256 = world
+        .query_filtered::<&BackgroundColor, With<cyrus_startup::WorldEntryFade>>()
+        .iter(world)
+        .map(|color| (color.0.alpha() * 256.0).round() as u16)
+        .collect::<Vec<_>>();
+    fade_opacity_256.sort_unstable();
     Ok(json!({
-        "state": format!("{:?}", state.get()), "render_frame": frame,
+        "state": state, "render_frame": frame,
         "event": "render_frame", "phase": "render_extraction",
+        "fade_opacity_256": fade_opacity_256,
     }))
 }
 

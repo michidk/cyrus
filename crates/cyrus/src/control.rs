@@ -1929,6 +1929,8 @@ mod tests {
             .remove_resource::<cyrus_script::script::ScriptActors>();
         app.world_mut()
             .remove_resource::<cyrus_script::clock::SimulationClock>();
+        // An unrelated black UI background must not be reported as a world-entry fade.
+        app.world_mut().spawn(BackgroundColor(Color::BLACK));
         let path =
             std::env::temp_dir().join(format!("cyrus-loading-frame-{}.png", std::process::id()));
         let _ = std::fs::remove_file(&path);
@@ -1983,6 +1985,7 @@ mod tests {
         let result = response.result.unwrap();
         assert_eq!(result["boundary"]["state"], "Loading");
         assert_eq!(result["boundary"]["phase"], "render_extraction");
+        assert_eq!(result["boundary"]["fade_opacity_256"], json!([]));
         assert!(result["boundary"]["render_frame"].is_u64());
         assert!(result["boundary"].get("player").is_none());
         assert_eq!(&std::fs::read(&path).unwrap()[..8], b"\x89PNG\r\n\x1a\n");
