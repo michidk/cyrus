@@ -1,6 +1,8 @@
 //! In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 //! power-up slots, active item, prompt text. Rules follow redguard-preservation's HUD documentation.
+mod artwork;
 mod persistence;
+use artwork::StoredArtwork;
 use bevy::{
     asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     image::{ImageLoaderSettings, ImageSampler},
@@ -399,7 +401,9 @@ impl AssetLoader for HudLoader {
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<cyrus_game::preferences::Preferences>()
+        app.init_resource::<artwork::ArtworkStorage>()
+            .add_systems(PostUpdate, artwork::store_artwork)
+            .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<cyrus_script::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_asset_loader::<HudLoader>()
@@ -596,11 +600,13 @@ fn island_map_draw(
     commands.entity(overlay).with_children(|parent| {
         let top = (480 - i32::from(art.map[1])) / 2;
         parent.spawn((
+            StoredArtwork,
             ImageNode::new(assets.load("cache://hud/mapmap-00.png")),
             place([0, top], art.map),
             ZIndex(1),
         ));
         parent.spawn((
+            StoredArtwork,
             ImageNode::new(assets.load(format!("cache://hud/cross-{frame:02}.png"))),
             place(screen.cross, cross_size),
             ZIndex(2),
@@ -660,6 +666,7 @@ fn inventory_draw(
         ));
         let mut image = |path: String, at: [i32; 2], size: [u16; 2]| {
             parent.spawn((
+                StoredArtwork,
                 ImageNode::new(assets.load(path)),
                 place(at, size),
                 ZIndex(1),
@@ -1053,6 +1060,7 @@ fn update(
             for (z, sprite) in SPRITES.into_iter().enumerate() {
                 viewport.spawn((
                     sprite,
+                    StoredArtwork,
                     ImageNode::default(),
                     Node::default(),
                     Visibility::Hidden,

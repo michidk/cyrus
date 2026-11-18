@@ -31,6 +31,7 @@ module where it is defined and regenerate.
 - `src/environment.rs` — Validated world environment records.
 - `src/environment_export.rs` — Per-world environment preparation from original bytes on either target.
 - `src/examine.rs` — Inventory models for the examine view, exported once and shaded at view time with the loaded
+- `src/framebuffer.rs` — Encoded-channel RGB565 storage shared by artwork and the logbook reader.
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
 - `src/hud.rs` — Installed HUD layout, item and font records.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
@@ -228,6 +229,7 @@ module where it is defined and regenerate.
 - `src/fog/texture/frames.rs` — Retain authored texture frames during the original GLTF decode.
 - `src/hooks.rs` — What the presentation offers a provider such as a mod, without knowing what it will do with
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
+- `src/hud/artwork.rs` — Ordered framebuffer storage for opaque HUD, inventory and island-map artwork.
 - `src/hud/persistence.rs` — Retained HUD presentation continuation, separate from inventory and journal owners.
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.

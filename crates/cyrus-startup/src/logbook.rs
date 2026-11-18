@@ -5,6 +5,7 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
+use cyrus_assets::framebuffer::store as reader_framebuffer;
 use cyrus_assets::{
     logbook::LogbookArtwork,
     menu::{ConfirmationArtwork, MenuAsset},
@@ -495,22 +496,6 @@ fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) 
         pixel.0[..3].copy_from_slice(&colour);
     }
     image
-}
-
-/// Encoded-channel storage from preservation's framebuffer dithering contract.
-fn reader_framebuffer(colour: [u8; 3], x: u32, y: u32) -> [u8; 3] {
-    const THRESHOLDS: [u32; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-    let threshold = THRESHOLDS[((y % 4) * 4 + x % 4) as usize];
-    std::array::from_fn(|channel| {
-        let c = u32::from(colour[channel]);
-        if channel == 1 {
-            let stored = ((4 * c - c / 16 + c / 64 + threshold) / 16).min(63);
-            ((stored << 2) | (stored >> 4)) as u8
-        } else {
-            let stored = ((2 * c - c / 16 + c / 128 + threshold) / 16).min(31);
-            ((stored << 3) | (stored >> 2)) as u8
-        }
-    })
 }
 
 /// The two rotating scrolls as lit triangles in the reader's view space.

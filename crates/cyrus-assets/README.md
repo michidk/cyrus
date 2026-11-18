@@ -34,6 +34,8 @@ adapters.
 
 `docs/MAP.md` lists every module.
 
+`framebuffer::store` supplies the published ordered RGB565 encoded-channel storage to the logbook reader and HUD artwork. Coordinates are top-left framebuffer pixels.
+
 ## Usage
 
 ```rust
