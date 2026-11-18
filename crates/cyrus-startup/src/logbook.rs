@@ -227,6 +227,7 @@ fn draw(
         cursor: screen.manual_entry_cursor_visible(),
     };
     if previous.as_ref() == Some(&pose)
+        && model.is_shown()
         && pages
             .single()
             .is_ok_and(|page| page.image != Handle::default())
@@ -663,6 +664,64 @@ mod tests {
                     .is_some()
             );
         }
+    }
+
+    #[test]
+    fn installed_reader_publishes_scrolls_when_mesh_assets_arrive_after_paper() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match cyrus_assets::install::GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let files = cyrus_assets::game::prepare(&source, "logbook/reader.logbook").unwrap();
+        let mut app = standalone_asset_app(&files.into_iter().collect::<Vec<_>>(), false);
+        {
+            let mut screen = app.world_mut().resource_mut::<LogbookScreen>();
+            screen.book = Some(cyrus_script::logbook::Logbook::new(&["0,A".into()]).unwrap());
+            screen.open = true;
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            app.update();
+            let page = app
+                .world_mut()
+                .query_filtered::<&ImageNode, With<Page>>()
+                .single(app.world())
+                .unwrap()
+                .image
+                .clone();
+            if app.world().resource::<Assets<Image>>().get(&page).is_some() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "reader paper did not load"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(
+            app.world_mut().query::<&Mesh3d>().iter(app.world()).count(),
+            0
+        );
+        app.init_asset::<Mesh>()
+            .init_asset::<super::super::view3d::LitMaterial>();
+        app.update();
+        let meshes = app.world_mut().query::<&Mesh3d>().iter(app.world()).count();
+        eprintln!("reader installed scroll mesh publication after 3D admission: {meshes}");
+        assert!(
+            meshes > 0,
+            "reader must publish installed scrolls after 3D assets arrive"
+        );
+        app.update();
+        assert_eq!(
+            app.world_mut().query::<&Mesh3d>().iter(app.world()).count(),
+            meshes
+        );
     }
 
     #[test]
