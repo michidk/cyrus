@@ -22,6 +22,78 @@ use cyrus_script::{
 use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld, sound::SoundCue};
 
 #[test]
+fn installed_island_plank_acquires_player_support() -> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (installed island plank support)");
+        return Ok(());
+    };
+    let (mut app, _codes, _assets) = prepare_player_app(&install)?;
+    for _ in 0..4 {
+        app.update();
+    }
+    // Exercise the rendered trace's clamped update duration, not a faster test-only clock.
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(167),
+    ));
+    let start = [23847, -304, 55082].map(|value| value * 256);
+    let plank = {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors
+            .current
+            .as_mut()
+            .context("logical world unavailable")?;
+        let plank = world
+            .actors()
+            .iter()
+            .position(|actor| {
+                actor.name() == "NCPLNKE1"
+                    && actor.placement().is_some_and(|placement| {
+                        placement.map_position[0] == 23847 && placement.map_position[2] == 55082
+                    })
+            })
+            .context("ISLAND NCPLNKE1 at [23847,55082] unavailable")?;
+        world.place_selected_player(start, 0)?;
+        world.id(plank)?
+    };
+    // The headless host supplies the same local map view as a camera at this fixture.
+    // Keeping the entry marker's view would exclude the plank before its mesh is queried.
+    app.world_mut().resource_mut::<ScriptView>().position = start;
+    app.update();
+    let actors = app.world().resource::<ScriptActors>();
+    let world = actors
+        .current
+        .as_ref()
+        .context("logical world unavailable")?;
+    let player = world
+        .selected_player()
+        .context("selected player unavailable")?;
+    ensure!(
+        world.model_support(player)?.actor == Some(plank),
+        "ISLAND [23847,-304,55082]: expected NCPLNKE1 support, got {:?}",
+        world.model_support(player)?
+    );
+    let control = world.actors()[player.index]
+        .control_state()
+        .context("player control unavailable")?;
+    ensure!(
+        control.falling_state == cyrus_script::script::JumpMotion::NONE,
+        "supported player is falling"
+    );
+    ensure!(
+        world.spatial(player)?.local.position[1] == start[1],
+        "plank acquisition changed player height"
+    );
+    ensure!(
+        world.spatial(plank)?.linked_position().is_some(),
+        "installed plank did not establish its moving-owner link"
+    );
+    Ok(())
+}
+
+#[test]
 fn installed_island_keyboard_walk_and_release() -> Result<()> {
     installed_keyboard_route(false)
 }

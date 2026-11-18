@@ -72,6 +72,11 @@ cargo test -p cyrus-script --test script_registry   # or any file in tests/
 just verify script                                  # tests and clippy for this crate
 ```
 
+The installed island controller fixture places the player at the NCPLNKE1 plank
+and supplies a local map view before the ordinary update. It verifies support
+acquisition and the plank's runtime position link at a clamped rendered-frame duration.
+The headless host supplies this view explicitly because it has no follow camera.
+
 Installed-data tests (`*_installed.rs` and others) read `REDGUARD_DIR` or the
 workspace `redguard` link and report a skip when no install is present; with an
 install linked, a skip fails the gate. Runtime changes also need the headless,
