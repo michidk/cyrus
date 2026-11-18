@@ -315,7 +315,10 @@ impl ScriptWorld {
                 i64::from(point[0]) * 256 + i64::from(dx),
                 i64::from(top.wrapping_sub(stance.positive).wrapping_sub(standing)) * 256,
                 i64::from(point[1]) * 256 + i64::from(dz),
-            ];
+            ]
+            // Ledge fitting truncates signed Q8 coordinates toward zero before the
+            // sphere query; the common body adapter otherwise shifts them down.
+            .map(|coordinate| coordinate / 256 * 256);
             let (mut body_fits, mut head_fits) = (true, true);
             for candidate in &query.prepared.candidates.faces {
                 let single = CollisionCandidates {

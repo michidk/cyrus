@@ -48871,7 +48871,20 @@ fn selected_jump_high_ledge_without_animation_receiver_completes_transition() {
 
 #[test]
 fn selected_jump_rescans_far_ledges_after_four_rejected_near_records() {
-    grounded_jump_selects_ledges_with_near_obstacles(false, LedgeReceiver::Eligible, true);
+    grounded_jump_selects_ledges_with_geometry(
+        false,
+        LedgeReceiver::Eligible,
+        LedgeGeometry::RejectedNear,
+    );
+}
+
+#[test]
+fn selected_jump_ledge_fit_truncates_negative_fractional_positions() {
+    grounded_jump_selects_ledges_with_geometry(
+        false,
+        LedgeReceiver::Eligible,
+        LedgeGeometry::NegativeFit,
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -48882,13 +48895,20 @@ enum LedgeReceiver {
 }
 
 fn grounded_jump_selects_ledges(native_jump: bool, receiver: LedgeReceiver) {
-    grounded_jump_selects_ledges_with_near_obstacles(native_jump, receiver, false);
+    grounded_jump_selects_ledges_with_geometry(native_jump, receiver, LedgeGeometry::Standard);
 }
 
-fn grounded_jump_selects_ledges_with_near_obstacles(
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LedgeGeometry {
+    Standard,
+    RejectedNear,
+    NegativeFit,
+}
+
+fn grounded_jump_selects_ledges_with_geometry(
     native_jump: bool,
     receiver: LedgeReceiver,
-    blocked_near_pass: bool,
+    geometry: LedgeGeometry,
 ) {
     use cyrus_assets::collision::{CollisionGeometry, CollisionModel, StaticPlacement};
     use cyrus_collision::collision_world::StaticCollision;
@@ -48905,7 +48925,7 @@ fn grounded_jump_selects_ledges_with_near_obstacles(
         (-44, 86, 11),
         (-45, 32, 0),
     ] {
-        if blocked_near_pass && top != -13 {
+        if geometry != LedgeGeometry::Standard && top != -13 {
             continue;
         }
         if receiver != LedgeReceiver::Eligible
@@ -49043,7 +49063,7 @@ fn grounded_jump_selects_ledges_with_near_obstacles(
                 },
             },
         );
-        if blocked_near_pass {
+        if geometry == LedgeGeometry::RejectedNear {
             let far = scene.collision.models.get_mut("LEDGE").unwrap();
             for vertex in &mut far.geometry.vertices {
                 if vertex[2] == 60. {
@@ -49067,6 +49087,51 @@ fn grounded_jump_selects_ledges_with_near_obstacles(
                     rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
                 });
             }
+        }
+        if geometry == LedgeGeometry::NegativeFit {
+            // A nearly forward-facing wall puts the fit origin fractionally below X=0.
+            // Truncating that origin to -1 leaves 12.5 units to this neighboring wall;
+            // rounding down to -2 leaves 11.5 and falsely blocks the radius-12 body.
+            world
+                .place_selected_player([0, -1536, 542 * 256], 4)
+                .unwrap();
+            world.refresh_model_presentations(&data, &[player]).unwrap();
+            scene.collision.placements.last_mut().unwrap().position[0] = 0;
+            let ledge = scene.collision.models.get_mut("LEDGE").unwrap();
+            for vertex in &mut ledge.geometry.vertices {
+                vertex[2] += vertex[0] * 0.01;
+                vertex[0] -= 10.;
+            }
+            ledge.geometry.normals[0] = [0.0099995, 0., -0.99995];
+            let blocker = CollisionModel {
+                flags: 0,
+                geometry: CollisionGeometry {
+                    version: Some(*b"v5.0"),
+                    radius: 300.,
+                    vertices: vec![
+                        [-13.5, -200., 0.],
+                        [-13.5, 200., 0.],
+                        [-13.5, 200., 150.],
+                        [-13.5, -200., 150.],
+                    ],
+                    normals: vec![[1., 0., 0.]],
+                    faces: vec![vec![0, 1, 2, 3]],
+                    textures: Some(vec![None]),
+                    subobjects: vec![cyrus_assets::collision::CollisionSubobject {
+                        center: [-13.5, 0., 75.],
+                        radius: 300.,
+                        extents: Some([300.; 3]),
+                        faces: vec![0],
+                    }],
+                },
+            };
+            scene.collision.models.insert("FIT_BLOCKER".into(), blocker);
+            scene.collision.placements.push(StaticPlacement {
+                id: 305,
+                model: "FIT_BLOCKER".into(),
+                position: [0, 0, 512],
+                rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+            });
         }
         scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
         let prepared = world

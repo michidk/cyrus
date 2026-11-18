@@ -107,3 +107,7 @@ and complete without a receiver, just like ordinary animation requests.
 
 The near and far ledge scans each gather a fresh record table. Rejected near
 records cannot occupy the farther scan's slots or suppress its climbable ledges.
+
+Ledge fitting truncates signed Q8 trial coordinates toward zero before testing
+the body and head spheres, following preservation 0.13.2
+([ledge record classification](https://github.com/michidk/redguard-preservation/blob/v0.13.2/docs/engine/player.md#ledge-record-classification)).
