@@ -166,7 +166,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     var texture_rgb = linear_to_srgb(base.rgb);
     var texture_key = model.chroma_key.rgb;
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
-        texture_rgb = sample_encoded(surface.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false);
+        texture_rgb = sample_encoded(surface.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false, select(vec3(-1.0), model.chroma_key.rgb, model.chroma_key.w != 0.0));
         if model.compositing.x >= 0.0 {
             texture_rgb = sample_flat(surface.uv);
             texture_key = vec3(0.0);

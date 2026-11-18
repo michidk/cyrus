@@ -29,7 +29,7 @@ fn discard_cut_out(in: prepass_io::VertexOutput, flags: u32) {
 @if(VERTEX_UVS) {
     let textured = (flags & pbr_types::STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u;
     if model.chroma_key.w != 0.0 && model.parameters.w >= 0.0 && textured {
-        let rgb = sample_encoded(in.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false);
+        let rgb = sample_encoded(in.uv, point_sampled() || (u32(model.parameters.w) & 1u) != 0u, false, model.chroma_key.rgb);
         if matches_chroma(rgb, model.chroma_key.rgb) { discard; }
     }
 }
