@@ -64,6 +64,22 @@ signed residuals. It refuses extrapolation and never interpolates animation or
 controller state. Matching positions alone do not establish matching support
 state or completed-update boundaries.
 
+For original per-update recordings, run
+`python3 dev/scripts/original-update-recorder.py --backend <local-backend.py> --elapsed <clock-units>`.
+The Linux x86-64 backend `dev/scripts/original-update-watchpoint.py` uses
+`ORIGINAL_UPDATE_CONFIG` to bind an ignored original state reader and a verified
+ordinary-update-start write watchpoint. Executable bindings stay under `magic/`.
+At this stopped boundary the previous ordinary update has completed. The recorder
+reads twice without resuming, requires contiguous update counters, and checks the
+clock difference against the preceding update's consumed step. It emits a baseline
+and one snapshot per completed update, including animation, fall, support owner,
+link and previous local position. A duplicate, gap, torn read or clock mismatch
+rejects the recording; discard partial output after any failure. A clock read on
+its own is never a boundary. The requested duration ends on consumed game-clock
+progress; the host timeout only detects a stalled boundary. Verify executable
+identity and the boundary's call order locally before accepting a new binding.
+Synthetic controls run with `python3 -B dev/scripts/test-original-update-recorder.py`.
+
 World-loading checks enumerate WORLD.INI and export every entry, including
 worlds sharing a map with different palettes. Successful export proves loading
 coverage; visual fidelity still requires comparison with the original.
