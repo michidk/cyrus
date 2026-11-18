@@ -36,6 +36,7 @@ app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
 app.add_plugins(cyrus_startup::LoadingPlugin);
 ```
 
+- Loading fades publish their initial 12/256 step before consuming subsequent host intervals. At one nominal tick per update, all 22 steps are retained without single-precision accumulation skips; the installed minimum FPS caps a long update.
 - Script and console `SceneRequest` reloads enter the installed loading artwork and fades before world preparation; their marker, wrapped heading and same-world reload semantics are retained. Ready caches complete the artwork fade-in before fade-out, with no simulated load delay.
 - `StartGame` selects world-entry loading presentation; `WorldLoadRequest` enters
   a world (WORLD.INI ID or map stem) at marker zero through the same loading path.

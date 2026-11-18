@@ -8,7 +8,9 @@ use bevy::prelude::*;
 /// The transition removes itself when a fade-in becomes clear.
 #[derive(Component)]
 pub struct Fade {
-    elapsed: f32,
+    elapsed: f64,
+    // The spawn already publishes step one; its preceding host interval is not fade time.
+    first_update: bool,
     /// Installed rates: whole nominal ticks per second, and the slowest measured
     /// frame rate, which caps one update at `normal / min` ticks.
     clock: cyrus_assets::script::ClockSettings,
@@ -17,9 +19,9 @@ pub struct Fade {
     world_ticks: u32,
 }
 
-/// Overlay opacity after `elapsed` seconds. The first update already applies one step.
-pub(crate) fn opacity(elapsed: f32, rate: u32, fading_in: bool) -> f32 {
-    let ticks = (elapsed * rate as f32) as u32 + 1;
+/// Overlay opacity after `elapsed` seconds. Creation already applies one step.
+pub(crate) fn opacity(elapsed: f64, rate: u32, fading_in: bool) -> f32 {
+    let ticks = (elapsed * rate as f64) as u32 + 1;
     let step = (12 * ticks).min(256);
     (if fading_in { 256 - step } else { step }) as f32 / 256.0
 }
@@ -38,6 +40,7 @@ pub(crate) fn spawn(
         .spawn((
             Fade {
                 elapsed: 0.0,
+                first_update: true,
                 clock,
                 fading_in,
                 world_update: None,
@@ -69,6 +72,7 @@ impl Fade {
     /// Turns a finished fade-out into the following fade-in, keeping the same overlay node.
     pub(crate) fn reverse(&mut self) {
         self.elapsed = 0.0;
+        self.first_update = false;
         self.fading_in = true;
         self.world_update = Some(0);
         self.world_ticks = 0;
@@ -91,6 +95,10 @@ pub(crate) fn advance(
                 .is_none_or(|state| *state.get() != cyrus_game::AppState::InGame)
         {
             commands.entity(entity).despawn();
+            continue;
+        }
+        if fade.first_update {
+            fade.first_update = false;
             continue;
         }
         let delta = if state
@@ -118,8 +126,8 @@ pub(crate) fn advance(
             fade.world_ticks = fade.world_ticks.saturating_add(step.nominal_ticks);
             0.0
         } else {
-            time.delta_secs()
-                .min(1.0 / fade.clock.min_frame_rate as f32)
+            time.delta_secs_f64()
+                .min(1.0 / fade.clock.min_frame_rate as f64)
         };
         fade.elapsed += delta;
         let opacity = if fade.world_update.is_some() {
@@ -153,6 +161,7 @@ mod tests {
             .spawn((
                 Fade {
                     elapsed: 0.0,
+                    first_update: true,
                     clock: cyrus_assets::script::ClockSettings {
                         normal_frame_rate: 12,
                         min_frame_rate: 6,

@@ -65,7 +65,9 @@ pub(super) fn register(app: &mut App) {
         .add_systems(Update, poll.run_if(in_state(AppState::Loading)))
         .add_systems(
             Update,
-            super::fade::advance.after(cyrus_script::script::OrdinaryUpdates),
+            super::fade::advance
+                .after(cyrus_script::script::OrdinaryUpdates)
+                .after(poll),
         )
         .add_systems(OnEnter(AppState::InGame), fade_in_world)
         .add_systems(OnExit(AppState::Loading), cleanup);
@@ -780,7 +782,7 @@ mod tests {
             use bevy::world_serialization::{WorldAsset, WorldSerializationPlugin};
             app.add_plugins(WorldSerializationPlugin)
                 .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-                    std::time::Duration::from_secs_f64(1.0 / 12.0),
+                    std::time::Duration::from_secs_f32(1.0 / 12.0),
                 ))
                 .insert_resource(
                     cyrus_script::clock::SimulationClock::new(
@@ -830,6 +832,7 @@ mod tests {
                 environment_path: "empty.environment".into(),
             })
             .insert_resource(WorldAssets(Vec::new()));
+            let mut fade_steps = Vec::new();
             let mut saw_fade = false;
             let mut saw_clear_artwork = false;
             for _ in 0..100 {
@@ -841,6 +844,9 @@ mod tests {
                     .iter(app.world())
                     .map(|color| color.0.alpha())
                     .collect::<Vec<_>>();
+                if loading && let Some(alpha) = colors.first() {
+                    fade_steps.push((alpha * 256.0).round() as u16);
+                }
                 saw_fade |= !colors.is_empty();
                 saw_clear_artwork |= loading && saw_fade && colors.is_empty();
                 if !loading {
@@ -848,6 +854,27 @@ mod tests {
                 }
             }
             assert!(saw_fade, "script entry omitted its loading fade");
+            let clear = fade_steps
+                .windows(2)
+                .position(|steps| steps[1] > steps[0])
+                .unwrap();
+            let fade_in = &fade_steps[..=clear];
+            let expected: Vec<u16> = (1..22).map(|tick| 256 - 12 * tick).collect();
+            assert_eq!(
+                fade_in, expected,
+                "one capture per nominal tick must retain all loading fade steps"
+            );
+            let expected: Vec<u16> = (1..=22).map(|tick| (12 * tick).min(256)).collect();
+            assert_eq!(
+                &fade_steps[clear + 1..clear + 1 + expected.len()],
+                expected,
+                "loading fade-out must retain each nominal step through black"
+            );
+            assert!(
+                fade_steps[clear + 1 + expected.len()..]
+                    .iter()
+                    .all(|step| *step == 256)
+            );
             assert!(
                 saw_clear_artwork,
                 "ready caches hid artwork behind overlapping fades"
