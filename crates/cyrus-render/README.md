@@ -84,6 +84,10 @@ from that asset when it becomes available again, including under the same handle
   Fix a rule there first, not only here.
 - Animated polygon admission uses the current frame face normal. Authored corner
   normals remain separate shading inputs through pose changes and model replacement.
+- Loaded actor frame-source replacements become visible even when the selected pose
+  is already present on the model node. Settled replacements preserve explicit
+  visibility while the selected pose is unchanged, including visibility adopted
+  from a checkpoint.
 - Presentation never advances script stages: logical poses, health, inventory
   and dialogue are owned by `cyrus-game`/`cyrus-script`; this crate presents them.
 - Stationary model colors consume in-place source prelighting, material and local-light

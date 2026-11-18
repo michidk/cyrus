@@ -17,6 +17,9 @@ struct ModelRoot {
     texture_set: Option<u16>,
 }
 
+#[derive(Component)]
+struct PendingModel;
+
 /// A replaced model kept on screen until its successor has loaded, so a frame-source switch
 /// never leaves the player invisible while the next scene loads.
 #[derive(Component)]
@@ -121,6 +124,7 @@ fn bind(
     animations: Option<Res<Assets<Animations>>>,
     players: ModelOwners,
     roots: Query<(Entity, &ModelRoot)>,
+    pending: Query<(), With<PendingModel>>,
     retired: Query<(Entity, &RetiredRoot)>,
     visibilities: Query<&Visibility>,
     children: Query<&Children>,
@@ -220,10 +224,17 @@ fn bind(
                 for child in children.iter_descendants(root) {
                     if let Ok((name, current)) = nodes.get(child)
                         && name.as_str() == pose.model
-                        && current != Some(&*pose)
                     {
-                        commands.entity(child).insert((*pose).clone());
-                        commands.entity(root).insert(Visibility::Inherited);
+                        let pose_changed = current != Some(&*pose);
+                        if pose_changed {
+                            commands.entity(child).insert((*pose).clone());
+                        }
+                        if pose_changed || pending.contains(root) {
+                            commands
+                                .entity(root)
+                                .remove::<PendingModel>()
+                                .insert(Visibility::Inherited);
+                        }
                     }
                 }
                 continue;
@@ -239,6 +250,7 @@ fn bind(
                 model: pose.model.clone(),
                 texture_set,
             },
+            PendingModel,
             WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(source))),
             Transform::default(),
             Visibility::Hidden,
@@ -250,7 +262,7 @@ fn bind(
 fn retire(commands: &mut Commands, root: Entity, player: Entity) {
     commands
         .entity(root)
-        .remove::<ModelRoot>()
+        .remove::<(ModelRoot, PendingModel)>()
         .insert(RetiredRoot { player });
 }
 

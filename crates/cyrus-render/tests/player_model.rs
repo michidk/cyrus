@@ -219,3 +219,53 @@ fn map_actor_replaces_foreign_geometry_and_restores_original_visibility() {
         0
     );
 }
+
+#[test]
+fn loaded_model_with_the_selected_pose_becomes_visible() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        AnimationPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
+        PlayerModelPlugin,
+    ))
+    .init_asset::<WorldAsset>();
+    let prepared =
+        PreparedWorld::from_cache("TAVERN".into(), app.world().resource::<AssetServer>());
+    app.insert_resource(prepared);
+    let pose = AnimationPose {
+        model: "CYRSA001".into(),
+        frame: 1,
+    };
+    app.world_mut()
+        .spawn((Player, Transform::default(), pose.clone()));
+    app.update();
+    let root = app
+        .world_mut()
+        .query_filtered::<Entity, With<WorldAssetRoot>>()
+        .single(app.world())
+        .unwrap();
+    assert_eq!(
+        app.world().get::<Visibility>(root),
+        Some(&Visibility::Hidden)
+    );
+    let node = app
+        .world_mut()
+        .spawn((Name::new("CYRSA001"), pose.clone(), ChildOf(root)))
+        .id();
+    app.update();
+    assert!(app.world().get::<AnimationPose>(node) == Some(&pose));
+    assert_eq!(
+        app.world().get::<Visibility>(root),
+        Some(&Visibility::Inherited),
+        "a loaded model must be shown even when its selected pose is already installed"
+    );
+    app.world_mut().entity_mut(root).insert(Visibility::Hidden);
+    app.update();
+    assert_eq!(
+        app.world().get::<Visibility>(root),
+        Some(&Visibility::Hidden),
+        "a settled model must preserve explicit visibility without a pose change"
+    );
+}
