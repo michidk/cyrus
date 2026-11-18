@@ -559,10 +559,8 @@ fn handle(
                         fidelity.set(area, mode);
                         Ok(json!(*fidelity))
                     }
-                    _ => Err(
-                        "area must be fog|sky|lighting|textures|music|anisotropic_filtering, mode faithful|modern"
-                            .into(),
-                    ),
+                    (Err(error), _) => Err(format!("invalid fidelity area: {error}")),
+                    (_, Err(error)) => Err(format!("invalid fidelity mode: {error}")),
                 }
             }
             Command::SetDayNight { hour, running } => match (day_night.as_deref_mut(), hour) {
@@ -948,6 +946,50 @@ mod tests {
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);
         app
+    }
+
+    #[test]
+    fn public_fidelity_uses_registry_areas_and_reports_current_choices() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        for area in Area::ALL {
+            let name = serde_json::to_value(area).unwrap();
+            let (reply, responses) = channel();
+            tx.send(Pending {
+                request: Request {
+                    id: 1,
+                    cmd: Command::SetFidelity {
+                        area: name.as_str().unwrap().into(),
+                        mode: "modern".into(),
+                    },
+                },
+                reply,
+            })
+            .unwrap();
+            app.update();
+            let response = responses.try_recv().unwrap();
+            assert!(response.error.is_none(), "{response:?}");
+            assert_eq!(app.world().resource::<Fidelity>().mode(area), Mode::Modern);
+        }
+        let (reply, responses) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 2,
+                cmd: Command::SetFidelity {
+                    area: "player_controller".into(),
+                    mode: "modern".into(),
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        let error = responses.try_recv().unwrap().error.unwrap();
+        for area in Area::ALL {
+            let name = serde_json::to_value(area).unwrap();
+            assert!(error.contains(name.as_str().unwrap()), "{error}");
+        }
     }
 
     #[test]

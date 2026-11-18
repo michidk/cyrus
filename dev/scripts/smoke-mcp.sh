@@ -56,14 +56,20 @@ call("console", {"open":False})
 assert not call("state")["console"]["open"]
 call("load_scene", {"name":"START"})
 assert initial["flycam"]["position"] is None, "headless host created a camera"
-call("set_fidelity", {"area":"player_controller","mode":"modern"})
-call("input", {"key":"KeyW","action":"press"})
+# The game publishes its fidelity registry; exercise every current area without
+# maintaining a second list in this client. Restore the original modes afterward.
+for area, original_mode in initial["fidelity"].items():
+    assert call("set_fidelity", {"area":area,"mode":"modern"})[area] == "modern"
+    assert call("set_fidelity", {"area":area,"mode":"faithful"})[area] == "faithful"
+    call("set_fidelity", {"area":area,"mode":original_mode})
+assert call("state")["fidelity"] == initial["fidelity"]
+call("input", {"key":"ArrowUp","action":"press"})
 held = wait_state(lambda s: s["player_input"]["forward"], "held key was not sampled")
 # Export completion admits key sampling. The headless loader has no rendered
 # world, so sampling must not start the ordinary simulation or move the player.
 assert not held["scene_ready"], held
 assert held["scripts"]["ordinary_updates"] == 0, held
-call("input", {"key":"KeyW","action":"release"})
+call("input", {"key":"ArrowUp","action":"release"})
 final = wait_state(lambda s: not s["player_input"]["forward"], "released key remained held")
 assert final["scripts"]["ordinary_updates"] == 0, final
 assert initial["player"]["position"] == final["player"]["position"], "input enabled unsupported movement"

@@ -49,5 +49,5 @@ inspection) are sent directly over the control port, as the scripts in
 
 `just smoke-mcp` builds `cyrus` and `cyrus-mcp`, runs a headless game on
 `START`, and drives state, input, fidelity and quit through this server. It
-needs an install. Run it after touching the control server, this crate or the
+needs an install and round-trips every area published in the game state fidelity registry. Run it after touching the control server, this crate or the
 player. The crate has no unit tests (`test = false`).

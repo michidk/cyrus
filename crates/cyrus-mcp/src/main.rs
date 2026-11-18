@@ -57,7 +57,7 @@ struct InputParams {
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct FidelityParams {
-    #[schemars(description = "fog, sky, lighting, textures, music or anisotropic_filtering")]
+    #[schemars(description = "Area name from the game state fidelity object")]
     area: String,
     #[schemars(description = "faithful or modern")]
     mode: String,
