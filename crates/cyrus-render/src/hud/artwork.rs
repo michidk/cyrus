@@ -6,7 +6,7 @@ use std::collections::HashMap;
 #[derive(Component)]
 pub(super) struct StoredArtwork;
 
-/// World fog remains active for island-map artwork, at zero table density.
+/// World fog remains active for island-map and inventory artwork, at zero table density.
 #[derive(Component, Clone, Copy)]
 pub(super) struct ArtworkFog(pub [u8; 3]);
 
@@ -65,30 +65,36 @@ pub(super) fn store_artwork(
         let Some(data) = image.data.as_mut() else {
             continue;
         };
-        for (index, pixel) in data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-            // Translucent artwork must be stored after destination blending; leave that
-            // separate composition path intact rather than quantizing its source colour.
-            if pixel[3] == 255 {
-                let mut colour = [pixel[0], pixel[1], pixel[2]];
-                if let Some(fog) = fog {
-                    // At density zero the fixed-point fog factor is still 1/256.
-                    colour = std::array::from_fn(|channel| {
-                        let c = i32::from(colour[channel]);
-                        (c + (i32::from(fog[channel]) - c).div_euclid(256)) as u8
-                    });
-                }
-                let colour = cyrus_assets::framebuffer::store(
-                    colour,
-                    origin[0] + index as u32 % width,
-                    origin[1] + index as u32 / width,
-                );
-                pixel[..3].copy_from_slice(&colour);
-            }
-        }
+        store_pixels(data, width, origin, fog);
         let stored = images.add(image);
         storage.sources.insert(stored.id(), source);
         storage.variants.insert(key, stored.clone());
         image_node.image = stored;
+    }
+}
+
+/// Store a generated RGBA overlay without retaining it in the immutable artwork cache.
+/// `width` is nonzero; opaque pixels use the same fog and framebuffer path as source artwork.
+pub(super) fn store_pixels(data: &mut [u8], width: u32, origin: [u32; 2], fog: Option<[u8; 3]>) {
+    for (index, pixel) in data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+        // Translucent artwork must be stored after destination blending; leave that
+        // separate composition path intact rather than quantizing its source colour.
+        if pixel[3] == 255 {
+            let mut colour = [pixel[0], pixel[1], pixel[2]];
+            if let Some(fog) = fog {
+                // At density zero the fixed-point fog factor is still 1/256.
+                colour = std::array::from_fn(|channel| {
+                    let c = i32::from(colour[channel]);
+                    (c + (i32::from(fog[channel]) - c).div_euclid(256)) as u8
+                });
+            }
+            let colour = cyrus_assets::framebuffer::store(
+                colour,
+                origin[0] + index as u32 % width,
+                origin[1] + index as u32 / width,
+            );
+            pixel[..3].copy_from_slice(&colour);
+        }
     }
 }
 

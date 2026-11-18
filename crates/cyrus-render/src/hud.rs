@@ -621,12 +621,25 @@ fn island_map_draw(
     });
 }
 
+/// Inventory names and counts share the installed font's shadow placement.
+fn draw_inventory_text(
+    rgba: &mut [u8],
+    font: &cyrus_text::Font,
+    text: &str,
+    at: [i32; 2],
+    alpha: [u8; 2],
+) {
+    font.draw_shadowed_by(rgba, 640, text, at, alpha, 2);
+}
+
 #[allow(clippy::too_many_arguments)] // The inventory and examine states, the HUD asset and the overlay it rebuilds.
 fn inventory_draw(
     screen: Option<Res<cyrus_script::inventory_screen::InventoryScreen>>,
     examine: Option<Res<cyrus_script::item_viewer::ExamineScreen>>,
     hud_handle: Option<Res<HudHandle>>,
     huds: Res<Assets<HudAsset>>,
+    environment: Res<crate::environment::EnvironmentRequest>,
+    environments: Res<Assets<crate::environment::Environment>>,
     assets: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut overlays: Query<(Entity, &mut Visibility, Option<&Children>), With<InventoryOverlay>>,
@@ -643,6 +656,9 @@ fn inventory_draw(
     }
     visibility.set_if_neq(Visibility::Inherited);
     let Some(hud) = huds.get(&handle.0) else {
+        return;
+    };
+    let Some(environment) = environments.get(&environment.0) else {
         return;
     };
     // From the View request until the examine view returns, the cursor item's bitmap, count and
@@ -674,6 +690,7 @@ fn inventory_draw(
         let mut image = |path: String, at: [i32; 2], size: [u16; 2]| {
             parent.spawn((
                 StoredArtwork,
+                artwork::ArtworkFog(environment.background),
                 ImageNode::new(assets.load(path)),
                 place(at, size),
                 ZIndex(1),
@@ -730,8 +747,7 @@ fn inventory_draw(
             if cell.count > 1 {
                 let text = cell.count.to_string();
                 let at = [cell.at[0] + 84 - hud.font.width(&text) / 2, cell.at[1] + 10];
-                hud.font
-                    .draw_shadowed(&mut rgba, 640, &text, at, hud.text_alpha);
+                draw_inventory_text(&mut rgba, &hud.font, &text, at, hud.text_alpha);
             }
             if !cell.cursor {
                 continue;
@@ -762,15 +778,16 @@ fn inventory_draw(
                 .enumerate()
             {
                 let y = top + (line as i32 * i32::from(hud.font.line_height) * 9) / 10;
-                hud.font.draw_shadowed(
+                draw_inventory_text(
                     &mut rgba,
-                    640,
+                    &hud.font,
                     text,
                     [centre - hud.font.width(text) / 2, y],
                     hud.text_alpha,
                 );
             }
         }
+        artwork::store_pixels(&mut rgba, 640, [0, 0], Some(environment.background));
         let mut text_image = Image::new(
             Extent3d {
                 width: 640,
@@ -1556,6 +1573,28 @@ mod tests {
 
     fn frames(candle: &mut Candle, health: u8, n: usize) -> Vec<u16> {
         (0..n).map(|_| candle.advance(health)).collect()
+    }
+
+    #[test]
+    fn inventory_text_places_its_shadow_two_pixels_below_and_right() {
+        let font = cyrus_text::Font {
+            start: u16::from(b'5'),
+            line_height: 1,
+            glyphs: vec![cyrus_text::Glyph {
+                enabled: true,
+                width: 1,
+                height: 1,
+                offset: [0, 0],
+                pixels: vec![1],
+            }],
+            palette: vec![[0, 0, 0], [63, 0, 0]],
+        };
+        let mut rgba = vec![0; 640 * 5 * 4];
+        draw_inventory_text(&mut rgba, &font, "5", [1, 1], [255, 199]);
+        let pixel = |x: usize, y: usize| &rgba[(y * 640 + x) * 4..][..4];
+        assert_eq!(pixel(1, 1), [252, 0, 0, 255]);
+        assert_eq!(pixel(3, 3), [0, 0, 0, 199]);
+        assert_eq!(pixel(2, 2), [0, 0, 0, 0]);
     }
 
     #[test]
@@ -3046,7 +3085,28 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
-            .init_asset::<HudAsset>();
+            .init_asset::<HudAsset>()
+            .init_asset::<crate::environment::Environment>();
+        let environment = app
+            .world_mut()
+            .resource_mut::<Assets<crate::environment::Environment>>()
+            .add(crate::environment::Environment {
+                world_palette: Vec::new(),
+                effects: None,
+                terrain_heights: None,
+                texture_scale: [1, 1],
+                sky: None,
+                background: [200, 190, 250],
+                clipping: [1.0, 65000.0],
+                fog_table: [[0; 4]; 16],
+                water: None,
+                terrain_lighting: None,
+                model_lighting: Default::default(),
+                prelighting: Default::default(),
+                water_textures: Vec::new(),
+                object_lights: Vec::new(),
+            });
+        app.insert_resource(crate::environment::EnvironmentRequest(environment));
         app.world_mut().spawn(HudViewport);
         app.add_systems(Startup, spawn_inventory)
             .add_systems(Update, inventory_draw);
@@ -3080,6 +3140,13 @@ mod tests {
             4,
             "backing, border, cursor and count/name raster"
         );
+        for &child in &children[1..3] {
+            assert_eq!(
+                app.world().get::<artwork::ArtworkFog>(child).unwrap().0,
+                [200, 190, 250],
+                "inventory artwork retains the installed world fog colour",
+            );
+        }
         let nodes: Vec<_> = children
             .iter()
             .map(|&child| app.world().get::<Node>(child).unwrap())
