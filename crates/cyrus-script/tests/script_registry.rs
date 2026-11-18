@@ -48478,7 +48478,9 @@ fn selected_overlap_fixture(
         (player.index, [133632, 5120, 7680], 128),
         (0, [133632, 5120, 7680 + offset * 256], other_weight),
     ] {
-        saved_world["actors"][index]["attributes"][6] = weight.into();
+        for attribute in [Attribute::Weight, Attribute::ReservedWeight] {
+            saved_world["actors"][index]["attributes"][attribute.index()] = weight.into();
+        }
         let spatial = &mut saved_world["spatial"]["actors"][index];
         spatial["local"]["position"] = serde_json::json!(position);
         if spatial["effective"].is_object() {
@@ -53531,3 +53533,68 @@ fn held_walk_forward_preserves_low_climb_without_stopping_controller() {
 
 #[path = "script_registry/jump_movement.rs"]
 mod jump_movement_tests;
+
+#[test]
+fn selected_overlap_fixture_retains_mobility_through_ordinary_updates() {
+    use cyrus_script::{
+        player::input::PlayerInput,
+        script::{OrdinaryInputs, PlayerControllerInput, ScriptHud, ScriptInputs},
+    };
+    for weight in [0, 128] {
+        let (mut world, data, scene) = selected_overlap_fixture(Some(0), Some(0), weight, 80);
+        let player = world.selected_player().unwrap();
+        let other = world.id(0).unwrap();
+        let held = PlayerInput::default();
+        let hud = ScriptHud::default();
+        for (id, mask) in [(player, 11), (other, 0)] {
+            world.set_attribute_for_test(id, Attribute::Collide, mask);
+            world.set_attribute_for_test(id, Attribute::ReservedCollide, mask);
+        }
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        for _ in 0..2 {
+            world
+                .refresh_model_presentations(&data, &[other, player])
+                .unwrap();
+            world
+                .update_ordinary(
+                    &data,
+                    [522, 30],
+                    OrdinaryInputs {
+                        scripts: ScriptInputs {
+                            hud: Some(&hud),
+                            player_controller: Some(PlayerControllerInput {
+                                held: &held,
+                                walk_mode: false,
+                                auto_defend: false,
+                                steer: None,
+                                claim: None,
+                                probes: None,
+                            }),
+                            nominal_ticks: Some(1),
+                            frame_scale: Some(256),
+                            fine_ticks: Some(8),
+                            step_fps: Some(12),
+                            shell_execution: Some(false),
+                            ..Default::default()
+                        },
+                        scene: Some(&scene),
+                    },
+                    &mut random,
+                    &mut |_, _| Ok(()),
+                    100,
+                )
+                .unwrap();
+            for id in [player, other] {
+                assert!(world.actors()[id.index].failure().is_none());
+            }
+            assert_eq!(
+                world.actors()[player.index].attributes()[Attribute::Weight],
+                128
+            );
+            assert_eq!(
+                world.actors()[other.index].attributes()[Attribute::Weight],
+                weight
+            );
+        }
+    }
+}
