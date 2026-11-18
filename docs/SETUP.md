@@ -2657,3 +2657,32 @@ read-only. Its default is `magic/build-tools/native/cyrus`; set
 it. Every successful build or restore writes adjacent capture provenance.
 Capture verifies the current source and executable hash against the running
 container, so an old executable cannot borrow a new build record.
+
+### Original logbook raster reference
+
+`dev/scripts/original-logbook-reference.py` admits a synthetic reader reference
+in an already running original-game container. Use a separate writable run copy,
+a host-mounted config/output directory and a per-run lock. Its local-only state
+reader must return `frame`, `suspended`, `log_binding`, `log_list` and `keys`.
+Executable-specific memory layouts stay under `magic/`.
+
+The tool waits for gameplay clock progress, writes `7,RASTER REFERENCE` into the
+run copy's journal after New Game has cleared it, refreshes the emulator's drive
+cache, and releases L as soon as the reader consumes the opening press. A long
+held press can rearm through keyboard repeat and close the reader. The tool
+rejects a missing reader and verifies that the modal state survives capture.
+Pass the container's screenshot command after `--`; use its normal screenshot
+readback and exclude the DOSBox menu from the game viewport. A memory admission
+receipt does not replace checking the captured image.
+
+```sh
+python3 dev/scripts/original-logbook-reference.py \
+  --container cyrus-owned-reference --run /absolute/host/run \
+  --reader /tmp/local-logbook-state.py --output /absolute/host/receipt.json \
+  -- scrot -o /config/logbook.png
+python3 dev/scripts/test-original-logbook-reference.py
+```
+
+**Verified:** the original accepts scan 38 and consumes the opening press; with
+the run-local journal visible, its reader suspends the gameplay clock. The native
+reference should use the same text in its config directory's `logbook.json`.
