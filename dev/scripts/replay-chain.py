@@ -160,10 +160,8 @@ def steer(control, target):
         turning = abs(error) > 48
         keys = ["ArrowLeft" if error > 0 else "ArrowRight"] if turning else ["ShiftLeft", "ArrowUp"]
         held = min(4, max(1, int(abs(error) / 64))) if turning else min(4, max(1, int(distance / 4096)))
-        settle = 1 if turning else 10
         events = ([{"after_updates": 0, "key": key, "action": "press"} for key in keys]
-                  + [{"after_updates": held, "key": key, "action": "release"} for key in keys]
-                  + [{"after_updates": held + settle}])
+                  + [{"after_updates": held, "key": key, "action": "release"} for key in keys])
         transitioned = play_inputs(control, {"input": events, **(
             {"transition_to": target["transition_to"]} if "transition_to" in target else {})})
         if transitioned:

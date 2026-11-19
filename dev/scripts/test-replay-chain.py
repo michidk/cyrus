@@ -110,14 +110,15 @@ class Checkpoints(unittest.TestCase):
                 keys = {e.get("key") for e in command["events"] if e.get("action") == "press"}
                 held = next(e["after_updates"] for e in command["events"] if e.get("action") == "release")
                 assert 1 <= held <= 4
+                advanced = max(e["after_updates"] for e in command["events"])
                 if "ArrowLeft" in keys:
                     self.heading = (self.heading + 32 * held) % 2048
                 elif "ArrowRight" in keys:
                     self.heading = (self.heading - 32 * held) % 2048
                 else:
                     assert keys == {"ShiftLeft", "ArrowUp"}
-                    self.position[0] -= math.sin(self.heading * math.tau / 2048) * 500 * held
-                    self.position[2] += math.cos(self.heading * math.tau / 2048) * 500 * held
+                    self.position[0] -= math.sin(self.heading * math.tau / 2048) * 500 * advanced
+                    self.position[2] += math.cos(self.heading * math.tau / 2048) * 500 * advanced
                 return {}
 
         for start in [[0, 0, 0], [2500, 0, -700]]:
