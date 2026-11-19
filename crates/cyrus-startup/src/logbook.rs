@@ -48,6 +48,7 @@ struct ReaderFrame {
     rotation: i32,
     entry: Option<String>,
     cursor: bool,
+    fog: [u8; 3],
 }
 #[derive(Component)]
 struct Panel;
@@ -184,6 +185,8 @@ fn draw(
     artwork: Res<Artwork>,
     assets: Res<Assets<LogbookArtwork>>,
     menus: Res<Assets<MenuAsset>>,
+    environments: Option<Res<Assets<cyrus_assets::environment::Environment>>>,
+    prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
     mut screen: ResMut<LogbookScreen>,
     mut commands: Commands,
     mut assets_3d: LitAssets,
@@ -221,11 +224,22 @@ fn draw(
         model.clear(&mut commands);
         return;
     }
+    let fog = if let Some(prepared) = prepared {
+        let handle = server
+            .load::<cyrus_assets::environment::Environment>(prepared.environment_path.clone());
+        let Some(environment) = environments.as_ref().and_then(|assets| assets.get(&handle)) else {
+            return;
+        };
+        environment.background
+    } else {
+        [0; 3]
+    };
     let pose = ReaderFrame {
         offset: screen.offset,
         rotation: screen.rotation,
         entry: screen.manual_entry().map(str::to_owned),
         cursor: screen.manual_entry_cursor_visible(),
+        fog,
     };
     if previous.as_ref() == Some(&pose)
         && model.is_shown()
@@ -255,7 +269,7 @@ fn draw(
         upload(
             &mut assets_3d.images,
             &mut page,
-            paint_paper(artwork_data, book),
+            paint_paper(artwork_data, book, fog),
         );
     }
     model.show(
@@ -429,7 +443,11 @@ fn reader_light(position: [f32; 3], normal: [f32; 3], brightness: u8) -> f32 {
     level.clamp(0.0, 255.0)
 }
 
-fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) -> RgbaImage {
+fn paint_paper(
+    artwork: &LogbookArtwork,
+    book: &cyrus_script::logbook::Logbook,
+    fog: [u8; 3],
+) -> RgbaImage {
     let mut image = RgbaImage::new(640, 480);
     for y in 0..480 {
         let source_y = (y + book.offset()) % 480;
@@ -438,12 +456,12 @@ fn paint_paper(artwork: &LogbookArtwork, book: &cyrus_script::logbook::Logbook) 
         image.as_mut()[destination..destination + 640 * 4]
             .copy_from_slice(&artwork.paper.rgba[start..start + 640 * 4]);
     }
-    // Opaque paper expansion precedes the reader's framebuffer storage. The matched
-    // original keeps zero and reduces nonzero palette channels by one (preservation
-    // PR #352); glyph colours are a separate draw and do not take this reduction.
+    // Paper retains the world's zero-density fog before framebuffer storage
+    // (preservation engine/hud.md). Black fog is the nonzero-channel decrement.
     for pixel in image.pixels_mut() {
-        for channel in &mut pixel.0[..3] {
-            *channel = channel.saturating_sub(1);
+        for (channel, fog) in pixel.0[..3].iter_mut().zip(fog) {
+            let colour = i32::from(*channel);
+            *channel = (colour + (i32::from(fog) - colour).div_euclid(256)) as u8;
         }
     }
     for line in book.lines() {
@@ -815,6 +833,33 @@ mod tests {
     }
 
     #[test]
+    fn installed_reader_paper_retains_world_fog() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
+            eprintln!("skipped: no install (reader world fog)");
+            return;
+        };
+        let source = cyrus_assets::native::Files::open(&install).unwrap();
+        let files = cyrus_assets::game::prepare(&source, "logbook/reader.logbook").unwrap();
+        let artwork: LogbookArtwork =
+            serde_json::from_slice(&files["logbook/reader.logbook"]).unwrap();
+        let book = cyrus_script::logbook::Logbook::new(&[]).unwrap();
+        let paper = paint_paper(&artwork, &book, [200, 190, 250]);
+        // Original ISLAND reader pixels, outside the scrolls and lettering.
+        for (x, y, expected) in [
+            (40, 120, [247, 203, 123, 255]),
+            (48, 120, [222, 174, 140, 255]),
+            (71, 120, [231, 178, 140, 255]),
+        ] {
+            assert_eq!(paper.get_pixel(x, y).0, expected, "reader pixel {x},{y}");
+        }
+    }
+
+    #[test]
     fn installed_reader_publishes_paper_with_ordered_framebuffer_precision() {
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
@@ -1082,12 +1127,12 @@ mod tests {
         let mut book =
             cyrus_script::logbook::Logbook::new(&vec!["7,A readable journal entry.".into(); 20])
                 .unwrap();
-        let bottom = paint_paper(&artwork, &book);
+        let bottom = paint_paper(&artwork, &book, [0; 3]);
         book.update(cyrus_script::logbook::LogbookInput {
             home: true,
             ..default()
         });
-        let top = paint_paper(&artwork, &book);
+        let top = paint_paper(&artwork, &book, [0; 3]);
         assert_ne!(top, bottom);
         assert_eq!(top.dimensions(), (640, 480));
         // The scrolls turn with the reader's third angle, and their corners are lit.
