@@ -136,6 +136,112 @@ fn installed_island_plank_acquires_player_support() -> Result<()> {
     Ok(())
 }
 
+/// Matched in the original after drawing and sheathing the sabre at Clavicus's tree.
+#[test]
+fn installed_vile_activation_after_sheathing_does_not_draw_the_sabre() -> Result<()> {
+    use cyrus_script::script::{ActivationOverlay, ScriptHud};
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (installed VILE activation)");
+        return Ok(());
+    };
+    let (mut app, codes, _assets) = prepare_player_app_for(&install, "VILE")?;
+    app.insert_resource(cyrus_script::script::OrdinarySoundExecutor(
+        run_without_audio,
+    ));
+    for _ in 0..4 {
+        app.update();
+    }
+    let start = [33187, -135, 33520].map(|value| value * 256);
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .context("VILE logical world unavailable")?
+        .place_selected_player(start, 0)?;
+    app.world_mut().resource_mut::<ScriptView>().position = start;
+    // Consume the prompt through the same public overlay call as the windowed host.
+    let tick = |app: &mut App| -> Result<ActivationOverlay> {
+        app.update();
+        // MinimalPlugins has no InputPlugin to clear per-frame press/release edges.
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .clear();
+        position(app)?;
+        app.world_mut()
+            .resource_scope(|world, hud: bevy::prelude::Mut<ScriptHud>| {
+                world
+                    .resource_mut::<ScriptActors>()
+                    .current
+                    .as_mut()
+                    .context("VILE logical world unavailable")?
+                    .ordinary_activation_overlay(&hud, 1, false, 24)
+            })
+    };
+    let drawn = |app: &App| -> Result<bool> {
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors
+            .current
+            .as_ref()
+            .context("VILE logical world unavailable")?;
+        let id = world
+            .selected_player()
+            .context("VILE selected player unavailable")?;
+        Ok(world.actors()[id.index]
+            .control_state()
+            .context("VILE player control unavailable")?
+            .weapon_drawn)
+    };
+    tick(&mut app)?;
+    for expected in [true, false] {
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyS);
+        tick(&mut app)?;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::KeyS);
+        for _ in 0..50 {
+            tick(&mut app)?;
+        }
+        ensure!(
+            drawn(&app)? == expected,
+            "VILE sword cycle did not reach drawn={expected}"
+        );
+    }
+    let overlay = tick(&mut app)?;
+    ensure!(
+        matches!(overlay, ActivationOverlay::Prompt(ref text) if text == "TALK TO CLAVICUS VILE"),
+        "VILE talk prompt unavailable after sheathing"
+    );
+    let key = match cyrus_script::player::input::Input::try_from(
+        codes[cyrus_script::player::input::Action::Use as usize],
+    ) {
+        Ok(cyrus_script::player::input::Input::Key(scan)) => scan.key(),
+        other => anyhow::bail!("installed action binding is not a key: {other:?}"),
+    };
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
+    tick(&mut app)?;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(key);
+    ensure!(!drawn(&app)?, "VILE activation drew the selected sabre");
+    let actors = app.world().resource::<ScriptActors>();
+    let world = actors
+        .current
+        .as_ref()
+        .context("VILE logical world unavailable")?;
+    ensure!(
+        world.activation().owner().is_some() || world.globals().lockout() == Some(1),
+        "VILE action did not begin conversation"
+    );
+    Ok(())
+}
+
 #[test]
 fn installed_island_keyboard_walk_and_release() -> Result<()> {
     installed_keyboard_route(false)
@@ -340,9 +446,67 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
     Ok(())
 }
 
+// Model unavailable playback channels while keeping the production script scheduler active.
+#[derive(Debug)]
+struct UnavailablePlayback;
+
+impl cyrus_world::sound::AmbientSoundDriver for UnavailablePlayback {
+    fn update(
+        &self,
+        _: cyrus_world::sound::AmbientSoundRequest,
+    ) -> Result<cyrus_world::sound::AmbientSoundUpdate, String> {
+        Ok(cyrus_world::sound::AmbientSoundUpdate {
+            channel: None,
+            active: false,
+        })
+    }
+}
+
+impl cyrus_script::script::DialogueSource for UnavailablePlayback {
+    fn player_line(
+        &self,
+        _: [u8; 4],
+        _: cyrus_script::script::ScriptActorId,
+        _: u32,
+    ) -> Result<std::task::Poll<Option<cyrus_script::script::DialogueLine>>> {
+        Ok(std::task::Poll::Ready(None))
+    }
+    fn stop_sample(&self, _: u8) -> Result<()> {
+        Ok(())
+    }
+    fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> Result<bool> {
+        Ok(false)
+    }
+}
+
+fn run_without_audio(world: &mut bevy::prelude::World, phase: cyrus_script::script::OrdinaryPhase) {
+    fn run(
+        bevy::prelude::In(phase): bevy::prelude::In<cyrus_script::script::OrdinaryPhase>,
+        context: cyrus_script::script::OrdinaryContext,
+    ) {
+        cyrus_script::script::run_ordinary(
+            context,
+            phase,
+            Some(&UnavailablePlayback),
+            Some(false),
+            Some(&UnavailablePlayback),
+            None,
+            &mut |_| Ok(()),
+        );
+    }
+    world.run_system_cached_with(run, phase).unwrap();
+}
+
 fn prepare_player_app(install: &GameInstall) -> Result<(App, [u8; 15], PlayerAssetHandles)> {
+    prepare_player_app_for(install, "ISLAND")
+}
+
+fn prepare_player_app_for(
+    install: &GameInstall,
+    name: &str,
+) -> Result<(App, [u8; 15], PlayerAssetHandles)> {
     let files = cyrus_assets::native::Files::open(install)?;
-    let prepared = cyrus_assets::game::prepare(&files, "ISLAND.player")?;
+    let prepared = cyrus_assets::game::prepare(&files, &format!("{name}.player"))?;
     let hud_assets = cyrus_assets::game::prepare(&files, "hud/overlay.hud")?;
     let hud_data: cyrus_assets::hud::HudAsset =
         serde_json::from_slice(&hud_assets["hud/overlay.hud"])?;
@@ -352,9 +516,9 @@ fn prepare_player_app(install: &GameInstall) -> Result<(App, [u8; 15], PlayerAss
         &cyrus_game::preferences::Preferences::new(EmptyPreferences),
     );
     ensure!(hud.ready(), "installed HUD inventory did not initialize");
-    let animations: Animations = serde_json::from_slice(&prepared["ISLAND.animations"])?;
-    let scripts: Scripts = serde_json::from_slice(&prepared["ISLAND.scripts"])?;
-    let scene = PlayerScene::decode(&prepared["ISLAND.player"])?;
+    let animations: Animations = serde_json::from_slice(&prepared[&format!("{name}.animations")])?;
+    let scripts: Scripts = serde_json::from_slice(&prepared[&format!("{name}.scripts")])?;
+    let scene = PlayerScene::decode(&prepared[&format!("{name}.player")])?;
     let marker: [i32; 3] =
         serde_json::from_value(animations.metadata["markers"][0]["map_position"].clone())?;
     let view = marker.map(|value| value * 256);
@@ -363,7 +527,8 @@ fn prepare_player_app(install: &GameInstall) -> Result<(App, [u8; 15], PlayerAss
         .context("installed keyboard bindings unavailable")?;
     let mut app = controller_app(codes)?;
     app.insert_resource(hud);
-    let source = register_player_assets(&mut app, scene, scripts, animations, &prepared, view)?;
+    let source =
+        register_player_assets(&mut app, name, scene, scripts, animations, &prepared, view)?;
     Ok((app, codes, source))
 }
 
@@ -395,14 +560,17 @@ struct PlayerAssetHandles {
     _environment: bevy::asset::Handle<cyrus_assets::environment::Environment>,
 }
 
+#[allow(clippy::too_many_arguments)] // The installed fixture owns the scene and its matching asset bundle.
 fn register_player_assets(
     app: &mut App,
+    name: &str,
     scene: PlayerScene,
     scripts: Scripts,
     animations: Animations,
     prepared: &std::collections::BTreeMap<String, Vec<u8>>,
     view: [i32; 3],
 ) -> Result<PlayerAssetHandles> {
+    let stem = name.to_ascii_lowercase();
     let scripts = app
         .world_mut()
         .resource_mut::<Assets<Scripts>>()
@@ -414,19 +582,19 @@ fn register_player_assets(
     let source = app
         .world()
         .resource::<AssetServer>()
-        .load::<PlayerScene>("installed-island.player");
+        .load::<PlayerScene>(format!("installed-{stem}.player"));
     let scene_world = scene.world;
     app.world_mut()
         .resource_mut::<Assets<PlayerScene>>()
         .insert(source.id(), scene)?;
     app.insert_resource(PreparedWorld {
-        requested_name: "ISLAND".into(),
+        requested_name: name.into(),
         world: Some(scene_world),
         scripts,
         animations: animations.clone(),
-        player_path: "installed-island.player".into(),
-        scene_path: "island.glb".into(),
-        environment_path: "island.environment".into(),
+        player_path: format!("installed-{stem}.player").into(),
+        scene_path: format!("{stem}.glb").into(),
+        environment_path: format!("{stem}.environment").into(),
     });
     app.init_asset::<cyrus_assets::environment::Environment>();
     let environment = app
@@ -438,7 +606,7 @@ fn register_player_assets(
                 .environment_path
                 .clone(),
         );
-    let environment_data = serde_json::from_slice(&prepared["ISLAND.environment"])?;
+    let environment_data = serde_json::from_slice(&prepared[&format!("{name}.environment")])?;
     app.world_mut()
         .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
         .insert(environment.id(), environment_data)
