@@ -79,8 +79,9 @@ opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for con
   ordinary-update path as windowed gameplay.
 - Headless gameplay retains the shared scene and render plugins because they supply
   world instances, model admission and the camera view used by gameplay. Graphics
-  backends are disabled, so no GPU or display server is required. Optional native
-  mods remain disabled in this host.
+  backends are disabled, so no GPU or display server is required. Audio sources are
+  consumed silently on the host clock, preserving speech completion and sink controls
+  without an output device. Optional native mods remain disabled in this host.
 - The public `headless_new_game` integration test starts the executable without
   display variables, checks the installed initial world, and checks ordinary-update
   and game-clock progress under held input. [Playthrough regression replay #322](https://github.com/michidk/cyrus/issues/322)

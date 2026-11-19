@@ -14,6 +14,7 @@ pages.
 
 | Module | Responsibility |
 | --- | --- |
+| [silent](src/silent.rs) | Native `SilentAudioPlugin`: decoded source time and sink controls without an output device |
 | [lib](src/lib.rs) | Plugins, `AudioListener`, `follow_listener`, `AudioReadiness`, `CinematicAudio` |
 | [sound](src/sound.rs) | `SoundPlugin`: MAIN.SFX effects, RTX voices, cue playback, preferences |
 | [sound/samples](src/sound/samples.rs) | The shared sample-slot pool and its allocation order |
@@ -34,8 +35,12 @@ schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`) and order
 Update as `ApplyPreferences` → world `AnimationSystems` → `PlayCues`. Startup
 holds `AudioReadiness { prepare }` false until the title appears. Book CD entry
 waits for installed sound settings and the audio asset store; leaving the book
-cancels that pending request. Preference updates do not replay a consumed entry. Headless hosts
-omit Bevy's audio backend and keep request and ownership state.
+cancels that pending request. Preference updates do not replay a consumed entry.
+
+Headless native hosts add `SilentAudioPlugin` after the source plugins. It consumes
+the same Rodio sources on the host clock without producing audio, and publishes
+ordinary `AudioSink` controls and completion. Speech and sample slots therefore
+finish without an output device; dialogue waits retain their normal semantics.
 
 ## Notes
 
@@ -63,6 +68,7 @@ omit Bevy's audio backend and keep request and ownership state.
 
 ```sh
 cargo test -p cyrus-audio
+cargo test -p cyrus-audio --test silent_audio # no device or install required
 bun test ./crates/cyrus-audio/tests/music_browser.test.js
 ```
 

@@ -2,7 +2,11 @@
 pub mod music;
 pub mod persistence;
 mod resampling;
+#[cfg(not(target_arch = "wasm32"))]
+mod silent;
 pub mod sound;
+#[cfg(not(target_arch = "wasm32"))]
+pub use silent::SilentAudioPlugin;
 #[cfg(any(target_arch = "wasm32", test))]
 mod sound_bank;
 use bevy::prelude::*;

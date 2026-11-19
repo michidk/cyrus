@@ -323,6 +323,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_audio::music::MusicPlugin,
             cyrus_render::subtitles::SubtitlePlugin,
         ));
+    if args.headless {
+        app.add_plugins(cyrus_audio::SilentAudioPlugin);
+    }
     subtitles::register(&mut app);
     app.run();
     Ok(())

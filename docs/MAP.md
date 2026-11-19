@@ -93,6 +93,7 @@ module where it is defined and regenerate.
 - `src/music/checkpoint.rs` — CD track decoder checkpoints and off-live music replacement construction.
 - `src/persistence.rs` — Explicit host-prepared identity bindings shared by restored audio owners.
 - `src/resampling.rs` — Applies the game's independent audio fidelity policy to subsequent backend source spans.
+- `src/silent.rs` — Device-free playback consumes the same decoded sources and sink controls on the host clock.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 - `src/sound/dialogue.rs` — Portable, per-label dialogue assets and their audio dependencies.
 - `src/sound/persistence.rs` — Sample-pool and source-decoder replacements for coordinated session assembly.
