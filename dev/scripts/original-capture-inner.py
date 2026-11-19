@@ -37,7 +37,7 @@ if not math.isfinite(state_timeout) or state_timeout <= 0:
 def counters():
     """The state reader's counters (mainloop frame, ticks and frames passed), or None."""
     try:
-        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=state_timeout).stdout
+        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=state_timeout, env=env).stdout
         return json.loads(out)["counters"]
     except (ValueError, KeyError, subprocess.TimeoutExpired):
         return None
@@ -46,7 +46,7 @@ def counters():
 def frame():
     """The game loop's frame counter, read through the state reader (-1 until the world runs)."""
     try:
-        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=state_timeout).stdout
+        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=state_timeout, env=env).stdout
         return json.loads(out)["counters"]["mainloop_frame"]
     except (ValueError, KeyError, subprocess.TimeoutExpired):
         return -1
@@ -55,7 +55,7 @@ def frame():
 def game_seconds():
     """Observe the reader's game clock without converting wall time into game time."""
     try:
-        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=state_timeout).stdout
+        out = subprocess.run([sys.executable, reader], capture_output=True, text=True, timeout=state_timeout, env=env).stdout
         value = float(json.loads(out)["game_seconds"])
         return value if math.isfinite(value) and value >= 0 else None
     except (ValueError, KeyError, subprocess.TimeoutExpired):

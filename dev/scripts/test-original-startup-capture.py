@@ -19,7 +19,8 @@ class StartupCapture(unittest.TestCase):
             (root / "START.OK").touch()
             reader = root / "reader.py"
             reader.write_text(
-                "import json, pathlib, sys\n"
+                "import json, pathlib, sys, os\n"
+                "assert os.environ.get('DISPLAY') == ':1'\n"
                 "launched = pathlib.Path(sys.argv[0]).with_name('launched').exists()\n"
                 "print(json.dumps({'counters': {'mainloop_frame': int(launched)}}))\n"
             )
@@ -37,7 +38,7 @@ esac
                 script.write_text(f"#!/bin/sh\n{content}\n")
                 script.chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
-                       CAPTURE_TEST=str(root), CYRUS_CAPTURE_DIR=str(root),
+                       CAPTURE_TEST=str(root), CYRUS_CAPTURE_DIR=str(root), DISPLAY="",
                        CYRUS_CAPTURE_STARTUP="1", CYRUS_SHOT_INTERVAL="0.1")
             result = subprocess.run(
                 [sys.executable, str(INNER), str(reader), str(root / "events.json"), "30"],
