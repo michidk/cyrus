@@ -474,3 +474,44 @@ The earlier coast recording measured three vertex ranges of 42.2119,
 wave error. No matched water-region RGB MAE is available, and no timing
 formula is changed on this evidence. This accepted validation limit is
 recorded in [the water decision](https://github.com/michidk/cyrus/issues/315).
+
+### Logbook scrolls and viewport edges
+
+**Verified:** the settled ISLAND style-7 logbook pair at offset zero has
+whole-frame RGB MAE 1.340038, with 28,607 of 307,200 pixels differing after
+the paper fog correction. The paper crop matches exactly, with zero of
+162,400 pixels differing. The top scroll has MAE 0.652786 and 9,516 of
+37,701 pixels differing; the bottom has MAE 0.741643 and 12,821 of 37,701.
+Both scroll crops have maximum channel error 9. The text crop has MAE
+0.060099, with 166 of 6,750 pixels differing and maximum channel error 9.
+The union of viewport rows 0–5 and 479 and column 639 has MAE 70.815129,
+with 3,108 of 4,953 pixels differing and maximum channel error 255.
+**Unknown:** the remaining interpolation, glyph arithmetic and edge coverage.
+These measured differences are accepted; the encoded-blend substitution was
+rejected because it increased differing foreground pixels from 166 to 189.
+See [the logbook decision](https://github.com/michidk/cyrus/issues/310).
+
+### Sparse lower-sky sampling
+
+**Verified:** the synchronized ISLAND pair has upper-crop RGB MAE zero,
+with zero of 6,000 pixels differing. The lower crop has MAE 0.101944,
+with 113 of 2,400 pixels differing and maximum channel error 9. All 113
+errors lie in its 1,938 sky pixels; its 462 occluded pixels agree.
+The horizon crop has MAE 0.026667, with six of 400 pixels differing and
+maximum channel error 8; those six pixels show geometry.
+**Inferred:** texture-plane setup explains much of the sparse sky error.
+A diagnostic reduced lower-sky differing pixels from 113 to 26, but its
+triangle anchors remain **Unknown**, so it is not shipped. These measured
+residuals are accepted. See [the sky decision](https://github.com/michidk/cyrus/issues/309).
+
+### Sabre examination
+
+**Verified:** the settled ISLAND/ISWORD pair after integer filtering and
+RGB565 storage has model-mask RGB MAE 19.640764, with 3,217 of 4,208
+pixels differing and maximum channel error 247. Before that correction,
+MAE was 20.234474 and 4,003 pixels differed. The 2,953-pixel common interior
+has MAE 16.241224; coverage includes 86 original-only and 49 native-only
+pixels. Description foreground has MAE 1.418287 over 1,954 pixels, with
+maximum channel error 8. **Unknown:** the remaining model and description
+error causes. These measured visual residuals are accepted without tuning
+unsupported constants. See [the examine decision](https://github.com/michidk/cyrus/issues/319).
