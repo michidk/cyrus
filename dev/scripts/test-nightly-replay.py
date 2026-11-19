@@ -56,11 +56,11 @@ class Nightly(unittest.TestCase):
             self.assertTrue(all(path.suffix == ".log" for run in retained for path in run.iterdir()))
             return result.returncode, calls, report
 
-    def test_success_runs_chain_without_posting(self):
+    def test_success_runs_chain_and_posts_result(self):
         status, calls, report = self.run_nightly(0)
         self.assertEqual(status, 0)
-        self.assertEqual(calls, "cargo build -p cyrus --bin cyrus\nreplay-chain\n")
-        self.assertEqual(report, "")
+        self.assertTrue(calls.startswith("cargo build -p cyrus --bin cyrus\nreplay-chain\n"))
+        self.assertIn("passed end to end", report)
 
     def test_failure_posts_once_and_preserves_exit_status(self):
         status, calls, report = self.run_nightly(7)
@@ -83,15 +83,15 @@ class Nightly(unittest.TestCase):
     def test_next_run_reports_interruption_before_replaying(self):
         status, calls, report = self.run_nightly(0, interrupted=True)
         self.assertEqual(status, 0)
-        self.assertEqual(calls.count("issue comment 322"), 1)
-        self.assertTrue(calls.endswith("replay-chain\n"))
-        self.assertIn("Previous run interrupted", report)
+        self.assertEqual(calls.count("issue comment 322"), 2)
+        self.assertIn("replay-chain\n", calls)
+        self.assertIn("passed end to end", report)
 
     def test_source_replacement_during_run_does_not_change_execution(self):
         status, calls, report = self.run_nightly(0, replace_script=True)
         self.assertEqual(status, 0)
-        self.assertEqual(calls, "cargo build -p cyrus --bin cyrus\nreplay-chain\n")
-        self.assertEqual(report, "")
+        self.assertTrue(calls.startswith("cargo build -p cyrus --bin cyrus\nreplay-chain\n"))
+        self.assertIn("passed end to end", report)
 
     def test_retains_only_last_two_runs_and_discards_generated_state(self):
         status, _, _ = self.run_nightly(0, old_runs=4)

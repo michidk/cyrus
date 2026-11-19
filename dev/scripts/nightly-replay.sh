@@ -59,7 +59,15 @@ report_failure() {
         fi
         rm -f "$body"
     else
-        rm -f "$unfinished"
+        body="$log.issue.md"
+        {
+            echo 'Install-backed nightly replay passed end to end.'
+            echo "Commit: $(git rev-parse HEAD). Exit status: 0."
+            echo "Host evidence: $log"
+            echo 'All configured chapter fixtures and checkpoints passed.'
+        } > "$body"
+        gh issue comment 322 --repo michidk/cyrus --body-file "$body"
+        rm -f "$body" "$unfinished"
     fi
 }
 trap report_failure EXIT
