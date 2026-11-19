@@ -55,6 +55,13 @@ def validate_steps(steps, depth=0):
             position = expected["position_q8"]
             assert len(position["value"]) == 3 and 0 <= position["tolerance"] < float("inf"), "invalid position tolerance"
             checkpoints += 1
+        elif "steer" in step:
+            assert set(step) == {"steer"}, "steering cannot contain other commands"
+            target = step["steer"]
+            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to"}, "incomplete steering target"
+            assert len(target["position_q8"]) == 3 and all(math.isfinite(v) for v in target["position_q8"]), "invalid steering position"
+            assert 0 < target["tolerance"] < float("inf"), "invalid steering tolerance"
+            assert type(target["limit"]) is int and 1 <= target["limit"] <= 2000, "invalid steering limit"
         elif "modal_input" in step:
             assert set(step) == {"modal_input"}, "modal input cannot contain commands"
             assert set(step["modal_input"]) == {"key", "world"}, "modal input needs key and world"
@@ -121,6 +128,46 @@ def repeat_inputs(control, repeat):
             assert reached(control, repeat["until"]), "unexpected transition"
             return
     assert reached(control, repeat["until"]), f"input repetition limit exhausted: {repeat['until']}"
+
+
+def steer(control, target):
+    """Reach an X/Z waypoint with bounded real key input, never state mutation.
+
+    Q8 map coordinates and 2048-unit headings match the public control API.
+    Heading zero faces +Z; positive headings turn toward -X. Vertical position
+    remains a checkpoint concern because walking cannot choose the floor height.
+    """
+    for iteration in range(target["limit"] + 1):
+        state = control.ready()
+        if state["scripts"]["world"] != target["world"]:
+            assert state["scripts"]["world"] == target.get("transition_to"), "unexpected world during steering"
+            return
+        assert state["hud"]["health"] > 0, "player died during steering"
+        scripts = control.request({"type": "scripts", "offset": 0, "limit": 1})
+        assert scripts["world"] == target["world"], "world changed during steering observation"
+        position = scripts["player_position_q8"]
+        dx = target["position_q8"][0] - position[0]
+        dz = target["position_q8"][2] - position[2]
+        distance = math.hypot(dx, dz)
+        if distance <= target["tolerance"]:
+            print(f"steering reached waypoint after {iteration} inputs, residual {distance:.3f} Q8", flush=True)
+            return
+        if iteration == target["limit"]:
+            break
+        bearing = (-math.atan2(dx, dz) * 2048 / math.tau) % 2048
+        error = (bearing - state["hud"]["heading"] + 1024) % 2048 - 1024
+        # Short schedules resample heading after each turn and avoid strafing.
+        keys = ["ArrowLeft" if error > 0 else "ArrowRight"] if abs(error) > 48 else ["ShiftLeft", "ArrowUp"]
+        events = ([{"after_updates": 0, "key": key, "action": "press"} for key in keys]
+                  + [{"after_updates": 1, "key": key, "action": "release"} for key in keys]
+                  + [{"after_updates": 11}])
+        transitioned = play_inputs(control, {"input": events, **(
+            {"transition_to": target["transition_to"]} if "transition_to" in target else {})})
+        if transitioned:
+            return
+        if (iteration + 1) % 20 == 0:
+            print(f"steering input {iteration + 1}/{target['limit']}, residual {distance:.3f} Q8", flush=True)
+    raise AssertionError(f"steering limit exhausted: target {target['position_q8']}, last position {position}, residual {distance:.3f} Q8")
 
 
 class Control:
@@ -203,6 +250,8 @@ def run(args):
                         for index, step in enumerate(fixture["steps"]):
                             if "input" in step and not transitioned:
                                 transitioned = play_inputs(control, step)
+                            if "steer" in step:
+                                steer(control, step["steer"])
                             if "repeat" in step:
                                 repeat_inputs(control, step["repeat"])
                             if "modal_input" in step:

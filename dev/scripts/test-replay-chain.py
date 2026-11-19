@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import math
 from pathlib import Path
 import unittest
 
@@ -87,6 +88,72 @@ class Checkpoints(unittest.TestCase):
         self.assertFalse(replay.play_inputs(Control(), {
             "when_health_below": 45, "input": [{"after_updates": 0}],
         }))
+
+    def test_steering_converges_from_different_positions_using_only_keys(self):
+        class Control:
+            def __init__(self, position):
+                self.position = list(position)
+                self.heading = 800
+                self.commands = []
+
+            def ready(self):
+                return {"scripts": {"world": 1}, "hud": {"health": 100, "heading": self.heading}}
+
+            def response(self, command):
+                return {"ok": True, "result": self.request(command)}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    return {"world": 1, "player_position_q8": self.position}
+                self.commands.append(command)
+                assert command["type"] == "schedule_input"
+                keys = {e.get("key") for e in command["events"] if e.get("action") == "press"}
+                if "ArrowLeft" in keys:
+                    self.heading = (self.heading + 32) % 2048
+                elif "ArrowRight" in keys:
+                    self.heading = (self.heading - 32) % 2048
+                else:
+                    assert keys == {"ShiftLeft", "ArrowUp"}
+                    self.position[0] -= math.sin(self.heading * math.tau / 2048) * 500
+                    self.position[2] += math.cos(self.heading * math.tau / 2048) * 500
+                return {}
+
+        for start in [[0, 0, 0], [2500, 0, -700]]:
+            control = Control(start)
+            replay.steer(control, {"world": 1, "position_q8": [4000, 0, 8000], "tolerance": 600, "limit": 100})
+            self.assertLessEqual(math.dist(control.position, [4000, 0, 8000]), 600)
+            self.assertTrue(control.commands)
+
+    def test_steering_accepts_declared_transition_and_rejects_other_worlds(self):
+        class Control:
+            def ready(self):
+                return {"scripts": {"world": 15}, "hud": {"health": 100}}
+
+        target = {"world": 1, "position_q8": [0, 0, 0], "tolerance": 600, "limit": 3}
+        with self.assertRaisesRegex(AssertionError, "unexpected world"):
+            replay.steer(Control(), target)
+        replay.steer(Control(), {**target, "transition_to": 15})
+
+    def test_steering_stops_at_bound_when_blocked(self):
+        class Control:
+            count = 0
+
+            def ready(self):
+                return {"scripts": {"world": 1}, "hud": {"health": 100, "heading": 0}}
+
+            def response(self, command):
+                return {"ok": True, "result": self.request(command)}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    return {"world": 1, "player_position_q8": [0, 0, 0]}
+                self.count += 1
+                return {}
+
+        control = Control()
+        with self.assertRaisesRegex(AssertionError, "steering limit exhausted"):
+            replay.steer(control, {"world": 1, "position_q8": [0, 0, 8000], "tolerance": 600, "limit": 3})
+        self.assertEqual(control.count, 3)
 
     def test_each_checkpoint_category_is_checked(self):
         for category, wrong in [("world", 8), ("globals", {"lockout": 1}),

@@ -159,6 +159,15 @@ reach the expected condition exhausts the bound and fails the replay. The final
 inventory checkpoint checks the retained nonconsumable items; the initial
 checkpoint also checks the starting healing-item count.
 
+A `steer` step declares `world`, a three-coordinate `position_q8` target,
+`tolerance` in Q8 units, and an input-iteration `limit` of at most 2000.
+It reads position and heading between short keyboard schedules, turns with
+Left/Right alone, and walks with Shift+Up. It stops within the horizontal
+position tolerance or fails at the bound, on death, or on an unexpected world.
+An optional `transition_to` accepts an ordinary-input boundary only after the
+declared destination world is ready. Vertical position is checked by the following checkpoint. Use intermediate
+waypoints around obstacles; steering does not find paths or change game state.
+
 A `modal_input` step waits for the declared world’s scripted examine screen,
 sends the declared key as a tap, and requires ordinary updates to resume after
 it closes. This handles the harbour letter without bypassing the item viewer.
