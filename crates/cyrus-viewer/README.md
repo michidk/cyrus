@@ -23,12 +23,7 @@ computer; no upload or server is needed. Select the folder again after reloading
 Use `?install=local` to override a saved server URL.
 
 For native builds, double-click `cyrus-viewer` and choose your install. No arguments
-are required. You can also pass the install directly:
-
-```sh
-./cyrus-viewer --install /path/to/Redguard
-# Windows: cyrus-viewer.exe --install C:\path\to\Redguard
-```
+are required. See [Advanced launch options](#advanced-launch-options) to select an install on the command line.
 
 The native viewer also checks `REDGUARD_DIR`, the remembered location, and default
 local/GOG folders. Its picker accepts the outer GOG folder or inner game folder
@@ -69,7 +64,18 @@ entries report a reason; unrecognized files are hidden.
 Browser asset selections and model palettes are shareable through the address
 bar. The recipient needs the same installation. Back restores the previous selection.
 
+## Advanced launch options
+
+You can also pass the install directly:
+
+```sh
+./cyrus-viewer --install /path/to/Redguard
+# Windows: cyrus-viewer.exe --install C:\path\to\Redguard
+```
+
 ## Run from source
+
+Run these commands from the repository root. See the [source requirements](../../docs/SETUP.md#you-need).
 
 ```sh
 cargo run -p cyrus-viewer -- --install /path/to/Redguard

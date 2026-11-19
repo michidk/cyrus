@@ -30,14 +30,14 @@ Never attach files from your install, extracted assets or save games.
   declined, however good they are.
 - Every behaviour change says where it comes from: a game file read through
   `rgpre`, a reproducible observation of the original, or a documented engine
-  fact (see `docs/METHOD.md`). Do not guess constants.
+  fact (see [development method](docs/METHOD.md)). Do not guess constants.
 - File-format and engine discoveries belong in
   [redguard-preservation](https://github.com/michidk/redguard-preservation);
   cyrus consumes them from there.
 - Before submitting: `just gates` (publish-check, fmt, clippy, tests). Pull
   request titles follow Conventional Commits, e.g. `fix(player): …`.
 
-`AGENTS.md` holds the rules every change follows. `docs/WORKFLOW.md` and the
+[AGENTS.md](AGENTS.md) holds the rules every change follows. [docs/WORKFLOW.md](docs/WORKFLOW.md) and the
 untracked `magic/` folder describe the maintainer's own agent setup; you do
 not need them.
 

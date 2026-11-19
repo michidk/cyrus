@@ -7,6 +7,16 @@ Engine facts behind each entry live in
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Unintended differences are bugs; report them in [GitHub issues](https://github.com/michidk/cyrus/issues), not here.
 
+For normal controls and settings, use [Playing cyrus](PLAYING.md). This reference explains deviations and their evidence; it is not a setup checklist.
+
+| Topic | Selected entries |
+| --- | --- |
+| Startup and menus | [Default startup](#default-startup-opens-the-book), [splash](#3dfx-splash), [title artwork](#title-artwork), [book rendering](#book-logbook-and-examine-are-drawn-by-the-gpu) |
+| Timing and input | [Gameplay timing](#stable-gameplay-timing), [gamepad dead zone](#gamepad-dead-zone), [rope behavior](#rope-attachment-shortcuts) |
+| Graphics | [Modern lighting](#modern-lighting), [effects](#modern-effects), [ray tracing](#ray-traced-lighting), [texture filtering](#optional-anisotropic-filtering) |
+| Sound and movies | [Movie skipping](#skipped-movies), [CD music](#cd-data-noise-at-the-start-of-track-2), [resampling](#audio-resampling) |
+| Optional mods | [Bundled mods and settings](../mods/README.md) |
+
 ## Stable gameplay timing
 
 **Verified:** the original clock estimates frame scale from measured FPS, smooths
@@ -386,6 +396,7 @@ the scene's lights; under Faithful lighting they take the world's ambient and
 directional model light, as original models do. Ray-traced grass stand-ins are
 unavailable. The shared geometry shader
 library follows the existing first-active-mod shader replacement rule.
+
 ## Audio resampling
 
 **Unknown:** the original game's reconstruction filter. Faithful keeps the

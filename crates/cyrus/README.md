@@ -1,6 +1,6 @@
 # cyrus (binary)
 
-The native game executable. It parses the command line, finds the read-only
+The native game executable. It parses the command line, finds the
 install, assembles the Bevy app from the assets, world, game and presentation
 plugins ([cyrus-startup](../cyrus-startup/README.md), cyrus-render, cyrus-audio)
 and runs it. It owns native local state (settings, preferences, cheats, console,
@@ -24,7 +24,7 @@ lists the folders). Launch options share their names with the browser's URL para
 
 | Flag | Meaning |
 | --- | --- |
-| `--install PATH` | Original install, read only |
+| `--install PATH` | Original install directory |
 | `--scene STEM\|ID` | Load a map stem or WORLD.INI ID directly |
 | `--view=x,y,z,qx,qy,qz,qw` | One-shot inspection camera pose for the first world (unit quaternion) |
 | `--skip-startup` | Skip the splash and open the book menu |
@@ -66,8 +66,7 @@ opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for con
 
 ## Notes
 
-- The install is never written. Local state lives where `cyrus-config` decides;
-  local cheat and console files take precedence over the installed ones.
+- Settings, saves, caches and logs live where `cyrus-config` decides. Native cheat persistence writes the installation's `REDGUARD.CHT`, shared with the original game; console preferences remain in the config directory.
 - Default startup opens the book after the splash and title. Starting a world requires
   New Game, loading a save, or an explicit launch shortcut.
 - Save slots hold cyrus session documents. Original `SAVEGAME.SAV` and `.TSG`
