@@ -130,3 +130,9 @@ radius and encoded RGB strengths through the model local-light shader. Transient
 emissions bypass authored map-light region selection. After matched TAVERN
 readbacks, run `python3 dev/scripts/test-held-torch-light.py before.png after.png`
 (with Pillow) to assert positive brightening on the wall crop.
+
+Check the shared sky direction calculation in a running headless WebGL2 browser
+with `node dev/scripts/test-sky-direction.mjs http://127.0.0.1:9222`.
+The test compiles the shader's calculation and reads float framebuffer results
+for signed-zero, cardinal and oblique directions. It needs the browser float
+color-buffer extension and rejects shader compilation or WebGL errors.

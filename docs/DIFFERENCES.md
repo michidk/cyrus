@@ -569,11 +569,12 @@ the earlier HIDEINT rectangle also included water along the cave boundary.
 Those rectangles remain scene measurements and do not establish static-surface
 parity. The refined trunk and cave-wall samples both match the browser exactly.
 
-**Verified:** the browser's START sky differs from native by MAE 11.151208
-over 79,200 pixels after both sky scroll offsets are set to zero; 77,092 pixels
-differ. The fixed deck sample matches exactly. The prepared sky image hash,
-dimensions, level, scale and background match, and the browser's live WebGL
-material confirms zero scroll and the same sky parameters. **Unknown:** the
-remaining shader or backend rendering cause. This controlled residual is not
-attributed to independent sky timing. See the
+**Verified:** a WebGL sky direction regression mapped the positive forward axis
+to the opposite direction through the `atan2`/`sin`/`cos` round trip. The shared
+shader now normalizes the horizontal forward vector directly. In the controlled
+headless-browser shader comparison, START sky MAE falls from 11.151208 to
+0.013767 over 79,200 pixels, with differing pixels falling from 77,092 to 39.
+The uploaded sky texture matches the prepared image byte for byte. The browser
+regression exercises signed-zero, axis-aligned and oblique directions against
+the shared shader calculation, and fails with the previous calculation. See the
 [browser sweep](https://github.com/michidk/cyrus/issues/326).

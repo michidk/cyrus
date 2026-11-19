@@ -87,8 +87,9 @@ fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     }
     // Preservation's camera-relative 24-unit tilt, applied before the height offset.
     let forward = -view.world_from_view[2].xz;
-    let heading = atan2(forward.x, forward.y);
-    let horizontal = vec2(sin(heading), cos(heading));
+    // Keep the direction in Cartesian form. The WebGL atan/sin/cos round trip
+    // changes the sky plane at axis-aligned camera headings.
+    let horizontal = normalize(forward);
     let tilt = 24.0 * 6.2831852 / 2048.0;
     let normal = vec3(horizontal.x * sin(tilt), cos(tilt), horizontal.y * sin(tilt));
     let denominator = dot(normal, ray);
