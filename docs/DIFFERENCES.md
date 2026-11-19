@@ -426,7 +426,7 @@ and scene shortcuts retain their requested destinations.
 This accepted compatibility limit prevents loading a retained original manual
 save directly for a death/restart comparison. The retained-save investigation
 verified one 800,468-byte original slot, but accepted zero paired death/restart
-sequences. Its final recorder attempt rejected a repeated update counter after
+sequences. Its final recorder attempt failed the contiguous-update check after
 one baseline at update 13, health 100. No death/restart visual residual was
 measured. See [the retained-save decision](https://github.com/michidk/cyrus/issues/320).
 
@@ -434,7 +434,8 @@ measured. See [the retained-save decision](https://github.com/michidk/cyrus/issu
 zero matched contact pairs, not a measured collision offset. The earlier
 GUARD01 encounter matched 36 of 36 selected-player positions over 6,225 consumed
 clocks, but the native guard baseline differed by 147.1992 map units after
-warmup, so that run does not establish contact parity. The final attempt stopped at update 36, health 100, then rejected a missing
-other-actor observation before recording contact. Both traversal orders remain
+warmup, so that run does not establish contact parity. The final attempt stopped
+at update 36, health 100, then rejected a missing other-actor observation before
+recording contact. Both traversal orders remain
 unverified. See [the contact decision](https://github.com/michidk/cyrus/issues/306).
 Neither residual changes Faithful defaults or authorizes a guessed response.
