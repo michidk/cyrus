@@ -160,7 +160,8 @@ Keep `CYRUS_CONFIG_DIR` on the host and lock the run as for other playtests.
 RICHTONP scripts reveal the final opponents when inventory item 79 is present;
 map marker 32 enters the final scene staging area. The helper uses `item add` and
 `getmapmarker` through the ordinary console, verifies their reports and inventory,
-and leaves the confrontation and ending to player inputs. No prerequisite quest
+waits for the approach scene to release its lockout, and leaves the confrontation
+and ending to player inputs. It fails if lockout remains after 1000 ordinary updates. No prerequisite quest
 flag assignment is needed by these two scripts. Use a fresh session: an already
 set `won_game` flag is rejected.
 

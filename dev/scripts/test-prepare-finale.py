@@ -13,7 +13,7 @@ spec.loader.exec_module(finale)
 class FinaleEntry(unittest.TestCase):
     def run_entry(self, world=30, won=0, grant=True, owned=0, marker=True):
         calls = []
-        state = {'state': 'InGame', 'scripts': {'world': world, 'failed': 0},
+        state = {'state': 'InGame', 'hud': {'lockout': 0}, 'scripts': {'world': world, 'failed': 0},
                  'script_hud': {'inventory': {'counts': {'79': owned}}}}
 
         def call(command):
@@ -58,6 +58,25 @@ class FinaleEntry(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run()
             self.assertFalse(any(c['type'] == 'console' for c in calls))
+
+    def test_approach_waits_for_lockout_and_never_changes_it(self):
+        waits = []
+        states = iter([1, 1, 0])
+        def call(command):
+            if command['type'] == 'state':
+                return {'state': 'InGame', 'scripts': {'world': 30, 'failed': 0},
+                        'hud': {'lockout': next(states)}}
+            waits.append(command)
+        finale.await_approach(call)
+        self.assertEqual(len(waits), 2)
+        self.assertTrue(all(c['type'] == 'schedule_input' for c in waits))
+
+    def test_stuck_approach_is_bounded(self):
+        def call(command):
+            return {'state': 'InGame', 'scripts': {'world': 30, 'failed': 0},
+                    'hud': {'lockout': 1}}
+        with self.assertRaisesRegex(ValueError, 'lockout did not clear'):
+            finale.await_approach(call, limit=2)
 
     def test_reusing_prerequisite_does_not_duplicate_it(self):
         calls, run = self.run_entry(owned=1)

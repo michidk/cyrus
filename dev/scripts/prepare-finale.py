@@ -14,6 +14,21 @@ trace = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trace)
 
 
+def await_approach(call, limit=100):
+    """Wait in bounded ordinary-update segments; never clear the scripted lockout."""
+    for _ in range(limit):
+        state = call({'type': 'state'})
+        if state['state'] != 'InGame' or state['scripts']['world'] != 30:
+            raise ValueError('approach left EXTPALAC gameplay')
+        if state['scripts']['failed']:
+            raise ValueError('approach script failed')
+        if state['hud']['lockout'] == 0:
+            return
+        call({'type': 'schedule_input', 'events': [
+            {'after_updates': 0}, {'after_updates': 10}]})
+    raise ValueError('approach lockout did not clear within 1000 ordinary updates')
+
+
 def prepare(call):
     """Grant the installed confrontation prerequisite, then enter its staging marker."""
     state = call({'type': 'state'})
@@ -42,6 +57,7 @@ def prepare(call):
         raise ValueError('console did not grant the confrontation prerequisite')
     if state['scripts']['world'] != 30 or state['scripts']['failed']:
         raise ValueError('finale setup changed world or scripts failed')
+    await_approach(call)
     return result
 
 
