@@ -36,6 +36,8 @@ unsupported. An `// unverified` comment or Modern mode does not authorize a gues
    comparison can fail: change one constant in cyrus and confirm it is caught.
    Put the comparison, the wrong-version check, or what could not be compared,
    in the commit message.
+   Keep both captures until the pair is accepted or rejected and that decision
+   is recorded on the owning issue. Delete captures only after that record exists.
 5. **Verify, then commit small.** Run the checks required by `AGENTS.md`; one
    logical change per commit. Run `just check` and focused `just verify <crate>` checks
    after the final relevant edit; use full gates for workspace-wide changes. Do not run Cargo for documentation-only
