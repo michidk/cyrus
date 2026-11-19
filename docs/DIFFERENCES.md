@@ -515,3 +515,30 @@ pixels. Description foreground has MAE 1.418287 over 1,954 pixels, with
 maximum channel error 8. **Unknown:** the remaining model and description
 error causes. These measured visual residuals are accepted without tuning
 unsupported constants. See [the examine decision](https://github.com/michidk/cyrus/issues/319).
+
+### World-entry static surfaces
+
+**Verified:** the marker-zero CATACOMB wall crop has RGB MAE 6.498651,
+with 20,986 of 25,200 pixels differing. Independent original and native
+repeats reproduce that wall exactly within each implementation. A later
+original camera pose, reproduced in native, reduces the same screen rectangle
+to MAE 0.006944, with 74 pixels differing. The installed wall material is
+not animated. **Unknown:** the cause of this view-dependent static raster
+residual. It is not attributed to moving-content timing.
+
+**Verified:** the CAVERNS fixed-wall crop has RGB MAE 5.244014, with
+34,296 of 41,600 pixels differing. Its mean native-minus-original RGB bias
+is (+0.013317, +0.075264, +0.019231) channel levels. **Unknown:** the
+remaining static raster cause. These two measured residuals are accepted
+without an unsupported lighting or texture-coordinate correction.
+
+**Verified:** the START deck crop has MAE 0.005213 over 14,450 pixels;
+the HIDEINT cave-wall crop has MAE 0.811569 over 18,700 pixels. Independently
+advancing actors, ship poses and clouds prevent whole-frame errors from
+measuring static rendering alone. Other sampled fixed regions in the
+29-entry sweep have MAE at most 0.134238. NECRISLE's first marker shows
+only sea and sky, so no fixed-region measurement is available. World 99
+admits no original pair: direct entry remains at zero actors and zero updates
+for 120 seconds; the final in-game path fails interactive-console admission
+before a load command is sent. World 29 is a separate entry.
+See the [world sweep and ranked measurements](https://github.com/michidk/cyrus/issues/323).
