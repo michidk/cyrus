@@ -149,6 +149,21 @@ with `RUST_MIN_STACK=8388608`; container launches also need
 `-e RUST_MIN_STACK=8388608`. The test runner sets this automatically; native
 development launchers do not yet supply it by default.
 
+### Final confrontation entry
+
+For a native final-confrontation playtest, start a fresh windowed session with
+`--scene EXTPALAC`, then run
+`python3 dev/scripts/prepare-finale.py --addr 127.0.0.1:7117`.
+Keep `CYRUS_CONFIG_DIR` on the host and lock the run as for other playtests.
+
+**Verified:** WORLD.INI selects EXTPALAC as world 30. Its installed DRAMPAL and
+RICHTONP scripts reveal the final opponents when inventory item 79 is present;
+map marker 32 enters their roof section. The helper uses `item add` and
+`getmapmarker` through the ordinary console, verifies their reports and inventory,
+and leaves the confrontation and ending to player inputs. No prerequisite quest
+flag assignment is needed by these two scripts. Use a fresh session: an already
+set `won_game` flag is rejected.
+
 ### Player placement
 
 Direct scene inspection uses available marker zero for initial player placement.

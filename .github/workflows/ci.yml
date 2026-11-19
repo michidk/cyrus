@@ -122,6 +122,7 @@ jobs:
           python3 dev/scripts/test-ensure-runtime-image.py
           python3 dev/scripts/test-native-book-capture.py
           python3 -B dev/scripts/test-replay-chain.py
+          python3 -B dev/scripts/test-prepare-finale.py
           python3 -B dev/scripts/test-nightly-replay.py
           node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
 
