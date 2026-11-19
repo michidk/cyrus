@@ -36,13 +36,15 @@ original-clock inspection and book animation retain the original clock API.
 without stopping the sample, whenever its elapsed input (`runs * frame scale >> 8`)
 reads zero. Early updates can therefore start overlapping copies of a looping
 sample. In the installed CAVERNS entry, two original channels play effect72 from
-one owner; cyrus retains one. The settled fire effect25 is absent in both after
+one owner; cyrus retains one. The ISLAND entry similarly has two original
+channels for effect117 from one owner and one native channel. The settled fire
+effect25 is absent in both after
 the static-rope camera correction, with exactly matching logical listeners.
 
 Cyrus forgets the slot only on an explicit sound reset, preventing ambient loops
 from accumulating with frame rate. This applies in both fidelity modes. The
 previous inference that the original always plays one loop per task was incorrect;
-the measured CAVERNS multiplicity remains an audio parity difference tracked in
+these measured multiplicities remain audio parity differences recorded in
 [#328](https://github.com/michidk/cyrus/issues/328). The original handle rule is
 specified in preservation's [sound documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
 
