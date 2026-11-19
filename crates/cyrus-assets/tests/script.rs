@@ -1172,6 +1172,13 @@ fn camera_ini(skip: Option<&str>) -> String {
         "debug",
     ];
     let mut keys = vec![
+        ("static_rope_threshold", 5),
+        ("camera_rope_above_aim_x", -512),
+        ("camera_rope_above_aim_y", 0),
+        ("camera_rope_above_aim_z", 0),
+        ("camera_rope_below_aim_x", 512),
+        ("camera_rope_below_aim_y", 0),
+        ("camera_rope_below_aim_z", 0),
         ("offset_pos_x", 1),
         ("offset_pos_y", 2),
         ("offset_pos_z", 3),
@@ -1293,6 +1300,19 @@ fn installed_system_ini_supplies_every_required_camera_setting() {
     let settings = cyrus_assets::script::CameraSettings::from_system(&system)
         .unwrap_or_else(|error| panic!("installed SYSTEM.INI [camera]: {error:#}"));
     assert!(settings.distance > 0 && settings.max_vel > 0);
+    let encoded = serde_json::to_value(&settings).unwrap();
+    assert_eq!(
+        encoded["static_rope_threshold"],
+        serde_json::json!(system.camera.static_rope_threshold.unwrap())
+    );
+    assert_eq!(
+        encoded["static_rope_aim"][0][0],
+        serde_json::json!(system.camera.camera_rope_above_aim_x.unwrap())
+    );
+    assert_eq!(
+        encoded["static_rope_aim"][1][0],
+        serde_json::json!(system.camera.camera_rope_below_aim_x.unwrap())
+    );
 }
 
 #[test]

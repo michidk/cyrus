@@ -356,6 +356,8 @@ fn initial_records_follow_the_documented_installed_setting_mapping() {
         ],
         limits: Default::default(),
         glide: Default::default(),
+        static_rope_threshold: 0,
+        static_rope_aim: [[0; 3]; 2],
     };
     let records = CameraState::initial_records(&settings, player).unwrap();
     assert_eq!(records[0].target_offset, [7, 8, 9]);
@@ -533,6 +535,8 @@ fn show_player_pan_reproduces_the_original_step_by_step() {
         }),
         limits: Default::default(),
         glide: Default::default(),
+        static_rope_threshold: 0,
+        static_rope_aim: [[0; 3]; 2],
     };
     let actor = |index| ScriptActorId {
         generation: 1,

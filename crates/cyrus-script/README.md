@@ -123,3 +123,9 @@ item, completed lighting transition, item system and shell context gate emission
 
 Ordinary actor view windows clamp to the map edges even when a carried player
 and camera leave the authored map, following preservation’s animation traversal rule.
+
+Static-rope follow cameras select the installed upper/lower camera record from
+maximum swing and the held link. Their installed aim angles replace player
+orientation. Sound services use the resulting published logical camera pose,
+independently of an inspection view or render gliding, following preservation's
+[SYSTEM.INI camera settings](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#camera).

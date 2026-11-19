@@ -201,6 +201,10 @@ pub struct CameraSettings {
     pub max_vel: i32,
     /// Slots three through eight: combat, hang, rope, rope above, rope below, debug.
     pub modes: [CameraModeSettings; 6],
+    /// Installed amplitude threshold separating static ropes from swinging ropes.
+    pub static_rope_threshold: i32,
+    /// Installed fixed aim angles for upper and lower static-rope cameras.
+    pub static_rope_aim: [[i32; 3]; 2],
     pub limits: CameraLimits,
     pub glide: CameraGlide,
 }
@@ -297,6 +301,19 @@ impl CameraSettings {
                     ],
                 }
             },
+            static_rope_threshold: need(camera.static_rope_threshold, "static_rope_threshold")?,
+            static_rope_aim: [
+                [
+                    need(camera.camera_rope_above_aim_x, "camera_rope_above_aim_x")?,
+                    need(camera.camera_rope_above_aim_y, "camera_rope_above_aim_y")?,
+                    need(camera.camera_rope_above_aim_z, "camera_rope_above_aim_z")?,
+                ],
+                [
+                    need(camera.camera_rope_below_aim_x, "camera_rope_below_aim_x")?,
+                    need(camera.camera_rope_below_aim_y, "camera_rope_below_aim_y")?,
+                    need(camera.camera_rope_below_aim_z, "camera_rope_below_aim_z")?,
+                ],
+            ],
             modes: [
                 mode!(
                     "camera_combat",

@@ -8,6 +8,34 @@ use crate::script::camera::{
 use anyhow::{Context, Result};
 use cyrus_soup::Attribute;
 
+// Static-rope records bind their orientation to installed aim vectors instead of the player.
+fn camera_aim(
+    settings: &cyrus_assets::script::CameraSettings,
+    slot: u8,
+    angles: [u16; 3],
+) -> [u16; 3] {
+    match slot {
+        6 | 7 => settings.static_rope_aim[usize::from(slot - 6)]
+            .map(|angle| cyrus_world::heading::wrap(angle as u16)),
+        _ => angles,
+    }
+}
+
+fn rope_camera_slot(maximum: i32, threshold: i32, node: i32, links: usize) -> Result<u8> {
+    let node = usize::try_from(node).context("rope camera: negative attachment link")?;
+    anyhow::ensure!(
+        node < links,
+        "rope camera: attachment link {node} outside {links} links"
+    );
+    Ok(if maximum >= threshold {
+        5
+    } else if node < links * 2 / 3 {
+        6
+    } else {
+        7
+    })
+}
+
 fn wrapped_angles(angles: [i32; 3]) -> Result<[u16; 3]> {
     anyhow::ensure!(
         angles.iter().all(|angle| (0..2048).contains(angle)),
@@ -86,6 +114,7 @@ impl ScriptWorld {
         }
         let bound = self.resolve(state.records[state.selected.index()].actor)?;
         let (position, angles) = self.camera_follow_pose(bound)?;
+        let angles = camera_aim(&self.camera_settings, state.selected.index() as u8, angles);
         let updated = service.update(&mut state, position, angles);
         let published = service.take_published();
         updated?;
@@ -98,9 +127,9 @@ impl ScriptWorld {
     }
 
     /// The slot the ordinary camera update chooses for the selected player: 3 while it holds a
-    /// weapon, 4 while it hangs (`HANGING`), 5 while it hangs on a rope, otherwise the
-    /// default slot zero. The shared debug word is zero. The rope above/below slots and the
-    /// free-look key are not modelled.
+    /// weapon, 4 while it hangs (`HANGING`), 5 on a swinging rope, otherwise the
+    /// default slot zero. Static ropes select the upper or lower fixed-aim record from the
+    /// installed threshold and held link. The shared debug word is zero; free-look is not modelled.
     fn automatic_camera_slot(&self, inputs: super::ScriptInputs<'_>) -> Result<u8> {
         let index = self
             .selected_player_index()
@@ -134,10 +163,23 @@ impl ScriptWorld {
         if control.living_state == LivingState::HANGING {
             return Ok(4);
         }
-        // **Inferred** from `showPlayer`'s slot table: a rope association selects the rope slot.
-        // The rope above/below slots (6 and 7) and the free-look key are not modelled.
         if control.rope_attached {
-            return Ok(5);
+            let (rope, attachment) = self
+                .ropes
+                .iter()
+                .find_map(|rope| {
+                    rope.attachments
+                        .iter()
+                        .find(|attachment| attachment.actor == index)
+                        .map(|attachment| (rope, attachment))
+                })
+                .context("automatic camera slot: selected player's rope attachment unavailable")?;
+            return rope_camera_slot(
+                rope.maximum,
+                self.camera_settings.static_rope_threshold,
+                attachment.node,
+                rope.links,
+            );
         }
         Ok(0)
     }
@@ -327,6 +369,11 @@ impl ScriptWorld {
         let (bound_position, bound_angles) = self
             .camera_follow_pose(bound)
             .with_context(|| context("bound actor pose"))?;
+        let bound_angles = camera_aim(
+            &self.camera_settings,
+            camera.selected.index() as u8,
+            bound_angles,
+        );
         let spatial = self
             .spatial
             .as_ref()
@@ -632,5 +679,58 @@ impl ScriptWorld {
             Ok(())
         })?;
         Ok(pose)
+    }
+}
+
+#[cfg(test)]
+mod static_rope_tests {
+    use super::*;
+    use crate::script::camera::{CameraSettings, CameraState};
+
+    #[test]
+    fn static_rope_listener_uses_the_installed_aim_instead_of_player_orientation() {
+        let settings = CameraSettings {
+            offset_pos: [0, -14000, 0],
+            min_distance: 120,
+            max_vel: 8000,
+            static_rope_threshold: 5,
+            static_rope_aim: [[-512, 0, 0], [512, 0, 0]],
+            ..Default::default()
+        };
+        let actor = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let mut camera = CameraState::new(&settings, actor, actor, 0).unwrap();
+        let slot = rope_camera_slot(1, settings.static_rope_threshold, 35, 80).unwrap();
+        assert_eq!(slot, 6);
+        camera.select(slot).unwrap();
+        let record = &mut camera.records[usize::from(slot)];
+        record.angle_offset = [96, 128, 0];
+        record.distance = 300;
+        let player = [8642560, -459888, 7436992];
+        let listener = record
+            .candidate(player, camera_aim(&settings, slot, [0, 0, 0]))
+            .unwrap();
+        // Original published position, within one map unit of the settled camera correction.
+        let expected = [8651091, -533381, 7471589];
+        for (actual, expected) in listener.into_iter().zip(expected) {
+            assert!((actual - expected).abs() < 256, "listener {listener:?}");
+        }
+        let wrong = record.candidate(player, [0, 0, 0]).unwrap();
+        assert_ne!(
+            wrong, listener,
+            "player orientation must not replace the fixed aim"
+        );
+    }
+
+    #[test]
+    fn rope_camera_selection_uses_maximum_amplitude_and_held_link() {
+        assert_eq!(rope_camera_slot(4, 5, 3, 9).unwrap(), 6);
+        assert_eq!(rope_camera_slot(4, 5, 6, 9).unwrap(), 7);
+        assert_eq!(rope_camera_slot(5, 5, 3, 9).unwrap(), 5);
+        assert_eq!(rope_camera_slot(6, 5, 8, 9).unwrap(), 5);
+        assert!(rope_camera_slot(1, 5, -1, 9).is_err());
+        assert!(rope_camera_slot(1, 5, 9, 9).is_err());
     }
 }
