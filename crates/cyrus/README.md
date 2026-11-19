@@ -171,5 +171,16 @@ timing and expected observations, without game data or saves. The runner fails
 if no fixtures exist. Hosted CI tests the comparator without an install; actual
 route replay requires the player's install.
 
-The install-backed nightly task runs `just replay-chain` on main at 03:00 UTC.
-GitHub CI validates the committed fixture schemas and comparator without an install.
+The install-backed nightly runs on this VibePod machine through the control panel's
+command scheduler at `0 3 * * *` (03:00 UTC), named `Cyrus nightly replay chain`.
+Its command invokes `bash dev/scripts/nightly-replay.sh` with `REDGUARD_DIR` pointing
+to the shared read-only install and `CYRUS_CONFIG_DIR` pointing to persistent
+`magic/nightly-replay-chain` state. The wrapper pulls main, restores setup when
+cargo-hauler is missing, and runs `just replay-chain` through hauler. Failures post
+one comment of at most 15 lines to [#322](https://github.com/michidk/cyrus/issues/322),
+including the commit, exit status and retained log path. View runs in the VibePod
+control panel under Schedules; process logs and checkpoint observations remain
+under the configured state directory. The schedule registry persists under
+`~/.config/vibepod/schedules.json`. The previous T3 agent schedule is disabled.
+GitHub CI validates the committed fixture schemas, comparator and nightly wrapper
+without an install.
