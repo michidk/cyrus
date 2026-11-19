@@ -8,11 +8,15 @@ import unittest
 
 
 class Nightly(unittest.TestCase):
-    def run_nightly(self, status, pull_status=0, hauler=True):
+    def run_nightly(self, status, pull_status=0, hauler=True, interrupted=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             commands = root / "bin"
             commands.mkdir()
+            if interrupted:
+                pending = root / "config/nightly/unfinished.issue.md"
+                pending.parent.mkdir(parents=True)
+                pending.write_text("Previous run interrupted; not counted as passing.\n")
             for name, body in {
                 "git": f'if [ "$1" = rev-parse ]; then echo test-commit; else exit {pull_status}; fi',
                 "just": f'echo "$*" >> "$CALLS"; if [ "$1" = replay-chain ]; then exit {status}; fi',
@@ -54,6 +58,13 @@ class Nightly(unittest.TestCase):
         status, calls, _ = self.run_nightly(0, hauler=False)
         self.assertEqual(status, 0)
         self.assertTrue(calls.startswith("setup\nreplay-chain\n"))
+
+    def test_next_run_reports_interruption_before_replaying(self):
+        status, calls, report = self.run_nightly(0, interrupted=True)
+        self.assertEqual(status, 0)
+        self.assertEqual(calls.count("issue comment 322"), 1)
+        self.assertTrue(calls.endswith("replay-chain\n"))
+        self.assertIn("Previous run interrupted", report)
 
 
 if __name__ == "__main__":

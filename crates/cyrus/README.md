@@ -180,7 +180,9 @@ cargo-hauler is missing, and runs `just replay-chain` through hauler. Failures p
 one comment of at most 15 lines to [#322](https://github.com/michidk/cyrus/issues/322),
 including the commit, exit status and retained log path. View runs in the VibePod
 control panel under Schedules; process logs and checkpoint observations remain
-under the configured state directory. The schedule registry persists under
+under the configured state directory. A retained unfinished-run marker reports
+a pod-interrupted run on the next invocation before retrying from New Game.
+The schedule registry persists under
 `~/.config/vibepod/schedules.json`. The previous T3 agent schedule is disabled.
 GitHub CI validates the committed fixture schemas, comparator and nightly wrapper
 without an install.
