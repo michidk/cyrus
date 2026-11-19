@@ -176,11 +176,14 @@ command scheduler at `0 3 * * *` (03:00 UTC), named `Cyrus nightly replay chain`
 Its command invokes `bash dev/scripts/nightly-replay.sh` with `REDGUARD_DIR` pointing
 to the shared read-only install and `CYRUS_CONFIG_DIR` pointing to persistent
 `magic/nightly-replay-chain` state. The wrapper pulls main, restores setup when
-cargo-hauler is missing, and runs `just replay-chain` through hauler. Failures post
+cargo-hauler is missing, builds through hauler in the inherited shared Cargo target,
+and passes that target's executable to `just replay-chain`. It copies no executable
+or build checkpoints into the nightly directory. Failures post
 one comment of at most 15 lines to [#322](https://github.com/michidk/cyrus/issues/322),
 including the commit, exit status and retained log path. View runs in the VibePod
-control panel under Schedules; process logs and checkpoint observations remain
-under the configured state directory. A retained unfinished-run marker reports
+control panel under Schedules. Only replay and process logs for the last two runs
+remain under `nightly/run-*/`; runtime caches and checkpoint observations are removed
+on exit, or on the next invocation after interruption. A retained unfinished-run marker reports
 a pod-interrupted run on the next invocation before retrying from New Game.
 The schedule registry persists under
 `~/.config/vibepod/schedules.json`. The previous T3 agent schedule is disabled.
