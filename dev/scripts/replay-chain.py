@@ -157,10 +157,13 @@ def steer(control, target):
         bearing = (-math.atan2(dx, dz) * 2048 / math.tau) % 2048
         error = (bearing - state["hud"]["heading"] + 1024) % 2048 - 1024
         # Short schedules resample heading after each turn and avoid strafing.
-        keys = ["ArrowLeft" if error > 0 else "ArrowRight"] if abs(error) > 48 else ["ShiftLeft", "ArrowUp"]
+        turning = abs(error) > 48
+        keys = ["ArrowLeft" if error > 0 else "ArrowRight"] if turning else ["ShiftLeft", "ArrowUp"]
+        held = min(4, max(1, int(abs(error) / 64))) if turning else min(4, max(1, int(distance / 4096)))
+        settle = 1 if turning else 10
         events = ([{"after_updates": 0, "key": key, "action": "press"} for key in keys]
-                  + [{"after_updates": 1, "key": key, "action": "release"} for key in keys]
-                  + [{"after_updates": 11}])
+                  + [{"after_updates": held, "key": key, "action": "release"} for key in keys]
+                  + [{"after_updates": held + settle}])
         transitioned = play_inputs(control, {"input": events, **(
             {"transition_to": target["transition_to"]} if "transition_to" in target else {})})
         if transitioned:
