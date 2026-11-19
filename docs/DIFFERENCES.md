@@ -439,3 +439,38 @@ at update 36, health 100, then rejected a missing other-actor observation before
 recording contact. Both traversal orders remain
 unverified. See [the contact decision](https://github.com/michidk/cyrus/issues/306).
 Neither residual changes Faithful defaults or authorizes a guessed response.
+
+## Accepted visual residuals
+
+**Verified:** the loading-fade raster reproduces five sampled original
+intermediate frames exactly. The remaining opaque loading-artwork comparison
+has RGB MAE 1.312669891 and mean-channel bias 1.104227431 at 640×420.
+The incoming 172/256-opacity pair has MAE 0.474791667. These are accepted
+artwork residuals; no unsupported color correction is applied.
+See [the fade decision](https://github.com/michidk/cyrus/issues/312).
+
+**Verified:** held-torch emission fixes the missing wall brightening. In the
+22,500-pixel TAVERN wall crop, the native lit/unlit delta is 18.118370,
+compared with the original's 19.178044. The lit pair has RGB MAE 3.110489;
+the unlit pair has MAE 0.001481. **Unknown:** how much of the remaining
+lit difference comes from unmatched hand pose and random-color phase.
+This is an accepted visual residual, not a reason to tune the recovered
+emission constants. See [the torch decision](https://github.com/michidk/cyrus/issues/314).
+
+**Unknown:** browser transition visual parity and actor prelighting parity.
+The bounded browser fixture admitted zero ISLAND→TAVERN→ISLAND pairs.
+The CATACOMB/PALACE prelighting fixture admitted zero of two pixel pairs;
+two native displayed-frame matches did not establish visible matching actors.
+No RGB error is available for these accepted validation limits. Earlier
+unmatched-pose actor errors of 4.282308355 and 37.819504902 are rejected as
+lighting measurements. See [browser transitions](https://github.com/michidk/cyrus/issues/313)
+and [prelighting](https://github.com/michidk/cyrus/issues/316).
+
+**Unknown:** matched-state ISLAND water cadence and wave-phase parity.
+The final direct-entry recording admitted 43 original presentations over
+6,218 game-clock units, but zero matched native water-state pairs.
+The earlier coast recording measured three vertex ranges of 42.2119,
+43.5659 and 42.0251 engine units. Those ranges do not measure cross-host
+wave error. No matched water-region RGB MAE is available, and no timing
+formula is changed on this evidence. This accepted validation limit is
+recorded in [the water decision](https://github.com/michidk/cyrus/issues/315).
