@@ -196,6 +196,8 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.env['CYRUS_NATIVE_EXECUTABLE'] = str(self.output)
         self.env['REDGUARD_DIR'] = str(self.root / 'install')
         (self.root / 'install').mkdir()
+        (self.root / 'game.gog').write_bytes(b'CD image fixture')
+        (self.root / 'game.ins').write_text('FILE "game.gog" BINARY\n')
         docker = self.root / 'bin/docker'
         docker.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$PWD/docker.log\"\n")
         docker.chmod(0o755)
@@ -206,6 +208,8 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         calls = (self.root / 'docker.log').read_text().splitlines()
         self.assertIn(str(self.output) + ':/app/cyrus:ro', calls)
         self.assertIn('/app/cyrus', calls)
+        self.assertIn(str(self.root / 'install/../game.gog') + ':/game.gog:ro', calls)
+        self.assertIn(str(self.root / 'install/../game.ins') + ':/game.ins:ro', calls)
         self.assertEqual(calls[-2:], ['--scene', 'TEST'])
         self.assertFalse((self.root / 'target').exists())
         self.assertIn('CYRUS_CONFIG_DIR=/repo/game-config', calls)
