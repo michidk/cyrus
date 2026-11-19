@@ -15,7 +15,7 @@ spec.loader.exec_module(trace)
 
 
 def prepare(call):
-    """Grant the installed confrontation prerequisite, then enter its roof marker."""
+    """Grant the installed confrontation prerequisite, then enter its staging marker."""
     state = call({'type': 'state'})
     scripts = call({'type': 'scripts'})
     if state['state'] != 'InGame' or scripts['world'] != 30:
@@ -24,7 +24,7 @@ def prepare(call):
     if flags['won_game'] != 0:
         raise ValueError('won_game is already set; use a fresh session')
     # Installed DRAMPAL and RICHTONP reveal themselves when HaveItem(79) succeeds.
-    # WORLD.INI maps EXTPALAC to world 30; its roof entry is map marker 32.
+    # WORLD.INI maps EXTPALAC to world 30; its scene staging entry is map marker 32.
     def console(line, expected):
         result = call({'type': 'console', 'line': line})
         reports = [row['text'] for row in result['console']['lines'] if row['report']]

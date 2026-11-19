@@ -158,7 +158,7 @@ Keep `CYRUS_CONFIG_DIR` on the host and lock the run as for other playtests.
 
 **Verified:** WORLD.INI selects EXTPALAC as world 30. Its installed DRAMPAL and
 RICHTONP scripts reveal the final opponents when inventory item 79 is present;
-map marker 32 enters their roof section. The helper uses `item add` and
+map marker 32 enters the final scene staging area. The helper uses `item add` and
 `getmapmarker` through the ordinary console, verifies their reports and inventory,
 and leaves the confrontation and ending to player inputs. No prerequisite quest
 flag assignment is needed by these two scripts. Use a fresh session: an already
