@@ -171,7 +171,7 @@ timing and expected observations, without game data or saves. The runner fails
 if no fixtures exist. Hosted CI tests the comparator without an install; actual
 route replay requires the player's install.
 
-The install-backed nightly runs on this VibePod machine through the control panel's
+The install-backed nightly runs in the maintainer's VibePod on `julian` through the control panel's
 command scheduler at `0 3 * * *` (03:00 UTC), named `Cyrus nightly replay chain`.
 Its command invokes `bash dev/scripts/nightly-replay.sh` with `REDGUARD_DIR` pointing
 to the shared read-only install and `CYRUS_CONFIG_DIR` pointing to persistent
