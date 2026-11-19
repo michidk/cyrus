@@ -93,6 +93,12 @@ World-loading checks enumerate WORLD.INI and export every entry, including
 worlds sharing a map with different palettes. Successful export proves loading
 coverage; visual fidelity still requires comparison with the original.
 
+For settled browser/native frames, use identical SYSTEM.INI and WORLD.INI
+inputs and record their hashes. Start the settling interval after the first
+ordinary actor update: game-clock progress and scene readiness can precede
+actor model preparation. `stopAfterWorldProgress` in `capture-cdp.mjs` enforces
+that boundary before stopping animation callbacks for readback.
+
 ## The fidelity switch
 
 `Fidelity` is a resource with one `Mode` per `Area` (`fog`, `sky`, `lighting`, `textures`,

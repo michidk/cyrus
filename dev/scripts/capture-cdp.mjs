@@ -85,3 +85,23 @@ export function stopAtWorldEndpoint(minimumUpdate = 1) {
     callback(time);
   });
 }
+
+// Game time can advance while actor model preparation still blocks ordinary updates.
+// Install in a disposable page before startup; durations are simulated seconds.
+export function stopAfterWorldProgress(minimumGameSeconds = 4, settleGameSeconds = 2) {
+  const schedule = window.requestAnimationFrame.bind(window);
+  let origin;
+  window.requestAnimationFrame = callback => schedule(time => {
+    const startup = window.__cyrusStartup, capture = window.__cyrusCapture;
+    const seconds = startup?.clock?.game_seconds;
+    if (startup?.state === 'InGame' && capture?.ready
+        && capture.boundary?.update >= 1 && Number.isFinite(seconds)) {
+      origin ??= seconds;
+      if (seconds >= minimumGameSeconds && seconds - origin >= settleGameSeconds) {
+        window.__cyrusEndpointStopped = true;
+        return;
+      }
+    } else { origin = undefined; }
+    callback(time);
+  });
+}

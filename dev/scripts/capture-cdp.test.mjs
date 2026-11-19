@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { captureStoppedFrame, stopAtWorldEndpoint } from './capture-cdp.mjs';
+import { captureStoppedFrame, stopAtWorldEndpoint, stopAfterWorldProgress } from './capture-cdp.mjs';
 
 test('slow screenshot readback retains the stopped endpoint instead of advancing gameplay', async () => {
   const frame = 1;
@@ -59,5 +59,33 @@ test('a matched ordinary-update cutoff permits all four updates before stopping'
     for(let frame=0;frame<5;frame++) callbacks.shift()(frame);
     assert.equal(window.__cyrusCapture.scripts.globals.world_loop_frame,4);
     assert.equal(window.__cyrusEndpointStopped,true);
+  } finally { delete globalThis.window; }
+});
+
+test('settling starts at an ordinary update even when the game clock already advanced', () => {
+  const callbacks = [];
+  globalThis.window = {
+    requestAnimationFrame: callback => callbacks.push(callback),
+    __cyrusStartup: {state:'InGame',clock:{game_seconds:4}},
+    __cyrusCapture: {ready:true,world:'1',boundary:{generation:1,update:0}},
+  };
+  try {
+    stopAfterWorldProgress(4, 2);
+    let frames = 0;
+    const update = () => { frames++; window.requestAnimationFrame(update); };
+    window.requestAnimationFrame(update);
+    callbacks.shift()(0);
+    assert.equal(frames, 1);
+    assert.equal(window.__cyrusEndpointStopped, undefined);
+    window.__cyrusCapture.boundary.update = 1;
+    window.__cyrusStartup.clock.game_seconds = 5;
+    callbacks.shift()(1);
+    window.__cyrusStartup.clock.game_seconds = 6.9;
+    callbacks.shift()(2);
+    assert.equal(frames, 3);
+    window.__cyrusStartup.clock.game_seconds = 7;
+    callbacks.shift()(3);
+    assert.equal(frames, 3);
+    assert.equal(window.__cyrusEndpointStopped, true);
   } finally { delete globalThis.window; }
 });
