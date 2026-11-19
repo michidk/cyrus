@@ -113,3 +113,5 @@ Logbook scrolls use the published software-Voodoo four-bit encoded-channel filte
 World-loading fades composite the black rectangle in encoded framebuffer channels, with RGB565 destination reconstruction and ordered storage, following preservation’s HUD, sky and movie blend contracts. The logical twelve-per-tick opacity remains available to presentation capture.
 
 Loading fades and inventory composition share `cyrus_assets::framebuffer::blend` for encoded integer destination reconstruction and storage.
+
+Examine models use the shared integer texture filter and ordered RGB565 storage, as the logbook scrolls do.

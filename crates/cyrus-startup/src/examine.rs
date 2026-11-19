@@ -320,7 +320,7 @@ fn build_scene(
     );
     let matrix = orientation(pose);
     let origin = pose.position;
-    let mut scene = LitScene::default();
+    let mut scene = LitScene::framebuffer();
     let mut local = std::collections::BTreeMap::new();
     for face in &model.faces {
         let (texture, bias) = match face.texture {
@@ -423,6 +423,18 @@ mod tests {
             }],
         };
         (artwork, model)
+    }
+
+    #[test]
+    fn examine_model_requests_integer_filtering_and_framebuffer_storage() {
+        let (artwork, model) = quad(0);
+        let scene = build_scene(&artwork, &model, &pose(), &look()).unwrap();
+        assert!(
+            scene.framebuffer,
+            "examine fragments must use the original framebuffer path"
+        );
+        assert_eq!(scene.faces.len(), 2);
+        assert_eq!(scene.textures[0].0, 4);
     }
 
     fn pose() -> ViewerPose {
