@@ -8,18 +8,24 @@ import unittest
 
 
 class Nightly(unittest.TestCase):
-    def run_nightly(self, status, pull_status=0, hauler=True, interrupted=False):
+    def run_nightly(self, status, pull_status=0, hauler=True, interrupted=False,
+                    replace_script=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             commands = root / "bin"
             commands.mkdir()
+            script_path = root / "repo/dev/scripts/nightly-replay.sh"
+            script_path.parent.mkdir(parents=True)
+            script_path.write_text(Path(__file__).with_name("nightly-replay.sh").read_text())
             if interrupted:
                 pending = root / "config/nightly/unfinished.issue.md"
                 pending.parent.mkdir(parents=True)
                 pending.write_text("Previous run interrupted; not counted as passing.\n")
             for name, body in {
                 "git": f'if [ "$1" = rev-parse ]; then echo test-commit; else exit {pull_status}; fi',
-                "just": f'echo "$*" >> "$CALLS"; if [ "$1" = replay-chain ]; then exit {status}; fi',
+                "just": ('echo "$*" >> "$CALLS"; if [ "$1" = replay-chain ]; then '
+                         + ('awk \'BEGIN {for(i=0;i<10000;i++) print ""; print "exit 99"}\' > "$SOURCE_SCRIPT"; '
+                            if replace_script else '') + f'exit {status}; fi'),
                 "gh": 'echo "$*" >> "$CALLS"; cat "$7" > "$REPORT"',
                 **({"cargo-hauler": "exit 0"} if hauler else {}),
             }.items():
@@ -28,8 +34,9 @@ class Nightly(unittest.TestCase):
                 script.chmod(0o755)
             env = dict(os.environ, PATH=f"{commands}:/usr/bin:/bin",
                        CYRUS_CONFIG_DIR=str(root / "config"), REDGUARD_DIR=str(root / "install"),
-                       CALLS=str(root / "calls"), REPORT=str(root / "report"))
-            result = subprocess.run(["bash", str(Path(__file__).with_name("nightly-replay.sh"))],
+                       CALLS=str(root / "calls"), REPORT=str(root / "report"),
+                       SOURCE_SCRIPT=str(script_path))
+            result = subprocess.run(["bash", str(script_path)],
                                     env=env, capture_output=True, text=True)
             calls = (root / "calls").read_text() if (root / "calls").exists() else ""
             report = (root / "report").read_text() if (root / "report").exists() else ""
@@ -65,6 +72,12 @@ class Nightly(unittest.TestCase):
         self.assertEqual(calls.count("issue comment 322"), 1)
         self.assertTrue(calls.endswith("replay-chain\n"))
         self.assertIn("Previous run interrupted", report)
+
+    def test_source_replacement_during_run_does_not_change_execution(self):
+        status, calls, report = self.run_nightly(0, replace_script=True)
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, "replay-chain\n")
+        self.assertEqual(report, "")
 
 
 if __name__ == "__main__":

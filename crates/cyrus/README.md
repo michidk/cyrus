@@ -184,5 +184,7 @@ under the configured state directory. A retained unfinished-run marker reports
 a pod-interrupted run on the next invocation before retrying from New Game.
 The schedule registry persists under
 `~/.config/vibepod/schedules.json`. The previous T3 agent schedule is disabled.
+The wrapper snapshots its shell source before pulling, so updating that file
+during a run cannot change the remaining commands of the active run.
 GitHub CI validates the committed fixture schemas, comparator and nightly wrapper
 without an install.

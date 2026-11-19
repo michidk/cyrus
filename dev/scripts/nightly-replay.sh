@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Install-backed scheduled verification; the scheduler supplies persistent paths.
 set -euo pipefail
+if [[ "${1:-}" != --snapshot ]]; then
+    exec bash -c "$(cat "$0")" "$0" --snapshot "$@"
+fi
+shift
 cd "$(dirname "$0")/../.."
 : "${CYRUS_CONFIG_DIR:?set a persistent nightly state directory}"
 : "${REDGUARD_DIR:?set the read-only install directory}"
