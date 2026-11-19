@@ -98,3 +98,6 @@ Examples (all need `--features native` and an install; keep output under `magic/
 
 The native `cyrus --audit-worlds` command reports skipped placements and texture
 fallbacks for every world.
+
+Declared BSI skies are prepared independently of terrain WLD availability.
+The same environment record supplies them to native and browser rendering.

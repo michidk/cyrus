@@ -225,3 +225,38 @@ fn installed_glide_sky_neither_reads_nor_falls_back_to_software_artwork() -> Res
     assert_eq!(files.read("WORLD.INI")?, original);
     Ok(())
 }
+
+#[test]
+fn installed_sky_is_prepared_without_terrain() -> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::open(&root) else {
+        eprintln!("skipped: no install (sky without terrain)");
+        return Ok(());
+    };
+    let source = Files::open(&install)?;
+    let worlds = rgpre::import::world_ini::WorldIni::parse(std::str::from_utf8(
+        &cyrus_assets::source::ReadAssets::read(&source, "WORLD.INI")?,
+    )?);
+    let world = worlds
+        .entries
+        .iter()
+        .find(|entry| entry.index == 14)
+        .unwrap();
+    assert!(world.world.is_none(), "VILE has no terrain WLD");
+    let files = cyrus_assets::game::prepare(&source, "14.environment")?;
+    let environment: Environment = serde_json::from_slice(&files["14.environment"])?;
+    environment.validate()?;
+    let sky = environment
+        .sky
+        .expect("VILE declares its own sky without terrain");
+    assert!(
+        sky.rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel != &sky.rgba[..4])
+    );
+    Ok(())
+}

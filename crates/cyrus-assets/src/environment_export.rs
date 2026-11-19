@@ -277,7 +277,7 @@ pub(crate) fn prepare(
     let ini = crate::preparation::text(source, "WORLD.INI")?;
     let system = crate::preparation::text(source, "SYSTEM.INI")?;
     let system_settings = rgpre::import::system_ini::SystemIni::parse(&system)?;
-    let sky = if entry.world.is_some() && !sky_disabled(&system)? {
+    let sky = if !sky_disabled(&system)? {
         value(&ini, "world_skyfx", entry.index)
             .map(|filename| -> anyhow::Result<SkyImage> {
                 let relative = format!("fxart/{filename}");
