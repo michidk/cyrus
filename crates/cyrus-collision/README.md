@@ -47,3 +47,6 @@ dev/scripts/check-core-boundaries.sh   # keeps presentation, parser and transpor
 
 Tests in `tests/` cover terrain, materials, model meshes, candidates, support and
 overlap. Gameplay composition is tested in `cyrus-script`.
+
+Static view windows clamp to the map edges for out-of-map cameras, using the
+same preserved regional window rule as ordinary actor traversal.

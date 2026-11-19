@@ -146,14 +146,10 @@ impl ActorLists {
         view: [i32; 2],
         published_camera: Option<[i32; 3]>,
     ) -> Result<&[ScriptActorId]> {
-        anyhow::ensure!(
-            view.iter().all(|v| (0..=65535).contains(v)),
-            "ordinary actor view {view:?} outside supported map"
-        );
         let first = view.map(|v| {
             (if v < 4608 {
                 0
-            } else if v + 4608 > 65535 {
+            } else if v > 65535 - 4608 {
                 56319
             } else {
                 v - 4608

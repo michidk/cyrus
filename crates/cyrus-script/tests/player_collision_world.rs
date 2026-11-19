@@ -104,6 +104,7 @@ fn startup_settling_ranks_water_terrain_against_static_support() {
     scene.static_collision = StaticCollision::new(&CollisionScene::default()).unwrap();
     settle_static(&scene, &mut pose).unwrap();
     pose.position[0] = 100_000 * 256;
+    pose.position[2] = 100_000 * 256;
     assert!(settle_static(&scene, &mut pose).is_err());
 }
 

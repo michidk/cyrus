@@ -120,3 +120,6 @@ the body and head spheres, following preservation 0.13.2
 Held torches publish their installed model attachment and transient tip light during
 the admitted model update. The burn counter alone does not equip a torch; the held
 item, completed lighting transition, item system and shell context gate emission.
+
+Ordinary actor view windows clamp to the map edges even when a carried player
+and camera leave the authored map, following preservation’s animation traversal rule.

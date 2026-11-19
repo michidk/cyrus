@@ -51,10 +51,12 @@ fn the_window_lists_only_placements_near_the_view_without_a_distance_test() {
     let far = world.window_models([60000, 60000]).unwrap();
     assert_eq!(far[0].instance, ModelInstance::StaticPlacement(1));
     assert!(world.window_models([30000, 30000]).unwrap().is_empty());
-    assert!(
-        world.window_models([-1, 0]).is_err(),
-        "a view outside the map is rejected"
-    );
+    let lower = world.window_models([i32::MIN, -1]).unwrap();
+    assert_eq!(lower.len(), 1);
+    assert_eq!(lower[0].instance, near[0].instance);
+    let upper = world.window_models([65536, i32::MAX]).unwrap();
+    assert_eq!(upper.len(), 1);
+    assert_eq!(upper[0].instance, far[0].instance);
 }
 
 #[test]

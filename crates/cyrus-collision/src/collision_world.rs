@@ -325,14 +325,10 @@ impl StaticCollision {
 
     /// First cell of the 18 by 18 static window around `view` (map units).
     fn window_origin(view: [i32; 2]) -> anyhow::Result<[i32; 2]> {
-        anyhow::ensure!(
-            view.iter().all(|v| (0..=65535).contains(v)),
-            "static view outside map"
-        );
         Ok(view.map(|v| {
             (if v < 4608 {
                 0
-            } else if v + 4608 > 65535 {
+            } else if v > 65535 - 4608 {
                 56319
             } else {
                 v - 4608

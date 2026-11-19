@@ -90,6 +90,49 @@ fn installed_island_plank_acquires_player_support() -> Result<()> {
         world.spatial(plank)?.linked_position().is_some(),
         "installed plank did not establish its moving-owner link"
     );
+    // Follow the carried player beyond the authored map boundary. Regional traversal
+    // clamps its window there; it must not stop subsequent controller updates.
+    let mut left_map = false;
+    for _ in 0..8 {
+        let view = {
+            let actors = app.world().resource::<ScriptActors>();
+            actors
+                .current
+                .as_ref()
+                .context("world unavailable")?
+                .spatial(player)?
+                .local
+                .position
+        };
+        left_map |= [view[0], view[2]]
+            .iter()
+            .any(|value| !(0..=65535).contains(&(value >> 8)));
+        app.world_mut().resource_mut::<ScriptView>().position = view;
+        let before = app
+            .world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .elapsed_frame_scale();
+        app.update();
+        ensure!(
+            !matches!(
+                app.world().resource::<cyrus_script::script::ScriptStatus>(),
+                cyrus_script::script::ScriptStatus::Failed { .. }
+            ),
+            "plank carry stopped ordinary updates: {:?}",
+            app.world().resource::<cyrus_script::script::ScriptStatus>()
+        );
+        ensure!(
+            app.world()
+                .resource::<cyrus_script::clock::SimulationClock>()
+                .elapsed_frame_scale()
+                > before,
+            "plank carry stopped the simulation clock at {before}"
+        );
+    }
+    ensure!(
+        left_map,
+        "plank fixture did not carry the camera out of the map"
+    );
     Ok(())
 }
 

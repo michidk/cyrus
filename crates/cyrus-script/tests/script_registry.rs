@@ -2655,8 +2655,10 @@ fn ordinary_actor_lists_preserve_cells_borders_and_persistent_creation_order() {
         [11, 4, 1, 0, 2, 3, 12, 16, 15, 14, 8, 7]
     );
     assert!(ids.iter().all(|id| id.generation == 19));
-    assert!(world.ordinary_actors([-1, 0]).is_err());
-    assert!(world.ordinary_actors([65536, 0]).is_err());
+    let lower = world.ordinary_actors([0, 0]).unwrap().to_vec();
+    assert_eq!(world.ordinary_actors([i32::MIN, -1]).unwrap(), lower);
+    let upper = world.ordinary_actors([65535, 65535]).unwrap().to_vec();
+    assert_eq!(world.ordinary_actors([65536, i32::MAX]).unwrap(), upper);
     assert_eq!(
         world
             .ordinary_actors([65535, 65535])
