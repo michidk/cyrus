@@ -38,6 +38,30 @@ class Checkpoints(unittest.TestCase):
                 timings.add(fixture["step_micros"])
         self.assertEqual(len(timings), 1)
 
+    def test_modal_input_retries_an_ignored_first_press_and_releases(self):
+        class Control:
+            def __init__(self):
+                self.frame = 0
+                self.presses = 0
+                self.held = False
+
+            def ready(self, *args, **kwargs):
+                return {"scripts": {"ordinary_updates": 233}}
+
+            def request(self, command):
+                if command["type"] == "input":
+                    self.held = command["action"] == "press"
+                    self.presses += self.held
+                    return {}
+                self.frame += 1
+                return {"frame": self.frame, "examine": {"open": self.presses < 2},
+                        "scripts": {"failed": 0}}
+
+        control = Control()
+        replay.play_modal(control, {"world": 1, "key": "Escape"})
+        self.assertEqual(control.presses, 2)
+        self.assertFalse(control.held)
+
     def test_position_tolerance_includes_boundary(self):
         self.assertEqual(replay.checkpoint(self.state, self.scripts, self.expected), 3)
 

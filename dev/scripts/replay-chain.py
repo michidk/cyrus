@@ -131,6 +131,38 @@ def repeat_inputs(control, repeat):
     assert reached(control, repeat["until"]), f"input repetition limit exhausted: {repeat['until']}"
 
 
+def play_modal(control, modal):
+    """Close a scripted viewer with balanced keys across sampled app frames.
+
+    A viewer can open before it samples its initial key release, so a tap in
+    that first frame may be ignored. Retry bounded presses after release frames.
+    Ordinary updates remain paused until the viewer has closed and keys release.
+    """
+    before = control.ready(modal["world"], examine_open=True)
+    deadline = time.monotonic() + 600
+
+    def frames():
+        state = control.request({"type": "state"})
+        start = state["frame"]
+        while state["frame"] < start + 2:
+            assert time.monotonic() < deadline, "modal input frame timeout"
+            assert state["scripts"]["failed"] == 0, "script failure during modal input"
+            time.sleep(0.05)
+            state = control.request({"type": "state"})
+        return state
+
+    for _ in range(32):
+        control.request({"type": "input", "key": modal["key"], "action": "press"})
+        try:
+            frames()
+        finally:
+            control.request({"type": "input", "key": modal["key"], "action": "release"})
+        if not frames()["examine"]["open"]:
+            control.ready(modal["world"], min_updates=before["scripts"]["ordinary_updates"] + 1)
+            return
+    raise AssertionError("modal input limit exhausted")
+
+
 def steer(control, target):
     """Reach an X/Z waypoint with bounded real key input, never state mutation.
 
@@ -261,10 +293,7 @@ def run(args):
                             if "repeat" in step:
                                 repeat_inputs(control, step["repeat"])
                             if "modal_input" in step:
-                                modal = step["modal_input"]
-                                before = control.ready(modal["world"], examine_open=True)
-                                control.request({"type": "input", "key": modal["key"], "action": "tap"})
-                                control.ready(modal["world"], min_updates=before["scripts"]["ordinary_updates"] + 1)
+                                play_modal(control, step["modal_input"])
                             if "checkpoint" in step:
                                 expected = step["checkpoint"]
                                 if observation is None:

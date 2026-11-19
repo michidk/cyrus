@@ -174,8 +174,9 @@ An optional `gait` selects `walk` (the default, Shift+Up) or `run` (Up alone).
 Use walking on narrow approaches and running on open ground.
 
 A `modal_input` step waits for the declared world’s scripted examine screen,
-sends the declared key as a tap, and requires ordinary updates to resume after
-it closes. This handles the harbour letter without bypassing the item viewer.
+retries at most 32 balanced presses of the declared key across observed app
+frames, and requires ordinary updates to resume after it closes. The viewer
+can ignore input before it samples its initial key release. This handles the harbour letter without bypassing the item viewer.
 
 Each checkpoint asserts a world, named quest/global flag values and latches,
 gameplay globals, inventory counts, and effective player position in map Q8
