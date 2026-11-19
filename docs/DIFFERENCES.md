@@ -555,8 +555,25 @@ entry-view differences. **Unknown:** which projection, clipping or texture-plane
 stage causes it. The fit approximates lighting with channel gains and is a
 diagnostic, not a parity correction. No fitted offset is applied to rendering.
 
+**Verified:** a second CAVERNS sample isolates 1,158 pixels on the brown wall,
+using its installed 128×256 texture. The same diagnostic reduces the original
+fit error from 6.914668 to 2.465891 MAE at (-2.125, -2.125) source texels;
+the native fit selects zero offset at 2.265434 MAE. Its fitted channel gains
+are close to the original's translated fit. **Inferred:** texture registration
+also contributes on this higher-error face. The exact rendering stage remains
+unknown.
+
 **Verified:** the refined VILE trunk sample has original/native MAE 0.002222
 over 1,200 pixels. The earlier rectangle labeled as a trunk sampled water;
 the earlier HIDEINT rectangle also included water along the cave boundary.
 Those rectangles remain scene measurements and do not establish static-surface
 parity. The refined trunk and cave-wall samples both match the browser exactly.
+
+**Verified:** the browser's START sky differs from native by MAE 11.151208
+over 79,200 pixels after both sky scroll offsets are set to zero; 77,092 pixels
+differ. The fixed deck sample matches exactly. The prepared sky image hash,
+dimensions, level, scale and background match, and the browser's live WebGL
+material confirms zero scroll and the same sky parameters. **Unknown:** the
+remaining shader or backend rendering cause. This controlled residual is not
+attributed to independent sky timing. See the
+[browser sweep](https://github.com/michidk/cyrus/issues/326).
