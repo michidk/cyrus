@@ -542,3 +542,15 @@ admits no original pair: direct entry remains at zero actors and zero updates
 for 120 seconds; the final in-game path fails interactive-console admission
 before a load command is sent. World 29 is a separate entry.
 See the [world sweep and ranked measurements](https://github.com/michidk/cyrus/issues/323).
+
+**Verified:** a per-face installed-texture diagnostic isolates 1,274 CATACOMB
+wall pixels and 915 CAVERNS wall pixels. Both selected textures are 256×256
+and static, with unit texture reduction. Fitting only channel gains to the
+installed texture gives original errors of 6.610158 and 1.430399 MAE.
+Allowing a texture-coordinate translation reduces them to 2.321618 and
+0.611683; the fitted offsets are (+0.125, +2.000) and (-2.500, -2.875)
+source texels. Native fits select zero offset, with errors 2.291650 and
+0.561001. **Inferred:** texture-coordinate registration contributes to these
+entry-view differences. **Unknown:** which projection, clipping or texture-plane
+stage causes it. The fit approximates lighting with channel gains and is a
+diagnostic, not a parity correction. No fitted offset is applied to rendering.
