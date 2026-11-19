@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Checkpoint contracts with synthetic public observations, without an install."""
+import copy
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+
+spec = importlib.util.spec_from_file_location("replay_chain", Path(__file__).with_name("replay-chain.py"))
+replay = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(replay)
+
+
+class Checkpoints(unittest.TestCase):
+    def setUp(self):
+        self.state = {"script_hud": {"inventory": {"counts": {"1": 2}}}}
+        self.scripts = {
+            "world": 7,
+            "flags": {"flags": [{"definition": {"name": "test_flag"}, "value": 3, "latched": True}]},
+            "globals": {"lockout": 0},
+            "player_position_q8": [10, 20, 30],
+        }
+        self.expected = {
+            "world": 7, "flags": {"test_flag": {"value": 3, "latched": True}},
+            "globals": {"lockout": 0}, "inventory": {"1": 2},
+            "position_q8": {"value": [10, 20, 33], "tolerance": 3},
+        }
+
+    def test_repository_fixtures_are_input_only_and_share_timing(self):
+        fixtures = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "chapters").glob("*.replay.json"))
+        self.assertTrue(fixtures, "the replay chain must contain a chapter")
+        timings = set()
+        for path in fixtures:
+            with self.subTest(path=path):
+                fixture = json.loads(path.read_text())
+                replay.validate(fixture)
+                timings.add(fixture["step_micros"])
+        self.assertEqual(len(timings), 1)
+
+    def test_position_tolerance_includes_boundary(self):
+        self.assertEqual(replay.checkpoint(self.state, self.scripts, self.expected), 3)
+
+    def test_corrupted_flag_fails_with_name_and_values(self):
+        expected = copy.deepcopy(self.expected)
+        expected["flags"]["test_flag"]["value"] = 4
+        with self.assertRaisesRegex(AssertionError, "flags/test_flag/value: expected 4, got 3"):
+            replay.checkpoint(self.state, self.scripts, expected)
+
+    def test_fixture_rejects_mutating_commands_and_incomplete_checkpoints(self):
+        valid = {"version": 1, "step_micros": 100000, "steps": [{"checkpoint": self.expected}]}
+        replay.validate(valid)
+        for step in [{"set_flag": 1}, {"checkpoint": {"world": 7}},
+                     {"checkpoint": self.expected, "input": []}]:
+            with self.subTest(step=step), self.assertRaises(AssertionError):
+                replay.validate({**valid, "steps": [step]})
+
+    def test_repeat_is_bounded_when_expected_flag_never_arrives(self):
+        class Control:
+            schedules = 0
+
+            def ready(self, **kwargs):
+                return {"hud": {"health": 100}, "scripts": {"world": 7}}
+
+            def request(self, command):
+                return {"flags": {"flags": [{"definition": {"name": "flag"}, "value": 0, "latched": False}]}}
+
+            def response(self, command):
+                self.schedules += 1
+                return {"ok": True}
+
+        control = Control()
+        with self.assertRaisesRegex(AssertionError, "input repetition limit exhausted"):
+            replay.repeat_inputs(control, {
+                "until": {"flags": {"flag": {"value": 1}}}, "limit": 2,
+                "steps": [{"input": [{"after_updates": 0}]}],
+            })
+        self.assertEqual(control.schedules, 2)
+
+    def test_healing_condition_does_not_send_input_above_threshold(self):
+        class Control:
+            def ready(self):
+                return {"hud": {"health": 80}}
+
+            def response(self, command):
+                raise AssertionError("unexpected input")
+
+        self.assertFalse(replay.play_inputs(Control(), {
+            "when_health_below": 45, "input": [{"after_updates": 0}],
+        }))
+
+    def test_each_checkpoint_category_is_checked(self):
+        for category, wrong in [("world", 8), ("globals", {"lockout": 1}),
+                                ("inventory", {"1": 0}),
+                                ("position_q8", {"value": [100, 20, 30], "tolerance": 3})]:
+            with self.subTest(category=category):
+                expected = copy.deepcopy(self.expected)
+                expected[category] = wrong
+                with self.assertRaises(AssertionError):
+                    replay.checkpoint(self.state, self.scripts, expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -39,6 +39,7 @@ Native-only flags:
 | Flag | Meaning |
 | --- | --- |
 | `--headless` | No window; shared scene, gameplay and cinematic assembly, with a scheduled app loop |
+| `--replay-step-micros N` | Positive diagnostic host-clock duration per app update; requires `--headless` |
 | `--control ADDR` | Control server address (default `127.0.0.1:7117`, env `CYRUS_CONTROL_ADDR`) |
 | `--load-slot SLOT`, `--list-slots` | Restore the newest revision of a save slot through the book; print slots as JSON |
 | `--export-scene --scene NAME`, `--list-worlds` | Prepare one world and exit; print accepted world names |
@@ -112,3 +113,63 @@ just run-native --fixture dev/fixtures/<world>.json   # matched viewpoint, see d
 ```
 
 Tests that need the install skip without one and say so.
+
+The control `scripts` observation includes a read-only `flags` snapshot with ordered
+installed definitions, current values and independent latches, plus `player_position_q8` from the selected
+player’s effective map pose. Reading it runs no
+script operations and does not change the world.
+
+## Recorded replay chain
+
+Run `REDGUARD_DIR=/path/to/Redguard CYRUS_CONFIG_DIR=/writable/state just replay-chain`
+to start a fresh headless New Game and run the ordered chapter fixtures in
+`dev/fixtures/chapters/`. Supply fixture paths to run a selected sequence from
+New Game. `just replay <chapter.replay.json> <label>` also starts from New Game. Later
+chapters require their predecessors through `replay-chain`.
+The runner retains a source-verified executable through the native recovery
+build and cargo-hauler. `CYRUS_REPLAY_BINARY` selects an already
+built executable. Each config directory has an exclusive run lock and retains
+process logs and checkpoint observations.
+
+Use `just replay-chain --keep-running` to record the next chapter from the
+passing session. Its control address is printed and written to
+`CYRUS_CONFIG_DIR/control-address`. The process and run lock remain owned by
+the runner until the game quits.
+
+A chapter document contains version `1`, `step_micros`, and `steps`. Timing is
+an explicit replay input. `--headless --replay-step-micros N` supplies the same
+positive host-clock duration to every app update, including audio playback,
+through Bevy's manual time source. Normal launches use the real host clock.
+All chapters in a chain must supply the same duration. This does not promise
+identical combat outcomes or asynchronous loading schedules. The simulation rules and
+Faithful defaults are unchanged.
+
+Each input step contains `input`, a `schedule_input` event list with offsets in
+ordinary updates, balanced key presses/releases, and an initial offset of zero.
+A step ending in a world transition also declares `transition_to`. Losing the
+old world's input boundary is accepted only after that target world becomes
+ready and advances ordinary updates. Remaining input steps in that chapter are
+then skipped and its checkpoints still run. Other schedule errors fail the run.
+
+A bounded `repeat` contains keyboard input steps, a repetition `limit`, and an
+`until` expectation for world and/or named flags. The opening repeats attacks
+until both pirates are dead, matching the native recording strategy. An input
+step may specify `when_health_below` for a recorded healing strategy. Failure to
+reach the expected condition exhausts the bound and fails the replay. The final
+inventory checkpoint checks the retained nonconsumable items; the initial
+checkpoint also checks the starting healing-item count.
+
+A `modal_input` step waits for the declared world’s scripted examine screen,
+sends the declared key as a tap, and requires ordinary updates to resume after
+it closes. This handles the harbour letter without bypassing the item viewer.
+
+Each checkpoint asserts a world, named quest/global flag values and latches,
+gameplay globals, inventory counts, and effective player position in map Q8
+units. Dictionary expectations select fields; the position uses Euclidean
+distance and an explicit tolerance. Fixtures contain keyboard inputs, supplied
+timing and expected observations, without game data or saves. The runner fails
+if no fixtures exist. Hosted CI tests the comparator without an install; actual
+route replay requires the player's install.
+
+The install-backed nightly task runs `just replay-chain` on main at 03:00 UTC.
+GitHub CI validates the committed fixture schemas and comparator without an install.

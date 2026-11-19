@@ -91,9 +91,17 @@ just run-headless --new-game --skip-movies # unattended gameplay + control serve
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
 
-Headless mode creates no camera or audio backend. Control state reports a null
-camera position; player input, preload, world export and protocol commands remain
-available. Use a windowed run for camera and screenshot checks.
+Headless mode runs the shared CPU scene, camera, gameplay and cinematic lifecycle
+without a window or GPU backend. Its silent audio transport consumes decoded
+sources so speech and script waits complete without an output device. Use a
+windowed run for rendered camera and screenshot checks.
+
+`just replay-chain` runs the recorded chapter fixtures from a fresh New Game with
+the player's install. Set `REDGUARD_DIR` and a persistent `CYRUS_CONFIG_DIR` for
+unattended runs. Fixtures supply keyboard inputs and an explicit app-update
+clock duration through `--headless --replay-step-micros`; normal gameplay keeps
+using host time. See the [native crate README](../crates/cyrus/README.md#recorded-replay-chain)
+for checkpoint fields, tolerances and retained run evidence.
 
 Both native executables can be opened without arguments, including by double-clicking
 on Windows. If no usable install is found, the same window shows the Redguard

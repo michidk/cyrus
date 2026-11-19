@@ -678,7 +678,16 @@ fn handle(
                     .as_ref()
                     .and_then(|actors| actors.current.as_ref())
                 {
-                    Some(world) => Ok(world.inspect(offset, limit)),
+                    Some(world) => {
+                        let mut observation = world.inspect(offset, limit);
+                        observation["flags"] = json!(world.snapshot_flags());
+                        observation["player_position_q8"] = json!(world
+                            .selected_player()
+                            .and_then(|id| world.spatial(id).ok())
+                            .and_then(|spatial| spatial.effective.as_ref())
+                            .map(|pose| pose.position));
+                        Ok(observation)
+                    }
                     None => Err("script world is not prepared".into()),
                 }
             }
@@ -1500,6 +1509,32 @@ mod tests {
                 environment_path: "test.environment".into(),
             });
         app
+    }
+
+    #[test]
+    fn public_script_inspection_exposes_read_only_global_flags() {
+        let mut app = script_app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, result) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 1,
+                cmd: Command::Scripts {
+                    offset: 0,
+                    limit: 1,
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        let response = result.try_recv().unwrap();
+        assert!(response.ok);
+        let value = response.result.unwrap();
+        assert_eq!(value["world"], 17);
+        assert_eq!(value["flags"], json!({"version": 1, "flags": []}));
+        assert!(value["player_position_q8"].is_null());
     }
 
     #[test]

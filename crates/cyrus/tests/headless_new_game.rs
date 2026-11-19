@@ -50,6 +50,11 @@ fn run_new_game(skip_movies: bool) {
         Command::new(env!("CARGO_BIN_EXE_cyrus"))
             .args(["--headless", "--new-game", "--volume", "0"])
             .args(if skip_movies {
+                vec!["--replay-step-micros", "16667"]
+            } else {
+                vec![]
+            })
+            .args(if skip_movies {
                 vec!["--skip-movies"]
             } else {
                 vec![]
@@ -119,6 +124,11 @@ fn run_new_game(skip_movies: bool) {
             .unwrap();
     assert_eq!(initial["scripts"]["world"], menu.new_game.world);
     assert!(initial["player"].is_object(), "{initial}");
+    let inspected = request(&mut stream, json!({"type":"scripts","offset":0,"limit":1}));
+    assert_eq!(inspected["world"], initial["scripts"]["world"]);
+    assert_eq!(inspected["flags"]["version"], 1);
+    assert_eq!(inspected["player_position_q8"].as_array().unwrap().len(), 3);
+    assert!(!inspected["flags"]["flags"].as_array().unwrap().is_empty());
     request(
         &mut stream,
         json!({"type":"input","key":"ArrowUp","action":"press"}),
@@ -135,6 +145,16 @@ fn run_new_game(skip_movies: bool) {
         assert!(Instant::now() < deadline, "input/clock timeout: {state}");
         std::thread::sleep(Duration::from_millis(100));
     };
+    if skip_movies {
+        let updates = advanced["scripts"]["ordinary_updates"].as_u64().unwrap()
+            - initial["scripts"]["ordinary_updates"].as_u64().unwrap();
+        let elapsed = advanced["clock"]["game_seconds"].as_f64().unwrap()
+            - initial["clock"]["game_seconds"].as_f64().unwrap();
+        assert!(
+            (elapsed - updates as f64 * 0.016667).abs() < 0.001,
+            "replay clock did not follow supplied timing: {updates} updates, {elapsed} seconds"
+        );
+    }
     request(
         &mut stream,
         json!({"type":"input","key":"ArrowUp","action":"release"}),

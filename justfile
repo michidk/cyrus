@@ -97,6 +97,10 @@ compare LABEL:
 replay FIXTURE LABEL:
     dev/scripts/replay.sh {{FIXTURE}} {{LABEL}}
 
+# Input-only chapter fixtures in one fresh headless New Game session.
+replay-chain *FIXTURES:
+    dev/scripts/replay-chain.sh {{FIXTURES}}
+
 # reference clones under magic/reference (untracked): format docs and the Unity reimplementation
 reference:
     mkdir -p magic/reference

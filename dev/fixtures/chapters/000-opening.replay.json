@@ -1,0 +1,572 @@
+{
+  "version": 1,
+  "step_micros": 100000,
+  "steps": [
+    {
+      "checkpoint": {
+        "world": 0,
+        "flags": {
+          "timeofday": {
+            "value": 1,
+            "latched": false
+          },
+          "killbrennan": {
+            "value": 0,
+            "latched": false
+          },
+          "DEADPIRATES": {
+            "value": 0,
+            "latched": false
+          }
+        },
+        "globals": {
+          "lockout": 0
+        },
+        "inventory": {
+          "0": 0,
+          "1": 1,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0,
+          "16": 0,
+          "17": 0,
+          "18": 1,
+          "19": 0,
+          "2": 53,
+          "20": 0,
+          "21": 0,
+          "22": 0,
+          "23": 0,
+          "24": 0,
+          "25": 0,
+          "26": 0,
+          "27": 0,
+          "28": 0,
+          "29": 0,
+          "3": 0,
+          "30": 0,
+          "31": 0,
+          "32": 0,
+          "33": 0,
+          "34": 0,
+          "35": 0,
+          "36": 0,
+          "37": 0,
+          "38": 0,
+          "39": 0,
+          "4": 6,
+          "40": 0,
+          "41": 0,
+          "42": 0,
+          "43": 0,
+          "44": 0,
+          "45": 0,
+          "46": 0,
+          "47": 0,
+          "48": 0,
+          "49": 0,
+          "5": 0,
+          "50": 0,
+          "51": 0,
+          "52": 0,
+          "53": 0,
+          "54": 0,
+          "55": 0,
+          "56": 0,
+          "57": 0,
+          "58": 0,
+          "59": 0,
+          "6": 0,
+          "60": 0,
+          "61": 0,
+          "62": 0,
+          "63": 0,
+          "64": 0,
+          "65": 0,
+          "66": 0,
+          "67": 0,
+          "68": 0,
+          "69": 0,
+          "7": 0,
+          "70": 0,
+          "71": 0,
+          "72": 0,
+          "73": 0,
+          "74": 0,
+          "75": 0,
+          "76": 0,
+          "77": 0,
+          "78": 0,
+          "79": 0,
+          "8": 0,
+          "80": 0,
+          "81": 0,
+          "82": 0,
+          "83": 0,
+          "84": 0,
+          "85": 0,
+          "86": 0,
+          "9": 0
+        },
+        "position_q8": {
+          "value": [
+            8372736,
+            -70400,
+            8613376
+          ],
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "repeat": {
+        "until": {
+          "world": 0,
+          "flags": {
+            "DEADPIRATES": {
+              "value": 2,
+              "latched": false
+            }
+          }
+        },
+        "limit": 40,
+        "steps": [
+          {
+            "input": [
+              {
+                "after_updates": 0,
+                "key": "KeyH",
+                "action": "press"
+              },
+              {
+                "after_updates": 2,
+                "key": "KeyH",
+                "action": "release"
+              }
+            ],
+            "when_health_below": 45
+          },
+          {
+            "input": [
+              {
+                "after_updates": 0,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 2,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 3,
+                "key": "ArrowRight",
+                "action": "press"
+              },
+              {
+                "after_updates": 4,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 6,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 8,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 10,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 12,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 14,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 16,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 18,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 20,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 22,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 24,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 26,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 28,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 30,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 32,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 34,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 36,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 38,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 40,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 42,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 44,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 46,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 48,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 50,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 52,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 54,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 56,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 58,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 60,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 62,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 64,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 66,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 68,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 70,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 72,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 74,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 76,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 78,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 80,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 82,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 84,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 86,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 88,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 90,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 92,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 94,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 96,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 98,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 100,
+                "key": "ArrowRight",
+                "action": "release"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "repeat": {
+        "until": {
+          "world": 1
+        },
+        "limit": 20,
+        "steps": [
+          {
+            "input": [
+              {
+                "after_updates": 0,
+                "key": "ShiftLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 2,
+                "key": "ShiftLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 100
+              }
+            ],
+            "transition_to": 1
+          }
+        ]
+      }
+    },
+    {
+      "modal_input": {
+        "world": 1,
+        "key": "Escape"
+      }
+    },
+    {
+      "checkpoint": {
+        "world": 1,
+        "flags": {
+          "timeofday": {
+            "value": 1,
+            "latched": false
+          },
+          "killbrennan": {
+            "value": 0,
+            "latched": false
+          },
+          "DEADPIRATES": {
+            "value": 2,
+            "latched": false
+          }
+        },
+        "globals": {
+          "lockout": 0
+        },
+        "inventory": {
+          "0": 0,
+          "1": 1,
+          "10": 0,
+          "11": 0,
+          "12": 0,
+          "13": 0,
+          "14": 0,
+          "15": 0,
+          "16": 0,
+          "17": 0,
+          "18": 1,
+          "19": 0,
+          "2": 53,
+          "20": 0,
+          "21": 0,
+          "22": 0,
+          "23": 0,
+          "24": 0,
+          "25": 0,
+          "26": 0,
+          "27": 0,
+          "28": 0,
+          "29": 0,
+          "3": 0,
+          "30": 0,
+          "31": 0,
+          "32": 0,
+          "33": 0,
+          "34": 0,
+          "35": 0,
+          "36": 0,
+          "37": 0,
+          "38": 0,
+          "39": 0,
+          "40": 0,
+          "41": 0,
+          "42": 0,
+          "43": 0,
+          "44": 0,
+          "45": 0,
+          "46": 0,
+          "47": 0,
+          "48": 0,
+          "49": 0,
+          "5": 0,
+          "50": 0,
+          "51": 0,
+          "52": 0,
+          "53": 0,
+          "54": 0,
+          "55": 0,
+          "56": 0,
+          "57": 0,
+          "58": 0,
+          "59": 0,
+          "6": 0,
+          "60": 0,
+          "61": 0,
+          "62": 0,
+          "63": 0,
+          "64": 0,
+          "65": 0,
+          "66": 0,
+          "67": 0,
+          "68": 0,
+          "69": 0,
+          "7": 0,
+          "70": 0,
+          "71": 0,
+          "72": 0,
+          "73": 0,
+          "74": 0,
+          "75": 0,
+          "76": 0,
+          "77": 0,
+          "78": 0,
+          "79": 0,
+          "8": 0,
+          "80": 0,
+          "81": 0,
+          "82": 0,
+          "83": 0,
+          "84": 0,
+          "85": 0,
+          "86": 0,
+          "9": 0
+        },
+        "position_q8": {
+          "value": [
+            9436678,
+            -71168,
+            9987533
+          ],
+          "tolerance": 256
+        }
+      }
+    }
+  ]
+}

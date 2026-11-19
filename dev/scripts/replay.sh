@@ -7,6 +7,10 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 fixture=${1:?usage: replay.sh <fixture.json|fixture.jsonl> <label>}
 label=${2:?usage: replay.sh <fixture.json|fixture.jsonl> <label>}
+if [[ "$fixture" == *.replay.json ]]; then
+    export CYRUS_CONFIG_DIR="${CYRUS_CONFIG_DIR:-magic/replay-chain/$label}"
+    exec dev/scripts/replay-chain.sh "$fixture"
+fi
 if [[ "$fixture" == *.json ]]; then
     exec node dev/scripts/matched-capture.mjs "$fixture" "$label"
 fi

@@ -31,6 +31,9 @@ struct Args {
     /// Run without a window, retaining scene assembly, gameplay and cinematic playback.
     #[arg(long)]
     headless: bool,
+    /// Diagnostic replay input: advance the host clock by this many microseconds per app update.
+    #[arg(long, requires = "headless", value_parser = clap::value_parser!(u64).range(1..))]
+    replay_step_micros: Option<u64>,
     /// Audit every installed WORLD.INI entry without a window; reports go under magic/artifacts/world-audit.
     #[arg(long)]
     audit_worlds: bool,
@@ -243,6 +246,11 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     } else {
         app.add_plugins(plugins);
     }
+    if let Some(micros) = args.replay_step_micros {
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_micros(micros),
+        ));
+    }
     app.add_plugins((
         cyrus_world::animation::AnimationPlugin,
         cyrus_world::lifecycle::WorldPlugin,
@@ -443,6 +451,17 @@ mod install_tests {
             );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn replay_clock_requires_headless_and_positive_duration() {
+        assert!(Args::try_parse_from(["cyrus", "--replay-step-micros", "16667"]).is_err());
+        assert!(
+            Args::try_parse_from(["cyrus", "--headless", "--replay-step-micros", "0"]).is_err()
+        );
+        let args =
+            Args::try_parse_from(["cyrus", "--headless", "--replay-step-micros", "16667"]).unwrap();
+        assert_eq!(args.replay_step_micros, Some(16667));
     }
 
     #[test]
