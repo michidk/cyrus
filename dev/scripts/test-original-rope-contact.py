@@ -119,6 +119,23 @@ class ContactDriver(unittest.TestCase):
 
 
 class ConsoleAttributeNames(unittest.TestCase):
+    def test_submitted_load_survives_console_close(self):
+        module = Readiness().module()
+        from unittest.mock import patch
+        for command in ['load 1,0,0', 'l 1,0,0']:
+            driver = module.Driver('unused', 1, .001)
+            pending = False
+            def key(value):
+                nonlocal pending
+                if value == 'Return':
+                    pending = True
+                elif value == 'Escape':
+                    pending = False
+            with patch.object(driver, 'key', side_effect=key), patch.object(driver, 'sample',
+                    return_value={'console_mode': 'interactive', 'frame': 7}), patch.object(module.time, 'sleep'):
+                driver.command(command)
+            self.assertTrue(pending, 'closing the console must retain the submitted world load')
+
     def test_underscore_is_polled_with_shift_held_and_released_on_failure(self):
         module = Readiness().module()
         for fail in [False, True]:

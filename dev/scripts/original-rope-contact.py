@@ -67,6 +67,7 @@ class Driver:
             self.input('keyup', 'ctrl')
 
     def command(self, text):
+        submitted_load = False
         self.key('F12')
         try:
             opened = self.sample('console-open')
@@ -97,9 +98,10 @@ class Driver:
                 else:
                     self.key({' ': 'space', '=': 'equal', ',': 'comma'}.get(char, char))
             self.key('Return')
+            submitted_load = text.strip().split(' ', 1)[0].lower() in ('load', 'l')
         finally:
-            # Escape leaves the console without reopening it or requesting a load.
-            self.key('Escape')
+            # Escape cancels a pending load; F12 commits the submitted request.
+            self.key('F12' if submitted_load else 'Escape')
 
     def journal(self, path, resume, placement):
         identity = dict(continue_version_prompt=self.continue_version_prompt, reader_sha256=hashlib.sha256(Path(self.reader).read_bytes()).hexdigest(),
