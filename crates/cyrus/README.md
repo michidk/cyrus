@@ -75,6 +75,13 @@ opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for con
   (`CYRUS_MIXER_CAPTURE_DIR`), are documented in [cyrus-control](../cyrus-control/README.md).
 - Headless assembly omits the camera and audio backend; rendering never depends
   on the audio backend.
+- `--headless` is a loader/control inspection host. It does not publish a ready
+  rendered world or admit ordinary gameplay updates. `--new-game` is rejected
+  with `--headless`. The smoke check asserts zero ordinary updates while input
+  is held; it does not verify playthrough progression. Existing `just replay`
+  fixtures provide static scene comparisons or legacy control replay, without
+  chapter checkpoints. [Playthrough regression replay #322](https://github.com/michidk/cyrus/issues/322)
+  tracks the recorded route and gameplay host needed for full-chain acceptance.
 
 ## World audit
 

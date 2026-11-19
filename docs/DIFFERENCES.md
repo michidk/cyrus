@@ -419,3 +419,22 @@ backend paths.
 Installed debug flags and the absence of an autosave do not automatically start a
 new game. This is an intentional launcher choice. Explicit New Game, movie, save
 and scene shortcuts retain their requested destinations.
+
+## Retained original saves and moving-actor acceptance
+
+**Verified:** cyrus loads its own session documents, not original SAV/TSG saves.
+This accepted compatibility limit prevents loading a retained original manual
+save directly for a death/restart comparison. The retained-save investigation
+verified one 800,468-byte original slot, but accepted zero paired death/restart
+sequences. Its final recorder attempt rejected a repeated update counter after
+one baseline at update 13, health 100. No death/restart visual residual was
+measured. See [the retained-save decision](https://github.com/michidk/cyrus/issues/320).
+
+**Unknown:** moving-actor contact parity. The accepted validation residual is
+zero matched contact pairs, not a measured collision offset. The earlier
+GUARD01 encounter matched 36 of 36 selected-player positions over 6,225 consumed
+clocks, but the native guard baseline differed by 147.1992 map units after
+warmup, so that run does not establish contact parity. The final attempt stopped at update 36, health 100, then rejected a missing
+other-actor observation before recording contact. Both traversal orders remain
+unverified. See [the contact decision](https://github.com/michidk/cyrus/issues/306).
+Neither residual changes Faithful defaults or authorizes a guessed response.
