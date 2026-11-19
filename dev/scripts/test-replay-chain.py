@@ -127,6 +127,29 @@ class Checkpoints(unittest.TestCase):
             self.assertLessEqual(math.dist(control.position, [4000, 0, 8000]), 600)
             self.assertTrue(control.commands)
 
+    def test_running_waypoint_uses_forward_without_walk_modifier(self):
+        class Control:
+            position = [0, 0, 0]
+
+            def ready(self):
+                return {"scripts": {"world": 1}, "hud": {"health": 100, "heading": 0}}
+
+            def request(self, command):
+                return {"world": 1, "player_position_q8": list(self.position)}
+
+            def response(self, command):
+                keys = {e.get("key") for e in command["events"] if e.get("action") == "press"}
+                if keys != {"ArrowUp"}:
+                    raise AssertionError(f"running waypoint pressed {keys}")
+                self.position[2] += 500
+                return {"ok": True}
+
+        observation = replay.steer(Control(), {
+            "world": 1, "position_q8": [0, 0, 2000], "tolerance": 600,
+            "limit": 10, "gait": "run",
+        })
+        self.assertEqual(observation["scripts"]["player_position_q8"], [0, 0, 1500])
+
     def test_waypoint_returns_trigger_observation_before_later_motion(self):
         outer = self
 

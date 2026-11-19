@@ -170,6 +170,8 @@ declared destination world is ready. An immediately following checkpoint uses th
 waypoint, before later animation frames advance. Vertical position is checked
 by that checkpoint. Use intermediate
 waypoints around obstacles; steering does not find paths or change game state.
+An optional `gait` selects `walk` (the default, Shift+Up) or `run` (Up alone).
+Use walking on narrow approaches and running on open ground.
 
 A `modal_input` step waits for the declared world’s scripted examine screen,
 sends the declared key as a tap, and requires ordinary updates to resume after

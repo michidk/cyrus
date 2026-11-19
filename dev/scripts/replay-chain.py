@@ -58,7 +58,8 @@ def validate_steps(steps, depth=0):
         elif "steer" in step:
             assert set(step) == {"steer"}, "steering cannot contain other commands"
             target = step["steer"]
-            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to"}, "incomplete steering target"
+            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to", "gait"}, "incomplete steering target"
+            assert target.get("gait", "walk") in ("walk", "run"), "invalid steering gait"
             assert len(target["position_q8"]) == 3 and all(math.isfinite(v) for v in target["position_q8"]), "invalid steering position"
             assert 0 < target["tolerance"] < float("inf"), "invalid steering tolerance"
             assert type(target["limit"]) is int and 1 <= target["limit"] <= 2000, "invalid steering limit"
@@ -158,7 +159,8 @@ def steer(control, target):
         error = (bearing - state["hud"]["heading"] + 1024) % 2048 - 1024
         # Short schedules resample heading after each turn and avoid strafing.
         turning = abs(error) > 48
-        keys = ["ArrowLeft" if error > 0 else "ArrowRight"] if turning else ["ShiftLeft", "ArrowUp"]
+        keys = (["ArrowLeft" if error > 0 else "ArrowRight"] if turning else
+                ["ArrowUp"] if target.get("gait", "walk") == "run" else ["ShiftLeft", "ArrowUp"])
         held = min(4, max(1, int(abs(error) / 64))) if turning else min(4, max(1, int(distance / 4096)))
         events = ([{"after_updates": 0, "key": key, "action": "press"} for key in keys]
                   + [{"after_updates": held, "key": key, "action": "release"} for key in keys])
