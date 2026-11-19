@@ -536,14 +536,7 @@ fn present_loading_fade(
         let y = index as u32 / 640;
         let mut colour = cyrus_assets::framebuffer::store([pixel[0], pixel[1], pixel[2]], x, y);
         if opacity != 0 {
-            const DITHER: [u32; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-            let inverse = 15 - DITHER[((y % 4) * 4 + x % 4) as usize];
-            colour = std::array::from_fn(|channel| {
-                let (mask, scale) = if channel == 1 { (252, 4) } else { (248, 2) };
-                let destination = (u32::from(colour[channel] & mask) * scale + inverse) / scale;
-                (destination * (256 - u32::from(opacity.min(256))) / 256) as u8
-            });
-            colour = cyrus_assets::framebuffer::store(colour, x, y);
+            colour = cyrus_assets::framebuffer::blend(colour, [0; 3], opacity, x, y);
         }
         pixel[..3].copy_from_slice(&colour);
         pixel[3] = 255;

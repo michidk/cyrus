@@ -1,6 +1,7 @@
 //! In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 //! power-up slots, active item, prompt text. Rules follow redguard-preservation's HUD documentation.
 mod artwork;
+mod composition;
 mod persistence;
 use artwork::StoredArtwork;
 use bevy::{
@@ -401,7 +402,8 @@ impl AssetLoader for HudLoader {
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<artwork::ArtworkStorage>()
+        app.add_plugins(composition::CompositionPlugin)
+            .init_resource::<artwork::ArtworkStorage>()
             .add_systems(PostUpdate, artwork::store_artwork)
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<cyrus_script::script::ScriptHud>()

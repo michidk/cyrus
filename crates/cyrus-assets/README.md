@@ -34,6 +34,7 @@ adapters.
 
 `docs/MAP.md` lists every module.
 
+`framebuffer::blend` reconstructs stored destinations and blends encoded integer channels for loading fades and HUD composition.
 `framebuffer::store` supplies the published ordered RGB565 encoded-channel storage to the logbook reader and HUD artwork. Coordinates are top-left framebuffer pixels.
 
 ## Usage

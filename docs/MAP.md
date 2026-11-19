@@ -230,6 +230,7 @@ module where it is defined and regenerate.
 - `src/hooks.rs` — What the presentation offers a provider such as a mod, without knowing what it will do with
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/hud/artwork.rs` — Ordered framebuffer storage for opaque HUD, inventory and island-map artwork.
+- `src/hud/composition.rs` — Encoded framebuffer composition of inventory artwork and text against the live scene.
 - `src/hud/persistence.rs` — Retained HUD presentation continuation, separate from inventory and journal owners.
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
