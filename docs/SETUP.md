@@ -2710,3 +2710,9 @@ python3 dev/scripts/test-original-logbook-reference.py
 **Verified:** the original accepts scan 38 and consumes the opening press; with
 the run-local journal visible, its reader suspends the gameplay clock. The native
 reference should use the same text in its config directory's `logbook.json`.
+
+**Verified:** original runtime copies need a writable `Redguard/maps` directory: world changes
+write per-world `.TSG` state there. The runtime preparation helper replaces a
+linked maps directory with a local directory containing links to the installed
+map assets. Generated `.TSG` files stay in that runtime copy. The install remains
+read-only, and subsequent preparation preserves the run's saved world state.

@@ -36,6 +36,28 @@ class Definitions(unittest.TestCase):
             self.assertEqual((run / 'RGFX.EXE').read_bytes(), b'per-run executable')
             self.assertEqual((source / 'system/pointers.bmp').read_bytes(), b'installed presentation')
 
+    def test_map_state_writes_stay_in_run_and_asset_links_survive_repeated_preparation(self):
+        spec = importlib.util.spec_from_file_location('definitions', MODULE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, run = root / 'install/maps', root / 'run'
+            source.mkdir(parents=True)
+            run.mkdir()
+            (source / 'START.RGM').write_bytes(b'installed map')
+            (source / 'START.TSG').write_bytes(b'unrelated saved state')
+            (run / 'maps').symlink_to(source, target_is_directory=True)
+            module.prepare_map_state(run)
+            self.assertFalse((run / 'maps').is_symlink())
+            self.assertTrue((run / 'maps/START.RGM').is_symlink())
+            self.assertEqual((run / 'maps/START.RGM').read_bytes(), b'installed map')
+            self.assertFalse((run / 'maps/START.TSG').exists())
+            (run / 'maps/START.TSG').write_bytes(b'new world state')
+            module.prepare_map_state(run)
+            self.assertEqual((run / 'maps/START.TSG').read_bytes(), b'new world state')
+            self.assertEqual((source / 'START.TSG').read_bytes(), b'unrelated saved state')
+
     def test_missing_install_definition_fails_without_mutating_the_run(self):
         spec = importlib.util.spec_from_file_location('definitions', MODULE)
         module = importlib.util.module_from_spec(spec)

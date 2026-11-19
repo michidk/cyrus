@@ -13,6 +13,7 @@ if [ ! -d "$run/Redguard" ]; then
     rsync -a --exclude DOSBOX --exclude __support --exclude webcache.zip --exclude Manual.pdf --exclude '*.dll' "$src/" "$run/"
     cp "$src/DOSBOX/glide2x_emu.ovl" "$run/Redguard/glide2x.ovl"
 fi
+python3 dev/scripts/prepare-original-definitions.py "$src/Redguard" "$run/Redguard"
 # RETRO_PRISTINE=1: the install's own SYSTEM.INI and an empty SAVEGAME, so the original starts
 # as a player sees it (title, book menu, Introduction). The default copy keeps the debug settings.
 pristine=()
