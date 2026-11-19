@@ -72,14 +72,20 @@ class Driver:
         try:
             opened = self.sample('console-open')
             deadline = time.monotonic() + self.timeout
-            while (opened['console_mode'] == 'closed'
-                   and opened.get('counters', {}).get('console_request') == 1
-                   and opened.get('counters', {}).get('console_requested_mode') == 0):
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('interactive console request was not admitted')
+            attempts = 1
+            while opened['console_mode'] != 'interactive':
+                if time.monotonic() >= deadline or attempts >= 32:
+                    raise RuntimeError('interactive console request was not admitted; console is not interactive; refusing gameplay text')
+                pending = (opened.get('counters', {}).get('console_request') == 1
+                           and opened.get('counters', {}).get('console_requested_mode') == 0)
+                # Reports can replace a pending interactive request with an overlay.
+                # Retry the balanced F12 press only after that request has settled;
+                # never type a command until interactive admission is observed.
+                if not pending:
+                    self.key('F12')
+                    attempts += 1
                 time.sleep(.05)
                 opened = self.sample('console-open')
-            require_interactive_console(opened)
             before = opened['frame']
             time.sleep(2 * self.pulse)
             settled = self.sample('console-open')

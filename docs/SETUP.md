@@ -1080,7 +1080,10 @@ local reader. Run its controls with `python3 dev/scripts/test-original-memory-re
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.
 The public driver requires `interactive` as well as a paused world clock;
-a paused overlay or missing mode fails before any gameplay text. It focuses DOSBox,
+admission retries balanced F12 presses up to 32 times within its timeout when
+a press is ignored or a report replaces the request with an overlay. A pending
+interactive request is observed without toggling it. No gameplay text is sent
+until interactive admission is verified. It focuses DOSBox,
 checks that console entry paused world updates before sending commands, grants
 and draws the sword through console/input, then invokes placement. Escape closes
 each command entry. Underscores in object and attribute names use a held Shift

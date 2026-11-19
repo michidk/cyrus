@@ -449,15 +449,24 @@ class ExactSchedule(unittest.TestCase):
         pending=dict(console_mode='closed', frame=3,
                      counters=dict(console_request=1, console_requested_mode=0))
         admitted=dict(console_mode='interactive', frame=4)
-        for first, accepted in [(pending, True), (dict(console_mode='overlay', frame=3), False)]:
+        keys=[]
+        with patch.object(driver, 'key', side_effect=keys.append), patch.object(driver, 'sample',
+                side_effect=[pending, admitted, admitted]), patch.object(module.time, 'sleep'):
+            driver.command('x')
+        self.assertEqual(keys, ['F12', 'x', 'Return', 'Escape'])
+
+    def test_console_retries_ignored_and_report_overridden_open_requests(self):
+        module=Readiness().module()
+        from unittest.mock import patch
+        driver=module.Driver('unused', 1, .01)
+        admitted=dict(console_mode='interactive', frame=7)
+        for rejected in [dict(console_mode='closed', frame=3),
+                         dict(console_mode='overlay', frame=3)]:
             keys=[]
             with patch.object(driver, 'key', side_effect=keys.append), patch.object(driver, 'sample',
-                    side_effect=[first, admitted, admitted]), patch.object(module.time, 'sleep'):
-                if accepted: driver.command('x')
-                else:
-                    with self.assertRaisesRegex(RuntimeError, 'not interactive'): driver.command('x')
-            self.assertEqual('x' in keys, accepted)
-            self.assertEqual(keys[-1], 'Escape')
+                    side_effect=[rejected, admitted, admitted]), patch.object(module.time, 'sleep'):
+                driver.command('x')
+            self.assertEqual(keys, ['F12', 'F12', 'x', 'Return', 'Escape'])
 
     def test_pending_console_deadline_never_types_gameplay_text(self):
         module=Readiness().module()
