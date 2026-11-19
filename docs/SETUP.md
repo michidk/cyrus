@@ -1067,10 +1067,10 @@ F12 for the guest console.
 The contact image includes the full Python standard library. Its build checks
 that `ctypes` can resolve the process-tracing entry point used by atomic boundary
 readers; an image with only `python3-minimal` cannot run those readers.
-Original audio capture also configures this modifier explicitly, including when
-reusing an older runtime image. Use Ctrl+Alt+W for the emulator recorder; the
-recorder chord must not open the guest console. A local config override must place
-`hostkey=ctrlalt` in `[dosbox]`, not `[sdl]`.
+Original audio capture uses `hostkey=altshift`, including with older runtime
+images. Use Shift+Alt+W for its recorder. Starting the chord with Ctrl can
+activate a nearby door through the guest action binding. Place any local
+`hostkey` override in `[dosbox]`, not `[sdl]`.
 
 The contact launcher requires a prepared run with `[debug] final_version=0` and
 rejects other or missing values before runtime recovery or live-lock admission.

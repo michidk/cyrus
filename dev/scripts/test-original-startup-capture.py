@@ -53,10 +53,10 @@ esac
             self.assertEqual(timeline["stop"]["reason"], "world-progress")
             chords = (root / "keys").read_text().splitlines()
             self.assertEqual(chords, [
-                "keydown Control_L keydown Alt_L key w keyup Alt_L keyup Control_L",
+                "keydown Shift_L keydown Alt_L key w keyup Alt_L keyup Shift_L",
             ] * 2)
             launcher = INNER.with_name("original-audio-capture.sh").read_text()
-            self.assertIn('dosbox_host_args=(-set "dosbox hostkey=ctrlalt")', launcher)
+            self.assertIn('dosbox_host_args=(-set "dosbox hostkey=altshift")', launcher)
             self.assertIn('"$image" "${dosbox_host_args[@]}" >', launcher)
 
 

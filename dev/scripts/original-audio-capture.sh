@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Records the original's audio mixer output while replaying a key timeline, in one lock hold.
-# DOSBox-X's own WAV recorder (Ctrl+Alt+W) records the mixer output in emulated time, so the file is
+# DOSBox-X's own WAV recorder (Shift+Alt+W) records the mixer output in emulated time, so the file is
 # independent of how slowly the container emulates; the inner script logs the game's loop frame
 # at the start, at each key event and at the stop so audio positions map to the state reader.
 # Usage: original-audio-capture.sh <events.json> <out-dir> [seconds]
@@ -40,7 +40,7 @@ gog=${CYRUS_RETRO_GOG:?set CYRUS_RETRO_GOG to the directory holding extracted/ap
 name=audio-capture-$$
 conf_mount=()
 # Configure the host chord even when reusing an image built before this default.
-dosbox_host_args=(-set "dosbox hostkey=ctrlalt")
+dosbox_host_args=(-set "dosbox hostkey=altshift")
 sb_filter=${CYRUS_CAPTURE_SB_FILTER:-default}
 case "$sb_filter" in
     default) ;;
