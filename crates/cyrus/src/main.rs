@@ -31,6 +31,9 @@ struct Args {
     /// Run without a window, retaining scene assembly, gameplay and cinematic playback.
     #[arg(long)]
     headless: bool,
+    /// Use the real output device in a headless host for paced audio capture.
+    #[arg(long, requires = "headless")]
+    headless_audio: bool,
     /// Diagnostic replay input: advance the host clock by this many microseconds per app update.
     #[arg(long, requires = "headless", value_parser = clap::value_parser!(u64).range(1..))]
     replay_step_micros: Option<u64>,
@@ -331,7 +334,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_audio::music::MusicPlugin,
             cyrus_render::subtitles::SubtitlePlugin,
         ));
-    if args.headless {
+    if args.headless && !args.headless_audio {
         app.add_plugins(cyrus_audio::SilentAudioPlugin);
     }
     subtitles::register(&mut app);
@@ -451,6 +454,13 @@ mod install_tests {
             );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn audible_headless_capture_requires_an_explicit_headless_host() {
+        assert!(Args::try_parse_from(["cyrus", "--headless-audio"]).is_err());
+        assert!(Args::try_parse_from(["cyrus", "--headless", "--headless-audio"]).is_ok());
+        assert!(Args::try_parse_from(["cyrus", "--headless"]).is_ok());
     }
 
     #[test]

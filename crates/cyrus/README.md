@@ -39,6 +39,7 @@ Native-only flags:
 | Flag | Meaning |
 | --- | --- |
 | `--headless` | No window; shared scene, gameplay and cinematic assembly, with a scheduled app loop |
+| `--headless-audio` | Use the real audio output device with `--headless` for paced mixer capture; ordinary headless runs consume sources silently |
 | `--replay-step-micros N` | Positive diagnostic host-clock duration per app update; requires `--headless` |
 | `--control ADDR` | Control server address (default `127.0.0.1:7117`, env `CYRUS_CONTROL_ADDR`) |
 | `--load-slot SLOT`, `--list-slots` | Restore the newest revision of a save slot through the book; print slots as JSON |
