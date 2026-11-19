@@ -50,3 +50,8 @@ overlap. Gameplay composition is tested in `cyrus-script`.
 
 Static view windows clamp to the map edges for out-of-map cameras, using the
 same preserved regional window rule as ordinary actor traversal.
+
+Verified: forward probes with no primary or fallback support reject the attempt
+without stopping ordinary updates, including a supported current position at a
+harbour gangway edge. This rejection does not commit support history or surface
+state. An ambiguous slope result with usable forward support remains unsupported.

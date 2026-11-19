@@ -338,7 +338,7 @@ fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
     let fallback = cyrus_collision::ground::FallbackProbe::new([0; 3], [0; 3], 0, false).unwrap();
     // No surface at the proposed position: with none at the current position either (or the
     // current probe skipped) the slope check allows the step; a current surface with no proposed
-    // one is the original's undefined case and stays an explicit error.
+    // one still rejects the step when neither primary nor fallback support exists.
     assert!(
         world
             .forward_support(
@@ -379,7 +379,8 @@ fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
                 Some(&fallback),
                 false
             )
-            .is_err()
+            .unwrap()
+            .is_none()
     );
     let selected = world
         .forward_support(&candidates, &probe, Some(steep), None, None, false)

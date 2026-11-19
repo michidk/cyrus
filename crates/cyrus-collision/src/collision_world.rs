@@ -52,7 +52,8 @@ pub struct SlopeCheck<'a>(pub Option<&'a CurrentSlope>);
 
 /// The slope check's outcome when the proposed position selected no surface: a surface at the
 /// current position leaves the original's result undefined (it classifies an uninitialized
-/// normal), so it stays an explicit error; no surface at either position allows the step.
+/// normal). Callers reject an independently proven support miss first; otherwise this remains
+/// an explicit error. No surface at either position allows the step.
 fn require_no_current_surface(surface: Option<GroundSupport>) -> anyhow::Result<()> {
     anyhow::ensure!(
         surface.is_none(),
@@ -603,11 +604,26 @@ impl StaticCollision {
                 Some(_) => {}
                 None => {
                     if let Some(current) = current_slope {
-                        let contacts =
+                        let current_contacts =
                             self.ground_contacts(candidates, &current.probe, sidedness)?;
-                        require_no_current_surface(
-                            current.probe.slope_surface(current.terrain, &contacts),
-                        )?;
+                        let current_surface = current
+                            .probe
+                            .slope_surface(current.terrain, &current_contacts);
+                        if current_surface.is_some()
+                            && probe.select(terrain, &contacts).is_none()
+                            && self
+                                .fallback_support(
+                                    candidates,
+                                    fallback.context(
+                                        "forward probe: missing selected-player fallback state",
+                                    )?,
+                                    sidedness,
+                                )?
+                                .is_none()
+                        {
+                            return Ok(None);
+                        }
+                        require_no_current_surface(current_surface)?;
                     }
                 }
             }
@@ -704,7 +720,7 @@ impl StaticCollision {
                 Some(_) => {}
                 None => {
                     if let Some(current) = current_slope {
-                        let contacts = self.runtime_ground_contacts(
+                        let current_contacts = self.runtime_ground_contacts(
                             candidates,
                             actors,
                             poses,
@@ -712,9 +728,27 @@ impl StaticCollision {
                             sidedness,
                             query.excluded_candidate_type,
                         )?;
-                        require_no_current_surface(
-                            current.probe.slope_surface(current.terrain, &contacts),
-                        )?;
+                        let current_surface = current
+                            .probe
+                            .slope_surface(current.terrain, &current_contacts);
+                        // Either slope result rejects a step with no primary or fallback support.
+                        // Keep this an early rejection, without committing support-history state.
+                        if current_surface.is_some()
+                            && query.ground.select(query.terrain, &contacts).is_none()
+                            && self
+                                .runtime_fallback_support(
+                                    candidates,
+                                    actors,
+                                    poses,
+                                    query.fallback,
+                                    sidedness,
+                                    query.excluded_candidate_type,
+                                )?
+                                .is_none()
+                        {
+                            return Ok(RuntimeForwardSupport::Blocked);
+                        }
+                        require_no_current_surface(current_surface)?;
                     }
                 }
             }

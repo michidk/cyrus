@@ -465,6 +465,34 @@ impl StaticGroundQuery<'_> {
                             &current_slope.probe,
                             self.sidedness,
                         )?;
+                        let fallback = FallbackProbe::new(
+                            proposed,
+                            self.center_offset(definition),
+                            self.positive_extent(definition)[1],
+                            history.ticks() != 0,
+                        )?;
+                        if current_slope
+                            .probe
+                            .slope_surface(current_slope.terrain, &contacts)
+                            .is_some()
+                            && probe
+                                .select(
+                                    self.terrain(proposed)?,
+                                    &self.scene.static_collision.ground_contacts(
+                                        self.candidates,
+                                        &probe,
+                                        self.sidedness,
+                                    )?,
+                                )
+                                .is_none()
+                            && self
+                                .scene
+                                .static_collision
+                                .fallback_support(self.candidates, &fallback, self.sidedness)?
+                                .is_none()
+                        {
+                            return Ok(None);
+                        }
                         anyhow::ensure!(
                             current_slope
                                 .probe
