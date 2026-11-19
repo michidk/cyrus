@@ -13,7 +13,7 @@ loading and menu transitions. Presentation receipts include the active world-ent
 ```sh
 cargo run -p cyrus                              # splash, title, then the book menu
 cargo run -p cyrus -- --scene START             # load a world directly
-cargo run -p cyrus -- --headless --scene 27     # no window: preload, export, control server
+cargo run -p cyrus -- --headless --scene 27     # no window: shared gameplay and control server
 ```
 
 From a prebuilt archive, run `./cyrus --install /path/to/Redguard` (`cyrus.exe`
@@ -38,7 +38,7 @@ Native-only flags:
 
 | Flag | Meaning |
 | --- | --- |
-| `--headless` | No window or renderer |
+| `--headless` | No window; shared scene, gameplay and cinematic assembly, with a scheduled app loop |
 | `--control ADDR` | Control server address (default `127.0.0.1:7117`, env `CYRUS_CONTROL_ADDR`) |
 | `--load-slot SLOT`, `--list-slots` | Restore the newest revision of a save slot through the book; print slots as JSON |
 | `--export-scene --scene NAME`, `--list-worlds` | Prepare one world and exit; print accepted world names |
@@ -73,15 +73,18 @@ opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for con
   files are not load inputs ([#93](https://github.com/michidk/cyrus/issues/93)).
 - Control commands and their wire contract, including frame and mixer capture
   (`CYRUS_MIXER_CAPTURE_DIR`), are documented in [cyrus-control](../cyrus-control/README.md).
-- Headless assembly omits the camera and audio backend; rendering never depends
-  on the audio backend.
-- `--headless` is a loader/control inspection host. It does not publish a ready
-  rendered world or admit ordinary gameplay updates. `--new-game` is rejected
-  with `--headless`. The smoke check asserts zero ordinary updates while input
-  is held; it does not verify playthrough progression. Existing `just replay`
-  fixtures provide static scene comparisons or legacy control replay, without
-  chapter checkpoints. [Playthrough regression replay #322](https://github.com/michidk/cyrus/issues/322)
-  tracks the recorded route and gameplay host needed for full-chain acceptance.
+- `--headless --new-game --skip-movies` starts the installed New Game world without
+  opening a window. Omit `--skip-movies` to decode and play the intro on its normal
+  clock before world entry. Scripted control input follows the same sampling and
+  ordinary-update path as windowed gameplay.
+- Headless gameplay retains the shared scene and render plugins because they supply
+  world instances, model admission and the camera view used by gameplay. Graphics
+  backends are disabled, so no GPU or display server is required. Optional native
+  mods remain disabled in this host.
+- The public `headless_new_game` integration test starts the executable without
+  display variables, checks the installed initial world, and checks ordinary-update
+  and game-clock progress under held input. [Playthrough regression replay #322](https://github.com/michidk/cyrus/issues/322)
+  tracks recorded chapter checkpoints.
 
 ## World audit
 

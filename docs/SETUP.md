@@ -87,7 +87,7 @@ just run --scene START
 just run --scene 27       # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
 cargo run -p cyrus -- --export-startup    # export startup, menu, starting world, cinematics and HUD for the browser
-just run-headless        # no window: preload + scene export + control server
+just run-headless --new-game --skip-movies # unattended gameplay + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
 

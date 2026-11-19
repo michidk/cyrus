@@ -14,7 +14,7 @@ state dump, from both games where the change claims fidelity.
 |---|---|---|
 | cyrus, window | `just run -- --scene ISLAND` | local display |
 | cyrus, no display | `just run-native -- --scene ISLAND` | control port only; `screenshot` over MCP, or `just run-web` for the browser build |
-| cyrus, loader only | `just run-headless` | log output |
+| cyrus, unattended gameplay | `just run-headless --new-game --skip-movies` | control port and log output |
 | original game | `just retro` | VibePod preview `cyrus-retro` |
 
 `vibepod-preview doctor <name>` prints the URL. Open `/vnc.html?autoconnect=1&resize=scale`.
@@ -33,8 +33,8 @@ when explicitly testing the picker or its recovery flow.
 ## Prove the loop works
 
 `just smoke-mcp` starts the game headless and drives it through the MCP
-server over stdio (tool list, loaded metadata, held/released key sampling after export,
-zero ordinary updates and a stationary player without a rendered world, a fidelity switch, quit).
+server over stdio (tool list, ready world, ordinary-update and game-clock progress
+under held input, released key sampling, a fidelity switch, quit).
 Run it after touching the control server, the MCP
 server or the player. Scenes in the browser build accept a stem (`START`) or
 a WORLD.INI index (`?scene=27`).

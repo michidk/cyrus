@@ -38,7 +38,8 @@ def wait_state(predicate, description):
     return latest
 initial = wait_state(
     lambda s: s["state"] == "InGame" and s["scene"] == "START"
-    and s["scripts"] is not None and s["scripts"]["state"] == "Loaded",
+    and s["scripts"] is not None and s["scripts"]["state"] == "Loaded"
+    and s["scripts"]["ordinary_updates"] > 0,
     "START metadata did not load",
 )
 assert initial["cheats"]["ready"], initial["cheats"]
@@ -54,8 +55,10 @@ assert console["console"]["open"]
 assert any("neversaydie" in line["text"] for line in console["console"]["lines"])
 call("console", {"open":False})
 assert not call("state")["console"]["open"]
+assert initial["scene_ready"], initial
 call("load_scene", {"name":"START"})
-assert initial["flycam"]["position"] is None, "headless host created a camera"
+wait_state(lambda s: s["state"] == "InGame" and s["scene_ready"]
+           and s["scripts"]["ordinary_updates"] > 0, "reloaded START did not become ready")
 # The game publishes its fidelity registry; exercise every current area without
 # maintaining a second list in this client. Restore the original modes afterward.
 for area, original_mode in initial["fidelity"].items():
@@ -65,14 +68,14 @@ for area, original_mode in initial["fidelity"].items():
 assert call("state")["fidelity"] == initial["fidelity"]
 call("input", {"key":"ArrowUp","action":"press"})
 held = wait_state(lambda s: s["player_input"]["forward"], "held key was not sampled")
-# Export completion admits key sampling. The headless loader has no rendered
-# world, so sampling must not start the ordinary simulation or move the player.
-assert not held["scene_ready"], held
-assert held["scripts"]["ordinary_updates"] == 0, held
+advanced = wait_state(
+    lambda s: s["scripts"].get("ordinary_updates", 0) > held["scripts"]["ordinary_updates"],
+    "headless ordinary simulation did not advance under held input",
+)
+assert advanced["clock"]["game_seconds"] > held["clock"]["game_seconds"], advanced
 call("input", {"key":"ArrowUp","action":"release"})
 final = wait_state(lambda s: not s["player_input"]["forward"], "released key remained held")
-assert final["scripts"]["ordinary_updates"] == 0, final
-assert initial["player"]["position"] == final["player"]["position"], "input enabled unsupported movement"
+assert final["scripts"]["ordinary_updates"] >= advanced["scripts"]["ordinary_updates"], final
 assert call("set_fidelity", {"area":"fog","mode":"modern"})["fog"] == "modern"
 call("quit")
 print("smoke-mcp: headless state/input/fidelity/cheats/quit passed")

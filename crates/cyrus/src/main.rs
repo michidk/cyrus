@@ -28,7 +28,7 @@ struct Args {
     launch: cyrus_app::launch::GameOptions,
     #[command(flatten)]
     log: cyrus_app::logging::LogArgs,
-    /// No window, no renderer: preload, scene export and the control server only.
+    /// Run without a window, retaining scene assembly, gameplay and cinematic playback.
     #[arg(long)]
     headless: bool,
     /// Audit every installed WORLD.INI entry without a window; reports go under magic/artifacts/world-audit.
@@ -95,10 +95,6 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         );
         return Ok(());
     }
-    anyhow::ensure!(
-        !args.headless || !(args.launch.new_game || args.launch.movie.is_some()),
-        "--new-game and --movie drive the book menu, which --headless does not open"
-    );
     if let Some(slot) = args.load_slot {
         // Fail before a window opens when the slot is absent or unreadable.
         session::slots::SlotStore::default().metadata(slot, None)?;
@@ -127,7 +123,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         );
         return Ok(());
     }
-    let startup = args.launch.scene.is_none() && !args.headless;
+    let startup = args.launch.scene.is_none();
     let mut settings = Settings::load()?;
     if let Some(scene) = args.launch.scene {
         settings.scene = scene;
@@ -209,100 +205,109 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     if !args.headless {
         cyrus_mods::register_source(&mut app);
     }
+    let plugins = DefaultPlugins
+        .set(cyrus_app::window(concat!(
+            "The Elder Scrolls Adventures: Redguard (Cyrus v",
+            env!("CARGO_PKG_VERSION"),
+            ")"
+        )))
+        .set(bevy::audio::AudioPlugin {
+            global_volume: bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
+                cyrus_app::launch::volume_gain(args.launch.volume),
+            )),
+            ..default()
+        })
+        .add_before::<bevy::pbr::PbrPlugin>(rendering::SoftwareRenderingPlugin)
+        .disable::<bevy::log::LogPlugin>();
     if args.headless {
-        app.add_plugins((
-            MinimalPlugins,
-            bevy::state::app::StatesPlugin,
-            bevy::input::InputPlugin,
-            bevy::asset::AssetPlugin::default(),
-        ));
-    } else {
         app.add_plugins(
-            DefaultPlugins
-                .set(cyrus_app::window(concat!(
-                    "The Elder Scrolls Adventures: Redguard (Cyrus v",
-                    env!("CARGO_PKG_VERSION"),
-                    ")"
-                )))
-                .set(bevy::audio::AudioPlugin {
-                    global_volume: bevy::audio::GlobalVolume::new(bevy::audio::Volume::Linear(
-                        cyrus_app::launch::volume_gain(args.launch.volume),
-                    )),
+            plugins
+                .set(bevy::render::RenderPlugin {
+                    render_creation: bevy::render::settings::WgpuSettings {
+                        backends: None,
+                        ..default()
+                    }
+                    .into(),
                     ..default()
                 })
-                .add_before::<bevy::pbr::PbrPlugin>(rendering::SoftwareRenderingPlugin)
-                .disable::<bevy::log::LogPlugin>(),
-        );
+                .set(bevy::window::WindowPlugin {
+                    primary_window: None,
+                    exit_condition: bevy::window::ExitCondition::DontExit,
+                    ..default()
+                })
+                .disable::<bevy::winit::WinitPlugin>(),
+        )
+        .add_plugins(bevy::app::ScheduleRunnerPlugin::run_loop(
+            std::time::Duration::from_millis(10),
+        ));
+    } else {
+        app.add_plugins(plugins);
     }
     app.add_plugins((
         cyrus_world::animation::AnimationPlugin,
         cyrus_world::lifecycle::WorldPlugin,
     ));
+    app.add_plugins((
+        cyrus_render::WorldRenderPlugin,
+        cyrus_render::hud::HudPlugin,
+        cyrus_render::fog::ModernLightingPlugin,
+    ));
     if !args.headless {
-        app.add_plugins((
-            cyrus_render::WorldRenderPlugin,
-            cyrus_render::hud::HudPlugin,
-            cyrus_render::fog::ModernLightingPlugin,
-            cyrus_debug::DebugMenuPlugin,
-            cyrus_mods::ModsPlugin,
-        ));
-        #[cfg(feature = "raytracing")]
-        {
-            app.add_plugins(cyrus_render::fog::RayTracingPlugin);
-            if let Some(value) = &args.launch.ray_tracing {
-                app.world_mut()
-                    .resource_mut::<cyrus_render::fog::RayTracing>()
-                    .enabled = value == "on";
-            }
+        app.add_plugins((cyrus_debug::DebugMenuPlugin, cyrus_mods::ModsPlugin));
+    }
+    #[cfg(feature = "raytracing")]
+    {
+        app.add_plugins(cyrus_render::fog::RayTracingPlugin);
+        if let Some(value) = &args.launch.ray_tracing {
+            app.world_mut()
+                .resource_mut::<cyrus_render::fog::RayTracing>()
+                .enabled = value == "on";
         }
-        #[cfg(not(feature = "raytracing"))]
-        if args.launch.ray_tracing.is_some() {
-            warn!(
-                "--ray-tracing ignored: this build has no ray tracing (cargo feature `raytracing`)"
-            );
-        }
-        app.add_systems(
-            Update,
-            cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>
-                .before(cyrus_audio::ApplyPreferences),
-        );
+    }
+    #[cfg(not(feature = "raytracing"))]
+    if args.launch.ray_tracing.is_some() {
+        warn!("--ray-tracing ignored: this build has no ray tracing (cargo feature `raytracing`)");
+    }
+    app.add_systems(
+        Update,
+        cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>
+            .before(cyrus_audio::ApplyPreferences),
+    );
+    if !args.headless {
         debug::register(&mut app);
-        app.add_plugins(cyrus_startup::StartupPlugin);
-        let direct = !startup
-            || args.launch.new_game
-            || args.launch.movie.is_some()
-            || args.load_slot.is_some();
-        app.insert_resource(cyrus_startup::LaunchRequest::new(
-            args.launch.new_game,
-            args.launch.movie,
-            args.launch.skip_movies,
-        ));
-        let presentation = if args.launch.skip_startup || direct {
-            cyrus_startup::StartupPresentation::without_splash()
-        } else {
-            cyrus_startup::StartupPresentation::default()
-        };
-        app.insert_resource(presentation);
-        if !startup {
-            app.insert_resource(cyrus_startup::StartGame::default());
-        }
+    }
+    app.add_plugins(cyrus_startup::StartupPlugin);
+    let direct =
+        !startup || args.launch.new_game || args.launch.movie.is_some() || args.load_slot.is_some();
+    app.insert_resource(cyrus_startup::LaunchRequest::new(
+        args.launch.new_game,
+        args.launch.movie,
+        args.launch.skip_movies,
+    ));
+    let presentation = if args.launch.skip_startup || direct {
+        cyrus_startup::StartupPresentation::without_splash()
+    } else {
+        cyrus_startup::StartupPresentation::default()
+    };
+    app.insert_resource(presentation);
+    if !startup {
+        app.insert_resource(cyrus_startup::StartGame::default());
     }
     if let Some(install) = install {
-        app.insert_resource(install)
-            .add_systems(Startup, (bindings::load, cheats::load));
+        app.insert_resource(install);
     } else {
         args.source.select(&mut app);
-        app.insert_state(cyrus_game::AppState::SelectingInstall)
-            .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
-            .add_systems(
-                Update,
-                prepare_install.run_if(in_state(cyrus_game::AppState::SelectingInstall)),
-            )
-            .add_systems(
-                OnExit(cyrus_game::AppState::SelectingInstall),
-                (bindings::load, cheats::load),
-            );
     }
+    app.insert_state(cyrus_game::AppState::SelectingInstall)
+        .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
+        .add_systems(
+            Update,
+            prepare_install.run_if(in_state(cyrus_game::AppState::SelectingInstall)),
+        )
+        .add_systems(
+            OnExit(cyrus_game::AppState::SelectingInstall),
+            (bindings::load, cheats::load),
+        );
     app.init_resource::<cyrus_script::script::ScriptHud>()
         .insert_resource(control)
         .insert_resource(settings.fidelity.clone())
