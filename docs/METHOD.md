@@ -80,6 +80,13 @@ progress; the host timeout only detects a stalled boundary. Verify executable
 identity and the boundary's call order locally before accepting a new binding.
 Synthetic controls run with `python3 -B dev/scripts/test-original-update-recorder.py`.
 
+For actor-lighting comparisons, bind actor identity, selected model/frame,
+transform and camera to the presentation being sampled. A stopped ordinary-update
+receipt or matching animation group does not replace that presentation binding.
+Check the native displayed model/frame as well as its logical animation state;
+paused presentation can retain an earlier pose. Reject the crop when either
+binding is missing or differs, before assigning pixel residuals to lighting.
+
 World-loading checks enumerate WORLD.INI and export every entry, including
 worlds sharing a map with different palettes. Successful export proves loading
 coverage; visual fidelity still requires comparison with the original.
