@@ -533,7 +533,7 @@ remaining static raster cause. These two measured residuals are accepted
 without an unsupported lighting or texture-coordinate correction.
 
 **Verified:** the START deck crop has MAE 0.005213 over 14,450 pixels;
-the HIDEINT cave-wall crop has MAE 0.811569 over 18,700 pixels. Independently
+the HIDEINT cave-wall crop has MAE 0.001436 over 6,500 pixels. Independently
 advancing actors, ship poses and clouds prevent whole-frame errors from
 measuring static rendering alone. Other sampled fixed regions in the
 29-entry sweep have MAE at most 0.134238. NECRISLE's first marker shows
@@ -554,3 +554,9 @@ source texels. Native fits select zero offset, with errors 2.291650 and
 entry-view differences. **Unknown:** which projection, clipping or texture-plane
 stage causes it. The fit approximates lighting with channel gains and is a
 diagnostic, not a parity correction. No fitted offset is applied to rendering.
+
+**Verified:** the refined VILE trunk sample has original/native MAE 0.002222
+over 1,200 pixels. The earlier rectangle labeled as a trunk sampled water;
+the earlier HIDEINT rectangle also included water along the cave boundary.
+Those rectangles remain scene measurements and do not establish static-surface
+parity. The refined trunk and cave-wall samples both match the browser exactly.
