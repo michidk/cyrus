@@ -32,13 +32,19 @@ original-clock inspection and book animation retain the original clock API.
 
 ## Ambient sound loops at high frame rates
 
-**Inferred** from the AmbientSound task contract and the clock above: the task forgets its
-remembered sample slot, without stopping the sample, whenever its elapsed input
-(`runs * frame scale >> 8`) reads zero. At the original's 12 to 20 FPS only a new task's
-first run reads zero, and a new task has no slot yet. At higher frame rates several early
-runs read zero and each would start another copy of the loop, so ambient water on the
-opening ship stacked up. Cyrus forgets the slot only on an explicit sound reset, which
-keeps the one loop per task that the original plays. This applies in both fidelity modes.
+**Verified:** the original AmbientSound task forgets its remembered sample slot,
+without stopping the sample, whenever its elapsed input (`runs * frame scale >> 8`)
+reads zero. Early updates can therefore start overlapping copies of a looping
+sample. In the installed CAVERNS entry, two original channels play effect72 from
+one owner; cyrus retains one. The settled fire effect25 is absent in both after
+the static-rope camera correction, with exactly matching logical listeners.
+
+Cyrus forgets the slot only on an explicit sound reset, preventing ambient loops
+from accumulating with frame rate. This applies in both fidelity modes. The
+previous inference that the original always plays one loop per task was incorrect;
+the measured CAVERNS multiplicity remains an audio parity difference tracked in
+[#328](https://github.com/michidk/cyrus/issues/328). The original handle rule is
+specified in preservation's [sound documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
 
 ## 3dfx splash
 

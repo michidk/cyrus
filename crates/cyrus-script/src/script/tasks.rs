@@ -1213,12 +1213,9 @@ impl Task {
                 let excluded = input
                     .excluded
                     .context("AmbientSound receiver exclusion state unavailable")?;
-                // The original forgets the remembered slot whenever the task's elapsed input reads
-                // zero, without stopping its sample. Elapsed is `runs * frame scale >> 8`, so at the
-                // original's 12-20 fps only a new task's first run reads zero, and a new task starts
-                // with no slot anyway. At higher frame rates several early runs read zero and each
-                // leaves another copy of the loop playing. Only an explicit reset forgets the slot,
-                // which is what the player hears in the original: one loop per task.
+                // Keep handles across zero-elapsed updates to avoid frame-rate-dependent loop
+                // accumulation. The original can retain overlapping channels (CAVERNS effect72);
+                // this shared-path difference is recorded in docs/DIFFERENCES.md and issue #328.
                 if reset {
                     *channel = None;
                 }
