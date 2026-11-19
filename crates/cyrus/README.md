@@ -165,7 +165,9 @@ It reads position and heading between short keyboard schedules, turns with
 Left/Right alone, and walks with Shift+Up. It stops within the horizontal
 position tolerance or fails at the bound, on death, or on an unexpected world.
 An optional `transition_to` accepts an ordinary-input boundary only after the
-declared destination world is ready. Vertical position is checked by the following checkpoint. Use intermediate
+declared destination world is ready. An immediately following checkpoint uses the observation that reached the
+waypoint, before later animation frames advance. Vertical position is checked
+by that checkpoint. Use intermediate
 waypoints around obstacles; steering does not find paths or change game state.
 
 A `modal_input` step waits for the declared world’s scripted examine screen,

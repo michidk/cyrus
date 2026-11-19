@@ -127,6 +127,28 @@ class Checkpoints(unittest.TestCase):
             self.assertLessEqual(math.dist(control.position, [4000, 0, 8000]), 600)
             self.assertTrue(control.commands)
 
+    def test_waypoint_returns_trigger_observation_before_later_motion(self):
+        outer = self
+
+        class Control:
+            reads = 0
+
+            def ready(self):
+                return {**outer.state, "scripts": {"world": 7}, "hud": {"health": 100, "heading": 0}}
+
+            def request(self, command):
+                self.reads += 1
+                observation = copy.deepcopy(outer.scripts)
+                if self.reads > 1:
+                    observation["player_position_q8"] = [5000, 20, 30]
+                return observation
+
+        control = Control()
+        observed = replay.steer(control, {"world": 7, "position_q8": [10, 20, 33], "tolerance": 3, "limit": 1})
+        self.assertEqual(replay.checkpoint(observed["state"], observed["scripts"], self.expected), 3)
+        with self.assertRaisesRegex(AssertionError, "position_q8"):
+            replay.checkpoint(control.ready(), control.request({"type": "scripts"}), self.expected)
+
     def test_steering_accepts_declared_transition_and_rejects_other_worlds(self):
         class Control:
             def ready(self):

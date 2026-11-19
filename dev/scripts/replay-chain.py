@@ -151,7 +151,7 @@ def steer(control, target):
         distance = math.hypot(dx, dz)
         if distance <= target["tolerance"]:
             print(f"steering reached waypoint after {iteration} inputs, residual {distance:.3f} Q8", flush=True)
-            return
+            return {"state": state, "scripts": scripts}
         if iteration == target["limit"]:
             break
         bearing = (-math.atan2(dx, dz) * 2048 / math.tau) % 2048
@@ -248,11 +248,14 @@ def run(args):
                     for path, fixture in zip(args.fixtures, fixtures):
                         assert fixture["version"] == 1, f"{path}: unsupported version"
                         transitioned = False
+                        observation = None
                         for index, step in enumerate(fixture["steps"]):
+                            if "checkpoint" not in step:
+                                observation = None
                             if "input" in step and not transitioned:
                                 transitioned = play_inputs(control, step)
                             if "steer" in step:
-                                steer(control, step["steer"])
+                                observation = steer(control, step["steer"])
                             if "repeat" in step:
                                 repeat_inputs(control, step["repeat"])
                             if "modal_input" in step:
@@ -262,14 +265,17 @@ def run(args):
                                 control.ready(modal["world"], min_updates=before["scripts"]["ordinary_updates"] + 1)
                             if "checkpoint" in step:
                                 expected = step["checkpoint"]
-                                state = control.ready(expected["world"])
-                                scripts = control.request({"type": "scripts", "offset": 0, "limit": 1})
+                                if observation is None:
+                                    state = control.ready(expected["world"])
+                                    scripts = control.request({"type": "scripts", "offset": 0, "limit": 1})
+                                    observation = {"state": state, "scripts": scripts}
+                                state, scripts = observation["state"], observation["scripts"]
                                 # Inventory and world must refer to the same prepared generation.
                                 assert state["scripts"]["world"] == scripts["world"], "world changed during checkpoint"
-                                observation = {"state": state, "scripts": scripts}
                                 (args.config / f"{path.stem}-{index}.json").write_text(json.dumps(observation, indent=2))
                                 residual = checkpoint(state, scripts, expected)
                                 print(f"{path.name}:{index}: checkpoint passed, position residual {residual:.3f} Q8", flush=True)
+                                observation = None
                     if args.keep_running:
                         address = f"127.0.0.1:{port}"
                         (args.config / "control-address").write_text(address + "\n")
