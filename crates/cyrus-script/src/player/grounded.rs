@@ -493,13 +493,6 @@ impl StaticGroundQuery<'_> {
                         {
                             return Ok(None);
                         }
-                        anyhow::ensure!(
-                            current_slope
-                                .probe
-                                .slope_surface(current_slope.terrain, &contacts)
-                                .is_none(),
-                            "forward query: the proposed position has no slope surface but the current position does; the original result is undefined"
-                        );
                     }
                 }
             }

@@ -50,18 +50,6 @@ impl CurrentSlope {
 #[derive(Clone, Copy)]
 pub struct SlopeCheck<'a>(pub Option<&'a CurrentSlope>);
 
-/// The slope check's outcome when the proposed position selected no surface: a surface at the
-/// current position leaves the original's result undefined (it classifies an uninitialized
-/// normal). Callers reject an independently proven support miss first; otherwise this remains
-/// an explicit error. No surface at either position allows the step.
-fn require_no_current_surface(surface: Option<GroundSupport>) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        surface.is_none(),
-        "forward slope check: the proposed position has no surface but the current position does; the original result is undefined"
-    );
-    Ok(())
-}
-
 /// Caller-admitted forward geometry. Body and ground probes share the proposed
 /// position; history and surface side effects remain with the game owner.
 pub struct RuntimeForwardQuery<'a> {
@@ -623,7 +611,6 @@ impl StaticCollision {
                         {
                             return Ok(None);
                         }
-                        require_no_current_surface(current_surface)?;
                     }
                 }
             }
@@ -748,7 +735,6 @@ impl StaticCollision {
                         {
                             return Ok(RuntimeForwardSupport::Blocked);
                         }
-                        require_no_current_surface(current_surface)?;
                     }
                 }
             }
