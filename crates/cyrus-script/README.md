@@ -50,6 +50,8 @@ and `run_ordinary`; a missing host service returns a contextual error.
   [player.md](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md)
   and [hud.md](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md).
   Cite the section in the doc comment of the code you change, not here.
+- The first automatic-update failure is retained and logged once with world and
+  contextual script error; repeated reports preserve the first cause.
 - Logic stays independent of presentation: screens and actors expose state and
   snapshots (`ScriptWorld::actor_snapshot`, death and damage events) that
   render and audio adapters read. Observations never drive gameplay and are

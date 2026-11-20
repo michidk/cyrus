@@ -872,7 +872,7 @@ pub(crate) fn sample_clock(
         match prepared.prepare_environment_effects(actors.current.as_mut().expect("ready world")) {
             Ok(prepared) => ready = prepared,
             Err(error) => {
-                actors.error = Some(format!(
+                actors.report_runtime_error(format!(
                     "automatic environmental effect preparation: {error:#}"
                 ));
                 ready = false;
@@ -1256,7 +1256,9 @@ fn execute_phase(world: &mut World, phase: OrdinaryPhase) {
         let execute = executor.0;
         execute(world, phase);
     } else if let Err(error) = world.run_system_cached_with(queued_step, phase) {
-        world.resource_mut::<ScriptActors>().error = Some(format!("ordinary scheduler: {error}"));
+        world
+            .resource_mut::<ScriptActors>()
+            .report_runtime_error(format!("ordinary scheduler: {error}"));
     }
 }
 
@@ -1505,7 +1507,9 @@ pub fn run_ordinary(
         return;
     }
     if actors.has_pending_revisit() {
-        actors.error = Some("world revisit requires complete session service restoration".into());
+        actors.report_runtime_error(
+            "world revisit requires complete session service restoration".into(),
+        );
         return;
     }
     let (Some(view), Some(request), Some(clock)) = (view, request, clock) else {
@@ -1537,7 +1541,7 @@ pub fn run_ordinary(
         &bindings,
         emit,
     ) {
-        actors.error = Some(format!("deferred animation sound: {error:#}"));
+        actors.report_runtime_error(format!("deferred animation sound: {error:#}"));
         return;
     }
     let mut send_sound = |actor: ScriptActorId, sound: super::super::ScriptSound| {
@@ -1562,7 +1566,7 @@ pub fn run_ordinary(
     if phase == OrdinaryPhase::ModelPresentation {
         // Ordinary world scheduling runs outside the separate shell-script context.
         if let Err(error) = world.flush_map_updates(view.position, false) {
-            actors.error = Some(format!("automatic deferred movement: {error:#}"));
+            actors.report_runtime_error(format!("automatic deferred movement: {error:#}"));
             return;
         }
         let preparation = (|| -> anyhow::Result<()> {
@@ -1614,7 +1618,7 @@ pub fn run_ordinary(
             )
         })();
         if let Err(error) = preparation {
-            actors.error = Some(format!("automatic model presentation: {error:#}"));
+            actors.report_runtime_error(format!("automatic model presentation: {error:#}"));
             return;
         }
         sample
@@ -1652,7 +1656,7 @@ pub fn run_ordinary(
     let player_query = match player_query {
         Ok(query) => query,
         Err(error) => {
-            actors.error = Some(format!("automatic selected-player query: {error:#}"));
+            actors.report_runtime_error(format!("automatic selected-player query: {error:#}"));
             return;
         }
     };
@@ -1752,7 +1756,7 @@ pub fn run_ordinary(
             ) {
                 Ok(update) => update,
                 Err(error) => {
-                    actors.error = Some(format!("camera setup: {error:#}"));
+                    actors.report_runtime_error(format!("camera setup: {error:#}"));
                     return;
                 }
             }
@@ -1819,7 +1823,7 @@ pub fn run_ordinary(
         100_000,
     );
     if let Err(error) = result {
-        actors.error = Some(format!("automatic ordinary update: {error:#}"));
+        actors.report_runtime_error(format!("automatic ordinary update: {error:#}"));
         return;
     }
     if let (Some(update), Some(frame), Some(scene), Some(world)) =
@@ -1834,7 +1838,7 @@ pub fn run_ordinary(
             timing.frame_scale as i32,
         )
     {
-        actors.error = Some(format!("camera frame: {error:#}"));
+        actors.report_runtime_error(format!("camera frame: {error:#}"));
     }
 }
 

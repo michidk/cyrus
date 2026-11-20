@@ -53600,3 +53600,52 @@ fn selected_overlap_fixture_retains_mobility_through_ordinary_updates() {
         }
     }
 }
+
+#[test]
+fn first_sticky_script_failure_is_logged_once_with_world_and_script() {
+    struct Capture;
+    thread_local! {
+        static LINES: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    impl log::Log for Capture {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() == log::Level::Error
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            if self.enabled(record.metadata()) {
+                LINES.with(|lines| lines.borrow_mut().push(record.args().to_string()));
+            }
+        }
+        fn flush(&self) {}
+    }
+    static LOGGER: Capture = Capture;
+    log::set_logger(&LOGGER).unwrap();
+    log::set_max_level(log::LevelFilter::Error);
+    let scripts = cache();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let name = world.actors()[0].name().to_owned();
+    let world_id = scripts.world;
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            cyrus_script::script::ScriptInputs::default(),
+            None,
+            None,
+            0,
+        )
+        .unwrap_err();
+    let reason = format!("{error:#}");
+    let mut actors = cyrus_script::script::ScriptActors::default();
+    actors.current = Some(world);
+    actors.report_runtime_error(format!("actor {name}: {reason}"));
+    actors.report_runtime_error("later failure must not replace the cause".into());
+    LINES.with(|lines| {
+        let lines = lines.borrow();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains(&format!("world Some({world_id})")));
+        assert!(lines[0].contains(&format!("actor {name}")));
+        assert!(lines[0].contains(&reason));
+        assert!(!lines[0].contains("later failure"));
+    });
+}

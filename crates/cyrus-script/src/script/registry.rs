@@ -3882,7 +3882,13 @@ impl ScriptActors {
     /// Record a host failure without replacing the first failure in this world.
     /// World preparation clears it alongside the logical registry.
     pub fn report_runtime_error(&mut self, error: String) {
-        self.error.get_or_insert(error);
+        if self.error.is_none() {
+            log::error!(
+                "script updates stopped in world {:?}: {error}",
+                self.current.as_ref().map(|world| world.world)
+            );
+            self.error = Some(error);
+        }
     }
 }
 
