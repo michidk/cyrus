@@ -190,8 +190,10 @@ The partial Chapter 1 fixture continues harbour arrival through the mast and
 onto the dock. Its two checkpoints assert world, quest flags, global lockout,
 inventory counts and position within 4096 Q8 units. It waits for scripted arrival
 control release before steering. The northern walking approach follows the
-observed original-game bypass; the tavern extension remains blocked and is not
-part of this fixture. Checkpoints also reject any reported script failure.
+observed original-game bypass; a second segment continues through town to the Draggin Tale in world 15.
+The tavern route stops at the entrance interaction range and presses Control
+rather than walking through the doorway. Checkpoints also reject any reported
+script failure.
 
 The install-backed nightly runs in the maintainer's VibePod on `julian` through the control panel's
 command scheduler at `0 3 * * *` (03:00 UTC), named `Cyrus nightly replay chain`.
