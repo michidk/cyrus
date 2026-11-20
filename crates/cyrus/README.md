@@ -186,6 +186,13 @@ timing and expected observations, without game data or saves. The runner fails
 if no fixtures exist. Hosted CI tests the comparator without an install; actual
 route replay requires the player's install.
 
+The partial Chapter 1 fixture continues harbour arrival through the mast and
+onto the dock. Its two checkpoints assert world, quest flags, global lockout,
+inventory counts and position within 4096 Q8 units. It waits for scripted arrival
+control release before steering. The northern walking approach follows the
+observed original-game bypass; the tavern extension remains blocked and is not
+part of this fixture. Checkpoints also reject any reported script failure.
+
 The install-backed nightly runs in the maintainer's VibePod on `julian` through the control panel's
 command scheduler at `0 3 * * *` (03:00 UTC), named `Cyrus nightly replay chain`.
 Its command invokes `bash dev/scripts/nightly-replay.sh` with `REDGUARD_DIR` pointing
