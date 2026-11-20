@@ -263,12 +263,6 @@ fn debug_menu(
             Area::AnisotropicFiltering,
             "Texture filtering",
         );
-        fidelity_control(
-            ui,
-            &mut fidelity,
-            Area::Music,
-            "Music (Modern mutes CD data noise)",
-        );
 
         fidelity_control(
             ui,

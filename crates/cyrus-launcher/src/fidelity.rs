@@ -46,18 +46,16 @@ pub enum Area {
     Lighting,
     Textures,
     AnisotropicFiltering,
-    Music,
     AudioResampling,
 }
 
 impl Area {
-    pub const ALL: [Area; 7] = [
+    pub const ALL: [Area; 6] = [
         Area::Fog,
         Area::Sky,
         Area::Lighting,
         Area::Textures,
         Area::AnisotropicFiltering,
-        Area::Music,
         Area::AudioResampling,
     ];
 
@@ -69,7 +67,6 @@ impl Area {
             Area::Lighting => "lighting",
             Area::Textures => "textures",
             Area::AnisotropicFiltering => "anisotropic_filtering",
-            Area::Music => "music",
             Area::AudioResampling => "audio_resampling",
         }
     }
@@ -81,7 +78,6 @@ impl Area {
             Area::Lighting => "Lighting and shadows",
             Area::Textures => "Texture sampling",
             Area::AnisotropicFiltering => "Anisotropic filtering",
-            Area::Music => "CD music",
             Area::AudioResampling => "Audio resampling",
         }
     }
@@ -96,7 +92,6 @@ impl Area {
             Area::AnisotropicFiltering => {
                 "Averages up to sixteen samples along texture footprints."
             }
-            Area::Music => "Mutes data bytes that a disc image places inside an audio track.",
             Area::AudioResampling => "Windowed-sinc upsampling in place of the original's.",
         }
     }
@@ -257,7 +252,7 @@ mod tests {
     fn uniform_is_none_when_areas_differ() {
         let mut choices = Choices::all(Mode::Modern);
         assert_eq!(choices.uniform(), Some(Mode::Modern));
-        choices.set(Area::Music, Mode::Faithful);
+        choices.set(Area::Sky, Mode::Faithful);
         assert_eq!(choices.uniform(), None);
     }
 }

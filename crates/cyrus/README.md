@@ -31,7 +31,7 @@ lists the folders). Launch options share their names with the browser's URL para
 | `--new-game`, `--movie INDEX` | Start New Game, or play a Movies-page cinematic (zero-based MENU.INI index), from the open book |
 | `--skip-movies` | Skip every movie except those opened from the Movies menu and the ending |
 | `--volume PERCENT` | Master volume 0–100 for this launch, not saved; use `--volume 0` in automated runs |
-| `--mode`, `--fog`, `--sky`, `--music` | `faithful` or `modern`; `--mode` sets every area including modern lighting, per-area flags override it |
+| `--mode`, `--fog`, `--sky` | `faithful` or `modern`; `--mode` sets every area including modern lighting, per-area flags override it |
 | `--ray-tracing on\|off` | Solari ray tracing under Modern lighting, in builds with `--features raytracing` |
 
 Native-only flags:

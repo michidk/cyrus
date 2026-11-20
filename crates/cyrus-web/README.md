@@ -45,7 +45,7 @@ percent-encode values; booleans accept empty, `true`/`1` or `false`/`0`):
 | `?movie=2` | `--movie 2` | Play a Movies-page cinematic (zero-based MENU.INI index) |
 | `?skip-movies` | `--skip-movies` | Skip every movie except those opened from the Movies menu and the ending |
 | `?volume=0` | `--volume 0` | Master volume for this visit, 0–100, not saved |
-| `?mode=modern` | `--mode modern` | Every presentation area; `fog`, `sky` and `music` set one area |
+| `?mode=modern` | `--mode modern` | Every presentation area; `fog` and `sky` set one area |
 
 Without launch parameters, the game opens the book after the splash and title, matching native startup. Choose New Game or load a save to enter a world.
 Backtick opens the world picker, flycam and fidelity controls; F12 opens the

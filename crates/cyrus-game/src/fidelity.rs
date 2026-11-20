@@ -21,18 +21,16 @@ pub enum Area {
     Sky,
     Lighting,
     Textures,
-    Music,
     AnisotropicFiltering,
     AudioResampling,
 }
 
 impl Area {
-    pub const ALL: [Area; 7] = [
+    pub const ALL: [Area; 6] = [
         Area::Fog,
         Area::Sky,
         Area::Lighting,
         Area::Textures,
-        Area::Music,
         Area::AnisotropicFiltering,
         Area::AudioResampling,
     ];
@@ -47,8 +45,6 @@ pub struct Fidelity {
     pub lighting: Mode,
     /// Modern point-samples world textures instead of the original's bilinear filtering.
     pub textures: Mode,
-    /// Modern mutes CD-ROM data-sector bytes that a disc image places inside an audio track.
-    pub music: Mode,
     /// Modern averages up to sixteen samples along world texture footprints.
     pub anisotropic_filtering: Mode,
     /// Modern uses 24-tap windowed-sinc upsampling for subsequent backend source spans.
@@ -62,7 +58,6 @@ impl Fidelity {
             Area::Sky => self.sky,
             Area::Lighting => self.lighting,
             Area::Textures => self.textures,
-            Area::Music => self.music,
             Area::AnisotropicFiltering => self.anisotropic_filtering,
             Area::AudioResampling => self.audio_resampling,
         }
@@ -73,7 +68,6 @@ impl Fidelity {
             Area::Sky => self.sky = mode,
             Area::Lighting => self.lighting = mode,
             Area::Textures => self.textures = mode,
-            Area::Music => self.music = mode,
             Area::AnisotropicFiltering => self.anisotropic_filtering = mode,
             Area::AudioResampling => self.audio_resampling = mode,
         }

@@ -21,9 +21,9 @@
 //! through this same conversion. Zero pauses the CD until the slider leaves
 //! zero. Movies pause and resume CD playback without restarting the track.
 //!
-//! Modern music fidelity mutes CD-ROM data-sector bytes that the GOG image
-//! places at the start of track 2 (preservation `docs/engine/music.md`);
-//! Faithful plays every installed byte.
+//! Both fidelity modes mute the CD-ROM data-sector bytes that the GOG image
+//! places at the start of track 2 (preservation `docs/engine/music.md`); they
+//! are a disc-image artefact, not music.
 //!
 //! During the ending, `CreditsPlaying` requests track 2 (the book track) and
 //! stops it when the credits finish or are escaped. `EndingEntry` suppresses
@@ -396,10 +396,7 @@ fn finish_track(
     state: Option<Res<State<cyrus_game::AppState>>>,
     #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
-    (settings, fidelity): (
-        Option<Res<SoundSettings>>,
-        Option<Res<cyrus_game::fidelity::Fidelity>>,
-    ),
+    settings: Option<Res<SoundSettings>>,
     (playing, movie): (
         Query<Entity, With<MusicPlayer>>,
         Query<(), With<crate::CinematicAudio>>,
@@ -445,11 +442,7 @@ fn finish_track(
         }
     };
     music.source = Some(source.clone());
-    let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
-        muted(&source).unwrap_or(source)
-    } else {
-        source
-    };
+    let source = muted(&source).unwrap_or(source);
     let transport = match MusicTransport::new(source) {
         Ok(transport) => transport,
         Err(error) => {
@@ -480,7 +473,6 @@ fn replay_track(
         Option<Res<cyrus_script::script::CreditsPlaying>>,
     ),
     settings: Option<Res<SoundSettings>>,
-    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
     (playing, movie): (
         Query<(), With<MusicPlayer>>,
@@ -500,11 +492,7 @@ fn replay_track(
     let (Some(source), Some(transports)) = (music.source.as_ref(), transports.as_mut()) else {
         return;
     };
-    let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
-        muted(source).unwrap_or_else(|| source.clone())
-    } else {
-        source.clone()
-    };
+    let source = muted(source).unwrap_or_else(|| source.clone());
     match MusicTransport::new(source) {
         Ok(transport) => {
             let mut playback = transport
@@ -882,7 +870,9 @@ mod tests {
                 .unwrap()
                 .into(),
         };
-        let expected: Vec<_> = source.decoder().skip(1023).take(1024).collect();
+        // Track 2 opens with the disc image's data sectors, which play muted.
+        let played = muted(&source).expect("track 2 carries leading data sectors");
+        let expected: Vec<_> = played.decoder().skip(1023).take(1024).collect();
         assert_eq!(expected.len(), 1024);
         let mut app = prepared_music(source, 64, false);
         let (player, settings) = app
@@ -905,7 +895,9 @@ mod tests {
             .unwrap();
         let saved: MusicSnapshot =
             serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
-        let candidate = Music::from_snapshot(saved, Some(transport.source().clone())).unwrap();
+        // A session reload passes the installed track, not the muted copy the transport plays.
+        let installed = app.world().resource::<Music>().source.clone();
+        let candidate = Music::from_snapshot(saved, installed).unwrap();
         let (restored, settings) = candidate.playback.unwrap();
         assert!(!settings.paused);
         assert_eq!(restored.decoder().take(1024).collect::<Vec<_>>(), expected);

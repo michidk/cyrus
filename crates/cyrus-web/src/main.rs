@@ -81,7 +81,6 @@ fn run(options: cyrus_app::launch::GameOptions) {
         Fidelity {
             fog: modern(&options.fog),
             sky: modern(&options.sky),
-            music: modern(&options.music),
             ..default()
         }
     })

@@ -70,9 +70,6 @@ pub struct GameOptions {
     /// Sky presentation mode.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub sky: Option<String>,
-    /// CD music mode; modern mutes CD-ROM data bytes inside audio tracks.
-    #[arg(long, value_parser = ["faithful", "modern"])]
-    pub music: Option<String>,
     /// The ray-tracing switch (Bevy Solari) in builds with the `raytracing` feature; on by default.
     /// It traces under Modern lighting on a GPU with ray queries.
     #[arg(long, value_parser = ["on", "off"])]
@@ -188,14 +185,12 @@ mod tests {
             "game",
             "--scene=start",
             "--skip-startup",
-            "--music=modern",
             "--mode=modern",
             "--ray-tracing=off",
         ])
         .unwrap();
         assert_eq!(game.mode.as_deref(), Some("modern"));
         assert_eq!(game.ray_tracing.as_deref(), Some("off"));
-        assert_eq!(game.music.as_deref(), Some("modern"));
         assert_eq!(game.scene.as_deref(), Some("START"));
         assert!(game.skip_startup);
         let direct = GameOptions::try_parse_from(["game", "--new-game", "--skip-movies"]).unwrap();
