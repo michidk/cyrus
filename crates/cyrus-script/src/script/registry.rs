@@ -92,7 +92,7 @@ pub(super) mod transition;
 pub(super) mod vertical;
 mod weapon;
 use anyhow::{Context, Result};
-use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
+use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Local, Res, ResMut, Resource};
 pub use coordination::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput};
 use cyrus_assets::{
     animation::Animations,
@@ -3884,6 +3884,34 @@ impl ScriptActors {
     pub fn report_runtime_error(&mut self, error: String) {
         self.error.get_or_insert(error);
     }
+}
+
+/// The first error that stops the world loop, when it differs from the one last logged.
+fn newly_stopped(error: Option<&str>, logged: &mut Option<String>) -> Option<String> {
+    if error == logged.as_deref() {
+        return None;
+    }
+    *logged = error.map(str::to_owned);
+    logged.clone()
+}
+
+/// Log the failure that stops every actor and the clock once, when it is recorded. Without it the
+/// world simply freezes while rendering-only animation (water, sway) carries on.
+pub(super) fn log_world_stop(actors: Res<ScriptActors>, mut logged: Local<Option<String>>) {
+    if let Some(error) = newly_stopped(actors.error.as_deref(), &mut logged) {
+        bevy::log::error!("scripts stopped: {error}");
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn world_stop_is_logged_once_per_failure() {
+    let mut logged = None;
+    assert_eq!(newly_stopped(None, &mut logged), None);
+    assert_eq!(newly_stopped(Some("a"), &mut logged).as_deref(), Some("a"));
+    assert_eq!(newly_stopped(Some("a"), &mut logged), None);
+    assert_eq!(newly_stopped(None, &mut logged), None);
+    assert_eq!(newly_stopped(Some("a"), &mut logged).as_deref(), Some("a"));
 }
 
 pub(super) fn prepare(

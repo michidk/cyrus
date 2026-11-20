@@ -251,6 +251,7 @@ impl Plugin for ScriptPlugin {
                     .after(cyrus_world::lifecycle::WorldChange)
                     .run_if(resource_exists::<cyrus_world::lifecycle::PreparedWorld>),
             )
+            .add_systems(PostUpdate, registry::log_world_stop)
             .add_systems(
                 Update,
                 registry::clear_unprepared
