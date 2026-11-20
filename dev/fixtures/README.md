@@ -177,3 +177,30 @@ time. The limits measure game seconds and completed updates, so slow rendering
 cannot shorten the allowed script duration. It sends no keys and never clears
 lockout itself. A stalled ordinary boundary remains an error. Use a separate
 `modal_input` step for a scripted viewer that suspends ordinary updates.
+
+Independent quest segments live in `segments/*.replay.json`. Default
+`just replay-chain` discovery runs the chapter chain first, then each segment
+in a separate process and config directory. Explicit fixture arguments still
+share one session. A segment with `"entry_scene":"BELLTOWR"` uses the installed
+world's ordinary scene entry, with fresh quest state; it never loads a private
+save or places the player. Staged segments cannot be mixed into a chapter chain.
+
+`topic` steps select an exact displayed dialogue label using balanced arrow and
+Control input, waiting with idle updates while speech runs. `face` steps turn
+through ground or rope controls and observe the resulting heading. Both have
+update bounds and leave script state untouched. Checkpoints may additionally
+assert `health`; every checkpoint requires zero script failures.
+
+Segment steering can record `forward_updates` and `settle_updates` to keep
+short walking presses and their release interval explicit. Chapter steering
+retains its existing adaptive press duration when these fields are absent.
+
+`stop_updates` waits with all steering keys released before accepting a waypoint,
+then measures the resulting position again. Overshoot resumes correction instead
+of accepting the earlier moving position. BELLTOWR uses 50 updates: its measured
+walk release travelled 13,768 Q8 and stopped by update 16, remaining stationary
+through update 50. This interval is a fixture observation, not a gameplay delay.
+
+`approach_radius` switches the last part of a waypoint to single-update walk
+presses followed by `stop_updates` released updates. This keeps the final
+approach stationary between corrections, including when the outer gait runs.

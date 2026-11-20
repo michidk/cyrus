@@ -27,6 +27,8 @@ def checkpoint(state, scripts, expected):
     equal(flags_by_name(scripts), expected["flags"], "flags")
     equal(scripts["globals"], expected["globals"], "globals")
     equal(state["script_hud"]["inventory"]["counts"], expected["inventory"], "inventory")
+    if "health" in expected:
+        equal(state["hud"]["health"], expected["health"], "health")
     position = scripts["player_position_q8"]
     target = expected["position_q8"]
     residual = math.dist(position, target["value"])
@@ -37,7 +39,9 @@ def checkpoint(state, scripts, expected):
 
 def validate(fixture):
     """Accept timing, keyboard events and complete checkpoint expectations only."""
-    assert set(fixture) == {"version", "step_micros", "steps"}, "unexpected fixture fields"
+    assert {"version", "step_micros", "steps"} <= set(fixture) <= {"version", "step_micros", "steps", "entry_scene"}, "unexpected fixture fields"
+    if "entry_scene" in fixture:
+        assert fixture["entry_scene"] == "BELLTOWR", "unsupported staged entry"
     assert fixture["version"] == 1, "unsupported fixture version"
     assert type(fixture["step_micros"]) is int and fixture["step_micros"] > 0, "invalid step_micros"
     assert fixture["steps"], "empty fixture"
@@ -51,11 +55,23 @@ def validate_steps(steps, depth=0):
         if "checkpoint" in step:
             assert set(step) == {"checkpoint"}, "checkpoint cannot contain commands"
             expected = step["checkpoint"]
-            assert set(expected) == {"world", "flags", "globals", "inventory", "position_q8"}, "incomplete checkpoint"
+            assert {"world", "flags", "globals", "inventory", "position_q8"} <= set(expected) <= {"world", "flags", "globals", "inventory", "position_q8", "health"}, "incomplete checkpoint"
             assert expected["flags"] and expected["inventory"], "checkpoint needs flags and inventory"
             position = expected["position_q8"]
             assert len(position["value"]) == 3 and 0 <= position["tolerance"] < float("inf"), "invalid position tolerance"
             checkpoints += 1
+        elif "face" in step:
+            assert set(step) == {"face"}, "facing cannot contain commands"
+            face = step["face"]
+            assert set(face) == {"world", "heading", "rope", "limit"}, "incomplete facing"
+            assert type(face["heading"]) is int and 0 <= face["heading"] < 2048, "invalid heading"
+            assert type(face["rope"]) is bool, "invalid rope mode"
+            assert type(face["limit"]) is int and 0 < face["limit"] <= 3000, "invalid facing limit"
+        elif "topic" in step:
+            assert set(step) == {"topic"}, "topic cannot contain commands"
+            assert set(step["topic"]) == {"world", "text", "limit"}, "incomplete topic"
+            assert isinstance(step["topic"]["text"], str) and step["topic"]["text"], "empty topic"
+            assert type(step["topic"]["limit"]) is int and 0 < step["topic"]["limit"] <= 10000, "invalid topic limit"
         elif "await_control" in step:
             assert set(step) == {"await_control"}, "control wait cannot contain commands"
             wait = step["await_control"]
@@ -65,7 +81,13 @@ def validate_steps(steps, depth=0):
         elif "steer" in step:
             assert set(step) == {"steer"}, "steering cannot contain other commands"
             target = step["steer"]
-            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to", "gait"}, "incomplete steering target"
+            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to", "gait", "forward_updates", "settle_updates", "stop_updates", "approach_radius"}, "incomplete steering target"
+            for key, maximum in [("forward_updates", 4), ("settle_updates", 50), ("stop_updates", 100)]:
+                if key in target:
+                    assert type(target[key]) is int and 1 <= target[key] <= maximum, "invalid steering cadence"
+            if "approach_radius" in target:
+                assert math.isfinite(target["approach_radius"]) and target["approach_radius"] > target["tolerance"], "invalid final approach radius"
+                assert "stop_updates" in target, "final approach needs a stop interval"
             assert target.get("gait", "walk") in ("walk", "run"), "invalid steering gait"
             assert len(target["position_q8"]) == 3 and all(math.isfinite(v) for v in target["position_q8"]), "invalid steering position"
             assert 0 < target["tolerance"] < float("inf"), "invalid steering tolerance"
@@ -126,6 +148,52 @@ def await_control(control, wait):
             {"after_updates": 0}, {"after_updates": 1}]})
         state = control.ready(wait["world"], examine_open=None)
     return state
+
+
+def face_heading(control, face):
+    """Turn with ground or rope controls, observing the heading after each input."""
+    tolerance = 3 if face["rope"] else 24
+    for _ in range(face["limit"]):
+        state = control.ready(face["world"])
+        error = (face["heading"] - state["hud"]["heading"] + 1024) % 2048 - 1024
+        if abs(error) <= tolerance:
+            return
+        if face["rope"]:
+            keys = ["ShiftLeft", "ArrowRight" if error > 0 else "ArrowLeft"]
+            held = min(40, max(1, int(abs(error) / 24)))
+        else:
+            keys = ["ArrowLeft" if error > 0 else "ArrowRight"]
+            held = 1
+        control.request({"type": "schedule_input", "events": [
+            *[{"after_updates": 0, "key": key, "action": "press"} for key in keys],
+            *[{"after_updates": held, "key": key, "action": "release"} for key in keys],
+            {"after_updates": held + 1}]})
+    raise AssertionError(f"facing limit exhausted: {face['heading']}")
+
+
+def choose_topic(control, topic):
+    """Select a displayed installed topic through balanced keyboard input."""
+    for _ in range(topic["limit"]):
+        control.ready(topic["world"])
+        globals_ = control.request({"type": "scripts", "offset": 0, "limit": 1})["globals"]
+        menu = globals_["menu"]
+        if globals_["menu_state"] == 1:
+            choices = menu["slots"][:menu["count"]]
+            target = next((i for i, choice in enumerate(choices) if choice["text"] == topic["text"]), None)
+            assert target is not None, f"topic {topic['text']!r} unavailable: {[c['text'] for c in choices]}"
+            key = ("ControlLeft" if target == menu["current"] else
+                   "ArrowDown" if target > menu["current"] else "ArrowUp")
+            control.request({"type": "schedule_input", "events": [
+                {"after_updates": 0, "key": key, "action": "press"},
+                {"after_updates": 1, "key": key, "action": "release"},
+                {"after_updates": 3}]})
+            if key == "ControlLeft":
+                print(f"selected dialogue topic {topic['text']!r}", flush=True)
+                return
+        else:
+            control.request({"type": "schedule_input", "events": [
+                {"after_updates": 0}, {"after_updates": 2}]})
+    raise AssertionError(f"topic wait limit exhausted: {topic['text']!r}")
 
 
 def play_inputs(control, step):
@@ -210,6 +278,18 @@ def steer(control, target):
         dx = target["position_q8"][0] - position[0]
         dz = target["position_q8"][2] - position[2]
         distance = math.hypot(dx, dz)
+        if distance <= target["tolerance"] and target.get("stop_updates"):
+            before = position
+            control.request({"type": "schedule_input", "events": [
+                {"after_updates": 0}, {"after_updates": target["stop_updates"]}]})
+            state = control.ready(target["world"])
+            scripts = control.request({"type": "scripts", "offset": 0, "limit": 1})
+            position = scripts["player_position_q8"]
+            coast = math.hypot(position[0] - before[0], position[2] - before[2])
+            print(f"released coast over {target['stop_updates']} updates: {coast:.3f} Q8 ({target.get('gait', 'walk')})", flush=True)
+            distance = math.hypot(target["position_q8"][0] - position[0], target["position_q8"][2] - position[2])
+            if distance > target["tolerance"]:
+                continue
         if distance <= target["tolerance"]:
             print(f"steering reached waypoint after {iteration} inputs, residual {distance:.3f} Q8", flush=True)
             return {"state": state, "scripts": scripts}
@@ -218,12 +298,20 @@ def steer(control, target):
         bearing = (-math.atan2(dx, dz) * 2048 / math.tau) % 2048
         error = (bearing - state["hud"]["heading"] + 1024) % 2048 - 1024
         # Short schedules resample heading after each turn and avoid strafing.
+        approaching = distance <= target.get("approach_radius", 0)
         turning = abs(error) > 48
         keys = (["ArrowLeft" if error > 0 else "ArrowRight"] if turning else
-                ["ArrowUp"] if target.get("gait", "walk") == "run" else ["ShiftLeft", "ArrowUp"])
-        held = min(4, max(1, int(abs(error) / 64))) if turning else min(4, max(1, int(distance / 4096)))
+                ["ArrowUp"] if target.get("gait", "walk") == "run" and not approaching else ["ShiftLeft", "ArrowUp"])
+        if turning:
+            held = min(4, max(1, int(abs(error) / 64)))
+        elif approaching:
+            held = 1
+        else:
+            held = target.get("forward_updates", min(4, max(1, int(distance / 4096))))
+        settle = target.get("stop_updates", 0) if approaching else target.get("settle_updates", 0)
         events = ([{"after_updates": 0, "key": key, "action": "press"} for key in keys]
-                  + [{"after_updates": held, "key": key, "action": "release"} for key in keys])
+                  + [{"after_updates": held, "key": key, "action": "release"} for key in keys]
+                  + ([{"after_updates": held + settle}] if settle else []))
         transitioned = play_inputs(control, {"input": events, **(
             {"transition_to": target["transition_to"]} if "transition_to" in target else {})})
         if transitioned:
@@ -276,7 +364,9 @@ def run(args):
         except (AssertionError, KeyError, TypeError, ValueError) as error:
             raise ValueError(f"{path}: {error}") from error
         fixtures.append(fixture)
-    assert fixtures, "no chapter fixtures"
+    assert fixtures, "no replay fixtures"
+    entries = [f for f in fixtures if "entry_scene" in f]
+    assert not entries or len(fixtures) == 1, "staged segments require an independent session"
     timing = fixtures[0]["step_micros"]
     assert isinstance(timing, int) and timing > 0, "step_micros must be a positive integer"
     assert all(f["step_micros"] == timing for f in fixtures), "chain timing must agree"
@@ -288,8 +378,10 @@ def run(args):
             port = probe.getsockname()[1]
         env = dict(os.environ, CYRUS_CONFIG_DIR=str(args.config.resolve()))
         with (args.config / "process.log").open("w") as log:
+            entry = (["--scene", fixtures[0]["entry_scene"], "--skip-startup"]
+                     if entries else ["--new-game", "--skip-movies"])
             process = subprocess.Popen([
-                str(args.binary.resolve()), "--headless", "--new-game", "--skip-movies",
+                str(args.binary.resolve()), "--headless", *entry,
                 "--replay-step-micros", str(timing),
                 "--volume", "0", "--control", f"127.0.0.1:{port}",
                 "--install", str(args.install.resolve()),
@@ -316,6 +408,10 @@ def run(args):
                                 observation = None
                             if "input" in step and not transitioned:
                                 transitioned = play_inputs(control, step)
+                            if "face" in step:
+                                face_heading(control, step["face"])
+                            if "topic" in step:
+                                choose_topic(control, step["topic"])
                             if "await_control" in step:
                                 await_control(control, step["await_control"])
                             if "steer" in step:

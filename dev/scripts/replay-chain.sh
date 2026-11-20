@@ -17,7 +17,13 @@ if [[ "${1:-}" == --keep-running ]]; then
 fi
 if [[ $# -eq 0 ]]; then
     shopt -s nullglob
-    set -- dev/fixtures/chapters/*.replay.json
+    chapters=(dev/fixtures/chapters/*.replay.json)
+    [[ ${#chapters[@]} -gt 0 ]] || { echo 'replay-chain: no chapter fixtures' >&2; exit 1; }
+    python3 -B dev/scripts/replay-chain.py --binary "$binary" --install "$install" --config "$config/chapters" "${runner_options[@]}" "${chapters[@]}"
+    for segment in dev/fixtures/segments/*.replay.json; do
+        python3 -B dev/scripts/replay-chain.py --binary "$binary" --install "$install" --config "$config/segments/$(basename "$segment" .replay.json)" "$segment"
+    done
+    exit 0
 fi
-[[ $# -gt 0 ]] || { echo 'replay-chain: no chapter fixtures' >&2; exit 1; }
+[[ $# -gt 0 ]] || { echo 'replay-chain: no replay fixtures' >&2; exit 1; }
 exec python3 -B dev/scripts/replay-chain.py --binary "$binary" --install "$install" --config "$config" "${runner_options[@]}" "$@"

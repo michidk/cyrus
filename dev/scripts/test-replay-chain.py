@@ -4,6 +4,9 @@ import copy
 import importlib.util
 import json
 import math
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -38,6 +41,106 @@ class Checkpoints(unittest.TestCase):
                 replay.validate(fixture)
                 timings.add(fixture["step_micros"])
         self.assertEqual(len(timings), 1)
+
+    def test_default_discovery_runs_segments_in_separate_sessions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "dev/scripts"
+            scripts.mkdir(parents=True)
+            scripts.joinpath("replay-chain.sh").write_text(Path(__file__).with_name("replay-chain.sh").read_text())
+            scripts.joinpath("toolchain.sh").write_text("")
+            for folder, name in [("chapters", "000-opening"), ("segments", "bell-monocle")]:
+                directory = root / "dev/fixtures" / folder
+                directory.mkdir(parents=True)
+                directory.joinpath(name + ".replay.json").write_text("{}")
+            commands = root / "bin"
+            commands.mkdir()
+            commands.joinpath("python3").write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n')
+            commands.joinpath("python3").chmod(0o755)
+            install = root / "install"
+            install.mkdir()
+            calls = root / "calls"
+            env = dict(os.environ, PATH=f"{commands}:/usr/bin:/bin", REDGUARD_DIR=str(install),
+                       CYRUS_REPLAY_BINARY="/unused/cyrus", CYRUS_CONFIG_DIR=str(root / "config"), CALLS=str(calls))
+            subprocess.run(["bash", str(scripts / "replay-chain.sh")], env=env, check=True)
+            sessions = calls.read_text().splitlines()
+            self.assertEqual(len(sessions), 2)
+            self.assertIn("config/chapters", sessions[0])
+            self.assertIn("chapters/000-opening.replay.json", sessions[0])
+            self.assertIn("config/segments/bell-monocle", sessions[1])
+            self.assertNotIn("000-opening", sessions[1])
+
+    def test_health_checkpoint_rejects_corrupted_expectation(self):
+        self.state["hud"] = {"health": 100}
+        self.expected["health"] = 100
+        replay.checkpoint(self.state, self.scripts, self.expected)
+        self.expected["health"] = 99
+        with self.assertRaisesRegex(AssertionError, "health"):
+            replay.checkpoint(self.state, self.scripts, self.expected)
+        self.expected["health"] = 100
+        self.expected["inventory"]["46"] = 1
+        self.state["script_hud"]["inventory"]["counts"]["46"] = 1
+        replay.checkpoint(self.state, self.scripts, self.expected)
+        self.expected["inventory"]["46"] = 0
+        with self.assertRaisesRegex(AssertionError, "inventory/46"):
+            replay.checkpoint(self.state, self.scripts, self.expected)
+
+    def test_facing_uses_rope_controls_and_balances_keys(self):
+        class Control:
+            heading = 1000
+            calls = []
+
+            def ready(self, world):
+                return {"hud": {"heading": self.heading}}
+
+            def request(self, command):
+                self.calls.append(command)
+                self.heading = 1024
+
+        control = Control()
+        replay.face_heading(control, {"world": 20, "heading": 1024, "rope": True, "limit": 2})
+        events = control.calls[0]["events"]
+        self.assertEqual([e["key"] for e in events[:2]], ["ShiftLeft", "ArrowRight"])
+        self.assertEqual([e["action"] for e in events[:4]], ["press", "press", "release", "release"])
+
+    def test_topic_waits_then_selects_displayed_text_with_balanced_keys(self):
+        class Control:
+            menu_current = 0
+            idle = 0
+            calls = []
+
+            def ready(self, world):
+                if world != 20:
+                    raise AssertionError("wrong world")
+
+            def request(self, command):
+                self.calls.append(command)
+                if command["type"] == "scripts":
+                    return {"globals": {"menu_state": int(self.idle > 0), "menu": {
+                        "current": self.menu_current, "count": 2,
+                        "slots": [{"text": "BELL"}, {"text": "BROKEN BELL"}]}}}
+                events = command["events"]
+                if "key" not in events[0]:
+                    self.idle += 1
+                else:
+                    if events[0]["key"] == "ArrowDown":
+                        self.menu_current += 1
+                    if events[0]["action"] != "press" or events[1]["action"] != "release":
+                        raise AssertionError("unbalanced menu input")
+                return {}
+
+        control = Control()
+        replay.choose_topic(control, {"world": 20, "text": "BROKEN BELL", "limit": 5})
+        schedules = [c for c in control.calls if c["type"] == "schedule_input"]
+        self.assertEqual([c["events"][0].get("key") for c in schedules], [None, "ArrowDown", "ControlLeft"])
+
+    def test_staged_entry_refuses_arbitrary_scene_or_extra_commands(self):
+        fixture = {"version": 1, "step_micros": 100000,
+                   "entry_scene": "BELLTOWR", "steps": [{"checkpoint": self.expected}]}
+        replay.validate(fixture)
+        fixture["entry_scene"] = "invented"
+        with self.assertRaisesRegex(AssertionError, "staged entry"):
+            replay.validate(fixture)
 
     def test_modal_input_retries_an_ignored_first_press_and_releases(self):
         class Control:
@@ -195,6 +298,65 @@ class Checkpoints(unittest.TestCase):
             replay.steer(control, {"world": 1, "position_q8": [4000, 0, 8000], "tolerance": 600, "limit": 100})
             self.assertLessEqual(math.dist(control.position, [4000, 0, 8000]), 600)
             self.assertTrue(control.commands)
+
+    def test_segment_steering_corrects_coast_before_accepting_stop(self):
+        class Control:
+            position = [0, 0, 0]
+            coasting = True
+            schedules = []
+
+            def ready(self, world=None):
+                heading = 1024 if self.position[2] > 1000 else 0
+                return {"scripts": {"world": 20}, "hud": {"health": 100, "heading": heading}}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    return {"world": 20, "player_position_q8": list(self.position)}
+                self.schedules.append(command["events"])
+                if self.coasting:
+                    self.position[2] += 500
+                    self.coasting = False
+                return {}
+
+            def response(self, command):
+                self.schedules.append(command["events"])
+                self.position[2] += -500 if self.position[2] > 1000 else 500
+                return {"ok": True}
+
+        control = Control()
+        control.position = [0, 0, 1000]
+        observed = replay.steer(control, {"world": 20, "position_q8": [0, 0, 1000],
+                                         "tolerance": 1, "limit": 3,
+                                         "forward_updates": 1, "settle_updates": 2, "stop_updates": 50})
+        self.assertEqual(observed["scripts"]["player_position_q8"], [0, 0, 1000])
+        self.assertEqual(control.position, [0, 0, 1000])
+        self.assertEqual(len(control.schedules), 3)
+
+    def test_final_approach_walks_and_waits_for_the_stop(self):
+        class Control:
+            position = [0, 0, 0]
+            events = None
+
+            def ready(self, world=None):
+                return {"scripts": {"world": 20}, "hud": {"health": 100, "heading": 0}}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    return {"world": 20, "player_position_q8": list(self.position)}
+                return {}
+
+            def response(self, command):
+                self.events = command["events"]
+                self.position[2] = 1000
+                return {"ok": True}
+
+        control = Control()
+        replay.steer(control, {"world": 20, "position_q8": [0, 0, 1000],
+                              "tolerance": 1, "limit": 2, "gait": "run",
+                              "approach_radius": 2000, "stop_updates": 50})
+        self.assertEqual([e.get("key") for e in control.events[:2]], ["ShiftLeft", "ArrowUp"])
+        self.assertEqual(control.events[-1]["after_updates"], 51)
+        self.assertEqual(control.position, [0, 0, 1000])
 
     def test_running_waypoint_uses_forward_without_walk_modifier(self):
         class Control:
