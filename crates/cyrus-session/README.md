@@ -58,6 +58,9 @@ on a later frame; in the browser with `?capture`, write a request to
   of guessing. Never rebind or synthesize state on load.
 - Apply saved environment edits only to off-live copies
   (`RuntimeSessionSnapshot::prepare_environments`), never to live assets.
+- HUD presentation is optional in a checkpoint. Loading one captured before the
+  HUD initialized keeps the live overlay; logical HUD state still comes from the save.
+  Prepared HUD presentation can also initialize an absent live overlay.
 - A saved-game load follows the original's audio cleanup: samples and dialogue
   stop, the live CD transport is kept. See preservation's
   [sound](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md)

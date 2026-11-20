@@ -251,7 +251,7 @@ fn environmental_effect_sources_survive_session_capture_and_load() -> Result<()>
 }
 
 #[test]
-fn saved_game_load_clears_samples_and_keeps_the_live_cd_transport() -> Result<()> {
+fn saved_game_reloads_after_hud_initializes_and_keeps_the_live_cd_transport() -> Result<()> {
     for from_menu in [false, true] {
         exercise_runtime_session(false, from_menu, true, false, true, MusicAtSave::Paused)?;
         exercise_runtime_session(true, from_menu, true, false, true, MusicAtSave::Paused)?;
@@ -1253,6 +1253,17 @@ fn exercise_runtime_session(
             .world_mut()
             .resource_mut::<Assets<AudioSource>>()
             .add(music_source.clone());
+        assert!(!saved.has_hud_presentation());
+        let live_hud: cyrus_render::hud::HudState = serde_json::from_value(json!({
+            "health": 100, "candle_mode": 2, "candle_visible": true,
+            "candle": {"shown": null, "step": 0, "frame": 0},
+            "lockout": 0, "sword_drawn": false, "player_type": 0,
+            "heading": 25, "world": 17, "compass_on": false,
+            "compass_frame": null, "powerups": [null, null], "logbook_frame": null,
+            "walk_mode": false, "auto_defend": true, "notices": [0, 0],
+            "prompt": null, "selected": 1, "count": 1
+        }))?;
+        app.insert_resource(live_hud);
         let load_assets = cyrus_session::SessionLoadAssets {
             sources: cyrus_session::SessionWorldAssets::from_loaded(
                 &saved,
@@ -1319,6 +1330,13 @@ fn exercise_runtime_session(
             cyrus_session::SessionBoundaryResult::Committed
         ));
         assert!(app.world().get_entity(replacement).is_err());
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_render::hud::HudState>()
+                .heading,
+            25
+        );
+
         if with_camera {
             check_restored_listener(&mut app);
         }
