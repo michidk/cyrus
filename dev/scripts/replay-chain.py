@@ -22,6 +22,7 @@ def equal(actual, expected, path):
 
 def checkpoint(state, scripts, expected):
     """Compare public control observations; positions use original map Q8 units."""
+    equal(state["scripts"]["failed"], 0, "scripts/failed")
     equal(scripts["world"], expected["world"], "world")
     equal(flags_by_name(scripts), expected["flags"], "flags")
     equal(scripts["globals"], expected["globals"], "globals")

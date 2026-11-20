@@ -14,7 +14,8 @@ spec.loader.exec_module(replay)
 
 class Checkpoints(unittest.TestCase):
     def setUp(self):
-        self.state = {"script_hud": {"inventory": {"counts": {"1": 2}}}}
+        self.state = {"scripts": {"failed": 0},
+                      "script_hud": {"inventory": {"counts": {"1": 2}}}}
         self.scripts = {
             "world": 7,
             "flags": {"flags": [{"definition": {"name": "test_flag"}, "value": 3, "latched": True}]},
@@ -61,6 +62,11 @@ class Checkpoints(unittest.TestCase):
         replay.play_modal(control, {"world": 1, "key": "Escape"})
         self.assertEqual(control.presses, 2)
         self.assertFalse(control.held)
+
+    def test_checkpoint_rejects_failed_scripts_even_when_expectations_match(self):
+        self.state["scripts"]["failed"] = 1
+        with self.assertRaisesRegex(AssertionError, "scripts/failed"):
+            replay.checkpoint(self.state, self.scripts, self.expected)
 
     def test_position_tolerance_includes_boundary(self):
         self.assertEqual(replay.checkpoint(self.state, self.scripts, self.expected), 3)
@@ -181,7 +187,7 @@ class Checkpoints(unittest.TestCase):
             reads = 0
 
             def ready(self):
-                return {**outer.state, "scripts": {"world": 7}, "hud": {"health": 100, "heading": 0}}
+                return {**outer.state, "scripts": {"world": 7, "failed": 0}, "hud": {"health": 100, "heading": 0}}
 
             def request(self, command):
                 self.reads += 1
