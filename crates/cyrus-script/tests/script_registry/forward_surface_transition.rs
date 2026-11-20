@@ -465,3 +465,44 @@ fn sidestep_onto_a_new_surface_flushes_the_transition_with_the_shared_random_str
         }
     }
 }
+
+/// Equipment transitions keep forward dispatch (preservation engine/player.md).
+#[test]
+fn forward_support_accepts_equipment_transitions() {
+    for living in [
+        LivingState::ORDINARY,
+        LivingState::DRAWING_SWORD,
+        LivingState::SHEATHING_SWORD,
+        LivingState::LIGHTING_TORCH,
+        LivingState::DOUSING_TORCH,
+    ] {
+        let (scripts, mut world, mut data, scene) = player_walking_fixture();
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        let index = world.selected_player().unwrap().index;
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][index]["control"]["living_state"] = living.byte().into();
+        world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let player = world.id(index).unwrap();
+        let map = world.id(0).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        let before = world.spatial(player).unwrap().local.position;
+        world
+            .query_player_forward_support(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                before,
+                &mut SupportHistory::new(0, 0),
+                false,
+            )
+            .unwrap_or_else(|error| panic!("{living}: {error:#}"));
+    }
+}

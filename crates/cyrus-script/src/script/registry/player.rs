@@ -1327,6 +1327,7 @@ impl ScriptWorld {
     /// Probe an ordinary selected player's proposed forward position against the
     /// retained mixed candidates. This never moves the actor. Completed support
     /// queries commit history and surface even when final forward admission fails.
+    /// Equipment transitions retain forward movement (preservation engine/player.md).
     pub fn query_player_forward_support(
         &mut self,
         id: super::ScriptActorId,
@@ -1357,7 +1358,14 @@ impl ScriptWorld {
             control.queued_motion == JumpMotion::NONE
                 && control.falling_state == JumpMotion::NONE
                 && control.sliding_state == 0
-                && control.living_state == LivingState::ORDINARY
+                && matches!(
+                    control.living_state,
+                    LivingState::ORDINARY
+                        | LivingState::DRAWING_SWORD
+                        | LivingState::SHEATHING_SWORD
+                        | LivingState::LIGHTING_TORCH
+                        | LivingState::DOUSING_TORCH
+                )
                 && control
                     .actions
                     .iter()
