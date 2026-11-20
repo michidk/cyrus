@@ -492,6 +492,7 @@ mod tests {
                 title_fills_window: false,
                 elapsed: 2.0,
                 failed: false,
+                status: default(),
             })
             .add_systems(Update, resize);
         let window = app

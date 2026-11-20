@@ -10,6 +10,28 @@ use std::{
 /// The title artwork cyrus ships: a 16:9 redraw of the installed 640×480 title, without labels.
 const TITLE_ARTWORK: &[u8] = include_bytes!("../../assets/title.png");
 
+/// The installed font and colour of the title's right-aligned status line ("Loading..."), which
+/// the game draws onto the exported title at run time as loading advances.
+#[derive(bevy::asset::Asset, bevy::reflect::TypePath, serde::Serialize, serde::Deserialize)]
+pub struct TitleLabel {
+    pub font: cyrus_text::Font,
+    pub colour: [u8; 3],
+}
+
+impl TitleLabel {
+    /// Draws `text` right-aligned on the status line of `pixels`, an RGBA title of `size`.
+    pub fn stamp(&self, pixels: &mut [u8], size: [u32; 2], text: &str) {
+        draw_text(
+            pixels,
+            size,
+            &self.font,
+            text,
+            630 - self.font.width(text),
+            self.colour,
+        );
+    }
+}
+
 /// Generates local presentation images from the player's own splash DLL, GXA and label font.
 /// The install is read-only; every output stays under the supplied cache path.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
@@ -53,7 +75,7 @@ pub(crate) fn prepare_startup(
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path))?,
     );
     let mut fingerprint = DefaultHasher::new();
-    (10u32, &dll_bytes, &title_bytes, &font_bytes, TITLE_ARTWORK).hash(&mut fingerprint);
+    (11u32, &dll_bytes, &title_bytes, &font_bytes, TITLE_ARTWORK).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
     let directory = Path::new("startup");
     let stamp = directory.join("source.txt");
@@ -63,14 +85,9 @@ pub(crate) fn prepare_startup(
         .as_deref()
         == Some(&fingerprint)
         && output.exists(&directory.join("splash.splash"))
-        && [
-            "title.png",
-            "title-preparing.png",
-            "title-menu.png",
-            "title-sound.png",
-        ]
-        .iter()
-        .all(|name| output.exists(&directory.join(name)))
+        && ["title.png", "title.label"]
+            .iter()
+            .all(|name| output.exists(&directory.join(name)))
     {
         return Ok(());
     }
@@ -105,31 +122,30 @@ pub(crate) fn prepare_startup(
     };
     let version_colour = title_colour(&title_frame.palette, palette.match_vga([32; 3]));
     let status_colour = title_colour(&title_frame.palette, palette.match_vga([50, 0, 0]));
+    let size = [background.width(), background.height()];
     draw_text(
         &mut background,
+        size,
         &font,
         "Version 1.0.1.0",
         10,
         version_colour,
     );
-    for (name, text) in [
-        ("title.png", "Loading..."),
-        ("title-preparing.png", "Preparing menu and HUD..."),
-        ("title-menu.png", "Loading menu..."),
-        ("title-sound.png", "Loading sound..."),
-    ] {
-        let mut image = background.clone();
-        draw_text(
-            &mut image,
-            &font,
-            text,
-            630 - font.width(text),
-            status_colour,
-        );
-        let path = directory.join(name);
-        output
-            .image(&path, &image)
-            .with_context(|| format!("startup: writing {}", path.display()))?;
+    let path = directory.join("title.png");
+    output
+        .image(&path, &background)
+        .with_context(|| format!("startup: writing {}", path.display()))?;
+    let label = TitleLabel {
+        font,
+        colour: status_colour,
+    };
+    let path = directory.join("title.label");
+    output
+        .publish(&path, &serde_json::to_vec(&label)?)
+        .with_context(|| format!("startup: writing {}", path.display()))?;
+    // Earlier caches held one title per status line.
+    for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
+        output.remove(&directory.join(name))?;
     }
     output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
@@ -147,15 +163,17 @@ fn title_colour(palette: &[[u8; 3]; 256], tint: u8) -> [u8; 3] {
 /// Draws one flat-colour line with its pen at (`x`, 467) of the original 640×480 title frame.
 /// The artwork is shown filling the window, so that frame is its centred 4:3 region at the
 /// artwork's height; each font pixel becomes the block of artwork pixels it covers there.
+/// `pixels` is RGBA of `size`.
 fn draw_text(
-    image: &mut image::RgbaImage,
+    pixels: &mut [u8],
+    [width, height]: [u32; 2],
     font: &cyrus_text::Font,
     text: &str,
     x: i32,
     color: [u8; 3],
 ) {
-    let scale = image.height() as f32 / 480.0;
-    let left = (image.width() as f32 - 640.0 * scale) / 2.0;
+    let scale = height as f32 / 480.0;
+    let left = (width as f32 - 640.0 * scale) / 2.0;
     let edge = |cell: i32, origin: f32| (origin + cell as f32 * scale).round() as i32;
     font.draw(text, [x, 467], |x, y, _| {
         if !(0..640).contains(&x) || !(0..480).contains(&y) {
@@ -163,14 +181,11 @@ fn draw_text(
         }
         for py in edge(y, 0.0)..edge(y + 1, 0.0) {
             for px in edge(x, left)..edge(x + 1, left) {
-                if (0..image.width() as i32).contains(&px)
-                    && (0..image.height() as i32).contains(&py)
-                {
-                    image.put_pixel(
-                        px as u32,
-                        py as u32,
-                        image::Rgba([color[0], color[1], color[2], 255]),
-                    );
+                if (0..width as i32).contains(&px) && (0..height as i32).contains(&py) {
+                    let at = (py as usize * width as usize + px as usize) * 4;
+                    if let Some(pixel) = pixels.get_mut(at..at + 4) {
+                        pixel.copy_from_slice(&[color[0], color[1], color[2], 255]);
+                    }
                 }
             }
         }

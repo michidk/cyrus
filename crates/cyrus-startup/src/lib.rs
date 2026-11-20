@@ -111,6 +111,61 @@ struct Playback {
     title_fills_window: bool,
     elapsed: f32,
     failed: bool,
+    status: TitleStatus,
+}
+
+/// The exported title and the status line drawn on it; `title` shows the stamped copy.
+#[derive(Default)]
+struct TitleStatus {
+    base: Handle<Image>,
+    label: Handle<cyrus_assets::startup::TitleLabel>,
+    /// The line to show; `None` for a title that carries no status (a saved game's picture).
+    text: Option<&'static str>,
+    stamped: Option<&'static str>,
+}
+
+#[derive(Default, TypePath)]
+struct TitleLabelLoader;
+impl bevy::asset::AssetLoader for TitleLabelLoader {
+    type Asset = cyrus_assets::startup::TitleLabel;
+    type Settings = ();
+    type Error = anyhow::Error;
+    async fn load(
+        &self,
+        reader: &mut dyn bevy::asset::io::Reader,
+        _: &(),
+        _: &mut bevy::asset::LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+    fn extensions(&self) -> &[&str] {
+        &["label"]
+    }
+}
+
+/// Draws the requested status line onto a copy of the exported title once both have loaded.
+fn stamp_title(
+    mut playback: ResMut<Playback>,
+    labels: Res<Assets<cyrus_assets::startup::TitleLabel>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let status = &playback.status;
+    let Some(text) = status.text.filter(|text| status.stamped != Some(*text)) else {
+        return;
+    };
+    let (Some(base), Some(label)) = (images.get(&status.base), labels.get(&status.label)) else {
+        return;
+    };
+    let mut image = base.clone();
+    let size = image.size().to_array();
+    let Some(pixels) = image.data.as_mut() else {
+        return;
+    };
+    label.stamp(pixels, size, text);
+    playback.title = images.add(image);
+    playback.status.stamped = Some(text);
 }
 
 #[derive(Component)]
@@ -127,10 +182,12 @@ impl Plugin for StartupPlugin {
             .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
             .add_message::<QuitRequest>()
             .insert_resource(ClearColor(Color::BLACK))
+            .init_asset::<cyrus_assets::startup::TitleLabel>()
+            .init_asset_loader::<TitleLabelLoader>()
             .add_systems(OnEnter(AppState::Loading), setup)
             .add_systems(
                 Update,
-                (fit_image, splash::resize, advance)
+                (fit_image, splash::resize, stamp_title, advance)
                     .chain()
                     .run_if(in_state(AppState::Loading)),
             )
@@ -225,13 +282,20 @@ fn setup(
         )
     });
     spawn_camera(&mut commands);
-    let title = game
+    let saved_picture = game
         .as_ref()
-        .filter(|game| game.image != Handle::default())
-        .map_or_else(
-            || assets.load("cache://startup/title.png"),
-            |game| game.image.clone(),
-        );
+        .map(|game| game.image.clone())
+        .filter(|image| *image != Handle::default());
+    let status = match &saved_picture {
+        Some(_) => TitleStatus::default(),
+        None => TitleStatus {
+            base: assets.load("cache://startup/title.png"),
+            label: assets.load("cache://startup/title.label"),
+            text: Some("Loading..."),
+            stamped: None,
+        },
+    };
+    let title = saved_picture.unwrap_or_else(|| status.base.clone());
     let first = live
         .as_ref()
         .map(|(_, view)| view.target())
@@ -256,6 +320,7 @@ fn setup(
         title_fills_window,
         elapsed: 0.0,
         failed: false,
+        status,
     });
 }
 
@@ -324,6 +389,19 @@ fn advance(
             Some(LoadState::Loaded) => {}
             _ => return,
         }
+    }
+    if let Some(LoadState::Failed(error)) = assets.get_load_state(playback.status.label.id()) {
+        failed(&mut commands, &error);
+        playback.failed = true;
+        return;
+    }
+    // Wait for the status line so the title never shows without it.
+    if playback.status.text.is_some() && playback.status.stamped.is_none() {
+        if let Some(LoadState::Failed(error)) = assets.get_load_state(playback.status.base.id()) {
+            failed(&mut commands, &error);
+            playback.failed = true;
+        }
+        return;
     }
     let title = playback.title.id();
     if !drawing.images.contains(title) {

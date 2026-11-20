@@ -623,28 +623,29 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
             .enumerate_pixels()
             .any(|(x, y, p)| x < 600 && y >= 990 && *p == version)
     );
+    // The exported title carries only the version; the status line is drawn at run time.
     assert!(
-        title
+        !title
             .enumerate_pixels()
             .any(|(x, y, p)| x > 1200 && y >= 990 && *p == status)
     );
-    for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
-        let stage = image(name);
-        assert_eq!(stage.dimensions(), (1820, 1024));
-        assert_eq!(
-            &stage.as_raw()[..1820 * 990 * 4],
-            &title.as_raw()[..1820 * 990 * 4]
-        );
-        assert!(
-            stage
-                .enumerate_pixels()
-                .any(|(x, y, p)| { x > 900 && y >= 990 && *p == status })
-        );
-        assert_ne!(
-            stage, title,
-            "{name} must replace the generic loading label"
-        );
-    }
+    let label: cyrus_assets::startup::TitleLabel =
+        serde_json::from_slice(&std::fs::read(splash.join("title.label")).unwrap()).unwrap();
+    assert_eq!(
+        image::Rgba([label.colour[0], label.colour[1], label.colour[2], 255]),
+        status
+    );
+    let mut stamped = title.clone();
+    label.stamp(&mut stamped, [1820, 1024], "Loading menu...");
+    assert_eq!(
+        &stamped.as_raw()[..1820 * 990 * 4],
+        &title.as_raw()[..1820 * 990 * 4]
+    );
+    assert!(
+        stamped
+            .enumerate_pixels()
+            .any(|(x, y, p)| x > 1200 && y >= 990 && *p == status)
+    );
     let modified = std::fs::metadata(splash.join("title.png"))
         .unwrap()
         .modified()
