@@ -178,16 +178,38 @@ pub(crate) struct RuntimeAssets<'w> {
     animations: Option<Res<'w, Assets<Animations>>>,
 }
 
+/// The state, entry marker, pause book and information screen that decide whether the player
+/// stays bound.
+type EntryGates<'w> = (
+    Res<'w, State<cyrus_game::AppState>>,
+    Res<'w, MarkerEntry>,
+    Option<Res<'w, crate::PausedGameplay>>,
+    Option<Res<'w, cyrus_game::GameplayOverlay>>,
+);
+
+/// Whether the player leaves the world and unbinds. A book that pauses the world keeps its player
+/// bound so a save made there can capture it; the F1 and F10 screens draw over the world, which
+/// keeps its player in view.
+fn left_world(state: &cyrus_game::AppState, paused_book: bool, overlay: bool) -> bool {
+    *state != cyrus_game::AppState::InGame && !paused_book && !overlay
+}
+
+#[cfg(test)]
+#[test]
+fn information_screens_and_the_pause_book_keep_the_player_bound() {
+    use cyrus_game::AppState;
+    assert!(!left_world(&AppState::InGame, false, false));
+    assert!(!left_world(&AppState::GameplayOverlay, false, true));
+    assert!(!left_world(&AppState::Menu, true, false));
+    assert!(left_world(&AppState::Menu, false, false));
+}
+
 pub(crate) fn step(
     mut commands: Commands,
     mut ticks: MessageReader<GroundedTick>,
     simulation: (ResMut<PlayerRuntime>, Option<ResMut<Messages<SoundCue>>>),
     mut actors: Option<ResMut<ScriptActors>>,
-    entry: (
-        Res<State<cyrus_game::AppState>>,
-        Res<MarkerEntry>,
-        Option<Res<crate::PausedGameplay>>,
-    ),
+    entry: EntryGates,
     assets: RuntimeAssets,
     mut players: Query<(Entity, Option<&mut PlayerPose>, &mut Transform), With<Player>>,
 ) {
@@ -200,7 +222,7 @@ pub(crate) fn step(
         ticks.clear();
         return;
     }
-    let (state, marker, paused) = entry;
+    let (state, marker, paused, overlay) = entry;
     let Ok((entity, pose, mut transform)) = players.single_mut() else {
         *runtime = PlayerRuntime::default();
         ticks.clear();
@@ -236,8 +258,7 @@ pub(crate) fn step(
         marker: *marker,
         generation: world.generation(),
     };
-    // A book that pauses the world keeps its player bound so a save made there can capture it.
-    let left_world = state.get() != &cyrus_game::AppState::InGame && paused.is_none();
+    let left_world = left_world(state.get(), paused.is_some(), overlay.is_some());
     if left_world || runtime.source.as_ref() != Some(&source) {
         *runtime = PlayerRuntime::default();
         runtime.entry_pending = true;
