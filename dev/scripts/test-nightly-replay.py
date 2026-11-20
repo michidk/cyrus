@@ -9,7 +9,7 @@ import unittest
 
 class Nightly(unittest.TestCase):
     def run_nightly(self, status, pull_status=0, hauler=True, interrupted=False,
-                    replace_script=False, old_runs=0):
+                    replace_script=False, old_runs=0, dirty=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             commands = root / "bin"
@@ -28,7 +28,9 @@ class Nightly(unittest.TestCase):
                 pending.parent.mkdir(parents=True)
                 pending.write_text("Previous run interrupted; not counted as passing.\n")
             for name, body in {
-                "git": f'if [ "$1" = rev-parse ]; then echo test-commit; else exit {pull_status}; fi',
+                "git": (f'if [ "$1" = rev-parse ]; then echo test-commit; '
+                        + f'elif [ "$1" = status ]; then {"echo modified-file" if dirty else ":"}; '
+                        + f'else echo pull >> "$GIT_CALLS"; exit {pull_status}; fi'),
                 "cargo": 'echo "cargo $*" >> "$CALLS"',
                 "just": ('echo "$*" >> "$CALLS"; if [ "$1" = replay-chain ]; then '
                          + 'test "$CYRUS_REPLAY_BINARY" = "$CARGO_TARGET_DIR/debug/cyrus" || exit 93; '
@@ -44,10 +46,13 @@ class Nightly(unittest.TestCase):
                 script.chmod(0o755)
             env = dict(os.environ, PATH=f"{commands}:/usr/bin:/bin",
                        CYRUS_CONFIG_DIR=str(root / "config"), REDGUARD_DIR=str(root / "install"),
-                       CALLS=str(root / "calls"), REPORT=str(root / "report"),
+                       GIT_CALLS=str(root / "git-calls"), CALLS=str(root / "calls"), REPORT=str(root / "report"),
                        SOURCE_SCRIPT=str(script_path), CARGO_TARGET_DIR=str(root / "stub-shared-target"))
             result = subprocess.run(["bash", str(script_path)],
                                     env=env, capture_output=True, text=True)
+            if dirty:
+                self.assertFalse((root / "git-calls").exists(), "dirty checkout must not be pulled")
+                self.assertIn("checkout is dirty", result.stdout + result.stderr)
             calls = (root / "calls").read_text() if (root / "calls").exists() else ""
             report = (root / "report").read_text() if (root / "report").exists() else ""
             self.assertFalse((root / "config/runtime").exists(), "runtime caches must be discarded")
@@ -74,6 +79,13 @@ class Nightly(unittest.TestCase):
         self.assertEqual(status, 8)
         self.assertNotIn("replay-chain", calls)
         self.assertIn("Exit status: 8.", report)
+
+    def test_dirty_checkout_is_reported_without_pull_or_build(self):
+        status, calls, report = self.run_nightly(0, dirty=True)
+        self.assertEqual(status, 65)
+        self.assertNotIn("cargo build", calls)
+        self.assertNotIn("replay-chain", calls)
+        self.assertIn("Exit status: 65.", report)
 
     def test_missing_hauler_restores_setup(self):
         status, calls, _ = self.run_nightly(0, hauler=False)

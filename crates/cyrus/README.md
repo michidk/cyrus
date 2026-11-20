@@ -190,7 +190,9 @@ The install-backed nightly runs in the maintainer's VibePod on `julian` through 
 command scheduler at `0 3 * * *` (03:00 UTC), named `Cyrus nightly replay chain`.
 Its command invokes `bash dev/scripts/nightly-replay.sh` with `REDGUARD_DIR` pointing
 to the shared read-only install and `CYRUS_CONFIG_DIR` pointing to persistent
-`magic/nightly-replay-chain` state. The wrapper pulls main, restores setup when
+`magic/nightly-replay-chain` state. The schedule uses its own clean worktree at
+`magic/nightly-replay-checkout`, tracking main independently of agent worktrees.
+The wrapper refuses a dirty checkout before pulling or building, pulls main, restores setup when
 cargo-hauler is missing, builds through hauler in the inherited shared Cargo target,
 and passes that target's executable to `just replay-chain`. It copies no executable
 or build checkpoints into the nightly directory. Completed runs post their result in

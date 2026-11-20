@@ -78,6 +78,10 @@ trap report_failure EXIT
     echo 'The previous run is not counted as passing; retrying from New Game.'
 } > "$unfinished"
 exec > >(tee "$log") 2>&1
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+    echo 'nightly-replay: checkout is dirty; refusing to update or replay. Use a dedicated clean checkout.' >&2
+    exit 65
+fi
 git pull --rebase origin main
 if ! command -v cargo-hauler >/dev/null 2>&1; then
     just setup
