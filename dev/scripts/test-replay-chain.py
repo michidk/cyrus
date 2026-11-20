@@ -68,6 +68,45 @@ class Checkpoints(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "scripts/failed"):
             replay.checkpoint(self.state, self.scripts, self.expected)
 
+    def test_entry_wait_continues_past_76_updates_without_releasing_lockout(self):
+        class Control:
+            update = 0
+
+            def ready(self, world, **kwargs):
+                return {"clock": {"game_seconds": self.update * 2},
+                        "scripts": {"ordinary_updates": self.update},
+                        "hud": {"lockout": int(self.update < 100)}}
+
+            def request(self, command):
+                self.assert_command(command)
+                self.update += 1
+
+            def assert_command(self, command):
+                if command != {"type": "schedule_input", "events": [
+                        {"after_updates": 0}, {"after_updates": 1}]}:
+                    raise AssertionError("entry wait must send no keys or state mutations")
+
+        control = Control()
+        result = replay.await_control(control, {
+            "world": 1, "max_seconds": 600, "max_updates": 1000})
+        self.assertEqual(control.update, 100)
+        self.assertEqual(result["hud"]["lockout"], 0)
+
+    def test_entry_wait_reports_clock_bound_without_clearing_lockout(self):
+        class Control:
+            update = 0
+
+            def ready(self, world, **kwargs):
+                return {"clock": {"game_seconds": self.update * 2},
+                        "scripts": {"ordinary_updates": self.update},
+                        "hud": {"lockout": 1}}
+
+            def request(self, command):
+                self.update += 1
+
+        with self.assertRaisesRegex(AssertionError, "clock bound"):
+            replay.await_control(Control(), {"world": 1, "max_seconds": 3, "max_updates": 100})
+
     def test_position_tolerance_includes_boundary(self):
         self.assertEqual(replay.checkpoint(self.state, self.scripts, self.expected), 3)
 

@@ -56,6 +56,12 @@ def validate_steps(steps, depth=0):
             position = expected["position_q8"]
             assert len(position["value"]) == 3 and 0 <= position["tolerance"] < float("inf"), "invalid position tolerance"
             checkpoints += 1
+        elif "await_control" in step:
+            assert set(step) == {"await_control"}, "control wait cannot contain commands"
+            wait = step["await_control"]
+            assert set(wait) == {"world", "max_seconds", "max_updates"}, "incomplete control wait"
+            assert math.isfinite(wait["max_seconds"]) and wait["max_seconds"] > 0, "invalid control clock bound"
+            assert type(wait["max_updates"]) is int and wait["max_updates"] > 0, "invalid control update bound"
         elif "steer" in step:
             assert set(step) == {"steer"}, "steering cannot contain other commands"
             target = step["steer"]
@@ -99,6 +105,27 @@ def reached(control, expected):
         except AssertionError:
             return False
     return True
+
+
+def await_control(control, wait):
+    """Let an entry script finish without input or changing its lockout.
+
+    Both bounds are measured in the game, independent of host rendering speed.
+    A blocked scheduler still reports its own boundary timeout.
+    """
+    initial = control.ready(wait["world"], examine_open=None)
+    start = initial["clock"]["game_seconds"]
+    updates = initial["scripts"]["ordinary_updates"]
+    state = initial
+    while state["hud"]["lockout"] != 0:
+        elapsed = state["clock"]["game_seconds"] - start
+        consumed = state["scripts"]["ordinary_updates"] - updates
+        assert 0 <= elapsed <= wait["max_seconds"], f"entry lockout clock bound: {elapsed} seconds"
+        assert 0 <= consumed < wait["max_updates"], f"entry lockout update bound: {consumed} updates"
+        control.request({"type": "schedule_input", "events": [
+            {"after_updates": 0}, {"after_updates": 1}]})
+        state = control.ready(wait["world"], examine_open=None)
+    return state
 
 
 def play_inputs(control, step):
@@ -289,6 +316,8 @@ def run(args):
                                 observation = None
                             if "input" in step and not transitioned:
                                 transitioned = play_inputs(control, step)
+                            if "await_control" in step:
+                                await_control(control, step["await_control"])
                             if "steer" in step:
                                 observation = steer(control, step["steer"])
                             if "repeat" in step:

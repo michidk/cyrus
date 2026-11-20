@@ -169,3 +169,11 @@ Read back both camera poses and inspect the original image before choosing an
 unobscured sky rectangle. A matching pose or a low pixel error does not establish
 that the rectangle contains sky. This native adapter helper does not establish
 browser acceptance or acceptance of the separate indexed software-sky path.
+
+Entry scripts can retain control after a world transition. An
+`{"await_control":{"world":1,"max_seconds":600,"max_updates":10000}}`
+step waits for the scripted lockout to clear using one ordinary update at a
+time. The limits measure game seconds and completed updates, so slow rendering
+cannot shorten the allowed script duration. It sends no keys and never clears
+lockout itself. A stalled ordinary boundary remains an error. Use a separate
+`modal_input` step for a scripted viewer that suspends ordinary updates.
