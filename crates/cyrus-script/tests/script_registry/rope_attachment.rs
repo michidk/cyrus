@@ -355,3 +355,121 @@ fn directional_release_carries_the_new_speed_only_on_the_next_ordinary_update() 
         [expected[0], expected[2]]
     );
 }
+
+#[test]
+fn attached_rope_turn_uses_accelerated_input_at_subtick_scales() {
+    use cyrus_script::player::input::PlayerInput;
+    let (_, mut world, data, mut scene) = rope_classification_fixture();
+    scene.settings.turn_speed = 12;
+    scene.settings.turn_max_speed = 48;
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    let before = world.inspect(player.index, 1)["actors"][0]["spatial"]["local"]["angles"][1]
+        .as_i64()
+        .unwrap();
+    for _ in 0..40 {
+        tick_rope_classification_with_timing(
+            &mut world,
+            &data,
+            &scene,
+            PlayerInput {
+                walk: true,
+                right: true,
+                ..Default::default()
+            },
+            false,
+            [1, 8, 90],
+        );
+    }
+    tick_rope_classification_with_timing(
+        &mut world,
+        &data,
+        &scene,
+        Default::default(),
+        false,
+        [1, 8, 90],
+    );
+    let after = world.inspect(player.index, 1)["actors"][0]["spatial"]["local"]["angles"][1]
+        .as_i64()
+        .unwrap();
+    // BELLTOWR: heading 24 reaches 640 under 40 Right updates at scales 87..90.
+    // All those scales round the accelerated 12,24,36,48 operands identically.
+    assert_eq!(after - before, 640 - 24);
+}
+
+#[test]
+fn downward_rope_control_searches_below_the_current_hand_link() {
+    use cyrus_script::player::input::PlayerInput;
+    let (scripts, mut world, mut data, scene) = rope_classification_fixture_with(
+        |_| {},
+        |data| {
+            let actor = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|a| a["script_name"] == "CYRUS")
+                .unwrap();
+            actor["raex"]["grip0"] = 0.into();
+            for group in [
+                AnimationGroup::ROPE_PANIC,
+                AnimationGroup::ROPE_SWING_FORWARD,
+                AnimationGroup::ROPE_DOWN,
+            ] {
+                actor["animation_groups"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(serde_json::json!({
+                        "group_index":group.index(),"anim_id":1,"anim_type":0,
+                        "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+                    }));
+            }
+            data.metadata["mpsz_entries"][0]["pos_extent"][1] = 0.into();
+            data.metadata["mpsz_entries"][0]["neg_extent"][1] = 48.into();
+            data.metadata["mpsz_entries"][0]["center_offset"][1] = (-24).into();
+            let model = data.models.get_mut("PLAYER").unwrap();
+            model.base_positions = vec![[0.0, 0.0, 0.0]];
+            model.positions = vec![vec![[0.0, 0.0, 0.0]]];
+        },
+    );
+    let player = world.selected_player().unwrap();
+    tick_rope_classification(&mut world, &data, &scene, Default::default(), false);
+    data.metadata["ropes"][0]["position"] = serde_json::json!([-0.5, 0.3, 1.5]);
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["ropes"][0]["attachments"][0][1] = 1.into();
+    let position = [10 * 256, 10 * 256, 30 * 256];
+    saved["spatial"]["actors"][player.index]["local"]["position"] = serde_json::json!(position);
+    let globals = std::mem::take(world.globals_mut());
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &cyrus_script::script::WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &Default::default(),
+        },
+        cyrus_script::script::WorldRestoreContext {
+            generation: 2,
+            globals,
+            samples: &Default::default(),
+        },
+    )
+    .unwrap();
+    world.select_player(false).unwrap();
+    for _ in 0..8 {
+        tick_rope_classification(
+            &mut world,
+            &data,
+            &scene,
+            PlayerInput {
+                backward: true,
+                ..Default::default()
+            },
+            false,
+        );
+    }
+    // The synthetic animation has no hand motion; assert the public controller
+    // admits the next link rather than fabricating a climb translation.
+    assert_eq!(world.ropes()[0].down_limit, Some((player.index, 2)));
+}

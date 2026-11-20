@@ -134,3 +134,7 @@ With `cyrus_script=debug` logging enabled, a failed selected-player forward-supp
 query records its Q8 current/proposed positions, wrapped angles, live map-unit
 collision extents and spheres, ordered candidates, and retained model transforms
 and frame identities. The diagnostic leaves the query error and movement unchanged.
+
+Attached rope controls use the accelerated turn accumulators. Downward link
+selection uses its own two-link hand target, while initial attachment retains
+the unbiased hand target (preservation SOUP.md, rope attachment and controls).

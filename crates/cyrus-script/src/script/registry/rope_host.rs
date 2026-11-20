@@ -56,6 +56,13 @@ fn rope_heading_difference(rope_heading: i32, actor_heading: i32) -> i32 {
 
 use cyrus_game::rope::engine_position as to_engine;
 
+/// Attachment and descent use different authored hand-height targets.
+#[derive(Clone, Copy)]
+enum HandLinkSearch {
+    Attachment,
+    Descent,
+}
+
 fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
@@ -198,7 +205,7 @@ impl ScriptWorld {
         let Some((rope, link)) = self.rope_attach_candidate(id, data, settings, ticks)? else {
             return Ok(false);
         };
-        let link = self.rope_hand_link(id, rope, link, data, probe)?;
+        let link = self.rope_hand_link(id, rope, link, data, probe, HandLinkSearch::Attachment)?;
         self.attach_player(id, rope, link, held, ticks, sounds)?;
         Ok(true)
     }
@@ -424,7 +431,14 @@ impl ScriptWorld {
             .find(|a| a.actor == index)
             .map(|a| a.node)
             .context("rope update: attachment unavailable")?;
-        let limit = self.rope_hand_link(id, rope_index, node + 1, data, probe)?;
+        let limit = self.rope_hand_link(
+            id,
+            rope_index,
+            node + 1,
+            data,
+            probe,
+            HandLinkSearch::Descent,
+        )?;
         self.ropes[rope_index].down_limit = Some((index, limit));
         // The selected player's ordinary update repeats the key's climb group while attached,
         // whether or not the climb helper's node bounds accepted it.
@@ -453,9 +467,8 @@ impl ScriptWorld {
                         self.player_rope.turn_total = 0;
                     }
                 } else {
-                    let step = ((i32::from(right) * frame_scale) >> 8)
-                        - ((i32::from(left) * frame_scale) >> 8);
-                    turned = wrap(heading.wrapping_add(step));
+                    let step = self.globals.turn.delta(frame_scale.max(0) as u32);
+                    turned = wrap(i64::from(heading).wrapping_add(step)) as i32;
                 }
             }
         } else if !look {
@@ -507,8 +520,9 @@ impl ScriptWorld {
     }
 
     /// The link nearest below the player's hand, searched from eight links before `start`: the
-    /// hand point is the grip vertex of the first frame of `anim_rope_panic` plus the player's height,
-    /// and the winner is the link at or above it that is closest. Without that
+    /// hand point is the grip vertex of the first frame of `anim_rope_panic` plus the player's height.
+    /// Descent adds two Q8 link lengths minus one before the integer conversion; initial
+    /// attachment uses the unbiased hand target. The closest eligible link wins. Without that
     /// frame `start` stands. Near the ground the hand height is clamped a margin (the grip's height
     /// plus the actor's feet extent) above the floor probe.
     fn rope_hand_link(
@@ -518,11 +532,25 @@ impl ScriptWorld {
         start: i32,
         data: &Animations,
         probe: Option<RopeProbe<'_>>,
+        search: HandLinkSearch,
     ) -> Result<i32> {
         let Some(grip) = self.group_hand_vertex(id, data, AnimationGroup::ROPE_PANIC)? else {
             return Ok(start);
         };
-        let mut target = grip[1].wrapping_add(self.spatial(id)?.local.position[1]) >> 8;
+        let offset = match search {
+            HandLinkSearch::Attachment => 0,
+            HandLinkSearch::Descent => {
+                let length = (f64::from(self.ropes[rope_index].link_length)
+                    * f64::from(cyrus_game::ENGINE_UNIT_SCALE)
+                    * 256.0)
+                    .round() as i32;
+                length.wrapping_mul(2).wrapping_sub(1)
+            }
+        };
+        let mut target = grip[1]
+            .wrapping_add(self.spatial(id)?.local.position[1])
+            .wrapping_add(offset)
+            >> 8;
         if let Some(probe) = probe {
             let floor = self.rope_floor_height(id, probe, data)? >> 8;
             let margin = (grip[1].wrapping_abs() >> 8)
@@ -644,7 +672,15 @@ impl ScriptWorld {
             .map(|a| a.node)
             .context("rope climb: attachment unavailable")?;
         if up && node - 1 <= 0
-            || !up && self.rope_hand_link(id, rope_index, node + 1, data, probe)? <= node
+            || !up
+                && self.rope_hand_link(
+                    id,
+                    rope_index,
+                    node + 1,
+                    data,
+                    probe,
+                    HandLinkSearch::Descent,
+                )? <= node
         {
             return Ok(());
         }

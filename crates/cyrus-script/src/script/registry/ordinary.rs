@@ -378,6 +378,42 @@ impl ScriptWorld {
                     });
                     self.run_pre_script_displacement(id, scale, inputs, query)?;
                 }
+                let player_timing = crate::clock::ClockStep {
+                    frame_scale: inputs.frame_scale.expect("validated frame scale"),
+                    nominal_ticks: ticks,
+                    fine_ticks: 0,
+                };
+                // The input update runs every frame, including while a script task owns the player.
+                if selected_player && let Some(controller) = inputs.player_controller {
+                    let settings = &scene
+                        .ok_or_else(|| anyhow::anyhow!("player input scene unavailable"))?
+                        .settings;
+                    let (increment, limit) = if self.player_turn_uses_fight_values(id, inputs)? {
+                        let attributes = &self.actors[id.index].attributes;
+                        (
+                            u32::from(attributes[Attribute::FightTurnAccel]),
+                            u32::from(attributes[Attribute::FightTurnSpeed]),
+                        )
+                    } else {
+                        (settings.turn_speed, settings.turn_max_speed)
+                    };
+                    if let Some(target) = controller.steer {
+                        let heading = self.spatial(id)?.local.wrapped_angles()[1];
+                        // Modern steering turns at four times the held-key limit.
+                        self.globals.turn.steer(
+                            heading,
+                            target,
+                            limit * 4,
+                            player_timing.frame_scale,
+                        );
+                    } else {
+                        self.globals.turn.update(
+                            [controller.held.left, controller.held.right],
+                            increment,
+                            limit,
+                        );
+                    }
+                }
                 // The selected player on a rope skips the movement and collision stages below.
                 let mut on_rope = selected_player
                     && self.control_player_rope(
@@ -463,42 +499,6 @@ impl ScriptWorld {
                     } else {
                         None
                     };
-                let player_timing = crate::clock::ClockStep {
-                    frame_scale: inputs.frame_scale.expect("validated frame scale"),
-                    nominal_ticks: ticks,
-                    fine_ticks: 0,
-                };
-                // The input update runs every frame, including while a script task owns the player.
-                if selected_player && let Some(controller) = inputs.player_controller {
-                    let settings = &scene
-                        .ok_or_else(|| anyhow::anyhow!("player input scene unavailable"))?
-                        .settings;
-                    let (increment, limit) = if self.player_turn_uses_fight_values(id, inputs)? {
-                        let attributes = &self.actors[id.index].attributes;
-                        (
-                            u32::from(attributes[Attribute::FightTurnAccel]),
-                            u32::from(attributes[Attribute::FightTurnSpeed]),
-                        )
-                    } else {
-                        (settings.turn_speed, settings.turn_max_speed)
-                    };
-                    if let Some(target) = controller.steer {
-                        let heading = self.spatial(id)?.local.wrapped_angles()[1];
-                        // Modern steering turns at four times the held-key limit.
-                        self.globals.turn.steer(
-                            heading,
-                            target,
-                            limit * 4,
-                            player_timing.frame_scale,
-                        );
-                    } else {
-                        self.globals.turn.update(
-                            [controller.held.left, controller.held.right],
-                            increment,
-                            limit,
-                        );
-                    }
-                }
                 let mut claimed_facing = None;
                 if let Some(query) = player_query {
                     let controlled = self.advance_player_controller(
