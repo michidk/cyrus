@@ -1446,7 +1446,24 @@ impl ScriptWorld {
                     )),
                 excluded_candidate_type: None,
             },
-        )?;
+        ).inspect_err(|error| {
+            if log::log_enabled!(log::Level::Debug) {
+                let model_records = self.actors.iter().enumerate().filter_map(|(index, actor)| {
+                    actor.model.current.as_ref().map(|record| serde_json::json!({
+                        "actor": index, "name": actor.name(), "position": record.position,
+                        "matrix": record.pose.matrix.0, "radius": record.radius,
+                        "static_model": actor.model.static_model,
+                        "animation": record.animation.as_ref().map(|frame| (&frame.model, frame.frame)),
+                    }))
+                }).collect::<Vec<_>>();
+                let diagnostic = forward_support_diagnostic(
+                    shape, &query.prepared.candidates,
+                    spatial.local.position, proposed, spatial.local.wrapped_angles(),
+                    query.distance, query.sidedness, history.ticks(), model_records,
+                );
+                log::debug!("player forward support failed: {error:#}; inputs={diagnostic}");
+            }
+        })?;
         let RuntimeForwardSupport::Queried(support) = result else {
             return Ok(false);
         };
@@ -2081,10 +2098,88 @@ fn terrain_crossing(
     })
 }
 
+#[allow(clippy::too_many_arguments)] // One diagnostic mirrors one complete query boundary.
+fn forward_support_diagnostic(
+    shape: &super::ground::OrdinaryCollisionShape,
+    candidates: &cyrus_collision::candidates::CollisionCandidates,
+    current: [i32; 3],
+    proposed: [i32; 3],
+    angles: [u16; 3],
+    distance: u32,
+    sidedness: bool,
+    history_ticks: u32,
+    model_records: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "current_q8": current, "proposed_q8": proposed, "angles": angles,
+        "positive_extent": shape.positive_extent, "negative_extent": shape.negative_extent,
+        "total_extent": shape.total_extent, "center_offset": shape.center_offset,
+        "body": shape.body.iter().map(|sphere| (sphere.center, sphere.radius)).collect::<Vec<_>>(),
+        "additional": shape.additional.as_ref().map(|sphere| (sphere.center, sphere.radius)),
+        "distance": distance, "sidedness": sidedness, "history_ticks": history_ticks,
+        "candidates": format!("{candidates:?}"), "model_records": model_records,
+    })
+}
+
 #[cfg(test)]
 mod airborne_tests {
     use super::*;
     use crate::player::input::PlayerInput;
+
+    #[test]
+    fn forward_failure_diagnostic_retains_query_inputs_in_order() {
+        use super::super::ground::{BoundsRecord, OrdinaryCollisionShape, RetainedBounds};
+        use cyrus_collision::candidates::{
+            CandidateOwner, CollisionCandidates, FaceCandidate, ModelInstance,
+        };
+        let bounds = BoundsRecord {
+            positive_extent: [11, 22, 33],
+            negative_extent: [4, 5, 6],
+            total_extent: [15, 27, 39],
+            center_offset: [7, 8, 9],
+        };
+        let shape = OrdinaryCollisionShape {
+            positive_extent: bounds.positive_extent,
+            negative_extent: bounds.negative_extent,
+            total_extent: bounds.total_extent,
+            center_offset: bounds.center_offset,
+            retained: RetainedBounds {
+                primary: bounds,
+                secondary: None,
+                tertiary: None,
+            },
+            body: vec![],
+            additional: None,
+        };
+        let candidates = CollisionCandidates {
+            faces: [9, 2]
+                .map(|index| FaceCandidate {
+                    model: ModelInstance::Runtime(index),
+                    owner: CandidateOwner::Actor(index),
+                    collision_flags: 0,
+                    candidate_type: 0x20,
+                })
+                .to_vec(),
+            actors: vec![],
+        };
+        let value = forward_support_diagnostic(
+            &shape,
+            &candidates,
+            [1, 2, 3],
+            [4, 5, 6],
+            [0, 528, 0],
+            50,
+            false,
+            0,
+            vec![serde_json::json!({"actor": 9, "position": [7, 8, 9]})],
+        );
+        assert_eq!(value["positive_extent"], serde_json::json!([11, 22, 33]));
+        assert_eq!(value["current_q8"], serde_json::json!([1, 2, 3]));
+        assert_eq!(value["proposed_q8"], serde_json::json!([4, 5, 6]));
+        assert_eq!(value["angles"], serde_json::json!([0, 528, 0]));
+        assert_eq!(value["model_records"][0]["actor"], 9);
+        assert_eq!(value["candidates"], format!("{candidates:?}"));
+    }
 
     #[test]
     fn directional_jump_replaces_only_the_documented_movement_helpers() {

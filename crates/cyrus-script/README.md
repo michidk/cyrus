@@ -129,3 +129,8 @@ maximum swing and the held link. Their installed aim angles replace player
 orientation. Sound services use the resulting published logical camera pose,
 independently of an inspection view or render gliding, following preservation's
 [SYSTEM.INI camera settings](https://github.com/michidk/redguard-preservation/blob/main/docs/config/system-ini.md#camera).
+
+With `cyrus_script=debug` logging enabled, a failed selected-player forward-support
+query records its Q8 current/proposed positions, wrapped angles, live map-unit
+collision extents and spheres, ordered candidates, and retained model transforms
+and frame identities. The diagnostic leaves the query error and movement unchanged.
