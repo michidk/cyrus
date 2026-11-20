@@ -23,24 +23,23 @@
   <img src=".github/workflows/cyrus-banner.webp" alt="A green dragon watches an airship cross Redguard's island landscape" width="800">
 </p>
 
-> [!IMPORTANT]
-> cyrus is early in development. You can start a new game, play in its worlds
-> and save and resume, but a complete gameplay and fidelity playthrough has not
-> been accepted.
+## What works
 
-## What works today
-
+- Start from the launcher: the original Redguard launcher, recreated from your
+  own install, with game options, Faithful or Modern presentation per area,
+  cheats and mods.
 - Play the installed splash and title, then browse the data-driven book menu.
 - Play unlocked movies, edit persistent settings, and start New Game with its
   introduction.
-- Move, fight and interact in Redguard's worlds with the implemented controls.
-- Save and load cyrus sessions through the book, with gameplay thumbnails, in
-  the native and browser builds.
+- Play through Redguard's worlds: move, fight, talk, solve puzzles and use
+  your inventory, logbook and island map.
+- Save and load through the book, with gameplay thumbnails, in the native and
+  browser builds.
 - Jump to any world and inspect it with a free camera (Backtick menu).
 - Browse every asset in the separate asset viewer.
 
 See [Playing and controls](docs/PLAYING.md) for controls, saving and current
-limitations. See the [delivery issues](https://github.com/michidk/cyrus/issues/92) for remaining work and acceptance evidence.
+limitations. See the [open issues](https://github.com/michidk/cyrus/issues) for remaining work and the [delivery index](https://github.com/michidk/cyrus/issues/92) for acceptance evidence.
 
 Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
 `#redguard-cyrus-rust`.
@@ -49,10 +48,12 @@ Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
 
 Buy and install or extract the GOG release of *The Elder Scrolls Adventures: Redguard*. Then:
 
-1. Download the `cyrus` package for Windows, Linux or macOS from the [latest release](https://github.com/michidk/cyrus/releases/latest).
-2. Extract the archive and start `cyrus.exe` on Windows or `cyrus` on Linux and macOS.
-3. Choose the inner `Redguard` folder containing `RGFX.EXE`, `maps` and `fxart`. Keep the surrounding GOG folder intact so companion CD media remains available.
-4. Choose **New Game** in the book menu. Use the in-game options to configure display, sound and controls.
+1. Download the `cyrus-with-mods` package for Windows, Linux or macOS from the [latest release](https://github.com/michidk/cyrus/releases/latest).
+2. Extract the archive into a folder of its own and start `cyrus-launcher` (`cyrus-launcher.exe` on Windows).
+3. If the launcher does not find your game, choose the inner `Redguard` folder containing `RGFX.EXE`, `maps` and `fxart`. Keep the surrounding GOG folder intact so companion CD media remains available.
+4. Set game options and mods in the launcher, then click **Play Redguard** and choose **New Game** in the book menu.
+
+The plain `cyrus` package holds only the game; start `cyrus` directly and it asks for the game folder the same way.
 
 See [Playing and controls](docs/PLAYING.md) for saving, resuming and key bindings. To build from source or select an install on the command line, see [Advanced use](#advanced-use).
 
