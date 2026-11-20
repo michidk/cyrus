@@ -80,7 +80,9 @@ player control. Its camera movement does not move Cyrus through the world. In th
 flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
 the **Pass input to game** option beside it is ticked.
 The bundled `flycam` mod (see [bundled mods](../mods/README.md)) is a second fly camera: activate it in the
-Mods window under Backtick, then Insert toggles it; its speed is a setting of the mod.
+Mods window under Backtick, then Insert toggles it; its speed is a setting of the mod. With its
+**Leave the player where the camera stops** setting on, leaving the camera drops the player there, so
+scripts and objects near that spot react as if the player had walked there.
 
 The controls and the follow camera are always the original's; Modern mode changes only how the
 game looks. A gamepad works in every mode: in the world its stick or D-pad and face buttons are the

@@ -279,6 +279,8 @@ pub struct Player {
     animation: Vec<u32>,
     pending: Vec<u32>,
     idle: Vec<u32>,
+    /// A requested placement: map position, then heading.
+    placement: Option<([f32; 3], u32)>,
 }
 
 #[wasvy::methods]
@@ -309,6 +311,11 @@ impl Player {
     }
     pub fn speed(&self, run: bool) -> f32 {
         if run { self.run_speed } else { self.walk_speed }
+    }
+    pub fn place(&mut self, x: f32, y: f32, z: f32, heading: u32) {
+        if [x, y, z].iter().all(|value| value.is_finite()) {
+            self.placement = Some(([x, y, z], heading));
+        }
     }
 }
 
@@ -576,6 +583,18 @@ pub(crate) fn exchange(
             source: event.source_position.map(Vec::from).unwrap_or_default(),
         })
         .collect();
+    if let Some((position, heading)) = player.placement.take()
+        && let Some(world) = src
+            .actors
+            .as_deref_mut()
+            .and_then(|actors| actors.current.as_mut())
+        && let Err(error) = world.place_selected_player(
+            position.map(|value| (value * 256.0) as i32),
+            (heading & 2047) as u16,
+        )
+    {
+        warn!("mod player placement: {error:#}");
+    }
     publish_player(&mut player, src.actors.as_deref());
     camera.pose = src.view.single().map_or_else(
         |_| Vec::new(),
@@ -936,6 +955,16 @@ mod tests {
         publish_environment(&mut environment, &WorldFacts::default(), None);
         assert_eq!(environment.lighting(), "faithful");
         assert!(environment.water().is_empty());
+    }
+
+    #[test]
+    fn player_placement_keeps_the_last_finite_request() {
+        let mut player = Player::default();
+        player.place(1.0, 2.0, 3.0, 512);
+        player.place(f32::NAN, 2.0, 3.0, 0);
+        assert_eq!(player.placement, Some(([1.0, 2.0, 3.0], 512)));
+        player.place(4.0, 5.0, 6.0, 1024);
+        assert_eq!(player.placement, Some(([4.0, 5.0, 6.0], 1024)));
     }
 
     #[test]

@@ -1,4 +1,6 @@
 //! Insert toggles a free first-person camera. While it flies, the host suppresses player input.
+//! With "Leave the player where the camera stops" on, landing moves the player there, so scripts
+//! and triggers near that spot run as if the player had walked there.
 use cyrus_mod_sdk::{Cx, Input, Key, Mod, Persist, Pose, Quat, Vec3};
 
 /// Radians per pixel of mouse motion.
@@ -90,7 +92,13 @@ impl Mod for Flycam {
         };
         if cx.input.tapped(Key::INSERT) {
             fly = match fly {
-                Some(_) => None,
+                Some(fly) => {
+                    if cx.settings.flag("carry_player") {
+                        cx.player
+                            .place(fly.position.scene_to_map(), cx.player.heading());
+                    }
+                    None
+                }
                 None => cx.camera.pose().map(Fly::from_pose),
             };
         }
