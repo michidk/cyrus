@@ -10,26 +10,51 @@
           -16384,
           505632
         ],
-        "tolerance": 6000,
+        "tolerance": 12000,
         "limit": 240
       }
     },
     {
       "input": [
         {
-          "after_updates": 0,
-          "key": "ControlLeft",
-          "action": "press"
+          "after_updates": 0
         },
         {
-          "after_updates": 1,
-          "key": "ControlLeft",
-          "action": "release"
-        },
-        {
-          "after_updates": 10
+          "after_updates": 120
         }
       ]
+    },
+    {
+      "repeat": {
+        "until": {
+          "flags": {
+            "talking": {
+              "value": 1,
+              "latched": false
+            }
+          }
+        },
+        "limit": 100,
+        "steps": [
+          {
+            "input": [
+              {
+                "after_updates": 0,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 1,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 12
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "checkpoint": {
@@ -169,7 +194,7 @@
             -16384,
             505632
           ],
-          "tolerance": 12000
+          "tolerance": 16384
         }
       }
     }
