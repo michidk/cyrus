@@ -3643,6 +3643,28 @@ impl ScriptWorld {
             .with_context(|| format!("world {} global flag restoration", self.world))
     }
 
+    /// Apply validated original-save scalar state to an off-live initialized world.
+    /// The caller discards the candidate on error; continuations are not restored.
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn restore_original_player(
+        &mut self,
+        position: [i32; 3],
+        heading: u16,
+        health: u8,
+        flags: super::GlobalFlagsSnapshot,
+    ) -> Result<()> {
+        let player = self
+            .selected_player()
+            .context("original save: selected player unavailable")?;
+        self.spatial(player)
+            .context("original save: player spatial state unavailable")?;
+        self.restore_flags(flags)?;
+        self.place_selected_player(position, heading)?;
+        let index = self.resolve(player)?;
+        self.actors[index].attributes[Attribute::Health] = health;
+        Ok(())
+    }
+
     /// Read the global flag's latch without applying its native set/reset operation.
     pub fn global_flag_is_set(&self, index: usize) -> Result<bool> {
         anyhow::ensure!(

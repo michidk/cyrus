@@ -110,6 +110,8 @@ pub use registry::{
 };
 mod inventory;
 mod journal;
+#[cfg(feature = "original-save-import")]
+pub mod original_save;
 pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};
 pub use inventory::{Inventory, InventorySnapshot, InventoryView};
 pub use journal::{Journal, JournalSnapshot};

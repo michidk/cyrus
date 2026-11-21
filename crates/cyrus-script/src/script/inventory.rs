@@ -162,6 +162,53 @@ impl Inventory {
         })
     }
 
+    /// Restore original SVIT ownership without acquisition or pickup callbacks.
+    /// The final initialized item has no saved record and retains its defaults.
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn from_original(
+        hud: &HudAsset,
+        saved: &rgpre::import::savegame::SaveInventory,
+    ) -> Result<Self> {
+        anyhow::ensure!(
+            saved.items.len() + 1 == hud.inventory.len(),
+            "original SVIT item count differs from ITEM.INI"
+        );
+        let mut items = hud.inventory.clone();
+        let mut saved_counts = BTreeMap::new();
+        for ((&id, item), saved) in items.iter_mut().zip(&saved.items) {
+            item.count = saved
+                .player_total
+                .try_into()
+                .with_context(|| format!("original SVIT item {id}: negative count"))?;
+            item.total = saved
+                .total
+                .try_into()
+                .with_context(|| format!("original SVIT item {id}: negative total"))?;
+            item.player_max = saved
+                .player_max
+                .try_into()
+                .with_context(|| format!("original SVIT item {id}: negative player_max"))?;
+            item.hidden = saved.hide != 0;
+            saved_counts.insert(
+                id,
+                SavedCount {
+                    value: saved.unknown_12,
+                    pushed: saved.unknown_01 != 0,
+                },
+            );
+        }
+        let selected = u16::try_from(saved.selected_item)
+            .ok()
+            .filter(|id| items.contains_key(id));
+        Ok(Self {
+            definitions: hud.inventory.clone(),
+            used: items.keys().map(|&id| (id, None)).collect(),
+            items,
+            selected,
+            saved_counts,
+        })
+    }
+
     pub(super) fn new(hud: &HudAsset) -> Result<Self> {
         let mut inventory = Self {
             definitions: hud.inventory.clone(),
