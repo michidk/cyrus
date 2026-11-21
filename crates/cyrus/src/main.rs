@@ -253,6 +253,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_micros(micros),
         ));
+        app.insert_resource(control::ReplayStep(std::time::Duration::from_micros(
+            micros,
+        )));
     }
     app.add_plugins((
         cyrus_world::animation::AnimationPlugin,
