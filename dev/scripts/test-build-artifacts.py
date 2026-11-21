@@ -294,7 +294,8 @@ done
             self.assertIn("target/artifacts/cyrus-raytracing-${{ matrix.target }}*", native)
             tracing_steps = native.split("      - name: Build and package ray-tracing game\n", 1)[1]
             tracing_steps = tracing_steps.split("      - uses: actions/upload-artifact@", 1)[0]
-            self.assertEqual(tracing_steps.count("if: runner.os == 'Linux' || runner.os == 'Windows'"), 2)
+            # PR runs add an event condition after the platform test, so match the platform test itself.
+            self.assertEqual(tracing_steps.count("runner.os == 'Linux' || runner.os == 'Windows'"), 2)
 
     def test_mod_build_failure_does_not_leave_a_previous_bundle(self):
         self.mod_fixtures()
