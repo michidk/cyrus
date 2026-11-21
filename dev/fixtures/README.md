@@ -175,7 +175,11 @@ Entry scripts can retain control after a world transition. An
 step waits for the scripted lockout to clear using one ordinary update at a
 time. The limits measure game seconds and completed updates, so slow rendering
 cannot shorten the allowed script duration. It sends no keys and never clears
-lockout itself. A stalled ordinary boundary remains an error. Use a separate
+lockout itself. Optional `"rope_attached":true` also requires the selected
+player to be attached before climbing inputs continue. Optional
+`"inventory":{"46":1}` waits for the script to grant the item before its
+checkpoint; it does not grant items itself. A stalled ordinary boundary remains
+an error. Use a separate
 `modal_input` step for a scripted viewer that suspends ordinary updates.
 
 Independent quest segments live in `segments/*.replay.json`. Default
