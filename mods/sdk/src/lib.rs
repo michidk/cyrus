@@ -116,7 +116,7 @@ fn query_for() -> [QueryFor; 20] {
         QueryFor::Mut(raw::Memory::type_path()),
         QueryFor::Mut(raw::Movement::type_path()),
         QueryFor::Mut(raw::Natives::type_path()),
-        QueryFor::Ref(raw::Player::type_path()),
+        QueryFor::Mut(raw::Player::type_path()),
         QueryFor::Ref(raw::Settings::type_path()),
         QueryFor::Ref(raw::Damage::type_path()),
         QueryFor::Mut(raw::Particles::type_path()),

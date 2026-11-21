@@ -43,6 +43,11 @@ impl Vec3 {
         Self::new(-self.x / 20.0, -self.y / 20.0, (self.z - 65_535.996) / 20.0)
     }
 
+    /// The inverse of `map_to_scene`.
+    pub fn scene_to_map(self) -> Self {
+        Self::new(-self.x * 20.0, -self.y * 20.0, self.z * 20.0 + 65_535.996)
+    }
+
     pub fn dot(self, other: Vec3) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }

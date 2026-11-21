@@ -276,6 +276,11 @@ interface components {
     position: func() -> list<f32>;
     /// Facing, in engine units (2048 to a turn).
     heading: func() -> u32;
+    /// Move the player to `x`, `y`, `z` (map units, original axes) facing `heading`, before the
+    /// next update, as a placement: ledge, fall and queued motion are cleared, and the engine
+    /// then resolves ground and falls from there. The last call in a frame wins; nonfinite
+    /// positions are ignored.
+    place: func(x: f32, y: f32, z: f32, heading: u32);
     /// The direction the camera looks, in the same units as `heading`: the heading a
     /// player facing forward through the screen has.
     view: func() -> u32;
