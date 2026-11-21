@@ -7,6 +7,7 @@ pub use credits::{CreditsExit, CreditsExitState};
 mod examine;
 mod information;
 mod splash;
+mod title;
 mod view3d;
 pub use confirmation::{ConfirmationChoice, ConfirmationInput, LastGameConfirmation};
 mod fade;
@@ -107,6 +108,7 @@ struct Playback {
         splash::SplashView,
     )>,
     title: Handle<Image>,
+    title_status: title::Status,
     /// The title is the shipped artwork, shown covering the window rather than fitted to 4:3.
     title_fills_window: bool,
     elapsed: f32,
@@ -130,7 +132,7 @@ impl Plugin for StartupPlugin {
             .add_systems(OnEnter(AppState::Loading), setup)
             .add_systems(
                 Update,
-                (fit_image, splash::resize, advance)
+                (title::present, fit_image, splash::resize, advance)
                     .chain()
                     .run_if(in_state(AppState::Loading)),
             )
@@ -158,6 +160,7 @@ impl Plugin for StartupPlugin {
         loading::register(app);
         // Hosts without the renderer draw no models, so the lit material is registered only with it.
         splash::register_assets(app);
+        title::register(app);
         if app.is_plugin_added::<bevy::pbr::PbrPlugin>() {
             app.add_plugins((view3d::LitViewPlugin, splash::SplashPlugin));
         }
@@ -225,13 +228,13 @@ fn setup(
         )
     });
     spawn_camera(&mut commands);
-    let title = game
-        .as_ref()
-        .filter(|game| game.image != Handle::default())
-        .map_or_else(
-            || assets.load("cache://startup/title.png"),
-            |game| game.image.clone(),
-        );
+    let title = if let Some(game) = game.as_ref().filter(|game| game.image != Handle::default()) {
+        commands.remove_resource::<title::Drawing>();
+        game.image.clone()
+    } else {
+        commands.insert_resource(title::Drawing::new(&assets));
+        Handle::default()
+    };
     let first = live
         .as_ref()
         .map(|(_, view)| view.target())
@@ -253,6 +256,7 @@ fn setup(
         count,
         live,
         title,
+        title_status: default(),
         title_fills_window,
         elapsed: 0.0,
         failed: false,
@@ -379,6 +383,7 @@ fn spawn_camera(commands: &mut Commands) {
 }
 
 fn remove_content(mut commands: Commands, content: Query<Entity, With<StartupContent>>) {
+    commands.remove_resource::<title::Drawing>();
     for entity in &content {
         commands.entity(entity).despawn();
     }

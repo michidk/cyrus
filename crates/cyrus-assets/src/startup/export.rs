@@ -53,7 +53,7 @@ pub(crate) fn prepare_startup(
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path))?,
     );
     let mut fingerprint = DefaultHasher::new();
-    (10u32, &dll_bytes, &title_bytes, &font_bytes, TITLE_ARTWORK).hash(&mut fingerprint);
+    (11u32, &dll_bytes, &title_bytes, &font_bytes, TITLE_ARTWORK).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
     let directory = Path::new("startup");
     let stamp = directory.join("source.txt");
@@ -63,14 +63,9 @@ pub(crate) fn prepare_startup(
         .as_deref()
         == Some(&fingerprint)
         && output.exists(&directory.join("splash.splash"))
-        && [
-            "title.png",
-            "title-preparing.png",
-            "title-menu.png",
-            "title-sound.png",
-        ]
-        .iter()
-        .all(|name| output.exists(&directory.join(name)))
+        && ["title.png", "labels.title"]
+            .iter()
+            .all(|name| output.exists(&directory.join(name)))
     {
         return Ok(());
     }
@@ -95,9 +90,6 @@ pub(crate) fn prepare_startup(
     output
         .publish(&path, &serde_json::to_vec(&asset)?)
         .with_context(|| format!("startup: writing {}", path.display()))?;
-    let mut background = image::load_from_memory(TITLE_ARTWORK)
-        .context("startup: decoding the shipped title artwork")?
-        .to_rgba8();
     let palette = rgpre::import::palette::Palette {
         colors: title_frame
             .palette
@@ -105,31 +97,18 @@ pub(crate) fn prepare_startup(
     };
     let version_colour = title_colour(&title_frame.palette, palette.match_vga([32; 3]));
     let status_colour = title_colour(&title_frame.palette, palette.match_vga([50, 0, 0]));
-    draw_text(
-        &mut background,
-        &font,
-        "Version 1.0.1.0",
-        10,
+    let labels = crate::title::TitleLabels {
+        font,
         version_colour,
-    );
-    for (name, text) in [
-        ("title.png", "Loading..."),
-        ("title-preparing.png", "Preparing menu and HUD..."),
-        ("title-menu.png", "Loading menu..."),
-        ("title-sound.png", "Loading sound..."),
-    ] {
-        let mut image = background.clone();
-        draw_text(
-            &mut image,
-            &font,
-            text,
-            630 - font.width(text),
-            status_colour,
-        );
-        let path = directory.join(name);
-        output
-            .image(&path, &image)
-            .with_context(|| format!("startup: writing {}", path.display()))?;
+        status_colour,
+    };
+    output.publish(
+        &directory.join("labels.title"),
+        &serde_json::to_vec(&labels)?,
+    )?;
+    output.publish(&directory.join("title.png"), TITLE_ARTWORK)?;
+    for legacy in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
+        output.remove(&directory.join(legacy))?;
     }
     output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
@@ -142,39 +121,6 @@ fn title_colour(palette: &[[u8; 3]; 256], tint: u8) -> [u8; 3] {
         (u16::from(palette[161][channel]) * u16::from(palette[usize::from(tint)][channel]) / 255)
             as u8
     })
-}
-
-/// Draws one flat-colour line with its pen at (`x`, 467) of the original 640×480 title frame.
-/// The artwork is shown filling the window, so that frame is its centred 4:3 region at the
-/// artwork's height; each font pixel becomes the block of artwork pixels it covers there.
-fn draw_text(
-    image: &mut image::RgbaImage,
-    font: &cyrus_text::Font,
-    text: &str,
-    x: i32,
-    color: [u8; 3],
-) {
-    let scale = image.height() as f32 / 480.0;
-    let left = (image.width() as f32 - 640.0 * scale) / 2.0;
-    let edge = |cell: i32, origin: f32| (origin + cell as f32 * scale).round() as i32;
-    font.draw(text, [x, 467], |x, y, _| {
-        if !(0..640).contains(&x) || !(0..480).contains(&y) {
-            return;
-        }
-        for py in edge(y, 0.0)..edge(y + 1, 0.0) {
-            for px in edge(x, left)..edge(x + 1, left) {
-                if (0..image.width() as i32).contains(&px)
-                    && (0..image.height() as i32).contains(&py)
-                {
-                    image.put_pixel(
-                        px as u32,
-                        py as u32,
-                        image::Rgba([color[0], color[1], color[2], 255]),
-                    );
-                }
-            }
-        }
-    });
 }
 
 #[cfg(test)]

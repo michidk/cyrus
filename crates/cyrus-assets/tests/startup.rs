@@ -30,15 +30,61 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
     std::fs::create_dir_all(&output).unwrap();
     std::fs::write(output.join("source.txt"), "legacy shield cache").unwrap();
     std::fs::write(output.join("splash-01.png"), "legacy shield frame").unwrap();
+    for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
+        std::fs::write(output.join(name), "legacy labelled title").unwrap();
+    }
     export_startup(&install, &cache).unwrap();
+    let title_images = std::fs::read_dir(&output)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.file_name().to_string_lossy().starts_with("title")
+                && entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "png")
+        })
+        .count();
+    assert_eq!(title_images, 1, "cache stores one title background");
     let title = image::open(output.join("title.png")).unwrap().to_rgba8();
-    // The shipped 16:9 artwork carries the labels in the installed colour, below the picture.
     assert_eq!(title.dimensions(), (1820, 1024));
-    assert!(
-        title
-            .enumerate_pixels()
-            .any(|(x, y, p)| x < 600 && y >= 990 && p.0 == [105, 66, 30, 255])
-    );
+    let labels: cyrus_assets::title::TitleLabels =
+        serde_json::from_slice(&std::fs::read(output.join("labels.title")).unwrap()).unwrap();
+    for (name, status) in [
+        ("title.png", "Loading..."),
+        ("title-preparing.png", "Preparing menu and HUD..."),
+        ("title-menu.png", "Loading menu..."),
+        ("title-sound.png", "Loading sound..."),
+    ] {
+        let mut composed = title.clone();
+        labels.draw(status, [title.width(), title.height()], |x, y, color| {
+            composed.put_pixel(x, y, image::Rgba(color));
+        });
+        assert_ne!(
+            composed, title,
+            "runtime lettering is separate from the background"
+        );
+        assert!(
+            composed
+                .enumerate_pixels()
+                .any(|(x, y, p)| { x < 600 && y >= 990 && p.0 == [105, 66, 30, 255] })
+        );
+        if let Some(directory) = std::env::var_os("CYRUS_TITLE_REFERENCE_DIR") {
+            let reference = image::open(std::path::Path::new(&directory).join(name))
+                .unwrap()
+                .to_rgba8();
+            assert_eq!(
+                composed, reference,
+                "runtime pixels differ from retained {name}"
+            );
+        }
+        if let Some(directory) = std::env::var_os("CYRUS_TITLE_CAPTURE_DIR") {
+            std::fs::create_dir_all(&directory).unwrap();
+            composed
+                .save(std::path::Path::new(&directory).join(name))
+                .unwrap();
+        }
+    }
     let splash_path = output.join("splash.splash");
     let asset: cyrus_assets::splash_asset::SplashAsset =
         serde_json::from_slice(&std::fs::read(&splash_path).unwrap()).unwrap();
@@ -72,9 +118,9 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
         modified
     );
     std::fs::remove_file(&splash_path).unwrap();
-    std::fs::remove_file(output.join("title-sound.png")).unwrap();
+    std::fs::remove_file(output.join("labels.title")).unwrap();
     export_startup(&install, &cache).unwrap();
     assert!(splash_path.is_file());
-    assert!(output.join("title-sound.png").is_file());
+    assert!(output.join("labels.title").is_file());
     std::fs::remove_dir_all(cache).unwrap();
 }

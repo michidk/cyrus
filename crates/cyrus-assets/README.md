@@ -74,6 +74,10 @@ The book cache stores upload-ready palette and texture colours following the
 [preserved startup palette contract](https://github.com/michidk/redguard-preservation/pull/343).
 Generic COL parsing retains the file bytes.
 
+Startup preparation stores one unlabelled `startup/title.png` and the installed
+low font and palette-derived tints in `startup/labels.title`. Runtime presentation
+paints version and status text; export removes the three legacy labelled variants.
+
 ## Testing
 
 ```sh

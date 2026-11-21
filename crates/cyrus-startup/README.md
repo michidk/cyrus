@@ -14,6 +14,7 @@ the rules it implements belong to redguard-preservation.
 | Module | Responsibility |
 | --- | --- |
 | [lib](src/lib.rs) | `StartupPlugin`, `StartupPresentation`, `StartGame`, `WorldLoadRequest`, `QuitRequest` |
+| [title](src/title.rs) | Runtime version/status lettering over one cached title background |
 | [splash](src/splash.rs), [loading](src/loading.rs) | Live GPU 3dfx splash; title shown until menu/world assets are ready; world-entry loading screen |
 | [preparation](src/preparation.rs) | Native `LoadingPlugin`: startup preload and headless parser-coverage scan |
 | [menu](src/menu.rs) | Book menu data and state from `MENU.INI`: entries, layout, widgets, action IDs, `MenuContext` |
@@ -78,6 +79,10 @@ title artwork is an accepted difference, see
 - World-entry loading follows preservation's
   [startup rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#world-loading-screen);
   a failed artwork or cache request leaves the current player intact and can be retried.
+
+The title uses the installed low font and palette-derived tints from `labels.title`.
+It paints one mutable runtime image from the unlabelled background when the status
+changes, retaining the original label positions and artwork-to-window scaling.
 
 ## Testing
 

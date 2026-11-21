@@ -517,6 +517,7 @@ pub mod splash_asset;
 pub mod startup;
 pub mod surface;
 pub mod text_patch;
+pub mod title;
 
 #[cfg(feature = "parsers")]
 pub mod music;

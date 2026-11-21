@@ -419,13 +419,13 @@ fn poll(
     } else {
         #[cfg(not(target_arch = "wasm32"))]
         let title = if menu_prepared.is_some() {
-            "cache://startup/title-menu.png"
+            super::title::Status::Menu
         } else {
-            "cache://startup/title-preparing.png"
+            super::title::Status::Preparing
         };
         #[cfg(target_arch = "wasm32")]
-        let title = "cache://startup/title-menu.png";
-        playback.title = assets.load(title);
+        let title = super::title::Status::Menu;
+        playback.title_status = title;
         #[cfg(not(target_arch = "wasm32"))]
         if menu_prepared.is_none() && startup.error.is_none() {
             return;
@@ -439,7 +439,7 @@ fn poll(
                     #[cfg(target_arch = "wasm32")]
                     {
                         if sound_settings.is_none() {
-                            playback.title = assets.load("cache://startup/title-sound.png");
+                            playback.title_status = super::title::Status::Sound;
                             let Some(bank) = sound_bank else {
                                 return;
                             };
@@ -920,6 +920,7 @@ mod tests {
                     count: 0,
                     live: None,
                     title: default(),
+                    title_status: default(),
                     title_fills_window: false,
                     elapsed: 0.0,
                     failed: false,

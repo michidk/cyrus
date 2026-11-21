@@ -84,6 +84,7 @@ module where it is defined and regenerate.
 - `src/startup/splash_data.rs` — Converts the parsed Windows 3dfx splash into the asset the game draws live.
 - `src/surface.rs` — SURFACE.INI surface classes: the ground an actor stands on, which also selects its sound
 - `src/text_patch.rs` — Text patches: a mod's declared corrections to the lines of the game's dialogue file
+- `src/title.rs` — Portable title lettering; the installed low font and palette determine every label pixel.
 
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 
@@ -440,6 +441,7 @@ module where it is defined and regenerate.
 - `src/save_load.rs` — Book-owned slot selection and host-owned storage requests.
 - `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/splash.rs` — The installed Windows 3dfx splash, drawn live every frame as the original's Glide splash is.
+- `src/title.rs` — Runtime title labels share one background and one mutable presentation image.
 - `src/view3d.rs` — Shared GPU drawing for installed model views: the book menu, logbook scrolls and examine view.
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
