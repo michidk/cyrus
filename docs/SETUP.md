@@ -125,6 +125,14 @@ They are beside the executable only when an existing portable `game-config/` dir
 or an explicit `CYRUS_CONFIG_DIR` selects that location. Screenshots are written
 wherever the `screenshot` command's path says.
 
+For a matched inspection capture, pass `--view=x,y,z,qx,qy,qz,qw` at launch.
+This installs the camera before the first world view is prepared. Enabling the
+inspection camera after loading can first frame the scene bounds; a camera
+position submitted in that same update can be replaced by that initial framing.
+Check `state.flycam.position` and rotation before accepting the capture. A
+`screenshot` reply queues GPU readback: wait for the output file to be written
+before quitting the process.
+
 `CYRUS_WINDOW_SIZE=WIDTHxHEIGHT` replaces the default window size. In the software-rendered
 dev container the renderer, not the game logic, limits the frame rate: an optimized build
 (`CARGO_PROFILE_DEV_OPT_LEVEL=2`) at 640x480 runs above 16 frames per second, where the
