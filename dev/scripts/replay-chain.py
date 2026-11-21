@@ -45,7 +45,7 @@ def validate(fixture):
     """Accept timing, keyboard events and complete checkpoint expectations only."""
     assert {"version", "step_micros", "steps"} <= set(fixture) <= {"version", "step_micros", "steps", "entry_scene", "resume_session"}, "unexpected fixture fields"
     if "entry_scene" in fixture:
-        assert fixture["entry_scene"] in ("BELLTOWR", "EXTPALAC"), "unsupported staged entry"
+        assert fixture["entry_scene"] in ("BELLTOWR", "EXTPALAC", "TAVERN"), "unsupported staged entry"
     if "resume_session" in fixture:
         assert "entry_scene" in fixture, "a resumed session needs a staged entry scene"
         assert SESSION_NAME.fullmatch(fixture["resume_session"]), "invalid resume session name"
@@ -585,8 +585,8 @@ def run(args):
     assert isinstance(timing, int) and timing > 0, "step_micros must be a positive integer"
     assert all(f["step_micros"] == timing for f in fixtures), "chain timing must agree"
     args.config.mkdir(parents=True, exist_ok=True)
-    # Segments of one run share captured sessions through the config directory's parent.
-    sessions = args.config.parent / "sessions"
+    # Runs share captured sessions through CYRUS_REPLAY_SESSIONS, else the config directory's parent.
+    sessions = Path(os.environ.get("CYRUS_REPLAY_SESSIONS") or args.config.parent / "sessions")
     with (args.config / "replay.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with socket.socket() as probe:

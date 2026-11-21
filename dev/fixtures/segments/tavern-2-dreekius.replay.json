@@ -1,16 +1,18 @@
 {
   "version": 1,
+  "entry_scene": "TAVERN",
+  "resume_session": "tavern-entry",
   "step_micros": 100000,
   "steps": [
     {
       "steer": {
         "world": 15,
         "position_q8": [
-          562720,
+          563605,
           -16384,
-          505632
+          516877
         ],
-        "tolerance": 12000,
+        "tolerance": 4000,
         "limit": 240
       }
     },
@@ -55,6 +57,16 @@
           }
         ]
       }
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 60
+        }
+      ]
     },
     {
       "checkpoint": {
@@ -190,11 +202,11 @@
         },
         "position_q8": {
           "value": [
-            562720,
+            542720,
             -16384,
-            505632
+            517632
           ],
-          "tolerance": 16384
+          "tolerance": 8192
         }
       }
     }

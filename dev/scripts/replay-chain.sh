@@ -7,6 +7,8 @@ install=$(realpath "${REDGUARD_DIR:-redguard}")
 [[ -d "$install" ]] || { echo "replay-chain: install directory unavailable: $install" >&2; exit 1; }
 config=${CYRUS_CONFIG_DIR:-magic/replay-chain}
 binary=${CYRUS_REPLAY_BINARY:-$config/cyrus}
+# Chapters capture sessions that later segments resume.
+export CYRUS_REPLAY_SESSIONS=${CYRUS_REPLAY_SESSIONS:-$config/sessions}
 if [[ -z "${CYRUS_REPLAY_BINARY:-}" ]]; then
     CYRUS_NATIVE_EXECUTABLE="$binary" bash dev/scripts/build-native.sh
 fi

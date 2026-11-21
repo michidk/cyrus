@@ -139,6 +139,11 @@ build and cargo-hauler. `CYRUS_REPLAY_BINARY` selects an already
 built executable. Each config directory has an exclusive run lock and retains
 process logs and checkpoint observations.
 
+Staged segments in `dev/fixtures/segments/` start from a session that a chapter or an
+earlier segment captured with a `capture_session` step (the tavern segments resume
+`tavern-entry`, captured at the end of chapter 002); `CYRUS_REPLAY_SESSIONS` selects the
+session directory and `replay-chain.sh` sets it for one run.
+
 Fixtures in `dev/fixtures/pending/` are written from installed script facts but not yet
 run with a current binary. `replay-chain` does not run them and the nightly run ignores
 them; script tests only validate their shape. Move a fixture into `chapters/` once it passes

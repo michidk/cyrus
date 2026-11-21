@@ -412,6 +412,9 @@
           "tolerance": 4096
         }
       }
+    },
+    {
+      "capture_session": "tavern-entry"
     }
   ]
 }

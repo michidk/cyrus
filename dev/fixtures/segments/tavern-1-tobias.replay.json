@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "entry_scene": "TAVERN",
+  "resume_session": "tavern-entry",
   "step_micros": 100000,
   "steps": [
     {
@@ -15,19 +17,44 @@
       }
     },
     {
+      "repeat": {
+        "until": {
+          "flags": {
+            "talking": {
+              "value": 1,
+              "latched": false
+            }
+          }
+        },
+        "limit": 100,
+        "steps": [
+          {
+            "input": [
+              {
+                "after_updates": 0,
+                "key": "ControlLeft",
+                "action": "press"
+              },
+              {
+                "after_updates": 1,
+                "key": "ControlLeft",
+                "action": "release"
+              },
+              {
+                "after_updates": 12
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "input": [
         {
-          "after_updates": 0,
-          "key": "ControlLeft",
-          "action": "press"
+          "after_updates": 0
         },
         {
-          "after_updates": 1,
-          "key": "ControlLeft",
-          "action": "release"
-        },
-        {
-          "after_updates": 10
+          "after_updates": 60
         }
       ]
     },

@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "entry_scene": "TAVERN",
+  "resume_session": "tavern-entry",
   "step_micros": 100000,
   "steps": [
     {
@@ -173,11 +175,11 @@
         },
         "position_q8": {
           "value": [
-            11739623,
+            11755520,
             -251904,
-            10615523
+            10631680
           ],
-          "tolerance": 32768
+          "tolerance": 2048
         }
       }
     }
