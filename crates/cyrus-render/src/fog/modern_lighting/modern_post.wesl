@@ -83,6 +83,15 @@ fn sky_towards(ray: vec3<f32>) -> vec4<f32> {
     return vec4(textureSampleLevel(screen, screen_sampler, uv, 0.0).rgb, smoothstep(0.0, 0.08, edge));
 }
 
+// Missing screen-space geometry contributes no invented environment radiance. The visible sky
+// supplies the fallback when available; otherwise retain the lit surface and fade the reflection.
+fn reflection_blend(surface: vec3<f32>, sky: vec3<f32>, sky_weight: f32,
+    scene: vec3<f32>, confidence: f32, reflectance: f32) -> vec3<f32> {
+    let fallback = mix(surface, sky, clamp(sky_weight, 0.0, 1.0));
+    let reflected = mix(fallback, scene, clamp(confidence, 0.0, 1.0));
+    return mix(surface, reflected, clamp(reflectance, 0.0, 1.0));
+}
+
 fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f32> {
     let surface_depth = depth_at(uv);
     if surface_depth <= 0.0 { return color; }
@@ -91,12 +100,11 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
     let normal = select(water_normal(origin), vec3(0.0, 1.0, 0.0), calm);
     let ray = reflect(view_direction, normal);
     let fresnel = 0.02 + 0.98 * pow(1.0 - clamp(dot(-view_direction, normal), 0.0, 1.0), 5.0);
-    // A ray that meets no scenery sees the sky drawn in its direction, or the horizon colour where
-    // that is off screen, but keeps a brighter glint of the sun.
-    var reflected = max(settings.horizon.rgb, color);
+    var sky = vec4(0.0);
+    var scene = color;
+    var confidence = 0.0;
     if ray.y > 0.0 {
-        let sky = sky_towards(ray);
-        reflected = mix(reflected, max(sky.rgb, color), sky.w);
+        sky = sky_towards(ray);
         let first = max(FIRST_STEP, length(origin - view.world_position) * FIRST_STEP_PER_DISTANCE);
         var travelled = first;
         var stride = first;
@@ -129,7 +137,10 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
                 let gap = ray_distance - view_distance(probe.xy, depth_at(probe.xy));
                 if gap < 1.0 + ray_distance * 0.03 {
                     let edge = min(min(probe.x, 1.0 - probe.x), min(probe.y, 1.0 - probe.y));
-                    reflected = mix(reflected, probe_color.rgb, smoothstep(0.0, 0.08, edge));
+                    let thickness = 1.0 + ray_distance * 0.03;
+                    confidence = smoothstep(0.0, 0.08, edge)
+                        * (1.0 - smoothstep(0.0, thickness, max(gap, 0.0)));
+                    scene = probe_color.rgb;
                     break;
                 }
             }
@@ -139,7 +150,8 @@ fn reflection(uv: vec2<f32>, color: vec3<f32>, water: f32, calm: bool) -> vec3<f
         }
     }
     let reflectance = select(min(fresnel, SEA_REFLECTANCE), fresnel, calm);
-    return mix(color, reflected, reflectance * water * settings.horizon.w);
+    return reflection_blend(color, sky.rgb, sky.w, scene, confidence,
+        reflectance * water * settings.horizon.w);
 }
 
 // Fraction of the sun's neighbourhood where only the sky is drawn; the sky writes no depth.

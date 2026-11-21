@@ -136,3 +136,10 @@ with `node dev/scripts/test-sky-direction.mjs http://127.0.0.1:9222`.
 The test compiles the shader's calculation and reads float framebuffer results
 for signed-zero, cardinal and oblique directions. It needs the browser float
 color-buffer extension and rejects shader compilation or WebGL errors.
+
+Modern screen-space water reflections fade uncertain scene hits into the visible
+sky, or retain the lit surface when the reflected environment is outside the
+view. They do not substitute a bright horizon colour under covered views.
+`tests/water_reflection_blend.rs` executes the production shader blend with the
+WESL CPU evaluator, without a GPU or game install, checking missing geometry,
+visible sky, confidence continuity and disabled reflection.
