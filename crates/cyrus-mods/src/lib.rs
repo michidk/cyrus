@@ -501,12 +501,14 @@ fn apply(
     if !catalog.is_changed() && !*shader_pending {
         return;
     }
-    start_and_stop_instances(&mut catalog, &mut mods);
-    catalog
-        .bypass_change_detection()
-        .entries
-        .retain(|entry| !entry.gone);
-    let suppliers = shader_suppliers(&catalog);
+    // Retry only targets that are still unavailable during this application.
+    // Keeping a successful retry pending invalidates its render pipeline every frame.
+    *shader_pending = false;
+    // Application bookkeeping is not another user or filesystem change.
+    let catalog = catalog.bypass_change_detection();
+    start_and_stop_instances(catalog, &mut mods);
+    catalog.entries.retain(|entry| !entry.gone);
+    let suppliers = shader_suppliers(catalog);
     let targets: BTreeSet<String> = suppliers
         .keys()
         .chain(&catalog.replaced_shaders)
@@ -757,6 +759,54 @@ fn window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_late_shader_stops_retrying_after_installation() {
+        let target = "late-shader.wesl";
+        let mut catalog = Catalog::default();
+        catalog.entries.push(Entry {
+            id: "missing-test-shader".into(),
+            manifest: toml::from_str(&format!(
+                "name = 'Late shader'\n[[shader]]\nreplaces = '{target}'\nfile = 'missing.wesl'"
+            ))
+            .unwrap(),
+            active: true,
+            has_wasm: false,
+            has_files: false,
+            instance: None,
+            modified: None,
+            manifest_modified: None,
+            gone: false,
+        });
+        let mut app = App::new();
+        app.add_plugins((bevy::MinimalPlugins, bevy::asset::AssetPlugin::default()))
+            .init_asset::<Shader>()
+            .insert_resource(catalog)
+            .add_systems(Update, apply);
+        app.update(); // The target has not loaded yet.
+        let handle: Handle<Shader> = app.world().resource::<AssetServer>().load(target);
+        app.world_mut()
+            .resource_mut::<Assets<Shader>>()
+            .insert(&handle, Shader::from_wesl("", target))
+            .unwrap();
+        app.update(); // Retry installs the now available target.
+        assert!(
+            app.world()
+                .resource::<Catalog>()
+                .replaced_shaders
+                .contains(target)
+        );
+        let modifications = |app: &mut App| {
+            app.world_mut()
+                .resource_mut::<bevy::ecs::message::Messages<bevy::asset::AssetEvent<Shader>>>()
+                .drain()
+                .filter(|event| matches!(event, bevy::asset::AssetEvent::Modified { .. }))
+                .count()
+        };
+        assert!(modifications(&mut app) > 0);
+        app.update(); // No catalog or file change: leave the shader alone.
+        assert_eq!(modifications(&mut app), 0);
+    }
 
     #[test]
     fn a_manifest_lists_any_number_of_shader_replacements() {

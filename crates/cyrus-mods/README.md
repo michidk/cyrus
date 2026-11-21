@@ -33,6 +33,10 @@ anything scans the install, then adds `ModsPlugin`. The Mods window opens from t
 Backtick menu; folders are rescanned every half second, so mods can be added,
 removed or edited while the game runs (`files/` and data patches need a restart).
 
+Shader replacements wait for their target assets to load, then remain installed
+until the mod catalog changes. A completed load retry does not replace the shader
+again on subsequent frames.
+
 ## Notes
 
 - Hooks are generic engine services, not features: mod policy (grass placement,
