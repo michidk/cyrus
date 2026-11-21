@@ -195,6 +195,32 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual(control.update, 100)
         self.assertEqual(result["hud"]["lockout"], 0)
 
+    def test_wait_requires_attachment_then_scripted_inventory_completion(self):
+        class Control:
+            update = 0
+
+            def ready(self, world, **kwargs):
+                return {"clock": {"game_seconds": self.update},
+                        "scripts": {"ordinary_updates": self.update},
+                        "hud": {"lockout": 0},
+                        "script_hud": {"inventory": {"counts": {"46": int(self.update >= 8)}}}}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    return {"actors": [{"source": "player", "control": {
+                        "rope_attached": self.update >= 3}}]}
+                self.update += 1
+
+        control = Control()
+        wait = {"world": 20, "max_seconds": 20, "max_updates": 20,
+                "rope_attached": True}
+        replay.await_control(control, wait)
+        self.assertEqual(control.update, 3)
+        replay.await_control(control, dict(wait, inventory={"46": 1}))
+        self.assertEqual(control.update, 8)
+        with self.assertRaisesRegex(AssertionError, "bound"):
+            replay.await_control(control, dict(wait, inventory={"46": 2}))
+
     def test_entry_wait_reports_clock_bound_without_clearing_lockout(self):
         class Control:
             update = 0

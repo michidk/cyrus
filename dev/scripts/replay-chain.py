@@ -75,7 +75,11 @@ def validate_steps(steps, depth=0):
         elif "await_control" in step:
             assert set(step) == {"await_control"}, "control wait cannot contain commands"
             wait = step["await_control"]
-            assert set(wait) == {"world", "max_seconds", "max_updates"}, "incomplete control wait"
+            assert {"world", "max_seconds", "max_updates"} <= set(wait) <= {"world", "max_seconds", "max_updates", "rope_attached", "inventory"}, "incomplete control wait"
+            if "rope_attached" in wait:
+                assert type(wait["rope_attached"]) is bool, "invalid rope attachment expectation"
+            if "inventory" in wait:
+                assert isinstance(wait["inventory"], dict) and wait["inventory"], "empty inventory wait"
             assert math.isfinite(wait["max_seconds"]) and wait["max_seconds"] > 0, "invalid control clock bound"
             assert type(wait["max_updates"]) is int and wait["max_updates"] > 0, "invalid control update bound"
         elif "steer" in step:
@@ -133,13 +137,31 @@ def await_control(control, wait):
     """Let an entry script finish without input or changing its lockout.
 
     Both bounds are measured in the game, independent of host rendering speed.
+    Optional attachment and inventory expectations wait for script-owned state
+    instead of assuming an animation or task completes after a fixed delay.
     A blocked scheduler still reports its own boundary timeout.
     """
     initial = control.ready(wait["world"], examine_open=None)
     start = initial["clock"]["game_seconds"]
     updates = initial["scripts"]["ordinary_updates"]
     state = initial
-    while state["hud"]["lockout"] != 0:
+    def complete(state):
+        if state["hud"]["lockout"] != 0:
+            return False
+        if "inventory" in wait:
+            try:
+                equal(state["script_hud"]["inventory"]["counts"], wait["inventory"], "inventory")
+            except AssertionError:
+                return False
+        if "rope_attached" in wait:
+            actors = control.request({"type": "scripts", "limit": 64})["actors"]
+            selected = [actor for actor in actors if actor["source"] == "player"]
+            assert len(selected) == 1, "control wait requires one selected player"
+            if selected[0]["control"]["rope_attached"] != wait["rope_attached"]:
+                return False
+        return True
+
+    while not complete(state):
         elapsed = state["clock"]["game_seconds"] - start
         consumed = state["scripts"]["ordinary_updates"] - updates
         assert 0 <= elapsed <= wait["max_seconds"], f"entry lockout clock bound: {elapsed} seconds"
