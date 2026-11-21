@@ -8046,6 +8046,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokrepr"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e45a78afc8866f3b814539399590346083be88990c642bf9d95aa9ee0d93627e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "tokrepr-derive",
+]
+
+[[package]]
+name = "tokrepr-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc2d9fffd3c8ace307ee6735c35ee6fe87d8d4ef64b6a23dc54a15e076692f1b"
+dependencies = [
+ "itertools 0.14.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "toml"
 version = "1.2.1+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9296,6 +9319,7 @@ dependencies = [
  "lexical",
  "logos",
  "thiserror 2.0.21",
+ "tokrepr",
  "wgsl-types",
 ]
 
@@ -9308,6 +9332,7 @@ dependencies = [
  "half",
  "itertools 0.15.0",
  "num-traits",
+ "tokrepr",
 ]
 
 [[package]]
