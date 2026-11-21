@@ -29,6 +29,8 @@ The generated [repository map](../../docs/MAP.md) lists every module. API
 contracts, units and preservation references live in the Rust docs beside
 their definitions.
 
+F1/F10 information overlays suspend updates while retaining the player's script binding and displayed animation pose. Closing them resumes that continuation.
+
 ## Usage
 
 Hosts add `GamePlugin`, which installs the `cyrus-game` state (application

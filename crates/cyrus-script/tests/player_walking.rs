@@ -1045,6 +1045,38 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         (app.world().get::<Transform>(player).unwrap().translation.z - 1194.0 / 5120.0).abs()
             < 1e-6
     );
+    // F1/F10 suspend gameplay without releasing the displayed actor or its pose.
+    let displayed = app.world().get::<AnimationPose>(player).unwrap().clone();
+    let position = app.world().get::<PlayerPose>(player).unwrap().position;
+    app.insert_resource(cyrus_game::GameplayOverlay::Version);
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::GameplayOverlay);
+    app.update();
+    app.update();
+    let retained = app
+        .world()
+        .get::<AnimationPose>(player)
+        .expect("F1 retains the displayed player pose");
+    assert_eq!(
+        (&retained.model, retained.frame),
+        (&displayed.model, displayed.frame)
+    );
+    assert!(
+        app.world()
+            .get::<cyrus_script::script::ScriptBinding>(player)
+            .is_some()
+    );
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap().position,
+        position
+    );
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    app.world_mut()
+        .remove_resource::<cyrus_game::GameplayOverlay>();
     app.world_mut()
         .get_mut::<PlayerPose>(player)
         .unwrap()
