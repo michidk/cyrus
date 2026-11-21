@@ -821,6 +821,49 @@ fn installed_viledog_selects_its_branch_from_the_shared_random_draw() {
 }
 
 #[test]
+fn installed_island_observatory_pieces_are_admitted_near_their_placements() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (ISLAND observatory placement admission)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/ISLAND.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 1).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let pieces: Vec<_> = world
+        .actors()
+        .iter()
+        .enumerate()
+        .filter(|(_, actor)| {
+            actor.placement().is_some_and(|placement| {
+                placement
+                    .model_name
+                    .to_ascii_uppercase()
+                    .starts_with("OB_EXT")
+            })
+        })
+        .map(|(index, actor)| (index, actor.placement().unwrap().clone()))
+        .collect();
+    assert_eq!(pieces.len(), 10, "ISLAND observatory exterior pieces");
+    for (index, placement) in pieces {
+        let id = world.id(index).unwrap();
+        let view = [placement.map_position[0], placement.map_position[2]]
+            .map(|coordinate| i32::try_from(coordinate).unwrap());
+        assert!(
+            world.ordinary_actors(view).unwrap().contains(&id),
+            "{placement:?}"
+        );
+        assert!(!world.outside_view_window(id), "{placement:?}");
+        let control = world.actors()[index].control_state().unwrap();
+        assert!(!control.hidden && !control.invisible, "{placement:?}");
+        assert!(!world.ordinary_actors([4608, 4608]).unwrap().contains(&id));
+        assert!(world.outside_view_window(id));
+    }
+}
+
+#[test]
 fn installed_palace_actor_is_selected_at_its_authored_world_position() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
     if !root.join("RGFX.EXE").exists() {
