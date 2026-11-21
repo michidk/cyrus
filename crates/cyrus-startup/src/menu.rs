@@ -220,7 +220,12 @@ impl MenuState {
                 .slots
                 .iter()
                 .enumerate()
-                .filter(|(_, slot)| self.page != 1 || (slot.slot != 0 && slot.slot != 1))
+                .filter(|(_, slot)| {
+                    self.page != 1
+                        || (slot.source == super::SaveSlotSource::Native
+                            && slot.slot != 0
+                            && slot.slot != 1)
+                })
                 .skip(base)
                 .nth(row)
                 .map(|(index, _)| index);
@@ -737,6 +742,12 @@ pub(super) fn drive(
                 .and_then(|row| menu.slots.get(*row))
                 .cloned();
             if let Some(slot) = slot {
+                if slot.source != super::SaveSlotSource::Native {
+                    menu.unavailable =
+                        Some(format!("Original save slot {} is read-only.", slot.slot));
+                    menu.dirty = true;
+                    return;
+                }
                 menu.unavailable = menu.persistence_error.clone();
                 menu.delete_confirmation = Some(DeleteConfirmation {
                     slot,
@@ -868,12 +879,13 @@ pub(super) fn drive(
                             .get(&index)
                             .and_then(|row| menu.slots.get(*row))
                         {
-                            let request = super::SaveLoadRequest::Load {
-                                slot: slot.slot,
-                                revision: slot.revision.clone(),
-                            };
-                            if let Err(error) = save_load.start(request) {
-                                menu.unavailable = Some(error);
+                            match slot.load_request() {
+                                Ok(request) => {
+                                    if let Err(error) = save_load.start(request) {
+                                        menu.unavailable = Some(error);
+                                    }
+                                }
+                                Err(error) => menu.unavailable = Some(error),
                             }
                         }
                     }
@@ -1990,6 +2002,7 @@ mod tests {
         let mut menu = MenuState {
             entries: vec![row(), row(), row()],
             slots: vec![super::super::SaveSlot {
+                source: super::super::SaveSlotSource::Native,
                 slot: 19,
                 revision: "rev-19".into(),
                 thumbnail: None,
@@ -2024,6 +2037,7 @@ mod tests {
             entries: (0..9).map(|_| row(202)).collect(),
             slots: (0..20)
                 .map(|slot| super::super::SaveSlot {
+                    source: super::super::SaveSlotSource::Native,
                     slot,
                     description: format!("S{slot}"),
                     revision: format!("r{slot}"),
@@ -2045,6 +2059,23 @@ mod tests {
         assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 2);
         menu.change_list_page(1);
         assert_eq!(menu.slots[menu.slot_rows[&1]].slot, 10);
+        menu.slots = vec![super::super::SaveSlot {
+            source: super::super::SaveSlotSource::Original { world_id: 15 },
+            slot: 2,
+            description: "ORIGINAL".into(),
+            revision: String::new(),
+            thumbnail: None,
+        }];
+        menu.list_page = 0;
+        menu.fill_load_rows();
+        assert!(
+            menu.slot_rows.is_empty(),
+            "original slots must never be overwrite targets"
+        );
+        menu.page = 2;
+        menu.entries = (0..9).map(|_| row(202)).collect();
+        menu.fill_load_rows();
+        assert_eq!(menu.slots[menu.slot_rows[&0]].description, "ORIGINAL");
     }
 
     #[test]

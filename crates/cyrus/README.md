@@ -8,6 +8,13 @@ save slots) through `cyrus-config`, and applies the TCP control commands that
 `cyrus-control` frames. Presentation captures retain application state at render extraction, including
 loading and menu transitions. Presentation receipts include the active world-entry overlay opacities in units of 1/256 at extraction, so fade steps can be paired without estimating them from screenshot brightness; unrelated UI backgrounds are excluded. Gameplay captures additionally require a ready world. Script reload preparation starts after the installed loading presentation enters Loading, retaining the requested marker and heading. The browser counterpart is [cyrus-web](../cyrus-web/README.md).
 
+The native Load list also discovers original `SAVEGAME.NNN` slots under the
+selected install's `SAVEGAME` directory through published rgpre parsing. These
+entries are read-only and remain unavailable for restoration until the complete
+actor/script import is supported. Selecting one reports its slot and world;
+it cannot overwrite or delete an installed save. Install-backed listing tests
+use `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard` and report a skip when absent.
+
 ## Usage
 
 ```sh

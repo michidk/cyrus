@@ -97,7 +97,12 @@ impl DescriptionEditor {
     }
 
     pub fn request(&self) -> Option<SaveLoadRequest> {
-        if self.text.is_empty() {
+        if self.text.is_empty()
+            || self
+                .slot
+                .as_ref()
+                .is_some_and(|slot| slot.source != SaveSlotSource::Native)
+        {
             return None;
         }
         Some(match &self.slot {
@@ -127,15 +132,43 @@ impl DescriptionEditor {
     }
 }
 
+/// Storage provenance keeps original install slots out of native write operations.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SaveSlotSource {
+    #[default]
+    Native,
+    Original {
+        world_id: u32,
+    },
+}
+
 /// Slot metadata supplied by native files or browser IndexedDB.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SaveSlot {
+    #[serde(default)]
+    pub source: SaveSlotSource,
     pub slot: u16,
     pub description: String,
     pub revision: String,
     /// PNG bytes for the 256x192 gameplay view, when captured.
     #[serde(default)]
     pub thumbnail: Option<Vec<u8>>,
+}
+
+impl SaveSlot {
+    pub(crate) fn load_request(&self) -> Result<SaveLoadRequest, String> {
+        match self.source {
+            SaveSlotSource::Native => Ok(SaveLoadRequest::Load {
+                slot: self.slot,
+                revision: self.revision.clone(),
+            }),
+            SaveSlotSource::Original { world_id } => Err(format!(
+                "Original save slot {} (world {world_id}): full actor/script restoration is not supported yet.",
+                self.slot
+            )),
+        }
+    }
 }
 
 /// One operation owns the book's storage boundary until its result is consumed.
@@ -203,6 +236,7 @@ mod tests {
         let mut editor = DescriptionEditor {
             text: "Mixed case ".into(),
             slot: Some(SaveSlot {
+                source: SaveSlotSource::Native,
                 slot: 18,
                 description: "Mixed case ".into(),
                 revision: "r18".into(),
@@ -246,5 +280,39 @@ mod tests {
         assert!(host.start(SaveLoadRequest::List).is_err());
         assert_eq!(host.take_result(), Some(Err("slot changed".into())));
         host.start(SaveLoadRequest::List).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod original_slot_tests {
+    use super::*;
+    #[test]
+    fn original_selection_rejects_before_host_load() {
+        let slot = SaveSlot {
+            source: SaveSlotSource::Original { world_id: 15 },
+            slot: 2,
+            description: "ORIGINAL".into(),
+            revision: String::new(),
+            thumbnail: None,
+        };
+        let error = slot.load_request().unwrap_err();
+        assert!(error.contains("slot 2") && error.contains("world 15"));
+        let native = SaveSlot {
+            source: SaveSlotSource::Native,
+            revision: "r2".into(),
+            ..slot
+        };
+        assert!(matches!(
+            native.load_request(),
+            Ok(SaveLoadRequest::Load { slot: 2, .. })
+        ));
+    }
+    #[test]
+    fn old_host_metadata_defaults_to_native() {
+        let slot: SaveSlot = serde_json::from_value(serde_json::json!({
+            "slot":2,"description":"NATIVE","revision":"r2"
+        }))
+        .unwrap();
+        assert_eq!(slot.source, SaveSlotSource::Native);
     }
 }

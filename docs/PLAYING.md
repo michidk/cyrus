@@ -119,7 +119,7 @@ same address and profile to find them. Private browsing, clearing site data, or
 changing the server's hostname or port can remove or hide those saves. Selecting
 the game folder again reconnects assets; it does not import saves from the install.
 
-**Verified:** original Redguard `.SAV` and `.TSG` gameplay saves cannot be imported.
+**Verified:** native Load lists original Redguard slots from the selected install read-only. Selecting one reports that full actor/script restoration is not supported. Original `.SAV` and `.TSG` gameplay saves cannot yet be imported.
 cyrus saves are a separate format. The [compatibility investigation](https://github.com/michidk/cyrus/issues/93)
 documents the unsupported original-save scope.
 

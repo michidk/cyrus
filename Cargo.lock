@@ -3130,6 +3130,7 @@ dependencies = [
  "cyrus-soup",
  "cyrus-startup",
  "cyrus-world",
+ "redguard-preservation",
  "serde",
  "serde_json",
  "toml",
@@ -6881,9 +6882,9 @@ checksum = "a0d463f2884048e7153449a55166f91028d5b0ea53c79377099ce4e8cf0cf9bb"
 
 [[package]]
 name = "redguard-preservation"
-version = "0.13.2"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a6ec80f44c947ab5ffaab375e074db2575ecdb51499ad8125dd674fcdd0eb27"
+checksum = "6c8486d32d0bbef05d9be8b52ef64f659c4094a5e2c730bf641064f6c54aa612"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",

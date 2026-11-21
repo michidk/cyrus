@@ -1,4 +1,5 @@
 //! Native off-live document preparation; shared boundary owns validation and commit.
+mod original_slots;
 pub(crate) mod slots;
 
 use anyhow::{Context, Result, ensure};
@@ -184,12 +185,28 @@ pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Resu
                 state.slot_load = true;
             }
             operation => {
+                let install = world.get_resource::<GameInstall>().cloned();
                 let (sender, receiver) = mpsc::channel();
                 std::thread::Builder::new()
                     .name("native save slots".into())
                     .spawn(move || {
                         let result = match operation {
-                            SlotOperation::List => store.list().map(|slots| json!({"slots":slots})),
+                            SlotOperation::List => (|| -> Result<Value> {
+                                let mut slots = store
+                                    .list()?
+                                    .into_iter()
+                                    .map(serde_json::to_value)
+                                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                                if let Some(install) = install {
+                                    slots.extend(
+                                        original_slots::list(&install.root)?
+                                            .into_iter()
+                                            .map(serde_json::to_value)
+                                            .collect::<std::result::Result<Vec<_>, _>>()?,
+                                    );
+                                }
+                                Ok(json!({"slots":slots}))
+                            })(),
                             SlotOperation::DiscardAutoSave => {
                                 store.discard_auto_save().map(|()| json!({"deleted":1}))
                             }

@@ -17,6 +17,7 @@ test = true
 raytracing = ["cyrus-render/raytracing"]
 
 [dependencies]
+redguard-preservation.workspace = true
 cyrus-console = { workspace = true, features = ["cpf"] }
 cyrus-audio.workspace = true
 cyrus-app = { path = "../cyrus-app" }

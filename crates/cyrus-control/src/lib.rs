@@ -158,7 +158,7 @@ pub enum Command {
         #[serde(default)]
         acknowledge: bool,
     },
-    /// Native diagnostic slots; operations use local state, never the install.
+    /// Native diagnostic slots; writes use local state. Listing also reads original install metadata.
     SessionSlots {
         operation: SlotOperation,
     },
