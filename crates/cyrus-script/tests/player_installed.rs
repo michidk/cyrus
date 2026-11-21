@@ -542,6 +542,86 @@ fn installed_belltowr_lineup_crosses_the_sidestep_dead_zone() -> Result<()> {
     Ok(())
 }
 
+/// Start of the Favis bell-rope running jump: the pose the replay settles in before pressing
+/// Forward and Jump together.
+const BELL_JUMP_START: [i32; 3] = [526296, -16384, 567714];
+
+/// Press Forward and Jump together for eight updates from `BELL_JUMP_START` facing `yaw`,
+/// after each settle length in `settles`, and report per settle length whether the player grabbed
+/// a rope within the next 150 updates. The settle length sets the idle animation phase.
+fn belltowr_running_jump_attaches(yaw: u16, settles: &[u32]) -> Result<Vec<(u32, bool)>> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (BELLTOWR running jump)");
+        return Ok(settles.iter().map(|&settle| (settle, true)).collect());
+    };
+    let (mut app, codes, _assets) = prepare_player_app_for(&install, "BELLTOWR")?;
+    app.insert_resource(cyrus_script::script::OrdinarySoundExecutor(
+        run_without_audio,
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(40),
+    ));
+    for _ in 0..8 {
+        app.update();
+    }
+    let key = |action: cyrus_script::player::input::Action| match cyrus_script::player::input::Input::try_from(
+        codes[action as usize],
+    ) {
+        Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
+        other => anyhow::bail!("installed binding is not a key: {other:?}"),
+    };
+    let (forward, jump) = (
+        key(cyrus_script::player::input::Action::Forward)?,
+        key(cyrus_script::player::input::Action::Jump)?,
+    );
+    let mut results = Vec::new();
+    for &settle in settles {
+        app.world_mut()
+            .resource_mut::<ScriptActors>()
+            .current
+            .as_mut()
+            .context("BELLTOWR unavailable")?
+            .place_selected_player(BELL_JUMP_START, yaw)?;
+        app.world_mut().resource_mut::<ScriptView>().position = BELL_JUMP_START;
+        for _ in 0..settle {
+            app.update();
+        }
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.press(forward);
+            keys.press(jump);
+        }
+        let mut attached = false;
+        for update in 0..160 {
+            if update == 8 {
+                let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+                keys.release(forward);
+                keys.release(jump);
+            }
+            app.update();
+            let actors = app.world().resource::<ScriptActors>();
+            let world = actors.current.as_ref().context("BELLTOWR unavailable")?;
+            attached |= world.selected_player_on_rope();
+            if attached {
+                break;
+            }
+        }
+        results.push((settle, attached));
+    }
+    Ok(results)
+}
+
+#[test]
+fn installed_belltowr_running_jump_grabs_the_bell_rope() -> Result<()> {
+    let results = belltowr_running_jump_attaches(24, &(20..=60).step_by(2).collect::<Vec<_>>())?;
+    eprintln!("running jump rope attach by settle updates: {results:?}");
+    ensure!(results.iter().all(|&(_, attached)| attached), "{results:?}");
+    Ok(())
+}
+
 // Model unavailable playback channels while keeping the production script scheduler active.
 #[derive(Debug)]
 struct UnavailablePlayback;

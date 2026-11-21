@@ -1,0 +1,402 @@
+{
+  "version": 1,
+  "entry_scene": "BELLTOWR",
+  "step_micros": 40000,
+  "steps": [
+    {
+      "await_control": {
+        "world": 20,
+        "max_seconds": 600,
+        "max_updates": 10000
+      }
+    },
+    {
+      "steer": {
+        "world": 20,
+        "position_q8": [
+          562944,
+          0,
+          588800
+        ],
+        "tolerance": 3500,
+        "limit": 150
+      }
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0,
+          "key": "ControlLeft",
+          "action": "press"
+        },
+        {
+          "after_updates": 1,
+          "key": "ControlLeft",
+          "action": "release"
+        },
+        {
+          "after_updates": 3
+        }
+      ]
+    },
+    {
+      "topic": {
+        "world": 20,
+        "text": "BELL",
+        "limit": 10000
+      }
+    },
+    {
+      "topic": {
+        "world": 20,
+        "text": "PRNELL",
+        "limit": 10000
+      }
+    },
+    {
+      "topic": {
+        "world": 20,
+        "text": "BROKEN BELL",
+        "limit": 10000
+      }
+    },
+    {
+      "topic": {
+        "world": 20,
+        "text": "BACK",
+        "limit": 10000
+      }
+    },
+    {
+      "topic": {
+        "world": 20,
+        "text": "BYE",
+        "limit": 10000
+      }
+    },
+    {
+      "await_control": {
+        "world": 20,
+        "max_seconds": 600,
+        "max_updates": 10000
+      }
+    },
+    {
+      "steer": {
+        "world": 20,
+        "position_q8": [
+          562944,
+          0,
+          568320
+        ],
+        "tolerance": 2500,
+        "limit": 200
+      }
+    },
+    {
+      "steer": {
+        "world": 20,
+        "position_q8": [
+          532736,
+          0,
+          568320
+        ],
+        "tolerance": 3500,
+        "limit": 400
+      }
+    },
+    {
+      "checkpoint": {
+        "world": 20,
+        "flags": {
+          "Favis_BELL": {
+            "value": 1
+          }
+        },
+        "globals": {
+          "lockout": 0
+        },
+        "inventory": {
+          "46": 0
+        },
+        "position_q8": {
+          "value": [
+            532736,
+            -16384,
+            568320
+          ],
+          "tolerance": 12000
+        },
+        "health": 100
+      }
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 50
+        }
+      ]
+    },
+    {
+      "face": {
+        "world": 20,
+        "heading": 24,
+        "rope": false,
+        "limit": 150
+      }
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 50
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "ArrowUp",
+          "action": "press"
+        },
+        {
+          "after_updates": 0,
+          "key": "Space",
+          "action": "press"
+        },
+        {
+          "after_updates": 8,
+          "key": "ArrowUp",
+          "action": "release"
+        },
+        {
+          "after_updates": 8,
+          "key": "Space",
+          "action": "release"
+        },
+        {
+          "after_updates": 63
+        }
+      ]
+    },
+    {
+      "await_control": {
+        "world": 20,
+        "max_seconds": 5,
+        "max_updates": 150,
+        "rope_attached": true
+      }
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "ArrowUp",
+          "action": "press"
+        },
+        {
+          "after_updates": 100,
+          "key": "ArrowUp",
+          "action": "release"
+        },
+        {
+          "after_updates": 155
+        }
+      ]
+    },
+    {
+      "face": {
+        "world": 20,
+        "heading": 1024,
+        "rope": true,
+        "limit": 150
+      }
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 20
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "ArrowUp",
+          "action": "press"
+        },
+        {
+          "after_updates": 0,
+          "key": "Space",
+          "action": "press"
+        },
+        {
+          "after_updates": 2,
+          "key": "ArrowUp",
+          "action": "release"
+        },
+        {
+          "after_updates": 2,
+          "key": "Space",
+          "action": "release"
+        },
+        {
+          "after_updates": 57
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "ArrowUp",
+          "action": "press"
+        },
+        {
+          "after_updates": 5,
+          "key": "ArrowUp",
+          "action": "release"
+        },
+        {
+          "after_updates": 35
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "Space",
+          "action": "press"
+        },
+        {
+          "after_updates": 8,
+          "key": "Space",
+          "action": "release"
+        },
+        {
+          "after_updates": 63
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "ArrowUp",
+          "action": "press"
+        },
+        {
+          "after_updates": 10,
+          "key": "ArrowUp",
+          "action": "release"
+        },
+        {
+          "after_updates": 40
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 60
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 0,
+          "key": "ControlLeft",
+          "action": "press"
+        },
+        {
+          "after_updates": 1,
+          "key": "ControlLeft",
+          "action": "release"
+        },
+        {
+          "after_updates": 4
+        }
+      ]
+    },
+    {
+      "modal_input": {
+        "world": 20,
+        "key": "Escape"
+      }
+    },
+    {
+      "await_control": {
+        "world": 20,
+        "max_seconds": 20,
+        "max_updates": 600,
+        "inventory": {
+          "46": 1
+        }
+      }
+    },
+    {
+      "checkpoint": {
+        "world": 20,
+        "flags": {
+          "Favis_BELL": {
+            "value": 1
+          },
+          "FixBell": {
+            "value": 1
+          }
+        },
+        "globals": {
+          "lockout": 0
+        },
+        "inventory": {
+          "46": 1
+        },
+        "position_q8": {
+          "value": [
+            532480,
+            -116736,
+            574208
+          ],
+          "tolerance": 15000
+        },
+        "health": 100
+      }
+    }
+  ]
+}

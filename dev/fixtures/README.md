@@ -10,6 +10,7 @@ in [docs/METHOD.md](../../docs/METHOD.md) and
 | Fixture | Purpose |
 | --- | --- |
 | `belltowr.json`, `island.json`, `start.json` | Matched scene captures (below) |
+| `segments/bell-monocle.replay.json` | Replay segment from BELLTOWR entry: Favis' bell topics, the bell-rope running jump and the monocle pickup (nightly) |
 | `start-walk.jsonl` | Legacy control replay: START, one second walking forward |
 | `*.html`, `listener-publication.rs` | Audio and animation acceptance pages and examples; see [cyrus-audio](../../crates/cyrus-audio/README.md) |
 
