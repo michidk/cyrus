@@ -844,14 +844,27 @@ impl ScriptWorld {
     }
 }
 
+/// A replay driver's request to pause ordinary world work between scheduled boundaries.
+///
+/// While `true`, no clock sample is admitted, so no ordinary update, random draw or AI
+/// decision runs; the clock and its running state are untouched, so work resumes exactly
+/// where it stopped. Absent in normal play.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct ReplayHold(pub bool);
+
 pub(crate) fn sample_clock(
     time: Res<Time<Real>>,
     mut actors: ResMut<ScriptActors>,
     clock: Option<ResMut<SimulationClock>>,
     prepared: OrdinaryAssets,
     mut running: Local<Option<u64>>,
+    hold: Option<Res<ReplayHold>>,
     mut commands: Commands,
 ) {
+    if hold.is_some_and(|hold| hold.0) {
+        commands.remove_resource::<WorldClockSample>();
+        return;
+    }
     let mut ready = !prepared
         .logbook
         .as_ref()

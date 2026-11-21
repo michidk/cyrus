@@ -253,6 +253,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_micros(micros),
         ));
+        app.init_resource::<cyrus_script::script::ReplayHold>();
         app.insert_resource(control::ReplayStep(std::time::Duration::from_micros(
             micros,
         )));
