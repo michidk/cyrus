@@ -26,6 +26,46 @@ use std::sync::mpsc::Receiver;
 
 pub struct ControlPlugin;
 
+/// The fixed simulation step of a `--replay-step-micros` run. Present only in replay mode.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct ReplayStep(pub std::time::Duration);
+
+/// A replay world advances only while a scheduled input boundary owns the frame loop.
+///
+/// Without this the headless frame loop keeps feeding fixed steps between control requests, so
+/// the number of ordinary updates, and with it every random draw and AI decision, depended on
+/// how long the driver took to answer. Loading, menus and a world's first two updates run
+/// freely so readiness checks can complete. Faithful gameplay is unchanged: the gate exists
+/// only when a replay step is configured.
+pub(crate) fn replay_gate_open(
+    schedule_pending: bool,
+    in_game: bool,
+    world_updates: Option<u64>,
+) -> bool {
+    schedule_pending || !in_game || world_updates.is_none_or(|updates| updates < 2)
+}
+
+fn replay_gate(
+    step: Res<ReplayStep>,
+    scheduler: Res<input_schedule::InputScheduler>,
+    state: Option<Res<State<cyrus_game::AppState>>>,
+    actors: Option<Res<cyrus_script::script::ScriptActors>>,
+    mut strategy: ResMut<bevy::time::TimeUpdateStrategy>,
+) {
+    let in_game = state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame);
+    let updates = actors
+        .as_deref()
+        .and_then(|actors| actors.current.as_ref())
+        .map(|world| world.ordinary_updates());
+    *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(
+        if replay_gate_open(scheduler.pending(), in_game, updates) {
+            step.0
+        } else {
+            std::time::Duration::ZERO
+        },
+    );
+}
+
 /// Bind address; set before the plugin builds. Defaults to `cyrus_control::DEFAULT_ADDR`.
 #[derive(Resource, Clone, Debug)]
 pub struct ControlAddr(pub String);
@@ -73,6 +113,12 @@ impl Plugin for ControlPlugin {
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
             .init_resource::<input_schedule::InputScheduler>()
+            .add_systems(
+                First,
+                replay_gate
+                    .before(bevy::time::TimeSystem)
+                    .run_if(resource_exists::<ReplayStep>),
+            )
             .add_systems(
                 Update,
                 input_schedule::apply
@@ -929,6 +975,20 @@ fn parse_key(name: &str) -> Option<KeyCode> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn replay_world_pauses_unless_a_schedule_owns_the_frame_loop() {
+        use super::replay_gate_open;
+        // An in-game world past its first two updates is held between requests.
+        assert!(!replay_gate_open(false, true, Some(2)));
+        assert!(!replay_gate_open(false, true, Some(900)));
+        // A pending scheduled boundary, startup, loading and a fresh world keep time running.
+        assert!(replay_gate_open(true, true, Some(900)));
+        assert!(replay_gate_open(false, false, Some(900)));
+        assert!(replay_gate_open(false, true, Some(1)));
+        assert!(replay_gate_open(false, true, Some(0)));
+        assert!(replay_gate_open(false, true, None));
+    }
+
     use super::*;
     use cyrus_assets::surface::Surface;
     use cyrus_control::Request;
