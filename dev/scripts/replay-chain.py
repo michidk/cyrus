@@ -174,7 +174,7 @@ def await_control(control, wait):
 
 def face_heading(control, face):
     """Turn with ground or rope controls, observing the heading after each input."""
-    tolerance = 3 if face["rope"] else 24
+    tolerance = 3  # one 5-unit turn step always lands inside this window
     for _ in range(face["limit"]):
         state = control.ready(face["world"])
         error = (face["heading"] - state["hud"]["heading"] + 1024) % 2048 - 1024
@@ -185,7 +185,9 @@ def face_heading(control, face):
             held = min(40, max(1, int(abs(error) / 24)))
         else:
             keys = ["ArrowLeft" if error > 0 else "ArrowRight"]
-            held = 1
+            # Ground turning is 5 heading units per held update: scale the hold so a far start
+            # heading converges inside the limit, and shrink it to single updates near the target.
+            held = min(40, max(1, int(abs(error) / 12)))
         control.request({"type": "schedule_input", "events": [
             *[{"after_updates": 0, "key": key, "action": "press"} for key in keys],
             *[{"after_updates": held, "key": key, "action": "release"} for key in keys],

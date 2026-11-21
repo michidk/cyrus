@@ -113,6 +113,22 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual([e["key"] for e in events[:2]], ["ShiftLeft", "ArrowRight"])
         self.assertEqual([e["action"] for e in events[:4]], ["press", "press", "release", "release"])
 
+    def test_ground_facing_converges_from_a_far_heading_within_the_limit(self):
+        class Control:
+            heading = 450
+
+            def ready(self, world):
+                return {"hud": {"heading": self.heading}}
+
+            def request(self, command):
+                held = next(e["after_updates"] for e in command["events"] if e["action"] == "release")
+                sign = 1 if command["events"][0]["key"] == "ArrowLeft" else -1
+                self.heading = (self.heading + sign * 5 * held) % 2048
+
+        control = Control()
+        replay.face_heading(control, {"world": 20, "heading": 24, "rope": False, "limit": 30})
+        self.assertLessEqual(abs(control.heading - 24), 3)
+
     def test_topic_waits_then_selects_displayed_text_with_balanced_keys(self):
         class Control:
             menu_current = 0
