@@ -3397,6 +3397,7 @@ dependencies = [
  "cyrus-soup",
  "cyrus-world",
  "redguard-preservation",
+ "rodio",
  "serde",
  "serde_json",
 ]

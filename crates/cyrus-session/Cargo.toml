@@ -21,3 +21,4 @@ serde_json.workspace = true
 cyrus-assets = { workspace = true, features = ["parsers"] }
 cyrus-soup.workspace = true
 redguard-preservation.workspace = true
+rodio = { version = "=0.22.2", default-features = false }

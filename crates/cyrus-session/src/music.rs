@@ -1,7 +1,9 @@
 //! CD census capture for the same completed session boundary as logical state.
 use anyhow::{Context, Result, ensure};
 use bevy::{
-    audio::{AudioPlayer, AudioSink, AudioSinkPlayback, PlaybackMode, PlaybackSettings},
+    audio::{
+        AudioPlayer, AudioSink, AudioSinkPlayback, GlobalVolume, PlaybackMode, PlaybackSettings,
+    },
     prelude::{Assets, Entity, With, World},
 };
 use cyrus_audio::{
@@ -49,6 +51,16 @@ pub(super) fn capture(world: &World) -> Result<MusicSnapshot> {
                 && settings.duration.is_none(),
             "session CD player {entity:?}: unsupported backend playback configuration"
         );
+        ensure!(
+            !settings.muted && settings.volume.to_linear() == music.gain && settings.speed == 1.0,
+            "session CD player {entity:?}: playback gain/speed/mute differs from music owner"
+        );
+        let expected_gain = music.gain
+            * sink.map_or(1.0, |_| {
+                world
+                    .get_resource::<GlobalVolume>()
+                    .map_or(1.0, |global| global.volume.to_linear())
+            });
         let (paused, muted, volume, speed) = if let Some(sink) = sink {
             (
                 sink.is_paused(),
@@ -65,7 +77,7 @@ pub(super) fn capture(world: &World) -> Result<MusicSnapshot> {
             )
         };
         ensure!(
-            !muted && volume.to_linear() == music.gain && speed == 1.0,
+            !muted && volume.to_linear() == expected_gain && speed == 1.0,
             "session CD player {entity:?}: backend gain/speed/mute differs from music owner"
         );
         players.push((transport, paused));

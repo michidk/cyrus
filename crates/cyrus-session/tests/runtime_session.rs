@@ -277,6 +277,7 @@ fn check_restored_listener(app: &mut App) {
 #[derive(Clone, Copy)]
 enum MusicAtSave {
     Paused,
+    PausedWithGlobalGain(f32),
     PlayingThenMuted,
 }
 
@@ -290,6 +291,21 @@ fn live_music_mute_applies_at_session_publication_before_any_update() -> Result<
         false,
         MusicAtSave::PlayingThenMuted,
     )
+}
+
+#[test]
+fn music_session_round_trip_preserves_globally_scaled_backend_gain() -> Result<()> {
+    for gain in [0.0, 0.35] {
+        exercise_runtime_session(
+            false,
+            false,
+            true,
+            false,
+            true,
+            MusicAtSave::PausedWithGlobalGain(gain),
+        )?;
+    }
+    Ok(())
 }
 
 fn exercise_runtime_session(
@@ -525,7 +541,10 @@ fn exercise_runtime_session(
     let mut settings = transport
         .playback_settings()
         .with_volume(Volume::Linear(1.0));
-    settings.paused = matches!(music_at_save, MusicAtSave::Paused);
+    settings.paused = matches!(
+        music_at_save,
+        MusicAtSave::Paused | MusicAtSave::PausedWithGlobalGain(_)
+    );
     let mut original_music = transport.decoder();
     for _ in 0..3 {
         original_music.next().unwrap();
@@ -534,8 +553,19 @@ fn exercise_runtime_session(
         .world_mut()
         .resource_mut::<Assets<MusicTransport>>()
         .add(transport);
-    app.world_mut()
-        .spawn((MusicPlayer, AudioPlayer(music_handle), settings));
+    let music_entity = app
+        .world_mut()
+        .spawn((MusicPlayer, AudioPlayer(music_handle), settings))
+        .id();
+    if let MusicAtSave::PausedWithGlobalGain(gain) = music_at_save {
+        use bevy::audio::{AudioSink, AudioSinkPlayback, GlobalVolume};
+        app.insert_resource(GlobalVolume::new(Volume::Linear(gain)));
+        let (player, _output) = rodio::Player::new();
+        let mut sink = AudioSink::new(player);
+        sink.set_volume(Volume::Linear(gain));
+        sink.pause();
+        app.world_mut().entity_mut(music_entity).insert(sink);
+    }
     app.world_mut().resource_mut::<Music>().track = Some(2);
     app.insert_resource(cyrus_audio::AudioListener(GlobalTransform::IDENTITY));
     app.insert_resource(cyrus_assets::sound::SoundSettings::parse(
@@ -624,6 +654,24 @@ fn exercise_runtime_session(
     unlocks.unlock(2);
     unlocks.unlock(4);
     app.insert_resource(unlocks);
+    if let MusicAtSave::PausedWithGlobalGain(gain) = music_at_save {
+        use bevy::audio::{AudioSink, AudioSinkPlayback};
+        app.world_mut()
+            .get_mut::<AudioSink>(music_entity)
+            .unwrap()
+            .set_volume(Volume::Linear(gain + 0.1));
+        assert!(
+            RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)
+                .err()
+                .expect("mutated backend gain must reject capture")
+                .to_string()
+                .contains("backend gain/speed/mute differs")
+        );
+        app.world_mut()
+            .get_mut::<AudioSink>(music_entity)
+            .unwrap()
+            .set_volume(Volume::Linear(gain));
+    }
     let saved = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
     if with_effects {
         let missing = cyrus_session::SessionWorldAssets::from_loaded(
@@ -1215,6 +1263,10 @@ fn exercise_runtime_session(
             .0,
         Surface::WOOD
     );
+
+    if matches!(music_at_save, MusicAtSave::PausedWithGlobalGain(_)) {
+        RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
+    }
 
     let generation = app
         .world()
