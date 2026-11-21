@@ -282,6 +282,18 @@ done
             self.assertEqual(archive.extractfile("./mods/guest/mod.wasm").read(), b"wasm\n")
         self.assertFalse((self.root / "target").exists())
 
+    def test_main_pushes_have_independent_workflow_groups(self):
+        workflows = Path(__file__).parents[2] / ".github/workflows"
+        for name, cancellation in (
+            ("pr-artifacts.yml", "github.event_name == 'pull_request'"),
+            ("ci.yml", "github.ref != 'refs/heads/main'"),
+        ):
+            with self.subTest(workflow=name):
+                workflow = (workflows / name).read_text()
+                concurrency = workflow.split("concurrency:\n", 1)[1].split("\n\n", 1)[0]
+                self.assertIn("${{ github.event_name == 'push' && github.sha || github.ref }}", concurrency)
+                self.assertIn("cancel-in-progress: ${{ " + cancellation + " }}", concurrency)
+
     def test_native_workflows_build_and_upload_mod_bundles(self):
         for name in ("pr-artifacts.yml", "build-release.yml"):
             workflow = (Path(__file__).parents[2] / ".github/workflows" / name).read_text()
