@@ -3,6 +3,8 @@ name = "cyrus-script"
 description = "Game scripting host, player controller, simulation clock and in-game screens."
 version.workspace = true
 edition.workspace = true
+[features]
+original-save-import = ["dep:redguard-preservation"]
 [dependencies]
 rustc_apfloat = "0.2.3"
 cyrus-console.workspace = true
@@ -17,6 +19,7 @@ anyhow.workspace = true
 blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+redguard-preservation = { workspace = true, optional = true }
 [dev-dependencies]
 cyrus-assets = { workspace = true, features = ["native"] }
 redguard-preservation.workspace = true

@@ -158,6 +158,19 @@ impl ScriptHud {
         })))
     }
 
+    /// Publish a validated original-save inventory into an initialized candidate HUD.
+    /// Does not invoke item acquisition, use callbacks or notification effects.
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn replace_original_inventory(&self, inventory: super::Inventory) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        anyhow::ensure!(
+            state.inventory.is_some() && state.inventory_error.is_none(),
+            "original save: initialized HUD inventory unavailable"
+        );
+        state.inventory = Some(inventory);
+        Ok(())
+    }
+
     /// Retained candle-feedback ticks. Fifty is pinned; a fresh HUD starts at zero.
     pub fn health_feedback_ticks(&self) -> u32 {
         self.0

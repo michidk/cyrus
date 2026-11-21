@@ -17,6 +17,32 @@ pub struct GlobalFlagsSnapshot {
     flags: Vec<SavedFlag>,
 }
 
+#[cfg(feature = "original-save-import")]
+impl GlobalFlagsSnapshot {
+    pub(super) fn from_original(
+        definition: &Definition,
+        saved: &rgpre::import::savegame::SaveFlags,
+    ) -> Result<Self> {
+        anyhow::ensure!(
+            saved.values.len() == definition.flags.len()
+                && saved.states.len() == definition.flags.len(),
+            "original SVGF count differs from SOUP386.DEF"
+        );
+        let flags = definition.flags.iter().zip(&saved.values).zip(&saved.states)
+            .map(|((definition, &value), &state)| {
+                let kind = match definition.flag_type.to_ascii_lowercase().as_str() {
+                    "bool" => 0, "flipflop" => 1, "counter" => 2, "number" => 3,
+                    other => anyhow::bail!("original SVGF flag {}: unsupported kind {other}", definition.name),
+                };
+                // The limited importer accepts the verified unlatched encoding only.
+                anyhow::ensure!(state == kind,
+                    "original SVGF flag {}: state {state} unsupported by limited import (expected unlatched kind {kind})", definition.name);
+                Ok(SavedFlag { definition: definition.clone(), value, latched: false })
+            }).collect::<Result<Vec<_>>>()?;
+        Ok(Self { version: 1, flags })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SavedFlag {
     definition: Flag,
@@ -160,5 +186,56 @@ impl Flags {
         }
         // The script-call wrapper returns zero even when the underlying flag operation signals a change.
         Ok(Some(0))
+    }
+}
+
+#[cfg(all(test, feature = "original-save-import"))]
+mod original_import_tests {
+    use super::*;
+
+    #[test]
+    fn original_flags_restore_values_without_setting_latches() -> Result<()> {
+        let definition = Definition {
+            functions: vec![],
+            flags: vec![
+                Flag {
+                    name: "Toggle".into(),
+                    flag_type: "BOOL".into(),
+                    initial_value: 0,
+                },
+                Flag {
+                    name: "Count".into(),
+                    flag_type: "NUMBER".into(),
+                    initial_value: 0,
+                },
+            ],
+            references: vec![],
+            attributes: vec![],
+        };
+        let mut saved = rgpre::import::savegame::SaveFlags {
+            values: vec![17, -2],
+            states: vec![0, 3],
+        };
+        let snapshot = GlobalFlagsSnapshot::from_original(&definition, &saved)?;
+        let mut flags = Flags::prepare(&definition)?;
+        let mut values = vec![0, 0];
+        flags.restore(&mut values, snapshot)?;
+        assert_eq!(values, [17, -2]);
+        assert!(!flags.is_set(0) && !flags.is_set(1));
+        saved.states[0] = 255;
+        assert!(
+            GlobalFlagsSnapshot::from_original(&definition, &saved)
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported")
+        );
+        saved.states.pop();
+        assert!(
+            GlobalFlagsSnapshot::from_original(&definition, &saved)
+                .unwrap_err()
+                .to_string()
+                .contains("count differs")
+        );
+        Ok(())
     }
 }

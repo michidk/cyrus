@@ -312,6 +312,7 @@ module where it is defined and regenerate.
 - `src/script/navigation.rs` — Walk-node ownership, free-node search and empty-map Wander follow preservation contracts.
 - `src/script/navigation/route.rs` — Ordered walk-route search and reverse next-hop selection from preservation's SOUP contract.
 - `src/script/order.rs` — Fresh-world ordinary actor membership and cached view-window traversal.
+- `src/script/original_save.rs` — Explicitly limited original-save import into initialized, off-live native state.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/player_status.rs` — `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
