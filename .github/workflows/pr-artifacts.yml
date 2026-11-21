@@ -1,13 +1,16 @@
 name: PR artifacts
 
 # The native and browser builds of release.yml, for every pull request. Download them from the run
-# summary to try a change; nothing is published.
+# summary to try a change; nothing is published. A push to main builds only the Linux native
+# executable and keeps it briefly: agents on hosts that cannot hold a build cache need a main binary.
 on:
   pull_request:
+  push:
+    branches: [main]
 
 concurrency:
   group: pr-artifacts-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -22,22 +25,32 @@ defaults:
     shell: bash
 
 jobs:
+  plan:
+    name: Plan native targets
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          linux='{"os":"ubuntu-24.04","target":"x86_64-unknown-linux-gnu"}'
+          if [[ "$EVENT" == pull_request ]]; then
+            # Keep Intel builds independent of the ARM hosted-runner capacity pool.
+            echo "matrix=[$linux,{\"os\":\"windows-2025\",\"target\":\"x86_64-pc-windows-msvc\"},{\"os\":\"macos-15-intel\",\"target\":\"x86_64-apple-darwin\"},{\"os\":\"macos-15\",\"target\":\"aarch64-apple-darwin\"}]" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=[$linux]" >> "$GITHUB_OUTPUT"
+          fi
+
   native:
     name: Native (${{ matrix.target }})
+    needs: plan
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-          - os: windows-2025
-            target: x86_64-pc-windows-msvc
-          # Keep Intel builds independent of the ARM hosted-runner capacity pool.
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: macos-15
-            target: aarch64-apple-darwin
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -71,12 +84,12 @@ jobs:
           BUILD_TARGET: ${{ matrix.target }}
         run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"
       - name: Build and package ray-tracing game
-        if: runner.os == 'Linux' || runner.os == 'Windows'
+        if: (runner.os == 'Linux' || runner.os == 'Windows') && github.event_name == 'pull_request'
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: bash dev/scripts/build-artifacts.sh native-raytracing "$BUILD_TARGET"
       - name: Smoke packaged ray-tracing game
-        if: runner.os == 'Linux' || runner.os == 'Windows'
+        if: (runner.os == 'Linux' || runner.os == 'Windows') && github.event_name == 'pull_request'
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET" --raytracing
@@ -90,9 +103,10 @@ jobs:
             target/artifacts/cyrus-raytracing-${{ matrix.target }}*
           if-no-files-found: error
           compression-level: 0
-          retention-days: 7
+          retention-days: ${{ github.event_name == 'push' && 3 || 7 }}
 
   web:
+    if: github.event_name == 'pull_request'
     # Four jobs use the hosted runner's cores while the swap file below absorbs linker peaks.
     env:
       CARGO_BUILD_JOBS: 4
