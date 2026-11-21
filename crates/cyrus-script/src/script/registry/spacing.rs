@@ -917,13 +917,18 @@ impl ScriptWorld {
                         Continuation::Walk => StepDirection::Forward,
                         _ => StepDirection::Backward,
                     };
-                    if !self.ordinary_step_clear(
-                        id,
-                        direction,
-                        geometry.ground,
-                        geometry.environment,
-                        sounds,
-                    )? {
+                    let clear = if selected_player == Some(id) {
+                        self.player_step_clear(id, geometry.ground, direction)?
+                    } else {
+                        self.ordinary_step_clear(
+                            id,
+                            direction,
+                            geometry.ground,
+                            geometry.environment,
+                            sounds,
+                        )?
+                    };
+                    if !clear {
                         return Ok(());
                     }
                 }

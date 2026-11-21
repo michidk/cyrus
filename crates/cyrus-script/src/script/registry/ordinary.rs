@@ -633,7 +633,7 @@ impl ScriptWorld {
                         sounds,
                     )?;
                 }
-                // Forward running, armed circling and the slide groups retain animation-owned
+                // Forward running, sidesteps, armed circling and the slide groups retain animation-owned
                 // movement: after release, and after the slope response clears the sliding byte
                 // while a slide group is still playing (preservation PR #310, player.md "Slide-group
                 // movement"). The called flags prevent a second step
@@ -647,6 +647,10 @@ impl ScriptWorld {
                             matches!(
                                 group,
                                 AnimationGroup::RUN
+                                    | AnimationGroup::STEP_LEFT
+                                    | AnimationGroup::STEP_LEFT_TORCH
+                                    | AnimationGroup::STEP_RIGHT
+                                    | AnimationGroup::STEP_RIGHT_TORCH
                                     | AnimationGroup::FIGHT_CIRCLE_LEFT
                                     | AnimationGroup::FIGHT_CIRCLE_RIGHT
                                     | AnimationGroup::SLIDE

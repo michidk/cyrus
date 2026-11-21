@@ -446,6 +446,102 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
     Ok(())
 }
 
+#[test]
+fn installed_belltowr_lineup_crosses_the_sidestep_dead_zone() -> Result<()> {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (BELLTOWR sidestep alignment)");
+        return Ok(());
+    };
+    let (mut app, codes, _assets) = prepare_player_app_for(&install, "BELLTOWR")?;
+    app.insert_resource(cyrus_script::script::OrdinarySoundExecutor(
+        run_without_audio,
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(40),
+    ));
+    for _ in 0..8 {
+        app.update();
+    }
+    let start = [546406, -16384, 587325];
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .context("BELLTOWR unavailable")?
+        .place_selected_player(start, 0)?;
+    app.world_mut().resource_mut::<ScriptView>().position = start;
+    for _ in 0..80 {
+        app.update();
+        app.world_mut().resource_scope(
+            |world, hud: bevy::prelude::Mut<cyrus_script::script::ScriptHud>| {
+                world
+                    .resource_mut::<ScriptActors>()
+                    .current
+                    .as_mut()
+                    .context("BELLTOWR unavailable")?
+                    .ordinary_activation_overlay(&hud, 1, false, 24)
+            },
+        )?;
+    }
+    let key = match cyrus_script::player::input::Input::try_from(
+        codes[cyrus_script::player::input::Action::Use as usize],
+    ) {
+        Ok(cyrus_script::player::input::Input::Key(scan)) => scan.key(),
+        other => anyhow::bail!("installed action binding is not a key: {other:?}"),
+    };
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
+    for _ in 0..4 {
+        app.update();
+        app.world_mut().resource_scope(
+            |world, hud: bevy::prelude::Mut<cyrus_script::script::ScriptHud>| {
+                world
+                    .resource_mut::<ScriptActors>()
+                    .current
+                    .as_mut()
+                    .context("BELLTOWR unavailable")?
+                    .ordinary_activation_overlay(&hud, 1, false, 24)
+            },
+        )?;
+    }
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(key);
+    let mut saw_alignment = false;
+    let mut arrived = false;
+    for _ in 0..180 {
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .clear();
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors.current.as_ref().context("BELLTOWR unavailable")?;
+        let player = world.selected_player().context("player unavailable")?;
+        let control = world.actors()[player.index]
+            .control_state()
+            .context("control unavailable")?;
+        saw_alignment |= control.script_control & 2 != 0;
+        if saw_alignment
+            && world.spatial(player)?.local.position == [545024, -16384, 587520]
+            && control.script_control & 2 == 0
+        {
+            arrived = true;
+            break;
+        }
+    }
+    ensure!(saw_alignment, "Favis alignment did not start");
+    ensure!(
+        arrived,
+        "Favis alignment stalled at {:?}",
+        position(&mut app)?
+    );
+    Ok(())
+}
+
 // Model unavailable playback channels while keeping the production script scheduler active.
 #[derive(Debug)]
 struct UnavailablePlayback;
