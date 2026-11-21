@@ -116,7 +116,7 @@ impl Plugin for ControlPlugin {
             .add_systems(
                 First,
                 replay_gate
-                    .before(bevy::time::TimeSystem)
+                    .before(bevy::time::TimeSystems)
                     .run_if(resource_exists::<ReplayStep>),
             )
             .add_systems(
