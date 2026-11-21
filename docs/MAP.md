@@ -505,6 +505,7 @@ module where it is defined and regenerate.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/session.rs` — Native off-live document preparation; shared boundary owns validation and commit.
+- `src/session/original_slots.rs` — Read-only installed original slot discovery; restoration requires native state mapping.
 - `src/session/slots.rs` — Native slot envelopes: bounded metadata followed by an opaque session document.
 - `src/settings.rs` — Player settings. Where local state lives is decided by `cyrus_config`, never inside the install.
 - `src/subtitles.rs` — Connect native speech metadata to subtitle presentation without coupling the backends.
