@@ -42,6 +42,12 @@ class Checkpoints(unittest.TestCase):
                 timings.add(fixture["step_micros"])
         self.assertEqual(len(timings), 1)
 
+    def test_pending_fixtures_are_valid_but_outside_the_chain(self):
+        root = Path(__file__).resolve().parents[1] / "fixtures"
+        for path in sorted((root / "pending").glob("*.replay.json")):
+            with self.subTest(path=path):
+                replay.validate(json.loads(path.read_text()))
+
     def test_blocked_ship_approach_waypoint_runs(self):
         # Walking onto that approach is refused by the steep-surface check at the probe
         # (preservation engine/player.md, "Forward slope surface selection"); the waypoint

@@ -139,6 +139,11 @@ build and cargo-hauler. `CYRUS_REPLAY_BINARY` selects an already
 built executable. Each config directory has an exclusive run lock and retains
 process logs and checkpoint observations.
 
+Fixtures in `dev/fixtures/pending/` are written from installed script facts but not yet
+run with a current binary. `replay-chain` does not run them and the nightly run ignores
+them; script tests only validate their shape. Move a fixture into `chapters/` once it passes
+after its predecessor.
+
 Use `just replay-chain --keep-running` to record the next chapter from the
 passing session. Its control address is printed and written to
 `CYRUS_CONFIG_DIR/control-address`. The process and run lock remain owned by
