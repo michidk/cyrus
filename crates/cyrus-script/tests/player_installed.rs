@@ -567,11 +567,11 @@ fn belltowr_running_jump_attaches(yaw: u16, settles: &[u32]) -> Result<Vec<(u32,
     for _ in 0..8 {
         app.update();
     }
-    let key = |action: cyrus_script::player::input::Action| match cyrus_script::player::input::Input::try_from(
-        codes[action as usize],
-    ) {
-        Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
-        other => anyhow::bail!("installed binding is not a key: {other:?}"),
+    let key = |action: cyrus_script::player::input::Action| {
+        match cyrus_script::player::input::Input::try_from(codes[action as usize]) {
+            Ok(cyrus_script::player::input::Input::Key(scan)) => Ok(scan.key()),
+            other => anyhow::bail!("installed binding is not a key: {other:?}"),
+        }
     };
     let (forward, jump) = (
         key(cyrus_script::player::input::Action::Forward)?,
