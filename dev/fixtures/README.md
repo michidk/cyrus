@@ -11,7 +11,8 @@ in [docs/METHOD.md](../../docs/METHOD.md) and
 | --- | --- |
 | `belltowr.json`, `island.json`, `start.json` | Matched scene captures (below) |
 | `segments/bell-monocle.replay.json` | Replay segment from BELLTOWR entry: Favis' bell topics, the bell-rope running jump and the monocle pickup (nightly) |
-| `segments/ending-1-extpalac-entry.replay.json`, `segments/ending-2-richton-fight.replay.json` | Ending sub-segments: EXTPALAC entry captures a session; the fight resumes it (nightly) |
+| `segments/ending-1-extpalac-entry.replay.json` | EXTPALAC entry; captures the session later ending segments resume (nightly) |
+| `pending/ending-2-richton-fight.replay.json` | Richton fight resumed from that session; **pending**: on the shared CI binary three runs ended in no hit, one hit and player death, so it is outside the nightly chain until the fight is reproducible |
 | `start-walk.jsonl` | Legacy control replay: START, one second walking forward |
 | `*.html`, `listener-publication.rs` | Audio and animation acceptance pages and examples; see [cyrus-audio](../../crates/cyrus-audio/README.md) |
 
@@ -196,7 +197,7 @@ Ending sub-segments chain through captured sessions, so each launch stays short.
 segment's config directory; a fixture with `"resume_session": "name"` (and a staged
 `entry_scene`, currently BELLTOWR or EXTPALAC) loads it into a fresh launch, then
 waits for asynchronous model and geometry work to settle before any input. Chain the segments with one launch each, in file order
-(`ending-1-…` before `ending-2-…`); default discovery does so. Sessions are
+(`ending-1-…` before later ending segments); default discovery does so. Sessions are
 local run state and never tracked. `setup` (console lines, a placement, original cheat values such as `drevil`) is a test-only
 shortcut for prerequisites the segment does not play, such as the Richton item;
 it is never used for quest flags. Cheats persist in the config directory, so a fixture that
