@@ -113,6 +113,12 @@ def validate_steps(steps, depth=0):
             assert all(isinstance(line, str) and line for line in setup.get("console", [])), "invalid console setup"
             if "place_player" in setup:
                 assert set(setup["place_player"]) == {"x", "y", "z", "heading"} and all(type(v) is int for v in setup["place_player"].values()), "invalid player placement"
+        elif "await_ending" in step:
+            assert set(step) == {"await_ending"}, "ending wait cannot contain commands"
+            wait = step["await_ending"]
+            assert set(wait) == {"world", "max_updates", "max_seconds"}, "incomplete ending wait"
+            assert type(wait["max_updates"]) is int and wait["max_updates"] > 0, "invalid ending update bound"
+            assert math.isfinite(wait["max_seconds"]) and 0 < wait["max_seconds"] <= 1800, "invalid ending wall-clock bound"
         elif "fight" in step:
             assert set(step) == {"fight"}, "fight cannot contain commands"
             fight = step["fight"]
@@ -428,6 +434,30 @@ def run_setup(control, setup):
         control.request({"type": "place_player", **setup["place_player"]})
 
 
+def await_ending(control, wait):
+    """Idle until the won-game ending discards the world and the book opens (no input is sent).
+
+    The player must stay alive while the world runs. The ending movie and credits run outside
+    ordinary updates, so their phase is bounded by wall-clock seconds."""
+    for _ in range(wait["max_updates"]):
+        state = control.request({"type": "state"})
+        scripts = state.get("scripts") or {}
+        assert scripts.get("failed", 0) == 0, f"script failures: {scripts}"
+        if state["state"] != "InGame":
+            break
+        assert state["hud"]["health"] > 0, "player died before the ending"
+        control.request({"type": "schedule_input", "events": [{"after_updates": 0}, {"after_updates": 5}]})
+    else:
+        raise AssertionError(f"ending never started within {wait['max_updates']} updates")
+    deadline = time.monotonic() + wait["max_seconds"]
+    while True:
+        state = control.request({"type": "state"})
+        if state["state"] == "Menu" and (state.get("scripts") or {}).get("world") is None:
+            return
+        assert time.monotonic() < deadline, f"ending did not reach the book: state {state['state']}"
+        time.sleep(0.25)
+
+
 def opponent_health(control, name):
     actors = control.request({"type": "scripts", "offset": 0, "limit": 64})["actors"]
     matches = [actor for actor in actors if actor["name"] == name]
@@ -588,6 +618,8 @@ def run(args):
                                 run_setup(control, step["setup"])
                             if "fight" in step:
                                 fight(control, step["fight"])
+                            if "await_ending" in step:
+                                await_ending(control, step["await_ending"])
                             if "checkpoint" in step:
                                 expected = step["checkpoint"]
                                 if observation is None:

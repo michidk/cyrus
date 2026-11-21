@@ -507,12 +507,14 @@ class Checkpoints(unittest.TestCase):
                    "steps": [{"setup": {"console": ["item add,79"], "place_player": {"x": 1, "y": 2, "z": 3, "heading": 4}}},
                              {"capture_session": "fight-a"},
                              {"fight": {"world": 30, "opponent": "RICHTONP", "target_health": 220, "max_seconds": 20}},
+                             {"await_ending": {"world": 30, "max_updates": 100, "max_seconds": 60}},
                              {"checkpoint": self.expected}]}
         replay.validate(fixture)
         for mutate in (lambda f: f.update(resume_session="../x"),
                        lambda f: f["steps"][1].update(capture_session="A b"),
                        lambda f: f["steps"][2]["fight"].update(max_seconds=0),
                        lambda f: f["steps"][0]["setup"].update(unknown=1),
+                       lambda f: f["steps"][3]["await_ending"].update(max_updates=0),
                        lambda f: f.pop("entry_scene")):
             broken = copy.deepcopy(fixture)
             mutate(broken)
@@ -543,6 +545,27 @@ class Checkpoints(unittest.TestCase):
             self.assertIn("session_load", control.calls)
             with self.assertRaisesRegex(AssertionError, "missing resume session"):
                 replay.resume_session(control, Path(root) / "absent.session")
+
+    def test_await_ending_needs_a_living_player_then_the_book(self):
+        class Control:
+            def __init__(self, health, leave_at):
+                self.health, self.leave_at, self.updates, self.polls = health, leave_at, 0, 0
+
+            def request(self, command):
+                if command["type"] == "schedule_input":
+                    self.updates += 1
+                    return {}
+                self.polls += 1
+                if self.updates >= self.leave_at:
+                    return {"state": "Menu" if self.polls % 2 == 0 else "Loading", "scripts": None}
+                return {"state": "InGame", "scripts": {"failed": 0}, "hud": {"health": self.health}}
+
+        wait = {"world": 30, "max_updates": 20, "max_seconds": 5}
+        replay.await_ending(Control(100, 3), wait)
+        with self.assertRaisesRegex(AssertionError, "player died"):
+            replay.await_ending(Control(0, 3), wait)
+        with self.assertRaisesRegex(AssertionError, "never started"):
+            replay.await_ending(Control(100, 99), wait)
 
     def fight_control(self, losses):
         class Control:

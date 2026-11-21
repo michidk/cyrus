@@ -195,7 +195,8 @@ Ending sub-segments chain through captured sessions, so each launch stays short.
 `{"capture_session": "name"}` saves the live session under `sessions/` next to the
 segment's config directory; a fixture with `"resume_session": "name"` (and a staged
 `entry_scene`, currently BELLTOWR or EXTPALAC) loads it into a fresh launch, then
-waits for asynchronous model and geometry work to settle before any input. Sessions are
+waits for asynchronous model and geometry work to settle before any input. Chain the segments with one launch each, in file order
+(`ending-1-…` before `ending-2-…`); default discovery does so. Sessions are
 local run state and never tracked. `setup` (console lines, a placement) is a test-only
 shortcut for prerequisites the segment does not play, such as the Richton item;
 it is never used for quest flags. `fight` draws the sword and taps attack once per
