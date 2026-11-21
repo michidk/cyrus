@@ -43,6 +43,11 @@ impl Vec3 {
         Self::new(-self.x / 20.0, -self.y / 20.0, (self.z - 65_535.996) / 20.0)
     }
 
+    /// The inverse of `map_to_scene`.
+    pub fn scene_to_map(self) -> Self {
+        Self::new(-self.x * 20.0, -self.y * 20.0, self.z * 20.0 + 65_535.996)
+    }
+
     pub fn dot(self, other: Vec3) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
@@ -208,6 +213,13 @@ mod tests {
 
     fn close(a: Vec3, b: Vec3) -> bool {
         (a - b).length() < 1e-5
+    }
+
+    #[test]
+    fn camera_scene_positions_convert_back_to_map_axes() {
+        for scene in [Vec3::ZERO, Vec3::new(-2000.0, 50.0, -1200.0)] {
+            assert!(close(scene.scene_to_map().map_to_scene(), scene));
+        }
     }
 
     #[test]

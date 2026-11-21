@@ -1,4 +1,6 @@
 //! Insert toggles a free first-person camera. While it flies, the host suppresses player input.
+//! With "Leave the player where the camera stops" on, landing moves the player there, so scripts
+//! and triggers near that spot run as if the player had walked there.
 use cyrus_mod_sdk::{Cx, Input, Key, Mod, Persist, Pose, Quat, Vec3};
 
 /// Radians per pixel of mouse motion.
@@ -40,6 +42,11 @@ impl Fly {
             yaw,
             pitch,
         }
+    }
+
+    /// Optional player destination when this flight ends; ordinary ground support settles it.
+    fn landing(&self, carry_player: bool) -> Option<Vec3> {
+        carry_player.then(|| self.position.scene_to_map())
     }
 
     fn pose(&self) -> Pose {
@@ -90,7 +97,12 @@ impl Mod for Flycam {
         };
         if cx.input.tapped(Key::INSERT) {
             fly = match fly {
-                Some(_) => None,
+                Some(fly) => {
+                    if let Some(position) = fly.landing(cx.settings.flag("carry_player")) {
+                        cx.player.place(position, cx.player.heading());
+                    }
+                    None
+                }
                 None => cx.camera.pose().map(Fly::from_pose),
             };
         }
@@ -104,3 +116,26 @@ impl Mod for Flycam {
 }
 
 cyrus_mod_sdk::export_mod!(Flycam);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leaving_flight_only_carries_the_player_when_enabled() {
+        let fly = Fly {
+            position: Vec3::new(-2000.0, 50.0, -1200.0),
+            yaw: 1.0,
+            pitch: -0.5,
+        };
+        assert!(fly.landing(false).is_none());
+        let landing = fly.landing(true).unwrap();
+        assert_eq!(landing.x, 40000.0);
+        assert_eq!(landing.y, -1000.0);
+        assert_eq!(landing.z, 41535.996);
+        assert!(
+            fly.landing(false).is_none(),
+            "turning the option off takes effect immediately"
+        );
+    }
+}

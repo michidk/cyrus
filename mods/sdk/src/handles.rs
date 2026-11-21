@@ -109,6 +109,12 @@ impl Player {
         self.0.heading()
     }
 
+    /// Move the player to `position` (map units, original axes) facing `heading` before the
+    /// next update; the engine resolves ground and falls from there.
+    pub fn place(&self, position: Vec3, heading: u32) {
+        self.0.place(position.x, position.y, position.z, heading);
+    }
+
     /// The direction the camera looks, in heading units.
     pub fn view(&self) -> u32 {
         self.0.view()

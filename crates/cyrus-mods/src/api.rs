@@ -4,8 +4,8 @@
 //! so a mod's answer takes effect one frame after it was written.
 //!
 //! wasvy passes a component to its methods with the mutability of the mod's query
-//! and panics on a mismatch, so `Camera`, `Movement`, `Memory`, `Effects`, `Natives`, `Collision` and `Hud` (queried `Mut`) take
-//! `&mut self` throughout and `Input`, `Settings`, `Player`, `Environment` and `Actors` (queried `Ref`) take `&self`. Method names
+//! and panics on a mismatch, so `Camera`, `Movement`, `Memory`, `Effects`, `Natives`, `Collision`, `Player` and `Hud` (queried `Mut`) take
+//! `&mut self` throughout and `Input`, `Settings`, `Environment` and `Actors` (queried `Ref`) take `&self`. Method names
 //! are single words: wasvy looks them up by their WIT name, which uses dashes.
 use crate::settings::{ModSettings, Value};
 use bevy::ecs::system::SystemParam;
@@ -279,36 +279,43 @@ pub struct Player {
     animation: Vec<u32>,
     pending: Vec<u32>,
     idle: Vec<u32>,
+    /// A requested placement: map position, then heading.
+    placement: Option<([f32; 3], u32)>,
 }
 
 #[wasvy::methods]
 impl Player {
-    pub fn animation(&self) -> Vec<u32> {
+    pub fn animation(&mut self) -> Vec<u32> {
         self.animation.clone()
     }
-    pub fn pending(&self) -> Vec<u32> {
+    pub fn pending(&mut self) -> Vec<u32> {
         self.pending.clone()
     }
-    pub fn idle(&self) -> Vec<u32> {
+    pub fn idle(&mut self) -> Vec<u32> {
         self.idle.clone()
     }
-    pub fn armed(&self) -> bool {
+    pub fn armed(&mut self) -> bool {
         self.armed
     }
-    pub fn position(&self) -> Vec<f32> {
+    pub fn position(&mut self) -> Vec<f32> {
         self.position.clone()
     }
-    pub fn heading(&self) -> u32 {
+    pub fn heading(&mut self) -> u32 {
         self.heading
     }
-    pub fn view(&self) -> u32 {
+    pub fn view(&mut self) -> u32 {
         self.view
     }
-    pub fn airborne(&self) -> bool {
+    pub fn airborne(&mut self) -> bool {
         self.airborne
     }
-    pub fn speed(&self, run: bool) -> f32 {
+    pub fn speed(&mut self, run: bool) -> f32 {
         if run { self.run_speed } else { self.walk_speed }
+    }
+    pub fn place(&mut self, x: f32, y: f32, z: f32, heading: u32) {
+        if [x, y, z].iter().all(|value| value.is_finite()) {
+            self.placement = Some(([x, y, z], heading));
+        }
     }
 }
 
@@ -576,6 +583,9 @@ pub(crate) fn exchange(
             source: event.source_position.map(Vec::from).unwrap_or_default(),
         })
         .collect();
+    if let Err(error) = apply_player_placement(&mut player, src.actors.as_deref_mut()) {
+        warn!("mod player placement: {error:#}");
+    }
     publish_player(&mut player, src.actors.as_deref());
     camera.pose = src.view.single().map_or_else(
         |_| Vec::new(),
@@ -815,6 +825,22 @@ fn exchange_natives(natives: &mut Natives, actors: Option<&mut ScriptActors>) ->
         .collect()
 }
 
+/// Consume the guest request once, using the controller's ordinary placement and ground settle.
+fn apply_player_placement(
+    player: &mut Player,
+    actors: Option<&mut ScriptActors>,
+) -> anyhow::Result<()> {
+    if let Some((position, heading)) = player.placement.take()
+        && let Some(world) = actors.and_then(|actors| actors.current.as_mut())
+    {
+        world.place_selected_player(
+            position.map(|value| (value * 256.0) as i32),
+            (heading & 2047) as u16,
+        )?;
+    }
+    Ok(())
+}
+
 /// Publishes the player's locomotion state, or the empty default outside a script world.
 fn publish_player(player: &mut Player, actors: Option<&ScriptActors>) {
     let Some(status) = actors.and_then(|actors| actors.current.as_ref()?.locomotion_status())
@@ -936,6 +962,59 @@ mod tests {
         publish_environment(&mut environment, &WorldFacts::default(), None);
         assert_eq!(environment.lighting(), "faithful");
         assert!(environment.water().is_empty());
+    }
+
+    #[test]
+    fn installed_player_place_moves_the_logical_player_once() -> anyhow::Result<()> {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+            eprintln!("skipped: no install (mod player placement)");
+            return Ok(());
+        };
+        let files = cyrus_assets::native::Files::open(&install)?;
+        let prepared = cyrus_assets::game::prepare(&files, "ISLAND.player")?;
+        let scripts = serde_json::from_slice(&prepared["ISLAND.scripts"])?;
+        let mut world = cyrus_script::script::ScriptWorld::prepare(&scripts, 1)?;
+        world.prepare_spatial()?;
+        let id = world.selected_player().expect("installed ISLAND player");
+        world.initialize_player_spatial(id, [0; 3], [0; 3])?;
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        let mut player = Player::default();
+        player.place(40000.25, -1000.5, 41536.0, 2048 + 513);
+        apply_player_placement(&mut player, Some(&mut actors))?;
+        let world = actors.current.as_ref().unwrap();
+        let spatial = world.spatial(id)?;
+        assert_eq!(spatial.local.position, [10240064, -256128, 10633216]);
+        assert_eq!(spatial.local.angles[1], 513);
+        assert_eq!(spatial.previous_local_position, spatial.local.position);
+        assert!(player.placement.is_none());
+        // A following frame without a guest call must not restore the old destination.
+        actors
+            .current
+            .as_mut()
+            .unwrap()
+            .place_selected_player([256; 3], 0)?;
+        apply_player_placement(&mut player, Some(&mut actors))?;
+        assert_eq!(
+            actors.current.as_ref().unwrap().spatial(id)?.local.position,
+            [256; 3]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn player_placement_keeps_the_last_finite_request() {
+        let mut player = Player::default();
+        player.place(1.0, 2.0, 3.0, 512);
+        player.place(f32::NAN, 2.0, 3.0, 0);
+        assert_eq!(player.placement, Some(([1.0, 2.0, 3.0], 512)));
+        player.place(4.0, 5.0, 6.0, 1024);
+        assert_eq!(player.placement, Some(([4.0, 5.0, 6.0], 1024)));
     }
 
     #[test]

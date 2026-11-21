@@ -91,3 +91,44 @@ fn wasm_autosave_waits_for_terminal_host_completion() {
     assert_eq!(timer[0], 0.0, "timer resets only after completion");
     assert_eq!(timer[1], 0.0, "guest acknowledged completion");
 }
+
+#[test]
+#[ignore = "requires CYRUS_FLYCAM_WASM built for wasm32-wasip2"]
+fn wasm_flycam_exit_respects_carry_player_without_mutability_panics() {
+    for carry in [false, true] {
+        let mut app = guest_app("flycam", "CYRUS_FLYCAM_WASM");
+        {
+            let world = app.world_mut();
+            let mut host = world.query::<(&mut Memory, &mut Input, &mut Settings, &mut Player)>();
+            let (mut memory, mut input, mut settings, mut player) = host.single_mut(world).unwrap();
+            memory.values.insert(
+                "flycam/flight".into(),
+                vec![-2000.0, 50.0, -1200.0, 0.0, 0.0],
+            );
+            input.just_pressed = vec!["Insert".into()];
+            settings.flags.insert("flycam/carry_player".into(), carry);
+            player.heading = 513;
+        }
+        let deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            app.update();
+            let mut memory = app.world_mut().query::<&Memory>();
+            if !memory
+                .single(app.world())
+                .unwrap()
+                .values
+                .contains_key("flycam/flight")
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "flycam did not finish flight");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let mut player = app.world_mut().query::<&Player>();
+        let placement = player.single(app.world()).unwrap().placement;
+        assert_eq!(
+            placement,
+            carry.then_some(([40000.0, -1000.0, 41535.996], 513))
+        );
+    }
+}

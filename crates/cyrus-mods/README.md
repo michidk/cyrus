@@ -58,5 +58,13 @@ just mods          # build mods/* for wasm32-wasip2 and install into <target>/de
 
 Ignored tests load real guest components: set `CYRUS_BLOOD_WASM` and run
 `wasm_blood_particles`, or `CYRUS_GRASS_WASM` and run `wasm_grass_geometry`
-(`cargo test -p cyrus-mods --lib <name> -- --ignored`). See
+(`cargo test -p cyrus-mods --lib <name> -- --ignored`). The fly-camera exit
+check uses `CYRUS_FLYCAM_WASM` and `wasm_flycam_exit`, exercising both values
+of `carry_player` through the real guest/host interface. See
 [`mods/README.md`](../../mods/README.md#building-and-testing).
+
+The player hook accepts `place` in map units with a heading in 1/2048 turns.
+It consumes the last finite request before the next ordinary update, clears
+retained movement state through the controller's placement API, and lets
+ordinary ground support settle the player. The fly-camera mod uses this only
+when leaving flight with its `carry_player` setting enabled (off by default).

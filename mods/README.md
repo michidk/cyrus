@@ -20,7 +20,7 @@ build does not load mods. Mods start disabled: open the Backtick menu and select
 | `sway` | Wasm | Palm trees and plants sway in the wind, with Faithful or Modern lighting |
 | `blood` | Wasm | A brief spray of red particles when the player or an actor loses health |
 | `modern-water` | Wasm + shader | Crossing waves, ripples, shore foam and wet sand (reflections are the base game's Modern Lighting) |
-| `flycam` | Wasm | Insert toggles a free camera: WASD, Space/Left Shift, mouse look; the player stays put |
+| `flycam` | Wasm | Insert toggles a free camera: WASD, Space/Left Shift, mouse look; the player stays put unless "Leave the player where the camera stops" is on, which drops the player at the camera (a high drop can hurt) |
 | `movement` | Wasm | Camera-relative third-person movement with mouse orbit and optional camera follow |
 | `actor-info` | Wasm | Small read-only example: nearest visible actor, its health and distance |
 | `serpent` | manifest | Restores the cut sea serpent in the Spine (its script sits behind an endless `End`) |
@@ -74,7 +74,7 @@ wasvy guest languages can target directly.
 | Hook | What it does |
 | --- | --- |
 | `environment`, `world_changed` | Clock, world index and generation, Lighting mode, water parameters |
-| `actors`, `player` | Read-only actors (name, position, health) and player state (heading, animation, armed, speed) |
+| `actors`, `player` | Read-only actors (name, position, health) and player state (heading, animation, armed, speed); `place` moves the player |
 | `camera` | Read the pose, `drive` it, `orbit` the follow camera, `turn` it, detect `manual` look |
 | `movement` | `steer` like a stick, `play` animation groups, `face`, `tempo`, `claim` ground locomotion, `tune` jumps |
 | `collision`, `natives` | Segment casts against nearby geometry; observe calls to a named script native |

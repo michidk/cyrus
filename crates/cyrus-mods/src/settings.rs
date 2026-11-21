@@ -266,3 +266,41 @@ mod tests {
         assert_eq!(mode.accept(None), Value::Choice("a".into()));
     }
 }
+
+#[cfg(test)]
+mod flycam_tests {
+    use super::*;
+
+    #[test]
+    fn carry_player_defaults_off_and_keeps_the_selected_toggle() {
+        #[derive(Deserialize)]
+        struct Manifest {
+            setting: Vec<Setting>,
+        }
+        let manifest: Manifest =
+            toml::from_str(include_str!("../../../mods/flycam/mod.toml")).unwrap();
+        let mut settings = ModSettings::default();
+        settings.declare("flycam", &manifest.setting);
+        assert_eq!(
+            settings.values["flycam"]["carry_player"],
+            Value::Bool(false)
+        );
+        settings
+            .values
+            .get_mut("flycam")
+            .unwrap()
+            .insert("carry_player".into(), Value::Bool(true));
+        settings.declare("flycam", &manifest.setting);
+        assert_eq!(settings.values["flycam"]["carry_player"], Value::Bool(true));
+        settings
+            .values
+            .get_mut("flycam")
+            .unwrap()
+            .insert("carry_player".into(), Value::Bool(false));
+        settings.declare("flycam", &manifest.setting);
+        assert_eq!(
+            settings.values["flycam"]["carry_player"],
+            Value::Bool(false)
+        );
+    }
+}

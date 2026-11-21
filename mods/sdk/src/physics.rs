@@ -112,7 +112,9 @@ impl Physics {
     pub fn vertices(&self, actor: ActorId) -> Vec<Vec3> {
         self.raw
             .vertices(actor.0)
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| Vec3::new(p[0], p[1], p[2]))
             .collect()
     }
@@ -127,15 +129,19 @@ impl Physics {
     pub fn reference(&self, actor: ActorId) -> Vec<Vec3> {
         self.raw
             .reference(actor.0)
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| Vec3::new(p[0], p[1], p[2]))
             .collect()
     }
     pub fn attachments(&self, actor: ActorId) -> Vec<Pose> {
         self.raw
             .attachments(actor.0)
-            .chunks_exact(7)
-            .filter_map(Pose::from_list)
+            .as_chunks::<7>()
+            .0
+            .iter()
+            .filter_map(|pose| Pose::from_list(pose))
             .collect()
     }
     pub fn claim(&self, actor: ActorId, assembly: &Assembly) -> Result<(), ClaimError> {
@@ -156,8 +162,10 @@ impl Physics {
     pub fn transforms(&self, actor: ActorId) -> Vec<Pose> {
         self.raw
             .transforms(self.id, actor.0)
-            .chunks_exact(7)
-            .filter_map(Pose::from_list)
+            .as_chunks::<7>()
+            .0
+            .iter()
+            .filter_map(|pose| Pose::from_list(pose))
             .collect()
     }
 }
