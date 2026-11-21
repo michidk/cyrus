@@ -4,6 +4,7 @@ import argparse
 import fcntl
 import json
 import math
+import re
 import os
 from pathlib import Path
 import socket
@@ -37,11 +38,17 @@ def checkpoint(state, scripts, expected):
     return residual
 
 
+SESSION_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+
+
 def validate(fixture):
     """Accept timing, keyboard events and complete checkpoint expectations only."""
-    assert {"version", "step_micros", "steps"} <= set(fixture) <= {"version", "step_micros", "steps", "entry_scene"}, "unexpected fixture fields"
+    assert {"version", "step_micros", "steps"} <= set(fixture) <= {"version", "step_micros", "steps", "entry_scene", "resume_session"}, "unexpected fixture fields"
     if "entry_scene" in fixture:
-        assert fixture["entry_scene"] == "BELLTOWR", "unsupported staged entry"
+        assert fixture["entry_scene"] in ("BELLTOWR", "EXTPALAC"), "unsupported staged entry"
+    if "resume_session" in fixture:
+        assert "entry_scene" in fixture, "a resumed session needs a staged entry scene"
+        assert SESSION_NAME.fullmatch(fixture["resume_session"]), "invalid resume session name"
     assert fixture["version"] == 1, "unsupported fixture version"
     assert type(fixture["step_micros"]) is int and fixture["step_micros"] > 0, "invalid step_micros"
     assert fixture["steps"], "empty fixture"
@@ -96,6 +103,22 @@ def validate_steps(steps, depth=0):
             assert len(target["position_q8"]) == 3 and all(math.isfinite(v) for v in target["position_q8"]), "invalid steering position"
             assert 0 < target["tolerance"] < float("inf"), "invalid steering tolerance"
             assert type(target["limit"]) is int and 1 <= target["limit"] <= 2000, "invalid steering limit"
+        elif "capture_session" in step:
+            assert set(step) == {"capture_session"}, "session capture cannot contain commands"
+            assert SESSION_NAME.fullmatch(step["capture_session"]), "invalid capture session name"
+        elif "setup" in step:
+            assert set(step) == {"setup"}, "setup cannot contain commands"
+            setup = step["setup"]
+            assert set(setup) <= {"console", "place_player"} and setup, "unsupported setup"
+            assert all(isinstance(line, str) and line for line in setup.get("console", [])), "invalid console setup"
+            if "place_player" in setup:
+                assert set(setup["place_player"]) == {"x", "y", "z", "heading"} and all(type(v) is int for v in setup["place_player"].values()), "invalid player placement"
+        elif "fight" in step:
+            assert set(step) == {"fight"}, "fight cannot contain commands"
+            fight = step["fight"]
+            assert set(fight) == {"world", "opponent", "target_health", "max_seconds"}, "incomplete fight"
+            assert isinstance(fight["opponent"], str) and type(fight["target_health"]) is int and fight["target_health"] >= 0, "invalid fight target"
+            assert math.isfinite(fight["max_seconds"]) and 0 < fight["max_seconds"] <= 600, "invalid fight clock bound"
         elif "modal_input" in step:
             assert set(step) == {"modal_input"}, "modal input cannot contain commands"
             assert set(step["modal_input"]) == {"key", "world"}, "modal input needs key and world"
@@ -345,6 +368,115 @@ def steer(control, target):
     raise AssertionError(f"steering limit exhausted: target {target['position_q8']}, last position {position}, residual {distance:.3f} Q8")
 
 
+def settle_async_work(control, timeout=120):
+    """Wait, without advancing ordinary updates, for asynchronous model and geometry work.
+
+    Gameplay that starts while such work is pending depends on wall-clock completion time."""
+    deadline = time.monotonic() + timeout
+    while True:
+        state = control.request({"type": "state"})
+        if not (state.get("rendered_actor_pending") or state.get("effect_geometry_pending") or state.get("preload")):
+            return state
+        assert time.monotonic() < deadline, "asynchronous model or geometry work never settled"
+        time.sleep(0.1)
+
+
+def capture_session(control, path):
+    """Save the live session document under `path` so a later launch can resume from it."""
+    for attempt in range(100):
+        control.request({"type": "session_capture"})
+        for _ in range(300):
+            result = control.request({"type": "session_capture_result"})
+            if not result.get("pending", True):
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("session capture never completed")
+        if "document" in result:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(result["document"])
+            temporary.replace(path)
+            return
+        time.sleep(0.2)
+    raise AssertionError("session capture was never accepted")
+
+
+def resume_session(control, path):
+    """Replace the fresh entry world with a session captured by an earlier launch."""
+    assert path.exists(), f"missing resume session {path}; run the segment that captures it first"
+    control.request({"type": "session_load", "path": str(path.resolve())})
+    for _ in range(600):
+        result = control.request({"type": "session_load_result"})
+        if not result.get("pending", True):
+            break
+        time.sleep(0.1)
+    else:
+        raise AssertionError("session load never completed")
+    assert result.get("committed") is True, f"session load did not commit: {result}"
+    control.request({"type": "session_load_result", "acknowledge": True})
+    settle_async_work(control)
+
+
+def run_setup(control, setup):
+    """Test-only setup shortcuts: console lines and a placement, never used for quest state."""
+    for line in setup.get("console", []):
+        control.request({"type": "console", "line": line})
+    if "console" in setup:
+        control.request({"type": "console", "open": False})
+    if "place_player" in setup:
+        control.request({"type": "place_player", **setup["place_player"]})
+
+
+def opponent_health(control, name):
+    actors = control.request({"type": "scripts", "offset": 0, "limit": 64})["actors"]
+    matches = [actor for actor in actors if actor["name"] == name]
+    assert len(matches) == 1, f"fight opponent {name!r} unavailable"
+    return matches[0]["attributes"][3]  # the health attribute
+
+
+def fight(control, spec):
+    """Draw the sword and tap attack once per eight updates, reading both healths every update.
+
+    Each opponent loss must be a positive multiple of ten (one or more whole hits), the player
+    must survive, and the opponent must reach the target health inside the game-clock bound."""
+    control.ready(spec["world"])
+    state = settle_async_work(control)
+    start = state["clock"]["game_seconds"]
+    previous = opponent_health(control, spec["opponent"])
+    control.request({"type": "schedule_input", "events": [
+        {"after_updates": 0, "key": "KeyS", "action": "press"},
+        {"after_updates": 1, "key": "KeyS", "action": "release"}, {"after_updates": 4}]})
+    hits = []
+
+    def observe():
+        nonlocal previous
+        state = control.request({"type": "state"})
+        assert state["scripts"]["failed"] == 0, f"script failures: {state['scripts']}"
+        assert state["hud"]["health"] > 0, "player died during the fight"
+        health = opponent_health(control, spec["opponent"])
+        if health != previous:
+            loss = previous - health
+            assert loss > 0 and loss % 10 == 0, f"opponent health {previous} -> {health}: not whole hits"
+            hits.append(loss)
+            previous = health
+        return state, health
+
+    while True:
+        control.request({"type": "schedule_input", "events": [
+            {"after_updates": 0, "key": "ControlLeft", "action": "press"},
+            {"after_updates": 2, "key": "ControlLeft", "action": "release"}, {"after_updates": 3}]})
+        state, health = observe()
+        for _ in range(5):
+            control.request({"type": "schedule_input", "events": [{"after_updates": 0}, {"after_updates": 1}]})
+            state, health = observe()
+        if health <= spec["target_health"]:
+            print(f"fight reached {health} after hits {hits}", flush=True)
+            return
+        assert state["clock"]["game_seconds"] - start <= spec["max_seconds"], (
+            f"fight clock bound: opponent {health}, hits {hits}")
+
+
 class Control:
     def __init__(self, stream):
         self.stream = stream
@@ -395,6 +527,8 @@ def run(args):
     assert isinstance(timing, int) and timing > 0, "step_micros must be a positive integer"
     assert all(f["step_micros"] == timing for f in fixtures), "chain timing must agree"
     args.config.mkdir(parents=True, exist_ok=True)
+    # Segments of one run share captured sessions through the config directory's parent.
+    sessions = args.config.parent / "sessions"
     with (args.config / "replay.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with socket.socket() as probe:
@@ -423,6 +557,10 @@ def run(args):
                 with stream:
                     control = Control(stream)
                     control.ready()
+                    for fixture in fixtures:
+                        if "resume_session" in fixture:
+                            resume_session(control, sessions / f"{fixture['resume_session']}.session")
+                            control.ready(examine_open=None)
                     for path, fixture in zip(args.fixtures, fixtures):
                         assert fixture["version"] == 1, f"{path}: unsupported version"
                         transitioned = False
@@ -444,6 +582,12 @@ def run(args):
                                 repeat_inputs(control, step["repeat"])
                             if "modal_input" in step:
                                 play_modal(control, step["modal_input"])
+                            if "capture_session" in step:
+                                capture_session(control, sessions / f"{step['capture_session']}.session")
+                            if "setup" in step:
+                                run_setup(control, step["setup"])
+                            if "fight" in step:
+                                fight(control, step["fight"])
                             if "checkpoint" in step:
                                 expected = step["checkpoint"]
                                 if observation is None:

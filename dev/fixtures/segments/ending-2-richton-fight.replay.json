@@ -1,0 +1,83 @@
+{
+ "version": 1,
+ "step_micros": 40000,
+ "entry_scene": "EXTPALAC",
+ "resume_session": "extpalac-entry",
+ "steps": [
+  {
+   "checkpoint": {
+    "world": 30,
+    "flags": {
+     "rock_1_down": {
+      "value": 1
+     },
+     "at_shoals": {
+      "value": 1
+     }
+    },
+    "globals": {
+     "lockout": 0
+    },
+    "inventory": {
+     "1": 1,
+     "79": 0
+    },
+    "position_q8": {
+     "value": [
+      11996672,
+      -354304,
+      13407232
+     ],
+     "tolerance": 3000
+    },
+    "health": 100
+   }
+  },
+  {
+   "setup": {
+    "console": [
+     "item add,79"
+    ],
+    "place_player": {
+     "x": 46798,
+     "y": -3239,
+     "z": 51751,
+     "heading": 1024
+    }
+   }
+  },
+  {
+   "fight": {
+    "world": 30,
+    "opponent": "RICHTONP",
+    "target_health": 220,
+    "max_seconds": 20
+   }
+  },
+  {
+   "checkpoint": {
+    "world": 30,
+    "flags": {
+     "rock_1_down": {
+      "value": 1
+     }
+    },
+    "globals": {
+     "lockout": 0
+    },
+    "inventory": {
+     "1": 1,
+     "79": 1
+    },
+    "position_q8": {
+     "value": [
+      11980288,
+      -829184,
+      13248256
+     ],
+     "tolerance": 600000
+    }
+   }
+  }
+ ]
+}

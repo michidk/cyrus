@@ -496,6 +496,80 @@ class Checkpoints(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     replay.checkpoint(self.state, self.scripts, expected)
 
+    def test_session_steps_validate_and_reject_bad_names(self):
+        fixture = {"version": 1, "step_micros": 40000, "entry_scene": "EXTPALAC", "resume_session": "entry-a",
+                   "steps": [{"setup": {"console": ["item add,79"], "place_player": {"x": 1, "y": 2, "z": 3, "heading": 4}}},
+                             {"capture_session": "fight-a"},
+                             {"fight": {"world": 30, "opponent": "RICHTONP", "target_health": 220, "max_seconds": 20}},
+                             {"checkpoint": self.expected}]}
+        replay.validate(fixture)
+        for mutate in (lambda f: f.update(resume_session="../x"),
+                       lambda f: f["steps"][1].update(capture_session="A b"),
+                       lambda f: f["steps"][2]["fight"].update(max_seconds=0),
+                       lambda f: f["steps"][0]["setup"].update(unknown=1),
+                       lambda f: f.pop("entry_scene")):
+            broken = copy.deepcopy(fixture)
+            mutate(broken)
+            with self.assertRaises(AssertionError):
+                replay.validate(broken)
+
+    def test_session_capture_writes_the_document_and_resume_requires_it(self):
+        import tempfile
+
+        class Control:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, command):
+                self.calls.append(command["type"])
+                if command["type"] == "session_capture_result":
+                    return {"pending": False, "document": "CYRUS-SESSION 1\nabc"}
+                if command["type"] == "session_load_result":
+                    return {"pending": False, "committed": True}
+                return {}
+
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "sessions" / "entry.session"
+            control = Control()
+            replay.capture_session(control, path)
+            self.assertEqual(path.read_text(), "CYRUS-SESSION 1\nabc")
+            replay.resume_session(control, path)
+            self.assertIn("session_load", control.calls)
+            with self.assertRaisesRegex(AssertionError, "missing resume session"):
+                replay.resume_session(control, Path(root) / "absent.session")
+
+    def fight_control(self, losses):
+        class Control:
+            def __init__(self):
+                self.health = 250
+                self.losses = list(losses)
+                self.updates = 0
+
+            def request(self, command):
+                kind = command["type"]
+                if kind == "schedule_input":
+                    self.updates += 1
+                    if self.updates % 4 == 0 and self.losses:
+                        self.health -= self.losses.pop(0)
+                    return {}
+                if kind == "scripts":
+                    return {"actors": [{"name": "RICHTONP", "attributes": [0, 0, 0, self.health]}]}
+                return {"scripts": {"failed": 0}, "hud": {"health": 100}, "clock": {"game_seconds": self.updates * 0.04}}
+
+            def ready(self, world):
+                return self.request({"type": "state"})
+
+        return Control()
+
+    def test_fight_accepts_whole_hits_until_the_target_health(self):
+        replay.fight(self.fight_control([20, 10, 10]), {"world": 30, "opponent": "RICHTONP", "target_health": 210, "max_seconds": 60})
+
+    def test_fight_rejects_partial_hits_and_a_missed_target(self):
+        with self.assertRaisesRegex(AssertionError, "not whole hits"):
+            replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})
+        with self.assertRaisesRegex(AssertionError, "fight clock bound"):
+            replay.fight(self.fight_control([]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

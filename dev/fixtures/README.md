@@ -11,6 +11,7 @@ in [docs/METHOD.md](../../docs/METHOD.md) and
 | --- | --- |
 | `belltowr.json`, `island.json`, `start.json` | Matched scene captures (below) |
 | `segments/bell-monocle.replay.json` | Replay segment from BELLTOWR entry: Favis' bell topics, the bell-rope running jump and the monocle pickup (nightly) |
+| `segments/ending-1-extpalac-entry.replay.json`, `segments/ending-2-richton-fight.replay.json` | Ending sub-segments: EXTPALAC entry captures a session; the fight resumes it (nightly) |
 | `start-walk.jsonl` | Legacy control replay: START, one second walking forward |
 | `*.html`, `listener-publication.rs` | Audio and animation acceptance pages and examples; see [cyrus-audio](../../crates/cyrus-audio/README.md) |
 
@@ -189,6 +190,19 @@ in a separate process and config directory. Explicit fixture arguments still
 share one session. A segment with `"entry_scene":"BELLTOWR"` uses the installed
 world's ordinary scene entry, with fresh quest state; it never loads a private
 save or places the player. Staged segments cannot be mixed into a chapter chain.
+
+Ending sub-segments chain through captured sessions, so each launch stays short.
+`{"capture_session": "name"}` saves the live session under `sessions/` next to the
+segment's config directory; a fixture with `"resume_session": "name"` (and a staged
+`entry_scene`, currently BELLTOWR or EXTPALAC) loads it into a fresh launch, then
+waits for asynchronous model and geometry work to settle before any input. Sessions are
+local run state and never tracked. `setup` (console lines, a placement) is a test-only
+shortcut for prerequisites the segment does not play, such as the Richton item;
+it is never used for quest flags. `fight` draws the sword and taps attack once per
+eight updates, reading both healths after every update. It requires whole ten-point
+opponent losses, a surviving player and the target health inside a game-clock bound.
+The runner always uses the fixture's fixed step, so the fight does not depend on wall
+clock. **Not covered:** the final kill and the ending movie.
 
 `topic` steps select an exact displayed dialogue label using balanced arrow and
 Control input, waiting with idle updates while speech runs. `face` steps turn
