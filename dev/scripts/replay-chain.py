@@ -109,7 +109,8 @@ def validate_steps(steps, depth=0):
         elif "setup" in step:
             assert set(step) == {"setup"}, "setup cannot contain commands"
             setup = step["setup"]
-            assert set(setup) <= {"console", "place_player"} and setup, "unsupported setup"
+            assert set(setup) <= {"console", "place_player", "cheat"} and setup, "unsupported setup"
+            assert all(isinstance(name, str) and type(value) is int for name, value in setup.get("cheat", {}).items()), "invalid cheat setup"
             assert all(isinstance(line, str) and line for line in setup.get("console", [])), "invalid console setup"
             if "place_player" in setup:
                 assert set(setup["place_player"]) == {"x", "y", "z", "heading"} and all(type(v) is int for v in setup["place_player"].values()), "invalid player placement"
@@ -432,6 +433,8 @@ def run_setup(control, setup):
         control.request({"type": "console", "open": False})
     if "place_player" in setup:
         control.request({"type": "place_player", **setup["place_player"]})
+    for name, value in setup.get("cheat", {}).items():
+        control.request({"type": "cheat", "name": name, "value": value})
 
 
 def await_ending(control, wait):
@@ -439,8 +442,10 @@ def await_ending(control, wait):
 
     The player must stay alive while the world runs. The ending movie and credits run outside
     ordinary updates, so their phase is bounded by wall-clock seconds."""
-    for _ in range(wait["max_updates"]):
+    for update in range(wait["max_updates"]):
         state = control.request({"type": "state"})
+        if update % 100 == 0:
+            print(f"ending wait: update {update}, state {state['state']}", flush=True)
         scripts = state.get("scripts") or {}
         assert scripts.get("failed", 0) == 0, f"script failures: {scripts}"
         if state["state"] != "InGame":
@@ -458,11 +463,25 @@ def await_ending(control, wait):
         time.sleep(0.25)
 
 
-def opponent_health(control, name):
-    actors = control.request({"type": "scripts", "offset": 0, "limit": 64})["actors"]
-    matches = [actor for actor in actors if actor["name"] == name]
-    assert len(matches) == 1, f"fight opponent {name!r} unavailable"
-    return matches[0]["attributes"][3]  # the health attribute
+def actor_index(control, name):
+    """The listing index of the single actor called `name`."""
+    found, offset = [], 0
+    while True:
+        page = control.request({"type": "scripts", "offset": offset, "limit": 64})
+        found += [offset + i for i, actor in enumerate(page["actors"]) if actor["name"] == name]
+        offset += len(page["actors"])
+        if not page["actors"] or offset >= page["total"]:
+            break
+    assert len(found) == 1, f"fight opponent {name!r} matched {len(found)} times"
+    return found[0]
+
+
+def opponent_health(control, name, index):
+    """Health attribute of the opponent, or None once the world no longer lists it at `index`."""
+    actors = control.request({"type": "scripts", "offset": index, "limit": 1})["actors"]
+    if actors and actors[0]["name"] == name:
+        return actors[0]["attributes"][3]
+    return None
 
 
 def fight(control, spec):
@@ -473,7 +492,8 @@ def fight(control, spec):
     control.ready(spec["world"])
     state = settle_async_work(control)
     start = state["clock"]["game_seconds"]
-    previous = opponent_health(control, spec["opponent"])
+    index = actor_index(control, spec["opponent"])
+    previous = opponent_health(control, spec["opponent"], index)
     control.request({"type": "schedule_input", "events": [
         {"after_updates": 0, "key": "KeyS", "action": "press"},
         {"after_updates": 1, "key": "KeyS", "action": "release"}, {"after_updates": 4}]})
@@ -484,7 +504,10 @@ def fight(control, spec):
         state = control.request({"type": "state"})
         assert state["scripts"]["failed"] == 0, f"script failures: {state['scripts']}"
         assert state["hud"]["health"] > 0, "player died during the fight"
-        health = opponent_health(control, spec["opponent"])
+        health = opponent_health(control, spec["opponent"], index)
+        if health is None:
+            assert spec["target_health"] == 0, f"fight opponent {spec['opponent']!r} vanished"
+            health = 0  # a defeated opponent leaves the actor list
         if health != previous:
             loss = previous - health
             assert loss > 0 and loss % 10 == 0, f"opponent health {previous} -> {health}: not whole hits"
@@ -492,7 +515,12 @@ def fight(control, spec):
             previous = health
         return state, health
 
+    cycles = 0
     while True:
+        cycles += 1
+        if cycles % 10 == 0:
+            print(f"fight cycle {cycles}: opponent {previous}, hits {hits}, "
+                  f"clock {control.request({'type': 'state'})['clock']['game_seconds']:.1f}", flush=True)
         control.request({"type": "schedule_input", "events": [
             {"after_updates": 0, "key": "ControlLeft", "action": "press"},
             {"after_updates": 2, "key": "ControlLeft", "action": "release"}, {"after_updates": 3}]})

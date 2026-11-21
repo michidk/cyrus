@@ -504,7 +504,7 @@ class Checkpoints(unittest.TestCase):
 
     def test_session_steps_validate_and_reject_bad_names(self):
         fixture = {"version": 1, "step_micros": 40000, "entry_scene": "EXTPALAC", "resume_session": "entry-a",
-                   "steps": [{"setup": {"console": ["item add,79"], "place_player": {"x": 1, "y": 2, "z": 3, "heading": 4}}},
+                   "steps": [{"setup": {"cheat": {"drevil": 1}, "console": ["item add,79"], "place_player": {"x": 1, "y": 2, "z": 3, "heading": 4}}},
                              {"capture_session": "fight-a"},
                              {"fight": {"world": 30, "opponent": "RICHTONP", "target_health": 220, "max_seconds": 20}},
                              {"await_ending": {"world": 30, "max_updates": 100, "max_seconds": 60}},
@@ -582,7 +582,11 @@ class Checkpoints(unittest.TestCase):
                         self.health -= self.losses.pop(0)
                     return {}
                 if kind == "scripts":
-                    return {"actors": [{"name": "RICHTONP", "attributes": [0, 0, 0, self.health]}]}
+                    actors = [{"name": "OTHER", "attributes": [0, 0, 0, 1]}]
+                    if self.health > 0:
+                        actors.append({"name": "RICHTONP", "attributes": [0, 0, 0, self.health]})
+                    start = command.get("offset", 0)
+                    return {"actors": actors[start:start + command.get("limit", 64)], "total": len(actors)}
                 return {"scripts": {"failed": 0}, "hud": {"health": 100}, "clock": {"game_seconds": self.updates * 0.04}}
 
             def ready(self, world):
@@ -592,6 +596,11 @@ class Checkpoints(unittest.TestCase):
 
     def test_fight_accepts_whole_hits_until_the_target_health(self):
         replay.fight(self.fight_control([20, 10, 10]), {"world": 30, "opponent": "RICHTONP", "target_health": 210, "max_seconds": 60})
+
+    def test_fight_to_zero_accepts_a_defeated_opponent_leaving_the_list(self):
+        replay.fight(self.fight_control([100, 100, 50]), {"world": 30, "opponent": "RICHTONP", "target_health": 0, "max_seconds": 60})
+        with self.assertRaisesRegex(AssertionError, "vanished"):
+            replay.fight(self.fight_control([250]), {"world": 30, "opponent": "RICHTONP", "target_health": 100, "max_seconds": 60})
 
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):

@@ -197,11 +197,13 @@ segment's config directory; a fixture with `"resume_session": "name"` (and a sta
 `entry_scene`, currently BELLTOWR or EXTPALAC) loads it into a fresh launch, then
 waits for asynchronous model and geometry work to settle before any input. Chain the segments with one launch each, in file order
 (`ending-1-…` before `ending-2-…`); default discovery does so. Sessions are
-local run state and never tracked. `setup` (console lines, a placement) is a test-only
+local run state and never tracked. `setup` (console lines, a placement, original cheat values such as `drevil`) is a test-only
 shortcut for prerequisites the segment does not play, such as the Richton item;
-it is never used for quest flags. `fight` draws the sword and taps attack once per
+it is never used for quest flags. Cheats persist in the config directory, so a fixture that
+sets one must reset it in a later `setup` step. `fight` draws the sword and taps attack once per
 eight updates, reading both healths after every update. It requires whole ten-point
-opponent losses, a surviving player and the target health inside a game-clock bound.
+opponent losses, a surviving player and the target health (zero accepts the defeated opponent
+leaving the actor list) inside a game-clock bound, and prints its progress every ten cycles.
 The runner always uses the fixture's fixed step, so the fight does not depend on wall
 clock. **Not covered:** the final kill and the ending movie.
 
