@@ -4,6 +4,9 @@ description = "Shared off-live gameplay session assembly for native and browser 
 version.workspace = true
 edition.workspace = true
 
+[features]
+original-save-import = ["cyrus-script/original-save-import"]
+
 [dependencies]
 bevy = { workspace = true, features = ["bevy_asset", "bevy_audio", "bevy_state"] }
 cyrus-assets.workspace = true

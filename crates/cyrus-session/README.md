@@ -36,6 +36,10 @@ requests on `SessionBoundary`:
   `commit(candidate)`, `load(...)` and `load_saved_game(...)` replace it.
 - The request runs in an exclusive `Last` system after ordinary updates; read it
   with `take_result()`. An unread result blocks the next submission.
+- Native hosts may enable `original-save-import` and submit `import_original`
+  with a captured matching-world native baseline and validated original subset.
+  The subset changes only the hidden candidate before normal publication. Saved
+  continuations are unsupported; this API does not construct a fresh world.
 - Encode a snapshot with `encode_document()`; `decode_document()` checks version
   and digest only. The decoded snapshot still goes through plan, assembly and the
   commit preflight.

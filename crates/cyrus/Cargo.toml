@@ -25,13 +25,13 @@ cyrus-assets = { workspace = true, features = ["native"] }
 cyrus-config.workspace = true
 cyrus-world.workspace = true
 cyrus-render.workspace = true
-cyrus-session.workspace = true
+cyrus-session = { workspace = true, features = ["original-save-import"] }
 cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default"] }
 cyrus-debug = { path = "../cyrus-debug" }
 cyrus-mods = { path = "../cyrus-mods" }
 cyrus-game.workspace = true
-cyrus-script.workspace = true
+cyrus-script = { workspace = true, features = ["original-save-import"] }
 cyrus-soup.workspace = true
 cyrus-control.workspace = true
 anyhow.workspace = true

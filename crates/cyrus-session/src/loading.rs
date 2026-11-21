@@ -32,6 +32,8 @@ pub struct SessionLoadAssets {
 
 pub(crate) struct SessionLoad {
     snapshot: RuntimeSessionSnapshot,
+    #[cfg(feature = "original-save-import")]
+    pub(crate) original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
     assets: SessionLoadAssets,
     environments: BTreeMap<u32, Handle<Environment>>,
     scene: Option<SessionSceneInstances>,
@@ -44,6 +46,8 @@ impl SessionLoad {
     pub(crate) fn new(snapshot: RuntimeSessionSnapshot, assets: SessionLoadAssets) -> Self {
         Self {
             snapshot,
+            #[cfg(feature = "original-save-import")]
+            original: None,
             assets,
             environments: BTreeMap::new(),
             scene: None,
@@ -280,6 +284,33 @@ impl SessionLoad {
             },
             world,
         )?;
+        #[cfg(feature = "original-save-import")]
+        let candidate = if let Some(subset) = self.original.take() {
+            let mut candidate = candidate;
+            candidate
+                .placement
+                .import_original_pose(subset.position_q8, subset.heading)?;
+            subset.apply(
+                candidate
+                    .logical
+                    .actors
+                    .current
+                    .as_mut()
+                    .context("original import candidate world absent")?,
+                &candidate.logical.hud,
+            )?;
+            candidate
+                .logical
+                .actors
+                .current
+                .as_mut()
+                .unwrap()
+                .globals_mut()
+                .request_camera_reset();
+            candidate
+        } else {
+            candidate
+        };
         Ok(Some(candidate))
     }
 

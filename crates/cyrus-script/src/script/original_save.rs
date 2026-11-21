@@ -9,7 +9,7 @@ use rgpre::import::savegame::{
 
 /// This import stages gameplay scalars, not an original interpreter continuation.
 /// Hosts must show this limitation and must not advertise a full session restore.
-pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory and global flags only. Script/task continuations, other actors, animation, controller state, item-use timers, clock and journal are unsupported; the world starts from installed defaults.";
+pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory and global flags only. Script/task continuations, other actors, animation, controller state, item-use timers, clock and journal are unsupported; the host supplies the native baseline for unsupported owners.";
 
 /// Validated replacement values. Apply only to an initialized off-live world and
 /// HUD, and discard both on error. No files are written and no scripts are run.

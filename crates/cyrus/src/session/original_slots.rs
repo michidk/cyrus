@@ -65,6 +65,56 @@ pub(super) fn list(install: &Path) -> Result<Vec<SaveSlot>> {
     Ok(slots)
 }
 
+/// Resolve a selected original slot without trusting host-supplied filesystem paths.
+pub(super) fn load(
+    install: &Path,
+    slot: u16,
+    world_id: u32,
+) -> Result<rgpre::import::savegame::SaveGame> {
+    let roots = std::fs::read_dir(install)?.collect::<std::io::Result<Vec<_>>>()?;
+    let mut matches = Vec::new();
+    for root in roots {
+        if !root
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case("SAVEGAME")
+        {
+            continue;
+        }
+        ensure!(
+            root.file_type()?.is_dir(),
+            "original SAVEGAME root is not a directory"
+        );
+        for entry in std::fs::read_dir(root.path())? {
+            let entry = entry?;
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&format!("SAVEGAME.{slot:03}"))
+            {
+                ensure!(
+                    entry.file_type()?.is_dir(),
+                    "original slot {slot} is not a directory"
+                );
+                matches.push(entry.path());
+            }
+        }
+    }
+    ensure!(
+        matches.len() == 1,
+        "original save slot {slot} (world {world_id}): expected one installed slot, found {}",
+        matches.len()
+    );
+    let saved = rgpre::import::savegame::load_save_slot(&matches[0])
+        .with_context(|| format!("original save slot {slot} {}", matches[0].display()))?;
+    ensure!(
+        saved.game.metadata.world_id == world_id,
+        "original save slot {slot}: world changed since listing (expected {world_id}, found {})",
+        saved.game.metadata.world_id
+    );
+    Ok(saved.game)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,6 +173,20 @@ mod tests {
             before
         );
     }
+    #[test]
+    fn original_load_resolves_case_and_rejects_stale_world_identity_without_writes() {
+        let install = Install::new();
+        let before = install.slot(2, 15);
+        assert_eq!(load(&install.0, 2, 15).unwrap().metadata.world_id, 15);
+        let error = load(&install.0, 2, 1).err().unwrap().to_string();
+        assert!(error.contains("slot 2") && error.contains("expected 1, found 15"));
+        assert!(load(&install.0, 3, 15).is_err());
+        assert_eq!(
+            std::fs::read(install.0.join("savegame/SAVEGAME.002/SAVEGAME.SAV")).unwrap(),
+            before
+        );
+    }
+
     #[test]
     fn malformed_original_slot_has_path_context() {
         let install = Install::new();

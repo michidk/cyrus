@@ -195,6 +195,25 @@ impl SessionBoundary {
         ))
     }
 
+    /// Import supported fields into a replacement of a matching native session.
+    /// The native baseline supplies unsupported owners; no live field is changed
+    /// until the complete candidate passes publication validation.
+    #[cfg(feature = "original-save-import")]
+    pub fn import_original(
+        &mut self,
+        snapshot: RuntimeSessionSnapshot,
+        assets: crate::SessionLoadAssets,
+        subset: cyrus_script::script::original_save::OriginalSaveSubset,
+    ) -> Result<()> {
+        ensure!(
+            snapshot.current_world() == subset.world,
+            "original import requires a matching native world"
+        );
+        let mut load = crate::loading::SessionLoad::new(snapshot, assets);
+        load.original = Some(subset);
+        self.submit(Request::Load(Box::new(load), true))
+    }
+
     pub fn take_result(&mut self) -> Option<Result<SessionBoundaryResult>> {
         self.result.take()
     }

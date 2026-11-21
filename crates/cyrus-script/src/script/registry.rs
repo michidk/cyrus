@@ -3656,12 +3656,22 @@ impl ScriptWorld {
         let player = self
             .selected_player()
             .context("original save: selected player unavailable")?;
-        self.spatial(player)
+        anyhow::ensure!(
+            matches!(self.actors[player.index].source, ScriptActorSource::Player),
+            "original save: native selected player is transformed; base player required"
+        );
+        let spatial = self
+            .spatial(player)
             .context("original save: player spatial state unavailable")?;
+        anyhow::ensure!(
+            spatial.parent.is_none() && spatial.link.is_none(),
+            "original save: native linked-player coordinate continuation is unsupported"
+        );
         self.restore_flags(flags)?;
         self.place_selected_player(position, heading)?;
         let index = self.resolve(player)?;
         self.actors[index].attributes[Attribute::Health] = health;
+        self.globals.selected_health = Some(super::SelectedHealthState::initialized(health));
         Ok(())
     }
 

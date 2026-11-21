@@ -881,6 +881,14 @@ pub(super) fn drive(
                         {
                             match slot.load_request() {
                                 Ok(request) => {
+                                    if matches!(
+                                        request,
+                                        super::SaveLoadRequest::ImportOriginal { .. }
+                                    ) {
+                                        menu.unavailable =
+                                            Some(super::ORIGINAL_IMPORT_LIMITATION.into());
+                                        menu.dirty = true;
+                                    }
                                     if let Err(error) = save_load.start(request) {
                                         menu.unavailable = Some(error);
                                     }
@@ -1499,6 +1507,52 @@ mod tests {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    fn assert_original_keyboard_request(app: &mut App, row: usize) {
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Ok(serde_json::json!({"slots": [{
+                "source": {"type":"original", "world_id":15},
+                "slot": 2, "description":"Original harbour", "revision":""
+            }]})));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        app.world_mut().resource_mut::<MenuState>().selected = Some(row);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request(),
+            Some(crate::SaveLoadRequest::ImportOriginal {
+                slot: 2,
+                world_id: 15
+            })
+        ));
+        assert_eq!(
+            app.world().resource::<MenuState>().unavailable.as_deref(),
+            Some(crate::ORIGINAL_IMPORT_LIMITATION)
+        );
+        // Restore the native row for the remainder of the deletion test.
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .finish(Ok(serde_json::json!({"slots": [{
+                "slot":17, "description":"Harbour save", "revision":"harbour-r1"
+            }]})));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.update();
+        app.world_mut()
+            .resource_mut::<crate::SaveLoadHost>()
+            .start(crate::SaveLoadRequest::List)
+            .unwrap();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn installed_death_book_restricts_resume_and_never_loads_a_fresh_world() {
         use cyrus_assets::install::GameInstall;
@@ -1619,6 +1673,7 @@ mod tests {
             app.world_mut().resource_mut::<crate::SaveLoadHost>().take_request(),
             Some(crate::SaveLoadRequest::Load { slot: 17, revision }) if revision == "harbour-r1"
         ));
+        assert_original_keyboard_request(&mut app, row);
         app.world_mut()
             .resource_mut::<crate::SaveLoadHost>()
             .finish(Err("save slot 17 changed; refresh the save list".into()));

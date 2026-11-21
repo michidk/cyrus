@@ -22,7 +22,10 @@ mod overlay;
 pub use overlay::OverlayPlugin;
 mod menu;
 mod save_load;
-pub use save_load::{GameplayThumbnail, SaveLoadHost, SaveLoadRequest, SaveSlot, SaveSlotSource};
+pub use save_load::{
+    GameplayThumbnail, ORIGINAL_IMPORT_LIMITATION, SaveLoadHost, SaveLoadRequest, SaveSlot,
+    SaveSlotSource,
+};
 mod menu_raster;
 mod movie;
 #[cfg(not(target_arch = "wasm32"))]

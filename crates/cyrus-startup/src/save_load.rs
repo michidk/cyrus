@@ -49,6 +49,9 @@ pub(super) fn discard_gameplay(mut commands: Commands) {
     commands.remove_resource::<GameplayThumbnail>();
 }
 
+/// Original imports intentionally leave unsupported native owners at their current baseline.
+pub const ORIGINAL_IMPORT_LIMITATION: &str = "Limited import: world, position, heading, health, inventory and flags only. Saved scripts, other actors, animation, controller, clock and journal are unsupported. Requires a native session in the saved world.";
+
 /// Storage operation requested by the installed book action.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -69,6 +72,11 @@ pub enum SaveLoadRequest {
     Load {
         slot: u16,
         revision: String,
+    },
+    /// Read-only original slot; hosts must never route this to native storage.
+    ImportOriginal {
+        slot: u16,
+        world_id: u32,
     },
     Delete {
         slot: u16,
@@ -163,10 +171,10 @@ impl SaveSlot {
                 slot: self.slot,
                 revision: self.revision.clone(),
             }),
-            SaveSlotSource::Original { world_id } => Err(format!(
-                "Original save slot {} (world {world_id}): full actor/script restoration is not supported yet.",
-                self.slot
-            )),
+            SaveSlotSource::Original { world_id } => Ok(SaveLoadRequest::ImportOriginal {
+                slot: self.slot,
+                world_id,
+            }),
         }
     }
 }
@@ -180,7 +188,8 @@ pub struct SaveLoadHost {
 }
 
 impl SaveLoadHost {
-    pub(crate) fn start(&mut self, request: SaveLoadRequest) -> Result<(), String> {
+    /// Submit a menu or automation request, preserving its storage provenance.
+    pub fn start(&mut self, request: SaveLoadRequest) -> Result<(), String> {
         if self.busy || self.result.is_some() {
             return Err("Save/Load operation pending or result unread.".into());
         }
@@ -199,7 +208,8 @@ impl SaveLoadHost {
         self.result = Some(result);
     }
 
-    pub(crate) fn take_result(&mut self) -> Option<Result<Value, String>> {
+    /// Consume completion and release ownership for the next menu operation.
+    pub fn take_result(&mut self) -> Option<Result<Value, String>> {
         let result = self.result.take()?;
         self.busy = false;
         Some(result)
@@ -287,7 +297,7 @@ mod tests {
 mod original_slot_tests {
     use super::*;
     #[test]
-    fn original_selection_rejects_before_host_load() {
+    fn original_selection_keeps_provenance_at_the_host_boundary() {
         let slot = SaveSlot {
             source: SaveSlotSource::Original { world_id: 15 },
             slot: 2,
@@ -295,8 +305,22 @@ mod original_slot_tests {
             revision: String::new(),
             thumbnail: None,
         };
-        let error = slot.load_request().unwrap_err();
-        assert!(error.contains("slot 2") && error.contains("world 15"));
+        assert!(matches!(
+            slot.load_request(),
+            Ok(SaveLoadRequest::ImportOriginal {
+                slot: 2,
+                world_id: 15
+            })
+        ));
+        let mut host = SaveLoadHost::default();
+        host.start(slot.load_request().unwrap()).unwrap();
+        assert!(matches!(
+            host.take_request(),
+            Some(SaveLoadRequest::ImportOriginal {
+                slot: 2,
+                world_id: 15
+            })
+        ));
         let native = SaveSlot {
             source: SaveSlotSource::Native,
             revision: "r2".into(),

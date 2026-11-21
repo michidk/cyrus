@@ -112,6 +112,10 @@ fn assert_slot(
         world.actors()[player.index].attributes()[Attribute::Health],
         expected.3
     );
+    assert_eq!(
+        world.globals().selected_health().unwrap().displayed(),
+        i32::from(expected.3)
+    );
     assert_flags_and_inventory(&saved.game, hud_data, &world, &hud)?;
     assert_eq!(std::fs::read(path.join("SAVEGAME.SAV"))?, before);
     // Wrong-world candidates reject before changing initialized state.

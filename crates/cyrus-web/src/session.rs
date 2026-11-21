@@ -327,6 +327,12 @@ fn update(world: &mut World) {
                 cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
                     SlotRequest::Load { slot, revision }
                 }
+                cyrus_startup::SaveLoadRequest::ImportOriginal { slot, world_id } => {
+                    world.resource_mut::<cyrus_startup::SaveLoadHost>().finish(Err(format!(
+                        "Original save slot {slot} (world {world_id}): installed saves require the native host."
+                    )));
+                    return;
+                }
                 cyrus_startup::SaveLoadRequest::Delete { slot, revision } => {
                     SlotRequest::Delete { slot, revision }
                 }

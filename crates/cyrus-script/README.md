@@ -144,14 +144,14 @@ selection uses its own two-link hand target, while initial attachment retains
 the unbiased hand target (preservation SOUP.md, rope attachment and controls).
 
 The opt-in `original-save-import` feature exposes
-`script::original_save::OriginalSaveSubset` validates original player world, Q8
+`script::original_save::OriginalSaveSubset`, which validates original player world, Q8
 position, heading, health, inventory and global flags before applying them to an
 initialized off-live candidate. This is a limited import API, not full session
-restoration or a replacement for the native Load operation. Its returned message
+restoration. The native Load adapter uses it with a matching native-session baseline. Its returned message
 explicitly lists unsupported script/task continuations, other actors, animation,
 controller state, clock and journal. Transformed players and flag states outside
 the verified unlatched encoding reject with context. Hosts discard the candidate
-on error and must display the limitation before publication.
+on error and must display the limitation before publication. Import also refreshes the native displayed-health owner to match the imported health byte.
 
 `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard cargo test -p cyrus-script
 --features original-save-import --test original_save` exercises retained installed slots without a window or

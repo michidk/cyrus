@@ -121,7 +121,13 @@ same address and profile to find them. Private browsing, clearing site data, or
 changing the server's hostname or port can remove or hide those saves. Selecting
 the game folder again reconnects assets; it does not import saves from the install.
 
-**Verified:** native Load lists original Redguard slots from the selected install read-only. Selecting one reports that full actor/script restoration is not supported. Original `.SAV` and `.TSG` gameplay saves cannot yet be imported.
+**Inferred:** native Load can import original Redguard slots read-only into a
+native session already in the same world. It imports position, heading, health,
+inventory and global flags; the book explicitly warns that saved scripts, other
+actors, animation, controller state, clock and journal are unsupported. Those
+owners use the native baseline. Startup and different-world imports reject
+without replacing the live session. Full original `.SAV` and `.TSG` session
+restoration remains unsupported.
 cyrus saves are a separate format. The [compatibility investigation](https://github.com/michidk/cyrus/issues/93)
 documents the unsupported original-save scope.
 

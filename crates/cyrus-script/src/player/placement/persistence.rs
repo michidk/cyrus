@@ -29,6 +29,29 @@ pub struct PlayerPlacementCandidate {
     restored: RestoredEntry,
 }
 
+impl PlayerPlacementCandidate {
+    /// Relocate an off-live candidate without inventing saved ground ownership.
+    /// Ordinary collision queries must establish support after publication.
+    #[cfg(feature = "original-save-import")]
+    pub fn import_original_pose(&mut self, position_q8: [i32; 3], heading: u16) -> Result<()> {
+        ensure!(
+            heading < 2048,
+            "original player placement heading outside wrapped range"
+        );
+        let delta = std::array::from_fn::<_, 3, _>(|axis| {
+            (i64::from(position_q8[axis]) - self.pose.position[axis]) as f32
+                / (256.0 * cyrus_game::ENGINE_UNIT_SCALE)
+        });
+        self.transform.translation += Vec3::new(-delta[0], -delta[1], delta[2]);
+        self.pose.position = position_q8.map(i64::from);
+        self.pose.heading = heading;
+        self.support = PlayerEntrySupport::InspectionOnly(
+            "Original save ground/controller continuation is unsupported.".into(),
+        );
+        Ok(())
+    }
+}
+
 #[derive(Component)]
 pub(crate) struct RestoredEntry {
     pub animation: AssetId<Animations>,
@@ -116,4 +139,40 @@ fn validate(heading: u16, transform: &Transform) -> Result<()> {
         "player placement transform invalid"
     );
     Ok(())
+}
+
+#[cfg(all(test, feature = "original-save-import"))]
+mod original_import_tests {
+    use super::*;
+
+    #[test]
+    fn original_pose_relocates_only_the_off_live_candidate() {
+        let original = PlayerPose {
+            position: [0; 3],
+            heading: 0,
+        };
+        let snapshot = PlayerPlacementSnapshot::capture(
+            15,
+            MarkerEntry::default(),
+            &original,
+            &PlayerEntrySupport::StaticSettled,
+            &Transform::default(),
+        )
+        .unwrap();
+        let mut candidate = snapshot
+            .restore(15, Handle::default(), Handle::default())
+            .unwrap();
+        candidate
+            .import_original_pose([5120, -5120, 10240], 518)
+            .unwrap();
+        assert!(candidate.import_original_pose([0; 3], 2048).is_err());
+        assert_eq!(candidate.pose.position, [5120, -5120, 10240]);
+        assert_eq!(candidate.pose.heading, 518);
+        assert_eq!(candidate.transform.translation, Vec3::new(-1.0, 1.0, 2.0));
+        assert!(matches!(
+            candidate.support,
+            PlayerEntrySupport::InspectionOnly(_)
+        ));
+        assert_eq!(original.position, [0; 3]);
+    }
 }

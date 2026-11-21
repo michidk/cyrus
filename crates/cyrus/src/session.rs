@@ -10,6 +10,7 @@ use cyrus_session::{
     RuntimeSessionSnapshot, SessionBoundary, SessionBoundaryResult, SessionLoadAssets,
     SessionWorldAssets,
 };
+use cyrus_startup::ORIGINAL_IMPORT_LIMITATION as ORIGINAL_LIMITATION;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -20,6 +21,9 @@ use std::{
 #[derive(Resource, Default)]
 pub(crate) struct NativeSessionLoad {
     worker: Option<Mutex<mpsc::Receiver<Result<PreparedLoad>>>>,
+    original_capture: bool,
+    original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
+    original_notice: bool,
     submitted: bool,
     result: Option<Result<()>>,
     path: String,
@@ -67,7 +71,8 @@ impl NativeSessionLoad {
     }
 
     pub(crate) fn busy(&self) -> bool {
-        self.worker.is_some()
+        self.original_capture
+            || self.worker.is_some()
             || self.submitted
             || self.slot_worker.is_some()
             || self.capture.is_some()
@@ -226,6 +231,76 @@ pub(crate) fn request_slots(world: &mut World, operation: SlotOperation) -> Resu
     result
 }
 
+fn request_original(world: &mut World, slot: u16, world_id: u32) -> Result<()> {
+    let state = world.resource::<NativeSessionLoad>();
+    ensure!(
+        !state.busy() && state.result.is_none() && state.slot_result.is_none(),
+        "native session operation pending or result unread"
+    );
+    ensure!(
+        world.resource::<SessionBoundary>().is_idle(),
+        "session boundary pending or result unread"
+    );
+    let current = world
+        .get_resource::<cyrus_script::script::ScriptActors>()
+        .and_then(|actors| actors.current.as_ref())
+        .with_context(|| {
+            format!("original save slot {slot} (world {world_id}): {ORIGINAL_LIMITATION}")
+        })?;
+    ensure!(
+        current.world == world_id,
+        "original save slot {slot}: native world {} differs from saved world {world_id}. {ORIGINAL_LIMITATION}",
+        current.world
+    );
+    let install = world
+        .get_resource::<GameInstall>()
+        .context("original save install unavailable")?;
+    let saved = original_slots::load(&install.root, slot, world_id)?;
+    let hud = cyrus_render::hud::bound_asset(world).context("original import HUD source absent")?;
+    let prepared = world
+        .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .context("original import prepared world absent")?;
+    let scripts = world
+        .resource::<bevy::prelude::Assets<cyrus_assets::script::Scripts>>()
+        .get(&prepared.scripts)
+        .context("original import script source absent")?;
+    let subset = cyrus_script::script::original_save::OriginalSaveSubset::decode(
+        &saved,
+        hud,
+        &scripts.definition,
+    )
+    .with_context(|| format!("original save slot {slot} world {world_id}"))?;
+    world.resource_mut::<SessionBoundary>().capture_live()?;
+    let mut state = world.resource_mut::<NativeSessionLoad>();
+    state.original_capture = true;
+    state.original = Some(subset);
+    state.original_notice = true;
+    state.slot_load = true;
+    state.path = format!("original slot {slot} world {world_id}");
+    Ok(())
+}
+
+fn start_original_snapshot(
+    state: &mut NativeSessionLoad,
+    snapshot: RuntimeSessionSnapshot,
+    world: &World,
+) -> Result<()> {
+    let install = world
+        .get_resource::<GameInstall>()
+        .context("original import install unavailable")?
+        .clone();
+    let bytes = snapshot.encode_document()?;
+    let (sender, receiver) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("prepare original import".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let _ = sender.send(prepare_bytes(&bytes, &install));
+        })?;
+    state.worker = Some(Mutex::new(receiver));
+    Ok(())
+}
+
 fn retain_selection(world: &mut World, slot: u16, description: String) -> Result<()> {
     // The save host owns the retained selection even when a diagnostic or
     // scene-started session did not install the death-book presentation.
@@ -369,30 +444,39 @@ pub(crate) fn poll(world: &mut World) {
         .get_resource_mut::<cyrus_startup::SaveLoadHost>()
         .and_then(|mut host| host.take_request());
     if let Some(request) = request {
-        let operation = match request {
-            cyrus_startup::SaveLoadRequest::List => SlotOperation::List,
-            cyrus_startup::SaveLoadRequest::AutoSave => SlotOperation::AutoSave,
-            cyrus_startup::SaveLoadRequest::DiscardAutoSave => SlotOperation::DiscardAutoSave,
-            cyrus_startup::SaveLoadRequest::Create { description } => {
-                SlotOperation::Create { description }
-            }
-            cyrus_startup::SaveLoadRequest::Overwrite {
-                slot,
-                revision,
-                description,
-            } => SlotOperation::Overwrite {
-                slot,
-                revision,
-                description,
-            },
-            cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
-                SlotOperation::Load { slot, revision }
-            }
-            cyrus_startup::SaveLoadRequest::Delete { slot, revision } => {
-                SlotOperation::Delete { slot, revision }
-            }
+        let result = if let cyrus_startup::SaveLoadRequest::ImportOriginal { slot, world_id } =
+            request
+        {
+            request_original(world, slot, world_id)
+                .with_context(|| format!("original save slot {slot} world {world_id}"))
+        } else {
+            let operation = match request {
+                cyrus_startup::SaveLoadRequest::List => SlotOperation::List,
+                cyrus_startup::SaveLoadRequest::AutoSave => SlotOperation::AutoSave,
+                cyrus_startup::SaveLoadRequest::DiscardAutoSave => SlotOperation::DiscardAutoSave,
+                cyrus_startup::SaveLoadRequest::Create { description } => {
+                    SlotOperation::Create { description }
+                }
+                cyrus_startup::SaveLoadRequest::Overwrite {
+                    slot,
+                    revision,
+                    description,
+                } => SlotOperation::Overwrite {
+                    slot,
+                    revision,
+                    description,
+                },
+                cyrus_startup::SaveLoadRequest::Load { slot, revision } => {
+                    SlotOperation::Load { slot, revision }
+                }
+                cyrus_startup::SaveLoadRequest::ImportOriginal { .. } => unreachable!(),
+                cyrus_startup::SaveLoadRequest::Delete { slot, revision } => {
+                    SlotOperation::Delete { slot, revision }
+                }
+            };
+            request_slots(world, operation)
         };
-        match request_slots(world, operation) {
+        match result {
             Ok(()) => world.resource_mut::<NativeSessionLoad>().book = true,
             Err(error) => world
                 .resource_mut::<cyrus_startup::SaveLoadHost>()
@@ -445,6 +529,21 @@ pub(crate) fn poll(world: &mut World) {
             state.slot_worker = None;
             state.slot_result = Some(result);
         }
+    } else if state.original_capture {
+        if let Some(result) = world.resource_mut::<SessionBoundary>().take_result() {
+            state.original_capture = false;
+            let result = result.and_then(|result| match result {
+                SessionBoundaryResult::Captured(snapshot) => {
+                    start_original_snapshot(&mut state, *snapshot, world)
+                }
+                SessionBoundaryResult::Committed => anyhow::bail!(
+                    "original import received a commit instead of its native baseline"
+                ),
+            });
+            if let Err(error) = result {
+                state.result = Some(Err(error));
+            }
+        }
     } else if state.capture.is_some() {
         if let Some(result) = world.resource_mut::<SessionBoundary>().take_result() {
             let plan = state.capture.take().unwrap();
@@ -494,15 +593,25 @@ pub(crate) fn poll(world: &mut World) {
         };
         if let Some(result) = result {
             state.worker = None;
-            match result
-                .and_then(|prepared| submit(prepared, world, state.slot_load || state.last_game))
-            {
+            match result.and_then(|prepared| {
+                submit(
+                    prepared,
+                    world,
+                    state.slot_load || state.last_game,
+                    state.original.take(),
+                )
+            }) {
                 Ok(()) => state.submitted = true,
                 Err(error) => state.result = Some(Err(error)),
             }
         }
     }
     if let Some(result) = state.result.take() {
+        let result = if state.original_notice {
+            result.with_context(|| format!("{}: original subset import", state.path))
+        } else {
+            result
+        };
         if state.last_game {
             let completion = result.map_err(|error| format!("{error:#}"));
             let _ = world
@@ -510,7 +619,15 @@ pub(crate) fn poll(world: &mut World) {
                 .finish(completion);
             state.last_game = false;
         } else if state.slot_load {
-            state.slot_result = Some(result.map(|()| json!({"committed":true})));
+            state.slot_result = Some(result.map(|()| {
+                if state.original_notice {
+                    json!({"committed":true,"message": ORIGINAL_LIMITATION})
+                } else {
+                    json!({"committed":true})
+                }
+            }));
+            state.original_notice = false;
+            state.original = None;
             state.slot_load = false;
         } else {
             state.result = Some(result);
@@ -637,7 +754,12 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
     })
 }
 
-fn submit(prepared: PreparedLoad, world: &mut World, saved_game: bool) -> Result<()> {
+fn submit(
+    prepared: PreparedLoad,
+    world: &mut World,
+    saved_game: bool,
+    original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
+) -> Result<()> {
     let server = world
         .get_resource::<AssetServer>()
         .context("native session asset server absent")?;
@@ -686,7 +808,9 @@ fn submit(prepared: PreparedLoad, world: &mut World, saved_game: bool) -> Result
     let mut boundary = world
         .get_resource_mut::<SessionBoundary>()
         .context("native session boundary absent")?;
-    if saved_game {
+    if let Some(original) = original {
+        boundary.import_original(prepared.snapshot, assets, original)
+    } else if saved_game {
         boundary.load_saved_game(prepared.snapshot, assets)
     } else {
         boundary.load(prepared.snapshot, assets)
@@ -698,6 +822,33 @@ mod tests {
     use super::*;
     use bevy::prelude::Name;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn original_menu_request_rejects_without_a_native_baseline_and_keeps_live_state() {
+        let mut world = World::new();
+        world.init_resource::<NativeSessionLoad>();
+        world.init_resource::<SessionBoundary>();
+        world.init_resource::<cyrus_startup::SaveLoadHost>();
+        let live = world.spawn(Name::new("untouched native session")).id();
+        world
+            .resource_mut::<cyrus_startup::SaveLoadHost>()
+            .start(cyrus_startup::SaveLoadRequest::ImportOriginal {
+                slot: 2,
+                world_id: 15,
+            })
+            .unwrap();
+        poll(&mut world);
+        let result = world
+            .resource_mut::<cyrus_startup::SaveLoadHost>()
+            .take_result()
+            .unwrap();
+        let error = result.unwrap_err();
+        assert!(error.contains("slot 2") && error.contains("world 15"));
+        assert!(error.contains("native session in the saved world"));
+        assert!(world.get_entity(live).is_ok());
+        assert!(world.resource::<SessionBoundary>().is_idle());
+        assert!(!world.resource::<NativeSessionLoad>().busy());
+    }
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
 
