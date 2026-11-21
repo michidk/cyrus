@@ -216,7 +216,8 @@
           9904640
         ],
         "tolerance": 4096,
-        "limit": 160
+        "limit": 160,
+        "gait": "run"
       }
     },
     {

@@ -42,6 +42,16 @@ class Checkpoints(unittest.TestCase):
                 timings.add(fixture["step_micros"])
         self.assertEqual(len(timings), 1)
 
+    def test_blocked_ship_approach_waypoint_runs(self):
+        # Walking onto that approach is refused by the steep-surface check at the probe
+        # (preservation engine/player.md, "Forward slope surface selection"); the waypoint
+        # past it must be reached with the run gait.
+        path = Path(__file__).resolve().parents[1] / "fixtures" / "chapters" / "001-harbour-dock-partial.replay.json"
+        steers = [step["steer"] for step in json.loads(path.read_text())["steps"] if "steer" in step]
+        blocked = [steer for steer in steers if steer["position_q8"][0] == 9349120]
+        self.assertEqual(len(blocked), 1)
+        self.assertEqual(blocked[0]["gait"], "run")
+
     def test_default_discovery_runs_segments_in_separate_sessions(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
