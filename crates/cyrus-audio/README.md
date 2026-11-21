@@ -106,3 +106,6 @@ continues through loading. This follows the released preservation
 [world-load CD contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/music.md#track-selection).
 `tests/music_restoration.rs` checks that a prepared destination stays silent in
 Loading and starts on InGame without losing its pending selection.
+
+Both music modes silence leading sync-marked CD-ROM data sectors before initial
+playback and world replay. The source, track length and decoder timing remain unchanged.

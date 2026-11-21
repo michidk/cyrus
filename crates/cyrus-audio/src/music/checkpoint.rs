@@ -111,7 +111,7 @@ impl MusicTransport {
             snapshot.is_unscaled_once(),
             "CD music transport is not an unscaled normal-speed single pass"
         );
-        // A Modern music session captured the muted bytes; the host supplies the installed ones.
+        // Playback captures muted bytes; the host supplies the unchanged installed source.
         let source = if snapshot.source_identity() == blake3::hash(&source.bytes).to_hex().as_str()
         {
             source

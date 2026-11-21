@@ -79,9 +79,9 @@ Movies menu and the ending movie still play. The default plays everything.
 audio track 2. Played as audio, they make a short loud noise when the book menu
 opens ([music facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/music.md#the-cd)).
 
-Faithful music plays every installed byte. `--music modern` (browser
-`?music=modern`, or the debug menu's Music fidelity) mutes the leading
-sync-marked data sectors and keeps the track's length and timing.
+Both Faithful and Modern music mute the leading sync-marked data sectors,
+keeping the track's length and timing. This disc-reading artefact is excluded
+from playback by maintainer decision. The installed source remains unchanged.
 **Unknown:** whether the original's playback path makes the noise audible.
 
 ## Modern lighting

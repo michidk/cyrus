@@ -21,9 +21,8 @@
 //! through this same conversion. Zero pauses the CD until the slider leaves
 //! zero. Movies pause and resume CD playback without restarting the track.
 //!
-//! Modern music fidelity mutes CD-ROM data-sector bytes that the GOG image
-//! places at the start of track 2 (preservation `docs/engine/music.md`);
-//! Faithful plays every installed byte.
+//! Both music modes mute leading CD-ROM data-sector bytes in the GOG image
+//! without changing track length or timing (preservation `docs/engine/music.md`).
 //!
 //! During the ending, `CreditsPlaying` requests track 2 (the book track) and
 //! stops it when the credits finish or are escaped. `EndingEntry` suppresses
@@ -396,10 +395,7 @@ fn finish_track(
     state: Option<Res<State<cyrus_game::AppState>>>,
     #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
-    (settings, fidelity): (
-        Option<Res<SoundSettings>>,
-        Option<Res<cyrus_game::fidelity::Fidelity>>,
-    ),
+    settings: Option<Res<SoundSettings>>,
     (playing, movie): (
         Query<Entity, With<MusicPlayer>>,
         Query<(), With<crate::CinematicAudio>>,
@@ -445,11 +441,7 @@ fn finish_track(
         }
     };
     music.source = Some(source.clone());
-    let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
-        muted(&source).unwrap_or(source)
-    } else {
-        source
-    };
+    let source = muted(&source).unwrap_or(source);
     let transport = match MusicTransport::new(source) {
         Ok(transport) => transport,
         Err(error) => {
@@ -480,7 +472,6 @@ fn replay_track(
         Option<Res<cyrus_script::script::CreditsPlaying>>,
     ),
     settings: Option<Res<SoundSettings>>,
-    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
     (playing, movie): (
         Query<(), With<MusicPlayer>>,
@@ -500,11 +491,7 @@ fn replay_track(
     let (Some(source), Some(transports)) = (music.source.as_ref(), transports.as_mut()) else {
         return;
     };
-    let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
-        muted(source).unwrap_or_else(|| source.clone())
-    } else {
-        source.clone()
-    };
+    let source = muted(source).unwrap_or_else(|| source.clone());
     match MusicTransport::new(source) {
         Ok(transport) => {
             let mut playback = transport
@@ -601,6 +588,20 @@ mod tests {
     }
 
     fn prepared_music(source: AudioSource, volume: i32, cinematic: bool) -> App {
+        prepared_music_mode(
+            source,
+            volume,
+            cinematic,
+            cyrus_game::fidelity::Mode::Faithful,
+        )
+    }
+
+    fn prepared_music_mode(
+        source: AudioSource,
+        volume: i32,
+        cinematic: bool,
+        mode: cyrus_game::fidelity::Mode,
+    ) -> App {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -615,6 +616,10 @@ mod tests {
             root: std::env::temp_dir().join("cyrus-absent-install"),
         })
         .add_plugins(MusicPlugin);
+        app.insert_resource(cyrus_game::fidelity::Fidelity {
+            music: mode,
+            ..default()
+        });
         let mut settings = SoundSettings::parse("");
         settings.redbook_volume = volume;
         app.insert_resource(settings);
@@ -644,6 +649,72 @@ mod tests {
         app.update();
         assert!(app.world().resource::<Music>().load.is_none());
         app
+    }
+
+    #[test]
+    fn cd_data_noise_is_muted_in_both_modes_on_start_and_replay() {
+        for mode in [
+            cyrus_game::fidelity::Mode::Faithful,
+            cyrus_game::fidelity::Mode::Modern,
+        ] {
+            let mut pcm = vec![7; 2352 * 3];
+            for offset in [24, 2376] {
+                pcm[offset..offset + 12]
+                    .copy_from_slice(&[0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0]);
+            }
+            let source = AudioSource {
+                bytes: cyrus_assets::audio::pcm_wav(
+                    rgpre::import::sfx::AudioType::Stereo16,
+                    44100,
+                    &pcm,
+                )
+                .unwrap()
+                .into(),
+            };
+            let mut app = prepared_music_mode(source.clone(), 64, false, mode);
+            for replay in [false, true] {
+                if replay {
+                    let entity = app
+                        .world_mut()
+                        .query_filtered::<Entity, With<MusicPlayer>>()
+                        .single(app.world())
+                        .unwrap();
+                    app.world_mut().despawn(entity);
+                    app.world_mut()
+                        .resource_mut::<NextState<cyrus_game::AppState>>()
+                        .set(cyrus_game::AppState::InGame);
+                    app.update();
+                }
+                let player = app
+                    .world_mut()
+                    .query_filtered::<&AudioPlayer<MusicTransport>, With<MusicPlayer>>()
+                    .single(app.world())
+                    .unwrap();
+                let actual = &app
+                    .world()
+                    .resource::<Assets<MusicTransport>>()
+                    .get(&player.0)
+                    .unwrap()
+                    .source()
+                    .bytes;
+                assert_eq!(actual.len(), source.bytes.len());
+                assert_eq!(&actual[..44], &source.bytes[..44]);
+                assert!(
+                    actual[44..44 + 4728].iter().all(|byte| *byte == 0),
+                    "{mode:?}, replay={replay}"
+                );
+                assert_eq!(&actual[44 + 4728..], &source.bytes[44 + 4728..]);
+                assert_eq!(
+                    app.world()
+                        .resource::<Music>()
+                        .source
+                        .as_ref()
+                        .unwrap()
+                        .bytes,
+                    source.bytes
+                );
+            }
+        }
     }
 
     #[test]
@@ -882,9 +953,10 @@ mod tests {
                 .unwrap()
                 .into(),
         };
-        let expected: Vec<_> = source.decoder().skip(1023).take(1024).collect();
+        let expected_source = muted(&source).unwrap_or_else(|| source.clone());
+        let expected: Vec<_> = expected_source.decoder().skip(1023).take(1024).collect();
         assert_eq!(expected.len(), 1024);
-        let mut app = prepared_music(source, 64, false);
+        let mut app = prepared_music(source.clone(), 64, false);
         let (player, settings) = app
             .world_mut()
             .query_filtered::<(&AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>(
@@ -905,7 +977,7 @@ mod tests {
             .unwrap();
         let saved: MusicSnapshot =
             serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
-        let candidate = Music::from_snapshot(saved, Some(transport.source().clone())).unwrap();
+        let candidate = Music::from_snapshot(saved, Some(source)).unwrap();
         let (restored, settings) = candidate.playback.unwrap();
         assert!(!settings.paused);
         assert_eq!(restored.decoder().take(1024).collect::<Vec<_>>(), expected);
