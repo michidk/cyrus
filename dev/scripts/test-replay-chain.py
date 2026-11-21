@@ -357,6 +357,32 @@ class Checkpoints(unittest.TestCase):
             self.assertLessEqual(math.dist(control.position, [4000, 0, 8000]), 600)
             self.assertTrue(control.commands)
 
+    def test_turns_hold_the_key_for_at_least_two_updates(self):
+        # The game ignores a one-update turn, so a heading error of 48-127 never closed.
+        class Control:
+            heading = 1960
+            holds = []
+
+            def ready(self):
+                return {"scripts": {"world": 1}, "hud": {"health": 100, "heading": self.heading}}
+
+            def response(self, command):
+                return {"ok": True, "result": self.request(command)}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    return {"world": 1, "player_position_q8": [0, 0, 0]}
+                events = command["events"]
+                if any(e.get("key") == "ArrowLeft" for e in events):
+                    self.holds.append(next(e["after_updates"] for e in events if e.get("action") == "release"))
+                    self.heading = (self.heading + 100) % 2048
+                return {}
+
+        # Target bearing 0 (+Z) from heading 1960: an error of 88 turns left.
+        with self.assertRaises(AssertionError):
+            replay.steer(Control(), {"world": 1, "position_q8": [0, 0, 100000], "tolerance": 10, "limit": 1})
+        self.assertGreaterEqual(min(Control.holds), 2)
+
     def test_segment_steering_corrects_coast_before_accepting_stop(self):
         class Control:
             position = [0, 0, 0]
