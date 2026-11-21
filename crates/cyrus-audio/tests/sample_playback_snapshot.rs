@@ -67,7 +67,22 @@ fn finite_sample_candidate_retains_remaining_passes_after_wrap() -> Result<()> {
     ))
 }
 
+#[test]
+fn sample_candidate_restores_with_host_output_gain() -> Result<()> {
+    for gain in [0.0, 0.35] {
+        check_sample_candidate_with_gain(SampleRepetitions::FOREVER, Some(gain))?;
+    }
+    Ok(())
+}
+
 fn check_sample_candidate(repetitions: SampleRepetitions) -> Result<()> {
+    check_sample_candidate_with_gain(repetitions, None)
+}
+
+fn check_sample_candidate_with_gain(
+    repetitions: SampleRepetitions,
+    host_gain: Option<f32>,
+) -> Result<()> {
     let (mut app, source) = fixture_with_repetitions(repetitions)?;
     app.init_resource::<cyrus_script::script::ScriptActors>();
     app.world_mut()
@@ -94,6 +109,21 @@ fn check_sample_candidate(repetitions: SampleRepetitions) -> Result<()> {
         .get_mut::<PlaybackSettings>(old_entity)
         .unwrap()
         .paused = true;
+    if let Some(gain) = host_gain {
+        use bevy::audio::{AudioSink, AudioSinkPlayback, GlobalVolume, Volume};
+        app.insert_resource(GlobalVolume::new(Volume::Linear(gain)));
+        let (player, _output) = rodio::Player::new();
+        let mut sink = AudioSink::new(player);
+        sink.set_volume(Volume::Linear(gain));
+        let speed = app
+            .world()
+            .get::<PlaybackSettings>(old_entity)
+            .unwrap()
+            .speed;
+        sink.set_speed(speed);
+        sink.pause();
+        app.world_mut().entity_mut(old_entity).insert(sink);
+    }
     let snapshot = SamplePlaybackSnapshot::capture(app.world_mut())?;
     let before = serde_json::to_value(&snapshot)?;
     if !repetitions.is_infinite() {
@@ -157,6 +187,39 @@ fn check_sample_candidate(repetitions: SampleRepetitions) -> Result<()> {
         .decoder();
     for _ in 0..33 {
         assert_eq!(restored.next(), original.next());
+    }
+    if let Some(gain) = host_gain {
+        use bevy::audio::{AudioSink, AudioSinkPlayback, Volume};
+        let (player, _output) = rodio::Player::new();
+        let mut sink = AudioSink::new(player);
+        sink.set_volume(Volume::Linear(gain));
+        sink.set_speed(
+            app.world()
+                .get::<PlaybackSettings>(replacement)
+                .unwrap()
+                .speed,
+        );
+        sink.pause();
+        app.world_mut().entity_mut(replacement).insert(sink);
+        SamplePlaybackSnapshot::capture(app.world())?;
+        app.world_mut()
+            .get_mut::<AudioSink>(replacement)
+            .unwrap()
+            .set_volume(Volume::Linear(gain + 0.1));
+        assert!(SamplePlaybackSnapshot::capture(app.world()).is_err());
+        app.world_mut()
+            .get_mut::<AudioSink>(replacement)
+            .unwrap()
+            .set_volume(Volume::Linear(gain));
+        app.world_mut()
+            .get_mut::<PlaybackSettings>(replacement)
+            .unwrap()
+            .volume = Volume::Linear(0.5);
+        assert!(SamplePlaybackSnapshot::capture(app.world()).is_err());
+        app.world_mut()
+            .get_mut::<PlaybackSettings>(replacement)
+            .unwrap()
+            .volume = Volume::Linear(1.0);
     }
     let after = serde_json::to_value(SamplePlaybackSnapshot::capture(app.world_mut())?)?;
     assert!(

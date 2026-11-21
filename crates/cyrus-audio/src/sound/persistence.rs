@@ -4,7 +4,8 @@ use crate::persistence::AudioRestoreBindings;
 use anyhow::{Context, Result, ensure};
 use bevy::{
     audio::{
-        AudioPlayer, AudioSink, AudioSinkPlayback, AudioSource, PlaybackMode, PlaybackSettings,
+        AudioPlayer, AudioSink, AudioSinkPlayback, AudioSource, GlobalVolume, PlaybackMode,
+        PlaybackSettings,
     },
     prelude::{Assets, Commands, Entity, With, World},
 };
@@ -99,12 +100,19 @@ impl SamplePlaybackSnapshot {
                     && settings.duration.is_none(),
                 "sample snapshot {entity:?}: unsupported backend playback configuration"
             );
-            let (paused, muted, volume, speed) = if let Some(sink) = sink {
+            ensure!(
+                settings.volume.to_linear() == 1.0 && settings.speed == expected.speed,
+                "sample snapshot {entity:?}: playback gain/speed differs from source transport"
+            );
+            let (paused, muted, volume, speed, expected_volume) = if let Some(sink) = sink {
                 (
                     sink.is_paused(),
                     sink.is_muted(),
                     sink.volume(),
                     sink.speed(),
+                    world
+                        .get_resource::<GlobalVolume>()
+                        .map_or(1.0, |global| global.volume.to_linear()),
                 )
             } else {
                 (
@@ -112,10 +120,11 @@ impl SamplePlaybackSnapshot {
                     settings.muted,
                     settings.volume,
                     settings.speed,
+                    1.0,
                 )
             };
             ensure!(
-                volume.to_linear() == 1.0 && speed == expected.speed,
+                volume.to_linear() == expected_volume && speed == expected.speed,
                 "sample snapshot {entity:?}: backend gain/speed differs from source transport"
             );
             census.insert(entity, (transport, paused, muted));
