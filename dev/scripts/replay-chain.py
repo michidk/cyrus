@@ -602,6 +602,30 @@ def fight_view(control, name, index, player_index):
     }
 
 
+def fight_snapshot(control, name, index, player_index):
+    """Both fighters' state for the stall analysis: groups, the opponent's combat action, attack
+    state, flags, pending defence index and retained actions, the distance and the player's
+    facing error and health."""
+    opponent = control.request({"type": "scripts", "offset": index, "limit": 1})
+    if not opponent["actors"] or opponent["actors"][0]["name"] != name:
+        return None
+    actor = opponent["actors"][0]
+    player = control.request({"type": "scripts", "offset": player_index, "limit": 1})["actors"][0]
+    state = control.request({"type": "state"})
+    target = actor["spatial"]["effective"]["position"]
+    origin = opponent["player_position_q8"]
+    combat = actor["control"]["combat"]
+    error = (bearing_to(origin, target) - player["spatial"]["effective"]["angles"][1] + 1024) % 2048 - 1024
+    return {
+        "rg": actor["animation"]["current_group"], "pg": player["animation"]["current_group"],
+        "ract": combat["action"], "ras": combat["decision"]["attack_state"], "rfl": combat["flags"],
+        "rret": combat["retained_action_indices"], "rag": combat["decision"]["aggression"],
+        "dist": round(math.hypot(target[0] - origin[0], target[2] - origin[2])), "err": error,
+        "ph": state["hud"]["health"], "ppos": origin,
+        "rpos": [target[0], target[2]],
+    }
+
+
 def fight(control, spec):
     """Draw the sword and tap attack once per eight updates, reading both healths every update.
 
@@ -661,6 +685,12 @@ def fight(control, spec):
             if steps % 100 == 0:
                 print(f"fight step {steps}: opponent {health}, hits {len(hits)}, "
                       f"clock {state['clock']['game_seconds']:.1f}", flush=True)
+            if steps % 20 == 0:
+                # What the stall looks like: both groups, the opponent's combat state, the distance
+                # and the player's facing error, so a run's log shows why hits stop.
+                snapshot = fight_snapshot(control, spec["opponent"], index, player_index)
+                if snapshot:
+                    print(f"fight state {steps}: {json.dumps(snapshot, sort_keys=True)}", flush=True)
             view = fight_view(control, spec["opponent"], index, player_index)
             if view is None:
                 continue
