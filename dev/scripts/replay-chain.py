@@ -7,8 +7,10 @@ import math
 import re
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
+import sys
 import time
 
 
@@ -676,6 +678,14 @@ def run(args):
                             time.sleep(0.25)
                     else:
                         control.request({"type": "quit"})
+            except BaseException:
+                try:
+                    process.wait(timeout=3)  # a crash may not be reaped yet when the connection drops
+                except subprocess.TimeoutExpired:
+                    pass
+                if process.poll() is not None:
+                    print("replay-chain: " + exit_report(process.returncode, (args.config / "process.log").read_text(errors="replace")), file=sys.stderr, flush=True)
+                raise
             finally:
                 process.terminate()
                 try:
@@ -683,6 +693,14 @@ def run(args):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
+
+
+def exit_report(code, log_text):
+    """Say how a game that closed its control connection ended: a signal, an exit status and the
+    last log lines, so a crash is told apart from a runner timeout."""
+    how = (f"signal {signal.Signals(-code).name} ({-code})" if code < 0 else f"status {code}")
+    tail = "\n".join(log_text.strip().splitlines()[-5:])
+    return f"game exited with {how}; log tail:\n{tail}"
 
 
 def main():

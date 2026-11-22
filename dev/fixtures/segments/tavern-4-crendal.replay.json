@@ -223,6 +223,9 @@
           "tolerance": 8192
         }
       }
+    },
+    {
+      "capture_session": "crendal-talk"
     }
   ]
 }

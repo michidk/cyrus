@@ -392,6 +392,43 @@ class Checkpoints(unittest.TestCase):
             Held().ready(1, timeout=0.2, examine_open=True)
         self.assertTrue(Held().ready(1, examine_open=True, advance=True)["examine"]["open"])
 
+    def test_modal_close_then_waits_for_updates_a_held_world_only_runs_when_scheduled(self):
+        class Held(replay.Control):
+            def __init__(self):
+                self.open = True
+                self.updates = 5
+                self.frame = 0
+
+            def request(self, command):
+                if command["type"] == "state":
+                    self.frame += 1
+                    return {"state": "InGame", "scene_ready": True, "frame": self.frame,
+                            "examine": {"open": self.open},
+                            "scripts": {"world": 1, "failed": 0, "ordinary_updates": self.updates}}
+                assert command["type"] == "input"
+                if command["action"] == "press" and command["key"] == "Escape":
+                    self.open = False
+                return {}
+
+            def response(self, command):
+                assert command["type"] == "schedule_input"
+                if self.open:
+                    return {"ok": False, "error": "ordinary input boundary unavailable"}
+                self.updates += 1
+                return {"ok": True, "result": {}}
+
+        control = Held()
+        replay.play_modal(control, {"world": 1, "key": "Escape"})
+        self.assertFalse(control.open)
+        self.assertGreater(control.updates, 5)
+
+    def test_a_crashed_game_is_reported_with_its_signal_and_log_tail(self):
+        report = replay.exit_report(-11, "a\nb\nc\nd\ne\nlast line")
+        self.assertIn("SIGSEGV", report)
+        self.assertIn("last line", report)
+        self.assertNotIn("\na\n", report)
+        self.assertIn("status 3", replay.exit_report(3, "x"))
+
     def test_turns_hold_the_key_for_at_least_two_updates(self):
         # The game ignores a one-update turn, so a heading error of 48-127 never closed.
         class Control:
