@@ -892,13 +892,20 @@ impl ScriptWorld {
                         Strafe::Left => StepDirection::Left,
                         Strafe::Right => StepDirection::Right,
                     };
-                    if !self.ordinary_step_clear(
-                        id,
-                        direction,
-                        geometry.ground,
-                        geometry.environment,
-                        sounds,
-                    )? {
+                    // The selected player's lateral support check is the player probe; the nonplayer
+                    // admission refuses the selected player, which stopped the world on armed circling.
+                    let clear = if selected_player == Some(id) {
+                        self.player_step_clear(id, geometry.ground, direction)?
+                    } else {
+                        self.ordinary_step_clear(
+                            id,
+                            direction,
+                            geometry.ground,
+                            geometry.environment,
+                            sounds,
+                        )?
+                    };
+                    if !clear {
                         return Ok(());
                     }
                     self.actors[index]
