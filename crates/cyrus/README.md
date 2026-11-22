@@ -14,7 +14,8 @@ entries are read-only. Load imports position, heading, health, inventory and
 global flags into an off-live replacement, then publishes through the shared
 session boundary. From the startup menu or a different world, the host first
 loads the saved world's native baseline through the normal loading presentation,
-then applies the same supported subset and static support restoration. The slot
+then pauses that baseline in the Load book before capturing and preparing the
+supported subset and static support restoration. The slot
 bytes remain retained throughout preparation; the previous world's checkpoint
 is never used as the destination baseline. The book shows
 an explicit limited-import message. Original script/task continuations, other

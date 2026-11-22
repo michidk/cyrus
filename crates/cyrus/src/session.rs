@@ -318,15 +318,17 @@ fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Resu
     let matching = world
         .get_resource::<cyrus_script::script::ScriptActors>()
         .and_then(|actors| actors.current.as_ref())
-        .is_some_and(|current| current.world == entry.saved.metadata.world_id);
+        .is_some_and(|current| {
+            current.world == entry.saved.metadata.world_id
+                && current
+                    .selected_player()
+                    .is_some_and(|player| current.actor_prelight(player).is_ok())
+        });
     let ready = world
         .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
         .zip(world.get_resource::<cyrus_render::ReadyScene>())
         .is_some_and(|(prepared, ready)| ready.0 == prepared.animations);
-    let in_game = world
-        .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
-        .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame);
-    if !matching || !ready || !in_game {
+    if !matching || !ready || !pause_original_entry(world) {
         return Ok(());
     }
     let entry = state
@@ -343,6 +345,30 @@ fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Resu
     state.original = Some(subset);
     state.original_capture = true;
     Ok(())
+}
+
+// Match same-world Load: the book owns the baseline throughout capture and
+// replacement preparation, so gameplay cannot advance the owners being saved.
+fn pause_original_entry(world: &mut World) -> bool {
+    use bevy::prelude::{NextState, State};
+    use cyrus_game::AppState;
+    match world.get_resource::<State<AppState>>().map(State::get) {
+        Some(AppState::InGame) => {
+            world.insert_resource(cyrus_game::PauseBookEntry { page: 2 });
+            world
+                .resource_mut::<NextState<AppState>>()
+                .set(AppState::Menu);
+            false
+        }
+        Some(AppState::Menu) => {
+            world.contains_resource::<cyrus_script::PausedGameplay>()
+                && matches!(
+                    world.get_resource::<NextState<AppState>>(),
+                    Some(NextState::Unchanged)
+                )
+        }
+        _ => false,
+    }
 }
 
 fn start_original_snapshot(
@@ -933,6 +959,27 @@ mod tests {
             },
             sections: Vec::new(),
         }
+    }
+
+    #[test]
+    fn original_world_entry_returns_to_load_book_before_capturing() {
+        use bevy::prelude::{NextState, State};
+        use cyrus_game::AppState;
+        let mut world = World::new();
+        world.insert_resource(State::new(AppState::InGame));
+        world.init_resource::<NextState<AppState>>();
+        world.init_resource::<SessionBoundary>();
+        assert!(!pause_original_entry(&mut world));
+        assert_eq!(world.resource::<cyrus_game::PauseBookEntry>().page, 2);
+        assert!(matches!(
+            world.resource::<NextState<AppState>>(),
+            NextState::Pending(AppState::Menu)
+        ));
+        assert!(world.resource::<SessionBoundary>().is_idle());
+        world.insert_resource(State::new(AppState::Menu));
+        world.insert_resource(NextState::<AppState>::Unchanged);
+        // A startup menu alone is not a paused gameplay baseline.
+        assert!(!pause_original_entry(&mut world));
     }
 
     #[test]
