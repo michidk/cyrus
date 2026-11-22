@@ -1476,6 +1476,28 @@ pub struct RuntimeDialogue {
     torch_channel: Option<u8>,
 }
 
+/// True while any speech line is still exporting or loading. A replay driver holds ordinary
+/// updates while it is set, so a line becomes ready at the same update in every run.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct ReplayDialoguePending(pub bool);
+
+/// Publish the pending state at the end of each frame, before the next frame's replay gate.
+pub(super) fn track_pending_dialogue(
+    mut runtime: ResMut<RuntimeDialogue>,
+    server: Option<Res<AssetServer>>,
+    mut pending: ResMut<ReplayDialoguePending>,
+) {
+    let busy = server.is_some_and(|server| {
+        runtime
+            .bypass_change_detection()
+            .preparation
+            .advance_pending(&server)
+    });
+    if pending.0 != busy {
+        pending.0 = busy;
+    }
+}
+
 #[derive(SystemParam)]
 struct DialogueAssets<'w> {
     server: Option<Res<'w, AssetServer>>,

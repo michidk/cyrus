@@ -133,6 +133,53 @@ impl DialoguePreparation {
         result
     }
 
+    /// Advance every outstanding export and load without consuming a clip, and report whether
+    /// any is still unfinished. A replay holds ordinary updates while this is true, so a speech
+    /// line becomes ready at the same update in every run instead of at a wall-clock moment.
+    pub(super) fn advance_pending(&mut self, server: &AssetServer) -> bool {
+        let mut pending = false;
+        for (label, request) in self.requests.iter_mut() {
+            #[cfg(target_arch = "wasm32")]
+            let _ = label;
+            #[cfg(not(target_arch = "wasm32"))]
+            if let DialogueRequest::Exporting(task) = &mut *request {
+                let key = label
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                match bevy::tasks::futures::check_ready(task) {
+                    Some(Ok(())) => {
+                        *request = DialogueRequest::Loading(
+                            server.load(format!("cache://dialogue/{key}.dialogue")),
+                        );
+                    }
+                    Some(Err(error)) => {
+                        *request = DialogueRequest::Failed(format!(
+                            "dialogue {key} preparation: {error:#}"
+                        ));
+                    }
+                    None => {
+                        pending = true;
+                        continue;
+                    }
+                }
+            }
+            if let DialogueRequest::Loading(handle) = &*request {
+                let failed = matches!(
+                    server.get_load_state(handle.id()),
+                    Some(bevy::asset::LoadState::Failed(_))
+                ) || matches!(
+                    server.get_recursive_dependency_load_state(handle.id()),
+                    Some(bevy::asset::RecursiveDependencyLoadState::Failed(_))
+                );
+                if !failed && !server.is_loaded_with_dependencies(handle.id()) {
+                    pending = true;
+                }
+            }
+        }
+        pending
+    }
+
     fn read_requested(
         &mut self,
         label: [u8; 4],
@@ -378,6 +425,10 @@ mod tests {
                     .unwrap(),
                 Poll::Pending
             ));
+            assert!(
+                preparation.advance_pending(&server),
+                "an unloaded line is pending"
+            );
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 app.update();
@@ -408,6 +459,7 @@ mod tests {
                             !preparation.requests.contains_key(b"TEST"),
                             "consumed preparation must release its root handle"
                         );
+                        assert!(!preparation.advance_pending(&server));
                         break;
                     }
                     Err(error) => {
@@ -416,6 +468,7 @@ mod tests {
                             error.to_string().contains("54455354 dependency"),
                             "{error:#}"
                         );
+                        assert!(!preparation.advance_pending(&server));
                         break;
                     }
                 }

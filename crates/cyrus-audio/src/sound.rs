@@ -46,7 +46,10 @@ pub mod persistence;
 mod samples;
 mod script;
 use samples::{Reservation, SampleSlots};
-pub use script::{RestoredDialogueAssets, RuntimeDialogue, RuntimeDialogueSnapshot, ScriptSounds};
+pub use script::{
+    ReplayDialoguePending, RestoredDialogueAssets, RuntimeDialogue, RuntimeDialogueSnapshot,
+    ScriptSounds,
+};
 use script::{execute_ordinary, play_audio};
 
 pub struct SoundPlugin;
@@ -79,6 +82,8 @@ impl Plugin for SoundPlugin {
             .init_resource::<Speech>()
             .init_resource::<Channels>()
             .init_resource::<script::RuntimeDialogue>()
+            .init_resource::<script::ReplayDialoguePending>()
+            .add_systems(Last, script::track_pending_dialogue)
             .insert_resource(cyrus_script::script::OrdinarySoundExecutor(
                 execute_ordinary,
             ))
