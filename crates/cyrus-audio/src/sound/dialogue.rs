@@ -225,6 +225,80 @@ mod tests {
     };
 
     #[test]
+    fn pending_dialogue_preparation_roundtrips_more_than_twenty_labels() -> Result<()> {
+        let directory = Dir::default();
+        for index in 0u32..21 {
+            directory.insert_asset_text(
+                Path::new(&format!("dialogue/{index:02x}000000.dialogue")),
+                &serde_json::json!({"version":1,"label":index.to_le_bytes(),
+                    "text":"Pending metadata","text_lifetime":1,"voice":null})
+                .to_string(),
+            );
+        }
+        let mut app = App::new();
+        app.register_asset_source(
+            "cache",
+            AssetSourceBuilder::new(move || {
+                Box::new(MemoryAssetReader {
+                    root: directory.clone(),
+                })
+            }),
+        )
+        .add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_asset::<AudioSource>()
+        .init_asset::<DialogueClip>()
+        .init_asset_loader::<DialogueClipLoader>();
+        app.finish();
+        app.cleanup();
+        let server = app.world().resource::<AssetServer>().clone();
+        let prepared: std::collections::BTreeMap<_, Handle<DialogueClip>> = (0u32..21)
+            .map(|index| {
+                (
+                    index.to_le_bytes(),
+                    server.load(format!("cache://dialogue/{index:02x}000000.dialogue")),
+                )
+            })
+            .collect();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !prepared
+            .values()
+            .all(|handle| server.is_loaded_with_dependencies(handle.id()))
+        {
+            ensure!(
+                Instant::now() < deadline,
+                "synthetic dialogue metadata did not load"
+            );
+            app.update();
+            std::thread::yield_now();
+        }
+        let original = DialoguePreparation {
+            requests: prepared
+                .iter()
+                .map(|(&label, handle)| (label, DialogueRequest::Loading(handle.clone())))
+                .collect(),
+            ..Default::default()
+        };
+        let saved = original.snapshot(&server)?;
+        let restored = DialoguePreparation::from_snapshot(
+            saved,
+            &prepared,
+            &server,
+            app.world().resource::<Assets<DialogueClip>>(),
+        )?;
+        assert_eq!(
+            restored
+                .snapshot(&server)?
+                .required_labels()
+                .collect::<Vec<_>>(),
+            original
+                .snapshot(&server)?
+                .required_labels()
+                .collect::<Vec<_>>()
+        );
+        Ok(())
+    }
+
+    #[test]
     fn dialogue_preparation_waits_for_voice_and_reports_dependency_failure() {
         for valid_audio in [true, false] {
             let directory = Dir::default();
@@ -404,15 +478,8 @@ impl DialoguePreparation {
         server: &AssetServer,
         clips: &Assets<DialogueClip>,
     ) -> Result<Self> {
-        ensure!(
-            snapshot
-                .requests
-                .iter()
-                .filter(|(_, failure)| failure.is_none())
-                .count()
-                <= 20,
-            "saved dialogue preparation exceeds capacity"
-        );
+        // Preparation owns pending metadata by label, independently of playback slots.
+        // Restore every request accepted by read_requested, retaining duplicate checks below.
         let mut requests = std::collections::HashMap::new();
         for (label, failure) in snapshot.requests {
             let request = if let Some(failure) = failure {

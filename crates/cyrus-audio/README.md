@@ -60,6 +60,8 @@ finish without an output device; dialogue waits retain their normal semantics.
 - `Panned` and `Music` checkpoints restore exact decoder progress but exclude
   resampler and device buffers, so restoration is not a gapless splice. Capture
   rejects in-flight preparation, including starts still waiting for the browser bank.
+- Session restoration retains every pending dialogue metadata request by label;
+  their count is independent of the active sample pool.
 - Examine description requests wait for installed sound settings and per-label
   voice preparation before acknowledging playback. Closing cancels a pending request.
 - World teardown retires the whole sample pool, including unowned control voices.
