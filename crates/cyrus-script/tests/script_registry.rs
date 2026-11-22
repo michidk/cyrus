@@ -5522,11 +5522,30 @@ fn fresh_preparation_after_kill_me_leaks_no_killed_state_records_or_tasks() {
 #[test]
 fn automatic_world_updates_wait_for_effects_then_advance_and_pause_in_menu() {
     for browser_identity in [false, true] {
-        automatic_world_updates_with_prepared_identity(browser_identity);
+        automatic_world_updates_with_prepared_identity(browser_identity, None);
     }
 }
 
-fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
+#[test]
+fn loading_player_models_does_not_advance_the_simulation_clock() {
+    automatic_world_updates_with_prepared_identity(false, Some(PreparationDelay::Models));
+}
+
+#[test]
+fn loading_host_services_does_not_advance_the_simulation_clock() {
+    automatic_world_updates_with_prepared_identity(false, Some(PreparationDelay::Host));
+}
+
+#[derive(Clone, Copy)]
+enum PreparationDelay {
+    Models,
+    Host,
+}
+
+fn automatic_world_updates_with_prepared_identity(
+    browser_identity: bool,
+    delay: Option<PreparationDelay>,
+) {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
     // Bevy's prelude adds a `Function` trait when reflect functions are enabled.
     use cyrus_assets::animation::Animations;
@@ -5788,6 +5807,83 @@ fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
             position: [999, 999, 999],
             heading: 1024,
         });
+    if let Some(delay) = delay {
+        let request = app
+            .world()
+            .resource::<cyrus_script::player::data::PlayerSceneRequest>()
+            .0
+            .clone();
+        let scene = match delay {
+            PreparationDelay::Models => Some(
+                app.world_mut()
+                    .resource_mut::<Assets<cyrus_script::player::data::PlayerScene>>()
+                    .remove(request.id())
+                    .unwrap(),
+            ),
+            PreparationDelay::Host => {
+                app.insert_resource(cyrus_script::script::OrdinarySoundExecutor(|_, _| {}));
+                None
+            }
+        };
+        let _environment = bind_scheduler_environment(&mut app);
+        app.world_mut()
+            .resource_mut::<NextState<AppState>>()
+            .set(AppState::InGame);
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(40),
+        ));
+        for _ in 0..20 {
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<cyrus_script::clock::SimulationClock>()
+                    .elapsed_frame_scale(),
+                0,
+                "loading models must not consume simulated time before the first ordinary update"
+            );
+            assert_eq!(
+                app.world()
+                    .resource::<ScriptActors>()
+                    .current
+                    .as_ref()
+                    .unwrap()
+                    .ordinary_updates(),
+                0
+            );
+        }
+        if let Some(scene) = scene {
+            app.world_mut()
+                .resource_mut::<Assets<cyrus_script::player::data::PlayerScene>>()
+                .insert(request.id(), scene)
+                .unwrap();
+        }
+        app.world_mut()
+            .remove_resource::<cyrus_script::script::OrdinarySoundExecutor>();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .ordinary_updates(),
+            1
+        );
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_script::clock::SimulationClock>()
+                .elapsed_frame_scale(),
+            0
+        );
+        app.update();
+        assert!(
+            app.world()
+                .resource::<cyrus_script::clock::SimulationClock>()
+                .elapsed_frame_scale()
+                > 0
+        );
+        return;
+    }
     app.update();
     let snapshot = |app: &App| {
         assert!(

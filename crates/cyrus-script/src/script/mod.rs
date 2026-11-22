@@ -282,6 +282,7 @@ impl Plugin for ScriptPlugin {
                     .after(crate::player::input::InputSample)
                     .before(OrdinaryUpdates),
             )
+            .init_resource::<registry::ordinary::ClockAdmission>()
             .add_systems(
                 Update,
                 registry::ordinary::sample_clock
@@ -295,6 +296,13 @@ impl Plugin for ScriptPlugin {
                     .in_set(ModelPreparation)
                     .after(registry::ordinary::sample_clock)
                     .after(presentation::bind_scene),
+            )
+            .add_systems(
+                Update,
+                registry::ordinary::finish_clock_sample
+                    .after(ModelPreparation)
+                    .before(crate::player::input::InputSample)
+                    .before(OrdinaryUpdates),
             )
             .add_systems(
                 Update,

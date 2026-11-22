@@ -58,6 +58,9 @@ and `run_ordinary`; a missing host service returns a contextual error.
   snapshots (`ScriptWorld::actor_snapshot`, death and damage events) that
   render and audio adapters read. Observations never drive gameplay and are
   not serialized.
+- Model resource loading, collision admission and host service preparation do not advance the
+  simulation clock. The first ready update excludes loading time, so animation
+  and BIOS ticks do not depend on asynchronous load duration.
 - Menu, console, logbook and inventory suspension must also suspend the shared
   simulation clock and automatic gameplay input. Inspection adapters set
   `InputSuppressed` before `InputSample`. Player transforms stay independent of

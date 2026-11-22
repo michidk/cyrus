@@ -40,7 +40,16 @@ pub struct WorldClockSample {
     generation: u64,
     step: ClockStep,
     models_prepared: bool,
+    previous_clock: Option<SimulationClock>,
+    previous_running: Option<u64>,
 }
+
+/// The generation whose last admitted ordinary update sampled active time.
+#[derive(Resource, Default)]
+pub(crate) struct ClockAdmission {
+    running: Option<u64>,
+}
+
 impl WorldClockSample {
     /// Current update timing only when it belongs to the supplied logical generation.
     /// Submission is admitted only after this sample's model services complete.
@@ -857,7 +866,7 @@ pub(crate) fn sample_clock(
     mut actors: ResMut<ScriptActors>,
     clock: Option<ResMut<SimulationClock>>,
     prepared: OrdinaryAssets,
-    mut running: Local<Option<u64>>,
+    mut admission: ResMut<ClockAdmission>,
     hold: Option<Res<ReplayHold>>,
     mut commands: Commands,
 ) {
@@ -877,7 +886,11 @@ pub(crate) fn sample_clock(
             .console
             .as_ref()
             .is_some_and(|console| console.open)
-        && actors.current.is_some()
+        // Model loading is not a simulation invocation. Advancing the clock while
+        // run_ordinary cannot enter makes animation ticks depend on asset load time.
+        && actors.current.as_ref().is_some_and(|world| {
+            world.model_resources_prepared() && world.model_admission.is_some()
+        })
         && actors.error.is_none()
         && actors.world_loop_outcome.is_none()
         && prepared
@@ -907,27 +920,48 @@ pub(crate) fn sample_clock(
         };
         if ready {
             let generation = actors.current.as_ref().expect("ready world").generation();
-            let elapsed = if *running == Some(generation) {
+            let previous_clock = clock.clone();
+            let elapsed = if admission.running == Some(generation) {
                 time.delta()
             } else {
                 clock.rebase(tick);
                 std::time::Duration::ZERO
             };
             clock.advance_elapsed(tick, elapsed);
-            actors
-                .current
-                .as_mut()
-                .expect("clock readiness requires a world")
-                .globals
-                .advance_player_idle_clock(clock.measurement_intervals());
             commands.insert_resource(WorldClockSample {
                 generation: actors.current.as_ref().unwrap().generation(),
                 step: clock.step(),
                 models_prepared: false,
+                previous_clock: Some(previous_clock),
+                previous_running: admission.running,
             });
         }
     }
-    *running = ready.then(|| actors.current.as_ref().expect("ready world").generation());
+    admission.running = ready.then(|| actors.current.as_ref().expect("ready world").generation());
+}
+
+/// Commit time only when the host admitted model presentation. Audio/font/clip loading can
+/// still refuse that phase after geometry is ready; those frames are loading, not gameplay.
+pub(crate) fn finish_clock_sample(
+    clock: Option<ResMut<SimulationClock>>,
+    sample: Option<ResMut<WorldClockSample>>,
+    mut admission: ResMut<ClockAdmission>,
+    mut actors: ResMut<ScriptActors>,
+) {
+    let (Some(mut clock), Some(mut sample)) = (clock, sample) else {
+        return;
+    };
+    if sample.models_prepared {
+        sample.previous_clock = None;
+        if let Some(world) = actors.current.as_mut() {
+            world
+                .globals
+                .advance_player_idle_clock(clock.measurement_intervals());
+        }
+    } else if let Some(previous) = sample.previous_clock.take() {
+        *clock = previous;
+        admission.running = sample.previous_running;
+    }
 }
 
 #[derive(SystemParam)]
