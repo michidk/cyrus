@@ -807,6 +807,14 @@ class Checkpoints(unittest.TestCase):
             {"fight": {"world": 30, "opponent": "RICHTONP", "target_health": 0, "max_seconds": 5, "policy": "idle-tap"}},
             {"checkpoint": self.expected}]})
 
+    def test_a_fight_chunk_ends_cleanly_at_its_clock_bound_instead_of_failing(self):
+        spec = {"world": 30, "opponent": "RICHTONP", "target_health": 0, "max_seconds": 1,
+                "policy": "busy-gate", "chunk": True, "draw": False}
+        replay.validate({"version": 1, "step_micros": 40000, "entry_scene": "EXTPALAC", "steps": [
+            {"fight": spec}, {"checkpoint": self.expected}]})
+        with self.assertRaisesRegex(AssertionError, "fight clock bound"):
+            replay.fight(self.fight_control([]), {**spec, "policy": "taps", "chunk": False})
+
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):
             replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})

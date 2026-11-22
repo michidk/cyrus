@@ -125,7 +125,9 @@ def validate_steps(steps, depth=0):
         elif "fight" in step:
             assert set(step) == {"fight"}, "fight cannot contain commands"
             fight = step["fight"]
-            assert {"world", "opponent", "target_health", "max_seconds"} <= set(fight) <= {"world", "opponent", "target_health", "max_seconds", "policy", "player"}, "incomplete fight"
+            assert {"world", "opponent", "target_health", "max_seconds"} <= set(fight) <= {"world", "opponent", "target_health", "max_seconds", "policy", "player", "draw", "chunk"}, "incomplete fight"
+            assert type(fight.get("chunk", False)) is bool, "invalid fight chunk flag"
+            assert type(fight.get("draw", True)) is bool, "invalid fight draw flag"
             assert fight.get("policy", "taps") in ("taps", "busy-gate", "idle-tap"), "unknown fight policy"
             assert isinstance(fight.get("player", "CYRUS"), str), "invalid fight player name"
             assert isinstance(fight["opponent"], str) and type(fight["target_health"]) is int and fight["target_health"] >= 0, "invalid fight target"
@@ -570,9 +572,12 @@ def fight(control, spec):
     start = state["clock"]["game_seconds"]
     index = actor_index(control, spec["opponent"])
     previous = opponent_health(control, spec["opponent"], index)
-    control.request({"type": "schedule_input", "events": [
-        {"after_updates": 0, "key": "KeyS", "action": "press"},
-        {"after_updates": 1, "key": "KeyS", "action": "release"}, {"after_updates": 4}]})
+    # A chunk resumed from a captured fight already holds the sword; pressing the key again would
+    # sheathe it.
+    if spec.get("draw", True):
+        control.request({"type": "schedule_input", "events": [
+            {"after_updates": 0, "key": "KeyS", "action": "press"},
+            {"after_updates": 1, "key": "KeyS", "action": "release"}, {"after_updates": 4}]})
     hits = []
 
     def observe():
@@ -599,6 +604,10 @@ def fight(control, spec):
             state, health = observe()
             if health <= spec["target_health"]:
                 print(f"fight reached {health} after hits {hits}", flush=True)
+                return
+            if spec.get("chunk") and state["clock"]["game_seconds"] - start >= spec["max_seconds"]:
+                # A resumable chunk ends cleanly at its bound so the caller can capture the session.
+                print(f"fight chunk ended at {health} after hits {hits}", flush=True)
                 return
             assert state["clock"]["game_seconds"] - start <= spec["max_seconds"], (
                 f"fight clock bound: opponent {health}, hits {hits}")

@@ -1,0 +1,55 @@
+{
+ "version": 1,
+ "step_micros": 40000,
+ "entry_scene": "EXTPALAC",
+ "resume_session": "richton-chunk1",
+ "steps": [
+  {
+   "setup": {
+    "cheat": {
+     "drevil": 1
+    }
+   }
+  },
+  {
+   "fight": {
+    "world": 30,
+    "opponent": "RICHTONP",
+    "target_health": 0,
+    "max_seconds": 600,
+    "policy": "busy-gate",
+    "player": "CYRUS",
+    "draw": false,
+    "chunk": true
+   }
+  },
+  {
+   "checkpoint": {
+    "world": 30,
+    "flags": {
+     "rock_1_down": {
+      "value": 1
+     }
+    },
+    "globals": {
+     "lockout": 0
+    },
+    "inventory": {
+     "1": 1,
+     "79": 1
+    },
+    "position_q8": {
+     "value": [
+      11980288,
+      -829184,
+      13248256
+     ],
+     "tolerance": 9000000
+    }
+   }
+  },
+  {
+   "capture_session": "richton-chunk2"
+  }
+ ]
+}
