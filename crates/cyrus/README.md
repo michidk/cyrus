@@ -21,8 +21,9 @@ is never used as the destination baseline. The book shows
 an explicit limited-import message. Original script/task continuations, other
 actors except the static supporting actor, animation, controller state, clock
 and journal are unsupported; native
-baseline owners remain in use. This preliminary world entry is not rolled back
-if subset preparation fails; errors retain slot/world context. Transformed
+baseline owners remain in use. Before preliminary entry, the host checkpoints the
+previous native session or startup menu owners. Rejection cancels pending world
+preparation and restores that checkpoint; errors retain slot/world context. Transformed
 players and unsupported flag encodings reject explicitly.
 Original entries cannot overwrite or delete an installed save. Install-backed listing tests
 use `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard` and report a skip when absent.

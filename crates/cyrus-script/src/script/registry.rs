@@ -3880,6 +3880,40 @@ impl Default for ScriptActors {
         }
     }
 }
+impl ScriptActors {
+    /// Restore a no-world checkpoint after rejected preliminary world entry.
+    /// Preserve the generation high-water mark so retired actor bindings cannot
+    /// alias the next world even when the checkpoint predates that entry.
+    pub fn restore_empty_checkpoint(&mut self, mut checkpoint: Self) -> Result<()> {
+        anyhow::ensure!(
+            checkpoint.current.is_none(),
+            "startup rollback checkpoint contains a current world"
+        );
+        checkpoint.generation = checkpoint.generation.max(self.generation);
+        checkpoint.requested = None;
+        *self = checkpoint;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod startup_checkpoint_tests {
+    use super::*;
+    #[test]
+    fn restoring_empty_checkpoint_preserves_retired_generation_high_water() {
+        let mut retired = ScriptActors {
+            generation: 73,
+            ..Default::default()
+        };
+        retired
+            .restore_empty_checkpoint(ScriptActors::default())
+            .unwrap();
+        assert!(retired.current.is_none());
+        assert_eq!(retired.generation, 73);
+        assert!(retired.requested.is_none());
+    }
+}
+
 /// Animation commands capture the receiver's own local Q8 position.
 /// Unlike script Sound, they do not substitute linked or attached positions.
 fn animation_sound_position(

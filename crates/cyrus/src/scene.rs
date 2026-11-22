@@ -54,6 +54,13 @@ impl Plugin for ScenePlugin {
     }
 }
 
+/// Cancel the receiver before rollback; a late export cannot publish over it.
+pub(crate) fn cancel_preparation(world: &mut World) {
+    world.remove_resource::<Preparation>();
+    world.remove_resource::<cyrus_world::lifecycle::WorldPreparationPending>();
+    world.remove_resource::<PreparationProgress>();
+}
+
 fn clear_attempt(mut commands: Commands) {
     commands.remove_resource::<LastAttempt>();
 }
