@@ -9,7 +9,7 @@ use rgpre::import::savegame::{
 
 /// This import stages gameplay scalars, not an original interpreter continuation.
 /// Hosts must show this limitation and must not advertise a full session restore.
-pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory and global flags only. Script/task continuations, other actors, animation, controller state, item-use timers, clock and journal are unsupported; the host supplies the native baseline for unsupported owners.";
+pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory and global flags only. Script/task continuations, other actors except the static supporting actor, animation, controller state, item-use timers, clock and journal are unsupported; the host supplies the native baseline for unsupported owners.";
 
 /// Validated replacement values. Apply only to an initialized off-live world and
 /// HUD, and discard both on error. No files are written and no scripts are run.
@@ -24,6 +24,83 @@ pub struct OriginalSaveSubset {
     pub health: u8,
     inventory: Inventory,
     flags: GlobalFlagsSnapshot,
+    support: Option<OriginalSupport>,
+}
+
+/// Saved static support, resolved against the initialized world's runtime identities.
+pub(super) struct OriginalSupport {
+    pub identity: i16,
+    pub model: String,
+    pub position: [i32; 3],
+    pub angles: [i32; 3],
+    pub attributes: [u8; 256],
+}
+
+fn support_identity(object: &rgpre::import::savegame::SaveObject) -> i32 {
+    // Published SMOB framing exposes the packed body. Semantic accessors are
+    // proposed in preservation PR #362; use them after its crates.io release (#342).
+    // This is the supporting actor identity, not an array index.
+    i32::from_le_bytes(object.body[468..472].try_into().unwrap())
+}
+
+fn decode_support(
+    player: &rgpre::import::savegame::SaveObject,
+    objects: &[rgpre::import::savegame::SaveObject],
+) -> Result<Option<OriginalSupport>> {
+    let identity = support_identity(player);
+    if identity == -1 {
+        return Ok(None);
+    }
+    let mut matching = objects.iter().filter(|object| object.object_id == identity);
+    let owner = matching
+        .next()
+        .with_context(|| format!("original save SMOB support {identity}: missing record"))?;
+    ensure!(
+        matching.next().is_none(),
+        "original save SMOB support {identity}: duplicate record"
+    );
+    let runtime = u16::from_le_bytes(owner.body[20..22].try_into()?);
+    ensure!(
+        i32::from(runtime) == identity,
+        "original save SMOB support {identity}: runtime identity {runtime} differs"
+    );
+    ensure!(
+        owner.script_state.is_none()
+            && owner.animation_header.is_none()
+            && owner.attachment.is_none()
+            && owner.body[33] == 0
+            && support_identity(owner) == -1,
+        "original save SMOB support {identity}: scripted, animated, attached or chained support unsupported"
+    );
+    let resource = owner
+        .named_resource
+        .as_ref()
+        .context("original save SMOB support: named static model missing")?;
+    ensure!(
+        resource.len() == 10 && resource[0] != 0,
+        "original save SMOB support {identity}: static model name absent"
+    );
+    let name = resource[1..].split(|byte| *byte == 0).next().unwrap();
+    let model = std::str::from_utf8(name)
+        .context("original save SMOB support: invalid model name")?
+        .to_owned();
+    Ok(Some(OriginalSupport {
+        identity: runtime
+            .try_into()
+            .context("original save SMOB support: runtime identity outside native range")?,
+        model,
+        position: owner.position_q8(),
+        angles: std::array::from_fn(|axis| {
+            i32::from_le_bytes(
+                owner.body[288 + axis * 4..292 + axis * 4]
+                    .try_into()
+                    .unwrap(),
+            )
+        }),
+        attributes: owner
+            .attributes
+            .context("original save SMOB support: attributes missing")?,
+    }))
 }
 
 impl OriginalSaveSubset {
@@ -88,6 +165,7 @@ impl OriginalSaveSubset {
         )?;
         let flags = parse_save_flags(section(*b"SVGF")?)?;
         Ok(Self {
+            support: decode_support(player, &objects)?,
             world: game.metadata.world_id,
             position_q8: player.position_q8(),
             heading,
@@ -107,6 +185,9 @@ impl OriginalSaveSubset {
             world.world
         );
         world.restore_original_player(self.position_q8, self.heading, self.health, self.flags)?;
+        if let Some(support) = self.support {
+            world.restore_original_support(support)?;
+        }
         hud.replace_original_inventory(self.inventory)?;
         Ok(LIMITATION)
     }

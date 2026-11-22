@@ -53655,6 +53655,14 @@ fn first_sticky_script_failure_is_logged_once_with_world_and_script() {
 fn original_subset_keeps_synthetic_logical_y_without_a_model_height_offset() -> anyhow::Result<()> {
     let (scripts, mut world, _, _) = player_walking_fixture();
     let position = [1024, -40000, 3072];
+    let player = world.selected_player().unwrap();
+    world.set_model_support(
+        player,
+        cyrus_script::script::ModelSupportOwners {
+            actor: Some(world.id(0)?),
+            static_placement: None,
+        },
+    )?;
     let asset = inventory_asset(&[(0, 0)]);
     let hud = cyrus_script::script::ScriptHud::default();
     hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
@@ -53668,6 +53676,7 @@ fn original_subset_keeps_synthetic_logical_y_without_a_model_height_offset() -> 
     let player = world.selected_player().unwrap();
     assert_eq!(world.spatial(player)?.local.position, position);
     assert_eq!(world.spatial(player)?.local.angles[1], 123);
+    assert_eq!(world.model_support(player)?.actor, None);
     Ok(())
 }
 
@@ -53680,6 +53689,7 @@ fn synthetic_original_player(position: [i32; 3]) -> rgpre::import::savegame::Sav
     }
     body[292..296].copy_from_slice(&123i32.to_le_bytes());
     body[571..575].copy_from_slice(&(-1i32).to_le_bytes());
+    body[468..472].copy_from_slice(&(-1i32).to_le_bytes());
     SaveObject {
         object_id: -2,
         rope_id: 0,
@@ -53748,4 +53758,90 @@ fn synthetic_original_pose_save(
             },
         ],
     })
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_subset_restores_static_support_pose_and_binding() -> anyhow::Result<()> {
+    use rgpre::import::savegame::{encode_save_objects, parse_save_objects};
+    let (scripts, mut world, _, _) = player_walking_fixture();
+    let support = world.id(0)?;
+    assert!(
+        world.actors()[0]
+            .runtime()
+            .unwrap()
+            .program_counter(Thread::Main)
+            .is_some()
+    );
+    let identity = world.actors()[0].runtime_identifier.unwrap();
+    let position = [1024, -40000, 3072];
+    let mut save = synthetic_original_pose_save(&scripts, position)?;
+    let section = save
+        .sections
+        .iter_mut()
+        .find(|section| section.name == *b"SMOB")
+        .unwrap();
+    let mut objects = parse_save_objects(&section.data)?;
+    objects[0].body[468..472].copy_from_slice(&i32::from(identity).to_le_bytes());
+    objects.push(synthetic_original_static_support(identity));
+    section.data = encode_save_objects(&objects)?;
+    let asset = inventory_asset(&[(0, 0)]);
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    cyrus_script::script::original_save::OriginalSaveSubset::decode(
+        &save,
+        &asset,
+        &scripts.definition,
+    )?
+    .apply(&mut world, &hud)?;
+    let player = world.selected_player().unwrap();
+    assert_eq!(world.spatial(player)?.local.position, position);
+    assert_eq!(world.spatial(support)?.local.position, [512, -1024, 768]);
+    assert_eq!(world.spatial(support)?.local.angles, [7, 1024, 2046]);
+    assert_eq!(world.model_support(player)?.actor, Some(support));
+    assert_eq!(
+        world.actors()[0].attributes()[Attribute::CameraTargetOffsetZ],
+        128
+    );
+    let runtime = world.actors()[support.index].runtime().unwrap();
+    assert_eq!(runtime.program_counter(Thread::Main), None);
+    assert_eq!(runtime.program_counter(Thread::Interrupt), None);
+    assert_eq!(runtime.active_tasks(), 0);
+    let presentation = world.model_presentation(support)?.unwrap();
+    assert_eq!(presentation.position, [2.0, -4.0, 3.0]);
+    assert_eq!(presentation.pose.angles, [7, 1024, 2046]);
+    let flags = world.flags().to_vec();
+    world.advance(
+        support,
+        ScriptStage::OrdinaryMain,
+        cyrus_script::script::ScriptInputs {
+            frame_scale: Some(1),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        },
+        None,
+        None,
+        32,
+    )?;
+    assert_eq!(world.flags(), flags);
+    assert_eq!(world.spatial(support)?.local.position, [512, -1024, 768]);
+    Ok(())
+}
+
+#[cfg(feature = "original-save-import")]
+fn synthetic_original_static_support(identity: i16) -> rgpre::import::savegame::SaveObject {
+    let mut owner = synthetic_original_player([512, -1024, 768]);
+    owner.object_id = i32::from(identity);
+    owner.body[20..22].copy_from_slice(&(identity as u16).to_le_bytes());
+    owner.body[193] = 1;
+    owner.named_resource = Some(vec![1, b'S', b'T', b'A', b'T', b'I', b'C', 0, 0, 0]);
+    owner.body[626..630].copy_from_slice(&1u32.to_le_bytes());
+    let mut attributes = [0; 256];
+    attributes[Attribute::CameraTargetOffsetZ.index()] = 128;
+    owner.attributes = Some(attributes);
+    let angles = [7i32, 1024, 2046];
+    for (axis, angle) in angles.into_iter().enumerate() {
+        owner.body[288 + axis * 4..292 + axis * 4].copy_from_slice(&angle.to_le_bytes());
+    }
+    owner
 }
