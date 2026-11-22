@@ -99,11 +99,11 @@
       "steer": {
         "world": 20,
         "position_q8": [
-          526296,
+          530500,
           0,
           567714
         ],
-        "tolerance": 2500,
+        "tolerance": 4096,
         "limit": 400,
         "approach_radius": 12000,
         "stop_updates": 50
@@ -125,11 +125,11 @@
         },
         "position_q8": {
           "value": [
-            526296,
+            530500,
             -16384,
             567714
           ],
-          "tolerance": 2500
+          "tolerance": 4096
         },
         "health": 100
       }

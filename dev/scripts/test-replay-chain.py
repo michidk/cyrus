@@ -116,6 +116,26 @@ class Checkpoints(unittest.TestCase):
     def test_bell_conversation_approach_rechecks_released_coast_before_accepting(self):
         self.check_bell_approach(1)
 
+    def test_bell_approach_accepts_the_stopped_pose_inside_the_grab_corridor(self):
+        path = Path(__file__).resolve().parents[1] / "fixtures/segments/bell-monocle.replay.json"
+        fixture = json.loads(path.read_text())
+        position = [533285, -16384, 567950]
+
+        class Control:
+            def ready(self, world=None):
+                return {"scripts": {"world": 20}, "hud": {"health": 100, "heading": 24}}
+
+            def request(self, command):
+                return {"world": 20, "player_position_q8": position}
+
+            def response(self, command):
+                raise AssertionError("a stopped pose inside the grab corridor must not walk away")
+
+        observed = replay.steer(Control(), fixture["steps"][10]["steer"])
+        expected = fixture["steps"][11]["checkpoint"]["position_q8"]
+        self.assertLessEqual(math.dist(observed["scripts"]["player_position_q8"],
+                                      expected["value"]), expected["tolerance"])
+
     def test_default_discovery_runs_segments_in_separate_sessions(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
