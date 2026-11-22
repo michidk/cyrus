@@ -4,8 +4,8 @@
 //! **Modern only**, a tuning choice throughout. Under modern lighting the terrain writes its
 //! water weight into the colour's alpha (`terrain.wesl`); this pass, after the main pass,
 //! marches each water pixel's reflected ray through the depth buffer, reflects the sky drawn in
-//! the ray's direction where it meets no scenery, falls back to the horizon colour where that is
-//! off screen too, adds the flare where the sun is on screen and not
+//! the ray's direction where it meets no scenery, retains the lit surface where neither is visible,
+//! fades uncertain scene hits, adds the flare where the sun is on screen and not
 //! covered, and restores an opaque alpha. It runs on every modern-lit camera, also with both
 //! effects off, so the water weight never reaches the screen.
 use super::{day_night::Daylight, effects::ModernEffects, lights::Sun};

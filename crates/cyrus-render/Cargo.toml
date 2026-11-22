@@ -32,3 +32,4 @@ cyrus-assets = { workspace = true, features = ["native"] }
 cyrus-audio.workspace = true
 cyrus-collision.workspace = true
 toml.workspace = true
+wesl = { version = "=0.6.0", features = ["eval"] }
