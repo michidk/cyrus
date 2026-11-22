@@ -700,6 +700,24 @@ class Checkpoints(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "vanished"):
             replay.fight(self.fight_control([250]), {"world": 30, "opponent": "RICHTONP", "target_health": 100, "max_seconds": 60})
 
+    def test_busy_gate_policy_faces_closes_in_and_strikes_only_while_the_opponent_is_busy(self):
+        self.assertIsNone(replay.facing_turn(1024, 1100))
+        # The held updates follow the measured ramp (about 2.7 * n squared heading units).
+        self.assertEqual(replay.facing_turn(1000, 1270), ("ArrowLeft", 10))
+        self.assertEqual(replay.facing_turn(1900, 200), ("ArrowLeft", 11))
+        self.assertEqual(replay.facing_turn(300, 100), ("ArrowRight", 9))
+        self.assertEqual(replay.bearing_to([0, 0, 0], [0, 0, 10]), 0)
+        self.assertEqual(replay.bearing_to([0, 0, 0], [10, 0, 0]), 512)
+        self.assertEqual(replay.bearing_to([5, 0, 5], [5, 9, -5]), 1024)
+        self.assertEqual(replay.strike_decision(1024, 1024, 40000, True)[0], "approach")
+        self.assertEqual(replay.strike_decision(1024, 1024, 20000, True), ("strike",))
+        self.assertEqual(replay.strike_decision(1024, 1024, 20000, False), ("wait",))
+        self.assertEqual(replay.strike_decision(1024, 1500, 20000, True)[0], "turn")
+        with self.assertRaises(AssertionError):
+            replay.validate({"version": 1, "step_micros": 40000, "entry_scene": "EXTPALAC", "steps": [
+                {"fight": {"world": 30, "opponent": "R", "target_health": 0, "max_seconds": 5, "policy": "nope"}},
+                {"checkpoint": self.expected}]})
+
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):
             replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})

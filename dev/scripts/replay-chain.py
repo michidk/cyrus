@@ -125,7 +125,9 @@ def validate_steps(steps, depth=0):
         elif "fight" in step:
             assert set(step) == {"fight"}, "fight cannot contain commands"
             fight = step["fight"]
-            assert set(fight) == {"world", "opponent", "target_health", "max_seconds"}, "incomplete fight"
+            assert {"world", "opponent", "target_health", "max_seconds"} <= set(fight) <= {"world", "opponent", "target_health", "max_seconds", "policy", "player"}, "incomplete fight"
+            assert fight.get("policy", "taps") in ("taps", "busy-gate"), "unknown fight policy"
+            assert isinstance(fight.get("player", "CYRUS"), str), "invalid fight player name"
             assert isinstance(fight["opponent"], str) and type(fight["target_health"]) is int and fight["target_health"] >= 0, "invalid fight target"
             assert math.isfinite(fight["max_seconds"]) and 0 < fight["max_seconds"] <= 600, "invalid fight clock bound"
         elif "modal_input" in step:
@@ -486,6 +488,59 @@ def opponent_health(control, name, index):
     return None
 
 
+# Measured on the installed game (EXTPALAC, sword drawn, deterministic replay): turning with a
+# weapon held ramps up to about 25 heading units per update, roughly 2.7 * held_updates ** 2, and
+# strikes landed up to about 26,000 Q8 from the opponent.
+TURN_RAMP = 2.7
+STRIKE_RANGE_Q8 = 26000
+FACING_TOLERANCE = 120
+
+
+def facing_turn(yaw, bearing, tolerance=FACING_TOLERANCE):
+    """Turn key and held updates that bring heading `yaw` to `bearing` (2048 units a circle),
+    or None when already inside the tolerance."""
+    error = (bearing - yaw + 1024) % 2048 - 1024
+    if abs(error) <= tolerance:
+        return None
+    held = max(1, min(12, round(math.sqrt(abs(error) / TURN_RAMP))))
+    return ("ArrowLeft" if error > 0 else "ArrowRight"), held
+
+
+def bearing_to(origin, target):
+    """Heading from `origin` to `target` in the engine's 2048-unit convention (map X, Z)."""
+    return round(math.degrees(math.atan2(target[0] - origin[0], target[2] - origin[2])) * 2048 / 360) % 2048
+
+
+def strike_decision(yaw, bearing, distance, opponent_busy):
+    """One step of the busy-gate policy: face the opponent, close to striking range, then strike
+    only while he is busy with his own attack (preservation SOUP.md: an idle opponent counters)."""
+    turn = facing_turn(yaw, bearing)
+    if turn:
+        return ("turn", *turn)
+    if distance > STRIKE_RANGE_Q8:
+        return ("approach",)
+    return ("strike",) if opponent_busy else ("wait",)
+
+
+def fight_view(control, name, index, player_index):
+    """Opponent health and busy state, and the geometry the policy needs, from two actor reads."""
+    opponent = control.request({"type": "scripts", "offset": index, "limit": 1})
+    if not opponent["actors"] or opponent["actors"][0]["name"] != name:
+        return None
+    actor = opponent["actors"][0]
+    player = control.request({"type": "scripts", "offset": player_index, "limit": 1})["actors"][0]
+    target = actor["spatial"]["effective"]["position"]
+    origin = opponent["player_position_q8"]
+    combat = actor["control"]["combat"]
+    return {
+        "health": actor["attributes"][3],  # the health attribute
+        "yaw": player["spatial"]["effective"]["angles"][1],
+        "bearing": bearing_to(origin, target),
+        "distance": math.hypot(target[0] - origin[0], target[2] - origin[2]),
+        "busy": combat["action"] != -1 or combat["decision"]["attack_state"] != 0,
+    }
+
+
 def fight(control, spec):
     """Draw the sword and tap attack once per eight updates, reading both healths every update.
 
@@ -517,6 +572,37 @@ def fight(control, spec):
             previous = health
         return state, health
 
+    if spec.get("policy", "taps") == "busy-gate":
+        player_index = actor_index(control, spec.get("player", "CYRUS"))
+        steps = 0
+        while True:
+            steps += 1
+            state, health = observe()
+            if health <= spec["target_health"]:
+                print(f"fight reached {health} after hits {hits}", flush=True)
+                return
+            assert state["clock"]["game_seconds"] - start <= spec["max_seconds"], (
+                f"fight clock bound: opponent {health}, hits {hits}")
+            if steps % 100 == 0:
+                print(f"fight step {steps}: opponent {health}, hits {len(hits)}, "
+                      f"clock {state['clock']['game_seconds']:.1f}", flush=True)
+            view = fight_view(control, spec["opponent"], index, player_index)
+            if view is None:
+                continue
+            decision = strike_decision(view["yaw"], view["bearing"], view["distance"], view["busy"])
+            if decision[0] == "turn":
+                _, key, held = decision
+                events = [{"after_updates": 0, "key": key, "action": "press"},
+                          {"after_updates": held, "key": key, "action": "release"}, {"after_updates": held + 1}]
+            elif decision[0] == "approach":
+                events = [{"after_updates": 0, "key": "ArrowUp", "action": "press"},
+                          {"after_updates": 3, "key": "ArrowUp", "action": "release"}, {"after_updates": 4}]
+            elif decision[0] == "strike":
+                events = [{"after_updates": 0, "key": "ControlLeft", "action": "press"},
+                          {"after_updates": 2, "key": "ControlLeft", "action": "release"}, {"after_updates": 6}]
+            else:
+                events = [{"after_updates": 0}, {"after_updates": 1}]
+            control.request({"type": "schedule_input", "events": events})
     cycles = 0
     while True:
         cycles += 1
