@@ -476,10 +476,16 @@ impl Runtime {
             host.establish_native_source(self.origin, Arc::clone(&self.program));
         }
         self.invoke_entry_retaining_source(host, flags, budget)?;
+        if !bypass_tasks {
+            self.invoke_tasks_timed(host, flags, frame_scale)?;
+        }
+        // An actor can retain its program for routed calls without an active main thread.
+        if self.program_counter(Thread::Main).is_none() {
+            return Ok(());
+        }
         if bypass_tasks {
             self.invoke_continuation(Thread::Main, host, flags, budget)
         } else {
-            self.invoke_tasks_timed(host, flags, frame_scale)?;
             self.invoke_body(Thread::Main, host, flags, budget)
         }
     }

@@ -1954,8 +1954,12 @@ fn discarded_execution_cancels_baseline_tasks_and_cannot_resume_either_thread() 
     assert_eq!(vm.active_tasks(), 0);
     for thread in [Thread::Main, Thread::Interrupt] {
         assert_eq!(vm.program_counter(thread), None);
-        vm.invoke(thread, &mut host, &mut [], 20).unwrap();
-        assert_eq!(vm.program_counter(thread), None);
+    }
+    for bypass_tasks in [false, true] {
+        vm.invoke_main_stage(&mut host, &mut [], 256, 20, bypass_tasks)
+            .unwrap();
+        assert_eq!(vm.program_counter(Thread::Main), None);
+        assert_eq!(vm.program_counter(Thread::Interrupt), None);
     }
     assert_eq!(host.next, 1);
 }
