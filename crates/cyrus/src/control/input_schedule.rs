@@ -324,6 +324,14 @@ pub(super) fn apply(world: &mut World) {
     if world.resource::<InputScheduler>().active.is_none() {
         return;
     }
+    // A replay hold paused ordinary work this frame, before the schedule was armed. The schedule
+    // stays pending, so the next frame's gate opens and its first boundary is observed then.
+    if world
+        .get_resource::<cyrus_script::script::ReplayHold>()
+        .is_some_and(|hold| hold.0)
+    {
+        return;
+    }
     let boundary = world.run_system_cached(observe).ok().flatten();
     world.resource_scope(|world, mut scheduler: Mut<InputScheduler>| {
         scheduler.advance(boundary, &mut world.resource_mut::<ButtonInput<KeyCode>>());
@@ -340,6 +348,29 @@ mod tests {
             {"after_updates":2,"key":"ArrowUp","action":"release"}
         ]))
         .unwrap()
+    }
+
+    #[test]
+    fn a_schedule_armed_while_the_replay_hold_pauses_the_world_stays_pending() {
+        let (reply, responses) = std::sync::mpsc::channel();
+        let mut world = World::new();
+        let mut scheduler = InputScheduler::default();
+        let keys = ButtonInput::<KeyCode>::default();
+        scheduler.arm(75, reply, Some(8), events(), &keys).unwrap();
+        world.insert_resource(scheduler);
+        world.insert_resource(keys);
+        world.insert_resource(cyrus_script::script::ReplayHold(true));
+        apply(&mut world);
+        assert!(world.resource::<InputScheduler>().pending());
+        assert!(
+            responses.try_recv().is_err(),
+            "a held frame must not fail the schedule"
+        );
+        // Without the hold the same frame has no ordinary boundary and fails the schedule.
+        world.insert_resource(cyrus_script::script::ReplayHold(false));
+        apply(&mut world);
+        assert!(!world.resource::<InputScheduler>().pending());
+        assert!(responses.try_recv().is_ok());
     }
 
     #[test]
