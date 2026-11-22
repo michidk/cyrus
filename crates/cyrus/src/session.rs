@@ -1,4 +1,5 @@
 //! Native off-live document preparation; shared boundary owns validation and commit.
+mod original_rollback;
 mod original_slots;
 pub(crate) mod slots;
 
@@ -23,6 +24,9 @@ pub(crate) struct NativeSessionLoad {
     worker: Option<Mutex<mpsc::Receiver<Result<PreparedLoad>>>>,
     original_capture: bool,
     original_entry: Option<OriginalEntry>,
+    original_rollback: Option<original_rollback::Checkpoint>,
+    rollback_error: Option<anyhow::Error>,
+    rollback_menu: bool,
     original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
     original_notice: bool,
     submitted: bool,
@@ -77,7 +81,8 @@ impl NativeSessionLoad {
     }
 
     pub(crate) fn busy(&self) -> bool {
-        self.original_capture
+        self.rollback_menu
+            || self.original_capture
             || self.original_entry.is_some()
             || self.worker.is_some()
             || self.submitted
@@ -257,21 +262,30 @@ fn request_original(world: &mut World, slot: u16, world_id: u32) -> Result<()> {
         .and_then(|actors| actors.current.as_ref())
         .is_some_and(|current| current.world == world_id);
     if !matching {
-        begin_original_entry(world, slot, saved);
+        begin_original_entry(world, slot, saved)?;
         return Ok(());
     }
     capture_original(world, slot, saved)
 }
 
-fn begin_original_entry(world: &mut World, slot: u16, saved: rgpre::import::savegame::SaveGame) {
+fn begin_original_entry(
+    world: &mut World,
+    slot: u16,
+    saved: rgpre::import::savegame::SaveGame,
+) -> Result<()> {
     let world_id = saved.metadata.world_id;
-    world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
-    world.insert_resource(cyrus_startup::WorldLoadRequest(world_id.to_string()));
+    let checkpoint = original_rollback::begin(world)?;
+    if !matches!(checkpoint, original_rollback::Checkpoint::Capturing) {
+        world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
+        world.insert_resource(cyrus_startup::WorldLoadRequest(world_id.to_string()));
+    }
     let mut state = world.resource_mut::<NativeSessionLoad>();
+    state.original_rollback = Some(checkpoint);
     state.original_entry = Some(OriginalEntry { slot, saved });
     state.original_notice = true;
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
+    Ok(())
 }
 
 fn capture_original(
@@ -308,6 +322,27 @@ fn decode_original(
 }
 
 fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Result<()> {
+    if matches!(
+        state.original_rollback,
+        Some(original_rollback::Checkpoint::Capturing)
+    ) {
+        let Some(result) = world.resource_mut::<SessionBoundary>().take_result() else {
+            return Ok(());
+        };
+        let SessionBoundaryResult::Captured(snapshot) = result? else {
+            anyhow::bail!("original import rollback checkpoint received a commit");
+        };
+        state.original_rollback = Some(original_rollback::Checkpoint::Session(snapshot));
+        let entry = state
+            .original_entry
+            .as_ref()
+            .context("original import entry absent")?;
+        world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
+        world.insert_resource(cyrus_startup::WorldLoadRequest(
+            entry.saved.metadata.world_id.to_string(),
+        ));
+        return Ok(());
+    }
     let entry = state
         .original_entry
         .as_ref()
@@ -578,6 +613,16 @@ pub(crate) fn poll(world: &mut World) {
     let Some(mut state) = world.remove_resource::<NativeSessionLoad>() else {
         return;
     };
+    if state.rollback_menu
+        && world
+            .get_resource::<bevy::prelude::State<cyrus_game::AppState>>()
+            .is_some_and(|state| *state.get() == cyrus_game::AppState::Loading)
+    {
+        world
+            .resource_mut::<bevy::prelude::NextState<cyrus_game::AppState>>()
+            .set(cyrus_game::AppState::Menu);
+        state.rollback_menu = false;
+    }
     if !state.busy()
         && state.result.is_none()
         && state.slot_result.is_none()
@@ -693,7 +738,7 @@ pub(crate) fn poll(world: &mut World) {
                 submit(
                     prepared,
                     world,
-                    state.slot_load || state.last_game,
+                    (state.slot_load || state.last_game) && state.rollback_error.is_none(),
                     state.original.take(),
                 )
             }) {
@@ -702,7 +747,21 @@ pub(crate) fn poll(world: &mut World) {
             }
         }
     }
+    if state.result.is_some() && state.rollback_error.is_some() {
+        let original = state.rollback_error.take().expect("pending rollback error");
+        state.result = Some(match state.result.take().expect("rollback completion") {
+            Ok(()) => Err(original),
+            Err(error) => {
+                Err(error.context(format!("rollback after original rejection: {original:#}")))
+            }
+        });
+    } else {
+        original_rollback::reject(&mut state, world);
+    }
     if let Some(result) = state.result.take() {
+        if result.is_ok() {
+            state.original_rollback = None;
+        }
         let result = if state.original_notice {
             result.with_context(|| format!("{}: original subset import", state.path))
         } else {
@@ -987,7 +1046,7 @@ mod tests {
         let mut world = World::new();
         world.init_resource::<NativeSessionLoad>();
         world.init_resource::<SessionBoundary>();
-        begin_original_entry(&mut world, 2, synthetic_original_entry(15));
+        begin_original_entry(&mut world, 2, synthetic_original_entry(15)).unwrap();
         assert_eq!(world.resource::<cyrus_startup::WorldLoadRequest>().0, "15");
         let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
         poll_original_entry(&mut state, &mut world).unwrap();
@@ -1016,7 +1075,7 @@ mod tests {
             world: Some(1),
         });
         let previous = world.spawn(Name::new("previous world")).id();
-        begin_original_entry(&mut world, 2, synthetic_original_entry(0));
+        begin_original_entry(&mut world, 2, synthetic_original_entry(0)).unwrap();
         assert_eq!(world.resource::<cyrus_startup::WorldLoadRequest>().0, "0");
         let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
         poll_original_entry(&mut state, &mut world).unwrap();
@@ -1037,7 +1096,7 @@ mod tests {
         let mut world = World::new();
         world.init_resource::<NativeSessionLoad>();
         world.init_resource::<SessionBoundary>();
-        begin_original_entry(&mut world, 2, synthetic_original_entry(15));
+        begin_original_entry(&mut world, 2, synthetic_original_entry(15)).unwrap();
         world.insert_resource(cyrus_world::lifecycle::SceneLoadError(
             "synthetic failure".into(),
         ));

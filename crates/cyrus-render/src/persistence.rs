@@ -25,3 +25,52 @@ impl std::fmt::Display for PresentationPending {
 }
 
 impl std::error::Error for PresentationPending {}
+
+/// Retire a rejected preliminary world before returning to the startup menu.
+/// Unrelated UI and asset caches remain owned by their existing systems.
+pub fn clear_scene(world: &mut bevy::prelude::World) {
+    use bevy::prelude::*;
+    let entities: Vec<_> = world
+        .query_filtered::<Entity, Or<(
+            With<crate::SceneEntity>,
+            With<crate::sky::Sky>,
+            With<crate::camera::ViewCamera>,
+        )>>()
+        .iter(world)
+        .collect();
+    for entity in entities {
+        if world.get_entity(entity).is_ok() {
+            world.despawn(entity);
+        }
+    }
+    world.insert_resource(crate::environment::ActiveEnvironment::default());
+    world.insert_resource(crate::environment::EnvironmentRequest::default());
+    world.insert_resource(cyrus_world::animation::AnimationRequest::default());
+    world.remove_resource::<crate::ReadyScene>();
+    world.remove_resource::<scene::RestoredScene>();
+}
+
+#[cfg(test)]
+mod clear_tests {
+    use super::*;
+    use bevy::prelude::*;
+
+    #[test]
+    fn rejected_scene_retirement_preserves_unrelated_menu_entities() {
+        let mut world = World::new();
+        let menu = world.spawn_empty().id();
+        let scene = world.spawn(crate::SceneEntity).id();
+        let child = world.spawn(ChildOf(scene)).id();
+        clear_scene(&mut world);
+        assert!(world.get_entity(menu).is_ok());
+        assert!(world.get_entity(scene).is_err());
+        assert!(world.get_entity(child).is_err());
+        assert!(
+            world
+                .resource::<crate::environment::ActiveEnvironment>()
+                .source
+                .is_none()
+        );
+        assert!(!world.contains_resource::<crate::ReadyScene>());
+    }
+}
