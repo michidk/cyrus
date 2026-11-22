@@ -51,19 +51,21 @@ fn replay_gate(
     state: Option<Res<State<cyrus_game::AppState>>>,
     actors: Option<Res<cyrus_script::script::ScriptActors>>,
     mut strategy: ResMut<bevy::time::TimeUpdateStrategy>,
+    mut hold: ResMut<cyrus_script::script::ReplayHold>,
 ) {
     let in_game = state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame);
     let updates = actors
         .as_deref()
         .and_then(|actors| actors.current.as_ref())
         .map(|world| world.ordinary_updates());
-    *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(
-        if replay_gate_open(scheduler.pending(), in_game, updates) {
-            step.0
-        } else {
-            std::time::Duration::ZERO
-        },
-    );
+    let open = replay_gate_open(scheduler.pending(), in_game, updates);
+    *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
+        step.0
+    } else {
+        std::time::Duration::ZERO
+    });
+    // A zero step alone still ran zero-length ordinary updates, so hold them too.
+    hold.0 = !open;
 }
 
 /// Bind address; set before the plugin builds. Defaults to `cyrus_control::DEFAULT_ADDR`.
