@@ -619,6 +619,20 @@ def fight_snapshot(control, name, index, player_index):
     return {
         "rg": actor["animation"]["current_group"], "pg": player["animation"]["current_group"],
         "ract": combat["action"], "ras": combat["decision"]["attack_state"], "rfl": combat["flags"],
+        # Coordination state one is the active branch (counter-attack and defence run); zero is the
+        # waiting branch, where he only spaces. The close-distance counter feeds the 0xd003 handoff.
+        "rcoord": combat["attacker_selection_state"], "rclose": combat["close_distance_passes"],
+        # Other combat actors: a coordinator candidate must share the opponent's target and hold a
+        # weapon or flag 0x04 (preservation SOUP.md, active-state lookup); without one a negative
+        # aggression budget is never restored to 50.
+        "others": [
+            {"n": other["name"], "tgt": other["control"]["combat"]["target"],
+             "fl": other["control"]["combat"]["flags"],
+             "coord": other["control"]["combat"]["attacker_selection_state"],
+             "hp": other["attributes"][3], "g": other["animation"]["current_group"]}
+            for other in control.request({"type": "scripts", "offset": 0, "limit": 64})["actors"]
+            if other["name"] not in (name, player["name"])
+            and other.get("control", {}).get("combat") is not None],
         "rret": combat["retained_action_indices"], "rag": combat["decision"]["aggression"],
         "dist": round(math.hypot(target[0] - origin[0], target[2] - origin[2])), "err": error,
         "ph": state["hud"]["health"], "ppos": origin,

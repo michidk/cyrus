@@ -942,6 +942,33 @@ class Checkpoints(unittest.TestCase):
             replay.stamp_path(path).unlink()
             replay.resume_session(Control(), path, identity_b)
 
+    def test_fight_snapshot_reports_both_fighters_and_the_coordination_state(self):
+        class Control:
+            def request(self, command):
+                if command["type"] == "state":
+                    return {"hud": {"health": 90}}
+                actor = {"name": "CYRUS", "animation": {"current_group": 8}, "attributes": [0, 0, 0, 90],
+                         "spatial": {"effective": {"position": [0, 0, 0], "angles": [0, 1024, 0]}},
+                         "control": {"combat": {"action": -1, "flags": 4, "retained_action_indices": [-1, -1],
+                                                "attacker_selection_state": 0, "close_distance_passes": 12, "target": 7,
+                                                "decision": {"attack_state": 0, "aggression": -10}}}}
+                if command.get("limit") == 64:
+                    return {"actors": [dict(actor, name="DRAMPAL", attributes=[0, 0, 0, 80]),
+                                       dict(actor, name="RICHTONP"), dict(actor, name="CYRUS"),
+                                       {"name": "BELL", "attributes": [0] * 4, "animation": {"current_group": 0}, "control": {}}]}
+                if command["offset"] == 1:
+                    actor = dict(actor, name="RICHTONP", animation={"current_group": 102},
+                                 spatial={"effective": {"position": [0, 0, 20000], "angles": [0, 0, 0]}})
+                return {"actors": [actor], "player_position_q8": [0, 0, 0]}
+
+        snapshot = replay.fight_snapshot(Control(), "RICHTONP", 1, 0)
+        self.assertEqual((snapshot["rg"], snapshot["pg"], snapshot["ph"]), (102, 8, 90))
+        self.assertEqual((snapshot["rcoord"], snapshot["rclose"], snapshot["rag"]), (0, 12, -10))
+        self.assertEqual([(o["n"], o["hp"], o["coord"]) for o in snapshot["others"]], [("DRAMPAL", 80, 0)])
+        self.assertEqual(snapshot["dist"], 20000)
+        self.assertEqual(snapshot["err"], -1024)  # he is dead ahead (bearing 0); the player faces 1024
+        self.assertIsNone(replay.fight_snapshot(Control(), "NOBODY", 1, 0))
+
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):
             replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})
