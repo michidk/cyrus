@@ -19,7 +19,9 @@
           588800
         ],
         "tolerance": 3500,
-        "limit": 150
+        "limit": 150,
+        "approach_radius": 12000,
+        "stop_updates": 50
       }
     },
     {

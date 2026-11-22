@@ -77,10 +77,10 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual(len(blocked), 1)
         self.assertEqual(blocked[0]["gait"], "run")
 
-    def test_bell_jump_approach_rechecks_released_coast_before_accepting(self):
+    def check_bell_approach(self, index):
         path = Path(__file__).resolve().parents[1] / "fixtures/segments/bell-monocle.replay.json"
         fixture = json.loads(path.read_text())
-        approach = fixture["steps"][10]["steer"]
+        approach = fixture["steps"][index]["steer"]
         target = approach["position_q8"]
 
         class Control:
@@ -106,10 +106,15 @@ class Checkpoints(unittest.TestCase):
 
         control = Control()
         observed = replay.steer(control, approach)
-        self.assertTrue(control.corrected, "the rope approach must verify the released stop")
-        expected = fixture["steps"][11]["checkpoint"]["position_q8"]
+        self.assertTrue(control.corrected, "the bell approach must verify the released stop")
         self.assertLessEqual(math.dist(observed["scripts"]["player_position_q8"][::2],
-                                      expected["value"][::2]), expected["tolerance"])
+                                      target[::2]), approach["tolerance"])
+
+    def test_bell_jump_approach_rechecks_released_coast_before_accepting(self):
+        self.check_bell_approach(10)
+
+    def test_bell_conversation_approach_rechecks_released_coast_before_accepting(self):
+        self.check_bell_approach(1)
 
     def test_default_discovery_runs_segments_in_separate_sessions(self):
         with tempfile.TemporaryDirectory() as temporary:
