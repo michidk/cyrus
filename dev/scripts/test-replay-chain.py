@@ -42,6 +42,21 @@ class Checkpoints(unittest.TestCase):
                 timings.add(fixture["step_micros"])
         self.assertEqual(len(timings), 1)
 
+    def test_segments_validate_and_resumed_sessions_are_captured_by_an_earlier_segment(self):
+        root = Path(__file__).resolve().parents[1] / "fixtures"
+        segments = sorted((root / "segments").glob("*.replay.json"))
+        # Chapters run first and may capture sessions that segments resume.
+        captured = {step["capture_session"]
+                    for path in sorted((root / "chapters").glob("*.replay.json"))
+                    for step in json.loads(path.read_text())["steps"] if "capture_session" in step}
+        for path in segments:
+            with self.subTest(path=path):
+                fixture = json.loads(path.read_text())
+                replay.validate(fixture)
+                if "resume_session" in fixture:
+                    self.assertIn(fixture["resume_session"], captured, "a resumed session must be captured earlier in the run")
+                captured |= {step["capture_session"] for step in fixture["steps"] if "capture_session" in step}
+
     def test_pending_fixtures_are_valid_but_outside_the_chain(self):
         root = Path(__file__).resolve().parents[1] / "fixtures"
         for path in sorted((root / "pending").glob("*.replay.json")):

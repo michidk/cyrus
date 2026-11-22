@@ -13,7 +13,7 @@ in [docs/METHOD.md](../../docs/METHOD.md) and
 | `segments/bell-monocle.replay.json` | Replay segment from BELLTOWR entry: Favis' bell topics, the bell-rope running jump and the monocle pickup (nightly) |
 | `segments/ending-1-extpalac-entry.replay.json` | EXTPALAC entry; captures the session later ending segments resume (nightly) |
 | `segments/sword-walk-extpalac.replay.json` | Walking while the sword is drawn (EXTPALAC): no script failure, and the player moves once the draw completes; stops the world on v1.7.0 (issue #345/#354) |
-| `pending/ending-2-richton-fight.replay.json` | Richton fight resumed from that session; **pending**: on the shared CI binary three runs ended in no hit, one hit and player death, so it is outside the nightly chain until the fight is reproducible |
+| `segments/ending-2-richton-fight.replay.json` | Richton fight resumed from that session (nightly); deterministic since the replay hold: two runs both reached Richton 220 through hits of 10 and 20 |
 | `start-walk.jsonl` | Legacy control replay: START, one second walking forward |
 | `*.html`, `listener-publication.rs` | Audio and animation acceptance pages and examples; see [cyrus-audio](../../crates/cyrus-audio/README.md) |
 
