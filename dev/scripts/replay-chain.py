@@ -2,6 +2,7 @@
 """Run input-only chapter fixtures in one headless New Game session."""
 import argparse
 import fcntl
+import hashlib
 import json
 import math
 import re
@@ -394,8 +395,43 @@ def settle_async_work(control, timeout=120):
         time.sleep(0.1)
 
 
-def capture_session(control, path):
-    """Save the live session document under `path` so a later launch can resume from it."""
+def binary_identity(binary):
+    """A content digest of the executable that captured or resumes a session, or None if unreadable."""
+    digest = hashlib.sha256()
+    try:
+        with Path(binary).open("rb") as stream:
+            for block in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(block)
+    except OSError:
+        return None  # an unreadable executable is reported by the launch itself; no stamp or check
+    return digest.hexdigest()
+
+
+def stamp_path(path):
+    return path.with_suffix(path.suffix + ".build")
+
+
+def check_session_build(path, identity):
+    """Refuse to resume a session in a different executable than the one that captured it.
+
+    The document format is one version in every build (`CYRUS-SESSION 1`, snapshot version 1) and
+    its payload only grows through defaulted fields, so players' saves load across builds. A replay
+    differs: its A/B and bisection runs compare builds, and a session captured by one build resumed
+    in another mixes two builds' behaviour (a build before 065dbf8ae also fails any restored session
+    over a scene entry). The capture stamps the executable's digest next to the document; a resume
+    compares it first and names both builds."""
+    stamp = stamp_path(path)
+    if not stamp.exists():
+        return  # captured before stamping: nothing to compare
+    captured = stamp.read_text().strip()
+    assert captured == identity, (
+        f"session {path.name} was captured by build {captured[:12]} but this launch runs build "
+        f"{identity[:12]}; capture it again with this binary (sessions do not carry across builds)")
+
+
+def capture_session(control, path, identity=None):
+    """Save the live session document under `path` so a later launch can resume from it.
+    With `identity`, also stamp the capturing executable's digest next to it."""
     for attempt in range(100):
         control.request({"type": "session_capture"})
         for _ in range(300):
@@ -410,14 +446,18 @@ def capture_session(control, path):
             temporary = path.with_suffix(".tmp")
             temporary.write_text(result["document"])
             temporary.replace(path)
+            if identity:
+                stamp_path(path).write_text(identity + "\n")
             return
         time.sleep(0.2)
     raise AssertionError("session capture was never accepted")
 
 
-def resume_session(control, path):
+def resume_session(control, path, identity=None):
     """Replace the fresh entry world with a session captured by an earlier launch."""
     assert path.exists(), f"missing resume session {path}; run the segment that captures it first"
+    if identity:
+        check_session_build(path, identity)
     control.request({"type": "session_load", "path": str(path.resolve())})
     for _ in range(600):
         result = control.request({"type": "session_load_result"})
@@ -718,6 +758,7 @@ def run(args):
     assert isinstance(timing, int) and timing > 0, "step_micros must be a positive integer"
     assert all(f["step_micros"] == timing for f in fixtures), "chain timing must agree"
     args.config.mkdir(parents=True, exist_ok=True)
+    identity = binary_identity(args.binary)
     # Runs share captured sessions through CYRUS_REPLAY_SESSIONS, else the config directory's parent.
     sessions = Path(os.environ.get("CYRUS_REPLAY_SESSIONS") or args.config.parent / "sessions")
     with (args.config / "replay.lock").open("w") as lock:
@@ -750,7 +791,7 @@ def run(args):
                     control.ready()
                     for fixture in fixtures:
                         if "resume_session" in fixture:
-                            resume_session(control, sessions / f"{fixture['resume_session']}.session")
+                            resume_session(control, sessions / f"{fixture['resume_session']}.session", identity)
                             control.ready(examine_open=None)
                     for path, fixture in zip(args.fixtures, fixtures):
                         assert fixture["version"] == 1, f"{path}: unsupported version"
@@ -774,7 +815,7 @@ def run(args):
                             if "modal_input" in step:
                                 play_modal(control, step["modal_input"])
                             if "capture_session" in step:
-                                capture_session(control, sessions / f"{step['capture_session']}.session")
+                                capture_session(control, sessions / f"{step['capture_session']}.session", identity)
                             if "setup" in step:
                                 run_setup(control, step["setup"])
                             if "fight" in step:

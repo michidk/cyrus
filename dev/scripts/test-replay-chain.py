@@ -885,6 +885,38 @@ class Checkpoints(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "fight clock bound"):
             replay.fight(Chunk(loss=20), {**spec, "chunk": False})
 
+    def test_a_session_resumes_only_in_the_build_that_captured_it(self):
+        import tempfile
+
+        class Control:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, command):
+                self.calls.append(command["type"])
+                if command["type"] == "session_capture_result":
+                    return {"pending": False, "document": "CYRUS-SESSION 1\nabc"}
+                if command["type"] == "session_load_result":
+                    return {"pending": False, "committed": True}
+                return {"state": "InGame", "scripts": {"failed": 0}, "rendered_actor_pending": False,
+                        "effect_geometry_pending": False, "preload": None}
+
+        with tempfile.TemporaryDirectory() as root:
+            binary_a, binary_b = Path(root) / "a", Path(root) / "b"
+            binary_a.write_bytes(b"build a")
+            binary_b.write_bytes(b"build b")
+            identity_a, identity_b = replay.binary_identity(binary_a), replay.binary_identity(binary_b)
+            self.assertNotEqual(identity_a, identity_b)
+            path = Path(root) / "entry.session"
+            replay.capture_session(Control(), path, identity_a)
+            self.assertEqual(replay.stamp_path(path).read_text().strip(), identity_a)
+            replay.resume_session(Control(), path, identity_a)  # same build: loads
+            with self.assertRaisesRegex(AssertionError, "captured by build .* but this launch runs build"):
+                replay.resume_session(Control(), path, identity_b)
+            # A session captured without a stamp (older tooling) is not rejected.
+            replay.stamp_path(path).unlink()
+            replay.resume_session(Control(), path, identity_b)
+
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):
             replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})
