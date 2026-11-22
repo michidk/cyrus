@@ -3707,6 +3707,15 @@ impl ScriptWorld {
             saved.identity,
             saved.model
         );
+        anyhow::ensure!(
+            actor.native_hook.is_none(),
+            "original save support {}: native hook unsupported",
+            saved.identity
+        );
+        let actor = &mut self.actors[index];
+        if let Some(runtime) = actor.runtime.as_mut() {
+            runtime.discard_execution_with(|token| actor.tasks.cancel(token))?;
+        }
         let id = self.id(index)?;
         let spatial = self.spatial(id)?;
         anyhow::ensure!(

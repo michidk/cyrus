@@ -1932,3 +1932,30 @@ fn slot_fields_keep_their_widths_and_signs() {
         assert_eq!(vm.task_slot_field(0, field), read, "{field:?} {written:#x}");
     }
 }
+
+#[test]
+fn discarded_execution_cancels_baseline_tasks_and_cannot_resume_either_thread() {
+    let mut vm = runtime(vec![
+        call(Native::Wait, CallKind::Multitask),
+        Operation::Yield,
+        call(AFTER, CallKind::Function),
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke(Thread::Main, &mut host, &mut [], 20).unwrap();
+    assert_eq!(vm.active_tasks(), 1);
+    assert!(vm.program_counter(Thread::Main).is_some());
+    vm.discard_execution_with(|token| {
+        host.cancelled.push(token);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(host.cancelled, [1]);
+    assert_eq!(vm.active_tasks(), 0);
+    for thread in [Thread::Main, Thread::Interrupt] {
+        assert_eq!(vm.program_counter(thread), None);
+        vm.invoke(thread, &mut host, &mut [], 20).unwrap();
+        assert_eq!(vm.program_counter(thread), None);
+    }
+    assert_eq!(host.next, 1);
+}

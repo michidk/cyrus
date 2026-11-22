@@ -150,6 +150,8 @@ initialized off-live candidate. This is a limited import API, not full session
 restoration. The native Load adapter uses it with a matching native-session baseline. It
 restores the saved static supporting actor's pose and attributes, binds it by its
 initialized runtime identity, and refreshes its collision model and regional cell.
+When that saved support has no script continuation, import cancels baseline
+native tasks and clears its interpreter continuations before resuming gameplay.
 Missing or mismatched models and scripted, animated or chained supports reject
 with context. Its returned message explicitly lists unsupported script/task
 continuations, remaining actors, animation,

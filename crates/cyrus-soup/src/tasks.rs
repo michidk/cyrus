@@ -351,6 +351,17 @@ impl Runtime {
     pub fn cancel_tasks(&mut self, host: &mut dyn Host) -> Result<()> {
         self.cancel_tasks_with(|token| host.cancel(token))
     }
+    /// Discard execution when restoring an owner with no saved script continuation.
+    /// Cancel every native token before clearing both threads and their return target.
+    /// Immutable code and locals remain available for later routed native calls.
+    pub fn discard_execution_with(&mut self, cancel: impl FnMut(u64) -> Result<()>) -> Result<()> {
+        self.cancel_tasks_with(cancel)?;
+        self.state.threads = [None, None];
+        self.state.return_to = None;
+        self.state.task_timer = [0; 6];
+        Ok(())
+    }
+
     /// Cancels every task slot through `cancel`, for a caller clearing another actor's tasks
     /// without a host bound to that actor.
     pub fn cancel_tasks_with(&mut self, mut cancel: impl FnMut(u64) -> Result<()>) -> Result<()> {
