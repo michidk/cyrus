@@ -203,14 +203,17 @@ waits for asynchronous model and geometry work to settle before any input. Chain
 local run state and never tracked. `setup` (console lines, a placement, original cheat values such as `drevil`) is a test-only
 shortcut for prerequisites the segment does not play, such as the Richton item;
 it is never used for quest flags. Cheats persist in the config directory, so a fixture that
-sets one must reset it in a later `setup` step. `fight` draws the sword and taps attack once per
-eight updates, reading both healths after every update. It requires whole ten-point
+sets one must reset it in a later `setup` step. `fight` draws the sword and uses
+bounded `taps`, `busy-gate`, or `idle-tap` input policies, reading health between
+short schedules. The policy and recording/admission/session-regeneration procedure
+are documented in [cyrus's replay README](../../crates/cyrus/README.md#recorded-replay-chain). It requires whole ten-point
 opponent losses, a surviving player and the target health (zero accepts the defeated opponent
 leaving the actor list) inside a game-clock bound, and prints its progress every ten cycles.
 The runner always uses the fixture's fixed step, so the fight does not depend on wall
 clock. **Not covered:** the final kill and the ending movie.
 
-Replays are deterministic per game tick, not per host clock. Under `--replay-step-micros` the
+`ReplayHold` stops ordinary gameplay between scheduled boundaries. Replays use
+simulated game ticks rather than the host clock. Under `--replay-step-micros` the
 world advances only while a scheduled input boundary owns the frame loop and while no speech
 line is still exporting or loading (speech readiness would otherwise depend on wall-clock load
 time). The clock's BIOS tick is also derived from the simulated time instead of the host's

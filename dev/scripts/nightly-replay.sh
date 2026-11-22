@@ -41,8 +41,11 @@ if [[ -f "$unfinished" ]]; then
 fi
 report_failure() {
     status=$?
-    if [[ -f "$runtime/process.log" ]]; then
-        cp "$runtime/process.log" "$run/process.log"
+    if [[ -d "$runtime" ]]; then
+        while IFS= read -r -d '' process_log; do
+            relative=${process_log#"$runtime/"}
+            cp "$process_log" "$run/${relative//\//-}"
+        done < <(find "$runtime" -name process.log -type f -print0)
     fi
     rm -rf -- "$runtime"
     if [[ $status -ne 0 ]]; then
@@ -64,7 +67,7 @@ report_failure() {
             echo 'Install-backed nightly replay passed end to end.'
             echo "Commit: $(git rev-parse HEAD). Exit status: 0."
             echo "Host evidence: $log"
-            echo 'All configured chapter fixtures and checkpoints passed.'
+            echo 'All admitted chapters and independent segments passed.'
         } > "$body"
         gh issue comment 322 --repo michidk/cyrus --body-file "$body"
         rm -f "$body" "$unfinished"
@@ -83,12 +86,6 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
     exit 65
 fi
 git pull --rebase origin main
-if ! command -v cargo-hauler >/dev/null 2>&1; then
-    just setup
-fi
-export CARGO_HAULER_ALLOW_SHARED_TARGET=1
-source dev/scripts/toolchain.sh
-source dev/scripts/cargo.sh
-cargo build -p cyrus --bin cyrus
-CYRUS_REPLAY_BINARY="${CARGO_TARGET_DIR:?shared Cargo target must be configured}/debug/cyrus" \
-    CYRUS_CONFIG_DIR="$runtime" just replay-chain
+commit=$(git rev-parse HEAD)
+python3 -B dev/scripts/download-main-replay.py "$commit" "$runtime/cyrus"
+CYRUS_REPLAY_BINARY="$runtime/cyrus" CYRUS_CONFIG_DIR="$runtime" just replay-chain

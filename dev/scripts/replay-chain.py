@@ -775,7 +775,10 @@ def run(args):
                                 # Inventory and world must refer to the same prepared generation.
                                 assert state["scripts"]["world"] == scripts["world"], "world changed during checkpoint"
                                 (args.config / f"{path.stem}-{index}.json").write_text(json.dumps(observation, indent=2))
-                                residual = checkpoint(state, scripts, expected)
+                                try:
+                                    residual = checkpoint(state, scripts, expected)
+                                except AssertionError as error:
+                                    raise AssertionError(f"{path.name}:{index}: {error}") from error
                                 print(f"{path.name}:{index}: checkpoint passed, position residual {residual:.3f} Q8", flush=True)
                                 observation = None
                     if args.keep_running:

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Checkpoint contracts with synthetic public observations, without an install."""
 import copy
+import argparse
+import contextlib
+import io
+from unittest import mock
 import importlib.util
 import json
 import math
@@ -100,6 +104,62 @@ class Checkpoints(unittest.TestCase):
             self.assertIn("chapters/000-opening.replay.json", sessions[0])
             self.assertIn("config/segments/bell-monocle", sessions[1])
             self.assertNotIn("000-opening", sessions[1])
+
+    def test_admitted_segment_fails_with_named_flag_and_segment_when_corrupted(self):
+        path = Path(__file__).resolve().parents[1] / "fixtures/segments/sword-walk-extpalac.replay.json"
+        fixture = json.loads(path.read_text())
+        expected = [step["checkpoint"] for step in fixture["steps"] if "checkpoint" in step]
+
+        class Observations:
+            index = 0
+
+            def ready(self, *args, **kwargs):
+                checkpoint = expected[self.index]
+                return {"scripts": {"failed": 0, "world": checkpoint["world"], "ordinary_updates": 1},
+                        "clock": {"game_seconds": 0},
+                        "hud": {"health": checkpoint["health"], "lockout": 0},
+                        "script_hud": {"inventory": {"counts": checkpoint["inventory"]}}}
+
+            def request(self, command):
+                if command["type"] != "scripts":
+                    return {}
+                checkpoint = expected[self.index]
+                self.index += 1
+                return {"world": checkpoint["world"], "globals": checkpoint["globals"],
+                        "player_position_q8": checkpoint["position_q8"]["value"],
+                        "flags": {"flags": [{"definition": {"name": name},
+                                             "value": flag["value"], "latched": False}
+                                            for name, flag in checkpoint["flags"].items()]}}
+
+            def response(self, command):
+                return {"ok": True, "result": {}}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            admitted = root / path.name
+            admitted.write_text(json.dumps(fixture))
+            args = argparse.Namespace(fixtures=[admitted], binary=root / "cyrus", install=root,
+                                      config=root / "config", keep_running=False)
+            process = mock.Mock()
+            process.poll.return_value = None
+            with mock.patch.object(replay.subprocess, "Popen", return_value=process), \
+                    mock.patch.object(replay.socket, "create_connection"), \
+                    mock.patch.object(replay, "Control", side_effect=lambda _: Observations()):
+                # The full admitted segment passes through the real runner dispatch/comparator.
+                with contextlib.redirect_stdout(io.StringIO()):
+                    replay.run(args)
+                corrupted = copy.deepcopy(fixture)
+                corrupted["steps"][1]["checkpoint"]["flags"]["rock_1_down"]["value"] += 1
+                admitted.write_text(json.dumps(corrupted))
+                argv = ["replay-chain.py", "--binary", str(args.binary), "--install", str(root),
+                        "--config", str(args.config), str(admitted)]
+                error = io.StringIO()
+                with mock.patch.object(replay.sys, "argv", argv), contextlib.redirect_stderr(error):
+                    with self.assertRaises(SystemExit) as failure:
+                        replay.main()
+                self.assertEqual(failure.exception.code, 1)
+                self.assertIn(path.name + ":1:", error.getvalue())
+                self.assertIn("flags/rock_1_down/value: expected 2, got 1", error.getvalue())
 
     def test_health_checkpoint_rejects_corrupted_expectation(self):
         self.state["hud"] = {"health": 100}

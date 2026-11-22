@@ -143,8 +143,9 @@ script operations and does not change the world.
 ## Recorded replay chain
 
 Run `REDGUARD_DIR=/path/to/Redguard CYRUS_CONFIG_DIR=/writable/state just replay-chain`
-to start a fresh headless New Game and run the ordered chapter fixtures in
-`dev/fixtures/chapters/`. Supply fixture paths to run a selected sequence from
+to start a fresh headless New Game, run the ordered chapter fixtures in
+`dev/fixtures/chapters/`, then run every admitted `segments/*.replay.json` in a
+separate process. Both directories use filename order. Supply fixture paths to run a selected sequence from
 New Game. `just replay <chapter.replay.json> <label>` also starts from New Game. Later
 chapters require their predecessors through `replay-chain`.
 The runner retains a source-verified executable through the native recovery
@@ -159,8 +160,21 @@ session directory and `replay-chain.sh` sets it for one run.
 
 Fixtures in `dev/fixtures/pending/` are written from installed script facts but not yet
 run with a current binary. `replay-chain` does not run them and the nightly run ignores
-them; script tests only validate their shape. Move a fixture into `chapters/` once it passes
-after its predecessor.
+them; script tests only validate their shape. Record new work under `pending/`,
+using real keyboard inputs and bounded predicates. Check world, named flags,
+inventory and position tolerance, plus zero script failures. Run the candidate
+with the same predecessor/session and timing it will use in the chain. Admit it
+by moving it to `chapters/` for an uninterrupted continuation, or `segments/`
+for a fresh launch. Name it so its session producer sorts before its consumers.
+Run `python3 -B dev/scripts/test-replay-chain.py` to validate admission and session
+references, then run the default chain with the install before pushing.
+
+Regenerate sessions by running the default chain with a new writable
+`CYRUS_CONFIG_DIR`; it captures the chapter and segment staging points again.
+For a selected segment, set `CYRUS_REPLAY_SESSIONS` to that run's `sessions/`
+directory and supply the fixture path. If it reports a missing session, run its
+producer first. Never commit generated `.session` files or reuse them across a
+gameplay change without regenerating and checking their producer.
 
 Use `just replay-chain --keep-running` to record the next chapter from the
 passing session. Its control address is printed and written to
@@ -171,9 +185,12 @@ A chapter document contains version `1`, `step_micros`, and `steps`. Timing is
 an explicit replay input. `--headless --replay-step-micros N` supplies the same
 positive host-clock duration to every app update, including audio playback,
 through Bevy's manual time source. Normal launches use the real host clock.
-All chapters in a chain must supply the same duration. This does not promise
-identical combat outcomes or asynchronous loading schedules. The simulation rules and
-Faithful defaults are unchanged.
+All chapters in a chain must supply the same duration. `ReplayHold` freezes
+ordinary gameplay between scheduled input boundaries; speech preparation also
+holds replay progression until its resources are ready. Simulated BIOS ticks
+come from this manual clock, so host load time cannot advance combat pacing.
+Normal play retains its host clock and Faithful defaults. This controls replay
+pacing; it does not claim a complete playthrough or original-game parity.
 
 Each input step contains `input`, a `schedule_input` event list with offsets in
 ordinary updates, balanced key presses/releases, and an initial offset of zero.
@@ -216,6 +233,31 @@ timing and expected observations, without game data or saves. The runner fails
 if no fixtures exist. Hosted CI tests the comparator without an install; actual
 route replay requires the player's install.
 
+
+Combat `fight` steps use an explicit policy. `taps` attacks and samples health
+between short idle waits. `busy-gate` faces and approaches the opponent, then
+attacks only while the opponent is busy. `idle-tap` uses the same facing and
+range checks but attacks only from the player's armed idle animation. Every
+policy has a game-clock bound and checks player survival and opponent health.
+Do not replace those predicates with a fixed host sleep.
+
+Keep waits chunked: `await_control` advances one ordinary update and rechecks
+its game-time/update bounds; ending waits advance five updates at a time before
+checking the ending state. Input schedules use ordinary-update offsets, not BIOS
+ticks or wall seconds. Split long idle periods into short schedules so control
+responses stay inside the transport timeout and script failures are observed
+promptly. Asynchronous resource waits poll without advancing ordinary gameplay.
+
+Failures exit nonzero. A checkpoint error names the segment, zero-based step,
+and field, for example `sword-walk-extpalac.replay.json:1:
+flags/rock_1_down/value: expected 2, got 1`. Inspect its observation JSON and
+`process.log` in the failing config directory; do not weaken the expectation
+without checking the gameplay outcome. CI runs an admitted segment against
+synthetic public observations, then deliberately corrupts one expected flag and
+requires this failure. Run the same guard locally with
+`python3 -B dev/scripts/test-replay-chain.py`; the install-backed chain remains
+the gameplay check. Nightly comments link the artifact build and retained logs.
+
 The partial Chapter 1 fixture continues harbour arrival through the mast and
 onto the dock. Its two checkpoints assert world, quest flags, global lockout,
 inventory counts and position within 4096 Q8 units. It waits for scripted arrival
@@ -231,13 +273,14 @@ Its command invokes `bash dev/scripts/nightly-replay.sh` with `REDGUARD_DIR` poi
 to the shared read-only install and `CYRUS_CONFIG_DIR` pointing to persistent
 `magic/nightly-replay-chain` state. The schedule uses its own clean worktree at
 `magic/nightly-replay-checkout`, tracking main independently of agent worktrees.
-The wrapper refuses a dirty checkout before pulling or building, pulls main, restores setup when
-cargo-hauler is missing, builds through hauler in the inherited shared Cargo target,
-and passes that target's executable to `just replay-chain`. It copies no executable
-or build checkpoints into the nightly directory. Completed runs post their result in
+The wrapper refuses a dirty checkout before pulling, pulls main, and downloads
+the Linux executable from that exact commit's push build in `pr-artifacts.yml`.
+It fails clearly if the artifact is unavailable and never substitutes an older
+binary or starts a local build. The binary and downloaded packages are temporary;
+no executable or build cache is retained in the nightly logs. Completed runs post their result in
 one comment of at most 15 lines to [#322](https://github.com/michidk/cyrus/issues/322),
 including the commit, exit status and retained log path. View runs in the VibePod
-control panel under Schedules. Only replay and process logs for the last two runs
+control panel under Schedules. Only replay and nested chapter/segment process logs for the last two runs
 remain under `nightly/run-*/`; runtime caches and checkpoint observations are removed
 on exit, or on the next invocation after interruption. A retained unfinished-run marker reports
 a pod-interrupted run on the next invocation before retrying from New Game.

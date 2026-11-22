@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Exercise scheduled replay and failure publication without an install or network."""
 import os
+import importlib.util
+import io
+import json
+import tarfile
+from unittest import mock
 from pathlib import Path
 import subprocess
 import tempfile
@@ -9,7 +14,7 @@ import unittest
 
 class Nightly(unittest.TestCase):
     def run_nightly(self, status, pull_status=0, hauler=True, interrupted=False,
-                    replace_script=False, old_runs=0, dirty=False):
+                    replace_script=False, old_runs=0, dirty=False, artifact_status=0):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             commands = root / "bin"
@@ -19,6 +24,12 @@ class Nightly(unittest.TestCase):
             script_path.write_text(Path(__file__).with_name("nightly-replay.sh").read_text())
             for name in ["toolchain.sh", "cargo.sh"]:
                 script_path.with_name(name).write_text("")
+            script_path.with_name("download-main-replay.py").write_text(
+                'import os, pathlib, sys\n'
+                'with open(os.environ["CALLS"], "a") as calls: calls.write("artifact " + sys.argv[1] + "\\n")\n'
+                f'sys.exit({artifact_status}) if {artifact_status} else None\n'
+                'binary = pathlib.Path(sys.argv[2]); binary.parent.mkdir(parents=True, exist_ok=True)\n'
+                'binary.write_text("executable")\n')
             for index in range(old_runs):
                 old = root / f"config/nightly/run-2000010{index}T000000Z"
                 old.mkdir(parents=True)
@@ -33,9 +44,11 @@ class Nightly(unittest.TestCase):
                         + f'else echo pull >> "$GIT_CALLS"; exit {pull_status}; fi'),
                 "cargo": 'echo "cargo $*" >> "$CALLS"',
                 "just": ('echo "$*" >> "$CALLS"; if [ "$1" = replay-chain ]; then '
-                         + 'test "$CYRUS_REPLAY_BINARY" = "$CARGO_TARGET_DIR/debug/cyrus" || exit 93; '
+                         + 'test "$CYRUS_REPLAY_BINARY" = "$CYRUS_CONFIG_DIR/cyrus" || exit 93; '
                          + 'mkdir -p "$CYRUS_CONFIG_DIR/cache"; echo process > "$CYRUS_CONFIG_DIR/process.log"; '
                          + 'echo generated > "$CYRUS_CONFIG_DIR/cache/generated"; '
+                         + 'mkdir -p "$CYRUS_CONFIG_DIR/segments/example"; '
+                         + 'echo segment > "$CYRUS_CONFIG_DIR/segments/example/process.log"; '
                          + ('awk \'BEGIN {for(i=0;i<10000;i++) print ""; print "exit 99"}\' > "$SOURCE_SCRIPT"; '
                             if replace_script else '') + f'exit {status}; fi'),
                 "gh": 'echo "$*" >> "$CALLS"; cat "$7" > "$REPORT"',
@@ -59,12 +72,14 @@ class Nightly(unittest.TestCase):
             retained = sorted((root / "config/nightly").glob("run-*"))
             self.assertLessEqual(len(retained), 2)
             self.assertTrue(all(path.suffix == ".log" for run in retained for path in run.iterdir()))
+            if "replay-chain\n" in calls:
+                self.assertTrue((retained[-1] / "segments-example-process.log").exists())
             return result.returncode, calls, report
 
     def test_success_runs_chain_and_posts_result(self):
         status, calls, report = self.run_nightly(0)
         self.assertEqual(status, 0)
-        self.assertTrue(calls.startswith("cargo build -p cyrus --bin cyrus\nreplay-chain\n"))
+        self.assertTrue(calls.startswith("artifact test-commit\nreplay-chain\n"))
         self.assertIn("passed end to end", report)
 
     def test_failure_posts_once_and_preserves_exit_status(self):
@@ -73,6 +88,13 @@ class Nightly(unittest.TestCase):
         self.assertEqual(calls.count("issue comment 322"), 1)
         self.assertIn("Commit: test-commit. Exit status: 7.", report)
         self.assertLessEqual(len(report.splitlines()), 15)
+
+    def test_missing_main_artifact_is_reported_without_falling_back_to_a_build(self):
+        status, calls, report = self.run_nightly(0, artifact_status=9)
+        self.assertEqual(status, 9)
+        self.assertNotIn("replay-chain", calls)
+        self.assertNotIn("cargo", calls)
+        self.assertIn("Exit status: 9.", report)
 
     def test_pull_failure_does_not_run_old_chain(self):
         status, calls, report = self.run_nightly(0, pull_status=8)
@@ -87,10 +109,10 @@ class Nightly(unittest.TestCase):
         self.assertNotIn("replay-chain", calls)
         self.assertIn("Exit status: 65.", report)
 
-    def test_missing_hauler_restores_setup(self):
+    def test_artifact_replay_needs_no_hauler_or_local_build(self):
         status, calls, _ = self.run_nightly(0, hauler=False)
         self.assertEqual(status, 0)
-        self.assertTrue(calls.startswith("setup\ncargo build -p cyrus --bin cyrus\nreplay-chain\n"))
+        self.assertTrue(calls.startswith("artifact test-commit\nreplay-chain\n"))
 
     def test_next_run_reports_interruption_before_replaying(self):
         status, calls, report = self.run_nightly(0, interrupted=True)
@@ -102,12 +124,40 @@ class Nightly(unittest.TestCase):
     def test_source_replacement_during_run_does_not_change_execution(self):
         status, calls, report = self.run_nightly(0, replace_script=True)
         self.assertEqual(status, 0)
-        self.assertTrue(calls.startswith("cargo build -p cyrus --bin cyrus\nreplay-chain\n"))
+        self.assertTrue(calls.startswith("artifact test-commit\nreplay-chain\n"))
         self.assertIn("passed end to end", report)
 
     def test_retains_only_last_two_runs_and_discards_generated_state(self):
         status, _, _ = self.run_nightly(0, old_runs=4)
         self.assertEqual(status, 0)
+
+
+class MainArtifact(unittest.TestCase):
+    def test_download_selects_exact_main_commit_and_extracts_only_the_binary(self):
+        spec = importlib.util.spec_from_file_location("main_artifact", Path(__file__).with_name("download-main-replay.py"))
+        artifact = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(artifact)
+        runs = [{"headSha": "newer", "databaseId": 9}, {"headSha": "wanted", "databaseId": 7}]
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "runtime/cyrus"
+            def download(command, check):
+                self.assertIn("7", command)
+                self.assertIn(artifact.ARTIFACT, command)
+                package = Path(command[-1]) / "cyrus-x86_64-unknown-linux-gnu.tar.gz"
+                with tarfile.open(package, "w:gz") as archive:
+                    for name in ["./cyrus", "../unwanted"]:
+                        info = tarfile.TarInfo(name)
+                        info.size = 4
+                        archive.addfile(info, io.BytesIO(b"test"))
+            with mock.patch.object(artifact.subprocess, "check_output", return_value=json.dumps(runs)), \
+                    mock.patch.object(artifact.subprocess, "run", side_effect=download):
+                artifact.download("wanted", destination)
+                self.assertEqual(destination.read_bytes(), b"test")
+                self.assertTrue(os.access(destination, os.X_OK))
+                self.assertEqual(list(destination.parent.iterdir()), [destination])
+                with self.assertRaisesRegex(ValueError, "no artifact workflow run"):
+                    artifact.download("missing", destination)
+                self.assertEqual(destination.read_bytes(), b"test")
 
 
 if __name__ == "__main__":
