@@ -14,7 +14,7 @@ gitignored $CYRUS_MAGIC/tools/original-state.py and $CYRUS_MAGIC/helpers/orig_wr
 commit them). Output is one JSON object per sampled frame in --out, then a summary on stdout.
 
     CYRUS_MAGIC=~/workspaces/cyrus/magic python3 dev/scripts/original-fight.py \\
-        --name soup4 --out run.jsonl --max-frames 1500 --cheat neversaydie
+        --name soup4 --out run.jsonl --max-frames 1500 --cheat drevil
 
 The summary reports taps, hits, damage per hit, each tap's outcome (hit, parried or countered by the
 opponent's reaction group, or missed) split by whether the opponent was idle or busy, and the
@@ -154,7 +154,11 @@ class Sampler:
 
 
 def wait_frames(sampler, frames, timeout, until=None):
-    """Block until the original's frame counter has advanced `frames`, or `until(sample)` holds."""
+    """Block on the original's frame counter, never on wall time alone.
+
+    Without `until`, return once the counter has advanced `frames`. With `until`, return the first
+    sample for which it holds; a positive `frames` is then a budget and raises TimeoutError once
+    that many frames pass without it holding. `timeout` is only a wall-clock safety limit."""
     deadline = time.monotonic() + timeout
     start = None
     while time.monotonic() < deadline:
@@ -162,9 +166,12 @@ def wait_frames(sampler, frames, timeout, until=None):
         counter = (raw or {}).get("counters", {}).get("mainloop_frame") if raw else None
         if counter is not None:
             start = counter if start is None else start
-            if until and sample and until(sample):
-                return sample
-            if counter - start >= frames and not until:
+            if until:
+                if sample and until(sample):
+                    return sample
+                if frames and counter - start >= frames:
+                    raise TimeoutError(f"condition not met within {frames} frames")
+            elif counter - start >= frames:
                 return sample
         time.sleep(0.05)
     raise TimeoutError(f"no {frames} frames within {timeout} s (counter start {start})")
@@ -225,12 +232,14 @@ def main():
         wait_frames(sampler, 6, 120)
         key("key", "--delay", "200", "F12")
         wait_frames(sampler, 4, 120)
-    phase("console done; waiting for the opponent")
-    first = wait_frames(sampler, 0, 900, until=lambda s: s["rg"] is not None)
+    # `getmapmarker 32` replaces the world with the finale staging scene: the opponent leaves the
+    # actor list and returns only when the scripted approach ends (measured: ~2,100 frames later).
+    # Placing the player before that moves nothing, so wait for the unload and then the return.
+    phase("console done; waiting for the staging scene to unload the opponent")
+    wait_frames(sampler, 1500, 900, until=lambda s: s["rg"] is None)
+    phase("waiting for the scripted approach to bring the opponent back")
+    first = wait_frames(sampler, 0, 1800, until=lambda s: s["rg"] is not None)
     emit({"ev": "opponent-present", **first})
-    phase("placing the player")
-    sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
-    wait_frames(sampler, 8, 120)
     phase("setting the cheat")
     if args.cheat:
         key("key", "--delay", "200", "F12")
@@ -248,9 +257,14 @@ def main():
     key("keyup", "s")
     drawn = wait_frames(sampler, 0, 1500, until=lambda s: s["pg"] == ARMED_IDLE_GROUP)
     emit({"ev": "sword-drawn", **drawn})
-    phase("sword drawn; waiting for the opponent to engage")
-    engaged = wait_frames(sampler, 0, 3000, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
-    emit({"ev": "engaged", **engaged})
+    phase("sword drawn; waiting for the opponent to engage by himself")
+    try:
+        engaged = wait_frames(sampler, 900, 900, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
+    except TimeoutError:
+        phase("not engaged; placing the player beside him")
+        sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
+        wait_frames(sampler, 8, 120)
+        engaged = wait_frames(sampler, 1500, 1500, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
     phase("engaged; fighting")
     fight_start = engaged["frame"]
     while True:

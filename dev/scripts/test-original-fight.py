@@ -69,5 +69,33 @@ class DriverLogic(unittest.TestCase):
         self.assertEqual(summary["end"]["reason"], "frame-budget")
 
 
+class FakeSampler:
+    """Yields one scripted (view, raw) pair per get(): frame counter and opponent group."""
+
+    def __init__(self, steps):
+        self.steps = list(steps)
+
+    def get(self):
+        frame, group = self.steps.pop(0) if len(self.steps) > 1 else self.steps[0]
+        raw = {"counters": {"mainloop_frame": frame}}
+        return (sample(rg=group) | {"frame": frame}), raw
+
+
+class FrameWaits(unittest.TestCase):
+    def test_a_condition_met_inside_the_frame_budget_returns_that_sample(self):
+        sampler = FakeSampler([(10, None), (20, None), (30, 102)])
+        result = fight.wait_frames(sampler, 100, 5, until=lambda s: s["rg"] == 102)
+        self.assertEqual(result["frame"], 30)
+
+    def test_the_frame_budget_not_wall_time_ends_a_wait_with_a_condition(self):
+        sampler = FakeSampler([(10, None), (60, None), (130, None)])
+        with self.assertRaisesRegex(TimeoutError, "within 100 frames"):
+            fight.wait_frames(sampler, 100, 5, until=lambda s: s["rg"] == 102)
+
+    def test_a_plain_frame_wait_returns_once_the_counter_has_advanced(self):
+        sampler = FakeSampler([(10, 8), (14, 8), (21, 8)])
+        self.assertEqual(fight.wait_frames(sampler, 10, 5)["frame"], 21)
+
+
 if __name__ == '__main__':
     unittest.main()
