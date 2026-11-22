@@ -391,6 +391,15 @@ picker opens if discovery also fails. Headless, world-listing and export
 commands report contextual command-line errors instead of opening a window.
 Linux Browse uses a desktop file portal or Zenity; manual input needs neither.
 
+For native replay or save-import probes, pass the canonical extracted install with
+`--install`, rather than an original-game writable run copy. Native asset scans
+do not follow asset symlinks in those run copies. Resolving the install root alone
+does not make its linked subdirectories part of the native asset catalog. In a
+container, mount the canonical package read-only and bind the retained
+`SAVEGAME` directory read-only over its `Redguard/SAVEGAME` path. Keep
+`CYRUS_CONFIG_DIR` on a separate writable host mount. Explicit install paths do
+not require an `install.json` in that per-run config directory.
+
 Native game and viewer share path resolution: `--install` and `REDGUARD_DIR` also accept a GOG
 library folder, the outer Redguard package folder, or any directory inside the
 install. Resolution checks enclosing directories and known `Redguard`,
