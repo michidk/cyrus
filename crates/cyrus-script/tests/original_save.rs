@@ -92,8 +92,7 @@ fn assert_slot(
         subset.heading,
         subset.health,
     );
-    let mut world = ScriptWorld::prepare(&scripts, 1)?;
-    world.prepare_spatial()?;
+    let mut world = initialized_import_world(&scripts, &prepared, &name)?;
     let hud = ScriptHud::default();
     hud.configure(hud_data, &Preferences::new(NoWrites));
     let message = subset.apply(&mut world, &hud)?;
@@ -117,6 +116,7 @@ fn assert_slot(
         i32::from(expected.3)
     );
     assert_flags_and_inventory(&saved.game, hud_data, &world, &hud)?;
+    assert_support_owner(&saved.game, &world, player)?;
     assert_eq!(std::fs::read(path.join("SAVEGAME.SAV"))?, before);
     // Wrong-world candidates reject before changing initialized state.
     let subset = OriginalSaveSubset::decode(&saved.game, hud_data, &scripts.definition)?;
@@ -132,6 +132,78 @@ fn assert_slot(
     assert_eq!(world.flags(), before);
     assert_saved_fields(&saved.game, hud_data, &scripts)?;
     Ok(())
+}
+
+fn assert_support_owner(
+    game: &SaveGame,
+    world: &ScriptWorld,
+    player: cyrus_script::script::ScriptActorId,
+) -> Result<()> {
+    let section = game
+        .sections
+        .iter()
+        .find(|section| section.name == *b"SMOB")
+        .unwrap();
+    let objects = rgpre::import::savegame::parse_save_objects(&section.data)?;
+    let saved_player = objects
+        .iter()
+        .find(|object| object.object_id == -2)
+        .unwrap();
+    let identity = i32::from_le_bytes(saved_player.body[468..472].try_into()?);
+    let support = world.model_support(player)?.actor;
+    if identity == -1 {
+        assert!(support.is_none());
+        return Ok(());
+    }
+    let support = support.context("imported player support missing")?;
+    let saved = objects
+        .iter()
+        .find(|object| object.object_id == identity)
+        .unwrap();
+    assert_eq!(
+        world.actors()[support.index]
+            .runtime_identifier
+            .map(i32::from),
+        Some(identity)
+    );
+    assert_eq!(world.spatial(support)?.local.position, saved.position_q8());
+    let angles = std::array::from_fn(|axis| {
+        i32::from_le_bytes(
+            saved.body[288 + axis * 4..292 + axis * 4]
+                .try_into()
+                .unwrap(),
+        )
+    });
+    assert_eq!(world.spatial(support)?.local.angles, angles);
+    assert_eq!(
+        world.model_presentation(support)?.unwrap().pose.position,
+        saved.position_q8()
+    );
+    Ok(())
+}
+
+fn initialized_import_world(
+    scripts: &Scripts,
+    prepared: &std::collections::BTreeMap<String, Vec<u8>>,
+    name: &str,
+) -> Result<ScriptWorld> {
+    let animations: cyrus_assets::animation::Animations =
+        serde_json::from_slice(&prepared[&format!("{name}.animations")])?;
+    let player: cyrus_assets::player::SceneData =
+        serde_json::from_slice(&prepared[&format!("{name}.player")])?;
+    let collision = player
+        .collision
+        .context("installed original import: collision missing")?;
+    let models = cyrus_collision::actor_models::ActorModelCollision::new(
+        collision
+            .actor_models
+            .as_ref()
+            .context("installed original import: actor models missing")?,
+    )?;
+    let mut world = ScriptWorld::prepare(scripts, 1)?;
+    world.prepare_spatial()?;
+    world.prepare_model_resources(&animations, &models)?;
+    Ok(world)
 }
 
 fn assert_saved_fields(game: &SaveGame, hud_data: &HudAsset, scripts: &Scripts) -> Result<()> {

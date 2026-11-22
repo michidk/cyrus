@@ -3669,9 +3669,80 @@ impl ScriptWorld {
         );
         self.restore_flags(flags)?;
         self.place_selected_player(position, heading)?;
+        self.set_model_support(player, super::ModelSupportOwners::default())?;
         let index = self.resolve(player)?;
         self.actors[index].attributes[Attribute::Health] = health;
         self.globals.selected_health = Some(super::SelectedHealthState::initialized(health));
+        Ok(())
+    }
+
+    /// Restore an unanimated support owner before publishing an imported candidate.
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn restore_original_support(
+        &mut self,
+        saved: super::original_save::OriginalSupport,
+    ) -> Result<()> {
+        let mut matches = self
+            .actors
+            .iter()
+            .enumerate()
+            .filter(|(_, actor)| actor.runtime_identifier == Some(saved.identity));
+        let (index, actor) = matches
+            .next()
+            .context("original save support: initialized actor missing")?;
+        anyhow::ensure!(
+            matches.next().is_none(),
+            "original save support: ambiguous initialized actor {}",
+            saved.identity
+        );
+        let normalize = |name: &str| name.trim_end_matches(".3").to_ascii_uppercase();
+        anyhow::ensure!(
+            actor
+                .model
+                .static_model
+                .as_deref()
+                .is_some_and(|name| normalize(name) == normalize(&saved.model))
+                && actor.model.static_radius.is_some(),
+            "original save support {}: initialized static model does not match {}",
+            saved.identity,
+            saved.model
+        );
+        let id = self.id(index)?;
+        let spatial = self.spatial(id)?;
+        anyhow::ensure!(
+            spatial.parent.is_none() && spatial.link.is_none(),
+            "original save support {}: native attachment unsupported",
+            saved.identity
+        );
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("original save support: spatial state missing")?
+            .actor_mut(index)?;
+        spatial.relocate(saved.position, (saved.angles[1] & 2047) as u16);
+        spatial.local.angles = saved.angles;
+        spatial.local.matrix = cyrus_world::transform::Matrix::orientation(
+            saved.angles.map(|angle| (angle & 2047) as u16),
+        );
+        spatial.angle_history = saved.angles;
+        spatial.effective = Some(spatial.local);
+        spatial.previous_effective_position = Some(saved.position);
+        spatial.previous_effective_angles = Some(saved.angles);
+        let pose = spatial.local;
+        self.actors[index].attributes = saved.attributes.into();
+        self.actors[index].model.show_static(pose);
+        self.map_updates.register(index)?;
+        let player = self
+            .selected_player()
+            .context("original save support: player missing")?;
+        self.flush_map_updates(self.spatial(player)?.local.position, false)?;
+        self.set_model_support(
+            player,
+            super::ModelSupportOwners {
+                actor: Some(id),
+                static_placement: None,
+            },
+        )?;
         Ok(())
     }
 

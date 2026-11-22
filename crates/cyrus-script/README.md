@@ -147,8 +147,12 @@ The opt-in `original-save-import` feature exposes
 `script::original_save::OriginalSaveSubset`, which validates original player world, Q8
 position, heading, health, inventory and global flags before applying them to an
 initialized off-live candidate. This is a limited import API, not full session
-restoration. The native Load adapter uses it with a matching native-session baseline. Its returned message
-explicitly lists unsupported script/task continuations, other actors, animation,
+restoration. The native Load adapter uses it with a matching native-session baseline. It
+restores the saved static supporting actor's pose and attributes, binds it by its
+initialized runtime identity, and refreshes its collision model and regional cell.
+Missing or mismatched models and scripted, animated or chained supports reject
+with context. Its returned message explicitly lists unsupported script/task
+continuations, remaining actors, animation,
 controller state, clock and journal. Transformed players and flag states outside
 the verified unlatched encoding reject with context. Hosts discard the candidate
 on error and must display the limitation before publication. Import also refreshes the native displayed-health owner to match the imported health byte.
