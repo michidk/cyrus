@@ -372,6 +372,26 @@ class Checkpoints(unittest.TestCase):
             self.assertLessEqual(math.dist(control.position, [4000, 0, 8000]), 600)
             self.assertTrue(control.commands)
 
+    def test_waiting_for_a_viewer_runs_idle_updates_while_the_world_is_held(self):
+        # A held replay world never opens a viewer by itself; the wait must advance it.
+        class Held(replay.Control):
+            def __init__(self):
+                self.updates = 0
+
+            def request(self, command):
+                assert command["type"] == "state"
+                return {"state": "InGame", "scene_ready": True, "examine": {"open": self.updates >= 3},
+                        "scripts": {"world": 1, "failed": 0, "ordinary_updates": self.updates}}
+
+            def response(self, command):
+                assert command["type"] == "schedule_input"
+                self.updates += 1
+                return {"ok": True, "result": {}}
+
+        with self.assertRaisesRegex(AssertionError, "world 1 timeout"):
+            Held().ready(1, timeout=0.2, examine_open=True)
+        self.assertTrue(Held().ready(1, examine_open=True, advance=True)["examine"]["open"])
+
     def test_turns_hold_the_key_for_at_least_two_updates(self):
         # The game ignores a one-update turn, so a heading error of 48-127 never closed.
         class Control:

@@ -288,7 +288,7 @@ def play_modal(control, modal):
     that first frame may be ignored. Retry bounded presses after release frames.
     Ordinary updates remain paused until the viewer has closed and keys release.
     """
-    before = control.ready(modal["world"], examine_open=True)
+    before = control.ready(modal["world"], examine_open=True, advance=True)
     deadline = time.monotonic() + 600
 
     def frames():
@@ -555,7 +555,10 @@ class Control:
         assert response["ok"], response.get("error", response)
         return response["result"]
 
-    def ready(self, world=None, timeout=600, examine_open=False, min_updates=1):
+    def ready(self, world=None, timeout=600, examine_open=False, min_updates=1, advance=False):
+        """Wait for a playable state. A replay holds the world between scheduled boundaries, so a
+        wait for something the game must still do (a viewer opening) sets `advance` to run idle
+        updates; an open viewer pauses ordinary updates and refuses the schedule, which is fine."""
         deadline = time.monotonic() + timeout
         while True:
             state = self.request({"type": "state"})
@@ -566,6 +569,10 @@ class Control:
                     and (examine_open is None or state["examine"]["open"] == examine_open)):
                 return state
             assert time.monotonic() < deadline, f"world {world} timeout: {scripts}"
+            if advance and not state["examine"]["open"]:
+                response = self.response({"type": "schedule_input", "events": [
+                    {"after_updates": 0}, {"after_updates": 5}]})
+                assert response["ok"] or "ordinary input boundary" in response.get("error", ""), response
             time.sleep(0.05)
 
 
