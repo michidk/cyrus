@@ -16937,6 +16937,75 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
 }
 
 #[test]
+fn the_selected_players_armed_circling_continues_through_the_player_probe() {
+    use cyrus_script::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, ScriptActorSource, ScriptHud,
+        ScriptInputs,
+    };
+    let (_, mut world, mut data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let definition = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap();
+    definition["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "group_index":94,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]
+        }));
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    world.begin_player_movement_update(player, 0).unwrap();
+    world
+        .bind_animation(player, &data, AnimationGroup::from_index(94))
+        .unwrap();
+    let hud = ScriptHud::default();
+    // The circle continuation used the nonplayer step admission, which refuses the selected
+    // player ("selected-player destination collision unavailable") and ended the world.
+    world
+        .continue_ordinary_motion(
+            player,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                locomotion_geometry: Some(LocomotionGeometry {
+                    ground: OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 4,
+                        sidedness: false,
+                    },
+                    environment: ObstacleEnvironment {
+                        selected_player: Some(player),
+                        auto_grab: false,
+                        item_system_ready: false,
+                        shell_execution: false,
+                        ticks: 1,
+                    },
+                }),
+                ..Default::default()
+            },
+            None,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+}
+
+#[test]
 fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
     use cyrus_script::script::{
         OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
