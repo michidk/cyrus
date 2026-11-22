@@ -642,11 +642,12 @@ impl ScriptWorld {
                         sounds,
                     )?;
                 }
-                // Forward running, sidesteps, armed circling and the slide groups retain animation-owned
+                // Forward running, backward walking, sidesteps, armed circling and slide groups retain animation-owned
                 // movement: after release, and after the slope response clears the sliding byte
                 // while a slide group is still playing (preservation PR #310, player.md "Slide-group
                 // movement"). The called flags prevent a second step
-                // after controller movement.
+                // after controller movement. Backward walking also bridges alignment
+                // arrival thresholds (preservation engine/SOUP.md, "Movement continuation").
                 let player_continuation = selected_role
                     && self.actors[id.index]
                         .animation
@@ -656,6 +657,8 @@ impl ScriptWorld {
                             matches!(
                                 group,
                                 AnimationGroup::RUN
+                                    | AnimationGroup::WALK_BACKWARD
+                                    | AnimationGroup::WALK_BACKWARD_TORCH
                                     | AnimationGroup::STEP_LEFT
                                     | AnimationGroup::STEP_LEFT_TORCH
                                     | AnimationGroup::STEP_RIGHT

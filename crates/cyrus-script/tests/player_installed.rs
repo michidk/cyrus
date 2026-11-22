@@ -448,11 +448,20 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
 
 #[test]
 fn installed_belltowr_lineup_crosses_the_sidestep_dead_zone() -> Result<()> {
+    belltowr_lineup_releases_control([546406, -16384, 587325])
+}
+
+#[test]
+fn installed_belltowr_lineup_crosses_the_backward_dead_zone() -> Result<()> {
+    belltowr_lineup_releases_control([543809, -16384, 588965])
+}
+
+fn belltowr_lineup_releases_control(start: [i32; 3]) -> Result<()> {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
     let Ok(install) = GameInstall::locate(Some(&root)) else {
-        eprintln!("skipped: no install (BELLTOWR sidestep alignment)");
+        eprintln!("skipped: no install (BELLTOWR alignment)");
         return Ok(());
     };
     let (mut app, codes, _assets) = prepare_player_app_for(&install, "BELLTOWR")?;
@@ -465,7 +474,6 @@ fn installed_belltowr_lineup_crosses_the_sidestep_dead_zone() -> Result<()> {
     for _ in 0..8 {
         app.update();
     }
-    let start = [546406, -16384, 587325];
     app.world_mut()
         .resource_mut::<ScriptActors>()
         .current

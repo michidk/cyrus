@@ -924,10 +924,10 @@ impl ScriptWorld {
                         Continuation::Walk => StepDirection::Forward,
                         _ => StepDirection::Backward,
                     };
-                    // Only sidesteps use the player support probe; walking keeps the ordinary
-                    // admission so running jumps still leave ledges.
+                    // Player backward walking and sidesteps use the player support probe.
+                    // Forward continuation keeps ordinary admission so running jumps leave ledges.
                     let clear = if selected_player == Some(id)
-                        && matches!(step, Continuation::Sidestep(_))
+                        && matches!(step, Continuation::WalkBackward | Continuation::Sidestep(_))
                     {
                         self.player_step_clear(id, geometry.ground, direction)?
                     } else {
