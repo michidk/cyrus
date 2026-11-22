@@ -126,7 +126,7 @@ def validate_steps(steps, depth=0):
             assert set(step) == {"fight"}, "fight cannot contain commands"
             fight = step["fight"]
             assert {"world", "opponent", "target_health", "max_seconds"} <= set(fight) <= {"world", "opponent", "target_health", "max_seconds", "policy", "player"}, "incomplete fight"
-            assert fight.get("policy", "taps") in ("taps", "busy-gate"), "unknown fight policy"
+            assert fight.get("policy", "taps") in ("taps", "busy-gate", "idle-tap"), "unknown fight policy"
             assert isinstance(fight.get("player", "CYRUS"), str), "invalid fight player name"
             assert isinstance(fight["opponent"], str) and type(fight["target_health"]) is int and fight["target_health"] >= 0, "invalid fight target"
             assert math.isfinite(fight["max_seconds"]) and 0 < fight["max_seconds"] <= 600, "invalid fight clock bound"
@@ -522,6 +522,24 @@ def strike_decision(yaw, bearing, distance, opponent_busy):
     return ("strike",) if opponent_busy else ("wait",)
 
 
+def idle_tap_decision(yaw, bearing, distance, player_group):
+    """One step of the idle-only policy: face and close in as the busy gate does, then tap the
+    attack key only while the player stands in its armed idle animation, so a tap never lands on
+    a move already in progress and chains into the next combo step (measured: re-tapping mid-move
+    turned a first strike into a second and third strike)."""
+    turn = facing_turn(yaw, bearing)
+    if turn:
+        return ("turn", *turn)
+    if distance > STRIKE_RANGE_Q8:
+        return ("approach",)
+    return ("strike",) if player_group == ARMED_IDLE_GROUP else ("wait",)
+
+
+# The player's armed idle animation group (installed animation data; the same number the
+# opponent uses for his own idle).
+ARMED_IDLE_GROUP = 8
+
+
 def fight_view(control, name, index, player_index):
     """Opponent health and busy state, and the geometry the policy needs, from two actor reads."""
     opponent = control.request({"type": "scripts", "offset": index, "limit": 1})
@@ -538,6 +556,7 @@ def fight_view(control, name, index, player_index):
         "bearing": bearing_to(origin, target),
         "distance": math.hypot(target[0] - origin[0], target[2] - origin[2]),
         "busy": combat["action"] != -1 or combat["decision"]["attack_state"] != 0,
+        "player_group": player["animation"]["current_group"],
     }
 
 
@@ -572,7 +591,7 @@ def fight(control, spec):
             previous = health
         return state, health
 
-    if spec.get("policy", "taps") == "busy-gate":
+    if spec.get("policy", "taps") in ("busy-gate", "idle-tap"):
         player_index = actor_index(control, spec.get("player", "CYRUS"))
         steps = 0
         while True:
@@ -589,7 +608,10 @@ def fight(control, spec):
             view = fight_view(control, spec["opponent"], index, player_index)
             if view is None:
                 continue
-            decision = strike_decision(view["yaw"], view["bearing"], view["distance"], view["busy"])
+            if spec.get("policy") == "idle-tap":
+                decision = idle_tap_decision(view["yaw"], view["bearing"], view["distance"], view["player_group"])
+            else:
+                decision = strike_decision(view["yaw"], view["bearing"], view["distance"], view["busy"])
             if decision[0] == "turn":
                 _, key, held = decision
                 events = [{"after_updates": 0, "key": key, "action": "press"},

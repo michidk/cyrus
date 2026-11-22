@@ -732,6 +732,18 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual(fixture["steps"][1]["setup"]["cheat"], {"drevil": 1})
         self.assertEqual(fixture["steps"][3]["setup"]["cheat"], {"drevil": 0})
 
+    def test_idle_tap_policy_strikes_only_from_the_armed_idle_animation(self):
+        self.assertEqual(replay.ARMED_IDLE_GROUP, 8)
+        self.assertEqual(replay.idle_tap_decision(1024, 1024, 20000, 8), ("strike",))
+        # Mid-move or mid-reaction groups wait, so a tap cannot chain into the next combo step.
+        for group in (91, 92, 102, 103, 104, 117):
+            self.assertEqual(replay.idle_tap_decision(1024, 1024, 20000, group), ("wait",))
+        self.assertEqual(replay.idle_tap_decision(1024, 1024, 40000, 8)[0], "approach")
+        self.assertEqual(replay.idle_tap_decision(1024, 1500, 20000, 8)[0], "turn")
+        replay.validate({"version": 1, "step_micros": 40000, "entry_scene": "EXTPALAC", "steps": [
+            {"fight": {"world": 30, "opponent": "RICHTONP", "target_health": 0, "max_seconds": 5, "policy": "idle-tap"}},
+            {"checkpoint": self.expected}]})
+
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):
             replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})
