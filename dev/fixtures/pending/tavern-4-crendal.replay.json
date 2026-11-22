@@ -31,6 +31,16 @@
       }
     },
     {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 312
+        }
+      ]
+    },
+    {
       "repeat": {
         "until": {
           "flags": {
@@ -40,7 +50,7 @@
             }
           }
         },
-        "limit": 100,
+        "limit": 6,
         "steps": [
           {
             "input": [
@@ -50,12 +60,12 @@
                 "action": "press"
               },
               {
-                "after_updates": 1,
+                "after_updates": 5,
                 "key": "ControlLeft",
                 "action": "release"
               },
               {
-                "after_updates": 12
+                "after_updates": 6
               }
             ]
           }
@@ -210,7 +220,7 @@
             -251904,
             10585000
           ],
-          "tolerance": 60000
+          "tolerance": 8192
         }
       }
     }
