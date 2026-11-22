@@ -600,3 +600,128 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     assert_eq!(globals.lockout(), Some(0));
     assert_eq!(globals.highlighted_choice(), Some(""));
 }
+
+#[test]
+fn a_node_never_joins_an_actor_that_a_stand_in_entity_already_holds() {
+    let instances = json!([{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"model_name":"test","model_mode":2,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[0,0,0],"angles":[0,0,0]}, {"object_id":1,"actor":"ACTOR","object_type":2,"active":0,"model_name":"test","model_mode":2,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[0,0,0],"angles":[0,0,0]}]);
+    let mut script_json = json!({
+        "version":30,"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+        "definition":{"functions":[
+            {"name":"NullFunction","param_count":0,"kind":"function"},
+            {"name":"PushAnimation","param_count":2,"kind":"task"}
+        ],"flags":[],"references":[],"attributes":[]},
+        "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":2,
+            "namespace":"ACTOR","instance_variables":[[],[]],"location_offsets":[],"attributes":vec![0u8; 256],"native_hook":null,
+            "program":{"version":4,"entry":0,"steps":{
+                "0":{"next":1,"operation":{"type":"call","call":{
+                    "function_id":1,"kind":"task","target":{"type":"me"},
+                    "function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]
+                }}},
+                "1":{"next":2,"operation":{"type":"end","target":0}}
+            }}
+        }},
+        "instances": instances,
+        "unsupported":{}
+    });
+    script_json["weapons"] = json!({});
+    script_json["combat_clank_effects"] = json!([null, null]);
+    script_json["combat_defenses"] = json!([]);
+    let mut scripts: Scripts = serde_json::from_value(script_json).unwrap();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data: Animations = serde_json::from_value(json!({
+        "version":2,"world":17,"sections":{},"unsupported":{},
+        "models":{"TEST":{"radius":17.0,"base_positions":[[0,0,0]],"base_normals":[],"faces":[],"encoding":"animated_i32",
+            "positions":[[[0,0,0]],[[0,1,0]]],"normals":[[],[]]}},
+        "metadata":{"markers": [], "walk_node_maps": [], "script_content_id":scripts.content_id,
+        "mpob_objects":[{"script_name":"ACTOR","object_type":1,"is_static":2,"model_name":"test"},{"script_name":"ACTOR","object_type":2,"is_static":2,"model_name":"test"}],"actors":[{
+            "script_name":"ACTOR","model_load_path":"animation_table",
+            "raan_entries":[{"file_path":"TEST.3D","frame_count":2}],
+            "animation_groups":[
+                {"group_index":9,"anim_type":0,"anim_id":1,"commands":[{"opcode":4,"sound_param":200,"volume_shift":0},{"opcode":1}]},
+                {"group_index":1,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+                {"group_index":7,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":0},{"opcode":1}]}
+            ]
+        }]}
+    })).unwrap();
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_asset::<Scripts>()
+        .init_asset::<Animations>()
+        .add_message::<AnimationTick>()
+        .add_message::<SoundCue>()
+        .add_plugins((AnimationPlugin, ScriptPlugin));
+    let script_handle = app
+        .world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .add(scripts);
+    let animation_handle = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(data);
+    let prepared = || PreparedWorld {
+        requested_name: "TEST".into(),
+        world: Some(17),
+        scripts: script_handle.clone(),
+        animations: animation_handle.clone(),
+        player_path: "test.player".into(),
+        scene_path: "test.glb".into(),
+        environment_path: "test.environment".into(),
+    };
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .begin_new_game();
+    app.insert_resource(prepared());
+    app.insert_resource(AnimationRequest(animation_handle.clone()));
+    app.update();
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .globals()
+            .lockout(),
+        Some(0)
+    );
+    let id = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .unwrap()
+        .id(0)
+        .unwrap();
+    // A headless session restore binds a stand-in entity per actor; the scene loaded after it
+    // offers a node for the same actor.
+    let stand_in = app
+        .world_mut()
+        .spawn((
+            Name::new("B_000_ACTOR"),
+            ScriptBinding {
+                actor: id,
+                source: animation_handle.clone(),
+            },
+        ))
+        .id();
+    let root = app
+        .world_mut()
+        .spawn(ScriptScene::new(animation_handle.clone()))
+        .id();
+    let node = app
+        .world_mut()
+        .spawn((Name::new("B_000_ACTOR"), ChildOf(root)))
+        .id();
+    app.update();
+    assert!(app.world().get::<ScriptBinding>(stand_in).is_some());
+    assert!(
+        app.world().get::<ScriptBinding>(node).is_none(),
+        "the scene node must not take a second binding for the actor"
+    );
+    let holders = app
+        .world_mut()
+        .query::<&ScriptBinding>()
+        .iter(app.world())
+        .filter(|binding| binding.actor == id && binding.source == animation_handle)
+        .count();
+    assert_eq!(holders, 1, "one binding per actor and source");
+}

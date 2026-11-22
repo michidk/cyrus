@@ -414,8 +414,30 @@ fn prepare_install(
 mod install_tests {
     use super::*;
 
+    const TEST: &str =
+        "install_tests::default_preparation_keeps_book_launch_without_starting_a_world";
+    const CHILD: &str = "CYRUS_PREPARATION_TEST_CHILD";
+
+    /// The configuration root is chosen once per process and `cargo test` pins it to the shared
+    /// checkout `game-config/`, which a container run can leave unwritable. The preparation
+    /// writes the startup cache there, so the test runs itself in a child process whose
+    /// configuration root is a private temporary directory.
     #[test]
     fn default_preparation_keeps_book_launch_without_starting_a_world() {
+        if std::env::var_os(CHILD).is_none() {
+            let root =
+                std::env::temp_dir().join(format!("cyrus-preparation-{}", std::process::id()));
+            std::fs::create_dir_all(&root).unwrap();
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture"])
+                .env(CHILD, "1")
+                .env(cyrus_config::ENV_VAR, &root)
+                .status()
+                .unwrap();
+            let _ = std::fs::remove_dir_all(&root);
+            assert!(status.success(), "preparation test child failed: {status}");
+            return;
+        }
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
             eprintln!("skipped: no install (default book launch)");
             return;

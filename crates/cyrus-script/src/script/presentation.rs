@@ -58,6 +58,7 @@ pub(super) fn bind_scene(
     children: Query<&Children>,
     names: Query<&Name>,
     nodes: Query<&Name, (Without<ScriptBinding>, Without<SceneActorBound>)>,
+    bound: Query<&ScriptBinding>,
     hierarchy_changes: HierarchyChanges,
     mut candidates: Local<SceneCandidates>,
     role_bindings: RoleBindings,
@@ -65,6 +66,7 @@ pub(super) fn bind_scene(
     if !hierarchy_changes.is_empty() {
         candidates.roots.clear();
     }
+    let mut claimed = bevy::platform::collections::HashSet::new();
     let RoleBindings { players, roles } = role_bindings;
     let Some(world) = &actors.current else {
         for (entity, _) in &roles {
@@ -155,10 +157,21 @@ pub(super) fn bind_scene(
                 continue;
             };
             if actor.placement().is_some() && actor.name() == actor_name {
+                let id = super::ScriptActorId { generation, index };
+                // A session restored without a rendered scene binds stand-in entities for its
+                // actors, and the scene loaded afterwards offers a node for each; one actor has
+                // one binding, so a node never joins an actor another entity already holds.
+                if !claimed.insert((generation, index))
+                    || bound
+                        .iter()
+                        .any(|binding| binding.actor == id && binding.source == scene.source)
+                {
+                    continue;
+                }
                 commands.entity(entity).insert((
                     SceneActorBound,
                     ScriptBinding {
-                        actor: super::ScriptActorId { generation, index },
+                        actor: id,
                         source: scene.source.clone(),
                     },
                 ));
