@@ -41,7 +41,7 @@ reference for its fields. Command groups:
 | Render inspection | `bound_light_image`, `rendered_actor`, `effect_geometry` |
 
 `state` reports the app state (`Loading`, `Menu`, `InGame`), `scene_ready`, the
-player, fidelity, the clock, and per-screen detail such as `menu`, `console`,
+player, fidelity, the clock, the engine random generator state (`random_state`, read-only, for replay determinism checks), and per-screen detail such as `menu`, `console`,
 `cheats`, `sounds` (`{playing, paused}`), `textures` and `flycam` (position and
 `[x,y,z,w]` rotation).
 
