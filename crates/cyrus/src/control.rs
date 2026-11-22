@@ -34,15 +34,20 @@ pub struct ReplayStep(pub std::time::Duration);
 ///
 /// Without this the headless frame loop keeps feeding fixed steps between control requests, so
 /// the number of ordinary updates, and with it every random draw and AI decision, depended on
-/// how long the driver took to answer. Loading, menus and a world's first two updates run
-/// freely so readiness checks can complete. Faithful gameplay is unchanged: the gate exists
+/// how long the driver took to answer. Loading, menus, a world's first two updates and an open
+/// examine view run freely so readiness checks can complete: the view closes on real-time ticks,
+/// which a frozen step never delivers, and it pauses ordinary updates itself. Faithful gameplay is unchanged: the gate exists
 /// only when a replay step is configured.
 pub(crate) fn replay_gate_open(
     schedule_pending: bool,
+    modal_suspended: bool,
     in_game: bool,
     world_updates: Option<u64>,
 ) -> bool {
-    schedule_pending || !in_game || world_updates.is_none_or(|updates| updates < 2)
+    schedule_pending
+        || modal_suspended
+        || !in_game
+        || world_updates.is_none_or(|updates| updates < 2)
 }
 
 fn replay_gate(
@@ -50,6 +55,7 @@ fn replay_gate(
     scheduler: Res<input_schedule::InputScheduler>,
     state: Option<Res<State<cyrus_game::AppState>>>,
     actors: Option<Res<cyrus_script::script::ScriptActors>>,
+    examine: Option<Res<cyrus_script::item_viewer::ExamineScreen>>,
     mut strategy: ResMut<bevy::time::TimeUpdateStrategy>,
     mut hold: ResMut<cyrus_script::script::ReplayHold>,
 ) {
@@ -58,7 +64,8 @@ fn replay_gate(
         .as_deref()
         .and_then(|actors| actors.current.as_ref())
         .map(|world| world.ordinary_updates());
-    let open = replay_gate_open(scheduler.pending(), in_game, updates);
+    let modal = examine.is_some_and(|screen| screen.suspended());
+    let open = replay_gate_open(scheduler.pending(), modal, in_game, updates);
     *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
         step.0
     } else {
@@ -981,14 +988,16 @@ mod tests {
     fn replay_world_pauses_unless_a_schedule_owns_the_frame_loop() {
         use super::replay_gate_open;
         // An in-game world past its first two updates is held between requests.
-        assert!(!replay_gate_open(false, true, Some(2)));
-        assert!(!replay_gate_open(false, true, Some(900)));
+        assert!(!replay_gate_open(false, false, true, Some(2)));
+        assert!(!replay_gate_open(false, false, true, Some(900)));
         // A pending scheduled boundary, startup, loading and a fresh world keep time running.
-        assert!(replay_gate_open(true, true, Some(900)));
-        assert!(replay_gate_open(false, false, Some(900)));
-        assert!(replay_gate_open(false, true, Some(1)));
-        assert!(replay_gate_open(false, true, Some(0)));
-        assert!(replay_gate_open(false, true, None));
+        assert!(replay_gate_open(true, false, true, Some(900)));
+        assert!(replay_gate_open(false, false, false, Some(900)));
+        assert!(replay_gate_open(false, false, true, Some(1)));
+        assert!(replay_gate_open(false, false, true, Some(0)));
+        assert!(replay_gate_open(false, false, true, None));
+        // An open examine view closes on real-time ticks, so a held world must keep time running.
+        assert!(replay_gate_open(false, true, true, Some(900)));
     }
 
     use super::*;
