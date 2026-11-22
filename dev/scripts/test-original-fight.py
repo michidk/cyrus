@@ -35,7 +35,9 @@ class DriverLogic(unittest.TestCase):
         for gate in ("busy", "any"):
             self.assertFalse(fight.ready_to_tap(sample(pg=102, rg=102), gate))
             self.assertFalse(fight.ready_to_tap(sample(pg=0, rg=102), gate))
-            self.assertFalse(fight.ready_to_tap(sample(drawn=0, rg=102), gate))
+            # The reader's drawn byte stays 0 in the armed idle group, so it must not gate a tap.
+        self.assertTrue(fight.ready_to_tap(sample(drawn=0, rg=102), "busy"))
+        self.assertTrue(fight.ready_to_tap(sample(drawn=0, rg=8), "any"))
         self.assertTrue(fight.ready_to_tap(sample(rg=102), "busy"))
         self.assertTrue(fight.ready_to_tap(sample(rg=8), "any"))
 

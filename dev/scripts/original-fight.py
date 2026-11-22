@@ -83,9 +83,10 @@ def opponent_busy(sample):
 
 
 def ready_to_tap(sample, gate):
-    """A tap goes only from the player's armed idle animation, with the sword drawn; the `busy`
+    """A tap goes only from the player's armed idle animation (group 8 is reached only with the
+    sword drawn; the reader's drawn byte stays 0 there, so the group is the signal); the `busy`
     gate additionally waits for the opponent to be mid-action (an idle opponent counters)."""
-    if sample["pg"] != ARMED_IDLE_GROUP or not sample["pdrawn"]:
+    if sample["pg"] != ARMED_IDLE_GROUP:
         return False
     return opponent_busy(sample) if gate == "busy" else True
 
@@ -208,6 +209,10 @@ def main():
         out.write(json.dumps(row) + "\n")
         out.flush()
 
+    def phase(label):
+        sample = sampler.get()[0] if "sampler" in locals() else None
+        print(f"[{time.strftime('%H:%M:%S')}] {label} frame={sample and sample['frame']}", flush=True)
+
     sampler = Sampler(name, args.interval)
     # The player exists before Richton does; wait for a live world, then drive the console.
     wait_frames(sampler, 0, 360, until=lambda s: s["frame"] > 0 and s["ph"])
@@ -220,10 +225,13 @@ def main():
         wait_frames(sampler, 6, 120)
         key("key", "--delay", "200", "F12")
         wait_frames(sampler, 4, 120)
+    phase("console done; waiting for the opponent")
     first = wait_frames(sampler, 0, 900, until=lambda s: s["rg"] is not None)
     emit({"ev": "opponent-present", **first})
+    phase("placing the player")
     sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
     wait_frames(sampler, 8, 120)
+    phase("setting the cheat")
     if args.cheat:
         key("key", "--delay", "200", "F12")
         wait_frames(sampler, 4, 120)
@@ -232,13 +240,18 @@ def main():
         wait_frames(sampler, 6, 120)
         key("key", "--delay", "200", "F12")
         wait_frames(sampler, 4, 120)
+    # A one-frame press is missed at a few frames per second: hold the key for about 1.5 s of wall
+    # time (measured: held `s` reaches the armed idle group, a one-frame press never does).
+    phase("drawing the sword")
     key("keydown", "s")
-    wait_frames(sampler, 1, 60)
+    time.sleep(1.5)
     key("keyup", "s")
-    drawn = wait_frames(sampler, 0, 1500, until=lambda s: s["pg"] == ARMED_IDLE_GROUP and s["pdrawn"])
+    drawn = wait_frames(sampler, 0, 1500, until=lambda s: s["pg"] == ARMED_IDLE_GROUP)
     emit({"ev": "sword-drawn", **drawn})
+    phase("sword drawn; waiting for the opponent to engage")
     engaged = wait_frames(sampler, 0, 3000, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
     emit({"ev": "engaged", **engaged})
+    phase("engaged; fighting")
     fight_start = engaged["frame"]
     while True:
         sample, raw = sampler.get()
@@ -255,7 +268,7 @@ def main():
             continue
         sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")  # stay in range, facing him
         key("keydown", "Control_L")
-        wait_frames(sampler, 1, 60)
+        time.sleep(0.6)  # held for a few frames: a one-frame press is missed at this frame rate
         key("keyup", "Control_L")
         after = []
         mark = sampler.get()[0]
