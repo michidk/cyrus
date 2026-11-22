@@ -5,17 +5,64 @@
   "step_micros": 100000,
   "steps": [
     {
-      "steer": {
-        "world": 1,
-        "position_q8": [
-          9600000,
-          -98304,
-          10230000
-        ],
-        "tolerance": 8000,
-        "limit": 240,
-        "gait": "run"
-      }
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 200
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 200
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 200
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 200
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 200
+        }
+      ]
+    },
+    {
+      "input": [
+        {
+          "after_updates": 0
+        },
+        {
+          "after_updates": 90
+        }
+      ]
     },
     {
       "repeat": {
@@ -27,7 +74,7 @@
             }
           }
         },
-        "limit": 100,
+        "limit": 14,
         "steps": [
           {
             "input": [
@@ -204,11 +251,11 @@
         },
         "position_q8": {
           "value": [
-            9600000,
+            9567232,
             -98304,
-            10230000
+            10321664
           ],
-          "tolerance": 100000
+          "tolerance": 4096
         }
       }
     },
