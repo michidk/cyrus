@@ -212,6 +212,13 @@ leaving the actor list) inside a game-clock bound, and prints its progress every
 The runner always uses the fixture's fixed step, so the fight does not depend on wall
 clock. **Not covered:** the final kill and the ending movie.
 
+A captured session is stamped with the digest of the executable that captured it
+(`<name>.session.build`), and the runner refuses to resume it in a different build, naming both.
+The session format itself is one version across builds (players' saves load in later builds); the
+stamp only keeps replay A/B and bisection runs from mixing two builds' behaviour. Builds before
+065dbf8ae also fail any restored session over a scene entry, so capture and resume with a build
+that has it.
+
 `ReplayHold` stops ordinary gameplay between scheduled boundaries. Replays use
 simulated game ticks rather than the host clock. Under `--replay-step-micros` the
 world advances only while a scheduled input boundary owns the frame loop and while no speech
