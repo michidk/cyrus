@@ -40,17 +40,19 @@ pub struct ReplayStep(pub std::time::Duration);
 /// only when a replay step is configured.
 pub(crate) fn replay_gate_open(
     schedule_pending: bool,
+    modal_suspended: bool,
     in_game: bool,
     world_updates: Option<u64>,
     dialogue_pending: bool,
 ) -> bool {
     let started = world_updates.is_some_and(|updates| updates >= 2);
-    // A speech line still exporting or loading holds the world even inside a schedule, so it
-    // becomes ready at the same update in every run.
-    if dialogue_pending && in_game && started {
+    // A speech line still exporting or loading holds a started world even inside a schedule, so
+    // it becomes ready at the same update in every run. An open examine view still wins: it
+    // closes on real-time ticks.
+    if dialogue_pending && in_game && started && !modal_suspended {
         return false;
     }
-    schedule_pending || !in_game || !started
+    schedule_pending || modal_suspended || !in_game || !started
 }
 
 fn replay_gate(
@@ -69,7 +71,13 @@ fn replay_gate(
         .and_then(|actors| actors.current.as_ref())
         .map(|world| world.ordinary_updates());
     let modal = examine.is_some_and(|screen| screen.suspended());
-    let open = replay_gate_open(scheduler.pending(), modal, in_game, updates);
+    let open = replay_gate_open(
+        scheduler.pending(),
+        modal,
+        in_game,
+        updates,
+        dialogue.is_some_and(|pending| pending.0),
+    );
     *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
         step.0
     } else {
@@ -992,20 +1000,23 @@ mod tests {
     fn replay_world_pauses_unless_a_schedule_owns_the_frame_loop() {
         use super::replay_gate_open;
         // An in-game world past its first two updates is held between requests.
-        assert!(!replay_gate_open(false, true, Some(2), false));
-        assert!(!replay_gate_open(false, true, Some(900), false));
+        assert!(!replay_gate_open(false, false, true, Some(2), false));
+        assert!(!replay_gate_open(false, false, true, Some(900), false));
         // A pending scheduled boundary, startup, loading and a fresh world keep time running.
-        assert!(replay_gate_open(true, true, Some(900), false));
-        assert!(replay_gate_open(false, false, Some(900), false));
-        assert!(replay_gate_open(false, true, Some(1), false));
-        assert!(replay_gate_open(false, true, Some(0), false));
-        assert!(replay_gate_open(false, true, None, false));
+        assert!(replay_gate_open(true, false, true, Some(900), false));
+        assert!(replay_gate_open(false, false, false, Some(900), false));
+        assert!(replay_gate_open(false, false, true, Some(1), false));
+        assert!(replay_gate_open(false, false, true, Some(0), false));
+        assert!(replay_gate_open(false, false, true, None, false));
+        // An open examine view closes on real-time ticks, so a held world must keep time running.
+        assert!(replay_gate_open(false, true, true, Some(900), false));
         // A speech line still exporting or loading holds a started world even inside a schedule,
-        // but never loading, a fresh world or a world-less game.
-        assert!(!replay_gate_open(true, true, Some(900), true));
-        assert!(replay_gate_open(true, false, Some(900), true));
-        assert!(replay_gate_open(true, true, Some(1), true));
-        assert!(replay_gate_open(true, true, None, true));
+        // but never loading, a fresh world, a world-less game or an open examine view.
+        assert!(!replay_gate_open(true, false, true, Some(900), true));
+        assert!(replay_gate_open(true, false, false, Some(900), true));
+        assert!(replay_gate_open(true, false, true, Some(1), true));
+        assert!(replay_gate_open(true, false, true, None, true));
+        assert!(replay_gate_open(true, true, true, Some(900), true));
     }
 
     use super::*;
