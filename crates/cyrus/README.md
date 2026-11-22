@@ -151,7 +151,8 @@ chapters require their predecessors through `replay-chain`.
 The runner retains a source-verified executable through the native recovery
 build and cargo-hauler. `CYRUS_REPLAY_BINARY` selects an already
 built executable. Each config directory has an exclusive run lock and retains
-process logs and checkpoint observations.
+process logs and checkpoint observations. Default discovery shares one generated
+asset cache across its sequential launches, avoiding one world export per segment.
 
 Staged segments in `dev/fixtures/segments/` start from a session that a chapter or an
 earlier segment captured with a `capture_session` step (the tavern segments resume

@@ -104,6 +104,9 @@ class Checkpoints(unittest.TestCase):
             self.assertIn("chapters/000-opening.replay.json", sessions[0])
             self.assertIn("config/segments/bell-monocle", sessions[1])
             self.assertNotIn("000-opening", sessions[1])
+            shared = root / "config/cache"
+            self.assertEqual((root / "config/chapters/cache").resolve(), shared)
+            self.assertEqual((root / "config/segments/bell-monocle/cache").resolve(), shared)
 
     def test_admitted_segment_fails_with_named_flag_and_segment_when_corrupted(self):
         path = Path(__file__).resolve().parents[1] / "fixtures/segments/sword-walk-extpalac.replay.json"
