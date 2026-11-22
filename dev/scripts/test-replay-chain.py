@@ -718,6 +718,20 @@ class Checkpoints(unittest.TestCase):
                 {"fight": {"world": 30, "opponent": "R", "target_health": 0, "max_seconds": 5, "policy": "nope"}},
                 {"checkpoint": self.expected}]})
 
+    def test_the_final_kill_fixture_encodes_the_busy_gate_fight_and_the_ending_wait(self):
+        root = Path(__file__).resolve().parents[1] / "fixtures"
+        path = next(p for folder in ("pending", "segments") for p in (root / folder).glob("ending-3-*.replay.json"))
+        fixture = json.loads(path.read_text())
+        replay.validate(fixture)
+        self.assertEqual(fixture["resume_session"], "extpalac-entry")
+        kinds = [next(iter(step)) for step in fixture["steps"]]
+        self.assertEqual(kinds, ["checkpoint", "setup", "fight", "setup", "await_ending"])
+        fight = fixture["steps"][2]["fight"]
+        self.assertEqual((fight["policy"], fight["opponent"], fight["target_health"]), ("busy-gate", "RICHTONP", 0))
+        # The cheat that suppresses damage must be reset before the ending, and was set before the fight.
+        self.assertEqual(fixture["steps"][1]["setup"]["cheat"], {"drevil": 1})
+        self.assertEqual(fixture["steps"][3]["setup"]["cheat"], {"drevil": 0})
+
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):
             replay.fight(self.fight_control([15]), {"world": 30, "opponent": "RICHTONP", "target_health": 200, "max_seconds": 60})

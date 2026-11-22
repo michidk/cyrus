@@ -210,6 +210,20 @@ leaving the actor list) inside a game-clock bound, and prints its progress every
 The runner always uses the fixture's fixed step, so the fight does not depend on wall
 clock. **Not covered:** the final kill and the ending movie.
 
+Replays are deterministic per game tick, not per host clock. Under `--replay-step-micros` the
+world advances only while a scheduled input boundary owns the frame loop and while no speech
+line is still exporting or loading (speech readiness would otherwise depend on wall-clock load
+time). The clock's BIOS tick is also derived from the simulated time instead of the host's
+absolute elapsed time. **Verified** in the original's documented behaviour: combat pacing and
+timed taunts read the cached raw BIOS-clock sample, interpreted as signed (preservation
+`engine/SOUP.md`, decision-entry and taunt sections), and the FPS measurement counts windows of
+18 BIOS ticks (`engine/player.md`, "FPS-derived frame scale"). The original's tick has an
+arbitrary hardware origin, so its phase against the updates is not specified behaviour; the
+host tick that normal play keeps is the faithful source, and the simulated tick exists only
+so two replays of one capture make the same pacing decisions. **Unknown:** whether any other
+host-dependent input remains; compare `state.random_state` per update between two fresh
+processes (see crates/cyrus-control/README.md) to check.
+
 `topic` steps select an exact displayed dialogue label using balanced arrow and
 Control input, waiting with idle updates while speech runs. `face` steps turn
 through ground or rope controls and observe the resulting heading. Both have
