@@ -8,12 +8,12 @@
       "steer": {
         "world": 1,
         "position_q8": [
-          9442470,
-          -71168,
-          9966606
+          9612800,
+          -98304,
+          10280960
         ],
-        "tolerance": 8000,
-        "limit": 300,
+        "tolerance": 8192,
+        "limit": 240,
         "gait": "run"
       }
     },
@@ -21,63 +21,40 @@
       "steer": {
         "world": 1,
         "position_q8": [
-          9448369,
-          -71424,
-          9945287
+          9275648,
+          -98304,
+          10280960
         ],
-        "tolerance": 6000,
-        "limit": 160,
+        "tolerance": 8192,
+        "limit": 240,
         "gait": "run"
       }
     },
     {
-      "repeat": {
-        "until": {
-          "flags": {
-            "talking": {
-              "value": 1,
-              "latched": false
-            }
-          }
-        },
-        "limit": 40,
-        "steps": [
-          {
-            "input": [
-              {
-                "after_updates": 0,
-                "key": "ControlLeft",
-                "action": "press"
-              },
-              {
-                "after_updates": 5,
-                "key": "ControlLeft",
-                "action": "release"
-              },
-              {
-                "after_updates": 6
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "topic": {
+      "steer": {
         "world": 1,
-        "text": "BYE",
-        "limit": 1500
+        "position_q8": [
+          9275648,
+          -98304,
+          10240000
+        ],
+        "tolerance": 8192,
+        "limit": 240,
+        "gait": "run"
       }
     },
     {
-      "input": [
-        {
-          "after_updates": 0
-        },
-        {
-          "after_updates": 60
-        }
-      ]
+      "steer": {
+        "world": 1,
+        "position_q8": [
+          9275648,
+          -53760,
+          10049024
+        ],
+        "tolerance": 6144,
+        "limit": 160,
+        "gait": "run"
+      }
     },
     {
       "checkpoint": {
@@ -217,16 +194,16 @@
         },
         "position_q8": {
           "value": [
-            9448369,
-            -71424,
-            9945287
+            9275648,
+            -53760,
+            10049024
           ],
-          "tolerance": 100000
+          "tolerance": 10240
         }
       }
     },
     {
-      "capture_session": "harbour-brennan"
+      "capture_session": "harbour-d"
     }
   ]
 }
