@@ -55,28 +55,38 @@ pub(crate) fn replay_gate_open(
     schedule_pending || modal_suspended || !in_game || !started
 }
 
+/// What the replay gate reads about the game, grouped because Bevy systems take at most 16
+/// parameters and clippy limits a function to seven.
+#[derive(bevy::ecs::system::SystemParam)]
+struct ReplayGateInputs<'w> {
+    state: Option<Res<'w, State<cyrus_game::AppState>>>,
+    actors: Option<Res<'w, cyrus_script::script::ScriptActors>>,
+    examine: Option<Res<'w, cyrus_script::item_viewer::ExamineScreen>>,
+    dialogue: Option<Res<'w, cyrus_audio::sound::ReplayDialoguePending>>,
+}
+
 fn replay_gate(
     step: Res<ReplayStep>,
     scheduler: Res<input_schedule::InputScheduler>,
-    state: Option<Res<State<cyrus_game::AppState>>>,
-    actors: Option<Res<cyrus_script::script::ScriptActors>>,
-    examine: Option<Res<cyrus_script::item_viewer::ExamineScreen>>,
+    inputs: ReplayGateInputs,
     mut strategy: ResMut<bevy::time::TimeUpdateStrategy>,
     mut hold: ResMut<cyrus_script::script::ReplayHold>,
-    dialogue: Option<Res<cyrus_audio::sound::ReplayDialoguePending>>,
 ) {
-    let in_game = state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame);
-    let updates = actors
+    let in_game = inputs
+        .state
+        .is_some_and(|state| *state.get() == cyrus_game::AppState::InGame);
+    let updates = inputs
+        .actors
         .as_deref()
         .and_then(|actors| actors.current.as_ref())
         .map(|world| world.ordinary_updates());
-    let modal = examine.is_some_and(|screen| screen.suspended());
+    let modal = inputs.examine.is_some_and(|screen| screen.suspended());
     let open = replay_gate_open(
         scheduler.pending(),
         modal,
         in_game,
         updates,
-        dialogue.is_some_and(|pending| pending.0),
+        inputs.dialogue.is_some_and(|pending| pending.0),
     );
     *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
         step.0
