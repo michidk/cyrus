@@ -10,13 +10,19 @@ loading and menu transitions. Presentation receipts include the active world-ent
 
 The native Load list also discovers original `SAVEGAME.NNN` slots under the
 selected install's `SAVEGAME` directory through published rgpre parsing. These
-entries are read-only. From a native session already in the saved world, Load
-imports position, heading, health, inventory and global flags into an off-live
-replacement, then publishes through the shared session boundary. The book shows
+entries are read-only. Load imports position, heading, health, inventory and
+global flags into an off-live replacement, then publishes through the shared
+session boundary. From the startup menu or a different world, the host first
+loads the saved world's native baseline through the normal loading presentation,
+then applies the same supported subset and static support restoration. The slot
+bytes remain retained throughout preparation; the previous world's checkpoint
+is never used as the destination baseline. The book shows
 an explicit limited-import message. Original script/task continuations, other
-actors, animation, controller state, clock and journal are unsupported; native
-baseline owners remain in use. Startup and different-world imports reject with
-slot/world context, as do transformed players and unsupported flag encodings.
+actors except the static supporting actor, animation, controller state, clock
+and journal are unsupported; native
+baseline owners remain in use. This preliminary world entry is not rolled back
+if subset preparation fails; errors retain slot/world context. Transformed
+players and unsupported flag encodings reject explicitly.
 Original entries cannot overwrite or delete an installed save. Install-backed listing tests
 use `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard` and report a skip when absent.
 
