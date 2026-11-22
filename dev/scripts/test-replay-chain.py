@@ -841,13 +841,49 @@ class Checkpoints(unittest.TestCase):
             {"fight": {"world": 30, "opponent": "RICHTONP", "target_health": 0, "max_seconds": 5, "policy": "idle-tap"}},
             {"checkpoint": self.expected}]})
 
-    def test_a_fight_chunk_ends_cleanly_at_its_clock_bound_instead_of_failing(self):
+    def test_a_fight_chunk_ends_at_its_bound_only_if_it_made_progress(self):
         spec = {"world": 30, "opponent": "RICHTONP", "target_health": 0, "max_seconds": 1,
                 "policy": "busy-gate", "chunk": True, "draw": False}
         replay.validate({"version": 1, "step_micros": 40000, "entry_scene": "EXTPALAC", "steps": [
             {"fight": spec}, {"checkpoint": self.expected}]})
+
+        class Chunk:
+            """A fight whose opponent loses `loss` health once and whose clock runs past the bound."""
+
+            def __init__(self, loss, player_health=100):
+                self.health, self.loss, self.player, self.updates = 250, loss, player_health, 0
+
+            def ready(self, world):
+                return self.request({"type": "state"})
+
+            def request(self, command):
+                kind = command["type"]
+                if kind == "schedule_input":
+                    self.updates += 1
+                    if self.updates == 1:
+                        self.health -= self.loss
+                    return {}
+                if kind == "scripts":
+                    actors = [{"name": "CYRUS", "attributes": [0, 0, 0, 100], "animation": {"current_group": 8},
+                               "spatial": {"effective": {"position": [0, 0, 0], "angles": [0, 0, 0]}},
+                               "control": {"combat": {"action": -1, "decision": {"attack_state": 0}}}},
+                              {"name": "RICHTONP", "attributes": [0, 0, 0, self.health], "animation": {"current_group": 8},
+                               "spatial": {"effective": {"position": [0, 0, 100000], "angles": [0, 0, 0]}},
+                               "control": {"combat": {"action": 0, "decision": {"attack_state": 0}}}}]
+                    start = command.get("offset", 0)
+                    return {"actors": actors[start:start + command.get("limit", 64)], "total": 2,
+                            "player_position_q8": [0, 0, 0]}
+                return {"scripts": {"failed": 0}, "hud": {"health": self.player, "heading": 0},
+                        "clock": {"game_seconds": self.updates * 0.6}}
+
+        replay.fight(Chunk(loss=20), spec)  # progress: the chunk ends cleanly
+        with self.assertRaisesRegex(AssertionError, "no progress"):
+            replay.fight(Chunk(loss=0), spec)
+        with self.assertRaisesRegex(AssertionError, "player died"):
+            replay.fight(Chunk(loss=20, player_health=0), spec)
+        # A final (non-chunk) fight past its bound is still a failure.
         with self.assertRaisesRegex(AssertionError, "fight clock bound"):
-            replay.fight(self.fight_control([]), {**spec, "policy": "taps", "chunk": False})
+            replay.fight(Chunk(loss=20), {**spec, "chunk": False})
 
     def test_fight_rejects_partial_hits_and_a_missed_target(self):
         with self.assertRaisesRegex(AssertionError, "not whole hits"):

@@ -572,6 +572,7 @@ def fight(control, spec):
     start = state["clock"]["game_seconds"]
     index = actor_index(control, spec["opponent"])
     previous = opponent_health(control, spec["opponent"], index)
+    initial_health = previous
     # A chunk resumed from a captured fight already holds the sword; pressing the key again would
     # sheathe it.
     if spec.get("draw", True):
@@ -594,6 +595,8 @@ def fight(control, spec):
             assert loss > 0 and loss % 10 == 0, f"opponent health {previous} -> {health}: not whole hits"
             hits.append(loss)
             previous = health
+            print(f"fight hit {loss} -> opponent {health} at clock {state['clock']['game_seconds']:.3f} "
+                  f"update {state['scripts'].get('ordinary_updates')}", flush=True)
         return state, health
 
     if spec.get("policy", "taps") in ("busy-gate", "idle-tap"):
@@ -606,8 +609,12 @@ def fight(control, spec):
                 print(f"fight reached {health} after hits {hits}", flush=True)
                 return
             if spec.get("chunk") and state["clock"]["game_seconds"] - start >= spec["max_seconds"]:
-                # A resumable chunk ends cleanly at its bound so the caller can capture the session.
-                print(f"fight chunk ended at {health} after hits {hits}", flush=True)
+                # A resumable chunk ends at its bound so the caller can capture the session, but it
+                # must have made progress: the opponent's health fell and the player is alive.
+                assert health < initial_health, (
+                    f"fight chunk made no progress: opponent {initial_health} -> {health}, hits {hits}")
+                assert state["hud"]["health"] > 0, "player died during the fight chunk"
+                print(f"fight chunk ended at {health} (from {initial_health}) after hits {hits}", flush=True)
                 return
             assert state["clock"]["game_seconds"] - start <= spec["max_seconds"], (
                 f"fight clock bound: opponent {health}, hits {hits}")
