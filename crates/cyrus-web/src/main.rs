@@ -113,7 +113,7 @@ fn run(options: cyrus_app::launch::GameOptions) {
         cyrus_startup::StartupPresentation::default()
     };
     app.insert_resource(presentation);
-    app.add_plugins(cyrus_debug::DebugMenuPlugin);
+    app.add_plugins(cyrus_debug::DebugMenuPlugin { flycam: true });
     cheats::register(&mut app);
     debug::register(&mut app);
     if let Some(scene) = scene {

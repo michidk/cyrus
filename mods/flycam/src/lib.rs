@@ -1,6 +1,8 @@
 //! Insert toggles a free first-person camera. While it flies, the host suppresses player input.
 //! With "Leave the player where the camera stops" on, landing moves the player there, so scripts
-//! and triggers near that spot run as if the player had walked there.
+//! and triggers near that spot run as if the player had walked there. With "Move the player with
+//! the camera" on, the player follows the camera's map position every frame, so the view window,
+//! triggers and scripts follow the flight.
 use cyrus_mod_sdk::{Cx, Input, Key, Mod, Persist, Pose, Quat, Vec3};
 
 /// Radians per pixel of mouse motion.
@@ -47,6 +49,14 @@ impl Fly {
     /// Optional player destination when this flight ends; ordinary ground support settles it.
     fn landing(&self, carry_player: bool) -> Option<Vec3> {
         carry_player.then(|| self.position.scene_to_map())
+    }
+
+    /// Where a following player goes this frame: under the camera, at the player's own height,
+    /// which ordinary ground support then lifts onto higher ground. Keeping the height avoids a long
+    /// fall (and its damage) when the flight ends high above the ground.
+    fn follow(&self, player: Vec3) -> Vec3 {
+        let camera = self.position.scene_to_map();
+        Vec3::new(camera.x, player.y, camera.z)
     }
 
     fn pose(&self) -> Pose {
@@ -98,7 +108,9 @@ impl Mod for Flycam {
         if cx.input.tapped(Key::INSERT) {
             fly = match fly {
                 Some(fly) => {
-                    if let Some(position) = fly.landing(cx.settings.flag("carry_player")) {
+                    // A following player is already under the camera.
+                    let carry = cx.settings.flag("carry_player") && !cx.settings.flag("follow");
+                    if let Some(position) = fly.landing(carry) {
                         cx.player.place(position, cx.player.heading());
                     }
                     None
@@ -110,6 +122,11 @@ impl Mod for Flycam {
             // Scene units per second; the manifest's `speed` setting.
             fly.steer(&cx.input, cx.settings.number("speed"));
             cx.camera.drive(fly.pose());
+            if cx.settings.flag("follow")
+                && let Some(player) = cx.player.position()
+            {
+                cx.player.place(fly.follow(player), cx.player.heading());
+            }
         }
         cx.memory.save(FLIGHT, fly.as_ref());
     }
@@ -120,6 +137,17 @@ cyrus_mod_sdk::export_mod!(Flycam);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_following_player_keeps_its_height_under_the_camera() {
+        let fly = Fly {
+            position: Vec3::new(-2000.0, 50.0, -1200.0),
+            yaw: 0.0,
+            pitch: 0.0,
+        };
+        let target = fly.follow(Vec3::new(1.0, -744.0, 3.0));
+        assert_eq!((target.x, target.y, target.z), (40000.0, -744.0, 41535.996));
+    }
 
     #[test]
     fn leaving_flight_only_carries_the_player_when_enabled() {

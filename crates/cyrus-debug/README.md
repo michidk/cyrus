@@ -20,7 +20,7 @@ or the browser DOM; hosts fill its world list. Headless launches do not register
 ## Usage
 
 ```rust
-app.add_plugins(cyrus_debug::DebugMenuPlugin);
+app.add_plugins(cyrus_debug::DebugMenuPlugin { flycam: true });
 ```
 
 Hosts populate `WorldPicker.options` with WORLD.INI IDs and map names and

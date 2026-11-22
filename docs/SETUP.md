@@ -768,10 +768,11 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press Backtick and use **Flycam** to switch between inspection
-and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
-an inspection pose. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
-and Space/Shift moves up/down; its speed is adjustable in the same menu.
+The built-in inspection camera is driven by the control port's `flycam` command, by `--view` or
+`?view=` (which start it enabled), and in the browser build by **Flycam** in the Backtick menu. The
+native Backtick menu shows its controls only while it is enabled, since the native fly camera is the
+bundled mod. In the book menu it moves the book scene's camera instead. WASD moves it, right mouse looks,
+and Space/Shift moves up/down.
 Backtick world selections show the installed loading screen while the destination assets load, then recreate the player at marker zero and return to the gameplay camera.
 Free flight is also available as the bundled [flycam mod](../mods/README.md), toggled with Insert.
 Changing fidelity does not detach the view. Detaching preserves the player

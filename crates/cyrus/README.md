@@ -62,7 +62,7 @@ Native-only flags:
 
 `--new-game`, `--movie` and `--load-slot` imply `--skip-startup` and conflict
 with `--scene` and with each other. Flags override `settings.toml` in the config
-directory. Backtick opens the world picker, flycam and fidelity controls; F12
+directory. Backtick opens the world picker, fidelity controls and the Mods window (the fly camera is the bundled `flycam` mod); F12
 opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for controls.
 
 ## Modules

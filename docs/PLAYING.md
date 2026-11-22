@@ -74,15 +74,13 @@ book entries is not implemented. Key rebinding starts when you activate a
 Controls entry; Escape cancels capture. Browser or desktop shortcuts may
 intercept function keys before the game receives them.
 
-Backtick's **Flycam** is an inspection tool. With it enabled, WASD moves the camera,
-right mouse looks, and Space/Shift moves vertically. Disable Flycam to return to
-player control. Its camera movement does not move Cyrus through the world. In the book menu it
-flies the book's camera. While it is enabled it owns the keyboard, in the world and in the menu, unless
-the **Pass input to game** option beside it is ticked.
-The bundled `flycam` mod (see [bundled mods](../mods/README.md)) is a second fly camera: activate it in the
-Mods window under Backtick, then Insert toggles it; its speed is a setting of the mod. With its
-**Leave the player where the camera stops** setting on, leaving the camera drops the player there, so
-scripts and objects near that spot react as if the player had walked there.
+The fly camera is the bundled `flycam` mod (see [bundled mods](../mods/README.md)): activate it in the
+Mods window under Backtick, then Insert toggles it; WASD flies, the mouse looks and Space/Left Shift
+move up and down, and its speed is a setting of the mod. With **Move the player with the camera** on,
+the player follows the camera while it flies, so the world around the camera loads and scripts and
+triggers react as if the player were there. With **Leave the player where the camera stops** on,
+leaving the camera drops the player there instead. The browser build, which loads no mods, keeps a
+built-in **Flycam** in the Backtick menu; it also flies the book's camera in the menu.
 
 The controls and the follow camera are always the original's; Modern mode changes only how the
 game looks. A gamepad works in every mode: in the world its stick or D-pad and face buttons are the

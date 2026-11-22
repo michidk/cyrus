@@ -132,3 +132,35 @@ fn wasm_flycam_exit_respects_carry_player_without_mutability_panics() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires CYRUS_FLYCAM_WASM built for wasm32-wasip2"]
+fn wasm_flycam_follow_places_the_player_under_the_camera_each_frame() {
+    let mut app = guest_app("flycam", "CYRUS_FLYCAM_WASM");
+    {
+        let world = app.world_mut();
+        let mut host = world.query::<(&mut Memory, &mut Settings, &mut Player)>();
+        let (mut memory, mut settings, mut player) = host.single_mut(world).unwrap();
+        memory.values.insert(
+            "flycam/flight".into(),
+            vec![-2000.0, 50.0, -1200.0, 0.0, 0.0],
+        );
+        settings.flags.insert("flycam/follow".into(), true);
+        player.position = vec![1.0, -744.0, 3.0];
+        player.heading = 513;
+    }
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        app.update();
+        let mut player = app.world_mut().query::<&Player>();
+        if let Some(placement) = player.single(app.world()).unwrap().placement {
+            assert_eq!(placement, ([40000.0, -744.0, 41535.996], 513));
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "flycam did not place a following player"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}

@@ -268,7 +268,10 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         cyrus_render::fog::ModernLightingPlugin,
     ));
     if !args.headless {
-        app.add_plugins((cyrus_debug::DebugMenuPlugin, cyrus_mods::ModsPlugin));
+        app.add_plugins((
+            cyrus_debug::DebugMenuPlugin { flycam: false },
+            cyrus_mods::ModsPlugin,
+        ));
     }
     #[cfg(feature = "raytracing")]
     {

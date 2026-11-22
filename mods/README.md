@@ -20,7 +20,7 @@ build does not load mods. Mods start disabled: open the Backtick menu and select
 | `sway` | Wasm | Palm trees and plants sway in the wind, with Faithful or Modern lighting |
 | `blood` | Wasm | A brief spray of red particles when the player or an actor loses health |
 | `modern-water` | Wasm + shader | Crossing waves, ripples, shore foam and wet sand (reflections are the base game's Modern Lighting) |
-| `flycam` | Wasm | Insert toggles a free camera: WASD, Space/Left Shift, mouse look; the player stays put unless "Leave the player where the camera stops" is on, which drops the player at the camera (a high drop can hurt) |
+| `flycam` | Wasm | Insert toggles a free camera: WASD, Space/Left Shift, mouse look; optionally the player follows the camera ("Move the player with the camera") or lands where it stops ("Leave the player where the camera stops", a high drop can hurt) |
 | `movement` | Wasm | Camera-relative third-person movement with mouse orbit and optional camera follow |
 | `actor-info` | Wasm | Small read-only example: nearest visible actor, its health and distance |
 | `serpent` | manifest | Restores the cut sea serpent in the Spine (its script sits behind an endless `End`) |

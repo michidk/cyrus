@@ -1,6 +1,6 @@
 name = "Fly camera"
-description = "Insert toggles a free first-person camera: WASD to fly, Space/Left Shift up and down, mouse to look. Optionally leaves the player where the camera stops."
-version = "0.2.0"
+description = "Insert toggles a free first-person camera: WASD to fly, Space/Left Shift up and down, mouse to look. Optionally moves the player with the camera or leaves them where it stops."
+version = "0.3.0"
 author = "michidk"
 
 [[setting]]
@@ -14,5 +14,11 @@ max = 600
 [[setting]]
 key = "carry_player"
 label = "Leave the player where the camera stops"
+type = "bool"
+default = false
+
+[[setting]]
+key = "follow"
+label = "Move the player with the camera"
 type = "bool"
 default = false

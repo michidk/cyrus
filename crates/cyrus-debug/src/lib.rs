@@ -20,12 +20,17 @@ mod day_night;
 mod effects;
 mod performance;
 
-pub struct DebugMenuPlugin;
+/// `flycam` shows the built-in inspection camera's controls in the menu. The native game leaves
+/// them out because its fly camera is the bundled `flycam` mod; the browser build loads no mods.
+pub struct DebugMenuPlugin {
+    pub flycam: bool,
+}
 
 /// The backtick menu's visibility; other native panels open alongside it.
 #[derive(Resource, Default)]
 pub struct DebugMenu {
     pub open: bool,
+    flycam: bool,
     inspector_open: bool,
     performance_open: bool,
     day_night_open: bool,
@@ -48,7 +53,10 @@ impl Plugin for DebugMenuPlugin {
             DefaultInspectorConfigPlugin,
             performance::PerformancePlugin,
         ))
-        .init_resource::<DebugMenu>()
+        .insert_resource(DebugMenu {
+            flycam: self.flycam,
+            ..default()
+        })
         .init_resource::<cyrus_game::cheats::CheatTransfer>()
         .configure_sets(
             PreUpdate,
@@ -188,19 +196,22 @@ fn debug_menu(
                 }
             });
         }
-        ui.checkbox(&mut flycam.enabled, "Flycam");
-        ui.horizontal(|ui| {
-            ui.label("Flycam speed");
-            ui.add(
-                egui::DragValue::new(&mut flycam.speed)
-                    .range(0.0..=f32::MAX)
-                    .speed(1.0),
+        // A `--view` start enables the camera, so it stays switchable off even where it is hidden.
+        if menu.flycam || flycam.enabled {
+            ui.checkbox(&mut flycam.enabled, "Flycam");
+            ui.horizontal(|ui| {
+                ui.label("Flycam speed");
+                ui.add(
+                    egui::DragValue::new(&mut flycam.speed)
+                        .range(0.0..=f32::MAX)
+                        .speed(1.0),
+                );
+            });
+            ui.add_enabled(
+                flycam.enabled,
+                egui::Checkbox::new(&mut flycam.pass_input, "Pass input to game"),
             );
-        });
-        ui.add_enabled(
-            flycam.enabled,
-            egui::Checkbox::new(&mut flycam.pass_input, "Pass input to game"),
-        );
+        }
 
         if let Some([near, original]) = distance.original {
             let mut far = distance.effective(&fidelity).unwrap()[1];
@@ -409,6 +420,17 @@ mod tests {
 
     #[test]
     fn backtick_survives_replacing_the_startup_camera() {
+        backtick_route(true);
+    }
+
+    #[test]
+    fn native_menu_leaves_out_the_built_in_flycam_controls() {
+        backtick_route(false);
+    }
+
+    /// Opens and closes the menu over a replaced camera; the Flycam controls show only when
+    /// `flycam` asks for them.
+    fn backtick_route(flycam: bool) {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -418,7 +440,7 @@ mod tests {
             bevy::image::ImagePlugin::default(),
         ))
         .init_asset::<bevy::shader::Shader>()
-        .add_plugins(DebugMenuPlugin)
+        .add_plugins(DebugMenuPlugin { flycam })
         .init_resource::<DetachedView>()
         .init_resource::<Fidelity>()
         .init_resource::<RenderDistance>()
@@ -474,6 +496,9 @@ mod tests {
             assert_eq!(output.shapes.iter().any(|shape| matches!(
                 &shape.shape, egui::epaint::Shape::Text(text) if text.galley.job.text == "World: 0: START"
             )), expected_open);
+            assert_eq!(output.shapes.iter().any(|shape| matches!(
+                &shape.shape, egui::epaint::Shape::Text(text) if text.galley.job.text == "Flycam"
+            )), expected_open && flycam);
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
                 .release(KeyCode::Backquote);
@@ -491,7 +516,7 @@ mod tests {
             bevy::image::ImagePlugin::default(),
         ))
         .init_asset::<bevy::shader::Shader>()
-        .add_plugins(DebugMenuPlugin)
+        .add_plugins(DebugMenuPlugin { flycam: true })
         .init_resource::<DetachedView>()
         .init_resource::<Fidelity>()
         .init_resource::<RenderDistance>()
