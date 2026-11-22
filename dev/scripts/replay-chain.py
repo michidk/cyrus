@@ -95,13 +95,16 @@ def validate_steps(steps, depth=0):
         elif "steer" in step:
             assert set(step) == {"steer"}, "steering cannot contain other commands"
             target = step["steer"]
-            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to", "gait", "forward_updates", "settle_updates", "stop_updates", "approach_radius"}, "incomplete steering target"
+            assert {"world", "position_q8", "tolerance", "limit"} <= set(target) <= {"world", "position_q8", "tolerance", "limit", "transition_to", "gait", "forward_updates", "settle_updates", "stop_updates", "approach_radius", "stride_correction"}, "incomplete steering target"
             for key, maximum in [("forward_updates", 4), ("settle_updates", 50), ("stop_updates", 100)]:
                 if key in target:
                     assert type(target[key]) is int and 1 <= target[key] <= maximum, "invalid steering cadence"
             if "approach_radius" in target:
                 assert math.isfinite(target["approach_radius"]) and target["approach_radius"] > target["tolerance"], "invalid final approach radius"
                 assert "stop_updates" in target, "final approach needs a stop interval"
+            if "stride_correction" in target:
+                assert type(target["stride_correction"]) is bool, "invalid stride correction"
+                assert "approach_radius" in target, "stride correction needs a stopped approach"
             assert target.get("gait", "walk") in ("walk", "run"), "invalid steering gait"
             assert len(target["position_q8"]) == 3 and all(math.isfinite(v) for v in target["position_q8"]), "invalid steering position"
             assert 0 < target["tolerance"] < float("inf"), "invalid steering tolerance"
@@ -320,6 +323,20 @@ def play_modal(control, modal):
     raise AssertionError("modal input limit exhausted")
 
 
+def approach_bearing(dx, dz, distance, tolerance, released_stride):
+    """Aim directly, or take the first leg of two measured walking strides.
+
+    A completed walk can overshoot a nearby goal in either direction. Two equal
+    strides reach a goal d away when the first makes angle acos(d / (2s)) with it.
+    The next observation measures the actual displacement again; no game movement
+    constant or state mutation is involved.
+    """
+    bearing = -math.atan2(dx, dz)
+    if released_stride is not None and distance + tolerance < released_stride:
+        bearing += math.acos(distance / (2 * released_stride))
+    return bearing * 2048 / math.tau % 2048
+
+
 def steer(control, target):
     """Reach an X/Z waypoint with bounded real key input, never state mutation.
 
@@ -327,6 +344,7 @@ def steer(control, target):
     Heading zero faces +Z; positive headings turn toward -X. Vertical position
     remains a checkpoint concern because walking cannot choose the floor height.
     """
+    released_stride, last_forward = None, None
     for iteration in range(target["limit"] + 1):
         state = control.ready()
         if state["scripts"]["world"] != target["world"]:
@@ -336,6 +354,11 @@ def steer(control, target):
         scripts = control.request({"type": "scripts", "offset": 0, "limit": 1})
         assert scripts["world"] == target["world"], "world changed during steering observation"
         position = scripts["player_position_q8"]
+        if last_forward is not None:
+            measured = math.hypot(position[0] - last_forward[0], position[2] - last_forward[2])
+            if measured > 0:
+                released_stride = measured
+            last_forward = None
         dx = target["position_q8"][0] - position[0]
         dz = target["position_q8"][2] - position[2]
         distance = math.hypot(dx, dz)
@@ -356,7 +379,8 @@ def steer(control, target):
             return {"state": state, "scripts": scripts}
         if iteration == target["limit"]:
             break
-        bearing = (-math.atan2(dx, dz) * 2048 / math.tau) % 2048
+        bearing = approach_bearing(dx, dz, distance, target["tolerance"],
+                                   released_stride if target.get("stride_correction") else None)
         error = (bearing - state["hud"]["heading"] + 1024) % 2048 - 1024
         # Short schedules resample heading after each turn and avoid strafing.
         approaching = distance <= target.get("approach_radius", 0)
@@ -373,6 +397,8 @@ def steer(control, target):
         events = ([{"after_updates": 0, "key": key, "action": "press"} for key in keys]
                   + [{"after_updates": held, "key": key, "action": "release"} for key in keys]
                   + ([{"after_updates": held + settle}] if settle else []))
+        if not turning and settle:
+            last_forward = position
         transitioned = play_inputs(control, {"input": events, **(
             {"transition_to": target["transition_to"]} if "transition_to" in target else {})})
         if transitioned:

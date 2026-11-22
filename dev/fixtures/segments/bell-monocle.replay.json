@@ -105,8 +105,9 @@
         ],
         "tolerance": 4096,
         "limit": 400,
-        "approach_radius": 12000,
-        "stop_updates": 50
+        "approach_radius": 40000,
+        "stop_updates": 50,
+        "stride_correction": true
       }
     },
     {

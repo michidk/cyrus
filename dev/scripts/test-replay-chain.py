@@ -610,6 +610,45 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual(control.position, [0, 0, 1000])
         self.assertEqual(len(control.schedules), 3)
 
+    def test_measured_stride_breaks_a_released_walking_limit_cycle(self):
+        class Control:
+            def __init__(self):
+                self.position = [0, 0, 0]
+                self.heading = 0
+                self.walks = 0
+
+            def ready(self, world=None):
+                return {"scripts": {"world": 20},
+                        "hud": {"health": 100, "heading": self.heading}}
+
+            def request(self, command):
+                return {"world": 20, "player_position_q8": list(self.position)}
+
+            def response(self, command):
+                events = command["events"]
+                keys = {e.get("key") for e in events if e.get("action") == "press"}
+                held = next(e["after_updates"] for e in events if e.get("action") == "release")
+                if "ArrowLeft" in keys:
+                    self.heading = (self.heading + 64 * held) % 2048
+                elif "ArrowRight" in keys:
+                    self.heading = (self.heading - 64 * held) % 2048
+                else:
+                    self.walks += 1
+                    angle = self.heading * math.tau / 2048
+                    self.position[0] -= round(20000 * math.sin(angle))
+                    self.position[2] += round(20000 * math.cos(angle))
+                return {"ok": True}
+
+        target = {"world": 20, "position_q8": [0, 0, 5000], "tolerance": 4096,
+                  "limit": 80, "approach_radius": 40000, "stop_updates": 50}
+        with self.assertRaisesRegex(AssertionError, "steering limit exhausted"):
+            replay.steer(Control(), target)
+        control = Control()
+        observed = replay.steer(control, dict(target, stride_correction=True))
+        self.assertLessEqual(math.dist(observed["scripts"]["player_position_q8"],
+                                      target["position_q8"]), target["tolerance"])
+        self.assertLessEqual(control.walks, 6)
+
     def test_final_approach_walks_and_waits_for_the_stop(self):
         class Control:
             position = [0, 0, 0]

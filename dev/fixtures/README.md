@@ -253,3 +253,10 @@ through update 50. This interval is a fixture observation, not a gameplay delay.
 `approach_radius` switches the last part of a waypoint to single-update walk
 presses followed by `stop_updates` released updates. This keeps the final
 approach stationary between corrections, including when the outer gait runs.
+
+`stride_correction: true` opts a stopped approach into measured-stride steering.
+When one completed walk would skip the entire target region, the runner aims
+for the first leg of two walks instead of reversing along the same line. It
+measures the released displacement and checks the next position through control
+state. This needs `approach_radius` and `stop_updates`; all movement still uses
+keyboard input, and the target tolerance stays unchanged.
