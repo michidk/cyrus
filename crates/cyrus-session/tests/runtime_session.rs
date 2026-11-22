@@ -245,6 +245,11 @@ fn asynchronous_load_waits_for_assets_and_preserves_live_state_on_rejection() ->
 }
 
 #[test]
+fn headless_environment_request_does_not_require_rendered_prelight_on_load() -> Result<()> {
+    exercise_runtime_session(false, false, true, false, false, MusicAtSave::Paused)
+}
+
+#[test]
 fn environmental_effect_sources_survive_session_capture_and_load() -> Result<()> {
     exercise_runtime_session(false, false, false, true, false, MusicAtSave::Paused)?;
     exercise_runtime_session(false, false, true, true, false, MusicAtSave::Paused)
@@ -672,7 +677,17 @@ fn exercise_runtime_session(
             .unwrap()
             .set_volume(Volume::Linear(gain));
     }
+    app.add_plugins(cyrus_session::SessionBoundaryPlugin);
+    if !with_camera {
+        // The headless game installs EnvironmentPlugin too; its default request
+        // is not evidence that rendered materials or prelight owners exist.
+        app.init_resource::<cyrus_render::environment::EnvironmentRequest>();
+    }
     let saved = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
+    if !with_camera {
+        app.world_mut()
+            .remove_resource::<cyrus_render::environment::EnvironmentRequest>();
+    }
     if with_effects {
         let missing = cyrus_session::SessionWorldAssets::from_loaded(
             &saved,
@@ -986,7 +1001,6 @@ fn exercise_runtime_session(
     assert!(RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset).is_err());
     app.world_mut()
         .remove_resource::<cyrus_script::logbook::LogbookScreen>();
-    app.add_plugins(cyrus_session::SessionBoundaryPlugin);
     let capture_sources = |world: &World| {
         cyrus_session::SessionWorldAssets::for_capture(
             world.resource::<ScriptActors>(),

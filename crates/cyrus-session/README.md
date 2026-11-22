@@ -40,6 +40,9 @@ requests on `SessionBoundary`:
   with a captured matching-world native baseline and validated original subset.
   The subset changes only the hidden candidate before normal publication. Saved
   continuations are unsupported; this API does not construct a fresh world.
+- Without a render backend, capture excludes render-only environment state even
+  when the shared environment plugin has installed its default request. Headless
+  loads preserve logical state without requiring rendered actor-prelight inputs.
 - Encode a snapshot with `encode_document()`; `decode_document()` checks version
   and digest only. The decoded snapshot still goes through plan, assembly and the
   commit preflight.

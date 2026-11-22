@@ -223,8 +223,15 @@ impl SessionBoundary {
 /// their deferred commands; no simulation system intervenes during publication.
 pub struct SessionBoundaryPlugin;
 
+/// Render plugins may initialize environment requests without a render backend.
+#[derive(Resource)]
+pub(crate) struct UnrenderedSession;
+
 impl Plugin for SessionBoundaryPlugin {
     fn build(&self, app: &mut App) {
+        if app.get_sub_app(bevy::render::RenderApp).is_none() {
+            app.insert_resource(UnrenderedSession);
+        }
         app.init_resource::<SessionBoundary>()
             .init_resource::<crate::SessionSourceCatalog>()
             .add_systems(Last, execute.after(cyrus_script::script::WorldLoopExit));

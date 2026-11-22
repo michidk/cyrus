@@ -454,7 +454,9 @@ impl RuntimeSessionSnapshot {
             .transpose()?;
         let environment_edits = world
             .contains_resource::<cyrus_render::environment::EnvironmentRequest>()
-            .then(|| EnvironmentEditsSnapshot::capture(world))
+            .then_some(())
+            .filter(|_| !world.contains_resource::<boundary::UnrenderedSession>())
+            .map(|_| EnvironmentEditsSnapshot::capture(world))
             .transpose()?;
         let sky = environment_edits
             .as_ref()
