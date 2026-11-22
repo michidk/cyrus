@@ -53649,3 +53649,103 @@ fn first_sticky_script_failure_is_logged_once_with_world_and_script() {
         assert!(!lines[0].contains("later failure"));
     });
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_subset_keeps_synthetic_logical_y_without_a_model_height_offset() -> anyhow::Result<()> {
+    let (scripts, mut world, _, _) = player_walking_fixture();
+    let position = [1024, -40000, 3072];
+    let asset = inventory_asset(&[(0, 0)]);
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let subset = cyrus_script::script::original_save::OriginalSaveSubset::decode(
+        &synthetic_original_pose_save(&scripts, position)?,
+        &asset,
+        &scripts.definition,
+    )?;
+    assert_eq!(subset.position_q8, position);
+    subset.apply(&mut world, &hud)?;
+    let player = world.selected_player().unwrap();
+    assert_eq!(world.spatial(player)?.local.position, position);
+    assert_eq!(world.spatial(player)?.local.angles[1], 123);
+    Ok(())
+}
+
+#[cfg(feature = "original-save-import")]
+fn synthetic_original_player(position: [i32; 3]) -> rgpre::import::savegame::SaveObject {
+    use rgpre::import::savegame::SaveObject;
+    let mut body = [0; 783];
+    for (axis, value) in position.iter().enumerate() {
+        body[203 + axis * 4..207 + axis * 4].copy_from_slice(&value.to_le_bytes());
+    }
+    body[292..296].copy_from_slice(&123i32.to_le_bytes());
+    body[571..575].copy_from_slice(&(-1i32).to_le_bytes());
+    SaveObject {
+        object_id: -2,
+        rope_id: 0,
+        record_kind: 0,
+        body,
+        named_resource: None,
+        attributes: None,
+        opaque_41: None,
+        opaque_20: None,
+        animation_header: None,
+        script_state: None,
+        attachment: None,
+        vectors: [0; 48],
+        opaque_60: None,
+        private_variables: vec![],
+        extension: vec![],
+    }
+}
+
+#[cfg(feature = "original-save-import")]
+fn synthetic_original_pose_save(
+    scripts: &Scripts,
+    position: [i32; 3],
+) -> anyhow::Result<rgpre::import::savegame::SaveGame> {
+    use rgpre::import::savegame::{SaveGame, SaveMetadata, SaveSection, encode_save_objects};
+    let mut globals = vec![0; 1666];
+    globals[..4].copy_from_slice(&50i32.to_le_bytes());
+    let mut flag_data = (scripts.definition.flags.len() as u32)
+        .to_le_bytes()
+        .to_vec();
+    flag_data.resize(4 + scripts.definition.flags.len() * 4, 0);
+    flag_data.extend(scripts.definition.flags.iter().map(|flag| {
+        match flag.flag_type.to_ascii_lowercase().as_str() {
+            "bool" => 0,
+            "flipflop" => 1,
+            "counter" => 2,
+            "number" => 3,
+            other => panic!("unexpected synthetic flag kind {other}"),
+        }
+    }));
+    Ok(SaveGame {
+        metadata: SaveMetadata {
+            version: *b"1.31",
+            unknown_04: 0,
+            unknown_08: 0,
+            description: "Synthetic".into(),
+            world_id: scripts.world,
+            bitmap_filename: String::new(),
+        },
+        sections: vec![
+            SaveSection {
+                name: *b"SMOB",
+                data: encode_save_objects(&[synthetic_original_player(position)])?,
+            },
+            SaveSection {
+                name: *b"SVG2",
+                data: globals,
+            },
+            SaveSection {
+                name: *b"SVIT",
+                data: vec![0; 4],
+            },
+            SaveSection {
+                name: *b"SVGF",
+                data: flag_data,
+            },
+        ],
+    })
+}
