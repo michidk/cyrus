@@ -308,7 +308,7 @@ def play_modal(control, modal):
         finally:
             control.request({"type": "input", "key": modal["key"], "action": "release"})
         if not frames()["examine"]["open"]:
-            control.ready(modal["world"], min_updates=before["scripts"]["ordinary_updates"] + 1)
+            control.ready(modal["world"], min_updates=before["scripts"]["ordinary_updates"] + 1, advance=True)
             return
     raise AssertionError("modal input limit exhausted")
 
