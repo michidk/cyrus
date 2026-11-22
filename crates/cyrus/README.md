@@ -179,7 +179,8 @@ gameplay change without regenerating and checking their producer.
 
 Use `just replay-chain --keep-running` to record the next chapter from the
 passing session. Its control address is printed and written to
-`CYRUS_CONFIG_DIR/control-address`. The process and run lock remain owned by
+`CYRUS_CONFIG_DIR/chapters/control-address` for default discovery, or
+`CYRUS_CONFIG_DIR/control-address` with explicit fixtures. The process and run lock remain owned by
 the runner until the game quits.
 
 A chapter document contains version `1`, `step_micros`, and `steps`. Timing is
