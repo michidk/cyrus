@@ -129,36 +129,63 @@ fn run_new_game(skip_movies: bool) {
     assert_eq!(inspected["flags"]["version"], 1);
     assert_eq!(inspected["player_position_q8"].as_array().unwrap().len(), 3);
     assert!(!inspected["flags"]["flags"].as_array().unwrap().is_empty());
-    request(
-        &mut stream,
-        json!({"type":"input","key":"ArrowUp","action":"press"}),
-    );
-    let advanced = loop {
+    let advanced = if skip_movies {
+        // A replay world is held between scheduled input boundaries, so updates run only while a
+        // schedule owns the frame loop: hold the key for twelve updates through one.
+        request(
+            &mut stream,
+            json!({"type":"schedule_input","events":[
+                {"after_updates":0,"key":"ArrowUp","action":"press"},
+                {"after_updates":12,"key":"ArrowUp","action":"release"}
+            ]}),
+        );
         let state = request(&mut stream, json!({"type":"state"}));
-        if state["player_input"]["forward"] == true
-            && state["scripts"]["ordinary_updates"].as_u64().unwrap_or(0)
-                > initial["scripts"]["ordinary_updates"].as_u64().unwrap() + 2
-            && state["clock"]["game_seconds"].as_f64() > initial["clock"]["game_seconds"].as_f64()
-        {
-            break state;
+        assert!(
+            state["scripts"]["ordinary_updates"].as_u64().unwrap()
+                > initial["scripts"]["ordinary_updates"].as_u64().unwrap() + 2,
+            "the scheduled hold did not advance the world: {state}"
+        );
+        state
+    } else {
+        request(
+            &mut stream,
+            json!({"type":"input","key":"ArrowUp","action":"press"}),
+        );
+        loop {
+            let state = request(&mut stream, json!({"type":"state"}));
+            if state["player_input"]["forward"] == true
+                && state["scripts"]["ordinary_updates"].as_u64().unwrap_or(0)
+                    > initial["scripts"]["ordinary_updates"].as_u64().unwrap() + 2
+                && state["clock"]["game_seconds"].as_f64()
+                    > initial["clock"]["game_seconds"].as_f64()
+            {
+                break state;
+            }
+            assert!(Instant::now() < deadline, "input/clock timeout: {state}");
+            std::thread::sleep(Duration::from_millis(100));
         }
-        assert!(Instant::now() < deadline, "input/clock timeout: {state}");
-        std::thread::sleep(Duration::from_millis(100));
     };
     if skip_movies {
         let updates = advanced["scripts"]["ordinary_updates"].as_u64().unwrap()
             - initial["scripts"]["ordinary_updates"].as_u64().unwrap();
         let elapsed = advanced["clock"]["game_seconds"].as_f64().unwrap()
             - initial["clock"]["game_seconds"].as_f64().unwrap();
+        // The clock advances in whole supplied steps. A held replay world runs its first update
+        // of a schedule without a step, so the step count may trail the update count by one.
+        let steps = elapsed / 0.016667;
         assert!(
-            (elapsed - updates as f64 * 0.016667).abs() < 0.001,
+            (steps - steps.round()).abs() < 0.02
+                && steps.round() >= 12.0
+                && steps.round() <= updates as f64,
             "replay clock did not follow supplied timing: {updates} updates, {elapsed} seconds"
         );
     }
-    request(
-        &mut stream,
-        json!({"type":"input","key":"ArrowUp","action":"release"}),
-    );
+    if !skip_movies {
+        request(
+            &mut stream,
+            json!({"type":"input","key":"ArrowUp","action":"release"}),
+        );
+    }
     eprintln!(
         "headless New Game world {}, updates {} -> {}, clock {} -> {}",
         menu.new_game.world,
