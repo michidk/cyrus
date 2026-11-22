@@ -658,7 +658,7 @@ def fight_snapshot(control, name, index, player_index):
              "hp": other["attributes"][3], "g": other["animation"]["current_group"]}
             for other in control.request({"type": "scripts", "offset": 0, "limit": 64})["actors"]
             if other["name"] not in (name, player["name"])
-            and other.get("control", {}).get("combat") is not None],
+            and (other.get("control") or {}).get("combat") is not None],
         "rret": combat["retained_action_indices"], "rag": combat["decision"]["aggression"],
         "dist": round(math.hypot(target[0] - origin[0], target[2] - origin[2])), "err": error,
         "ph": state["hud"]["health"], "ppos": origin,

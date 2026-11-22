@@ -994,7 +994,8 @@ class Checkpoints(unittest.TestCase):
                 if command.get("limit") == 64:
                     return {"actors": [dict(actor, name="DRAMPAL", attributes=[0, 0, 0, 80]),
                                        dict(actor, name="RICHTONP"), dict(actor, name="CYRUS"),
-                                       {"name": "BELL", "attributes": [0] * 4, "animation": {"current_group": 0}, "control": {}}]}
+                                       {"name": "BELL", "attributes": [0] * 4, "animation": {"current_group": 0}, "control": {}},
+                                       {"name": "MAP", "attributes": [0] * 4, "animation": {"current_group": None}, "control": None}]}
                 if command["offset"] == 1:
                     actor = dict(actor, name="RICHTONP", animation={"current_group": 102},
                                  spatial={"effective": {"position": [0, 0, 20000], "angles": [0, 0, 0]}})
