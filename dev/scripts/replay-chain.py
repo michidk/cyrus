@@ -48,7 +48,7 @@ def validate(fixture):
     """Accept timing, keyboard events and complete checkpoint expectations only."""
     assert {"version", "step_micros", "steps"} <= set(fixture) <= {"version", "step_micros", "steps", "entry_scene", "resume_session"}, "unexpected fixture fields"
     if "entry_scene" in fixture:
-        assert fixture["entry_scene"] in ("BELLTOWR", "EXTPALAC", "TAVERN", "ISLAND"), "unsupported staged entry"
+        assert fixture["entry_scene"] in ("BELLTOWR", "EXTPALAC", "TAVERN", "ISLAND", "ROLLOS"), "unsupported staged entry"
     if "resume_session" in fixture:
         assert "entry_scene" in fixture, "a resumed session needs a staged entry scene"
         assert SESSION_NAME.fullmatch(fixture["resume_session"]), "invalid resume session name"
