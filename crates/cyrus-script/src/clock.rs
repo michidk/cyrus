@@ -403,6 +403,16 @@ impl SimulationClock {
         self.step
     }
 
+    /// BIOS tick of the simulated time this clock has accumulated. A replay samples this instead
+    /// of the host's absolute tick: the host tick includes however long loading took, which
+    /// shifts tick boundaries against the updates and flips tick-paced combat decisions between
+    /// runs of one capture.
+    pub fn simulated_bios_tick(&self) -> u32 {
+        let nanos = u128::from(self.elapsed_scale) * 1_000_000_000
+            / (256 * u128::from(self.settings.normal_frame_rate));
+        bios_tick(std::time::Duration::from_nanos(nanos as u64))
+    }
+
     /// Exact accumulated simulated duration in Q8 nominal ticks since creation or restore.
     /// Divide by 256 and the installed normal frame rate to obtain game seconds.
     pub fn elapsed_frame_scale(&self) -> u64 {

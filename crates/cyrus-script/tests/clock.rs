@@ -11,6 +11,28 @@ fn host_duration_uses_bios_tick_boundaries() {
     assert_eq!(bios_tick(Duration::from_secs(60)), 1092);
 }
 
+#[test]
+fn simulated_bios_tick_follows_simulated_time_not_the_host_baseline() {
+    use std::time::Duration;
+    let step = Duration::from_millis(40);
+    let mut early = SimulationClock::new(settings(false)).unwrap();
+    let mut late = SimulationClock::new(settings(false)).unwrap();
+    // Two hosts that started the same game at different absolute BIOS ticks (a longer load).
+    early.rebase(100);
+    late.rebase(107);
+    let mut previous = 0;
+    for _ in 0..60 {
+        early.advance_elapsed(early.simulated_bios_tick(), step);
+        late.advance_elapsed(late.simulated_bios_tick(), step);
+        let tick = early.simulated_bios_tick();
+        assert_eq!(tick, late.simulated_bios_tick());
+        assert!(tick >= previous);
+        previous = tick;
+    }
+    // 60 updates of 40 ms is 2.4 s of simulated time: 43 BIOS ticks (18.2 per second).
+    assert_eq!(previous, 43);
+}
+
 fn settings(smoothing: bool) -> ClockSettings {
     ClockSettings {
         normal_frame_rate: 12,

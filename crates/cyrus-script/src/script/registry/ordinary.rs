@@ -861,7 +861,7 @@ pub(crate) fn sample_clock(
     hold: Option<Res<ReplayHold>>,
     mut commands: Commands,
 ) {
-    if hold.is_some_and(|hold| hold.0) {
+    if hold.as_deref().is_some_and(|hold| hold.0) {
         commands.remove_resource::<WorldClockSample>();
         return;
     }
@@ -898,7 +898,13 @@ pub(crate) fn sample_clock(
     }
     commands.remove_resource::<WorldClockSample>();
     if let Some(mut clock) = clock {
-        let tick = bios_tick(time.elapsed());
+        // A replay's BIOS tick follows simulated time: the host's absolute tick carries the load
+        // time, which changes where tick boundaries fall against the updates.
+        let tick = if hold.is_some() {
+            clock.simulated_bios_tick()
+        } else {
+            bios_tick(time.elapsed())
+        };
         if ready {
             let generation = actors.current.as_ref().expect("ready world").generation();
             let elapsed = if *running == Some(generation) {
