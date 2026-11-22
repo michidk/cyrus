@@ -295,15 +295,16 @@ fn execute(world: &mut World) {
             result
         }
     };
-    if live_capture
-        && result
-            .as_ref()
-            .is_err_and(|error| error.is::<cyrus_render::persistence::PresentationPending>())
-    {
+    if live_capture && result.as_ref().is_err_and(capture_pending) {
         world.resource_mut::<SessionBoundary>().request = Some(Request::CaptureLive);
         return;
     }
     world.resource_mut::<SessionBoundary>().result = Some(result);
+}
+
+fn capture_pending(error: &anyhow::Error) -> bool {
+    error.is::<cyrus_render::persistence::PresentationPending>()
+        || error.is::<cyrus_audio::sound::dialogue::DialogueSnapshotPending>()
 }
 
 fn capture(
@@ -325,6 +326,16 @@ fn capture(
 mod inspection_tests {
     use super::*;
     use bevy::ecs::system::SystemState;
+
+    #[test]
+    fn capture_retries_typed_dialogue_export_but_not_permanent_errors() {
+        let pending = anyhow::Error::new(cyrus_audio::sound::dialogue::DialogueSnapshotPending(
+            *b"TEST",
+        ))
+        .context("original save baseline capture");
+        assert!(capture_pending(&pending));
+        assert!(!capture_pending(&anyhow::anyhow!("dialogue export failed")));
+    }
 
     #[test]
     fn inspection_preserves_pending_request_and_unread_rejection() {

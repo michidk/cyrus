@@ -60,6 +60,8 @@ on a later frame; in the browser with `?capture`, write a request to
 - Commit reruns its preflight (actor generations, entity ownership, scene
   readiness, source content) before retiring anything. A rejected candidate
   leaves the live session untouched.
+- Live boundary capture waits for pending presentation and dialogue exports without
+  consuming their tasks; permanent export errors retain their normal snapshot state.
 - Capture rejects anything it cannot continue exactly (pending sources, in-flight
   world preparation, unbound audio owners, inspection `ScriptedPlayback`) instead
   of guessing. Never rebind or synthesize state on load.

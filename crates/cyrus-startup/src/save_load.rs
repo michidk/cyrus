@@ -50,7 +50,7 @@ pub(super) fn discard_gameplay(mut commands: Commands) {
 }
 
 /// Original imports intentionally leave unsupported native owners at their current baseline.
-pub const ORIGINAL_IMPORT_LIMITATION: &str = "Limited import: world, position, heading, health, inventory and flags only. Saved scripts, other actors, animation, controller, clock and journal are unsupported. Requires a native session in the saved world.";
+pub const ORIGINAL_IMPORT_LIMITATION: &str = "Limited import: world, position, heading, health, inventory, flags and static support only. Saved scripts, other actors, animation, controller, clock and journal are unsupported. Unsupported owners use a native baseline.";
 
 /// Storage operation requested by the installed book action.
 #[derive(Clone, Debug, Serialize, Deserialize)]

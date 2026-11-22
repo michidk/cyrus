@@ -5,6 +5,23 @@ use bevy::{
     prelude::*,
 };
 
+/// A dialogue export must finish before a coherent session can be captured.
+/// Callers may retry capture without consuming or cancelling the export.
+#[derive(Debug)]
+pub struct DialogueSnapshotPending(pub [u8; 4]);
+
+impl std::fmt::Display for DialogueSnapshotPending {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "dialogue {:?}: export still in flight at save boundary",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for DialogueSnapshotPending {}
+
 /// One prepared RTX entry, with playback-owned optional audio dependency.
 #[derive(Asset, TypePath, Clone)]
 pub struct DialogueClip {
@@ -501,7 +518,7 @@ impl DialoguePreparation {
             let failure = match request {
                 #[cfg(not(target_arch = "wasm32"))]
                 DialogueRequest::Exporting(_) => {
-                    anyhow::bail!("dialogue {label:?}: export still in flight at save boundary")
+                    return Err(DialogueSnapshotPending(label).into());
                 }
                 DialogueRequest::Failed(error) => Some(error.clone()),
                 DialogueRequest::Loading(handle) => {
@@ -641,6 +658,39 @@ impl DialogueClip {
 #[cfg(test)]
 mod snapshot_tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn snapshot_waits_without_consuming_an_export() -> Result<()> {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        let task = bevy::tasks::IoTaskPool::get().spawn(std::future::pending::<Result<()>>());
+        let mut preparation = DialoguePreparation::default();
+        preparation
+            .requests
+            .insert(*b"TEST", DialogueRequest::Exporting(task));
+        let server = app.world().resource::<AssetServer>();
+        for _ in 0..2 {
+            let error = preparation
+                .snapshot(server)
+                .err()
+                .expect("export must wait");
+            assert!(error.is::<DialogueSnapshotPending>());
+            assert!(matches!(
+                preparation.requests.get(b"TEST"),
+                Some(DialogueRequest::Exporting(_))
+            ));
+        }
+        preparation
+            .requests
+            .insert(*b"TEST", DialogueRequest::Failed("export failed".into()));
+        let snapshot = preparation.snapshot(server)?;
+        assert_eq!(
+            snapshot.requests,
+            vec![(*b"TEST", Some("export failed".into()))]
+        );
+        Ok(())
+    }
 
     #[test]
     fn voice_replacement_rejects_changed_bytes_with_identical_metadata() -> Result<()> {

@@ -22,6 +22,7 @@ use std::{
 pub(crate) struct NativeSessionLoad {
     worker: Option<Mutex<mpsc::Receiver<Result<PreparedLoad>>>>,
     original_capture: bool,
+    original_entry: Option<OriginalEntry>,
     original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
     original_notice: bool,
     submitted: bool,
@@ -35,6 +36,11 @@ pub(crate) struct NativeSessionLoad {
     book: bool,
     quick: bool,
     mod_save: Option<ModSave>,
+}
+
+struct OriginalEntry {
+    slot: u16,
+    saved: rgpre::import::savegame::SaveGame,
 }
 
 struct ModSave {
@@ -72,6 +78,7 @@ impl NativeSessionLoad {
 
     pub(crate) fn busy(&self) -> bool {
         self.original_capture
+            || self.original_entry.is_some()
             || self.worker.is_some()
             || self.submitted
             || self.slot_worker.is_some()
@@ -241,35 +248,40 @@ fn request_original(world: &mut World, slot: u16, world_id: u32) -> Result<()> {
         world.resource::<SessionBoundary>().is_idle(),
         "session boundary pending or result unread"
     );
-    let current = world
-        .get_resource::<cyrus_script::script::ScriptActors>()
-        .and_then(|actors| actors.current.as_ref())
-        .with_context(|| {
-            format!("original save slot {slot} (world {world_id}): {ORIGINAL_LIMITATION}")
-        })?;
-    ensure!(
-        current.world == world_id,
-        "original save slot {slot}: native world {} differs from saved world {world_id}. {ORIGINAL_LIMITATION}",
-        current.world
-    );
     let install = world
         .get_resource::<GameInstall>()
         .context("original save install unavailable")?;
     let saved = original_slots::load(&install.root, slot, world_id)?;
-    let hud = cyrus_render::hud::bound_asset(world).context("original import HUD source absent")?;
-    let prepared = world
-        .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
-        .context("original import prepared world absent")?;
-    let scripts = world
-        .resource::<bevy::prelude::Assets<cyrus_assets::script::Scripts>>()
-        .get(&prepared.scripts)
-        .context("original import script source absent")?;
-    let subset = cyrus_script::script::original_save::OriginalSaveSubset::decode(
-        &saved,
-        hud,
-        &scripts.definition,
-    )
-    .with_context(|| format!("original save slot {slot} world {world_id}"))?;
+    let matching = world
+        .get_resource::<cyrus_script::script::ScriptActors>()
+        .and_then(|actors| actors.current.as_ref())
+        .is_some_and(|current| current.world == world_id);
+    if !matching {
+        begin_original_entry(world, slot, saved);
+        return Ok(());
+    }
+    capture_original(world, slot, saved)
+}
+
+fn begin_original_entry(world: &mut World, slot: u16, saved: rgpre::import::savegame::SaveGame) {
+    let world_id = saved.metadata.world_id;
+    world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
+    world.insert_resource(cyrus_startup::WorldLoadRequest(world_id.to_string()));
+    let mut state = world.resource_mut::<NativeSessionLoad>();
+    state.original_entry = Some(OriginalEntry { slot, saved });
+    state.original_notice = true;
+    state.slot_load = true;
+    state.path = format!("original slot {slot} world {world_id}");
+}
+
+fn capture_original(
+    world: &mut World,
+    slot: u16,
+    saved: rgpre::import::savegame::SaveGame,
+) -> Result<()> {
+    let world_id = saved.metadata.world_id;
+    let subset = decode_original(world, &saved)
+        .with_context(|| format!("original save slot {slot} world {world_id}"))?;
     world.resource_mut::<SessionBoundary>().capture_live()?;
     let mut state = world.resource_mut::<NativeSessionLoad>();
     state.original_capture = true;
@@ -278,6 +290,85 @@ fn request_original(world: &mut World, slot: u16, world_id: u32) -> Result<()> {
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
     Ok(())
+}
+
+fn decode_original(
+    world: &World,
+    saved: &rgpre::import::savegame::SaveGame,
+) -> Result<cyrus_script::script::original_save::OriginalSaveSubset> {
+    let hud = cyrus_render::hud::bound_asset(world).context("original import HUD source absent")?;
+    let prepared = world
+        .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .context("original import prepared world absent")?;
+    let scripts = world
+        .resource::<bevy::prelude::Assets<cyrus_assets::script::Scripts>>()
+        .get(&prepared.scripts)
+        .context("original import script source absent")?;
+    cyrus_script::script::original_save::OriginalSaveSubset::decode(saved, hud, &scripts.definition)
+}
+
+fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Result<()> {
+    let entry = state
+        .original_entry
+        .as_ref()
+        .context("original import entry absent")?;
+    if let Some(error) = world.get_resource::<cyrus_world::lifecycle::SceneLoadError>() {
+        anyhow::bail!("{}: {}", state.path, error.0);
+    }
+    let matching = world
+        .get_resource::<cyrus_script::script::ScriptActors>()
+        .and_then(|actors| actors.current.as_ref())
+        .is_some_and(|current| {
+            current.world == entry.saved.metadata.world_id
+                && current
+                    .selected_player()
+                    .is_some_and(|player| current.actor_prelight(player).is_ok())
+        });
+    let ready = world
+        .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .zip(world.get_resource::<cyrus_render::ReadyScene>())
+        .is_some_and(|(prepared, ready)| ready.0 == prepared.animations);
+    if !matching || !ready || !pause_original_entry(world) {
+        return Ok(());
+    }
+    let entry = state
+        .original_entry
+        .take()
+        .context("original import entry disappeared")?;
+    let subset = decode_original(world, &entry.saved).with_context(|| {
+        format!(
+            "original save slot {} world {}",
+            entry.slot, entry.saved.metadata.world_id
+        )
+    })?;
+    world.resource_mut::<SessionBoundary>().capture_live()?;
+    state.original = Some(subset);
+    state.original_capture = true;
+    Ok(())
+}
+
+// Match same-world Load: the book owns the baseline throughout capture and
+// replacement preparation, so gameplay cannot advance the owners being saved.
+fn pause_original_entry(world: &mut World) -> bool {
+    use bevy::prelude::{NextState, State};
+    use cyrus_game::AppState;
+    match world.get_resource::<State<AppState>>().map(State::get) {
+        Some(AppState::InGame) => {
+            world.insert_resource(cyrus_game::PauseBookEntry { page: 2 });
+            world
+                .resource_mut::<NextState<AppState>>()
+                .set(AppState::Menu);
+            false
+        }
+        Some(AppState::Menu) => {
+            world.contains_resource::<cyrus_script::PausedGameplay>()
+                && matches!(
+                    world.get_resource::<NextState<AppState>>(),
+                    Some(NextState::Unchanged)
+                )
+        }
+        _ => false,
+    }
 }
 
 fn start_original_snapshot(
@@ -528,6 +619,11 @@ pub(crate) fn poll(world: &mut World) {
         if let Some(result) = result {
             state.slot_worker = None;
             state.slot_result = Some(result);
+        }
+    } else if state.original_entry.is_some() {
+        if let Err(error) = poll_original_entry(&mut state, world) {
+            state.original_entry = None;
+            state.result = Some(Err(error));
         }
     } else if state.original_capture {
         if let Some(result) = world.resource_mut::<SessionBoundary>().take_result() {
@@ -824,7 +920,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
-    fn original_menu_request_rejects_without_a_native_baseline_and_keeps_live_state() {
+    fn original_menu_request_without_install_keeps_live_state() {
         let mut world = World::new();
         world.init_resource::<NativeSessionLoad>();
         world.init_resource::<SessionBoundary>();
@@ -844,10 +940,113 @@ mod tests {
             .unwrap();
         let error = result.unwrap_err();
         assert!(error.contains("slot 2") && error.contains("world 15"));
-        assert!(error.contains("native session in the saved world"));
+        assert!(error.contains("install unavailable"));
         assert!(world.get_entity(live).is_ok());
         assert!(world.resource::<SessionBoundary>().is_idle());
         assert!(!world.resource::<NativeSessionLoad>().busy());
+    }
+
+    fn synthetic_original_entry(world_id: u32) -> rgpre::import::savegame::SaveGame {
+        use rgpre::import::savegame::{SaveGame, SaveMetadata};
+        SaveGame {
+            metadata: SaveMetadata {
+                version: *b"1.31",
+                unknown_04: 0,
+                unknown_08: 0,
+                description: "Synthetic entry".into(),
+                world_id,
+                bitmap_filename: String::new(),
+            },
+            sections: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn original_world_entry_returns_to_load_book_before_capturing() {
+        use bevy::prelude::{NextState, State};
+        use cyrus_game::AppState;
+        let mut world = World::new();
+        world.insert_resource(State::new(AppState::InGame));
+        world.init_resource::<NextState<AppState>>();
+        world.init_resource::<SessionBoundary>();
+        assert!(!pause_original_entry(&mut world));
+        assert_eq!(world.resource::<cyrus_game::PauseBookEntry>().page, 2);
+        assert!(matches!(
+            world.resource::<NextState<AppState>>(),
+            NextState::Pending(AppState::Menu)
+        ));
+        assert!(world.resource::<SessionBoundary>().is_idle());
+        world.insert_resource(State::new(AppState::Menu));
+        world.insert_resource(NextState::<AppState>::Unchanged);
+        // A startup menu alone is not a paused gameplay baseline.
+        assert!(!pause_original_entry(&mut world));
+    }
+
+    #[test]
+    fn original_startup_entry_requests_the_saved_world_and_waits_for_its_baseline() {
+        let mut world = World::new();
+        world.init_resource::<NativeSessionLoad>();
+        world.init_resource::<SessionBoundary>();
+        begin_original_entry(&mut world, 2, synthetic_original_entry(15));
+        assert_eq!(world.resource::<cyrus_startup::WorldLoadRequest>().0, "15");
+        let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
+        poll_original_entry(&mut state, &mut world).unwrap();
+        assert!(state.busy());
+        assert_eq!(
+            state
+                .original_entry
+                .as_ref()
+                .unwrap()
+                .saved
+                .metadata
+                .world_id,
+            15
+        );
+        assert!(!state.original_capture);
+        assert!(world.resource::<SessionBoundary>().is_idle());
+    }
+
+    #[test]
+    fn original_cross_world_entry_does_not_capture_the_previous_world() {
+        let mut world = World::new();
+        world.init_resource::<NativeSessionLoad>();
+        world.init_resource::<SessionBoundary>();
+        world.insert_resource(cyrus_world::lifecycle::CurrentScene {
+            name: "ISLAND".into(),
+            world: Some(1),
+        });
+        let previous = world.spawn(Name::new("previous world")).id();
+        begin_original_entry(&mut world, 2, synthetic_original_entry(0));
+        assert_eq!(world.resource::<cyrus_startup::WorldLoadRequest>().0, "0");
+        let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
+        poll_original_entry(&mut state, &mut world).unwrap();
+        assert!(state.original_entry.is_some());
+        assert!(!state.original_capture);
+        assert!(world.resource::<SessionBoundary>().is_idle());
+        assert!(world.get_entity(previous).is_ok());
+        assert_eq!(
+            world
+                .resource::<cyrus_world::lifecycle::CurrentScene>()
+                .world,
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn original_world_entry_reports_preparation_failure_before_capture() {
+        let mut world = World::new();
+        world.init_resource::<NativeSessionLoad>();
+        world.init_resource::<SessionBoundary>();
+        begin_original_entry(&mut world, 2, synthetic_original_entry(15));
+        world.insert_resource(cyrus_world::lifecycle::SceneLoadError(
+            "synthetic failure".into(),
+        ));
+        let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
+        let error = poll_original_entry(&mut state, &mut world)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("original slot 2 world 15") && error.contains("synthetic failure"));
+        assert!(world.resource::<SessionBoundary>().is_idle());
     }
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
