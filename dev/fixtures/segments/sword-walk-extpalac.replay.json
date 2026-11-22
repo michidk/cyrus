@@ -1,0 +1,177 @@
+{
+ "version": 1,
+ "step_micros": 40000,
+ "entry_scene": "EXTPALAC",
+ "steps": [
+  {
+   "await_control": {
+    "world": 30,
+    "max_seconds": 120,
+    "max_updates": 4000
+   }
+  },
+  {
+   "checkpoint": {
+    "world": 30,
+    "flags": {
+     "rock_1_down": {
+      "value": 1
+     },
+     "at_shoals": {
+      "value": 1
+     }
+    },
+    "globals": {
+     "lockout": 0
+    },
+    "inventory": {
+     "1": 1,
+     "79": 0
+    },
+    "position_q8": {
+     "value": [
+      11996672,
+      -354304,
+      13407232
+     ],
+     "tolerance": 3000
+    },
+    "health": 100
+   }
+  },
+  {
+   "input": [
+    {
+     "after_updates": 0,
+     "key": "ArrowLeft",
+     "action": "press"
+    },
+    {
+     "after_updates": 7,
+     "key": "ArrowLeft",
+     "action": "release"
+    },
+    {
+     "after_updates": 9
+    }
+   ]
+  },
+  {
+   "input": [
+    {
+     "after_updates": 0,
+     "key": "KeyS",
+     "action": "press"
+    },
+    {
+     "after_updates": 1,
+     "key": "KeyS",
+     "action": "release"
+    },
+    {
+     "after_updates": 3
+    }
+   ]
+  },
+  {
+   "input": [
+    {
+     "after_updates": 0,
+     "key": "ShiftLeft",
+     "action": "press"
+    },
+    {
+     "after_updates": 0,
+     "key": "ArrowUp",
+     "action": "press"
+    },
+    {
+     "after_updates": 10,
+     "key": "ShiftLeft",
+     "action": "release"
+    },
+    {
+     "after_updates": 10,
+     "key": "ArrowUp",
+     "action": "release"
+    },
+    {
+     "after_updates": 12
+    }
+   ]
+  },
+  {
+   "input": [
+    {
+     "after_updates": 0,
+     "key": "ArrowUp",
+     "action": "press"
+    },
+    {
+     "after_updates": 20,
+     "key": "ArrowUp",
+     "action": "release"
+    },
+    {
+     "after_updates": 22
+    }
+   ]
+  },
+  {
+   "input": [
+    {
+     "after_updates": 0,
+     "key": "ShiftLeft",
+     "action": "press"
+    },
+    {
+     "after_updates": 0,
+     "key": "ArrowUp",
+     "action": "press"
+    },
+    {
+     "after_updates": 30,
+     "key": "ShiftLeft",
+     "action": "release"
+    },
+    {
+     "after_updates": 30,
+     "key": "ArrowUp",
+     "action": "release"
+    },
+    {
+     "after_updates": 32
+    }
+   ]
+  },
+  {
+   "checkpoint": {
+    "world": 30,
+    "flags": {
+     "rock_1_down": {
+      "value": 1
+     },
+     "at_shoals": {
+      "value": 1
+     }
+    },
+    "globals": {
+     "lockout": 0
+    },
+    "inventory": {
+     "1": 1,
+     "79": 0
+    },
+    "position_q8": {
+     "value": [
+      11994879,
+      -354048,
+      13411880
+     ],
+     "tolerance": 1500
+    },
+    "health": 100
+   }
+  }
+ ]
+}
