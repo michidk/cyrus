@@ -53,6 +53,7 @@ report_failure() {
         {
             echo 'Install-backed nightly replay failed.'
             echo "Commit: $(git rev-parse HEAD). Exit status: $status."
+            [[ ! -f "$run/artifact.log" ]] || cat "$run/artifact.log"
             echo "Host evidence: $log"
             echo 'Replay and process logs are retained for the last two runs.'
             echo 'No fixture expectations or game behavior were changed by this run.'
@@ -66,6 +67,7 @@ report_failure() {
         {
             echo 'Install-backed nightly replay passed end to end.'
             echo "Commit: $(git rev-parse HEAD). Exit status: 0."
+            [[ ! -f "$run/artifact.log" ]] || cat "$run/artifact.log"
             echo "Host evidence: $log"
             echo 'All admitted chapters and independent segments passed.'
         } > "$body"
@@ -87,5 +89,5 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
 fi
 git pull --rebase origin main
 commit=$(git rev-parse HEAD)
-python3 -B dev/scripts/download-main-replay.py "$commit" "$runtime/cyrus"
+python3 -B dev/scripts/download-main-replay.py "$commit" "$runtime/cyrus" --fallback-main --receipt "$run/artifact.log"
 CYRUS_REPLAY_BINARY="$runtime/cyrus" CYRUS_CONFIG_DIR="$runtime" just replay-chain

@@ -28,6 +28,8 @@ class Nightly(unittest.TestCase):
                 'import os, pathlib, sys\n'
                 'with open(os.environ["CALLS"], "a") as calls: calls.write("artifact " + sys.argv[1] + "\\n")\n'
                 f'sys.exit({artifact_status}) if {artifact_status} else None\n'
+                'assert "--fallback-main" in sys.argv\n'
+                'receipt = pathlib.Path(sys.argv[sys.argv.index("--receipt") + 1]); receipt.write_text("uploaded-main artifact run 7\\n")\n'
                 'binary = pathlib.Path(sys.argv[2]); binary.parent.mkdir(parents=True, exist_ok=True)\n'
                 'binary.write_text("executable")\n')
             for index in range(old_runs):
@@ -133,6 +135,37 @@ class Nightly(unittest.TestCase):
 
 
 class MainArtifact(unittest.TestCase):
+    def test_fallback_skips_pending_expired_and_nonancestor_runs(self):
+        spec = importlib.util.spec_from_file_location("main_artifact", Path(__file__).with_name("download-main-replay.py"))
+        artifact = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(artifact)
+        runs = [{"headSha": sha, "databaseId": number}
+                for sha, number in [("later", 10), ("wanted", 9), ("expired", 8), ("uploaded", 7)]]
+        queried = []
+        def query(command, text):
+            if command[1:3] == ["run", "list"]:
+                return json.dumps(runs)
+            queried.append(command[2])
+            return json.dumps([{"id": 1}] if '/7/' in command[2] else [])
+        def execute(command, **kwargs):
+            if command[0] == 'git':
+                return subprocess.CompletedProcess(command, int(command[-2] == 'later'))
+            self.assertEqual(command[1:4], ['run', 'download', '7'])
+            package = Path(command[-1]) / 'cyrus-x86_64-unknown-linux-gnu.tar.gz'
+            with tarfile.open(package, 'w:gz') as archive:
+                info = tarfile.TarInfo('cyrus'); info.size = 4
+                archive.addfile(info, io.BytesIO(b'test'))
+            return subprocess.CompletedProcess(command, 0)
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.object(artifact.subprocess, 'check_output', side_effect=query), \
+                mock.patch.object(artifact.subprocess, 'run', side_effect=execute):
+            destination = Path(temporary) / 'cyrus'
+            receipt = artifact.download('wanted', destination, fallback_main=True)
+            self.assertEqual(receipt, {'commit': 'uploaded', 'run': 7})
+            self.assertEqual(destination.read_bytes(), b'test')
+            self.assertEqual(len(queried), 3)
+            self.assertNotIn('/10/', ''.join(queried))
+
     def test_download_selects_exact_main_commit_and_extracts_only_the_binary(self):
         spec = importlib.util.spec_from_file_location("main_artifact", Path(__file__).with_name("download-main-replay.py"))
         artifact = importlib.util.module_from_spec(spec)

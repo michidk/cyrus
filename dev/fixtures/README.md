@@ -355,3 +355,12 @@ worktrees; archives live in `magic/build-tools/`, outside ephemeral Docker stora
 `run-retro.sh`, `original-scenario.py`, `original-fight.py` and the paired runner
 perform this preflight before each launch. Changes to runtime sources select a
 new cache key. This image contains tools only, never an installed game.
+
+The scheduled wrapper downloads a main-push Linux artifact without a local build.
+If the current main build has not uploaded it yet, `--fallback-main` searches the
+latest 50 main-push runs for the newest eligible ancestor with an unexpired Linux
+artifact. It never selects a newer or unrelated commit. The retained `artifact.log`
+records the binary commit and workflow run separately from the checkout commit;
+include both when reporting a chain result. If no eligible upload exists, the run
+fails clearly instead of building locally. The downloader remains exact-commit
+by default for manual proofs.
