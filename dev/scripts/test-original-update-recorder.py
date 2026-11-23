@@ -85,10 +85,11 @@ class WatchpointBackend(unittest.TestCase):
         actor = dict(selected=True, **snapshot(7, 100)['player'])
         state = dict(actors=[actor], console_mode='closed', frame=7, clock=100, step=32)
         session = object.__new__(backend.Watchpoint)
-        session.config = dict(counter='frame', clock='clock', step='step',
+        session.config = dict(boundary_guest_offset=16, counter='frame', clock='clock', step='step',
                               player_fields={name: name for name in recorder.FIELDS})
         session.reader = types.SimpleNamespace(main=lambda: print(json.dumps(state)))
         session.stopped = True
+        session.active_boundary = 16
         self.assertEqual(session.snapshot(), snapshot(7, 100))
         session.stopped = False
         with self.assertRaisesRegex(RuntimeError, 'running'):

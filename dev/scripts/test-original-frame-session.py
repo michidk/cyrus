@@ -99,6 +99,47 @@ class FrameTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'running'):
             boundary.latch_key('ControlLeft', 'press')
 
+    def test_loader_binding_cannot_be_reported_as_an_ordinary_update(self):
+        boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.config = dict(boundary_guest_offset=16)
+        boundary.active_boundary = 24
+        boundary.raw_snapshot = lambda: self.fail('custom boundary mislabeled as ordinary')
+        with self.assertRaisesRegex(RuntimeError, 'ordinary boundary binding'):
+            boundary.snapshot()
+
+    def test_pause_stops_only_its_attached_emulator_and_is_idempotent(self):
+        boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.attached, boundary.stopped, boundary.pid = True, False, 123
+        waits = []
+        def wait(timeout):
+            waits.append(timeout)
+            boundary.stopped = True
+        boundary.wait = wait
+        with patch.object(watchpoint.os, 'kill') as kill:
+            boundary.pause()
+            boundary.pause()
+            kill.assert_called_once_with(123, watchpoint.signal.SIGSTOP)
+        self.assertEqual(waits, [5])
+        boundary.attached = False
+        with self.assertRaisesRegex(RuntimeError, 'unattached'):
+            boundary.pause()
+
+    def test_boundary_rebinding_is_stopped_and_does_not_resume_execution(self):
+        boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.stopped, boundary.base = True, 4096
+        calls = []
+        boundary.ptrace = lambda *args: calls.append(args)
+        boundary.select_boundary(16)
+        self.assertEqual(calls, [(6, 904, 0), (6, 848, 4112),
+                                 (6, 896, 0), (6, 904, 1 | (1 << 16) | (3 << 18))])
+        for invalid in (-4, 3, None):
+            with self.assertRaisesRegex(ValueError, 'aligned'):
+                boundary.select_boundary(invalid)
+        boundary.stopped = False
+        with self.assertRaisesRegex(RuntimeError, 'running'):
+            boundary.select_boundary(32)
+        self.assertEqual(len(calls), 4)
+
     def test_reader_returns_frame_and_all_observables_in_one_stopped_batch(self):
         import json
         from types import SimpleNamespace

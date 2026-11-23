@@ -391,23 +391,46 @@ plays one block, not conditional/repeated chapter steps or a complete route.
 An original-only route checkpoint prepares evidence for a comparison; it does
 not establish native parity. Its script tests run in `just check`.
 
-For a retained original checkpoint, stage only its private slot and open the
-retail Load page. `load_page_ready` waits for the constructed page and selection;
-a pending menu context alone is insufficient. `resume_checkpoint` confirms Load,
-releases Return even on failure, and admits at most two stopped boundaries (menu
-exit followed by restored continuation). Supply decoded save observables through
-`rgpre`: world, selected player and relevant actors, and clock continuation.
-The validator requires both accumulated clocks to equal the saved totals plus
-the retained next step, and requires exact actor observables. This is a strict
-check for checkpoints whose actors remain unchanged across that update, not a
-general restored-state boundary: a moving scripted actor can already have
-advanced when the next ordinary boundary is sampled. Such a checkpoint rejects
-instead of receiving a position tolerance or being called reusable. It needs a
-separately established restore-completion boundary before its first actor update.
-A missing continuation or mismatched state rejects resume; only after a validated
-reload should another bounded input block run. Keep the receipt
-and decoded expectations outside tracked files. This original reload check does
-not assert that cyrus imports the complete save state.
+For a retained original checkpoint, stage its private slot and open the retail
+Load page. `load_page_ready` requires the constructed page and selection, not a
+pending menu context. `restore_checkpoint` temporarily binds a locally evidenced
+restore-to-pre-clock write sequence, confirms Load, and checks decoded world, selected
+player, relevant actors and clock continuation from `rgpre`. Supply the evidenced
+`stages` sequence of `(binding, write_count)` pairs for that Load path:
+earlier loader-entry and retained-global writes may touch the same location.
+Clock totals can already
+match while actors are still absent, so they cannot select the boundary. The
+final stage must follow actor restoration and precede ordinary clock/actor
+updates; any observable mismatch there rejects immediately. The bounded write
+sequence is executable evidence kept locally, not a gameplay timing constant.
+
+Both accumulated clock totals must equal the saved values with **zero** resumed
+steps, and positions, heading, health and animation group must match exactly.
+The helper releases Return on success or failure and restores the ordinary
+watchpoint while the emulator remains stopped. Only the caller's next explicit
+advance executes the first resumed update. Keep executable bindings, receipts
+and decoded expectations outside tracked files. `Watchpoint.select_boundary`
+changes a stopped write watchpoint without running the emulator; a binding alone
+does not establish restoration, so retain the exact observable checks.
+
+The older `resume_checkpoint` ordinary-boundary helper expects one accumulated
+clock step and unchanged actor state. It is suitable only when actors stay
+unchanged across that step, not as a restored-state boundary for moving scripted
+actors. Do not widen tolerances or treat the next loop-counter boundary as an
+untouched save. The original reload check does not assert complete native import
+fidelity.
+
+A scripted `ShowItem` pauses ordinary frame advancement. Use
+`dismiss_scripted_item` with the locally bound pending-item write and modal
+clock, the requested item identity, and the documented opening animation's
+update count. Bound any ordinary updates before the request separately with
+`request_updates`; its observed frame becomes the modal frame. It waits for
+that request, checks its item identity at the first modal clock boundary (the
+pending-flag write can precede argument assignment), advances the opening, holds the close key across one modal update, releases it, and
+requires the pending flag to clear at the next ordinary frame. Wrong items,
+world changes, frame gaps and failed acknowledgements reject the phase; a
+failure after pressing releases the key while stopped. This is a modal input
+adapter, not a wall-time key hold or permission to skip dialogue.
 
 A fixed combat tape's acknowledgements do not establish damage or route
 progress. For a resumed retail combat phase, use `play_checkpointed_phase` with

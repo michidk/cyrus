@@ -84,6 +84,94 @@ class RouteInput(unittest.TestCase):
         self.assertEqual(session.calls, [('ArrowRight', 'press', 40), ('ArrowRight', 'release', 41)])
 
 
+class ScriptedItem(unittest.TestCase):
+    def state(self, pending=False, item=18, frame=10, world=1):
+        return dict(world=world, counters=dict(mainloop_frame=frame,
+                    item_view=dict(pending=pending, item=item)))
+
+    def boundary(self, states):
+        class Boundary:
+            stopped = True
+            def __init__(self):
+                self.states = iter(states)
+                self.raw = next(self.states)
+                self.calls = []
+            def raw_snapshot(self):
+                return self.raw
+            def select_boundary(self, binding):
+                self.calls.append(('binding', binding))
+            def next_boundary(self, timeout):
+                self.raw = next(self.states)
+            def latch_key(self, key, action):
+                self.calls.append((key, action))
+        return Boundary()
+
+    def test_item_request_modal_updates_and_ordinary_resume_are_distinct(self):
+        pending = self.state(True)
+        end = self.state(frame=11)
+        b = self.boundary([self.state(), pending, pending, pending, pending, end])
+        self.assertEqual(route.dismiss_scripted_item(b, 1, 18, 16, 24, 32,
+                                                    opening_updates=2), end)
+        self.assertEqual(b.calls, [('binding', 16), ('binding', 24),
+                         ('Escape', 'press'), ('Escape', 'release'),
+                         ('binding', 32), ('binding', 32)])
+
+    def test_request_flag_can_precede_its_item_assignment_but_clock_boundary_cannot(self):
+        pending = self.state(True)
+        end = self.state(frame=11)
+        b = self.boundary([self.state(), self.state(True, item=0), pending, pending, end])
+        self.assertEqual(route.dismiss_scripted_item(b, 1, 18, 16, 24, 32,
+                                                    opening_updates=1), end)
+
+    def test_bounded_request_arrival_establishes_its_own_modal_frame(self):
+        pending = self.state(True, frame=11)
+        end = self.state(frame=12)
+        b = self.boundary([self.state(), pending, pending, pending, end])
+        self.assertEqual(route.dismiss_scripted_item(b, 1, 18, 16, 24, 32,
+                         opening_updates=1, request_updates=1), end)
+
+    def test_wrong_item_is_not_dismissed(self):
+        b = self.boundary([self.state(), self.state(True, item=19), self.state(True, item=19)])
+        with self.assertRaisesRegex(ValueError, 'expected pending item'):
+            route.dismiss_scripted_item(b, 1, 18, 16, 24, 32, opening_updates=2)
+        self.assertNotIn(('Escape', 'press'), b.calls)
+        self.assertEqual(b.calls[-1], ('binding', 32))
+
+    def test_failure_after_press_releases_input_and_restores_ordinary_binding(self):
+        pending = self.state(True)
+        b = self.boundary([self.state(), pending, pending])
+        with self.assertRaises(StopIteration):
+            route.dismiss_scripted_item(b, 1, 18, 16, 24, 32, opening_updates=1)
+        self.assertEqual(b.calls[-2:], [('Escape', 'release'), ('binding', 32)])
+
+    def test_timeout_while_held_pauses_before_releasing_the_key(self):
+        pending = self.state(True)
+        b = self.boundary([pending, pending])
+        advance = b.next_boundary
+        def timeout_after_opening(timeout):
+            if ('Escape', 'press') in b.calls:
+                b.stopped = False
+                raise TimeoutError('modal clock unavailable')
+            advance(timeout)
+        def pause():
+            b.calls.append(('pause',))
+            b.stopped = True
+        b.next_boundary, b.pause = timeout_after_opening, pause
+        with self.assertRaisesRegex(TimeoutError, 'modal clock unavailable'):
+            route.dismiss_scripted_item(b, 1, 18, 16, 24, 32, opening_updates=1)
+        self.assertEqual(b.calls[-3:], [('pause',), ('Escape', 'release'), ('binding', 32)])
+
+    def test_world_or_frame_change_during_modal_is_not_ordinary_readiness(self):
+        for invalid in [self.state(True, frame=11), self.state(True, world=2)]:
+            b = self.boundary([self.state(), invalid])
+            with self.assertRaisesRegex(ValueError, 'expected pending item|request exceeded'):
+                route.dismiss_scripted_item(b, 1, 18, 16, 24, 32, opening_updates=1)
+        pending = self.state(True)
+        b = self.boundary([self.state(), pending, pending, pending, self.state(frame=12)])
+        with self.assertRaisesRegex(ValueError, 'resumption not acknowledged'):
+            route.dismiss_scripted_item(b, 1, 18, 16, 24, 32, opening_updates=1)
+
+
 class Reload(unittest.TestCase):
     def setUp(self):
         self.actor = dict(id=1, selected=True, position_q8=[100, -20, 300], yaw=64, health=96, group=8)
@@ -106,6 +194,81 @@ class Reload(unittest.TestCase):
                 self.calls += 1
                 self.raw = next(self.states)
         return Boundary(states)
+
+    def restored_boundary(self, states):
+        boundary = self.boundary(states)
+        boundary.stopped = True
+        boundary.bindings = []
+        boundary.select_boundary = boundary.bindings.append
+        return boundary
+
+    def test_loader_boundary_preserves_moving_saved_state_until_explicit_update(self):
+        saved = dict(world=0, actors=[dict(self.actor)],
+                     counters=dict(clock_continuation=dict(self.clock)))
+        moved = dict(world=0, actors=[dict(self.actor, position_q8=[101, -20, 302])],
+                     counters=self.restored['counters'])
+        boundary = self.restored_boundary([self.ready, dict(world=0), saved, moved])
+        keys = []
+        result = route.restore_checkpoint(boundary, keys.append, self.expected, [(16, 2)], 32)
+        self.assertEqual(result, saved)
+        self.assertEqual(boundary.calls, 2)
+        self.assertEqual(boundary.bindings, [16, 32])
+        self.assertEqual(keys, [True, False, False, False])
+        boundary.next_boundary(1)
+        self.assertEqual(boundary.raw_snapshot(), moved)
+        with self.assertRaisesRegex(ValueError, 'position_q8'):
+            route.verify_resumed_checkpoint(moved, self.expected, restored=True)
+
+    def test_restored_clocks_with_absent_actors_do_not_identify_loader_completion(self):
+        partial = dict(world=0, actors=[], counters=dict(clock_continuation=dict(self.clock)))
+        saved = dict(partial, actors=[dict(self.actor)])
+        boundary = self.restored_boundary([self.ready, partial, saved])
+        self.assertEqual(route.restore_checkpoint(boundary, lambda _: None, self.expected,
+                                                 [(16, 1), (24, 1)], 32), saved)
+        self.assertEqual(boundary.bindings, [16, 24, 32])
+        boundary = self.restored_boundary([self.ready, partial])
+        with self.assertRaisesRegex(ValueError, 'actor 1 missing'):
+            route.restore_checkpoint(boundary, lambda _: None, self.expected,
+                                     [(16, 1)], 32)
+
+    def test_exact_player_does_not_hide_a_post_update_nonplayer_pose(self):
+        npc = dict(self.actor, id=2, selected=False, position_q8=[400, -20, 500], group=167)
+        expected = dict(self.expected, actors=[self.actor, npc])
+        raw = dict(world=0, actors=[dict(self.actor), dict(npc, yaw=65)],
+                   counters=dict(clock_continuation=dict(self.clock)))
+        with self.assertRaisesRegex(ValueError, 'actor 2 yaw expected 64, observed 65'):
+            route.verify_resumed_checkpoint(raw, expected, restored=True)
+
+    def test_post_update_clock_is_not_accepted_as_restored_state(self):
+        boundary = self.restored_boundary([self.ready, self.restored])
+        keys = []
+        with self.assertRaisesRegex(ValueError, 'nominal_scaled_total expected 1000, observed 1017'):
+            route.restore_checkpoint(boundary, keys.append, self.expected, [(16, 1)], 32)
+        self.assertEqual(boundary.bindings, [16, 32])
+        self.assertFalse(keys[-1])
+
+    def test_restore_checks_fractional_clock_fields_and_rejects_invalid_budget_before_input(self):
+        saved = dict(world=0, actors=[dict(self.actor)],
+                     counters=dict(clock_continuation=dict(self.clock, fine_ticks=3)))
+        expected = dict(self.expected, clock_continuation=dict(self.clock, fine_ticks=4))
+        boundary = self.restored_boundary([self.ready, saved])
+        with self.assertRaisesRegex(ValueError, 'fine_ticks expected 4, observed 3'):
+            route.restore_checkpoint(boundary, lambda _: None, expected, [(16, 1)], 32)
+        boundary = self.restored_boundary([self.ready])
+        keys = []
+        with self.assertRaisesRegex(ValueError, 'positive write-count sequence'):
+            route.restore_checkpoint(boundary, keys.append, expected, [(16, 0)], 32)
+        self.assertEqual(keys, [])
+        self.assertEqual(boundary.bindings, [])
+
+    def test_partial_restore_rejects_exact_actors_without_advancing_further(self):
+        partial = dict(world=0, actors=[dict(self.actor, group=0)],
+                       counters=dict(clock_continuation=dict(self.clock)))
+        boundary = self.restored_boundary([self.ready, partial])
+        with self.assertRaisesRegex(ValueError, 'group expected 8, observed 0'):
+            route.restore_checkpoint(boundary, lambda _: None, self.expected, [(16, 1)], 32)
+        self.assertEqual(boundary.calls, 1)
+        self.assertEqual(boundary.bindings, [16, 32])
 
     def test_pending_context_does_not_admit_return_before_load_page_exists(self):
         for field, value in [('menu_page', 0), ('menu_selection', 0), ('menu_busy', True)]:

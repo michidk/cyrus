@@ -31,6 +31,7 @@ class Watchpoint:
         self.attached = False
         self.stopped = False
         self.saved_registers = None
+        self.active_boundary = None
 
     def ptrace(self, operation, offset=0, value=0):
         ctypes.set_errno(0)
@@ -64,6 +65,32 @@ class Watchpoint:
             raise RuntimeError('emulator already has active hardware breakpoints')
         self.ptrace(6, 848, self.base + self.config['boundary_guest_offset'])
         self.ptrace(6, 848 + 7 * 8, 1 | (1 << 16) | (3 << 18))
+        self.active_boundary = self.config['boundary_guest_offset']
+
+    def pause(self, timeout=5):
+        """Stop this attached emulator so failed input can be released safely."""
+        if not self.attached:
+            raise RuntimeError('cannot pause an unattached emulator')
+        if not self.stopped:
+            os.kill(self.pid, signal.SIGSTOP)
+            self.wait(timeout)
+
+    def select_boundary(self, guest_offset):
+        """Rebind the stopped write watchpoint without advancing the emulator.
+
+        The caller supplies an evidenced local loader or ordinary-frame binding.
+        Selecting a binding is not evidence that restoration has completed; the
+        resulting stopped state must still pass the checkpoint contract.
+        """
+        if not self.stopped:
+            raise RuntimeError('cannot rebind a running emulator')
+        if type(guest_offset) is not int or guest_offset < 0 or guest_offset % 4:
+            raise ValueError('boundary requires an aligned nonnegative guest offset')
+        self.ptrace(6, 848 + 7 * 8, 0)
+        self.ptrace(6, 848, self.base + guest_offset)
+        self.ptrace(6, 848 + 6 * 8, 0)
+        self.ptrace(6, 848 + 7 * 8, 1 | (1 << 16) | (3 << 18))
+        self.active_boundary = guest_offset
 
     def next_boundary(self, timeout):
         self.ptrace(7)
@@ -109,6 +136,8 @@ class Watchpoint:
         return after
 
     def snapshot(self):
+        if self.active_boundary != self.config['boundary_guest_offset']:
+            raise RuntimeError('ordinary snapshot requires its ordinary boundary binding')
         state = self.raw_snapshot()
         selected = [actor for actor in state['actors'] if actor['selected']]
         if len(selected) != 1 or state.get('console_mode') != 'closed':
@@ -120,9 +149,7 @@ class Watchpoint:
 
     def close(self):
         if self.attached:
-            if not self.stopped:
-                os.kill(self.pid, signal.SIGSTOP)
-                self.wait(5)
+            self.pause()
             if self.saved_registers is not None:
                 self.ptrace(6, 848 + 7 * 8, 0)
                 for index, value in zip((0, 6, 7), self.saved_registers):

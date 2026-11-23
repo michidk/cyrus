@@ -66,11 +66,12 @@ def load_page_ready(raw):
             and bool(startup.get('menu_selection')))
 
 
-def verify_resumed_checkpoint(raw, expected):
-    """Check decoded save observables at the first resumed update boundary.
+def verify_resumed_checkpoint(raw, expected, *, restored=False):
+    """Check decoded save observables at an explicitly identified boundary.
 
-    The stopped main-loop boundary follows clock advance, before actor updates:
-    both accumulated clocks must equal the save plus its retained next step.
+    A loader-completion sample (restored=True) requires untouched saved clocks
+    and actors. The legacy ordinary-boundary check includes one clock step and
+    only applies to actors unchanged by that step; it is not a restore boundary.
     Reader/decoder bindings are supplied by the caller; no install data is kept.
     """
     if raw.get('world') != expected['world']:
@@ -84,8 +85,9 @@ def verify_resumed_checkpoint(raw, expected):
                 raise ValueError(f'original reload: actor {actor["id"]} {field} expected {actor[field]}, observed {matches[0].get(field)}')
     saved = expected['clock_continuation']
     observed = (raw.get('counters') or {}).get('clock_continuation') or {}
-    for field in ('nominal_scaled_total', 'fine_scaled_total', 'frame_scale', 'next_scale', 'warmup'):
-        value = saved[field] + (saved['next_scale'] if field.endswith('_scaled_total') else 0)
+    fields = saved if restored else ('nominal_scaled_total', 'fine_scaled_total', 'frame_scale', 'next_scale', 'warmup')
+    for field in fields:
+        value = saved[field] + (saved['next_scale'] if not restored and field.endswith('_scaled_total') else 0)
         if observed.get(field) != value:
             raise ValueError(f'original reload: clock {field} expected {value}, observed {observed.get(field)}')
 
@@ -118,6 +120,104 @@ def resume_checkpoint(boundary, confirm, expected, max_boundaries=2, timeout=45)
         raise ValueError('original reload: saved continuation not observed within boundary budget')
     finally:
         confirm(False)
+
+
+def restore_checkpoint(boundary, confirm, expected, stages, ordinary_binding, *, timeout=45):
+    """Stop at an evidenced restored-state boundary before ordinary updates.
+
+    Each local (guest_offset, write_count) stage identifies an evidenced loader
+    or pre-clock boundary. Retained globals can precede actor restoration, so
+    saved clock values alone cannot identify completion. Follow the finite
+    binding sequence, then require every saved actor and clock field.
+    Rebind the ordinary watchpoint while still stopped; only the caller's next
+    explicit advance executes the first resumed update.
+    """
+    stages = list(stages)
+    if not stages or any(type(count) is not int or count < 1 for _, count in stages):
+        raise ValueError('original restore: requires a nonempty positive write-count sequence')
+    if not load_page_ready(boundary.raw_snapshot()):
+        raise ValueError('original restore: retail Load page is not ready')
+    boundary.select_boundary(stages[0][0])
+    try:
+        confirm(True)
+        for index, (binding, count) in enumerate(stages):
+            if index:
+                boundary.select_boundary(binding)
+            for _ in range(count):
+                boundary.next_boundary(timeout)
+                raw = boundary.raw_snapshot()
+                confirm(False)
+        verify_resumed_checkpoint(raw, expected, restored=True)
+        return raw
+    finally:
+        confirm(False)
+        if boundary.stopped:
+            boundary.select_boundary(ordinary_binding)
+
+
+def _verify_pending_item(raw, expected_world, expected_item, frame):
+    view = (raw.get('counters') or {}).get('item_view') or {}
+    if (raw.get('world') != expected_world or (expected_item is not None and view.get('item') != expected_item)
+            or view.get('pending') is not True
+            or (raw.get('counters') or {}).get('mainloop_frame') != frame):
+        raise ValueError(f'original item view: expected pending item request world {expected_world}, item {expected_item}, frame {frame}; observed world {raw.get("world")}, view {view}, frame {(raw.get("counters") or {}).get("mainloop_frame")}')
+
+
+def dismiss_scripted_item(boundary, expected_world, expected_item, request_binding,
+                          clock_binding, ordinary_binding, *, opening_updates,
+                          key='Escape', request_updates=0, timeout=45):
+    """Dismiss a script-requested viewer with acknowledged modal-clock input.
+
+    The caller binds the pending-item write and modal clock, and supplies the
+    documented fly-in update count. Ordinary frames do not advance inside the
+    viewer. Wait for the request, finish its opening updates, hold the close
+    key across one modal update, then release and observe ordinary resumption.
+    """
+    if type(opening_updates) is not int or opening_updates < 1:
+        raise ValueError('original item view: requires positive opening updates')
+    if type(request_updates) is not int or request_updates < 0:
+        raise ValueError('original item view: request update budget must be nonnegative')
+    start = boundary.raw_snapshot()
+    frame = (start.get('counters') or {}).get('mainloop_frame')
+    if start.get('world') != expected_world or type(frame) is not int:
+        raise ValueError('original item view: unexpected starting world or missing frame')
+    held = False
+    try:
+        if not ((start.get('counters') or {}).get('item_view') or {}).get('pending'):
+            boundary.select_boundary(request_binding)
+            boundary.next_boundary(timeout)
+        request = boundary.raw_snapshot()
+        request_frame = (request.get('counters') or {}).get('mainloop_frame')
+        if type(request_frame) is not int or not frame <= request_frame <= frame + request_updates:
+            raise ValueError('original item view: request exceeded ordinary update budget')
+        frame = request_frame
+        _verify_pending_item(request, expected_world, None, frame)
+        boundary.select_boundary(clock_binding)
+        for _ in range(opening_updates):
+            boundary.next_boundary(timeout)
+            _verify_pending_item(boundary.raw_snapshot(), expected_world, expected_item, frame)
+        held = True
+        boundary.latch_key(key, 'press')
+        boundary.next_boundary(timeout)
+        boundary.latch_key(key, 'release')
+        held = False
+        boundary.select_boundary(ordinary_binding)
+        boundary.next_boundary(timeout)
+        end = boundary.raw_snapshot()
+        if (end.get('world') != expected_world
+                or (end.get('counters') or {}).get('mainloop_frame') != frame + 1
+                or ((end.get('counters') or {}).get('item_view') or {}).get('pending') is not False):
+            raise ValueError('original item view: ordinary resumption not acknowledged')
+        return end
+    finally:
+        if held and not boundary.stopped:
+            boundary.pause()
+        if boundary.stopped:
+            try:
+                if held:
+                    boundary.latch_key(key, 'release')
+            finally:
+                boundary.select_boundary(ordinary_binding)
 
 
 def play_checkpointed_phase(session, name, desired_keys, complete, max_updates):
