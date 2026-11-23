@@ -152,6 +152,38 @@ def enable_quicksave(run):
     path.write_text(text)
 
 
+def project_prompt(raw):
+    """The comparison schema's `prompts` entry from one reader sample: the pending activation
+    prompt text (None when nothing is pending), the owner actor's id and the hold-off timer, or
+    None when the reader carries no prompt state. The addresses live in the gitignored reader;
+    this only shapes what it reports so cyrus' `activation` state can be compared per frame."""
+    prompts = (raw or {}).get("prompts")
+    if not prompts:
+        return None
+    return {"text": prompts.get("pending_text") or None, "owner_id": prompts.get("owner_id"),
+            "holdoff": prompts.get("holdoff")}
+
+
+def prompt_windows(rows):
+    """Prompt windows over a frame-ordered series of {"frame", "text"} rows: one
+    {"text", "first_frame", "last_frame", "frames"} per run of equal non-empty text, with frames
+    counted inclusively as sampled (a coarser sampler widens a window by one sample at most)."""
+    windows, current = [], None
+    for row in rows:
+        text = row.get("text")
+        if current and text == current["text"]:
+            current["last_frame"] = row["frame"]
+        else:
+            if current:
+                windows.append(current)
+            current = {"text": text, "first_frame": row["frame"], "last_frame": row["frame"]} if text else None
+    if current:
+        windows.append(current)
+    for window in windows:
+        window["frames"] = window["last_frame"] - window["first_frame"] + 1
+    return windows
+
+
 class FrameSession:
     """Comparison adapter around the streaming original reader and real key input.
 
