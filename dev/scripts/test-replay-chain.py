@@ -35,6 +35,19 @@ class Checkpoints(unittest.TestCase):
             "position_q8": {"value": [10, 20, 33], "tolerance": 3},
         }
 
+    def test_ready_accepts_a_restored_zero_update_boundary_without_advancing(self):
+        control = replay.Control.__new__(replay.Control)
+        state = {"state":"InGame", "scene_ready":True, "examine":{"open":False},
+                 "scripts":{"world":20,"failed":0,"ordinary_updates":0,"restored":True}}
+        control.request = mock.Mock(return_value=state)
+        self.assertIs(control.ready(20, timeout=0), state)
+        control.request.assert_called_once_with({"type":"state"})
+        with self.assertRaisesRegex(AssertionError, "timeout"):
+            control.ready(20, timeout=0, min_updates=2)
+        state["scripts"]["restored"] = False
+        with self.assertRaisesRegex(AssertionError, "timeout"):
+            control.ready(20, timeout=0)
+
     def test_repository_fixtures_are_input_only_and_share_timing(self):
         fixtures = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "chapters").glob("*.replay.json"))
         self.assertTrue(fixtures, "the replay chain must contain a chapter")

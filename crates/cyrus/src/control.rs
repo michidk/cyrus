@@ -35,7 +35,8 @@ pub struct ReplayStep(pub std::time::Duration);
 /// Without this the headless frame loop keeps feeding fixed steps between control requests, so
 /// the number of ordinary updates, and with it every random draw and AI decision, depended on
 /// how long the driver took to answer. Loading, menus, a world's first two updates and an open
-/// examine view run freely so readiness checks can complete: the view closes on real-time ticks,
+/// examine view run freely so readiness checks can complete. Restored continuations
+/// are held immediately even though their observation counter restarts at zero: the view closes on real-time ticks,
 /// which a frozen step never delivers, and it pauses ordinary updates itself. Faithful gameplay is unchanged: the gate exists
 /// only when a replay step is configured.
 pub(crate) fn replay_gate_open(
@@ -44,8 +45,9 @@ pub(crate) fn replay_gate_open(
     in_game: bool,
     world_updates: Option<u64>,
     dialogue_pending: bool,
+    restored: bool,
 ) -> bool {
-    let started = world_updates.is_some_and(|updates| updates >= 2);
+    let started = restored || world_updates.is_some_and(|updates| updates >= 2);
     // A speech line still exporting or loading holds a started world even inside a schedule, so
     // it becomes ready at the same update in every run. An open examine view still wins: it
     // closes on real-time ticks.
@@ -87,6 +89,10 @@ fn replay_gate(
         in_game,
         updates,
         inputs.dialogue.is_some_and(|pending| pending.0),
+        inputs
+            .actors
+            .as_deref()
+            .is_some_and(|actors| actors.current_is_restored()),
     );
     *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
         step.0
@@ -423,6 +429,17 @@ fn handle(
                 break;
             }
             Command::State => {
+                // Preparation status is sampled before ordinary simulation. Report
+                // completed-update observations from the live registry at this boundary.
+                let mut scripts = scripts.as_deref().map(|status| json!(status));
+                if let (Some(status), Some(actors)) =
+                    (scripts.as_mut(), script_actors.as_deref())
+                    && let Some(world) = actors.current.as_ref()
+                    && status.get("world") == Some(&json!(world.world))
+                {
+                    status["ordinary_updates"] = json!(world.ordinary_updates());
+                    status["restored"] = json!(actors.current_is_restored());
+                }
                 let scene_ready = ready_scene.as_ref().is_some_and(|ready| {
                     prepared.as_ref().is_some_and(|world| ready.0 == world.animations)
                 });
@@ -434,7 +451,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                 });
                 Ok(
-                    json!({"random_state": random.state(), "effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"random_state": random.state(), "effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts, "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps(), "continuation": clock.snapshot()})), "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::CapturePresentationFrame { path } => {
@@ -1044,23 +1061,74 @@ mod tests {
     fn replay_world_pauses_unless_a_schedule_owns_the_frame_loop() {
         use super::replay_gate_open;
         // An in-game world past its first two updates is held between requests.
-        assert!(!replay_gate_open(false, false, true, Some(2), false));
-        assert!(!replay_gate_open(false, false, true, Some(900), false));
+        assert!(!replay_gate_open(false, false, true, Some(2), false, false));
+        assert!(!replay_gate_open(
+            false,
+            false,
+            true,
+            Some(900),
+            false,
+            false
+        ));
         // A pending scheduled boundary, startup, loading and a fresh world keep time running.
-        assert!(replay_gate_open(true, false, true, Some(900), false));
-        assert!(replay_gate_open(false, false, false, Some(900), false));
-        assert!(replay_gate_open(false, false, true, Some(1), false));
-        assert!(replay_gate_open(false, false, true, Some(0), false));
-        assert!(replay_gate_open(false, false, true, None, false));
+        assert!(replay_gate_open(true, false, true, Some(900), false, false));
+        assert!(replay_gate_open(
+            false,
+            false,
+            false,
+            Some(900),
+            false,
+            false
+        ));
+        assert!(replay_gate_open(false, false, true, Some(1), false, false));
+        assert!(replay_gate_open(false, false, true, Some(0), false, false));
+        assert!(replay_gate_open(false, false, true, None, false, false));
         // An open examine view closes on real-time ticks, so a held world must keep time running.
-        assert!(replay_gate_open(false, true, true, Some(900), false));
+        assert!(replay_gate_open(false, true, true, Some(900), false, false));
         // A speech line still exporting or loading holds a started world even inside a schedule,
         // but never loading, a fresh world, a world-less game or an open examine view.
-        assert!(!replay_gate_open(true, false, true, Some(900), true));
-        assert!(replay_gate_open(true, false, false, Some(900), true));
-        assert!(replay_gate_open(true, false, true, Some(1), true));
-        assert!(replay_gate_open(true, false, true, None, true));
-        assert!(replay_gate_open(true, true, true, Some(900), true));
+        assert!(!replay_gate_open(true, false, true, Some(900), true, false));
+        assert!(replay_gate_open(true, false, false, Some(900), true, false));
+        assert!(replay_gate_open(true, false, true, Some(1), true, false));
+        assert!(replay_gate_open(true, false, true, None, true, false));
+        assert!(replay_gate_open(true, true, true, Some(900), true, false));
+    }
+
+    #[test]
+    fn restored_replay_starts_held_without_consuming_the_saved_clock() {
+        use cyrus_script::clock::SimulationClock;
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: true,
+            use_smooth_divisor: true,
+        })
+        .unwrap();
+        clock.advance_recorded(0, 118).unwrap();
+        let before = serde_json::to_value(clock.snapshot()).unwrap();
+        // This is the restored world's first host update: its diagnostic count is
+        // zero, but a complete continuation needs no fresh-world startup frames.
+        if super::replay_gate_open(false, false, true, Some(0), false, true) {
+            clock.advance_elapsed(0, std::time::Duration::ZERO);
+        }
+        assert_eq!(serde_json::to_value(clock.snapshot()).unwrap(), before);
+        assert!(super::replay_gate_open(
+            true,
+            false,
+            true,
+            Some(0),
+            false,
+            true
+        ));
+        assert!(!super::replay_gate_open(
+            true,
+            false,
+            true,
+            Some(0),
+            true,
+            true
+        ));
     }
 
     use super::*;
@@ -1664,6 +1732,28 @@ mod tests {
                 environment_path: "test.environment".into(),
             });
         app
+    }
+
+    #[test]
+    fn public_state_reads_the_live_boundary_instead_of_cached_pre_update_counts() {
+        let mut app = script_app();
+        app.insert_resource(cyrus_script::script::ScriptStatus::Loaded {
+            world: 17,
+            content_id: String::new(),
+            programs: 1,
+            instances: 1,
+            prepared: 1,
+            waiting: 0,
+            failed: 0,
+            unsupported: 0,
+            actor_flats: 0,
+            ordinary_updates: 900,
+            restored: true,
+            examples: Default::default(),
+        });
+        let state = run_commands(&mut app, vec![Command::State]).remove(0);
+        assert_eq!(state["scripts"]["ordinary_updates"], 0);
+        assert_eq!(state["scripts"]["restored"], false);
     }
 
     #[test]

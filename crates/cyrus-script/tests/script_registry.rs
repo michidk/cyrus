@@ -48270,7 +48270,19 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             .err()
             .expect("active legacy owner must reject");
         assert!(format!("{error:#}").contains("legacy selected rope jump latch unavailable"));
-        let mut restored = restore(document.clone()).unwrap().actors.current.unwrap();
+        assert!(!actors.current_is_restored());
+        let restored_session = restore(document.clone()).unwrap();
+        assert!(restored_session.actors.current_is_restored());
+        assert_eq!(
+            restored_session
+                .actors
+                .current
+                .as_ref()
+                .unwrap()
+                .ordinary_updates(),
+            0
+        );
+        let mut restored = restored_session.actors.current.unwrap();
         let mut uninterrupted = actors.current.take().unwrap();
         let first_jump = !released_at_capture;
         for live in [&mut uninterrupted, &mut restored] {
@@ -54081,6 +54093,11 @@ fn original_npc_playback_survives_first_default_selection_and_animation_update()
         100,
     )?;
     assert_eq!(group(&world), AnimationGroup::STILL.index());
+    let playback = world.inspect(actor.index, 1)["actors"][0]["animation"].clone();
+    assert_eq!(playback["default_group"], AnimationGroup::STILL.index());
+    assert!(playback["command_frame"].is_number());
+    assert!(playback["speed_count"].is_number());
+    assert!(playback["real_frame"].is_number());
     assert_eq!(world.animation_frame(actor)?, Some(0));
     Ok(())
 }

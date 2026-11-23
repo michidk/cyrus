@@ -3563,6 +3563,10 @@ impl ScriptWorld {
                 "spatial": self.spatial.as_ref().and_then(|spatial| spatial.actor(index).ok()),
                 "animation": actor.animation.as_ref().map(|animation| serde_json::json!({
                     "current_group": animation.playback.current_group(),
+                    "default_group": animation.playback.default_group(),
+                    "command_frame": animation.playback.record_field(cyrus_world::animation::PlaybackField::Frame).ok(),
+                    "speed_count": animation.playback.record_field(cyrus_world::animation::PlaybackField::SpeedCount).ok(),
+                    "real_frame": animation.playback.record_field(cyrus_world::animation::PlaybackField::RealFrame).ok(),
                     "pending_group": animation.playback.pending_group(),
                     "frame": animation.frame,
                 })),
@@ -3971,6 +3975,15 @@ impl Default for ScriptActors {
     }
 }
 impl ScriptActors {
+    /// Whether the active world is a published saved continuation, rather than a
+    /// fresh world that still needs its initial ordinary updates. Diagnostic update
+    /// counters restart at zero on load and cannot distinguish those two cases.
+    pub fn current_is_restored(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|world| self.restored_generation == Some(world.generation()))
+    }
+
     /// Restore a no-world checkpoint after rejected preliminary world entry.
     /// Preserve the generation high-water mark so retired actor bindings cannot
     /// alias the next world even when the checkpoint predates that entry.

@@ -38,6 +38,8 @@ pub enum ScriptStatus {
         actor_flats: usize,
         /// Ordinary updates the current world has executed (observation only).
         ordinary_updates: u64,
+        /// A saved continuation is ready without replaying fresh-world startup updates.
+        restored: bool,
         examples: BTreeMap<String, String>,
     },
     Failed {
@@ -100,6 +102,7 @@ pub(super) fn update(
             unsupported: scripts.unsupported.len(),
             actor_flats: world.actor_flat_draws().map_or(0, |draws| draws.len()),
             ordinary_updates: world.ordinary_updates(),
+            restored: actors.current_is_restored(),
             examples: scripts
                 .unsupported
                 .iter()

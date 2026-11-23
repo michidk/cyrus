@@ -182,3 +182,8 @@ Original-save animation import restores the saved panic-group attribute alongsid
 its playback default, so the first ordinary default selection preserves the
 imported idle pose. Other controller-dependent default branches remain subject
 to the limited-import warning.
+
+`ScriptActors::current_is_restored` identifies a saved continuation by its live
+generation. Replay hosts use it instead of treating the reset observation counter
+as a request to run fresh-world startup updates. Script status exposes this as
+`restored`; changing worlds clears it.

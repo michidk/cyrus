@@ -830,7 +830,7 @@ class Control:
             state = self.request({"type": "state"})
             scripts = state.get("scripts") or {}
             assert scripts.get("failed", 0) == 0, f"script failures: {scripts}"
-            if (state["state"] == "InGame" and state["scene_ready"] and scripts.get("world") is not None and scripts.get("ordinary_updates", 0) >= min_updates
+            if (state["state"] == "InGame" and state["scene_ready"] and scripts.get("world") is not None and (scripts.get("ordinary_updates", 0) >= min_updates or (min_updates == 1 and scripts.get("restored", False)))
                     and (world is None or scripts.get("world") == world)
                     and (examine_open is None or state["examine"]["open"] == examine_open)):
                 return state
