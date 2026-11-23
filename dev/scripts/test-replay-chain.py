@@ -544,6 +544,30 @@ class Checkpoints(unittest.TestCase):
         self.assertFalse(control.open)
         self.assertGreater(control.updates, 5)
 
+    def test_prompt_wait_idles_until_the_prompt_event_and_is_bounded(self):
+        class Window(replay.Control):
+            def __init__(self, opens):
+                self.opens = opens
+                self.updates = 0
+
+            def ready(self, *args, **kwargs):
+                return {}
+
+            def request(self, command):
+                if command["type"] == "scripts":
+                    shown = "TALK TO MAN" if self.updates >= self.opens else None
+                    return {"activation": {"shown_prompt": None, "prompt": shown}}
+                self.updates += command["events"][-1]["after_updates"] + 1
+                return {}
+
+        waited = replay.await_prompt(Window(10), {"world": 1, "text": "TALK TO MAN", "max_updates": 100})
+        self.assertGreaterEqual(waited, 10)
+        self.assertLess(waited, 14)
+        with self.assertRaisesRegex(AssertionError, "never appeared"):
+            replay.await_prompt(Window(10 ** 6), {"world": 1, "text": "TALK TO MAN", "max_updates": 20})
+        self.assertTrue(replay.prompt_shown({"shown_prompt": "X", "prompt": None}, "X"))
+        self.assertFalse(replay.prompt_shown({"shown_prompt": None, "prompt": None}, "X"))
+
     def test_a_crashed_game_is_reported_with_its_signal_and_log_tail(self):
         report = replay.exit_report(-11, "a\nb\nc\nd\ne\nlast line")
         self.assertIn("SIGSEGV", report)

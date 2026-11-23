@@ -82,6 +82,12 @@ def validate_steps(steps, depth=0):
             assert set(step["topic"]) == {"world", "text", "limit"}, "incomplete topic"
             assert isinstance(step["topic"]["text"], str) and step["topic"]["text"], "empty topic"
             assert type(step["topic"]["limit"]) is int and 0 < step["topic"]["limit"] <= 10000, "invalid topic limit"
+        elif "await_prompt" in step:
+            assert set(step) == {"await_prompt"}, "prompt wait cannot contain commands"
+            wait = step["await_prompt"]
+            assert set(wait) == {"world", "text", "max_updates"}, "incomplete prompt wait"
+            assert isinstance(wait["text"], str) and wait["text"], "empty prompt text"
+            assert type(wait["max_updates"]) is int and 0 < wait["max_updates"] <= 4000, "invalid prompt wait bound"
         elif "await_control" in step:
             assert set(step) == {"await_control"}, "control wait cannot contain commands"
             wait = step["await_control"]
@@ -171,6 +177,30 @@ def reached(control, expected):
         except AssertionError:
             return False
     return True
+
+
+def prompt_shown(activation, text):
+    """Whether the activation prompt `text` is offered or shown: an event, not a fixed delay."""
+    return text in (activation.get("shown_prompt"), activation.get("prompt"))
+
+
+def await_prompt(control, wait, chunk=2):
+    """Idle in short schedules until the activation prompt appears, bounded in game updates.
+
+    A moving actor's prompt window opens at a time that depends on the clock, so a fixed idle
+    can land outside it; waiting for the prompt keys the next input to the event itself. The
+    prompt is read straight after each schedule's reply: a state request in between runs an
+    extra held frame in which the displayed prompt has already been consumed, so a prompt that
+    lasts a few updates would be missed."""
+    control.ready(wait["world"])
+    waited = 0
+    while waited <= wait["max_updates"]:
+        activation = control.request({"type": "scripts", "offset": 0, "limit": 1})["activation"]
+        if prompt_shown(activation, wait["text"]):
+            return waited
+        control.request({"type": "schedule_input", "events": [{"after_updates": 0}, {"after_updates": chunk}]})
+        waited += chunk + 1
+    raise AssertionError(f"prompt {wait['text']!r} never appeared within {wait['max_updates']} updates")
 
 
 def await_control(control, wait):
@@ -876,6 +906,8 @@ def run(args):
                                 face_heading(control, step["face"])
                             if "topic" in step:
                                 choose_topic(control, step["topic"])
+                            if "await_prompt" in step:
+                                await_prompt(control, step["await_prompt"])
                             if "await_control" in step:
                                 await_control(control, step["await_control"])
                             if "steer" in step:

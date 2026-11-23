@@ -31,14 +31,11 @@
       }
     },
     {
-      "input": [
-        {
-          "after_updates": 0
-        },
-        {
-          "after_updates": 312
-        }
-      ]
+      "await_prompt": {
+        "world": 1,
+        "text": "TALK TO MAN",
+        "max_updates": 1500
+      }
     },
     {
       "repeat": {
@@ -216,11 +213,11 @@
         },
         "position_q8": {
           "value": [
-            11885368,
+            11862362,
             -251904,
-            10557776
+            10552414
           ],
-          "tolerance": 8192
+          "tolerance": 4096
         }
       }
     },
