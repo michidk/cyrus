@@ -390,3 +390,16 @@ retail entry; do not assume F3 opens Load during the opening duel. This helper
 plays one block, not conditional/repeated chapter steps or a complete route.
 An original-only route checkpoint prepares evidence for a comparison; it does
 not establish native parity. Its script tests run in `just check`.
+
+For a retained original checkpoint, stage only its private slot and open the
+retail Load page. `load_page_ready` waits for the constructed page and selection;
+a pending menu context alone is insufficient. `resume_checkpoint` confirms Load,
+releases Return even on failure, and admits at most two stopped boundaries (menu
+exit followed by restored continuation). Supply decoded save observables through
+`rgpre`: world, selected player and relevant actors, and clock continuation.
+The first resumed boundary advances both accumulated clocks by the retained next
+step before actor updates. Positions, heading, health and animation group must
+still match exactly. A missing continuation or mismatched state rejects resume;
+only after this check should another bounded input block run. Keep the receipt
+and decoded expectations outside tracked files. This original reload check does
+not assert that cyrus imports the complete save state.
