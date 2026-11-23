@@ -376,3 +376,17 @@ invocation counter, blocking status and pause state. Both backends must bind the
 from their live state. Matching position, animation and clock alone cannot admit
 a shared-save start: a limited original import can retain native baseline tasks.
 Missing or different continuations reject the comparison before native input.
+
+### Bounded original route blocks
+
+`dev/scripts/original-route-input.py` applies one fixture `input` block through
+an already prepared `original-frame-session.FrameSession`. Offsets are relative
+to the current stopped boundary; all offsets are checked before any input.
+Every key needs an exact-frame acknowledgement, world changes reject the block,
+and held keys are released on success or failure. The caller supplies an
+explicit update bound and retains the start/end observables and input receipts.
+Use the existing opening fixture's combat block after acknowledged
+retail entry; do not assume F3 opens Load during the opening duel. This helper
+plays one block, not conditional/repeated chapter steps or a complete route.
+An original-only route checkpoint prepares evidence for a comparison; it does
+not establish native parity. Its script tests run in `just check`.
