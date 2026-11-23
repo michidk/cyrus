@@ -77,8 +77,8 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual(len(blocked), 1)
         self.assertEqual(blocked[0]["gait"], "run")
 
-    def check_bell_approach(self, index):
-        path = Path(__file__).resolve().parents[1] / "fixtures/segments/bell-monocle.replay.json"
+    def check_stopped_approach(self, segment, index):
+        path = Path(__file__).resolve().parents[1] / "fixtures/segments" / segment
         fixture = json.loads(path.read_text())
         approach = fixture["steps"][index]["steer"]
         target = approach["position_q8"]
@@ -89,11 +89,11 @@ class Checkpoints(unittest.TestCase):
             corrected = False
 
             def ready(self, world=None):
-                return {"scripts": {"world": 20}, "hud": {"health": 100, "heading": 0}}
+                return {"scripts": {"world": approach["world"]}, "hud": {"health": 100, "heading": 0}}
 
             def request(self, command):
                 if command["type"] == "scripts":
-                    return {"world": 20, "player_position_q8": list(self.position)}
+                    return {"world": approach["world"], "player_position_q8": list(self.position)}
                 if not self.coasted:
                     self.position[2] += approach["tolerance"] + 1000
                     self.coasted = True
@@ -106,15 +106,18 @@ class Checkpoints(unittest.TestCase):
 
         control = Control()
         observed = replay.steer(control, approach)
-        self.assertTrue(control.corrected, "the bell approach must verify the released stop")
+        self.assertTrue(control.corrected, "the approach must verify the released stop")
         self.assertLessEqual(math.dist(observed["scripts"]["player_position_q8"][::2],
                                       target[::2]), approach["tolerance"])
 
     def test_bell_jump_approach_rechecks_released_coast_before_accepting(self):
-        self.check_bell_approach(10)
+        self.check_stopped_approach("bell-monocle.replay.json", 10)
 
     def test_bell_conversation_approach_rechecks_released_coast_before_accepting(self):
-        self.check_bell_approach(1)
+        self.check_stopped_approach("bell-monocle.replay.json", 1)
+
+    def test_crendal_prompt_approach_rechecks_released_coast_before_waiting(self):
+        self.check_stopped_approach("tavern-4-crendal.replay.json", 1)
 
     def test_bell_approach_accepts_the_stopped_pose_inside_the_grab_corridor(self):
         path = Path(__file__).resolve().parents[1] / "fixtures/segments/bell-monocle.replay.json"

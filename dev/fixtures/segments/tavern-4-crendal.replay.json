@@ -27,7 +27,10 @@
         ],
         "tolerance": 4000,
         "limit": 240,
-        "gait": "run"
+        "gait": "run",
+        "stop_updates": 50,
+        "approach_radius": 25000,
+        "stride_correction": true
       }
     },
     {
@@ -213,9 +216,9 @@
         },
         "position_q8": {
           "value": [
-            11862362,
+            11830000,
             -251904,
-            10552414
+            10585000
           ],
           "tolerance": 4096
         }
