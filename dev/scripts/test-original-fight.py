@@ -104,6 +104,17 @@ class WalkIn(unittest.TestCase):
         self.assertIsNone(fight.walk_step(self.sample_at([0, 0, 0], 0, None)))
 
 
+class CombatEntryObservation(unittest.TestCase):
+    def test_allocated_combat_structure_does_not_mean_begin_combat_has_run(self):
+        enemy = dict(actor(55, 0, 250), hidden=False, combat_owner=123, death_selector=0)
+        raw = {"world": 30, "counters": {"mainloop_frame": 1, "fps": 12},
+               "actors": [actor(1, 0, 100, selected=True), enemy]}
+        self.assertFalse(fight.view(raw)["rcombat"])
+        enemy["death_selector"] = 6
+        self.assertTrue(fight.view(raw)["rcombat"])
+        self.assertFalse(fight.view(raw)["rhidden"])
+
+
 class EngageGate(unittest.TestCase):
     def test_player_distance_sums_all_three_axes_like_the_script_gate(self):
         near = sample() | {"ppos": [0, 0, 0], "rpos": [30000, 40000, 20000]}
@@ -122,6 +133,57 @@ class EngageGate(unittest.TestCase):
 
         with self.assertRaisesRegex(AssertionError, "1847 map units above or below"):
             fight.walk_in(Sampler(), lambda *a: None, 3000)
+
+
+class ExactCombatTape(unittest.TestCase):
+    class Session:
+        def __init__(self, gap=False):
+            self.frame, self.keys, self.gap = 0, set(), gap
+        def snapshot(self):
+            return sample() | {"frame": self.frame, "ppos": [0, 0, 0], "rpos": [0, 0, 100],
+                               "world": 30, "rhidden": False, "rcombat": True, "lockout": 0}
+        def advance_to(self, frame):
+            self.frame = frame + int(self.gap)
+        def input(self, key, action):
+            if action == "press": self.keys.add(key)
+            else: self.keys.discard(key)
+
+    def test_tap_records_every_update_and_releases(self):
+        session = self.Session()
+        result = fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual([s["frame"] for s in result["samples"]], [0, 1, 2, 3, 4])
+        self.assertEqual(session.keys, set())
+        self.assertEqual(result["outcome"], "miss")
+
+    def test_frame_gap_rejects_measurement_and_releases_key(self):
+        session = self.Session(gap=True)
+        with self.assertRaisesRegex(ValueError, "frame gap"):
+            fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual(session.keys, set())
+
+    def test_busy_player_does_not_count_as_an_admitted_attack(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"pg": 102}
+        with self.assertRaisesRegex(ValueError, "armed idle"):
+            fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual(session.keys, set())
+
+    def test_scripted_player_lockout_rejects_attack_measurement(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"lockout": 1}
+        with self.assertRaisesRegex(ValueError, "player control"):
+            fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual(session.keys, set())
+
+    def test_hidden_opponent_is_not_an_admitted_fight(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"rhidden": True}
+        with self.assertRaisesRegex(ValueError, "revealed.*combat"):
+            fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual(session.keys, set())
 
 
 class FakeSampler:

@@ -106,7 +106,14 @@ class Console:
                 raise ConsoleError(f"console echo wanted {expected!r}, saw {seen!r}; not submitting")
         typed = self.shot(f"{tag}-typed")
         self.press(self.submit, self.key_seconds)
-        self.pause(1.0)
+        # Report handlers can take many editor iterations. A fixed delay can
+        # send F12 while a handler still owns input and lose the close request.
+        for _ in range(max(1, int(self.budget_seconds / self.poll_seconds))):
+            if self.console_mode() == "interactive" and self.editor_text() == "":
+                break
+            self.pause(self.poll_seconds)
+        else:
+            raise ConsoleError("command did not return to an editable prompt; not toggling console")
         answered = self.shot(f"{tag}-answered")
         self.close()
         self.evidence.append({"line": line, "tag": tag, "typed": typed, "answered": answered,

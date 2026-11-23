@@ -82,6 +82,13 @@ def view(state):
         "rg": opponent["group"] if opponent else None,
         "rpending": opponent["pending"] if opponent else None,
         "rh": opponent["health"] if opponent else None,
+        "world": state.get("world"),
+        "lockout": state["counters"].get("player_lockout"),
+        "rhidden": opponent.get("hidden") if opponent else None,
+        # A combat structure is allocated before admission. Combat entry writes
+        # lifecycle selector 6; its pointer alone cannot acknowledge the native.
+        "rcombat": (opponent["death_selector"] == 6
+                    if opponent and "death_selector" in opponent else None),
         # Q8 positions and yaw, for distance and step-back analysis against the native snapshots.
         "ppos": player["position_q8"], "pyaw": player["yaw"],
         "rpos": opponent["position_q8"] if opponent else None,
@@ -131,6 +138,44 @@ def classify_tap(before, samples):
     if any(g != before["rg"] for g in groups):
         return {"outcome": "response", "damage": 0, "groups": sorted(set(groups) - {before["rg"]})}
     return {"outcome": "miss", "damage": 0}
+
+
+def record_combat_tap(session, key, held_updates, released_updates):
+    """Record one explicit input and every stopped update, never infer a hit from input.
+
+    The session projects world, reveal/combat state and the ordinary fight view.
+    Counts are original game updates supplied by the caller's input tape.
+    Frame gaps and world changes reject the measurement; a failed read still
+    releases the key. Health loss is reported over the whole observation window,
+    not attributed to a single strike.
+    """
+    if type(held_updates) is not int or held_updates < 1 or type(released_updates) is not int or released_updates < 0:
+        raise ValueError("combat tap requires positive held and nonnegative released updates")
+    before = session.snapshot()
+    if before.get("rhidden") is not False or before.get("rcombat") is not True:
+        raise ValueError("opponent must be revealed and in combat before measuring a tap")
+    if before.get("lockout") != 0:
+        raise ValueError("player control must be restored before measuring a tap")
+    if before["pg"] != ARMED_IDLE_GROUP:
+        raise ValueError("player must be in armed idle before measuring a tap")
+    samples = [before]
+    try:
+        session.input(key, "press")
+        for offset in range(1, held_updates + released_updates + 1):
+            if offset == held_updates + 1:
+                session.input(key, "release")
+            expected = before["frame"] + offset
+            session.advance_to(expected)
+            state = session.snapshot()
+            if state["frame"] != expected:
+                raise ValueError(f"combat frame gap: expected {expected}, observed {state['frame']}")
+            if state["world"] != before["world"]:
+                raise ValueError("combat tap changed world")
+            samples.append(state)
+    finally:
+        session.input(key, "release")
+    return dict(classify_tap(before, samples), samples=samples,
+                held_updates=held_updates, released_updates=released_updates)
 
 
 def summarize(rows):

@@ -1173,8 +1173,19 @@ select the nonmodal overlay. The toggle is released on mode acknowledgement,
 without waiting for gameplay frames inside the paused editor. The reader also
 supplies `console_editor.text`, the current editable text without prompt or
 terminal placeholder. The driver checks every typed prefix before continuing;
-a missing binding or dropped character stops before Return is sent. Its controls
+a missing binding or dropped character stops before Return is sent. After
+submission it waits for an editable prompt, so a long report cannot swallow the
+close request. Its controls
 run with `python3 dev/scripts/test-original-console.py` and in `just check`.
+
+The fight reader exposes `hidden` and `death_selector` for the opponent.
+`original-fight.py` reports combat entry from lifecycle selector 6, as documented
+in preservation's combat-entry rules. An allocated combat structure does not
+prove entry. Attack measurements also require restored player control and armed
+idle; combat entry alone does not finish the separate entrance sequence. `record_combat_tap` accepts a stopped-frame session, records every
+held and released update with positions and health, and releases input even
+when a frame gap or world change rejects the measurement. Health loss is the
+observation-window total, not a count of individual strikes.
 
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.

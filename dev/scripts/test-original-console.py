@@ -72,7 +72,7 @@ class ConsoleDriver(unittest.TestCase):
         self.assertNotIn("wait_frames", inspect.signature(oc.Console.__init__).parameters)
         rig = Rig()
         rig.console().run("oracle", "o")
-        self.assertGreater(rig.slept, 0.0)
+        self.assertEqual(rig.mode, "closed")
 
     def test_overlay_is_not_an_editor_and_never_receives_text(self):
         rig = Rig(accepts_toggle=False)
@@ -139,6 +139,24 @@ class ConsoleDriver(unittest.TestCase):
         with self.assertRaisesRegex(oc.ConsoleError, "editor is not empty"):
             console.run("oracle", "missing")
         self.assertEqual(rig.log, ["F12"])
+
+    def test_report_handler_must_return_to_editable_prompt_before_close(self):
+        rig = Rig()
+        original_press = rig.press
+        def press(key, seconds):
+            if key == "F12":
+                self.assertEqual(rig.text, "")
+            original_press(key, seconds)
+            if key == "Return":
+                rig.text = None
+        def pause(seconds):
+            rig.slept += seconds
+            if rig.slept >= 2:
+                rig.text = ""
+        rig.press, rig.pause = press, pause
+        rig.console().run("oracle", "report")
+        self.assertEqual(rig.mode, "closed")
+        self.assertGreaterEqual(rig.slept, 2)
 
     def test_plan_lowercases_maps_punctuation_and_refuses_unsafe_input(self):
         self.assertEqual(oc.plan("Item Add,79"), ["i", "t", "e", "m", "space", "a", "d", "d", "comma", "7", "9"])
