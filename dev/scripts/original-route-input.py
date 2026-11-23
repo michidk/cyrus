@@ -284,3 +284,63 @@ def aimed_combat_keys(state, opponent_id, attack, attack_keys):
     if distance >= attack['max_range']:
         return {'ArrowUp'}
     return set(attack_keys)
+
+
+def waypoint_reached(state, waypoint):
+    """Observe a caller-supplied horizontal Q8 disk and vertical clearance."""
+    player, = [a for a in state['actors'] if a['selected']]
+    dx, dy, dz = [v - u for u, v in zip(player['position_q8'], waypoint['position_q8'])]
+    return dx * dx + dz * dz <= waypoint['radius_q8'] ** 2 and abs(dy) <= waypoint['height_q8']
+
+
+def waypoint_keys(state, waypoint, turn_window):
+    """Aim before moving; the caller supplies a measured turn window in yaw units.
+
+    This is a navigation policy, not player simulation. Heading uses 2048 units
+    per turn, with negative X left of +Z. No heading or position is written.
+    """
+    import math
+    player, = [a for a in state['actors'] if a['selected']]
+    if player['lockout'] != 0:
+        raise ValueError('original walk: player control is locked')
+    dx, _, dz = [v - u for u, v in zip(player['position_q8'], waypoint['position_q8'])]
+    bearing = round(math.atan2(-dx, dz) * 1024 / math.pi) % 2048
+    error = (bearing - player['yaw'] + 1024) % 2048 - 1024
+    if abs(error) > turn_window:
+        return {'ArrowLeft' if error > 0 else 'ArrowRight'}
+    return {'ArrowUp'} | ({'ShiftLeft'} if waypoint['modifier'] else set())
+
+
+def play_walk_route(session, waypoints, *, resume=0, turn_window, checkpoint=lambda receipt: None):
+    """Resume an ordered route, acknowledging each measured waypoint separately.
+
+    Waypoints carry names, Q8 position/radius/height, gait modifier and update
+    budget from the caller's route evidence. Never infer completed legs from a
+    nearest point. The returned next index may be persisted with its checkpoint;
+    a rejected leg never produces a completion receipt. The checkpoint callback
+    publishes each completed leg before starting the next, even if that leg fails.
+    """
+    waypoints = list(waypoints)
+    if type(resume) is not int or not 0 <= resume <= len(waypoints):
+        raise ValueError('original walk: invalid resume index')
+    if type(turn_window) is not int or not 0 < turn_window < 1024:
+        raise ValueError('original walk: invalid turn window')
+    for point in waypoints:
+        if (not point.get('name') or len(point.get('position_q8', [])) != 3
+                or any(type(v) is not int for v in point['position_q8'])
+                or any(type(point.get(k)) is not int or point[k] < 0
+                       for k in ('radius_q8', 'height_q8', 'max_updates'))
+                or point['radius_q8'] == 0 or type(point.get('modifier')) is not bool):
+            raise ValueError('original walk: invalid waypoint')
+    receipts = []
+    for index in range(resume, len(waypoints)):
+        point = waypoints[index]
+        receipt = play_checkpointed_phase(session, point['name'],
+                    lambda state: waypoint_keys(state, point, turn_window),
+                    lambda state: waypoint_reached(state, point)
+                        and next(a for a in state['actors'] if a['selected'])['lockout'] == 0,
+                    point['max_updates'])
+        receipt = dict(receipt, next_index=index + 1)
+        checkpoint(receipt)
+        receipts.append(receipt)
+    return receipts

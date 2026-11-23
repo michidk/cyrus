@@ -387,5 +387,62 @@ class CheckpointedPhase(unittest.TestCase):
         self.assertEqual(route.aimed_combat_keys(state, 2, attack, {'ControlLeft'}), set())
 
 
+class WalkRoute(unittest.TestCase):
+    def setUp(self):
+        self.point = dict(name='street', position_q8=[0, 0, 30], radius_q8=2,
+                          height_q8=5, modifier=True, max_updates=5)
+        self.session = Session()
+        self.position = [0, 0, 0]
+        self.lockout = 0
+        self.session.snapshot = lambda: dict(frame=self.session.frame, world=self.session.world,
+            actors=[dict(selected=True, position_q8=list(self.position), yaw=0, lockout=self.lockout)])
+
+    def test_completion_requires_pose_and_control_not_acknowledged_forward_input(self):
+        with self.assertRaisesRegex(RuntimeError, 'street checkpoint not reached'):
+            route.play_walk_route(self.session, [self.point], turn_window=48)
+        self.assertEqual(self.session.calls[-2:], [('ArrowUp', 'release', 45), ('ShiftLeft', 'release', 45)])
+
+    def test_measured_waypoint_releases_and_resume_skips_only_explicit_completed_legs(self):
+        def advance(frame):
+            self.session.frame = frame
+            self.position[2] += 10
+        self.session.advance_to = advance
+        result = route.play_walk_route(self.session, [self.point], turn_window=48)
+        self.assertEqual(result[0]['next_index'], 1)
+        self.assertEqual(result[0]['end']['frame'], 43)
+        self.session.calls.clear()
+        self.assertEqual(route.play_walk_route(self.session, [self.point], resume=1, turn_window=48), [])
+        self.assertEqual(self.session.calls, [])
+
+    def test_turning_precedes_forward_and_height_cannot_complete_horizontal_disk(self):
+        state = self.session.snapshot()
+        state['actors'][0]['yaw'] = 512
+        self.assertEqual(route.waypoint_keys(state, self.point, 48), {'ArrowRight'})
+        self.position[:] = [0, 10, 30]
+        self.assertFalse(route.waypoint_reached(self.session.snapshot(), self.point))
+        self.lockout = 1
+        with self.assertRaisesRegex(ValueError, 'control is locked'):
+            route.play_walk_route(self.session, [self.point], turn_window=48)
+
+    def test_completed_receipt_survives_later_stall_and_can_resume_at_that_leg(self):
+        self.position[:] = self.point['position_q8']
+        completed = []
+        later = dict(self.point, name='gate', position_q8=[0, 0, 60], max_updates=1)
+        with self.assertRaisesRegex(RuntimeError, 'gate checkpoint not reached'):
+            route.play_walk_route(self.session, [self.point, later], turn_window=48,
+                                  checkpoint=completed.append)
+        self.assertEqual([r['next_index'] for r in completed], [1])
+        self.position[:] = later['position_q8']
+        receipts = route.play_walk_route(self.session, [self.point, later],
+                                        resume=completed[-1]['next_index'], turn_window=48)
+        self.assertEqual([r['checkpoint'] for r in receipts], ['gate'])
+        self.assertEqual(receipts[0]['next_index'], 2)
+
+    def test_bad_later_waypoint_rejects_before_first_input(self):
+        with self.assertRaisesRegex(ValueError, 'invalid waypoint'):
+            route.play_walk_route(self.session, [self.point, dict(self.point, radius_q8=-1)], turn_window=48)
+        self.assertEqual(self.session.calls, [])
+
+
 if __name__ == '__main__':
     unittest.main()

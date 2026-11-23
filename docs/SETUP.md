@@ -714,6 +714,23 @@ unacknowledged transition fail explicitly. Run
 `python3 dev/scripts/test-original-scenario.py` for no-world, decoder readiness,
 checkpoint, key-release and failed-input coverage.
 
+For stopped-boundary retail routes, `original-route-input.py` provides
+`play_walk_route(session, waypoints, resume=..., turn_window=...)`. Supply an
+ordered route derived from the installed world and original observations, with
+named Q8 waypoint disks, vertical bounds, gait modifier and per-leg update
+budgets. The turn window is a driver policy in the original's 2048-unit yaw
+space, not an engine timing constant. Each receipt records the measured endpoint
+and the next explicit route index. Its `checkpoint` callback publishes each
+completed leg before the next starts, retaining progress if a later leg fails.
+Persist that index with its actual checkpoint;
+do not infer completed legs from the nearest waypoint. Completion requires the
+player inside the horizontal and vertical bounds with control restored. Input
+acknowledgement alone never establishes movement or arrival. World changes,
+missing acknowledgements and exhausted budgets abort and release held keys.
+Run `python3 dev/scripts/test-original-route-input.py` for progression, resume,
+heading, vertical-bound and failure controls. Keep route coordinates and retained
+original saves under ignored host storage.
+
 The original-runtime image includes Pillow for screenshot-based readiness and
 presentation observers. After changing that image, run
 `python3 dev/scripts/test-retro-observer-runtime.py` against the rebuilt
