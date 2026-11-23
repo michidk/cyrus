@@ -232,6 +232,40 @@ def wait_for_combat_recovery(session, max_updates):
     raise TimeoutError('opponent did not reach observed recovery within update budget')
 
 
+def combat_events(samples):
+    """Report observed intent, contact-mark, defence and health transitions per update.
+
+    Contact-tested is the combat mark, not proof of a hit. Intent clearing and
+    health changes at the same boundary do not by themselves establish causality.
+    Missing reader bindings remain unobserved; gaps reject event attribution.
+    """
+    events = []
+    for before, after in zip(samples, samples[1:]):
+        if after['frame'] != before['frame'] + 1:
+            raise ValueError('combat events require consecutive update samples')
+        for owner, prefix in [('player', 'p'), ('opponent', 'r')]:
+            old = (before.get(f'{owner}_combat') or {}).get('flags')
+            new = (after.get(f'{owner}_combat') or {}).get('flags')
+            if old is not None and new is not None:
+                # Preservation's combat flags: move intent, defence intent and
+                # contact-tested are independent of the current animation group.
+                for mask, changed, event in [
+                    (1, bool(old & 1) and not new & 1, 'intent_cleared'),
+                    (2, not old & 2 and bool(new & 2), 'defence_started'),
+                    (0x20, not old & 0x20 and bool(new & 0x20), 'contact_tested'),
+                ]:
+                    if changed:
+                        row = {'frame': after['frame'], 'event': f'{owner}_{event}'}
+                        if mask != 2:
+                            row.update(cursor=after.get(f'{owner}_command_cursor'), group=after.get(f'{prefix}g'))
+                        events.append(row)
+            old_health, new_health = before.get(f'{prefix}h'), after.get(f'{prefix}h')
+            if old_health is not None and new_health is not None and old_health != new_health:
+                events.append({'frame': after['frame'], 'event': f'{owner}_health_changed',
+                               'before': old_health, 'after': new_health})
+    return events
+
+
 def record_combat_tap(session, key, held_updates, released_updates):
     """Record one explicit input and every stopped update, never infer a hit from input.
 
@@ -270,7 +304,7 @@ def record_combat_tap(session, key, held_updates, released_updates):
             samples.append(state)
     finally:
         session.input(key, "release")
-    return dict(classify_tap(before, samples), samples=samples,
+    return dict(classify_tap(before, samples), samples=samples, events=combat_events(samples),
                 held_updates=held_updates, released_updates=released_updates)
 
 

@@ -54101,3 +54101,6 @@ fn original_npc_playback_survives_first_default_selection_and_animation_update()
     assert_eq!(world.animation_frame(actor)?, Some(0));
     Ok(())
 }
+
+#[path = "script_registry/attack_interruption.rs"]
+mod attack_interruption_tests;

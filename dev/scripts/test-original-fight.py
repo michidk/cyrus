@@ -19,6 +19,31 @@ def sample(pg=8, rg=8, rh=250, drawn=1, ph=100):
 
 
 class DriverLogic(unittest.TestCase):
+    def test_attack_events_separate_cancellation_contact_and_health_changes(self):
+        def state(frame, flags, cursor, ph=100, rh=250, defence=0):
+            return sample(pg=102, ph=ph, rh=rh) | {
+                "frame": frame, "player_command_cursor": cursor,
+                "player_combat": {"flags": flags},
+                "opponent_combat": {"flags": defence}}
+        rows = [state(10, 5, 1), state(11, 4, 2, ph=90),
+                state(12, 4, 7, ph=90)]
+        events = fight.combat_events(rows)
+        self.assertEqual(events, [
+            {"frame": 11, "event": "player_intent_cleared", "cursor": 2, "group": 102},
+            {"frame": 11, "event": "player_health_changed", "before": 100, "after": 90}])
+        rows = [state(20, 5, 6), state(21, 36, 7, defence=2),
+                state(22, 4, 8, rh=240)]
+        events = fight.combat_events(rows)
+        self.assertIn({"frame": 21, "event": "player_intent_cleared", "cursor": 7, "group": 102}, events)
+        self.assertIn({"frame": 21, "event": "player_contact_tested", "cursor": 7, "group": 102}, events)
+        self.assertIn({"frame": 21, "event": "opponent_defence_started"}, events)
+        self.assertIn({"frame": 22, "event": "opponent_health_changed", "before": 250, "after": 240}, events)
+
+    def test_attack_events_reject_gaps_and_do_not_invent_unbound_intent(self):
+        self.assertEqual(fight.combat_events([sample() | {"frame": 1}, sample() | {"frame": 2}]), [])
+        with self.assertRaisesRegex(ValueError, "consecutive"):
+            fight.combat_events([sample() | {"frame": 1}, sample() | {"frame": 3}])
+
     def test_view_reads_both_actors_and_tolerates_a_late_opponent(self):
         state = {"counters": {"mainloop_frame": 7, "fps": 4}, "actors": [
             actor(1, 8, 100, selected=True, drawn=1), actor(55, 102, 240, pending=8)]}

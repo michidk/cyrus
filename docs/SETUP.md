@@ -1200,6 +1200,12 @@ animation `command_frame`. The fight view retains both actors' combat observatio
 and command cursors; an animation group alone does not prove collision admission,
 defence or damage. Record combat intent/contact flags, playback direction, action,
 motion, defence selector, strength/armor and weapon-admission fields when bound.
+Each stopped-frame tap also reports `events` at consecutive update boundaries:
+intent clearing, newly tested contact, defence start and health changes for both
+actors. Each intent/contact event includes the observed command cursor and group.
+Missing combat bindings remain unobserved. A contact-tested mark does not prove
+a hit, and simultaneous health loss and intent clearing do not establish cause.
+Use the retained samples to inspect range, facing and the opposing attack.
 `combat_geometry` reports body-origin distance, height and estimated yaw error;
 it does not replace the original's model-point contact query.
 `align_combat_facing` uses ordinary turning until the observed bearing is reached
