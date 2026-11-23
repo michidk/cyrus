@@ -31,5 +31,47 @@ class PromptProjection(unittest.TestCase):
         self.assertEqual(scenario.prompt_windows([]), [])
 
 
+class BookSave(unittest.TestCase):
+    def test_book_save_is_escape_f2_new_slot_description_confirm(self):
+        steps = scenario.book_save_keys("  kotaro before  ")
+        self.assertEqual([(a, b) for a, b, _ in steps],
+                         [("hold", "Escape"), ("hold", "F2"), ("hold", "Return"),
+                          ("type", "kotaro before"), ("hold", "Return")])
+        self.assertTrue(all(settle >= 3 for _, _, settle in steps))
+
+    def test_a_description_must_be_nonempty_ascii_and_at_most_64_characters(self):
+        for bad in ("", "   ", "x" * 65, "caf\u00e9"):
+            with self.assertRaises(ValueError):
+                scenario.book_save_keys(bad)
+        self.assertEqual(len(scenario.book_save_keys("x" * 64)), 5)
+
+
+class StallLogic(unittest.TestCase):
+    def test_a_frozen_counter_is_stalled_only_after_the_whole_window(self):
+        self.assertFalse(scenario.counter_stalled([], 5))
+        self.assertFalse(scenario.counter_stalled([(0, 10), (2, 10)], 5))
+        self.assertTrue(scenario.counter_stalled([(0, 10), (3, 10), (6, 10)], 5))
+        self.assertFalse(scenario.counter_stalled([(0, 10), (3, 10), (6, 11)], 5))
+
+    def test_wait_returns_advanced_when_frames_pass_and_stalled_when_the_book_freezes_the_loop(self):
+        clock = {"t": 0.0}
+
+        def now():
+            return clock["t"]
+
+        def sleep(seconds):
+            clock["t"] += seconds
+
+        running = lambda: int(clock["t"] * 10)
+        self.assertEqual(scenario.wait_frames_or_stall(running, 20, clock=now, sleep=sleep)[0], "advanced")
+        clock["t"] = 0.0
+        frozen = lambda: 100
+        self.assertEqual(scenario.wait_frames_or_stall(frozen, 20, window=5.0, clock=now, sleep=sleep),
+                         ("stalled", 100))
+        clock["t"] = 0.0
+        with self.assertRaises(TimeoutError):
+            scenario.wait_frames_or_stall(lambda: None, 5, timeout=3, clock=now, sleep=sleep)
+
+
 if __name__ == "__main__":
     unittest.main()

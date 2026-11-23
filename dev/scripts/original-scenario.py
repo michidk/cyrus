@@ -97,6 +97,22 @@ class Original:
         raw = self.raw() or {}
         return next((a for a in raw.get("actors", []) if a["selected"]), None)
 
+    def book_save(self, description):
+        """Save through the book (see book_save_keys); returns the new SAVEGAME entries."""
+        before = {p.name for p in (self.run / "Redguard/SAVEGAME").iterdir()}
+        for action, argument, settle in book_save_keys(description):
+            if action == "hold":
+                self.hold(argument, 0.4)
+            else:
+                self.key("type", "--delay", "120", argument)
+            time.sleep(settle)
+        after = {p.name for p in (self.run / "Redguard/SAVEGAME").iterdir()}
+        return sorted(after - before)
+
+    def wait_or_stall(self, frames, window=5.0, timeout=900):
+        """Frame wait that reports a frozen book instead of timing out (see counter_stalled)."""
+        return wait_frames_or_stall(self.frame, frames, window=window, timeout=timeout)
+
     def wait(self, frames, timeout=900, until=None):
         return self.fight.wait_frames(self.sampler, frames, timeout, until=until)
 
@@ -182,6 +198,58 @@ def prompt_windows(rows):
     for window in windows:
         window["frames"] = window["last_frame"] - window["first_frame"] + 1
     return windows
+
+
+def book_save_keys(description):
+    """The (xdotool action, argument, settle seconds) steps that save through the book's Save page
+    from a live world: Escape opens the book, F2 its Save page, Return picks `<NEW SAVE GAME>` (the
+    first row, preservation menu.md), the description is typed (the input takes at most 64 ASCII
+    characters and uppercases lowercase letters) and Return confirms it. The book freezes the
+    frame counter, so every step is paced by wall time."""
+    text = description.strip()
+    if not text or len(text) > 64 or not text.isascii():
+        raise ValueError("a save description is 1-64 ASCII characters")
+    steps = [("hold", "Escape", 6.0), ("hold", "F2", 6.0), ("hold", "Return", 6.0)]
+    steps += [("type", text, 3.0), ("hold", "Return", 8.0)]
+    return steps
+
+
+def counter_stalled(samples, window):
+    """Whether the frame counter stood still over the last `window` seconds of
+    (wall_seconds, frame) samples. The original's book stops the main loop (and its
+    mainloop_frame) while it is open, so a frame wait inside it can never finish: callers use
+    this to tell a frozen book from a slow game and switch to wall-time pacing."""
+    if not samples:
+        return False
+    newest = samples[-1][0]
+    if newest - samples[0][0] < window:
+        return False
+    recent = [frame for when, frame in samples if newest - when <= window]
+    return len(set(recent)) == 1
+
+
+def wait_frames_or_stall(read_frame, frames, window=5.0, poll=0.25, timeout=900, clock=time.monotonic,
+                         sleep=time.sleep):
+    """Wait for the frame counter to advance by `frames`; return ("advanced", frame) or, when the
+    counter stands still for `window` seconds (a frozen book), ("stalled", frame) instead of
+    timing out. `read_frame` returns the current frame or None before the first sample."""
+    start = None
+    samples = []
+    deadline = clock() + timeout
+    while clock() < deadline:
+        frame = read_frame()
+        now = clock()
+        if frame is not None:
+            if start is None:
+                start = frame
+            samples.append((now, frame))
+            samples = [row for row in samples if now - row[0] <= window * 2]
+            if frame - start >= frames:
+                return "advanced", frame
+            if counter_stalled(samples, window):
+                return "stalled", frame
+        sleep(poll)
+    raise TimeoutError(f"no {frames} frames within {timeout} s")
 
 
 class FrameSession:
