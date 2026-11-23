@@ -731,6 +731,29 @@ Run `python3 dev/scripts/test-original-route-input.py` for progression, resume,
 heading, vertical-bound and failure controls. Keep route coordinates and retained
 original saves under ignored host storage.
 
+Use `original-dialogue.py`'s `select_topic(session, label, action, max_updates)`
+for a scripted topic menu. Supply the label and action from the installed
+script and RTX text, and a stopped `FrameSession` whose `dialogue_menu` projection
+contains the active menu, item labels/actions, highlighted index, select latch
+and committed item. The adapter navigates with acknowledged one-update down
+pulses, requires the select latch while held, then releases and verifies the
+committed label/action after the menu closes. Some installed return actions
+rebuild the next menu synchronously in the same update. For those paths pass
+`observe_commit`, a stopped-boundary observer of the actual release-commit event
+before table reuse. It returns the committed label/action and source frame;
+the driver still requires the next consecutive ordinary update. Without that
+event, a replaced table rejects instead of inferring success from its contents.
+A changed menu/world, exhausted
+budget or missed acknowledgement fails and releases held keys. Receipts retain
+all transitions, including releases. Input acknowledgement alone cannot pass.
+The caller records script/task/private-variable and clock continuation alongside
+these receipts; pose and clock equality cannot establish semantic continuation
+parity. `python3 dev/scripts/test-original-dialogue.py` exercises the public
+adapter against synthetic menu updates, including missing latches, wrong actions
+and changed menus. A synchronous menu-replacement regression requires the
+observed event and rejects stale-frame or wrong-action events. These tests also
+run in `just check`.
+
 The original-runtime image includes Pillow for screenshot-based readiness and
 presentation observers. After changing that image, run
 `python3 dev/scripts/test-retro-observer-runtime.py` against the rebuilt
