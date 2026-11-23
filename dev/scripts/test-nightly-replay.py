@@ -135,12 +135,12 @@ class Nightly(unittest.TestCase):
 
 
 class MainArtifact(unittest.TestCase):
-    def test_fallback_skips_pending_expired_and_nonancestor_runs(self):
+    def test_fallback_skips_pending_expired_nonancestor_and_unfetched_runs(self):
         spec = importlib.util.spec_from_file_location("main_artifact", Path(__file__).with_name("download-main-replay.py"))
         artifact = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(artifact)
         runs = [{"headSha": sha, "databaseId": number}
-                for sha, number in [("later", 10), ("wanted", 9), ("expired", 8), ("uploaded", 7)]]
+                for sha, number in [("unfetched", 11), ("later", 10), ("wanted", 9), ("expired", 8), ("uploaded", 7)]]
         queried = []
         def query(command, text):
             if command[1:3] == ["run", "list"]:
@@ -149,7 +149,7 @@ class MainArtifact(unittest.TestCase):
             return json.dumps([{"id": 1}] if '/7/' in command[2] else [])
         def execute(command, **kwargs):
             if command[0] == 'git':
-                return subprocess.CompletedProcess(command, int(command[-2] == 'later'))
+                return subprocess.CompletedProcess(command, 128 if command[-2] == 'unfetched' else int(command[-2] == 'later'))
             self.assertEqual(command[1:4], ['run', 'download', '7'])
             package = Path(command[-1]) / 'cyrus-x86_64-unknown-linux-gnu.tar.gz'
             with tarfile.open(package, 'w:gz') as archive:
@@ -165,6 +165,7 @@ class MainArtifact(unittest.TestCase):
             self.assertEqual(destination.read_bytes(), b'test')
             self.assertEqual(len(queried), 3)
             self.assertNotIn('/10/', ''.join(queried))
+            self.assertNotIn('/11/', ''.join(queried))
 
     def test_download_selects_exact_main_commit_and_extracts_only_the_binary(self):
         spec = importlib.util.spec_from_file_location("main_artifact", Path(__file__).with_name("download-main-replay.py"))

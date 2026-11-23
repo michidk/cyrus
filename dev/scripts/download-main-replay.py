@@ -26,7 +26,9 @@ def download(commit, destination, fallback_main=False):
             ancestor = subprocess.run(
                 ["git", "merge-base", "--is-ancestor", candidate["headSha"], commit],
                 check=False, capture_output=True)
-            if ancestor.returncode == 1:
+            # A push can arrive after the wrapper fetched main. Its object is
+            # then unknown locally (128), and cannot qualify as an ancestor.
+            if ancestor.returncode in (1, 128):
                 continue
             if ancestor.returncode:
                 raise ValueError(f"cannot establish main ancestry for {candidate['headSha']}")
