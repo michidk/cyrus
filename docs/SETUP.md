@@ -697,6 +697,23 @@ the paused world (**Verified** in the native build: the book opened from the fir
 Save page showed the 256x192 gameplay thumbnail; `--scene` launches have no book, so use
 `--new-game --skip-movies` or the menu). F2 and F3 open the Save and Load pages (same `final_version` gate; their entry camera, from the settled main page, is **Inferred**). F4, F5 and F6 open Display, Sound and Controls on the page's settled pose from preservation `engine/menu.md` (**Verified** as the documented end state; their own transition is not documented and none is played). **Verified** in the native build: each key opens its page on that pose and Escape returns through Options to the main page without leaving a depth shift behind. Quit from a world prepares the `Redguard AutoSave` slot when a gameplay snapshot exists, or removes it while the death override is active (preservation `engine/menu.md`). **Verified** in the native build: F3 opens the Load page, a save made from the open book stores its thumbnail and the Load page previews it, loading it returns to the world, and Quit wrote slot one with a thumbnail before exiting. **Verified** in the native build: a fatal death opens the Last Game dialog when a save exists, choosing Yes restores the saved world with death override and hit inhibition cleared, and controls resume; without a save it opens the death book. The original and browser both reach the inhibited death-book outcome, while retained-save browser readback remains unavailable. **Verified** in the native build: after a pirate kill in START the death book opens, and Quit from it removes the `Redguard AutoSave` slot and exits; Quit from the world book with an unwritable autosave target shows the slot path and OS error, keeps the game running, and the retry after the fault is cleared writes the slot and exits. **Verified** in the native build: a save made in START after a console `load 1,0` and `load 0,0` round trip (ISLAND visited) survives a process restart, and the restored session holds START as current with 36 actors and ISLAND as visited with 976. A save refuses with a contextual error while a dialogue speech export is still pending. **Verified** in the browser build: a save from the paused book persists in IndexedDB, and after a page reload the Load page lists it with its thumbnail and loading restores the world. **Verified** in the browser build: loading a slot whose stored document is malformed shows the decoding error on the book, stays on the Load page and leaves the running world intact.
 
+For bounded retail-entry preparation, use `original-scenario.py --retail-slot SLOT
+--name NAME --out OUTPUT.json` with `CYRUS_MAGIC` pointing at host storage.
+This stages the slot in the private run copy and uses the pristine retail
+configuration. **Verified:** the Introduction runs before the initial START
+world; its gameplay frame counter remains zero. The driver reads movie readiness
+and playback frames through the local reader, skips to the installed
+`MENU.INI` Introduction checkpoints with Escape, and observes playback after
+release before another press. It admits success only with a selected player,
+a settled fade and clock warmup, advancing world frames and advancing game
+clock. It does not automatically load
+the staged slot during the opening duel. The output records each acknowledged
+transition and the final state. `--observe-seconds` bounds each transition;
+it does not determine gameplay duration. Missing movie bindings or an
+unacknowledged transition fail explicitly. Run
+`python3 dev/scripts/test-original-scenario.py` for no-world, decoder readiness,
+checkpoint, key-release and failed-input coverage.
+
 The original-runtime image includes Pillow for screenshot-based readiness and
 presentation observers. After changing that image, run
 `python3 dev/scripts/test-retro-observer-runtime.py` against the rebuilt

@@ -9,6 +9,64 @@ scenario = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scenario)
 
 
+class RetailEntryDriver(unittest.TestCase):
+    def run_driver(self, acknowledge=True, advance_clock=True):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Redguard").mkdir()
+            (root / "Redguard/MENU.INI").write_text("[general]\nmovie_keys[0] = 10,20\n")
+            class Game:
+                run = root
+                movie_frame = -1
+                frame = 0
+                keys = []
+
+                def raw(self):
+                    # The allocated movie buffer precedes the decoder handle.
+                    if self.movie_frame == -1:
+                        self.movie_frame = 0
+                        return {"world": 4294967295, "startup": {"movie_active": True, "movie_frame": None}}
+                    if acknowledge:
+                        self.movie_frame += 1
+                    live = self.movie_frame > 25
+                    self.frame += int(live)
+                    return {"startup": {"movie_active": not live, "movie_frame": self.movie_frame},
+                            "world": 0 if live else 4294967295,
+                            "counters": {"mainloop_frame": self.frame, "clock_scale": self.frame * 256 if advance_clock else 0,
+                                         "world_fade": -100 if self.frame < 3 else 0,
+                                         "clock_continuation": {"warmup": 12 if self.frame < 5 else 0}},
+                            "actors": [{"selected": True}] if live else []}
+
+                def alive(self):
+                    return True
+
+                def hold(self, key, seconds):
+                    self.keys.append(key)
+                    if acknowledge:
+                        self.movie_frame += 10
+            game = Game()
+            ticks = iter(range(1000))
+            result = scenario.enter_retail_world(game, timeout=20, clock=lambda: next(ticks), sleep=lambda _: None)
+            return game, result
+
+    def test_no_world_loading_and_movie_checkpoints_reach_advancing_retail_world(self):
+        game, result = self.run_driver()
+        self.assertEqual(game.keys, ["Escape", "Escape", "Escape"])
+        self.assertEqual(result["state"]["world"], 0)
+        self.assertEqual(result["events"][-1]["transition"], "world progress")
+        self.assertGreaterEqual(result["events"][-2]["frame"], 5)
+        self.assertGreater(result["events"][-1]["frame"], result["events"][-2]["frame"])
+
+    def test_frames_without_game_clock_progress_are_not_a_running_world(self):
+        with self.assertRaisesRegex(TimeoutError, "world progress.*no acknowledgement"):
+            self.run_driver(advance_clock=False)
+
+    def test_unacknowledged_input_stops_before_more_keys(self):
+        with self.assertRaisesRegex(TimeoutError, "movie skip.*no acknowledgement"):
+            self.run_driver(acknowledge=False)
+
+
 class ReloadBoundary(unittest.TestCase):
     def sample(self, fade=0, warmup=0):
         return {"world":20,"counters":{"mainloop_frame":40,"world_fade":fade,

@@ -481,6 +481,72 @@ class FrameSession:
         return self.game.frame() - self.origin
 
 
+def skip_retail_introduction(game, wait, raw, checkpoints):
+    """Acknowledge each installed skip and the following released-key movie frame."""
+    while (raw.get("startup") or {}).get("movie_active"):
+        frame = raw["startup"].get("movie_frame")
+        if type(frame) is not int:
+            raise ValueError("retail Introduction requires movie_frame reader binding")
+        target = next((value - 1 for value in checkpoints if value - 1 > frame), None)
+        game.hold("Escape", 0.4)
+        raw = wait("movie skip", lambda r: (r.get("startup") or {}).get("movie_active") is False
+                   or (target is not None and ((r.get("startup") or {}).get("movie_frame") or -1) >= target))
+        if raw["startup"].get("movie_active"):
+            released_at = raw["startup"]["movie_frame"]
+            raw = wait("movie release", lambda r: (r.get("startup") or {}).get("movie_active") is False
+                       or ((r.get("startup") or {}).get("movie_frame") or 0) > released_at)
+    return raw
+
+
+def enter_retail_world(game, timeout=180, poll=0.1, clock=time.monotonic, sleep=time.sleep):
+    """Reach the retail world through acknowledged Introduction checkpoints.
+
+    Startup has no gameplay frames. Reader startup bindings identify movie
+    playback; only a selected player and advancing frames admit a world.
+    The timeout bounds each transition, never supplies simulated gameplay time.
+    """
+    events = []
+
+    def wait(label, predicate):
+        deadline = clock() + timeout
+        while clock() < deadline:
+            raw = game.raw() or {}
+            if predicate(raw):
+                events.append({"transition": label, "frame": (raw.get("counters") or {}).get("mainloop_frame"),
+                               "world": raw.get("world"), "clock_scale": (raw.get("counters") or {}).get("clock_scale"),
+                               "startup": raw.get("startup")})
+                print(json.dumps(events[-1]), file=sys.stderr, flush=True)
+                return raw
+            if not game.alive():
+                raise RuntimeError(f"retail {label}: original exited")
+            sleep(poll)
+        raise TimeoutError(f"retail {label}: no acknowledgement; last state {raw.get('startup')}")
+
+    def live(raw):
+        return raw.get("world") not in (None, -1, (1 << 32) - 1) and any(
+            actor.get("selected") for actor in raw.get("actors", []))
+
+    # An Escape skips to the next installed movie checkpoint, not straight to the book.
+    text = (game.run / "Redguard/MENU.INI").read_text(errors="replace")
+    match = re.search(r"(?im)^\s*movie_keys\[0\]\s*=\s*([\d, ]+)", text)
+    if match is None:
+        raise ValueError("MENU.INI: missing Introduction movie checkpoints")
+    checkpoints = [int(value) for value in match[1].split(",") if int(value)]
+    raw = wait("startup", lambda r: ((r.get("startup") or {}).get("movie_active") is True
+                                      and type((r.get("startup") or {}).get("movie_frame")) is int) or live(r))
+    skip_retail_introduction(game, wait, raw, checkpoints)
+    raw = wait("settled retail world", lambda r: live(r) and reload_boundary_ready(r))
+    world = raw["world"]
+    frame = (raw.get("counters") or {}).get("mainloop_frame", 0)
+    scale = (raw.get("counters") or {}).get("clock_scale")
+    if type(scale) is not int:
+        raise ValueError("retail world requires clock_scale reader binding")
+    raw = wait("world progress", lambda r: live(r) and r["world"] == world
+               and (r.get("counters") or {}).get("mainloop_frame", 0) > frame
+               and (r.get("counters") or {}).get("clock_scale", scale) > scale)
+    return {"events": events, "state": raw}
+
+
 def observe_retail(game, shots, seconds, interval=5.0):
     """Screenshot the retail entry every `interval` seconds for `seconds`, pressing no key, and
     return one row per shot ({"t", "frame", "world", "shot"}), so the first live run records what the
@@ -507,7 +573,7 @@ def main():
     parser.add_argument("--marker", type=int, default=0)
     parser.add_argument("--quicksave", action="store_true", help="press F9 once the world is live")
     parser.add_argument("--retail-slot", help="existing slot directory to stage for the retail entry; "
-                        "observes the retail startup with screenshots and no key input")
+                        "stages it privately and enters the retail world through acknowledged Introduction skips")
     parser.add_argument("--observe-seconds", type=float, default=120)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
@@ -518,9 +584,10 @@ def main():
         try:
             shots = Path(args.out).with_suffix("")
             shots.mkdir(parents=True, exist_ok=True)
-            rows = observe_retail(game, shots, args.observe_seconds)
-            Path(args.out).write_text(json.dumps(rows, indent=1))
-            print(json.dumps(rows[-1] if rows else None))
+            result = enter_retail_world(game, timeout=args.observe_seconds)
+            result["screenshot"] = game.screenshot(shots / "retail-world.png")
+            Path(args.out).write_text(json.dumps(result, indent=1))
+            print(json.dumps(result["events"]))
         finally:
             game.stop()
         return
