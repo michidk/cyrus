@@ -269,6 +269,62 @@ def book_save_keys(description, pages):
             ("type", text, 3.0), ("hold", "Return", 8.0)]
 
 
+def selectable_actions(pages, page):
+    """The action numbers of a MENU.INI page's selectable items in item order (an item without an
+    `action` is skipped: it is a label)."""
+    items = pages.get(page, {})
+    return [int(items[n]["action"]) for n in sorted(items) if "action" in items[n]]
+
+
+def book_load_keys(pages, slot_row, disabled=(1,)):
+    """The (xdotool action, argument, settle seconds) steps that load an existing save from the
+    retail startup book, derived from MENU.INI. At startup the book's Save action (1) is disabled and
+    the selection starts on the first enabled item after the default (preservation menu.md), so the
+    walk counts Down presses from there to the Load action (2), activates it, then on page 2 counts
+    `slot_row` Down presses (rows are ordered newest save first) and activates the row (action 202).
+    The book freezes the frame counter, so every step is paced by wall time."""
+    actions = selectable_actions(pages, 0)
+    if 2 not in actions:
+        raise ValueError("MENU.INI page 0 has no Load action (2)")
+    if default_action(pages, 0) is None or default_action(pages, 0) not in actions:
+        raise ValueError("MENU.INI page 0 has no default item")
+    enabled = [a for a in actions if a not in disabled]
+    start = enabled[0] if default_action(pages, 0) in disabled else default_action(pages, 0)
+    downs = enabled.index(2) - enabled.index(start)
+    if downs < 0:
+        raise ValueError("the Load action precedes the initial selection")
+    if 202 not in selectable_actions(pages, 2):
+        raise ValueError("MENU.INI page 2 has no load row action (202)")
+    if slot_row < 0:
+        raise ValueError("slot_row is a nonnegative row index")
+    steps = [("hold", "Down", 2.0)] * downs + [("hold", "Return", 8.0)]
+    steps += [("hold", "Down", 2.0)] * slot_row + [("hold", "Return", 15.0)]
+    return steps
+
+
+def stage_retail_save(run, pristine_ini, source_slot, slot_number=0):
+    """Prepare a private run copy so the retail startup book offers one existing save: the retail
+    SYSTEM.INI (no debug entry, so the book and introduction run as a player sees them) and the
+    chosen slot copied into an otherwise empty SAVEGAME directory. Everything stays under `run`;
+    nothing is written into the shared game links. Returns the staged slot directory."""
+    run = Path(run).resolve()
+    ini = run / "Redguard/SYSTEM.INI"
+    savegame = run / "Redguard/SAVEGAME"
+    for path in (ini, savegame):
+        if path.is_symlink() or not path.resolve().is_relative_to(run):
+            raise ValueError(f"{path}: must be run-local")
+    shutil.copyfile(pristine_ini, ini)
+    for entry in savegame.iterdir():
+        shutil.rmtree(entry) if entry.is_dir() else entry.unlink()
+    slot = savegame / f"SAVEGAME.{slot_number:03d}"
+    slot.mkdir()
+    saved = Path(source_slot) / "SAVEGAME.SAV"
+    if not saved.is_file():
+        raise ValueError(f"{source_slot}: no SAVEGAME.SAV")
+    shutil.copyfile(saved, slot / "SAVEGAME.SAV")
+    return slot
+
+
 def book_step_failure(shot, container_up):
     """Why a book step produced no evidence, or None when it did: a stopped container means the key
     ended the game itself (in the direct-start debug entry Escape quits DOSBox-X instead of opening

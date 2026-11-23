@@ -124,6 +124,84 @@ class ScreenCapture(unittest.TestCase):
         self.assertEqual([a["stderr"] for a in result["attempts"]], ["a", "b", "c"])
 
 
+LOAD_MENU = """
+[page0]
+text[0] = SAVE
+default[0] = 1
+action[0] = 1
+text[1] = LOAD
+action[1] = 2
+text[2] = NEW
+action[2] = 10
+text[3] = OPTIONS
+action[3] = 4
+[page2]
+text[0] = LOAD GAME
+text[1] = 12345
+action[1] = 202
+text[2] = 12345
+action[2] = 202
+"""
+
+
+class RetailLoad(unittest.TestCase):
+    def test_load_walk_skips_the_disabled_save_item_and_counts_slot_rows(self):
+        pages = scenario.menu_pages(LOAD_MENU)
+        steps = scenario.book_load_keys(pages, slot_row=1)
+        # Save is disabled at startup, so the selection starts on LOAD: no Down before Return.
+        self.assertEqual([(a, b) for a, b, _ in steps],
+                         [("hold", "Return"), ("hold", "Down"), ("hold", "Return")])
+        self.assertTrue(all(settle >= 2 for _, _, settle in steps))
+
+    def test_load_walk_counts_downs_when_the_default_is_not_disabled(self):
+        pages = scenario.menu_pages(LOAD_MENU.replace("action[0] = 1", "action[0] = 4"))
+        steps = scenario.book_load_keys(pages, slot_row=0, disabled=())
+        # The default is now item action 4 (first of two such items), Load follows it: one Down.
+        self.assertEqual([b for _, b, _ in steps], ["Down", "Return", "Return"])
+
+    def test_load_walk_refuses_menus_without_the_assumed_actions(self):
+        with self.assertRaisesRegex(ValueError, "Load action"):
+            scenario.book_load_keys(scenario.menu_pages(LOAD_MENU.replace("action[1] = 2", "action[1] = 9")), 0)
+        with self.assertRaisesRegex(ValueError, "202"):
+            scenario.book_load_keys(scenario.menu_pages(LOAD_MENU.replace("202", "203")), 0)
+        with self.assertRaisesRegex(ValueError, "nonnegative"):
+            scenario.book_load_keys(scenario.menu_pages(LOAD_MENU), -1)
+
+    def test_staging_replaces_the_saves_and_the_config_inside_the_run_copy_only(self):
+        import tempfile
+        root = Path(tempfile.mkdtemp())
+        run = root / "run"
+        (run / "Redguard/SAVEGAME/SAVEGAME.007").mkdir(parents=True)
+        (run / "Redguard/SAVEGAME/SAVEGAME.007/SAVEGAME.SAV").write_bytes(b"old")
+        (run / "Redguard/SYSTEM.INI").write_text("[debug]\nfinal_version=0\n")
+        pristine = root / "pristine.ini"
+        pristine.write_text("[system]\nretail=1\n")
+        source = root / "source/SAVEGAME.002"
+        source.mkdir(parents=True)
+        (source / "SAVEGAME.SAV").write_bytes(b"retail save")
+        slot = scenario.stage_retail_save(run, pristine, source)
+        self.assertEqual(slot.name, "SAVEGAME.000")
+        self.assertEqual((slot / "SAVEGAME.SAV").read_bytes(), b"retail save")
+        self.assertEqual(sorted(p.name for p in (run / "Redguard/SAVEGAME").iterdir()), ["SAVEGAME.000"])
+        self.assertEqual((run / "Redguard/SYSTEM.INI").read_text(), "[system]\nretail=1\n")
+        self.assertEqual((source / "SAVEGAME.SAV").read_bytes(), b"retail save")
+
+    def test_staging_refuses_symlinked_game_links_and_sources_without_a_save(self):
+        import tempfile
+        root = Path(tempfile.mkdtemp())
+        shared = root / "shared";shared.mkdir()
+        run = root / "run";(run / "Redguard").mkdir(parents=True)
+        (run / "Redguard/SYSTEM.INI").write_text("x")
+        (run / "Redguard/SAVEGAME").symlink_to(shared)
+        with self.assertRaisesRegex(ValueError, "run-local"):
+            scenario.stage_retail_save(run, root / "p.ini", root)
+        (run / "Redguard/SAVEGAME").unlink()
+        (run / "Redguard/SAVEGAME").mkdir()
+        (root / "p.ini").write_text("x")
+        with self.assertRaisesRegex(ValueError, "no SAVEGAME.SAV"):
+            scenario.stage_retail_save(run, root / "p.ini", root / "empty")
+
+
 class BookFailure(unittest.TestCase):
     def test_a_stopped_container_is_reported_as_the_original_exiting_not_as_a_capture_failure(self):
         failed = {"ok": False, "attempts": [{"method": "scrot", "status": 1, "stderr": "No such container"}]}
