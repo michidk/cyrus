@@ -38,6 +38,10 @@ MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
 OPPONENT_ID = 55  # RICHTONP
 ARMED_IDLE_GROUP = 8
 NOT_ENGAGED_GROUP = 0
+# The installed EXTPALAC RICHTONP script begins combat only while HaveItem(79) is 1 and SOUP
+# PlayerDistance() < 131072 (preservation SOUP.md "PlayerDistance and PlayerFacing"): the sum of the
+# absolute X, Y and Z differences in Q8 runtime units, so height counts, not just the courtyard walk.
+ENGAGE_RANGE_Q8 = 131072
 STATE_EVERY_FRAMES = 20  # one state row per this many original frames during the fight
 HIT_REACTION_GROUP = 117  # a nonplayer hit receiver's reaction (preservation SOUP.md)
 SAMPLER = """\
@@ -79,6 +83,13 @@ def view(state):
         "rpos": opponent["position_q8"] if opponent else None,
         "ryaw": opponent["yaw"] if opponent else None,
     }
+
+
+def player_distance_q8(sample):
+    """SOUP PlayerDistance(): |dx| + |dy| + |dz| in Q8 units between the fighters, or None."""
+    if sample["rpos"] is None:
+        return None
+    return sum(abs(a - b) for a, b in zip(sample["rpos"], sample["ppos"]))
 
 
 def horizontal_distance(sample):
@@ -222,6 +233,11 @@ def walk_in(sampler, key, frames):
             return sample
         if sample["frame"] >= end:
             raise TimeoutError(f"opponent did not engage while walking in (group {sample['rg']})")
+        gap = abs(sample["rpos"][1] - sample["ppos"][1]) if sample["rpos"] else 0
+        if gap >= ENGAGE_RANGE_Q8:
+            raise AssertionError(
+                f"the player is {gap // 256} map units above or below him: PlayerDistance() counts height, "
+                f"so it can never fall under {ENGAGE_RANGE_Q8 // 256} map units on this level")
         step = walk_step(sample)
         if step is None:
             time.sleep(0.3)
@@ -348,7 +364,8 @@ def main():
         if sample["frame"] >= next_state_frame:
             # A periodic state row so the original's range and step-back can be set beside the
             # native fight snapshots (same fields: groups, health, distance, positions).
-            emit({"ev": "state", "frames": frames, "dist": horizontal_distance(sample), **sample})
+            emit({"ev": "state", "frames": frames, "dist": horizontal_distance(sample),
+                  "pdist": player_distance_q8(sample), **sample})
             next_state_frame = sample["frame"] + STATE_EVERY_FRAMES
         if sample["rh"] == 0 or sample["ph"] == 0 or frames >= args.max_frames:
             emit({"ev": "end", "rh": sample["rh"], "ph": sample["ph"], "frames": frames, "fps": sample["fps"],

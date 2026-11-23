@@ -104,6 +104,26 @@ class WalkIn(unittest.TestCase):
         self.assertIsNone(fight.walk_step(self.sample_at([0, 0, 0], 0, None)))
 
 
+class EngageGate(unittest.TestCase):
+    def test_player_distance_sums_all_three_axes_like_the_script_gate(self):
+        near = sample() | {"ppos": [0, 0, 0], "rpos": [30000, 40000, 20000]}
+        self.assertEqual(fight.player_distance_q8(near), 90000)
+        self.assertLess(fight.player_distance_q8(near), fight.ENGAGE_RANGE_Q8)
+        below = sample() | {"ppos": [0, -354048, 0], "rpos": [12000, -826880, 8000]}
+        self.assertEqual(fight.player_distance_q8(below), 12000 + 472832 + 8000)
+        self.assertGreater(fight.player_distance_q8(below), fight.ENGAGE_RANGE_Q8)
+        self.assertIsNone(fight.player_distance_q8(sample() | {"rpos": None}))
+        self.assertEqual(fight.ENGAGE_RANGE_Q8, 512 * 256)
+
+    def test_the_walk_in_stops_with_the_reason_when_height_alone_exceeds_the_gate(self):
+        class Sampler:
+            def get(self):
+                return sample(rg=0) | {"frame": 10, "ppos": [0, -354048, 0], "rpos": [12000, -826880, 8000]}, {}
+
+        with self.assertRaisesRegex(AssertionError, "1847 map units above or below"):
+            fight.walk_in(Sampler(), lambda *a: None, 3000)
+
+
 class FakeSampler:
     """Yields one scripted (view, raw) pair per get(): frame counter and opponent group."""
 
