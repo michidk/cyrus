@@ -9,30 +9,35 @@ import original_console as oc
 
 
 class Rig:
-    """A fake original: tracks console mode, keys held and a frame counter."""
+    """A fake original: tracks console mode, keys pressed and elapsed wall time."""
 
-    def __init__(self, accepts_toggle=True):
-        self.mode, self.frame, self.log, self.accepts = "closed", 0, [], accepts_toggle
-        self.shots = []
+    def __init__(self, accepts_toggle=True, frozen_frames=True):
+        self.mode, self.log, self.accepts, self.shots, self.slept = "closed", [], accepts_toggle, [], 0.0
+
+    def toggle(self, key):
+        if key == "F12" and self.accepts:
+            self.mode = "open" if self.mode == "closed" else "closed"
 
     def hold(self, key, frames):
         self.log.append(key)
-        if key == "F12" and self.accepts:
-            self.mode = "open" if self.mode == "closed" else "closed"
-        self.frame += frames
+        self.toggle(key)
+
+    def press(self, key, seconds):
+        self.log.append(key)
+        self.toggle(key)
 
     def console_mode(self):
         return self.mode
 
-    def wait_frames(self, n):
-        self.frame += n
+    def pause(self, seconds):
+        self.slept += seconds
 
     def shot(self, tag):
         self.shots.append(tag)
         return f"/shots/{tag}.png"
 
-    def console(self):
-        return oc.Console(self.hold, self.console_mode, self.wait_frames, self.shot)
+    def console(self, **kw):
+        return oc.Console(self.hold, self.press, self.console_mode, self.pause, self.shot, **kw)
 
 
 class ConsoleDriver(unittest.TestCase):
@@ -52,8 +57,18 @@ class ConsoleDriver(unittest.TestCase):
     def test_a_console_that_never_opens_is_reported_with_the_state_seen(self):
         rig = Rig(accepts_toggle=False)
         with self.assertRaisesRegex(oc.ConsoleError, "open the console: console_mode stayed 'closed'"):
-            rig.console().run("item add,79", "x")
+            rig.console(budget_seconds=1.0).run("item add,79", "x")
         self.assertEqual(rig.log, ["F12"])  # nothing was typed into a closed console
+        self.assertGreaterEqual(rig.slept, 1.0)  # it waited out its budget in wall time, not frames
+
+    def test_no_step_inside_the_console_waits_on_the_frame_counter(self):
+        # The original's frame counter stops while its console is open; the driver is built without
+        # any frame-waiting callable, so a hung counter cannot stall it.
+        import inspect
+        self.assertNotIn("wait_frames", inspect.signature(oc.Console.__init__).parameters)
+        rig = Rig()
+        rig.console().run("oracle", "o")
+        self.assertGreater(rig.slept, 0.0)
 
     def test_plan_lowercases_maps_punctuation_and_refuses_unsafe_input(self):
         self.assertEqual(oc.plan("Item Add,79"), ["i", "t", "e", "m", "space", "a", "d", "d", "comma", "7", "9"])

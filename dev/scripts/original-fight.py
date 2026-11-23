@@ -328,11 +328,18 @@ def main():
         raw = sampler.get()[1]
         return ((raw or {}).get("counters") or {}).get("mainloop_frame")
 
+    def press_wall(name_, seconds):
+        """Hold a key for wall time; the original's frame counter is frozen while its console is open."""
+        key("keydown", name_)
+        time.sleep(seconds)
+        key("keyup", name_)
+
     console = Console(
         hold=lambda name_, frames: frame_hold(lambda k: key("keydown", k), lambda k: key("keyup", k),
                                               current_frame, name_, frames),
+        press=press_wall,
         console_mode=lambda: (sampler.get()[1] or {}).get("console_mode"),
-        wait_frames=lambda n: wait_frames(sampler, n, 120),
+        pause=time.sleep,
         shot=shot)
     for number, line in enumerate(("item add,79", "getmapmarker 32")):
         typed, answered = console.run(line, f"console-{number}")
