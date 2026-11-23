@@ -369,3 +369,10 @@ records the binary commit and workflow run separately from the checkout commit;
 include both when reporting a chain result. If no eligible upload exists, the run
 fails clearly instead of building locally. The downloader remains exact-commit
 by default for manual proofs.
+
+A strict paired backend also exposes `continuations`, keyed by actor identity,
+with normalized script cursors and all retained task slots, including instruction,
+invocation counter, blocking status and pause state. Both backends must bind these
+from their live state. Matching position, animation and clock alone cannot admit
+a shared-save start: a limited original import can retain native baseline tasks.
+Missing or different continuations reject the comparison before native input.

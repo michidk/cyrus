@@ -3,8 +3,10 @@
 
 Each executable-specific backend provides open_session(segment, output_directory), a context
 manager yielding snapshot(), advance_to(relative_frame), and input(key, action). snapshot()
-returns frame plus world/player/actors/flags/prompts/timing, in the same units and coordinate space.
+returns frame plus world/player/actors/flags/prompts/timing/continuations, in the same units and coordinate space.
 advance_to must leave the game at the exact requested frame; skipped boundaries reject the run.
+Script continuations include normalized cursors and all six task-slot states; a
+limited import retaining native baseline tasks cannot establish a matched start.
 Original executable bindings belong in an ignored backend, never this script.
 """
 import argparse
@@ -14,7 +16,7 @@ import json
 import subprocess
 from pathlib import Path
 
-OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing')
+OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'continuations')
 
 
 class NativeFrameSession:

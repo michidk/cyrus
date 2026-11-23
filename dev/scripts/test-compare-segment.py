@@ -36,7 +36,8 @@ def state(x=0, talking=0):
     return dict(world=20, player=dict(position_q8=[x, -16384, 587520], heading=0, health=100,
                                      animation_group=0, control=0),
                 actors={'FAVIS': {'position_q8': [545024, -15872, 613120], 'health': 100}},
-                flags={'talking': talking}, prompts=[], timing={'elapsed_scale': 0})
+                flags={'talking': talking}, prompts=[], timing={'elapsed_scale': 0},
+                continuations={'FAVIS': {'cursor': 0, 'tasks': []}})
 
 
 class PairTests(unittest.TestCase):
@@ -75,6 +76,27 @@ class PairTests(unittest.TestCase):
         report = self.run_pair({0: state()}, {0: state(7)})
         self.assertEqual(report['status'], 'blocked')
         self.assertFalse(any(row[0] == 'native' for row in self.calls))
+
+    def test_matching_pose_cannot_hide_a_different_saved_task_continuation(self):
+        original, native = state(), state()
+        original['continuations'] = {'FAVIS': {'cursor': 211, 'tasks': [
+            {'instruction': 202, 'counter': 13, 'blocking': True, 'paused': False}]}}
+        native['continuations'] = {'FAVIS': {'cursor': 169, 'tasks': [
+            {'instruction': 160, 'counter': 3, 'blocking': True, 'paused': False}]}}
+        report = self.run_pair({0: original}, {0: native})
+        self.assertEqual(report['status'], 'blocked')
+        self.assertFalse(any(row[0] == 'native' for row in self.calls))
+        fields = {row['field']: row for row in report['start_deltas']}
+        self.assertEqual(fields['continuations.FAVIS.cursor']['delta'], -42)
+        self.assertEqual(fields['continuations.FAVIS.tasks[0].counter']['delta'], -10)
+
+    def test_missing_script_continuation_rejects_original_before_native_launch(self):
+        incomplete = state()
+        del incomplete['continuations']
+        report = self.run_pair({0: incomplete}, {0: state()})
+        self.assertEqual(report['status'], 'blocked')
+        self.assertIn('missing observable continuations', report['reason'])
+        self.assertNotIn(('open', 'native'), self.calls)
 
     def test_missing_measurement_never_counts_as_matching(self):
         unknown = state()
