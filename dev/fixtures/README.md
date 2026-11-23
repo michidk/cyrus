@@ -260,3 +260,65 @@ for the first leg of two walks instead of reversing along the same line. It
 measures the released displacement and checks the next position through control
 state. This needs `approach_radius` and `stop_updates`; all movement still uses
 keyboard input, and the target tolerance stays unchanged.
+
+## Original-first gameplay comparisons
+
+A native-only chain pass is regression coverage. Gameplay acceptance additionally
+requires the original first and cyrus second, with the same world, start state,
+inputs and game-frame timing. Record player/actor positions, health, animation
+groups, control state, flags and prompts on both sides. Keep screenshots for
+visual checkpoints and post both measurements on the issue.
+
+`dev/scripts/compare-segment.py` executes an **expanded input tape** from the
+replay format (`input` and `checkpoint` steps), original first, and writes one
+`comparison.json` with both snapshots and signed per-field checkpoint deltas:
+
+```sh
+CYRUS_MAGIC=/absolute/host/path/magic python3 -B dev/scripts/compare-segment.py \
+  magic/comparison/favis-inputs.replay.json \
+  --original-backend magic/comparison/original_backend.py \
+  --native-backend magic/comparison/native_backend.py \
+  --out magic/comparison/favis
+```
+
+The two adapters provide `open_session(segment, output_directory)`, a context
+manager yielding `snapshot()`, `advance_to(relative_frame)` and
+`input(KeyCode, "press" | "release")`. They prepare matching start states, set
+frame zero after preparation, release keys and stop the owned process on exit.
+Original adapters use `original-scenario.py`'s `Original` and the streaming reader
+from `original-fight.py`; executable bindings remain under ignored `magic/`.
+The reader should batch all requested actors and flags in each observation.
+`original-scenario.py` also provides `FrameSession(game, project)` for real key
+input and frame-counted waits over that stream; `project(raw)` normalizes the
+local reader without substituting values for missing observations.
+Native adapters drive the control port using a host-mounted `CYRUS_CONFIG_DIR`.
+Use the original's frame counter and measured simulation timing, not host sleeps.
+
+Snapshots contain `frame`, `world`, `player`, `actors`, `flags`, `prompts` and `timing`.
+Player and actor records use Q8 positions, engine headings, health and animation
+groups; include controller state and consumed timing in the records. Declare
+unmeasured values as `null`; two unknown values never count as a match. Include
+local screenshot paths for visual checkpoints and compare those images as well;
+field equality alone does not establish visual acceptance.
+
+The runner holds a per-output lock, completes and closes the original session
+before opening cyrus, and refuses mismatched initial observations or skipped
+frame boundaries or late input acknowledgements. `input` returns the relative
+frame after key submission; missing acknowledgements are rejected. It compares only identical explicit inputs: `steer`, `topic`,
+`repeat`, session restoration and arrival predicates must first be expanded into
+the recorded key tape, rather than independently making decisions in each game.
+Unsupported steps are rejected, never silently omitted. Reports distinguish
+`match`, `different` and `blocked`; exit zero requires matching measured fields.
+Use one heavy run on the pod at a time and coordinate the slot on #322.
+
+### Restoring the retro image after a pod replacement
+
+Run `dev/scripts/ensure-retro-runtime.sh`. It fingerprints the Dockerfile,
+entrypoint and DOSBox configuration, checks the exact image, restores its retained
+host archive when absent, or builds and retains it once when no archive exists.
+Concurrent recovery calls share a build lock. The image name is printed on stdout.
+Set `CYRUS_MAGIC` to the shared host research root to reuse its cache across
+worktrees; archives live in `magic/build-tools/`, outside ephemeral Docker storage.
+`run-retro.sh`, `original-scenario.py`, `original-fight.py` and the paired runner
+perform this preflight before each launch. Changes to runtime sources select a
+new cache key. This image contains tools only, never an installed game.

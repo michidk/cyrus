@@ -97,5 +97,43 @@ class FrameWaits(unittest.TestCase):
         self.assertEqual(fight.wait_frames(sampler, 10, 5)["frame"], 21)
 
 
+class OriginalFrameSession(unittest.TestCase):
+    def test_real_key_names_and_frame_waits_use_the_stream_counter(self):
+        import subprocess
+        scenario_spec = importlib.util.spec_from_file_location(
+            'scenario', Path(__file__).with_name('original-scenario.py'))
+        scenario = importlib.util.module_from_spec(scenario_spec)
+        scenario_spec.loader.exec_module(scenario)
+        class Game:
+            count = 80
+            keys = []
+            def frame(self):
+                return self.count
+            def raw(self):
+                return {'counters': {'mainloop_frame': self.count}}
+            def wait(self, frames, until=None):
+                # A frame may finish after advance_to samples the counter.
+                self.count += 1
+                if until:
+                    while not until({"frame": self.count}):
+                        self.count += 1
+                else:
+                    self.count += frames
+            def key(self, *args):
+                self.keys.append(args)
+                return subprocess.CompletedProcess(args, 0)
+        game = Game()
+        session = scenario.FrameSession(game, lambda raw: {'world': 20})
+        self.assertEqual(session.input('ControlLeft', 'press'), 0)
+        session.advance_to(4)
+        self.assertEqual(session.snapshot(), {'world': 20, 'frame': 4})
+        self.assertEqual(session.input('ControlLeft', 'release'), 4)
+        self.assertEqual(game.keys, [('keydown', 'Control_L'), ('keyup', 'Control_L')])
+        with self.assertRaisesRegex(ValueError, 'already passed'):
+            session.advance_to(3)
+        with self.assertRaisesRegex(ValueError, 'unsupported original input'):
+            session.input('unknown', 'press')
+
+
 if __name__ == '__main__':
     unittest.main()

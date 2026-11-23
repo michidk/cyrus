@@ -34,7 +34,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
-IMAGE = "cyrus-retro:dev"
 OPPONENT_ID = 55  # RICHTONP
 ARMED_IDLE_GROUP = 8
 NOT_ENGAGED_GROUP = 0
@@ -186,6 +185,8 @@ def main():
     parser.add_argument("--cheat", default="", help="console cheat to set to 1 before the fight")
     parser.add_argument("--interval", type=float, default=0.2, help="sampler period in seconds")
     args = parser.parse_args()
+    image = subprocess.check_output(
+        [str(ROOT / "dev/scripts/ensure-retro-runtime.sh")], text=True).strip()
     run = MAGIC / f"retro-run-{args.name}"
     name = f"retro-{args.name}"
     reader = MAGIC / "tools/original-state.py"
@@ -195,20 +196,27 @@ def main():
             sys.exit(f"{needed} is missing; restore the local original-game tooling bundle")
     lock = open(Path(args.out).with_suffix(".lock"), "w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    run_lock = run.with_suffix(".lock").open("w")
+    fcntl.flock(run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     if not run.exists():
         shutil.copytree(MAGIC / "retro-run", run, symlinks=True)
+    maps = run / "Redguard/maps"
+    if maps.is_symlink() or not maps.resolve().is_relative_to(run.resolve()):
+        sys.exit(f"{maps}: original needs run-local writable maps")
     ini = run / "Redguard/WORLD.INI"
     ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=30", ini.read_text(errors="surrogateescape")),
                    errors="surrogateescape")
     sh = lambda *c, **k: subprocess.run(c, capture_output=True, text=True, **k)
     sh("docker", "rm", "-f", name)
-    sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", IMAGE,
-       "/game/Redguard/maps", "-iname", "*.tsg", "-delete")
+    sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", image,
+       "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
     sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
        "-v", f"{run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-       "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", IMAGE)
-    sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py")
-    sh("docker", "cp", str(place), f"{name}:/tmp/orig_write_in.py")
+       "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
+    sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py", check=True)
+    sh("docker", "cp", str(ROOT / "dev/scripts/original-memory-region.py"),
+       f"{name}:/tmp/original-memory-region.py", check=True)
+    sh("docker", "cp", str(place), f"{name}:/tmp/orig_write_in.py", check=True)
     key = lambda *c: sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", *c)
     out = open(args.out, "w")
 

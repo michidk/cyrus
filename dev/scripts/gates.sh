@@ -14,6 +14,8 @@ if [ -z "${REDGUARD_DIR+x}" ] && [ -d redguard ]; then
 fi
 if [[ "$stage" == all || "$stage" == check || "$stage" == lints ]]; then
     python3 -B dev/scripts/test-original-update-recorder.py
+    python3 -B dev/scripts/test-compare-segment.py
+    python3 -B dev/scripts/test-retro-runtime.py
     python3 -B dev/scripts/test-original-fight.py
     python3 -B dev/scripts/test-preservation-release.py
     python3 -B dev/scripts/check-preservation-release.py

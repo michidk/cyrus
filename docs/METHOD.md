@@ -43,6 +43,14 @@ unsupported. An `// unverified` comment or Modern mode does not authorize a gues
    after the final relevant edit; use full gates for workspace-wide changes. Do not run Cargo for documentation-only
    changes.
 
+Every validated gameplay scenario needs an original-first, side-by-side run. Use
+the same world, starting state and player inputs, timed in game frames rather
+than host seconds. Record both sides' player and actor positions, flags, world,
+health, prompts, animation groups and timing at matched checkpoints, plus paired
+screenshots for visual behavior. Post both measurements and their differences on
+the issue. A native-only replay pass is regression coverage, not fidelity
+acceptance. Investigate a divergence and cover its fix with a regression test.
+
 ## Controller parity evidence
 
 An isolated arithmetic test establishes only that calculation. To claim movement

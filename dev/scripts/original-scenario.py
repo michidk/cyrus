@@ -24,7 +24,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
-IMAGE = "cyrus-retro:dev"
 
 
 def load_fight():
@@ -44,26 +43,35 @@ class Original:
 
     def __init__(self, name, world, marker, interval=0.2):
         self.fight = load_fight()
+        image = subprocess.check_output(
+            [str(ROOT / "dev/scripts/ensure-retro-runtime.sh")], text=True).strip()
         self.name = f"retro-{name}"
         self.run = MAGIC / f"retro-run-{name}"
+        self.run_lock = self.run.with_suffix(".lock").open("w")
+        fcntl.flock(self.run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         reader = MAGIC / "tools/original-state.py"
         if not reader.exists():
             sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
         if not self.run.exists():
             shutil.copytree(MAGIC / "retro-run", self.run, symlinks=True,
                             ignore=shutil.ignore_patterns("*.png", "*.wav"))
+        maps = self.run / "Redguard/maps"
+        if maps.is_symlink() or not maps.resolve().is_relative_to(self.run.resolve()):
+            raise ValueError(f"{maps}: original needs run-local writable maps")
         ini = self.run / "Redguard/WORLD.INI"
         text = ini.read_text(errors="surrogateescape")
         text = re.sub(r"(?m)^start_world=\d+", f"start_world={world}", text)
         text = re.sub(r"(?m)^start_marker=\d+", f"start_marker={marker}", text)
         ini.write_text(text, errors="surrogateescape")
         sh("docker", "rm", "-f", self.name)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{self.run}:/game", IMAGE,
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete")
+        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{self.run}:/game", image,
+           "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
         sh("docker", "run", "-d", "--rm", "--name", self.name, "--cap-add", "SYS_PTRACE",
            "-v", f"{self.run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-           "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", IMAGE)
-        sh("docker", "cp", str(reader), f"{self.name}:/tmp/original-state.py")
+           "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
+        sh("docker", "cp", str(reader), f"{self.name}:/tmp/original-state.py", check=True)
+        sh("docker", "cp", str(ROOT / "dev/scripts/original-memory-region.py"),
+           f"{self.name}:/tmp/original-memory-region.py", check=True)
         self.sampler = self.fight.Sampler(self.name, interval)
 
     def key(self, *args):
@@ -80,7 +88,7 @@ class Original:
 
     def frame(self):
         raw = self.raw()
-        return raw["counters"]["mainloop_frame"] if raw else None
+        return (raw or {}).get("counters", {}).get("mainloop_frame")
 
     def player(self):
         raw = self.raw() or {}
@@ -92,6 +100,49 @@ class Original:
     def stop(self):
         self.sampler.stop()
         sh("docker", "rm", "-f", self.name)
+        self.run_lock.close()
+
+
+class FrameSession:
+    """Comparison adapter around the streaming original reader and real key input.
+
+    The caller prepares matching state first and supplies project(raw), which maps the
+    local reader to the comparison schema without hiding unmeasured fields. Polling can
+    miss a frame: the paired runner rejects that observation rather than interpolating it.
+    """
+
+    KEYS = {"ControlLeft": "Control_L", "ShiftLeft": "Shift_L", "AltLeft": "Alt_L",
+            "ArrowUp": "Up", "ArrowDown": "Down", "ArrowLeft": "Left", "ArrowRight": "Right",
+            "Space": "space", "Enter": "Return", "Escape": "Escape"}
+
+    def __init__(self, game, project):
+        self.game, self.project = game, project
+        self.origin = game.frame()
+        if self.origin is None:
+            raise ValueError("original comparison requires a live frame counter")
+
+    def snapshot(self):
+        raw = self.game.raw()
+        frame = (raw or {}).get("counters", {}).get("mainloop_frame")
+        if type(frame) is not int:
+            raise ValueError("original comparison frame is unavailable")
+        return dict(self.project(raw), frame=frame - self.origin)
+
+    def advance_to(self, frame):
+        current = self.game.frame()
+        if current is None:
+            raise ValueError("original comparison frame is unavailable")
+        remaining = frame - (current - self.origin)
+        if remaining < 0:
+            raise ValueError(f"original frame {frame} already passed")
+        target = self.origin + frame
+        self.game.wait(0, until=lambda sample: sample["frame"] >= target)
+
+    def input(self, key, action):
+        if key not in self.KEYS or action not in ("press", "release"):
+            raise ValueError(f"unsupported original input {key}/{action}")
+        self.game.key("keydown" if action == "press" else "keyup", self.KEYS[key]).check_returncode()
+        return self.game.frame() - self.origin
 
 
 def main():
@@ -102,8 +153,6 @@ def main():
     parser.add_argument("--quicksave", action="store_true", help="press F9 once the world is live")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
-    lock = open(MAGIC / f"retro-run-{args.name}.lock", "w")
-    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     game = Original(args.name, args.world, args.marker)
     try:
         game.wait(0, 600, until=lambda s: s["frame"] > 0 and s["ph"])
