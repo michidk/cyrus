@@ -31,19 +31,97 @@ class PromptProjection(unittest.TestCase):
         self.assertEqual(scenario.prompt_windows([]), [])
 
 
+SYNTHETIC_MENU = """
+[page0]
+text[0] = SAVE
+default[0] = 1
+action[0] = 1
+text[1] = LOAD
+action[1] = 2
+[page1]
+text[0] = SAVE GAME
+text[1] = 1234567890
+default[1] = 1
+action[1] = 101
+text[2] = 1234567890
+action[2] = 102
+"""
+
+
 class BookSave(unittest.TestCase):
-    def test_book_save_is_escape_f2_new_slot_description_confirm(self):
-        steps = scenario.book_save_keys("  kotaro before  ")
+    def test_menu_pages_read_defaults_and_actions_from_the_ini(self):
+        pages = scenario.menu_pages(SYNTHETIC_MENU)
+        self.assertEqual(scenario.default_action(pages, 0), 1)
+        self.assertEqual(scenario.default_action(pages, 1), 101)
+        self.assertIsNone(scenario.default_action(pages, 2))
+        self.assertEqual(pages[1][2]["action"], "102")
+
+    def test_book_save_is_escape_default_save_default_new_slot_description_confirm(self):
+        pages = scenario.menu_pages(SYNTHETIC_MENU)
+        steps = scenario.book_save_keys("  kotaro before  ", pages)
         self.assertEqual([(a, b) for a, b, _ in steps],
-                         [("hold", "Escape"), ("hold", "F2"), ("hold", "Return"),
+                         [("hold", "Escape"), ("hold", "Return"), ("hold", "Return"),
                           ("type", "kotaro before"), ("hold", "Return")])
+        self.assertNotIn("F2", [b for _, b, _ in steps])
         self.assertTrue(all(settle >= 3 for _, _, settle in steps))
 
+    def test_the_walk_refuses_a_menu_that_does_not_match_the_assumed_actions(self):
+        other = SYNTHETIC_MENU.replace("action[1] = 101", "action[1] = 7")
+        with self.assertRaisesRegex(ValueError, "page 1"):
+            scenario.book_save_keys("x", scenario.menu_pages(other))
+        with self.assertRaisesRegex(ValueError, "page 0"):
+            scenario.book_save_keys("x", scenario.menu_pages(SYNTHETIC_MENU.replace("default[0] = 1", "")))
+
     def test_a_description_must_be_nonempty_ascii_and_at_most_64_characters(self):
+        pages = scenario.menu_pages(SYNTHETIC_MENU)
         for bad in ("", "   ", "x" * 65, "caf\u00e9"):
             with self.assertRaises(ValueError):
-                scenario.book_save_keys(bad)
-        self.assertEqual(len(scenario.book_save_keys("x" * 64)), 5)
+                scenario.book_save_keys(bad, pages)
+        self.assertEqual(len(scenario.book_save_keys("x" * 64, pages)), 5)
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 2000
+
+
+class ScreenCapture(unittest.TestCase):
+    def capture(self, behaviour):
+        """capture_screen against a fake container: behaviour maps a method to (status, stderr, wrote)."""
+        import tempfile
+        directory = Path(tempfile.mkdtemp())
+        destination = directory / "shot.png"
+
+        def copy(source, target):
+            if self.last_wrote is not None:
+                Path(target).write_bytes(self.last_wrote)
+            return 0 if self.last_wrote is not None else 1
+
+        def run_and_note(argv):
+            method = argv[0] if argv[0] != "sh" else "xwd"
+            status, stderr, self.last_wrote = behaviour[method]
+            return status, stderr
+
+        return scenario.capture_screen(run_and_note, copy, destination), destination
+
+    def test_a_failing_scrot_falls_back_and_keeps_its_stderr(self):
+        result, destination = self.capture({"scrot": (1, "Can't open display", None),
+                                            "import": (0, "", PNG), "xwd": (1, "x", None)})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["method"], "import")
+        self.assertEqual(result["attempts"][0]["status"], 1)
+        self.assertIn("display", result["attempts"][0]["stderr"])
+        self.assertTrue(scenario.valid_image(destination))
+
+    def test_a_zero_exit_that_writes_no_image_is_not_a_success(self):
+        result, _ = self.capture({"scrot": (0, "", b"not a png"), "import": (0, "", b""),
+                                  "xwd": (0, "", b"\x89PNG\r\n\x1a\n")})
+        self.assertFalse(result["ok"])
+        self.assertTrue(all(a.get("invalid_image") for a in result["attempts"]))
+
+    def test_every_method_failing_reports_all_attempts(self):
+        result, _ = self.capture({"scrot": (1, "a", None), "import": (1, "b", None), "xwd": (1, "c", None)})
+        self.assertFalse(result["ok"])
+        self.assertEqual([a["method"] for a in result["attempts"]], ["scrot", "import", "xwd"])
+        self.assertEqual([a["stderr"] for a in result["attempts"]], ["a", "b", "c"])
 
 
 class StallLogic(unittest.TestCase):

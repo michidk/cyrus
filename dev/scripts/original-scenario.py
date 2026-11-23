@@ -97,17 +97,37 @@ class Original:
         raw = self.raw() or {}
         return next((a for a in raw.get("actors", []) if a["selected"]), None)
 
-    def book_save(self, description):
-        """Save through the book (see book_save_keys); returns the new SAVEGAME entries."""
+    def screenshot(self, path):
+        """Capture the display (see capture_screen); the result keeps every attempt's status and stderr."""
+        def run(argv):
+            done = sh("docker", "exec", "-e", "DISPLAY=:1", self.name, *argv)
+            return done.returncode, done.stderr
+
+        def copy(source, destination):
+            return sh("docker", "cp", f"{self.name}:{source}", destination).returncode
+
+        return capture_screen(run, copy, path)
+
+    def book_save(self, description, shots):
+        """Save through the book (see book_save_keys); returns (new SAVEGAME entries, evidence). A
+        screenshot must succeed after every step, else the run stops there: evidence is never lost
+        silently."""
+        pages = menu_pages((self.run / "Redguard/MENU.INI").read_text(errors="replace"))
         before = {p.name for p in (self.run / "Redguard/SAVEGAME").iterdir()}
-        for action, argument, settle in book_save_keys(description):
+        evidence = []
+        for number, (action, argument, settle) in enumerate(book_save_keys(description, pages)):
             if action == "hold":
                 self.hold(argument, 0.4)
             else:
                 self.key("type", "--delay", "120", argument)
             time.sleep(settle)
+            shot = self.screenshot(Path(shots) / f"book-{number}-{action}-{argument[:12]}.png")
+            evidence.append({"step": number, "action": action, "argument": argument, "shot": shot})
+            if not shot["ok"]:
+                raise RuntimeError(f"book step {number} ({action} {argument}): no valid screenshot: "
+                                   f"{json.dumps(shot['attempts'])}")
         after = {p.name for p in (self.run / "Redguard/SAVEGAME").iterdir()}
-        return sorted(after - before)
+        return sorted(after - before), evidence
 
     def wait_or_stall(self, frames, window=5.0, timeout=900):
         """Frame wait that reports a frozen book instead of timing out (see counter_stalled)."""
@@ -200,18 +220,85 @@ def prompt_windows(rows):
     return windows
 
 
-def book_save_keys(description):
-    """The (xdotool action, argument, settle seconds) steps that save through the book's Save page
-    from a live world: Escape opens the book, F2 its Save page, Return picks `<NEW SAVE GAME>` (the
-    first row, preservation menu.md), the description is typed (the input takes at most 64 ASCII
-    characters and uppercases lowercase letters) and Return confirms it. The book freezes the
-    frame counter, so every step is paced by wall time."""
+def menu_pages(text):
+    """Pages of a MENU.INI document as {page: {item: {"default", "action", "text"}}} (only the keys
+    the book walk needs). The installed file defines the book, so the walk reads it instead of
+    assuming positions; an item with `default[n] = 1` is the one Return activates first."""
+    pages, page = {}, None
+    for line in text.splitlines():
+        line = line.split(";", 1)[0].strip()
+        header = re.fullmatch(r"\[page(\d+)\]", line)
+        if header:
+            page = pages.setdefault(int(header.group(1)), {})
+            continue
+        field = re.fullmatch(r"(text|default|action)\[(\d+)\]\s*=\s*(.*)", line)
+        if page is not None and field:
+            item = page.setdefault(int(field.group(2)), {})
+            item[field.group(1)] = field.group(3).strip()
+    return pages
+
+
+def default_action(pages, page):
+    """The action number of a page's default item, or None."""
+    for number in sorted(pages.get(page, {})):
+        item = pages[page][number]
+        if item.get("default") == "1" and "action" in item:
+            return int(item["action"])
+    return None
+
+
+def book_save_keys(description, pages):
+    """The (xdotool action, argument, settle seconds) steps that save through the book from a live
+    world, derived from the installed MENU.INI: Escape opens page 0, Return activates its default
+    item, which must be action 1 (open Save page 1); Return on page 1's default item, which must be
+    action 101 (new save, ask for a description); the description (1-64 ASCII characters, uppercased
+    by the input; preservation menu.md) and Return confirm it. F2 is not used: it only works with
+    `[debug] final_version=1`. The book freezes the frame counter, so every step is paced by wall time."""
     text = description.strip()
     if not text or len(text) > 64 or not text.isascii():
         raise ValueError("a save description is 1-64 ASCII characters")
-    steps = [("hold", "Escape", 6.0), ("hold", "F2", 6.0), ("hold", "Return", 6.0)]
-    steps += [("type", text, 3.0), ("hold", "Return", 8.0)]
-    return steps
+    if default_action(pages, 0) != 1:
+        raise ValueError("MENU.INI page 0 default item is not the Save action (1)")
+    if default_action(pages, 1) != 101:
+        raise ValueError("MENU.INI page 1 default item is not the new-save action (101)")
+    return [("hold", "Escape", 6.0), ("hold", "Return", 6.0), ("hold", "Return", 6.0),
+            ("type", text, 3.0), ("hold", "Return", 8.0)]
+
+
+def valid_image(path):
+    """A PNG file with the PNG signature and more than a header's worth of bytes."""
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return False
+    return len(data) > 1000 and data.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+CAPTURE_COMMANDS = (
+    ("scrot", ["scrot", "-o", "{out}"]),
+    ("import", ["import", "-window", "root", "{out}"]),
+    ("xwd", ["sh", "-c", "xwd -root -silent | convert xwd:- {out}"]),
+)
+
+
+def capture_screen(run, copy, destination):
+    """Capture the display into `destination` and return {"ok", "method", "attempts"}; `attempts`
+    keeps each method's status and stderr, so a failure names what failed. `run(argv)` runs a command
+    inside the container and returns (status, stderr); `copy(src, dst)` returns the copy status.
+    Success requires a valid nonempty PNG at `destination`: a zero exit status is not enough."""
+    attempts = []
+    for method, template in CAPTURE_COMMANDS:
+        argv = [part.replace("{out}", "/tmp/shot.png") for part in template]
+        status, stderr = run(argv)
+        entry = {"method": method, "status": status, "stderr": stderr[-300:]}
+        attempts.append(entry)
+        if status != 0:
+            continue
+        entry["copy"] = copy("/tmp/shot.png", str(destination))
+        if entry["copy"] == 0 and valid_image(destination):
+            return {"ok": True, "method": method, "attempts": attempts}
+        entry["invalid_image"] = True
+    return {"ok": False, "method": None, "attempts": attempts}
 
 
 def counter_stalled(samples, window):
