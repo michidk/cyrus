@@ -23,6 +23,7 @@ frames and game seconds to the end of the run.
 import argparse
 import fcntl
 import json
+import math
 import os
 import re
 import shutil
@@ -37,6 +38,7 @@ MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
 OPPONENT_ID = 55  # RICHTONP
 ARMED_IDLE_GROUP = 8
 NOT_ENGAGED_GROUP = 0
+STATE_EVERY_FRAMES = 20  # one state row per this many original frames during the fight
 HIT_REACTION_GROUP = 117  # a nonplayer hit receiver's reaction (preservation SOUP.md)
 SAMPLER = """\
 import contextlib, importlib.util, io, json, sys, time
@@ -72,7 +74,18 @@ def view(state):
         "rg": opponent["group"] if opponent else None,
         "rpending": opponent["pending"] if opponent else None,
         "rh": opponent["health"] if opponent else None,
+        # Q8 positions and yaw, for distance and step-back analysis against the native snapshots.
+        "ppos": player["position_q8"], "pyaw": player["yaw"],
+        "rpos": opponent["position_q8"] if opponent else None,
+        "ryaw": opponent["yaw"] if opponent else None,
     }
+
+
+def horizontal_distance(sample):
+    """Horizontal Q8 distance between the fighters (map X and Z), or None while he is absent."""
+    if sample["rpos"] is None:
+        return None
+    return round(math.hypot(sample["rpos"][0] - sample["ppos"][0], sample["rpos"][2] - sample["ppos"][2]))
 
 
 def opponent_busy(sample):
@@ -275,12 +288,18 @@ def main():
         engaged = wait_frames(sampler, 1500, 1500, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
     phase("engaged; fighting")
     fight_start = engaged["frame"]
+    next_state_frame = fight_start
     while True:
         sample, raw = sampler.get()
         if sample is None:
             time.sleep(0.05)
             continue
         frames = sample["frame"] - fight_start
+        if sample["frame"] >= next_state_frame:
+            # A periodic state row so the original's range and step-back can be set beside the
+            # native fight snapshots (same fields: groups, health, distance, positions).
+            emit({"ev": "state", "frames": frames, "dist": horizontal_distance(sample), **sample})
+            next_state_frame = sample["frame"] + STATE_EVERY_FRAMES
         if sample["rh"] == 0 or sample["ph"] == 0 or frames >= args.max_frames:
             emit({"ev": "end", "rh": sample["rh"], "ph": sample["ph"], "frames": frames, "fps": sample["fps"],
                   "reason": "kill" if sample["rh"] == 0 else "player-dead" if sample["ph"] == 0 else "frame-budget"})

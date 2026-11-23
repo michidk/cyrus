@@ -11,7 +11,7 @@ spec.loader.exec_module(fight)
 
 def actor(identifier, group, health, selected=False, pending=None, drawn=0):
     return {"id": identifier, "selected": selected, "group": group, "health": health,
-            "pending": pending, "drawn": drawn}
+            "pending": pending, "drawn": drawn, "position_q8": [0, 0, 0], "yaw": 0}
 
 
 def sample(pg=8, rg=8, rh=250, drawn=1, ph=100):
@@ -67,6 +67,21 @@ class DriverLogic(unittest.TestCase):
         self.assertEqual(summary["by_state"]["busy"], {"taps": 2, "hit": 1, "reaction": 0, "response": 0, "miss": 1})
         self.assertEqual(summary["by_state"]["idle"], {"taps": 2, "hit": 1, "reaction": 0, "response": 1, "miss": 0})
         self.assertEqual(summary["end"]["reason"], "frame-budget")
+
+
+class StateRows(unittest.TestCase):
+    def test_view_carries_q8_positions_and_the_horizontal_distance_ignores_height(self):
+        state = {"counters": {"mainloop_frame": 7, "fps": 4}, "actors": [
+            dict(actor(1, 8, 100, selected=True), position_q8=[0, -5000, 0], yaw=1024),
+            dict(actor(55, 102, 240), position_q8=[3000, 90000, 4000], yaw=0)]}
+        view = fight.view(state)
+        self.assertEqual((view["ppos"], view["rpos"], view["pyaw"], view["ryaw"]),
+                         ([0, -5000, 0], [3000, 90000, 4000], 1024, 0))
+        self.assertEqual(fight.horizontal_distance(view), 5000)
+        state["actors"].pop()
+        absent = fight.view(state)
+        self.assertIsNone(absent["rpos"])
+        self.assertIsNone(fight.horizontal_distance(absent))
 
 
 class FakeSampler:
