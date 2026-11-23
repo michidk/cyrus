@@ -24,4 +24,4 @@ serde_json.workspace = true
 toml.workspace = true
 # Pre-1.0 and breaking: keep wit/deps/wasvy-ecs.wit and the bundled mods on this same version.
 wasvy = "=0.0.11"
-wasmtime = { version = "50", default-features = false }
+wasmtime = { version = "51", default-features = false }
