@@ -189,6 +189,50 @@ def wait_frames(sampler, frames, timeout, until=None):
     raise TimeoutError(f"no {frames} frames within {timeout} s (counter start {start})")
 
 
+def walk_step(sample, tolerance=100):
+    """One held-key decision for the walk-in: turn toward the opponent, else walk forward.
+    Returns (key, hold_seconds) or None once he is inside striking range and faced.
+    Original turning is about 416 heading units per second and forward walking about 200 map units
+    per second (measured earlier); holds are wall time because a held key is what registers at a few
+    frames per second."""
+    if sample["rpos"] is None:
+        return None
+    dx, dz = sample["rpos"][0] - sample["ppos"][0], sample["rpos"][2] - sample["ppos"][2]
+    bearing = round(math.degrees(math.atan2(dx, dz)) * 2048 / 360) % 2048
+    # The original's yaw is -atan2(dx, dz) in 2048 units (Right decreases yaw).
+    want = (-bearing) % 2048
+    error = (want - sample["pyaw"] + 1024) % 2048 - 1024
+    if abs(error) > tolerance:
+        return ("Left" if error > 0 else "Right", min(1.5, max(0.2, abs(error) / 416)))
+    if horizontal_distance(sample) > 12000:
+        return ("Up", 1.0)
+    return None
+
+
+def walk_in(sampler, key, frames):
+    """Walk to the opponent with held keys until he leaves group 0 or the frame budget ends."""
+    end = None
+    while True:
+        sample, raw = sampler.get()
+        if sample is None:
+            time.sleep(0.1)
+            continue
+        end = end or sample["frame"] + frames
+        if sample["rg"] not in (NOT_ENGAGED_GROUP, None):
+            return sample
+        if sample["frame"] >= end:
+            raise TimeoutError(f"opponent did not engage while walking in (group {sample['rg']})")
+        step = walk_step(sample)
+        if step is None:
+            time.sleep(0.3)
+            continue
+        name, hold = step
+        key("keydown", name)
+        time.sleep(hold)
+        key("keyup", name)
+        time.sleep(0.2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--name", default="fight", help="run copy and container suffix")
@@ -196,6 +240,8 @@ def main():
     parser.add_argument("--max-frames", type=int, default=1500, help="frames to fight before stopping")
     parser.add_argument("--gate", choices=("busy", "any"), default="busy", help="when a tap is allowed")
     parser.add_argument("--cheat", default="", help="console cheat to set to 1 before the fight")
+    parser.add_argument("--approach", choices=("place", "walk"), default="place",
+                        help="if he does not engage: write the player beside him, or walk in with held keys")
     parser.add_argument("--interval", type=float, default=0.2, help="sampler period in seconds")
     args = parser.parse_args()
     image = subprocess.check_output(
@@ -282,10 +328,14 @@ def main():
     try:
         engaged = wait_frames(sampler, 900, 900, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
     except TimeoutError:
-        phase("not engaged; placing the player beside him")
-        sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
-        wait_frames(sampler, 8, 120)
-        engaged = wait_frames(sampler, 1500, 1500, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
+        if args.approach == "walk":
+            phase("not engaged; walking in with held keys")
+            engaged = walk_in(sampler, key, 3000)
+        else:
+            phase("not engaged; placing the player beside him")
+            sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
+            wait_frames(sampler, 8, 120)
+            engaged = wait_frames(sampler, 1500, 1500, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
     phase("engaged; fighting")
     fight_start = engaged["frame"]
     next_state_frame = fight_start

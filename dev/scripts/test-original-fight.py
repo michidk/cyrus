@@ -84,6 +84,26 @@ class StateRows(unittest.TestCase):
         self.assertIsNone(fight.horizontal_distance(absent))
 
 
+class WalkIn(unittest.TestCase):
+    def sample_at(self, ppos, pyaw, rpos):
+        return sample() | {"ppos": ppos, "pyaw": pyaw, "rpos": rpos}
+
+    def test_the_walk_in_turns_toward_him_then_walks_then_stops_in_range(self):
+        # He is straight ahead on +Z (bearing 0, wanted yaw 0).
+        ahead = self.sample_at([0, 0, 0], 0, [0, 0, 50000])
+        self.assertEqual(fight.walk_step(ahead), ("Up", 1.0))
+        # He is on +X (bearing 512, wanted yaw 1536): a player at yaw 0 must turn; Right decreases yaw.
+        side = self.sample_at([0, 0, 0], 0, [50000, 0, 0])
+        key, hold = fight.walk_step(side)
+        self.assertEqual(key, "Right")
+        self.assertTrue(0.2 <= hold <= 1.5)
+        left = self.sample_at([0, 0, 0], 1200, [50000, 0, 0])
+        self.assertEqual(fight.walk_step(left)[0], "Left")
+        # Inside range and faced: stop. Opponent absent: nothing to do.
+        self.assertIsNone(fight.walk_step(self.sample_at([0, 0, 0], 0, [0, 0, 9000])))
+        self.assertIsNone(fight.walk_step(self.sample_at([0, 0, 0], 0, None)))
+
+
 class FakeSampler:
     """Yields one scripted (view, raw) pair per get(): frame counter and opponent group."""
 
