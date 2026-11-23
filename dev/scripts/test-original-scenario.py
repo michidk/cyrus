@@ -124,6 +124,14 @@ class ScreenCapture(unittest.TestCase):
         self.assertEqual([a["stderr"] for a in result["attempts"]], ["a", "b", "c"])
 
 
+class BookFailure(unittest.TestCase):
+    def test_a_stopped_container_is_reported_as_the_original_exiting_not_as_a_capture_failure(self):
+        failed = {"ok": False, "attempts": [{"method": "scrot", "status": 1, "stderr": "No such container"}]}
+        self.assertIn("exited after this key", scenario.book_step_failure(failed, container_up=False))
+        self.assertIn("no valid screenshot", scenario.book_step_failure(failed, container_up=True))
+        self.assertIsNone(scenario.book_step_failure({"ok": True, "attempts": []}, container_up=False))
+
+
 class StallLogic(unittest.TestCase):
     def test_a_frozen_counter_is_stalled_only_after_the_whole_window(self):
         self.assertFalse(scenario.counter_stalled([], 5))

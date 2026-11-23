@@ -97,6 +97,10 @@ class Original:
         raw = self.raw() or {}
         return next((a for a in raw.get("actors", []) if a["selected"]), None)
 
+    def alive(self):
+        """Whether the container is still running."""
+        return bool(sh("docker", "ps", "-q", "--filter", f"name=^{self.name}$").stdout.strip())
+
     def screenshot(self, path):
         """Capture the display (see capture_screen); the result keeps every attempt's status and stderr."""
         def run(argv):
@@ -123,9 +127,9 @@ class Original:
             time.sleep(settle)
             shot = self.screenshot(Path(shots) / f"book-{number}-{action}-{argument[:12]}.png")
             evidence.append({"step": number, "action": action, "argument": argument, "shot": shot})
-            if not shot["ok"]:
-                raise RuntimeError(f"book step {number} ({action} {argument}): no valid screenshot: "
-                                   f"{json.dumps(shot['attempts'])}")
+            failure = book_step_failure(shot, self.alive())
+            if failure:
+                raise RuntimeError(f"book step {number} ({action} {argument}): {failure}")
         after = {p.name for p in (self.run / "Redguard/SAVEGAME").iterdir()}
         return sorted(after - before), evidence
 
@@ -263,6 +267,18 @@ def book_save_keys(description, pages):
         raise ValueError("MENU.INI page 1 default item is not the new-save action (101)")
     return [("hold", "Escape", 6.0), ("hold", "Return", 6.0), ("hold", "Return", 6.0),
             ("type", text, 3.0), ("hold", "Return", 8.0)]
+
+
+def book_step_failure(shot, container_up):
+    """Why a book step produced no evidence, or None when it did: a stopped container means the key
+    ended the game itself (in the direct-start debug entry Escape quits DOSBox-X instead of opening
+    the book, measured live), which is a different finding from a capture-tool failure and must not
+    be reported as one."""
+    if shot["ok"]:
+        return None
+    if not container_up:
+        return "the original exited after this key (no book in this entry)"
+    return "no valid screenshot: " + json.dumps(shot["attempts"])
 
 
 def valid_image(path):
