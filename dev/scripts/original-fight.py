@@ -33,6 +33,9 @@ import threading
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from diag_output import DurableLog, verify
+
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
 OPPONENT_ID = 55  # RICHTONP
@@ -253,6 +256,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--name", default="fight", help="run copy and container suffix")
     parser.add_argument("--out", required=True, help="JSON-lines output path")
+    parser.add_argument("--mirror", help="second JSON-lines path (another directory) written row by row")
     parser.add_argument("--max-frames", type=int, default=1500, help="frames to fight before stopping")
     parser.add_argument("--gate", choices=("busy", "any"), default="busy", help="when a tap is allowed")
     parser.add_argument("--cheat", default="", help="console cheat to set to 1 before the fight")
@@ -293,11 +297,13 @@ def main():
        f"{name}:/tmp/original-memory-region.py", check=True)
     sh("docker", "cp", str(place), f"{name}:/tmp/orig_write_in.py", check=True)
     key = lambda *c: sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", *c)
-    out = open(args.out, "w")
+    # Every row is fsynced, optionally mirrored to a second directory, and the run is sealed with a
+    # manifest at the end; a pod replacement or a cleaned artifacts directory has already removed
+    # finished runs before they were read.
+    log = DurableLog(args.out, args.mirror)
 
     def emit(row):
-        out.write(json.dumps(row) + "\n")
-        out.flush()
+        log.append(row)
 
     def phase(label):
         sample = sampler.get()[0] if "sampler" in locals() else None
@@ -391,8 +397,10 @@ def main():
         emit({"ev": "tap", "before": sample, **classify_tap(sample, after)})
     sampler.stop()
     sh("docker", "rm", "-f", name)
+    log.seal("original-fight run complete")
     rows = [json.loads(line) for line in open(args.out)]
     print(json.dumps(summarize(rows), indent=1))
+    print(f"sealed {args.out}: {verify(args.out)[1]}", flush=True)
 
 
 if __name__ == "__main__":
