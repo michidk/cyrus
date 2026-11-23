@@ -35,7 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from diag_output import DurableLog, verify
-from original_console import Console, frame_hold
+from original_console import Console, acknowledged_hold
 
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
@@ -324,23 +324,35 @@ def main():
         sh("docker", "cp", f"{name}:/tmp/console.png", str(target))
         return str(target)
 
-    def current_frame():
-        raw = sampler.get()[1]
-        return ((raw or {}).get("counters") or {}).get("mainloop_frame")
+    # Resolve F12 to its physical X keycode in the container. Named xdotool
+    # F12 can synthesize Alt and select the game's nonmodal overlay instead.
+    sh("docker", "cp", str(Path(__file__).with_name("original_console.py")),
+       f"{name}:/tmp/original_console.py", check=True)
+
+    def console_key(action, symbol):
+        if symbol == "F12":
+            sh("docker", "exec", "-e", "DISPLAY=:1", name, "python3",
+               "/tmp/original_console.py", action, symbol, check=True)
+        else:
+            key(action, symbol)
 
     def press_wall(name_, seconds):
-        """Hold a key for wall time; the original's frame counter is frozen while its console is open."""
-        key("keydown", name_)
-        time.sleep(seconds)
-        key("keyup", name_)
+        """Balanced input while the console owns its independent editor loop."""
+        console_key("keydown", name_)
+        try:
+            time.sleep(seconds)
+        finally:
+            console_key("keyup", name_)
+
+    def mode():
+        return (sampler.get()[1] or {}).get("console_mode")
 
     console = Console(
-        hold=lambda name_, frames: frame_hold(lambda k: key("keydown", k), lambda k: key("keyup", k),
-                                              current_frame, name_, frames),
-        press=press_wall,
-        console_mode=lambda: (sampler.get()[1] or {}).get("console_mode"),
-        pause=time.sleep,
-        shot=shot)
+        hold=lambda name_: acknowledged_hold(
+            lambda k: console_key("keydown", k), lambda k: console_key("keyup", k),
+            lambda: mode() in ("interactive", "overlay"), name_),
+        press=press_wall, console_mode=mode, pause=time.sleep, shot=shot,
+        editor_text=lambda: ((sampler.get()[1] or {}).get("console_editor") or {}).get("text"))
     for number, line in enumerate(("item add,79", "getmapmarker 32")):
         typed, answered = console.run(line, f"console-{number}")
         emit({"ev": "console", "line": line, "typed": typed, "answered": answered})

@@ -13,18 +13,22 @@ class Rig:
 
     def __init__(self, accepts_toggle=True, frozen_frames=True):
         self.mode, self.log, self.accepts, self.shots, self.slept = "closed", [], accepts_toggle, [], 0.0
+        self.text = ""
 
     def toggle(self, key):
         if key == "F12" and self.accepts:
-            self.mode = "open" if self.mode == "closed" else "closed"
+            self.mode = "interactive" if self.mode == "closed" else "closed"
 
-    def hold(self, key, frames):
+    def hold(self, key):
         self.log.append(key)
         self.toggle(key)
 
     def press(self, key, seconds):
         self.log.append(key)
         self.toggle(key)
+        reverse = {v: k for k, v in oc.SPECIAL.items()}
+        if self.mode == "interactive" and key != "F12":
+            self.text = "" if key == "Return" else self.text + reverse.get(key, key)
 
     def console_mode(self):
         return self.mode
@@ -37,7 +41,7 @@ class Rig:
         return f"/shots/{tag}.png"
 
     def console(self, **kw):
-        return oc.Console(self.hold, self.press, self.console_mode, self.pause, self.shot, **kw)
+        return oc.Console(self.hold, self.press, self.console_mode, self.pause, self.shot, editor_text=lambda: self.text, **kw)
 
 
 class ConsoleDriver(unittest.TestCase):
@@ -50,7 +54,7 @@ class ConsoleDriver(unittest.TestCase):
 
     def test_an_already_open_console_is_not_toggled_closed(self):
         rig = Rig()
-        rig.mode = "open"
+        rig.mode = "interactive"
         rig.console().run("oracle", "o")
         self.assertEqual(rig.log[0], "o")
 
@@ -69,6 +73,72 @@ class ConsoleDriver(unittest.TestCase):
         rig = Rig()
         rig.console().run("oracle", "o")
         self.assertGreater(rig.slept, 0.0)
+
+    def test_overlay_is_not_an_editor_and_never_receives_text(self):
+        rig = Rig(accepts_toggle=False)
+        rig.mode = "overlay"
+        with self.assertRaisesRegex(oc.ConsoleError, "interactive"):
+            rig.console(budget_seconds=0.5).run("oracle", "overlay")
+        self.assertNotIn("o", rig.log)
+        self.assertNotIn("Return", rig.log)
+
+    def test_dropped_character_stops_before_submitting_or_typing_the_rest(self):
+        rig = Rig()
+        rig.press = lambda key, seconds: rig.log.append(key)
+        with self.assertRaisesRegex(oc.ConsoleError, "echo.*'o'"):
+            rig.console(budget_seconds=0.5).run("oracle", "lost")
+        self.assertEqual(rig.log, ["F12", "o"])
+
+    def test_physical_toggle_uses_resolved_keycode_without_symbol_modifiers(self):
+        for code in (96, 120):
+            self.assertEqual(oc.physical_key_command("keydown", "F12", lambda _: code),
+                             ["xdotool", "keydown", str(code)])
+        with self.assertRaisesRegex(oc.ConsoleError, "unmapped"):
+            oc.physical_key_command("keyup", "F12", lambda _: 0)
+
+    def test_frame_hold_releases_if_reader_fails(self):
+        events = []
+        def read():
+            if events:
+                raise RuntimeError("reader lost")
+            return 1
+        with self.assertRaisesRegex(RuntimeError, "reader lost"):
+            oc.frame_hold(lambda key: events.append("down"), lambda key: events.append("up"),
+                          read, "F12", 2)
+        self.assertEqual(events, ["down", "up"])
+
+    def test_toggle_release_follows_acknowledgement_and_reader_failure(self):
+        for fails in (False, True):
+            events = []
+            def acknowledged():
+                events.append("read")
+                if fails:
+                    raise RuntimeError("reader lost")
+                return True
+            def hold():
+                oc.acknowledged_hold(lambda key: events.append("down"),
+                                     lambda key: events.append("up"), acknowledged, "F12")
+            if fails:
+                with self.assertRaisesRegex(RuntimeError, "reader lost"):
+                    hold()
+            else:
+                hold()
+            self.assertEqual(events, ["down", "read", "up"])
+
+    def test_unacknowledged_toggle_is_released_at_the_bound(self):
+        events = []
+        with self.assertRaisesRegex(oc.ConsoleError, "no input acknowledgement"):
+            oc.acknowledged_hold(lambda key: events.append("down"),
+                                 lambda key: events.append("up"), lambda: False, "F12", timeout=0)
+        self.assertEqual(events, ["down", "up"])
+
+    def test_missing_editor_binding_refuses_to_type(self):
+        rig = Rig()
+        console = oc.Console(rig.hold, rig.press, rig.console_mode, rig.pause, rig.shot,
+                             editor_text=lambda: None)
+        with self.assertRaisesRegex(oc.ConsoleError, "editor is not empty"):
+            console.run("oracle", "missing")
+        self.assertEqual(rig.log, ["F12"])
 
     def test_plan_lowercases_maps_punctuation_and_refuses_unsafe_input(self):
         self.assertEqual(oc.plan("Item Add,79"), ["i", "t", "e", "m", "space", "a", "d", "d", "comma", "7", "9"])

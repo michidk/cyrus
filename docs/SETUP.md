@@ -1167,6 +1167,15 @@ and rejects absent, ambiguous
 or truncated-region candidates. Keep signatures and executable bindings in the
 local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
 
+The fight console driver resolves F12 through the live X display and sends its
+physical keycode. A named xdotool F12 can synthesize Alt on the rig keymap and
+select the nonmodal overlay. The toggle is released on mode acknowledgement,
+without waiting for gameplay frames inside the paused editor. The reader also
+supplies `console_editor.text`, the current editable text without prompt or
+terminal placeholder. The driver checks every typed prefix before continuing;
+a missing binding or dropped character stops before Return is sent. Its controls
+run with `python3 dev/scripts/test-original-console.py` and in `just check`.
+
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.
 The public driver requires `interactive` as well as a paused world clock;
