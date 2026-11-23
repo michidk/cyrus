@@ -54,8 +54,10 @@ impl Persist for Plants {
         rest.len().is_multiple_of(2).then(|| Plants {
             revision,
             plants: rest
-                .chunks_exact(2)
-                .map(|pair| (pair[0] as u32, pair[1]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&[index, amplitude]| (index as u32, amplitude))
                 .collect(),
         })
     }
