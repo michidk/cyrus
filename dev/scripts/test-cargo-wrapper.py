@@ -62,10 +62,13 @@ exit 17
                 (root / "redguard").symlink_to(install, target_is_directory=True)
             shutil.copyfile(SCRIPTS / "gates.sh", scripts / "gates.sh")
             (scripts / "toolchain.sh").write_text("")
-            for name in ("check-preservation-release.py", "test-preservation-release.py", "test-original-update-recorder.py", "test-original-fight.py",
-                         "test-build-provenance.py", "test-surface-audio.py", "capture-provenance.test.mjs",
-                         "browser-provenance.test.mjs", "matched-capture.test.mjs"):
-                (scripts / name).write_text("")
+            # Exercise orchestration with inert script checks, including newly added
+            # checks. Running their real bodies belongs to the real gate, not this
+            # synthetic checkout with a mocked Cargo command and install.
+            checks = list(SCRIPTS.glob("test-*.py")) + list(SCRIPTS.glob("*.test.mjs"))
+            checks.append(SCRIPTS / "check-preservation-release.py")
+            for check in checks:
+                (scripts / check.name).write_text("")
             (scripts / "cargo.sh").write_text('''cargo() {
     echo "cargo $*"
     [[ "$1" != "$FAIL_COMMAND" ]] || return 17
