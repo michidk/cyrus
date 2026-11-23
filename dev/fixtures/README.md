@@ -294,6 +294,25 @@ local reader without substituting values for missing observations.
 Native adapters drive the control port using a host-mounted `CYRUS_CONFIG_DIR`.
 Use the original's frame counter and measured simulation timing, not host sleeps.
 
+For strict input timing use `original-frame-session.py`'s stopped `FrameSession`,
+not the streaming OS-key adapter. Supply an attached `Watchpoint` stopped at a
+verified frame-counter boundary, a counter projection and observable projection.
+It reads every intervening frame while stopped and rejects a counter gap or reset;
+it never interpolates flags, prompts, animation or control ownership.
+`Watchpoint.latch_key` writes an ordinary key's documented 16-bit make/break slot
+and reads both the slot and frame counter back before execution can continue.
+The ignored binding's `keys` map supplies each KeyCode's `guest_offset` and
+`reader` dict/list path. Interrupt-special keys require a separate adapter.
+This is diagnostic key-state injection, not proof of OS keyboard delivery.
+
+`compare-segment.py`'s `NativeFrameSession(control, project)` provides the native
+half after staging. ReplayHold must be active: inputs latch at the current
+boundary and each observation-only schedule consumes exactly one update. It rejects script
+failures, actor-list truncation and unexpected simulation progress. Both adapters
+leave launch, exact-pose staging and process cleanup to the scenario backend.
+Record consumed clock steps as well as frame indices: stopped original inspection
+does not establish equal BIOS tick inputs or equal native simulation duration.
+
 Snapshots contain `frame`, `world`, `player`, `actors`, `flags`, `prompts` and `timing`.
 Player and actor records use Q8 positions, engine headings, health and animation
 groups; include controller state and consumed timing in the records. Declare

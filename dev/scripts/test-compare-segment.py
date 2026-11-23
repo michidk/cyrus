@@ -107,5 +107,58 @@ class PairTests(unittest.TestCase):
             pair.input_tape({'steps': [{'steer': {'position_q8': [1, 2, 3]}}]})
 
 
+class NativeControl:
+    def __init__(self):
+        self.update, self.stride, self.failed = 50, 1, 0
+        self.events = []
+        self.keys = []
+
+    def request(self, command):
+        if command['type'] == 'state':
+            return dict(scripts=dict(ordinary_updates=self.update, failed=self.failed))
+        if command['type'] == 'scripts':
+            return dict(actors=[], total=0)
+        if command['type'] == 'schedule_input':
+            self.events.append(command['events'])
+            self.update += self.stride
+            return {}
+        if command['type'] == 'input':
+            self.keys.append((self.update, command['key'], command['action']))
+            return {}
+        raise AssertionError(command)
+
+
+class NativeFrames(unittest.TestCase):
+    def test_inputs_share_the_boundary_and_frames_only_advance_explicitly(self):
+        control = NativeControl()
+        session = pair.NativeFrameSession(control, lambda state, scripts: dict(world=20))
+        self.assertEqual(session.input('ControlLeft', 'press'), 0)
+        session.input('ArrowDown', 'press')
+        self.assertEqual(control.update, 50)
+        session.advance_to(1)
+        self.assertEqual(control.keys, [(50, 'ControlLeft', 'press'), (50, 'ArrowDown', 'press')])
+        self.assertEqual(session.input('ControlLeft', 'release'), 1)
+        session.advance_to(3)
+        self.assertEqual(session.snapshot(), dict(world=20, frame=3))
+        self.assertEqual(control.events[-1], [{'after_updates': 0}])
+
+    def test_frame_gap_or_script_failure_rejects_the_native_run(self):
+        for stride, failed, message in [(2, 0, 'frame gap'), (1, 1, 'script failures')]:
+            control = NativeControl()
+            session = pair.NativeFrameSession(control, lambda state, scripts: {})
+            control.stride, control.failed = stride, failed
+            with self.subTest(message=message), self.assertRaisesRegex(RuntimeError, message):
+                session.advance_to(1)
+
+    def test_truncated_actor_batch_is_rejected(self):
+        control = NativeControl()
+        request = control.request
+        def truncated(command):
+            return dict(actors=[], total=1) if command['type'] == 'scripts' else request(command)
+        control.request = truncated
+        with self.assertRaisesRegex(RuntimeError, 'truncated'):
+            pair.NativeFrameSession(control, lambda state, scripts: {})
+
+
 if __name__ == '__main__':
     unittest.main()

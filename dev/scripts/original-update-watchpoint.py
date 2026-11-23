@@ -15,6 +15,7 @@ import json
 import os
 import platform
 import signal
+import struct
 import time
 
 
@@ -73,24 +74,48 @@ class Watchpoint:
             raise RuntimeError('unidentified original debug stop')
         self.ptrace(6, 848 + 6 * 8, 0)
 
-    def snapshot(self):
+    def raw_snapshot(self):
+        """Batch every requested observable while the emulated game is stopped."""
         if not self.stopped:
             raise RuntimeError('cannot snapshot a running emulator')
         output = io.StringIO()
         with redirect_stdout(output):
             self.reader.main()
-        state = json.loads(output.getvalue())
+        return json.loads(output.getvalue())
+
+    def latch_key(self, key, action):
+        """Latch an ordinary key slot without running a frame; verify through the reader.
+
+        The local binding supplies the documented 16-bit keyboard-state slot and
+        its reader path. Special interrupt-handled keys need a different adapter.
+        A make writes one and a break writes zero (preservation keys-ini.md).
+        """
+        if not self.stopped:
+            raise RuntimeError('cannot latch input in a running emulator')
+        if action not in ('press', 'release') or key not in self.config.get('keys', {}):
+            raise ValueError(f'unsupported ordinary key {key}/{action}')
+        binding = self.config['keys'][key]
+        before = self.raw_snapshot()
+        counter = field(before, self.config['counter'])
+        with open(f'/proc/{self.pid}/mem', 'r+b', buffering=0) as memory:
+            memory.seek(self.base + binding['guest_offset'])
+            if memory.write(struct.pack('<H', int(action == 'press'))) != 2:
+                raise OSError('short original key-state write')
+        after = self.raw_snapshot()
+        if field(after, self.config['counter']) != counter:
+            raise RuntimeError('original frame advanced while latching input')
+        if field(after, binding['reader']) != int(action == 'press'):
+            raise RuntimeError(f'original reader did not acknowledge {key}/{action}')
+        return after
+
+    def snapshot(self):
+        state = self.raw_snapshot()
         selected = [actor for actor in state['actors'] if actor['selected']]
         if len(selected) != 1 or state.get('console_mode') != 'closed':
             raise RuntimeError('ordinary world/player boundary unavailable')
-        def field(path):
-            value = state
-            for key in path.split('.'):
-                value = value[key]
-            return value
         return dict(execution='stopped', boundary='ordinary_update_start',
-                    update=field(self.config['counter']), clock_scale=field(self.config['clock']),
-                    next_step=field(self.config['step']),
+                    update=field(state, self.config['counter']), clock_scale=field(state, self.config['clock']),
+                    next_step=field(state, self.config['step']),
                     player={name: selected[0][key] for name, key in self.config['player_fields'].items()})
 
     def close(self):
@@ -105,6 +130,13 @@ class Watchpoint:
             self.ptrace(17)
             self.attached = False
         self.memory.close()
+
+
+def field(state, path):
+    """Read a bound dict/list path; unavailable fields remain errors, never defaults."""
+    for key in path.split('.'):
+        state = state[int(key)] if isinstance(state, list) else state[key]
+    return state
 
 
 @contextmanager

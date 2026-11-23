@@ -17,6 +17,58 @@ from pathlib import Path
 OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing')
 
 
+class NativeFrameSession:
+    """Drive a staged native control connection while ReplayHold keeps it stopped.
+
+    project(state, scripts) normalizes the measured native state. Input is latched
+    while ReplayHold is active, before the next observation-only schedule. All actors
+    must fit in actor_limit; silently truncating the comparison is an error.
+    """
+
+    def __init__(self, control, project, actor_limit=4096):
+        self.control, self.project, self.actor_limit = control, project, actor_limit
+        self.current = self._read()
+        self.origin = self.current[0]['scripts']['ordinary_updates']
+
+    def _read(self):
+        state = self.control.request({'type': 'state'})
+        scripts = self.control.request({'type': 'scripts', 'limit': self.actor_limit})
+        after = self.control.request({'type': 'state'})
+        if state['scripts']['ordinary_updates'] != after['scripts']['ordinary_updates']:
+            raise RuntimeError('native simulation advanced outside an explicit frame step')
+        if after['scripts']['failed']:
+            raise RuntimeError(f'native script failures: {after["scripts"]}')
+        if len(scripts['actors']) != scripts['total']:
+            raise RuntimeError('native comparison actor read was truncated')
+        return after, scripts
+
+    def snapshot(self):
+        state, scripts = self.current
+        return dict(self.project(state, scripts), frame=state['scripts']['ordinary_updates'] - self.origin)
+
+    def input(self, key, action):
+        if action not in ('press', 'release'):
+            raise ValueError(f'unsupported native key action {action}')
+        before = self.snapshot()['frame']
+        self.control.request(dict(type='input', key=key, action=action))
+        self.current = self._read()
+        if self.snapshot()['frame'] != before:
+            raise RuntimeError('native frame changed during key acknowledgement')
+        return self.snapshot()['frame']
+
+    def advance_to(self, frame):
+        current = self.snapshot()['frame']
+        if type(frame) is not int or frame < current:
+            raise ValueError(f'native frame {frame} already passed or invalid')
+        while current < frame:
+            self.control.request({'type': 'schedule_input', 'events': [{'after_updates': 0}]})
+            self.current = self._read()
+            observed = self.snapshot()['frame']
+            if observed != current + 1:
+                raise RuntimeError(f'native frame gap: expected {current + 1}, observed {observed}')
+            current = observed
+
+
 def input_tape(segment):
     """Compile input-only replay steps; never silently discard steering or dialogue decisions."""
     events, checkpoints, cursor = [], [0], 0
