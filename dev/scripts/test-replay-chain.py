@@ -119,6 +119,21 @@ class Checkpoints(unittest.TestCase):
     def test_crendal_prompt_approach_rechecks_released_coast_before_waiting(self):
         self.check_stopped_approach("tavern-4-crendal.replay.json", 1)
 
+    def test_crendal_topics_preserve_the_corrected_conversation_checkpoint(self):
+        root = Path(__file__).resolve().parents[1] / "fixtures/segments"
+        arrival = json.loads((root / "tavern-4-crendal.replay.json").read_text())
+        expected = next(step["checkpoint"]["position_q8"] for step in arrival["steps"]
+                        if "checkpoint" in step)
+        # Both topic branches resume this conversation and contain no movement input.
+        # Their positional assertion must cover the same stopped approach corridor.
+        for name in ("tavern-5-crendal-bye", "tavern-6-crendal-iszara"):
+            fixture = json.loads((root / f"{name}.replay.json").read_text())
+            with self.subTest(segment=name):
+                self.assertEqual(fixture["resume_session"], "crendal-talk")
+                checkpoint = next(step["checkpoint"] for step in fixture["steps"]
+                                  if "checkpoint" in step)
+                self.assertEqual(checkpoint["position_q8"], expected)
+
     def test_bell_approach_accepts_the_stopped_pose_inside_the_grab_corridor(self):
         path = Path(__file__).resolve().parents[1] / "fixtures/segments/bell-monocle.replay.json"
         fixture = json.loads(path.read_text())
