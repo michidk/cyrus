@@ -202,6 +202,35 @@ class RetailLoad(unittest.TestCase):
             scenario.stage_retail_save(run, root / "p.ini", root / "empty")
 
 
+class ObserveRetail(unittest.TestCase):
+    def test_observation_stops_when_the_container_exits_and_records_each_shot(self):
+        import tempfile
+
+        class Fake:
+            def __init__(self):
+                self.shots, self.alive_calls = 0, 0
+
+            def raw(self):
+                return {"world": 0}
+
+            def frame(self):
+                return 5
+
+            def screenshot(self, path):
+                self.shots += 1
+                return {"ok": True}
+
+            def alive(self):
+                self.alive_calls += 1
+                return self.alive_calls < 3
+
+        game = Fake()
+        rows = scenario.observe_retail(game, tempfile.mkdtemp(), seconds=60, interval=0)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([r["alive"] for r in rows], [True, True, False])
+        self.assertTrue(all(r["shot"] and r["world"] == 0 for r in rows))
+
+
 class BookFailure(unittest.TestCase):
     def test_a_stopped_container_is_reported_as_the_original_exiting_not_as_a_capture_failure(self):
         failed = {"ok": False, "attempts": [{"method": "scrot", "status": 1, "stderr": "No such container"}]}

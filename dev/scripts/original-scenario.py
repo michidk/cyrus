@@ -42,7 +42,7 @@ def sh(*command, **kwargs):
 class Original:
     """One original-game container with a streaming sampler and key input."""
 
-    def __init__(self, name, world, marker, interval=0.2, quicksave_enabled=False):
+    def __init__(self, name, world, marker, interval=0.2, quicksave_enabled=False, stage=None):
         self.fight = load_fight()
         image = subprocess.check_output(
             [str(ROOT / "dev/scripts/ensure-retro-runtime.sh")], text=True).strip()
@@ -66,6 +66,8 @@ class Original:
         ini.write_text(text, errors="surrogateescape")
         if quicksave_enabled:
             enable_quicksave(self.run)
+        if stage is not None:
+            stage(self.run)
         sh("docker", "rm", "-f", self.name)
         sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{self.run}:/game", image,
            "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
@@ -453,14 +455,49 @@ class FrameSession:
         return self.game.frame() - self.origin
 
 
+def observe_retail(game, shots, seconds, interval=5.0):
+    """Screenshot the retail entry every `interval` seconds for `seconds`, pressing no key, and
+    return one row per shot ({"t", "frame", "world", "shot"}), so the first live run records what the
+    retail startup shows (introduction, book or START) instead of assuming it. Stops early when the
+    container exits (the row then says so)."""
+    rows, start = [], time.monotonic()
+    index = 0
+    while time.monotonic() - start < seconds:
+        raw = game.raw() or {}
+        shot = game.screenshot(Path(shots) / f"retail-{index:03d}.png")
+        rows.append({"t": round(time.monotonic() - start, 1), "frame": game.frame(), "world": raw.get("world"),
+                     "shot": shot["ok"], "alive": game.alive()})
+        if not rows[-1]["alive"]:
+            break
+        index += 1
+        time.sleep(interval)
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--name", default="soup3")
     parser.add_argument("--world", type=int, default=1)
     parser.add_argument("--marker", type=int, default=0)
     parser.add_argument("--quicksave", action="store_true", help="press F9 once the world is live")
+    parser.add_argument("--retail-slot", help="existing slot directory to stage for the retail entry; "
+                        "observes the retail startup with screenshots and no key input")
+    parser.add_argument("--observe-seconds", type=float, default=120)
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
+    if args.retail_slot:
+        pristine = MAGIC / "retro-pristine/SYSTEM.INI"
+        game = Original(args.name, args.world, args.marker,
+                        stage=lambda run: stage_retail_save(run, pristine, args.retail_slot))
+        try:
+            shots = Path(args.out).with_suffix("")
+            shots.mkdir(parents=True, exist_ok=True)
+            rows = observe_retail(game, shots, args.observe_seconds)
+            Path(args.out).write_text(json.dumps(rows, indent=1))
+            print(json.dumps(rows[-1] if rows else None))
+        finally:
+            game.stop()
+        return
     game = Original(args.name, args.world, args.marker)
     try:
         game.wait(0, 600, until=lambda s: s["frame"] > 0 and s["ph"])
