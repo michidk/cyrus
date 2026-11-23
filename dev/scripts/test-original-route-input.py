@@ -150,5 +150,79 @@ class Reload(unittest.TestCase):
         self.assertFalse(keys[-1])
 
 
+class CheckpointedPhase(unittest.TestCase):
+    def test_acknowledged_attacks_without_damage_fail_instead_of_advancing_route(self):
+        session = Session()
+        with self.assertRaisesRegex(RuntimeError, 'opening damage.*checkpoint.*3 updates'):
+            route.play_checkpointed_phase(session, 'opening damage', lambda state: {'ControlLeft'},
+                                          lambda state: state['health'] < 100, 3)
+        self.assertEqual(session.frame, 43)
+        self.assertEqual(session.calls[-1], ('ControlLeft', 'release', 43))
+
+    def test_progress_stops_on_first_observed_checkpoint_and_resumes_without_extra_input(self):
+        session = Session()
+        def snapshot():
+            return dict(frame=session.frame, world=session.world, health=90 if session.frame >= 42 else 100)
+        session.snapshot = snapshot
+        complete = lambda state: state['health'] < 100
+        receipt = route.play_checkpointed_phase(session, 'damage', lambda state: {'ControlLeft'}, complete, 5)
+        self.assertEqual(receipt['end']['frame'], 42)
+        self.assertEqual(receipt['checkpoint'], 'damage')
+        self.assertEqual(receipt['inputs'][0]['acknowledged'], 40)
+        session.calls.clear()
+        route.play_checkpointed_phase(session, 'damage', lambda state: {'ControlLeft'}, complete, 5)
+        self.assertEqual(session.calls, [])
+
+    def test_world_change_between_input_events_rejects_before_checkpoint(self):
+        session = Session()
+        def advance(frame):
+            session.frame = frame
+            session.world = 1
+        session.advance_to = advance
+        with self.assertRaisesRegex(RuntimeError, 'world changed.*40.*41'):
+            route.play_checkpointed_phase(session, 'combat', lambda state: {'ControlLeft'},
+                                          lambda state: state['world'] == 1, 3)
+        self.assertEqual(session.calls[-1], ('ControlLeft', 'release', 41))
+
+    def test_missed_key_acknowledgement_releases_and_stops_before_advancing(self):
+        session = Session()
+        session.bad_ack = True
+        with self.assertRaisesRegex(RuntimeError, 'expected frame 40, acknowledged 41'):
+            route.play_checkpointed_phase(session, 'combat', lambda state: {'ControlLeft'}, lambda state: False, 3)
+        self.assertEqual(session.frame, 40)
+        self.assertEqual(session.calls[-1], ('ControlLeft', 'release', 40))
+
+    def test_policy_failure_releases_previously_held_keys(self):
+        session = Session()
+        def policy(state):
+            if state['frame'] > 40:
+                raise ValueError('missing opponent state')
+            return {'ControlLeft'}
+        with self.assertRaisesRegex(ValueError, 'missing opponent state'):
+            route.play_checkpointed_phase(session, 'combat', policy, lambda state: False, 3)
+        self.assertEqual(session.calls[-1], ('ControlLeft', 'release', 41))
+
+    def test_invalid_budget_and_no_world_reject_before_input(self):
+        session = Session()
+        with self.assertRaisesRegex(ValueError, 'budget'):
+            route.play_checkpointed_phase(session, 'combat', lambda state: set(), lambda state: False, -1)
+        session.world = 4294967295
+        with self.assertRaisesRegex(ValueError, 'running world'):
+            route.play_checkpointed_phase(session, 'combat', lambda state: set(), lambda state: False, 3)
+        self.assertEqual(session.calls, [])
+
+    def test_aim_releases_spin_before_attack_and_does_not_attack_outside_authored_range(self):
+        state = dict(actors=[dict(id=1, selected=True, position_q8=[0, 0, 0], yaw=0),
+                             dict(id=2, selected=False, position_q8=[-25600, 0, 0], yaw=0)])
+        attack = dict(arc=128, min_range=0, max_range=35000)
+        self.assertEqual(route.aimed_combat_keys(state, 2, attack, {'ControlLeft'}), {'ArrowLeft'})
+        state['actors'][0]['yaw'] = 512
+        self.assertEqual(route.aimed_combat_keys(state, 2, attack, {'ControlLeft'}), {'ControlLeft'})
+        state['actors'][1]['position_q8'][0] = -45000
+        self.assertEqual(route.aimed_combat_keys(state, 2, attack, {'ControlLeft'}), {'ArrowUp'})
+        state['actors'][1]['position_q8'] = [0, 0, 0]
+        self.assertEqual(route.aimed_combat_keys(state, 2, attack, {'ControlLeft'}), set())
+
+
 if __name__ == '__main__':
     unittest.main()

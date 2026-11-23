@@ -403,3 +403,23 @@ still match exactly. A missing continuation or mismatched state rejects resume;
 only after this check should another bounded input block run. Keep the receipt
 and decoded expectations outside tracked files. This original reload check does
 not assert that cyrus imports the complete save state.
+
+A fixed combat tape's acknowledgements do not establish damage or route
+progress. For a resumed retail combat phase, use `play_checkpointed_phase` with
+an explicit state predicate (an opponent's health decreased, or an installed
+script progression flag changed). It inspects every consecutive boundary,
+rejects unexpected world changes before checking completion, stops at the first
+checkpoint and releases held input. A checkpoint already satisfied at entry
+returns without input, so reloading a later checkpoint does not replay an earlier
+phase. Exhausting the update budget fails with the phase name instead of blindly
+repeating the combat block.
+
+`aimed_combat_keys` provides a retail driver policy: turn toward the opponent,
+release turning when inside the installed attack arc, approach if beyond the
+installed range, then apply the admitted attack tape's keys. Supply the first
+motion's profile from `rgpre`'s `COMBAT.INI` decoding and the actor's move bindings;
+there are no fallback combat ranges or damage expectations. Its heading estimate
+steers input; the original's observed health/flags decide acceptance. Keep the
+attack cadence from the fixture, but do not hold its turn key throughout a retail
+attack merely because that native tape previously passed. Retain phase receipts,
+per-frame poses/animations, and the exact saved-state reload receipt together.

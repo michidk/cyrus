@@ -118,3 +118,69 @@ def resume_checkpoint(boundary, confirm, expected, max_boundaries=2, timeout=45)
         raise ValueError('original reload: saved continuation not observed within boundary budget')
     finally:
         confirm(False)
+
+
+def play_checkpointed_phase(session, name, desired_keys, complete, max_updates):
+    """Resume one same-world phase, requiring an observed progression checkpoint.
+
+    Policies inspect every stopped update, return the keys to hold, and derive
+    completion from game state, never input receipts. A satisfied checkpoint is
+    idempotent. Unexpected world changes and missed inputs abort immediately.
+    """
+    if not name or type(max_updates) is not int or max_updates < 0:
+        raise ValueError('original route: phase needs a name and nonnegative update budget')
+    start = session.snapshot()
+    origin, world = start['frame'], start['world']
+    if type(origin) is not int or origin < 0 or world in (None, -1, (1 << 32) - 1):
+        raise ValueError('original route: requires a running world boundary')
+    held, receipts = set(), []
+    try:
+        for elapsed in range(max_updates + 1):
+            if elapsed:
+                session.advance_to(origin + elapsed)
+            state = session.snapshot()
+            if state['world'] != world:
+                raise RuntimeError(f'original route: {name} world changed from {world} at {origin} to {state["world"]} at {state["frame"]}')
+            if complete(state):
+                return dict(checkpoint=name, start=start, end=state, inputs=receipts)
+            if elapsed == max_updates:
+                raise RuntimeError(f'original route: {name} checkpoint not reached within {max_updates} updates')
+            desired = set(desired_keys(state))
+            for key, action in ([(k, 'release') for k in sorted(held - desired)]
+                                + [(k, 'press') for k in sorted(desired - held)]):
+                if action == 'press':
+                    held.add(key)
+                acknowledged = session.input(key, action)
+                if acknowledged != state['frame']:
+                    raise RuntimeError(f'original route: {key}/{action} expected frame {state["frame"]}, acknowledged {acknowledged}')
+                if action == 'release':
+                    held.discard(key)
+                receipts.append(dict(frame=state['frame'], key=key, action=action, acknowledged=acknowledged))
+    finally:
+        for key in sorted(held):
+            session.input(key, 'release')
+
+
+def aimed_combat_keys(state, opponent_id, attack, attack_keys):
+    """Steer an original retail route toward an opponent before attacking.
+
+    This is a driver policy, not combat simulation. The caller supplies the
+    installed first motion's Q8 ranges and angular arc, and the admitted attack
+    tape's current keys. Turning and approach replace attack input; once in the
+    authored window the turn key is released instead of spinning through hits.
+    Headings use 2048 units per turn and negative X is a left turn from +Z.
+    """
+    import math
+    player, = [a for a in state['actors'] if a['selected']]
+    opponent, = [a for a in state['actors'] if a['id'] == opponent_id and not a['selected']]
+    dx, dy, dz = [v - u for u, v in zip(player['position_q8'], opponent['position_q8'])]
+    distance = round(math.sqrt(dx * dx + dy * dy + dz * dz))
+    bearing = round(math.atan2(-dx, dz) * 1024 / math.pi) % 2048
+    error = (bearing - player['yaw'] + 1024) % 2048 - 1024
+    if distance <= attack['min_range']:
+        return set()
+    if abs(error) >= attack['arc']:
+        return {'ArrowLeft' if error > 0 else 'ArrowRight'}
+    if distance >= attack['max_range']:
+        return {'ArrowUp'}
+    return set(attack_keys)
