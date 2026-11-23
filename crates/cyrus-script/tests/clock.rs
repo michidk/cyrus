@@ -311,3 +311,51 @@ fn elapsed_gameplay_excludes_suspension_and_survives_snapshot_restore() {
         assert_eq!(restored.advance_elapsed(1000, elapsed), expected);
     }
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_clock_restores_carries_settings_and_exposed_step_before_resuming() {
+    let mut bytes = [0u8; 1542];
+    for (offset, value) in [
+        (0x98, 5u32),
+        (0x9c, 25),
+        (0xa0, 99),
+        (0xb8, 7),
+        (0xc0, 24),
+        (0xc4, 122),
+        (0xc8, 1),
+        (0xd0, 255),
+        (0xd8, 4),
+        (0xe0, 31),
+        (0xe8, 1),
+        (0xec, 60),
+        (0xf0, 1),
+        (0xf4, 1),
+        (0xf8, 3072),
+    ] {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    let saved = rgpre::import::savegame::parse_save_clock(&bytes).unwrap();
+    let mut clock = SimulationClock::from_original(&saved, 900).unwrap();
+    assert_eq!(clock.bios_sample(), 900);
+    assert_eq!(clock.step().frame_scale, 122);
+    assert_eq!(clock.step().nominal_ticks, 1);
+    assert_eq!(clock.step().fine_ticks, 4);
+    assert_eq!(clock.fps(), 25);
+    let state = serde_json::to_value(clock.snapshot()).unwrap();
+    assert_eq!(state["frames"], 7);
+    assert_eq!(state["remainder"], 5);
+    assert_eq!(state["smoothed"], 24);
+    assert_eq!(state["next_scale"], 99);
+    let step = clock.advance_recorded(900, 1).unwrap();
+    assert_eq!((step.nominal_ticks, step.fine_ticks), (1, 1));
+    assert_eq!(clock.elapsed_frame_scale(), 1);
+    let mut invalid = saved.clone();
+    invalid.warmup = 13;
+    assert!(
+        SimulationClock::from_original(&invalid, 0)
+            .unwrap_err()
+            .to_string()
+            .contains("SVGV clock")
+    );
+}

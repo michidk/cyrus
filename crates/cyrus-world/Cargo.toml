@@ -3,7 +3,11 @@ name = "cyrus-world"
 description = "World lifecycle, animation execution and actor transforms."
 version.workspace = true
 edition.workspace = true
+[features]
+original-save-import = ["dep:redguard-preservation"]
+
 [dependencies]
+redguard-preservation = { workspace = true, optional = true }
 log.workspace = true
 bevy = { workspace = true, features = ["bevy_asset"] }
 cyrus-assets.workspace = true

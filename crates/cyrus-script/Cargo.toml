@@ -4,7 +4,7 @@ description = "Game scripting host, player controller, simulation clock and in-g
 version.workspace = true
 edition.workspace = true
 [features]
-original-save-import = ["dep:redguard-preservation"]
+original-save-import = ["dep:redguard-preservation", "cyrus-world/original-save-import"]
 [dependencies]
 rustc_apfloat = "0.2.3"
 cyrus-console.workspace = true

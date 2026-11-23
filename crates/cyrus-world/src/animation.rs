@@ -2,6 +2,8 @@
 use bevy::prelude::*;
 
 mod actor;
+#[cfg(feature = "original-save-import")]
+pub use actor::OriginalPlaybackRestore;
 mod class;
 mod playback;
 mod sequence;

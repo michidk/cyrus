@@ -150,7 +150,7 @@ the unbiased hand target (preservation SOUP.md, rope attachment and controls).
 
 The opt-in `original-save-import` feature exposes
 `script::original_save::OriginalSaveSubset`, which validates original player world, Q8
-position, heading, health, inventory and global flags before applying them to an
+position, heading, health, inventory, global flags and retained clock before applying them to an
 initialized off-live candidate. This is a limited import API, not full session
 restoration. The native Load adapter uses it with a matching native-session baseline. It
 restores the saved static supporting actor's pose and attributes, binds it by its
@@ -158,13 +158,22 @@ initialized runtime identity, and refreshes its collision model and regional cel
 When that saved support has no script continuation, import cancels baseline
 native tasks and clears its interpreter continuations before resuming gameplay.
 Missing or mismatched models and scripted, animated or chained supports reject
-with context. Its returned message explicitly lists unsupported script/task
-continuations, remaining actors, animation,
-controller state, clock and journal. Transformed players and flag states outside
+with context. The imported SVGV clock restores exposed timing, FPS settings,
+measurement state, startup countdown and fractional nominal/fine carries; its
+host epoch is rebound so loading contributes no elapsed gameplay time.
+Animation headers bind to the installed actor groups without replaying sounds
+or commands. A retained ShowFrame cursor restores group, cursor, countdowns,
+translation/rotation words and frame selection when the current and previous
+model/frame bindings agree. Missing actor owners, other pose cursors and distinct
+previous model/frame bindings retain the native baseline with contextual warnings.
+The returned message explicitly lists unsupported script/task continuations,
+remaining actor state, unresolved animation/model and sound bindings,
+controller state and journal. Transformed players and flag states outside
 the verified unlatched encoding reject with context. Hosts discard the candidate
 on error and must display the limitation before publication. Import also refreshes the native displayed-health owner to match the imported health byte.
 
 `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard cargo test -p cyrus-script
 --features original-save-import --test original_save` exercises retained installed slots without a window or
 game loop, including the wrong-world and unsupported-player rejection paths.
-Without installed slots it reports a skip.
+Set `REDGUARD_ORIGINAL_SAVE_DIR=/path/to/private/SAVEGAME` when slots live
+outside the read-only install. Without installed slots it reports a skip.

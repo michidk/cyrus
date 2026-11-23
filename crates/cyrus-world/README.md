@@ -34,6 +34,10 @@ belongs to `cyrus-soup`, scripted hosts to `cyrus-script`, pose application to
 - `ActorAnimationSnapshot` is an internal versioned format, not an original save
   record. Restoring it executes no commands or sounds; the host validates actor
   and world generation first. Bump the version when the layout changes.
+- With `original-save-import`, `ActorAnimation::restore_original` binds the
+  published save playback header to installed commands without executing them.
+  A retained ShowFrame cursor restores the selected pose; unsupported cursors
+  leave playback unchanged. The host owns model bindings and saved sound handles.
 - Matrix arithmetic emulates the original's rounding in software and must not
   change host floating-point modes.
 - Still unsupported: animated i16 frames, cross-model mesh replacement, automatic

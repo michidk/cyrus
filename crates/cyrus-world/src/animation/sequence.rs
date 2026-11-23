@@ -135,6 +135,34 @@ pub(super) struct SequenceSnapshot {
 }
 
 impl FrameSequence {
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn restore_original(
+        &mut self,
+        saved: &rgpre::import::savegame::SaveAnimationPlayback,
+    ) -> anyhow::Result<super::actor::OriginalPlaybackRestore> {
+        // A retained ShowFrame cursor identifies the selected installed frame
+        // without executing sounds, events or transitions during import.
+        let reference = match usize::try_from(saved.frame)
+            .ok()
+            .and_then(|index| self.commands.get(index))
+        {
+            Some(Command::Frame(reference)) => Some(*reference),
+            _ if saved.frame == -1 => None,
+            _ => return Ok(super::actor::OriginalPlaybackRestore::UnsupportedPose),
+        };
+        self.command = saved.frame;
+        self.speed = saved.speed;
+        self.countdown = saved.speed_count;
+        self.loops = saved.loop_count;
+        self.exit_reached = saved.stop_flag != 0;
+        self.translation_suppressed = saved.halt_flag != 0;
+        self.delay = saved.hold_flag;
+        self.repeat = saved.rep_count;
+        self.position = saved.position;
+        self.rotation = saved.rotation;
+        Ok(super::actor::OriginalPlaybackRestore::Restored { frame: reference })
+    }
+
     pub(super) fn snapshot(&self) -> SequenceSnapshot {
         SequenceSnapshot {
             command: self.command,

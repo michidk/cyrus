@@ -3676,6 +3676,90 @@ impl ScriptWorld {
         Ok(())
     }
 
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn restore_original_animations(
+        &mut self,
+        saved: &[super::original_save::OriginalActorPlayback],
+        data: &Animations,
+    ) -> Result<()> {
+        use cyrus_world::animation::OriginalPlaybackRestore;
+        for record in saved {
+            let id = if let Some(identity) = record.identity {
+                let mut matches = self
+                    .actors
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, actor)| actor.runtime_identifier == Some(identity));
+                let Some((index, _)) = matches.next() else {
+                    log::warn!(
+                        "original save world {} actor {identity}: animation owner absent; native baseline retained",
+                        self.world
+                    );
+                    continue;
+                };
+                anyhow::ensure!(
+                    matches.next().is_none(),
+                    "original save world {} actor {identity}: ambiguous animation owner",
+                    self.world
+                );
+                self.id(index)?
+            } else {
+                self.selected_player()
+                    .context("original animation import: player missing")?
+            };
+            let index = self.resolve(id)?;
+            if record.model_frame != record.last_model_frame
+                || record.model_handle != record.last_model_handle
+            {
+                log::warn!(
+                    "original save world {} actor {}: distinct last model/frame binding unsupported; native baseline retained",
+                    self.world,
+                    self.actors[index].name()
+                );
+                continue;
+            }
+            if self.actors[index].animation.is_none() {
+                self.bind_animation(id, data, record.default)?;
+            }
+            let animation = self.actors[index].animation.as_mut().unwrap();
+            let result = animation.playback.restore_original(&record.playback)?;
+            let OriginalPlaybackRestore::Restored { frame } = result else {
+                log::warn!(
+                    "original save world {} actor {}: selected pose outside ShowFrame unsupported; native baseline retained",
+                    self.world,
+                    self.actors[index].name()
+                );
+                continue;
+            };
+            if let Some(reference) = frame {
+                let resolved = match self.actors[index].source {
+                    ScriptActorSource::Map(_) => data.resolve_map_frame(index, reference)?,
+                    _ => data.resolve_frame(self.actors[index].name(), reference)?,
+                };
+                anyhow::ensure!(
+                    i32::try_from(resolved.frame)? == i32::from(record.model_frame),
+                    "original save world {} actor {}: saved model frame {} differs from installed animation selection {}",
+                    self.world,
+                    self.actors[index].name(),
+                    record.model_frame,
+                    resolved.frame
+                );
+            } else {
+                anyhow::ensure!(
+                    record.model_frame == -1,
+                    "original save world {} actor {}: retained pose without a ShowFrame binding is unsupported",
+                    self.world,
+                    self.actors[index].name()
+                );
+            }
+            let animation = self.actors[index].animation.as_mut().unwrap();
+            animation.playback.set_stored_default(record.default);
+            animation.playback.set_last_frame(frame);
+            animation.frame = frame;
+        }
+        Ok(())
+    }
+
     /// Restore an unanimated support owner before publishing an imported candidate.
     #[cfg(feature = "original-save-import")]
     pub(super) fn restore_original_support(

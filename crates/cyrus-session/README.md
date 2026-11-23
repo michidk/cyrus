@@ -38,7 +38,8 @@ requests on `SessionBoundary`:
   with `take_result()`. An unread result blocks the next submission.
 - Native hosts may enable `original-save-import` and submit `import_original`
   with a captured matching-world native baseline and validated original subset.
-  The subset changes only the hidden candidate before normal publication. Saved
+  The subset changes only the hidden candidate before normal publication, including
+  the imported clock continuation and supported animation playback. Saved
   continuations are unsupported; this API does not construct a fresh world.
 - Without a render backend, capture excludes render-only environment state even
   when the shared environment plugin has installed its default request. Headless

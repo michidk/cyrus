@@ -195,6 +195,50 @@ impl SimulationClock {
         })
     }
 
+    /// Rebind an original SVGV clock to the current host epoch without advancing it.
+    /// Scaled accumulator low bits retain nominal/fine carries; exposed timing is
+    /// restored separately from the next computed scale. Loading time is excluded.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original(
+        saved: &rgpre::import::savegame::SaveClock,
+        bios_tick: u32,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            saved.normal_rate_scaled.is_multiple_of(256),
+            "original save SVGV clock: normal rate is not an integral Q8 rate"
+        );
+        let settings = ClockSettings {
+            normal_frame_rate: saved.normal_rate_scaled / 256,
+            min_frame_rate: saved.min_frame_rate,
+            max_frame_rate: saved.max_frame_rate,
+            use_smooth_fps: saved.use_smooth_fps != 0,
+            use_smooth_divisor: saved.use_smooth_divisor != 0,
+        };
+        let snapshot = ClockSnapshot {
+            version: 2,
+            settings,
+            step: ClockStep {
+                frame_scale: saved.frame_scale,
+                nominal_ticks: saved.exposed_nominal_ticks,
+                fine_ticks: saved.exposed_fine_ticks,
+            },
+            measurement_intervals: 0,
+            remainder: saved.measurement_remainder,
+            frames: saved.measurement_frames,
+            measured: saved.measured_fps,
+            smoothed: saved.smoothed_fps,
+            next_scale: saved.next_scale,
+            nominal_fraction: saved.nominal_scaled_total & 255,
+            fine_fraction: saved.fine_scaled_total & 31,
+            warmup: saved.warmup.try_into().map_err(|_| {
+                anyhow::anyhow!("original save SVGV clock: warmup exceeds byte range")
+            })?,
+            elapsed_fraction: 0,
+        };
+        Self::from_snapshot(snapshot, bios_tick)
+            .map_err(|error| anyhow::anyhow!("original save SVGV clock: {error:#}"))
+    }
+
     /// Installed inputs remain fixed while one game's timing state is retained.
     pub fn settings(&self) -> ClockSettings {
         self.settings

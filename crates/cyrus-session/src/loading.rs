@@ -290,6 +290,12 @@ impl SessionLoad {
             candidate
                 .placement
                 .import_original_pose(subset.position_q8, subset.heading)?;
+            candidate.logical.clock =
+                subset.restore_clock(candidate.logical.clock.bios_sample())?;
+            let animations = sources
+                .get(&subset.world)
+                .context("original import animation source missing")?
+                .animations;
             subset.apply(
                 candidate
                     .logical
@@ -298,6 +304,7 @@ impl SessionLoad {
                     .as_mut()
                     .context("original import candidate world absent")?,
                 &candidate.logical.hud,
+                animations,
             )?;
             candidate
                 .logical

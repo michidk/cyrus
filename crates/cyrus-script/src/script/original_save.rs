@@ -4,12 +4,13 @@ use anyhow::{Context, Result, ensure};
 use cyrus_assets::hud::HudAsset;
 use cyrus_soup::program::Definition;
 use rgpre::import::savegame::{
-    SaveGame, parse_save_flags, parse_save_inventory, parse_save_objects,
+    SaveClock, SaveGame, parse_save_clock, parse_save_flags, parse_save_inventory,
+    parse_save_objects,
 };
 
 /// This import stages gameplay scalars, not an original interpreter continuation.
 /// Hosts must show this limitation and must not advertise a full session restore.
-pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory and global flags only. Script/task continuations, other actors except the static supporting actor, animation, controller state, item-use timers, clock and journal are unsupported; the host supplies the native baseline for unsupported owners.";
+pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory, global flags and clock continuation only. Animation playback with a bound ShowFrame pose is restored. Script/task continuations, other actor state except the static supporting actor, unresolved animation/model or sound-handle bindings, controller state, item-use timers and journal are unsupported; the host supplies the native baseline for unsupported owners.";
 
 /// Validated replacement values. Apply only to an initialized off-live world and
 /// HUD, and discard both on error. No files are written and no scripts are run.
@@ -25,6 +26,18 @@ pub struct OriginalSaveSubset {
     inventory: Inventory,
     flags: GlobalFlagsSnapshot,
     support: Option<OriginalSupport>,
+    clock: SaveClock,
+    animations: Vec<OriginalActorPlayback>,
+}
+
+pub(super) struct OriginalActorPlayback {
+    pub identity: Option<i16>,
+    pub playback: rgpre::import::savegame::SaveAnimationPlayback,
+    pub default: cyrus_soup::AnimationGroup,
+    pub model_frame: i16,
+    pub last_model_frame: i16,
+    pub model_handle: i16,
+    pub last_model_handle: i16,
 }
 
 /// Saved static support, resolved against the initialized world's runtime identities.
@@ -127,6 +140,8 @@ impl OriginalSaveSubset {
             );
             Ok(data)
         };
+        let clock = parse_save_clock(section(*b"SVGV")?)?;
+        crate::clock::SimulationClock::from_original(&clock, 0)?;
         let globals = section(*b"SVG2")?;
         ensure!(
             globals.len() == 1666,
@@ -166,6 +181,28 @@ impl OriginalSaveSubset {
         let flags = parse_save_flags(section(*b"SVGF")?)?;
         Ok(Self {
             support: decode_support(player, &objects)?,
+            clock,
+            animations: objects
+                .iter()
+                .filter(|object| object.object_id == -2 || object.object_id >= 0)
+                .filter_map(|object| {
+                    object.animation_header.as_ref().map(|header| {
+                        let word = |offset| {
+                            i16::from_le_bytes(object.body[offset..offset + 2].try_into().unwrap())
+                        };
+                        OriginalActorPlayback {
+                            identity: (object.object_id != -2)
+                                .then_some(object.runtime_identifier() as i16),
+                            playback: header.into(),
+                            default: cyrus_soup::AnimationGroup::from_index(word(0x257) as u16),
+                            model_frame: word(0x24f),
+                            last_model_frame: word(0x253),
+                            model_handle: word(0x251),
+                            last_model_handle: word(0x255),
+                        }
+                    })
+                })
+                .collect(),
             world: game.metadata.world_id,
             position_q8: player.position_q8(),
             heading,
@@ -175,9 +212,19 @@ impl OriginalSaveSubset {
         })
     }
 
+    /// Build the imported clock independently, excluding host time spent loading.
+    pub fn restore_clock(&self, bios_tick: u32) -> Result<crate::clock::SimulationClock> {
+        crate::clock::SimulationClock::from_original(&self.clock, bios_tick)
+    }
+
     /// Apply to the matching initialized candidate. The returned message must be
     /// presented by the host; success does not mean continuations were restored.
-    pub fn apply(self, world: &mut ScriptWorld, hud: &ScriptHud) -> Result<&'static str> {
+    pub fn apply(
+        self,
+        world: &mut ScriptWorld,
+        hud: &ScriptHud,
+        animations: &cyrus_assets::animation::Animations,
+    ) -> Result<&'static str> {
         ensure!(
             world.world == self.world,
             "original save world {}: candidate world {} differs",
@@ -188,6 +235,7 @@ impl OriginalSaveSubset {
         if let Some(support) = self.support {
             world.restore_original_support(support)?;
         }
+        world.restore_original_animations(&self.animations, animations)?;
         hud.replace_original_inventory(self.inventory)?;
         Ok(LIMITATION)
     }

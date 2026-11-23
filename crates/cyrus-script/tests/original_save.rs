@@ -26,20 +26,25 @@ fn installed_slots() -> Result<Option<(GameInstall, Vec<PathBuf>)>> {
         return Ok(None);
     };
     let install = GameInstall::locate(Some(Path::new(&root)))?;
-    let saves = std::fs::read_dir(&install.root)?
-        .collect::<std::io::Result<Vec<_>>>()?
-        .into_iter()
-        .find(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("SAVEGAME")
-        });
-    let Some(saves) = saves else {
-        eprintln!("SKIP original subset: install has no SAVEGAME directory");
-        return Ok(None);
+    let saves = if let Some(path) = std::env::var_os("REDGUARD_ORIGINAL_SAVE_DIR") {
+        PathBuf::from(path)
+    } else {
+        let saves = std::fs::read_dir(&install.root)?
+            .collect::<std::io::Result<Vec<_>>>()?
+            .into_iter()
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("SAVEGAME")
+            });
+        let Some(saves) = saves else {
+            eprintln!("SKIP original subset: install has no SAVEGAME directory");
+            return Ok(None);
+        };
+        saves.path()
     };
-    let paths = std::fs::read_dir(saves.path())?
+    let paths = std::fs::read_dir(saves)?
         .collect::<std::io::Result<Vec<_>>>()?
         .into_iter()
         .filter(|entry| {
@@ -93,9 +98,11 @@ fn assert_slot(
         subset.health,
     );
     let mut world = initialized_import_world(&scripts, &prepared, &name)?;
+    let animations: cyrus_assets::animation::Animations =
+        serde_json::from_slice(&prepared[&format!("{name}.animations")])?;
     let hud = ScriptHud::default();
     hud.configure(hud_data, &Preferences::new(NoWrites));
-    let message = subset.apply(&mut world, &hud)?;
+    let message = subset.apply(&mut world, &hud, &animations)?;
     ensure!(
         message.contains("unsupported") && message.contains("continuations"),
         "limited import must report unsupported state"
@@ -124,7 +131,7 @@ fn assert_slot(
     let before = world.flags().to_vec();
     assert!(
         subset
-            .apply(&mut world, &hud)
+            .apply(&mut world, &hud, &animations)
             .unwrap_err()
             .to_string()
             .contains("candidate world")
@@ -202,6 +209,10 @@ fn initialized_import_world(
     )?;
     let mut world = ScriptWorld::prepare(scripts, 1)?;
     world.prepare_spatial()?;
+    let selected = world
+        .selected_player()
+        .context("installed import: player missing")?;
+    world.initialize_player_spatial(selected, [0; 3], [0; 3])?;
     world.prepare_model_resources(&animations, &models)?;
     Ok(world)
 }

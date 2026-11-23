@@ -46,6 +46,17 @@ pub enum PlaybackField {
     LastRotation(usize),
 }
 
+/// Whether a saved animation's selected pose could be bound without executing commands.
+#[cfg(feature = "original-save-import")]
+#[derive(Debug, PartialEq, Eq)]
+pub enum OriginalPlaybackRestore {
+    Restored {
+        frame: Option<u32>,
+    },
+    /// The selected model/frame requires an additional saved model-owner binding.
+    UnsupportedPose,
+}
+
 /// One actor's current, pending and explicitly supplied default group.
 /// Type-zero, type-one and type-two groups retain forward/reverse playback state. The caller owns eligibility,
 /// default selection and each advancement's original nominal-tick input.
@@ -111,6 +122,62 @@ pub struct ActorAnimationSnapshot {
 }
 
 impl ActorAnimation {
+    /// Restore documented mutable original playback against installed group tables.
+    /// No animation commands or cues run. The caller binds the returned model frame
+    /// and separately owns saved sound handles and the object's last-frame history.
+    /// Unsupported selected-pose cursors reject before replacing playback.
+    #[cfg(feature = "original-save-import")]
+    pub fn restore_original(
+        &mut self,
+        saved: &rgpre::import::savegame::SaveAnimationPlayback,
+    ) -> anyhow::Result<OriginalPlaybackRestore> {
+        let current = if saved.current == -1 {
+            None
+        } else {
+            let group = AnimationGroup::from_index(saved.current as u16);
+            let metadata = self.groups.get(&group).with_context(|| {
+                format!("{} original current group {group}: absent", self.context)
+            })?;
+            let mut sequence = FrameSequence::from_group(
+                format!("{} group {group}", self.context),
+                metadata,
+                0,
+                0,
+            )?
+            .with_alternates(Arc::clone(&self.groups));
+            let OriginalPlaybackRestore::Restored { frame: reference } =
+                sequence.restore_original(saved)?
+            else {
+                return Ok(OriginalPlaybackRestore::UnsupportedPose);
+            };
+            Some((group, sequence, reference))
+        };
+        let pending = if saved.next == -1 {
+            None
+        } else {
+            let group = AnimationGroup::from_index(saved.next as u16);
+            anyhow::ensure!(
+                self.groups.contains_key(&group),
+                "{} original pending group {group}: absent",
+                self.context
+            );
+            Some((
+                group,
+                saved.next_speed.wrapping_sub(self.group_speed(group)?),
+            ))
+        };
+        let reference = current.as_ref().and_then(|(_, _, reference)| *reference);
+        self.current = current.map(|(group, sequence, _)| (group, sequence));
+        self.pending = pending;
+        self.next_speed = saved.next_speed;
+        self.frame_progress = saved.real_frame;
+        self.reverse = saved.rewind_flag == 1;
+        self.last_rotation = saved.last_rotation;
+        self.max_group = Some(saved.max_group);
+        self.failure = None;
+        Ok(OriginalPlaybackRestore::Restored { frame: reference })
+    }
+
     /// Captures the entire receiver, including default, delays, sound latch and failures.
     /// This does not advance commands or dispatch sounds, and is distinct from collision rollback.
     pub fn snapshot(&self) -> ActorAnimationSnapshot {

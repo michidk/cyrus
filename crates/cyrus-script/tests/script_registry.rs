@@ -53749,7 +53749,7 @@ fn first_sticky_script_failure_is_logged_once_with_world_and_script() {
 #[cfg(feature = "original-save-import")]
 #[test]
 fn original_subset_keeps_synthetic_logical_y_without_a_model_height_offset() -> anyhow::Result<()> {
-    let (scripts, mut world, _, _) = player_walking_fixture();
+    let (scripts, mut world, animations, _) = player_walking_fixture();
     let position = [1024, -40000, 3072];
     let player = world.selected_player().unwrap();
     world.set_model_support(
@@ -53768,7 +53768,7 @@ fn original_subset_keeps_synthetic_logical_y_without_a_model_height_offset() -> 
         &scripts.definition,
     )?;
     assert_eq!(subset.position_q8, position);
-    subset.apply(&mut world, &hud)?;
+    subset.apply(&mut world, &hud, &animations)?;
     let player = world.selected_player().unwrap();
     assert_eq!(world.spatial(player)?.local.position, position);
     assert_eq!(world.spatial(player)?.local.angles[1], 123);
@@ -53811,6 +53811,18 @@ fn synthetic_original_pose_save(
     position: [i32; 3],
 ) -> anyhow::Result<rgpre::import::savegame::SaveGame> {
     use rgpre::import::savegame::{SaveGame, SaveMetadata, SaveSection, encode_save_objects};
+    let mut clock = vec![0; 1542];
+    for (offset, value) in [
+        (0x9c, 25u32),
+        (0xa0, 122),
+        (0xc0, 24),
+        (0xc4, 122),
+        (0xec, 60),
+        (0xe8, 1),
+        (0xf8, 3072),
+    ] {
+        clock[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
     let mut globals = vec![0; 1666];
     globals[..4].copy_from_slice(&50i32.to_le_bytes());
     let mut flag_data = (scripts.definition.flags.len() as u32)
@@ -53837,6 +53849,10 @@ fn synthetic_original_pose_save(
         },
         sections: vec![
             SaveSection {
+                name: *b"SVGV",
+                data: clock,
+            },
+            SaveSection {
                 name: *b"SMOB",
                 data: encode_save_objects(&[synthetic_original_player(position)])?,
             },
@@ -53860,7 +53876,7 @@ fn synthetic_original_pose_save(
 #[test]
 fn original_subset_restores_static_support_pose_and_binding() -> anyhow::Result<()> {
     use rgpre::import::savegame::{encode_save_objects, parse_save_objects};
-    let (scripts, mut world, _, _) = player_walking_fixture();
+    let (scripts, mut world, animations, _) = player_walking_fixture();
     let support = world.id(0)?;
     assert!(
         world.actors()[0]
@@ -53889,7 +53905,7 @@ fn original_subset_restores_static_support_pose_and_binding() -> anyhow::Result<
         &asset,
         &scripts.definition,
     )?
-    .apply(&mut world, &hud)?;
+    .apply(&mut world, &hud, &animations)?;
     let player = world.selected_player().unwrap();
     assert_eq!(world.spatial(player)?.local.position, position);
     assert_eq!(world.spatial(support)?.local.position, [512, -1024, 768]);
@@ -53940,4 +53956,50 @@ fn synthetic_original_static_support(identity: i16) -> rgpre::import::savegame::
         owner.body[288 + axis * 4..292 + axis * 4].copy_from_slice(&angle.to_le_bytes());
     }
     owner
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_subset_restores_selected_playback_and_clock_from_synthetic_records()
+-> anyhow::Result<()> {
+    use cyrus_soup::AnimationGroup;
+    use rgpre::import::savegame::{encode_save_objects, parse_save_objects};
+    let (scripts, mut world, animations, _) = player_walking_fixture();
+    let mut save = synthetic_original_pose_save(&scripts, [1024, -40000, 3072])?;
+    let section = save
+        .sections
+        .iter_mut()
+        .find(|s| s.name == *b"SMOB")
+        .unwrap();
+    let mut objects = parse_save_objects(&section.data)?;
+    objects[0].body[0x247..0x24b].copy_from_slice(&1u32.to_le_bytes());
+    let mut header = [0u8; 37];
+    header[..2].copy_from_slice(&(AnimationGroup::WALK.index() as i16).to_le_bytes());
+    header[2..4].copy_from_slice(&(-1i16).to_le_bytes());
+    header[5..7].copy_from_slice(&1i16.to_le_bytes());
+    header[7] = 3;
+    header[8] = 2;
+    objects[0].animation_header = Some(header);
+    section.data = encode_save_objects(&objects)?;
+    let asset = inventory_asset(&[(0, 0)]);
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let subset = cyrus_script::script::original_save::OriginalSaveSubset::decode(
+        &save,
+        &asset,
+        &scripts.definition,
+    )?;
+    let clock = subset.restore_clock(900)?;
+    assert_eq!(clock.bios_sample(), 900);
+    assert_eq!(clock.step().frame_scale, 122);
+    assert_eq!(clock.fps(), 25);
+    subset.apply(&mut world, &hud, &animations)?;
+    let player = world.selected_player().unwrap();
+    let state = world.inspect(player.index, 1);
+    assert_eq!(
+        state["actors"][0]["animation"]["current_group"],
+        AnimationGroup::WALK.index()
+    );
+    assert_eq!(world.animation_frame(player)?, Some(0));
+    Ok(())
 }
