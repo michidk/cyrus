@@ -84,7 +84,7 @@ impl Persist for Pending {
             return None;
         }
         let mut pending = Vec::new();
-        for row in values.chunks_exact(8) {
+        for row in values.as_chunks::<8>().0 {
             pending.push((
                 ActorId::unpack(&row[..4])?,
                 (row[4] == 1.).then(|| Vec3::new(row[5], row[6], row[7])),
