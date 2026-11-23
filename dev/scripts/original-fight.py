@@ -68,13 +68,19 @@ while True:
 
 def view(state):
     """The fields the policy needs from one reader sample, or None without a selected player.
-    The opponent fields are None until he exists (he joins the actor list late in the approach)."""
+    Independent observed_actors retain a bound actor outside the view-centered update
+    list. rlisted distinguishes that observation from admission; absence from the
+    update list alone does not establish removal or death."""
     if not state or "actors" not in state:
         return None
     player = next((a for a in state["actors"] if a["selected"]), None)
     if player is None:
         return None
     opponent = next((a for a in state["actors"] if a["id"] == OPPONENT_ID and not a["selected"]), None)
+    listed = opponent is not None
+    if opponent is None:
+        opponent = next((a for a in state.get("observed_actors", [])
+                         if a["id"] == OPPONENT_ID and not a["selected"]), None)
     return {
         "frame": state["counters"]["mainloop_frame"],
         "fps": state["counters"]["fps"],
@@ -84,6 +90,7 @@ def view(state):
         "rh": opponent["health"] if opponent else None,
         "world": state.get("world"),
         "lockout": state["counters"].get("player_lockout"),
+        "rlisted": listed,
         "rhidden": opponent.get("hidden") if opponent else None,
         # A combat structure is allocated before admission. Combat entry writes
         # lifecycle selector 6; its pointer alone cannot acknowledge the native.
@@ -154,6 +161,8 @@ def record_combat_tap(session, key, held_updates, released_updates):
     before = session.snapshot()
     if before.get("rhidden") is not False or before.get("rcombat") is not True:
         raise ValueError("opponent must be revealed and in combat before measuring a tap")
+    if before.get("rlisted") is not True:
+        raise ValueError("opponent must be in the ordinary update list before measuring a tap")
     if before.get("lockout") != 0:
         raise ValueError("player control must be restored before measuring a tap")
     if before["pg"] != ARMED_IDLE_GROUP:
@@ -171,6 +180,8 @@ def record_combat_tap(session, key, held_updates, released_updates):
                 raise ValueError(f"combat frame gap: expected {expected}, observed {state['frame']}")
             if state["world"] != before["world"]:
                 raise ValueError("combat tap changed world")
+            if state.get("rlisted") is not True:
+                raise ValueError("opponent left the ordinary update list during combat tap")
             samples.append(state)
     finally:
         session.input(key, "release")

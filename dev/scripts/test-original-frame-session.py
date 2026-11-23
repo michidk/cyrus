@@ -223,5 +223,34 @@ class WorldTransitionTests(unittest.TestCase):
             session.wait_for_world(1, 2)
 
 
+class ActorObservation(unittest.TestCase):
+    def test_camera_exclusion_is_observed_without_claiming_update_admission(self):
+        observer = adapter.ActorObserver([55])
+        actor = dict(id=55, pointer=100, script_data=200, selected=False, health=250)
+        read = lambda pointer: dict(actor)
+        self.assertTrue(observer.observe(30, [actor], read)[0]['in_update_list'])
+        off_list = observer.observe(30, [], read)[0]
+        self.assertFalse(off_list['in_update_list'])
+        self.assertEqual(off_list['health'], 250)
+        self.assertTrue(observer.observe(30, [actor], read)[0]['in_update_list'])
+
+    def test_recycled_allocation_rejects_instead_of_returning_stale_actor(self):
+        observer = adapter.ActorObserver([55])
+        actor = dict(id=55, pointer=100, script_data=200, selected=False)
+        observer.observe(30, [actor], lambda pointer: dict(actor))
+        with self.assertRaisesRegex(ValueError, 'identity changed'):
+            observer.observe(30, [], lambda pointer: dict(actor, script_data=201))
+        with self.assertRaisesRegex(ValueError, 'identity changed'):
+            observer.observe(30, [dict(actor, pointer=101)], lambda pointer: dict(actor))
+
+    def test_world_change_drops_old_bindings_before_any_read(self):
+        observer = adapter.ActorObserver([55])
+        actor = dict(id=55, pointer=100, script_data=200, selected=False)
+        observer.observe(30, [actor], lambda pointer: dict(actor))
+        def no_old_read(pointer):
+            self.fail('read an allocation from the preceding world')
+        self.assertEqual(observer.observe(1, [], no_old_read), [])
+
+
 if __name__ == '__main__':
     unittest.main()

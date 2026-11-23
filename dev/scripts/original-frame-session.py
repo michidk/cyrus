@@ -103,3 +103,35 @@ class FrameSession:
             raise ValueError('original frame changed during key acknowledgement')
         self.current = raw
         return before - self.origin
+
+
+class ActorObserver:
+    """Read retained actor identities independently of view-centered list membership.
+
+    The local reader supplies read_actor(pointer) and the verified pointer and
+    script_data identity fields. An observation is not update-list admission.
+    World changes invalidate all bindings before any old allocation is read.
+    """
+
+    def __init__(self, identifiers):
+        self.identifiers = frozenset(identifiers)
+        self.world = None
+        self.bindings = {}
+
+    def observe(self, world, listed, read_actor):
+        if world != self.world:
+            self.bindings.clear()
+            self.world = world
+        members = {actor['pointer'] for actor in listed}
+        for actor in listed:
+            if actor['id'] in self.identifiers and not actor['selected']:
+                identity = (actor['pointer'], actor['script_data'])
+                if self.bindings.setdefault(actor['id'], identity) != identity:
+                    raise ValueError(f"observed actor {actor['id']} identity changed in world {world}")
+        observed = []
+        for identifier, (pointer, script) in self.bindings.items():
+            actor = read_actor(pointer)
+            if (actor['id'], actor['pointer'], actor['script_data']) != (identifier, pointer, script):
+                raise ValueError(f"observed actor {identifier} identity changed in world {world}")
+            observed.append(dict(actor, in_update_list=pointer in members))
+        return observed

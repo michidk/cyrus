@@ -1187,6 +1187,14 @@ held and released update with positions and health, and releases input even
 when a frame gap or world change rejects the measurement. Health loss is the
 observation-window total, not a count of individual strikes.
 
+The ordinary `actors` list is view-centered, not a world registry. Cinematic
+camera movement can exclude a living opponent. A reader may supply independent
+`observed_actors` bound to a retained actor identity; the fight projection keeps
+that actor's health and lifecycle while reporting `rlisted=false`. The reader
+must reject allocation/identity changes instead of returning stale observations.
+Tap recording requires `rlisted=true`; an off-list observation does not establish
+that the opponent is receiving ordinary updates.
+
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.
 The public driver requires `interactive` as well as a paused world clock;

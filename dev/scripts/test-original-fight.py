@@ -31,6 +31,18 @@ class DriverLogic(unittest.TestCase):
         self.assertIsNone(fight.view(None))
         self.assertIsNone(fight.view({"error": "world changing"}))
 
+    def test_camera_list_absence_preserves_independent_actor_observation(self):
+        opponent = actor(55, 93, 250) | {"hidden": False, "death_selector": 6,
+                                               "in_update_list": False}
+        raw = {"counters": {"mainloop_frame": 20, "fps": 4},
+               "actors": [actor(1, 8, 100, selected=True)],
+               "observed_actors": [opponent]}
+        view = fight.view(raw)
+        self.assertEqual((view["rh"], view["rg"], view["rcombat"]), (250, 93, True))
+        self.assertFalse(view["rlisted"])
+        raw["actors"].append(opponent)
+        self.assertTrue(fight.view(raw)["rlisted"])
+
     def test_a_tap_needs_the_armed_idle_animation_and_a_drawn_sword(self):
         for gate in ("busy", "any"):
             self.assertFalse(fight.ready_to_tap(sample(pg=102, rg=102), gate))
@@ -141,7 +153,7 @@ class ExactCombatTape(unittest.TestCase):
             self.frame, self.keys, self.gap = 0, set(), gap
         def snapshot(self):
             return sample() | {"frame": self.frame, "ppos": [0, 0, 0], "rpos": [0, 0, 100],
-                               "world": 30, "rhidden": False, "rcombat": True, "lockout": 0}
+                               "world": 30, "rhidden": False, "rcombat": True, "rlisted": True, "lockout": 0}
         def advance_to(self, frame):
             self.frame = frame + int(self.gap)
         def input(self, key, action):
@@ -174,6 +186,22 @@ class ExactCombatTape(unittest.TestCase):
         snapshot = session.snapshot
         session.snapshot = lambda: snapshot() | {"lockout": 1}
         with self.assertRaisesRegex(ValueError, "player control"):
+            fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual(session.keys, set())
+
+    def test_leaving_update_list_during_tap_rejects_and_releases(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"rlisted": session.frame == 0}
+        with self.assertRaisesRegex(ValueError, "left the ordinary update list"):
+            fight.record_combat_tap(session, "ControlLeft", 1, 3)
+        self.assertEqual(session.keys, set())
+
+    def test_off_list_observation_is_not_an_admitted_fight(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"rlisted": False}
+        with self.assertRaisesRegex(ValueError, "update list"):
             fight.record_combat_tap(session, "ControlLeft", 1, 3)
         self.assertEqual(session.keys, set())
 
