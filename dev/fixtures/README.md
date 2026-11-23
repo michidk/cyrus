@@ -397,10 +397,15 @@ a pending menu context alone is insufficient. `resume_checkpoint` confirms Load,
 releases Return even on failure, and admits at most two stopped boundaries (menu
 exit followed by restored continuation). Supply decoded save observables through
 `rgpre`: world, selected player and relevant actors, and clock continuation.
-The first resumed boundary advances both accumulated clocks by the retained next
-step before actor updates. Positions, heading, health and animation group must
-still match exactly. A missing continuation or mismatched state rejects resume;
-only after this check should another bounded input block run. Keep the receipt
+The validator requires both accumulated clocks to equal the saved totals plus
+the retained next step, and requires exact actor observables. This is a strict
+check for checkpoints whose actors remain unchanged across that update, not a
+general restored-state boundary: a moving scripted actor can already have
+advanced when the next ordinary boundary is sampled. Such a checkpoint rejects
+instead of receiving a position tolerance or being called reusable. It needs a
+separately established restore-completion boundary before its first actor update.
+A missing continuation or mismatched state rejects resume; only after a validated
+reload should another bounded input block run. Keep the receipt
 and decoded expectations outside tracked files. This original reload check does
 not assert that cyrus imports the complete save state.
 
@@ -423,3 +428,30 @@ steers input; the original's observed health/flags decide acceptance. Keep the
 attack cadence from the fixture, but do not hold its turn key throughout a retail
 attack merely because that native tape previously passed. Retain phase receipts,
 per-frame poses/animations, and the exact saved-state reload receipt together.
+
+For an installed script's automatic world change, use
+`FrameSession.wait_for_world(target_world, max_updates, checkpoints=...)` after
+its same-world control checkpoint. Optional ordered `(name, predicate)` entries
+must be observed before the target world appears; a world number alone cannot
+stand in for missing dialogue. Supply predicates from the installed sequence
+and reader observables, keeping labels and captured data outside tracked files.
+The wait sends no input. Natural speech completion needs no skip key; if a skip
+is required, the documented modifier edge applies only under script lockout and
+must have its own acknowledged press/release and completion checkpoint.
+
+Source-world counters stay strictly consecutive. Only the explicitly requested
+world may change the counter continuation; that first target boundary establishes
+a new relative frame zero. Unexpected worlds and same-world counter gaps still
+fail. An already loaded target skips the earlier phase, permitting resume from a
+later save. The arrival receipt acknowledges the transition, **not** a ready
+world: the first target boundary can still have no selected player. Observe
+player allocation, fade/warmup completion and control or modal state before
+saving or sending gameplay input. Retain and actually reload the next save
+through retail Load before calling it reusable.
+
+Checkpoint staging preserves the main SAV, journal and per-world TSG sidecars;
+after a scripted world change those sidecars retain previous-world state. The
+stager validates regular source files before replacing the private config/save
+directory, rejects linked checkpoint files, and copies no unrelated captures.
+This uses preservation's documented save-slot layout rather than treating a
+current-world SAV as the entire multi-world checkpoint.

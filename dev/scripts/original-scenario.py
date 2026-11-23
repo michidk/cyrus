@@ -333,7 +333,7 @@ def book_load_keys(pages, slot_row, disabled=(1,)):
 def stage_retail_save(run, pristine_ini, source_slot, slot_number=0):
     """Prepare a private run copy so the retail startup book offers one existing save: the retail
     SYSTEM.INI (no debug entry, so the book and introduction run as a player sees them) and the
-    chosen slot copied into an otherwise empty SAVEGAME directory. Everything stays under `run`;
+    chosen SAV, journal and per-world TSG sidecars copied into an otherwise empty SAVEGAME directory. Everything stays under `run`;
     nothing is written into the shared game links. Returns the staged slot directory."""
     run = Path(run).resolve()
     ini = run / "Redguard/SYSTEM.INI"
@@ -341,15 +341,23 @@ def stage_retail_save(run, pristine_ini, source_slot, slot_number=0):
     for path in (ini, savegame):
         if path.is_symlink() or not path.resolve().is_relative_to(run):
             raise ValueError(f"{path}: must be run-local")
+    source = Path(source_slot)
+    saved = source / "SAVEGAME.SAV"
+    if not saved.is_file():
+        raise ValueError(f"{source_slot}: no SAVEGAME.SAV")
+    if source.is_symlink() or source.resolve().is_relative_to(savegame.resolve()):
+        raise ValueError(f"{source_slot}: checkpoint source must be outside the replaced save directory")
+    files = [saved] + sorted(p for p in source.iterdir() if p.suffix.lower() == '.tsg' or p.name.lower() == 'logbook.txt')
+    for path in files:
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"{path}: checkpoint file must be regular and run-local")
     shutil.copyfile(pristine_ini, ini)
     for entry in savegame.iterdir():
         shutil.rmtree(entry) if entry.is_dir() else entry.unlink()
     slot = savegame / f"SAVEGAME.{slot_number:03d}"
     slot.mkdir()
-    saved = Path(source_slot) / "SAVEGAME.SAV"
-    if not saved.is_file():
-        raise ValueError(f"{source_slot}: no SAVEGAME.SAV")
-    shutil.copyfile(saved, slot / "SAVEGAME.SAV")
+    for path in files:
+        shutil.copy2(path, slot / path.name)
     return slot
 
 

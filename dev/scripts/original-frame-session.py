@@ -44,6 +44,58 @@ class FrameSession:
             self.emit(raw)
             current = observed
 
+    def wait_for_world(self, target_world, max_updates, checkpoints=()):
+        """Observe an explicitly admitted world transition without sending input.
+
+        Source-world frames must remain consecutive. Only the requested world
+        may end the wait; its first boundary becomes frame zero for subsequent
+        input, allowing the world loop to replace its counter/clock continuation.
+        Ordinary advance_to retains its strict no-reset contract. Optional
+        ordered (name, predicate) checkpoints must be observed in the source
+        world before arrival. An already loaded target world skips the phase.
+        Arrival acknowledges the transition, not target-world scene readiness.
+        """
+        absent = (None, -1, (1 << 32) - 1)
+        if type(max_updates) is not int or max_updates < 0:
+            raise ValueError('world transition requires a nonnegative update budget')
+        if type(target_world) is not int or target_world in absent or target_world < 0:
+            raise ValueError('world transition requires a valid target world')
+        start = self.snapshot()
+        source = start.get('world')
+        if source in absent:
+            raise ValueError('world transition requires a running source world')
+        if source == target_world:
+            return dict(start=start, end=start, updates=0)
+        pending, seen = list(checkpoints), []
+        def observe(elapsed):
+            if pending and pending[0][1](self.snapshot()):
+                name, _ = pending.pop(0)
+                seen.append(dict(name=name, updates=elapsed))
+        observe(0)
+        for elapsed in range(1, max_updates + 1):
+            previous = self._frame(self.current)
+            self.boundary.next_boundary(self.timeout)
+            raw = self.boundary.raw_snapshot()
+            observed = self._frame(raw)
+            world = self.project(raw).get('world')
+            if world == target_world:
+                if pending:
+                    raise ValueError(f'world transition missing checkpoint {pending[0][0]} before world {target_world}')
+                self.current, self.origin = raw, observed
+                self.emit(raw)
+                receipt = dict(start=start, end=self.snapshot(), updates=elapsed)
+                if checkpoints:
+                    receipt['checkpoints'] = seen
+                return receipt
+            if world != source:
+                raise ValueError(f'world transition expected world {target_world}, observed {world}')
+            if observed != previous + 1:
+                raise ValueError(f'original frame gap: expected {previous + 1}, observed {observed}')
+            self.current = raw
+            self.emit(raw)
+            observe(elapsed)
+        raise TimeoutError(f'world {target_world} not reached within {max_updates} updates')
+
     def input(self, key, action):
         before = self._frame(self.current)
         raw = self.boundary.latch_key(key, action)

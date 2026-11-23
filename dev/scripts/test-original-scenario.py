@@ -269,12 +269,39 @@ class RetailLoad(unittest.TestCase):
         source = root / "source/SAVEGAME.002"
         source.mkdir(parents=True)
         (source / "SAVEGAME.SAV").write_bytes(b"retail save")
+        (source / "START.TSG").write_bytes(b"previous world state")
+        (source / "LOGBOOK.TXT").write_text("retained journal")
+        (source / "capture.png").write_bytes(b"not a checkpoint sidecar")
         slot = scenario.stage_retail_save(run, pristine, source)
         self.assertEqual(slot.name, "SAVEGAME.000")
+        self.assertEqual((slot / "START.TSG").read_bytes(), b"previous world state")
+        self.assertEqual((slot / "LOGBOOK.TXT").read_text(), "retained journal")
+        self.assertEqual(sorted(p.name for p in slot.iterdir()), ["LOGBOOK.TXT", "SAVEGAME.SAV", "START.TSG"])
         self.assertEqual((slot / "SAVEGAME.SAV").read_bytes(), b"retail save")
         self.assertEqual(sorted(p.name for p in (run / "Redguard/SAVEGAME").iterdir()), ["SAVEGAME.000"])
         self.assertEqual((run / "Redguard/SYSTEM.INI").read_text(), "[system]\nretail=1\n")
         self.assertEqual((source / "SAVEGAME.SAV").read_bytes(), b"retail save")
+
+    def test_invalid_sidecar_rejects_before_replacing_previous_private_state(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run = root / 'run'
+            old = run / 'Redguard/SAVEGAME/SAVEGAME.007'
+            old.mkdir(parents=True)
+            (old / 'SAVEGAME.SAV').write_bytes(b'old')
+            ini = run / 'Redguard/SYSTEM.INI'
+            ini.write_text('old config')
+            pristine = root / 'pristine.ini'
+            pristine.write_text('new config')
+            source = root / 'source'
+            source.mkdir()
+            (source / 'SAVEGAME.SAV').write_bytes(b'new save')
+            (source / 'START.TSG').symlink_to(old / 'SAVEGAME.SAV')
+            with self.assertRaisesRegex(ValueError, 'checkpoint file.*run-local|checkpoint file.*regular'):
+                scenario.stage_retail_save(run, pristine, source)
+            self.assertEqual(ini.read_text(), 'old config')
+            self.assertEqual((old / 'SAVEGAME.SAV').read_bytes(), b'old')
 
     def test_staging_refuses_symlinked_game_links_and_sources_without_a_save(self):
         import tempfile

@@ -119,5 +119,68 @@ class FrameTests(unittest.TestCase):
         self.assertEqual(calls, ['read'])
 
 
+class WorldTransitionTests(unittest.TestCase):
+    def session(self, worlds):
+        boundary = Boundary()
+        boundary.raw['world'] = 0
+        steps = iter(worlds)
+        def advance(timeout):
+            world, frame = next(steps)
+            boundary.raw.update(world=world, frame=frame)
+        boundary.next_boundary = advance
+        session = adapter.FrameSession(boundary, lambda raw: raw['frame'],
+                                       lambda raw: dict(world=raw['world']))
+        return session, boundary
+
+    def test_expected_world_reset_is_explicit_and_next_world_can_resume_at_frame_zero(self):
+        session, boundary = self.session([(0, 81), (1, 0), (1, 1)])
+        receipt = session.wait_for_world(1, 3)
+        self.assertEqual(receipt, dict(start=dict(world=0, frame=0), end=dict(world=1, frame=0), updates=2))
+        self.assertEqual(session.input('ControlLeft', 'release'), 0)
+        session.advance_to(1)
+        self.assertEqual(session.snapshot(), dict(world=1, frame=1))
+
+    def test_other_world_is_rejected_even_if_counter_is_consecutive(self):
+        session, _ = self.session([(2, 81)])
+        with self.assertRaisesRegex(ValueError, 'expected world 1, observed 2'):
+            session.wait_for_world(1, 3)
+
+    def test_same_world_counter_reset_or_skip_still_rejects(self):
+        for frame in (0, 80, 82):
+            session, _ = self.session([(0, frame)])
+            with self.subTest(frame=frame), self.assertRaisesRegex(ValueError, 'frame gap'):
+                session.wait_for_world(1, 3)
+
+    def test_missing_world_is_bounded_and_already_arrived_world_is_idempotent(self):
+        session, _ = self.session([(0, 81), (0, 82)])
+        with self.assertRaisesRegex(TimeoutError, 'world 1.*2 updates'):
+            session.wait_for_world(1, 2)
+        self.assertEqual(session.wait_for_world(0, 0)['updates'], 0)
+
+    def test_transition_requires_every_dialogue_checkpoint_before_arrival(self):
+        session, _ = self.session([(0, 81), (1, 0)])
+        checkpoints = [('Brennan first line', lambda state: state['frame'] == 1),
+                       ('Brennan reply', lambda state: False)]
+        with self.assertRaisesRegex(ValueError, 'missing checkpoint Brennan reply before world 1'):
+            session.wait_for_world(1, 3, checkpoints=checkpoints)
+
+    def test_dialogue_checkpoints_are_recorded_in_order_and_later_save_skips_them(self):
+        session, _ = self.session([(0, 81), (0, 82), (1, 0)])
+        checkpoints = [('first line', lambda state: state['frame'] == 1),
+                       ('reply', lambda state: state['frame'] == 2)]
+        receipt = session.wait_for_world(1, 3, checkpoints=checkpoints)
+        self.assertEqual(receipt['checkpoints'], [dict(name='first line', updates=1), dict(name='reply', updates=2)])
+        self.assertEqual(session.wait_for_world(1, 0, checkpoints=checkpoints)['updates'], 0)
+
+    def test_no_world_or_unbounded_wait_rejects_before_advance(self):
+        session, boundary = self.session([])
+        with self.assertRaisesRegex(ValueError, 'nonnegative'):
+            session.wait_for_world(1, -1)
+        boundary.raw['world'] = 4294967295
+        session.current = boundary.raw_snapshot()
+        with self.assertRaisesRegex(ValueError, 'running source world'):
+            session.wait_for_world(1, 2)
+
+
 if __name__ == '__main__':
     unittest.main()
