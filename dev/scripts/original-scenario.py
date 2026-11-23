@@ -39,6 +39,24 @@ def sh(*command, **kwargs):
     return subprocess.run(command, capture_output=True, text=True, **kwargs)
 
 
+def reload_boundary_ready(raw):
+    """Whether a live world can open Load without carrying its startup fade into the save.
+
+    Fade and clock state are independent: a clear view can still be in clock
+    warmup. Missing reader bindings reject admission instead of assuming zero.
+    """
+    if not raw or raw.get("world") in (None, -1, (1 << 32) - 1):
+        return False
+    counters = raw.get("counters") or {}
+    if not counters.get("mainloop_frame") or not any(a.get("selected") for a in raw.get("actors", [])):
+        return False
+    fade = counters.get("world_fade")
+    warmup = (counters.get("clock_continuation") or {}).get("warmup")
+    if type(fade) is not int or type(warmup) is not int:
+        raise ValueError("original reload requires fade and clock warmup reader bindings")
+    return fade == 0 and warmup == 0
+
+
 class Original:
     """One original-game container with a streaming sampler and key input."""
 
@@ -141,6 +159,14 @@ class Original:
 
     def wait(self, frames, timeout=900, until=None):
         return self.fight.wait_frames(self.sampler, frames, timeout, until=until)
+
+    def wait_reload_boundary(self, frames=240, timeout=180):
+        """Finish the current world's fade and warmup before staging a shared-save reload.
+
+        This observes ordinary progress; it never resets a counter or modifies the
+        saved continuation. The reader must bind both fade and clock warmup.
+        """
+        return self.wait(frames, timeout, until=lambda _: reload_boundary_ready(self.raw()))
 
     def capture_quicksave(self, destination, timeout=180):
         """Publish a private copy after F9's slot changes and survives two game frames.

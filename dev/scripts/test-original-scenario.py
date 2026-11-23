@@ -9,6 +9,38 @@ scenario = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scenario)
 
 
+class ReloadBoundary(unittest.TestCase):
+    def sample(self, fade=0, warmup=0):
+        return {"world":20,"counters":{"mainloop_frame":40,"world_fade":fade,
+                "clock_continuation":{"warmup":warmup}},"actors":[{"selected":True}]}
+
+    def test_reload_waits_for_the_existing_fade_and_its_clock_warmup(self):
+        self.assertFalse(scenario.reload_boundary_ready(self.sample(-100, 0)))
+        self.assertFalse(scenario.reload_boundary_ready(self.sample(0, 12)))
+        self.assertTrue(scenario.reload_boundary_ready(self.sample()))
+
+    def test_unavailable_bindings_are_not_treated_as_a_settled_clock(self):
+        self.assertFalse(scenario.reload_boundary_ready(None))
+        self.assertFalse(scenario.reload_boundary_ready({"world":-1}))
+        raw = self.sample()
+        del raw["counters"]["world_fade"]
+        with self.assertRaisesRegex(ValueError, "fade.*warmup"):
+            scenario.reload_boundary_ready(raw)
+
+    def test_wait_observes_natural_progress_without_writing_the_clock(self):
+        game = scenario.Original.__new__(scenario.Original)
+        rows = iter([self.sample(-100, 0), self.sample(0, 12), self.sample()])
+        game.raw = lambda: next(rows)
+        def wait(frames, timeout, until):
+            self.assertEqual((frames, timeout), (240, 180))
+            self.assertFalse(until({}))
+            self.assertFalse(until({}))
+            self.assertTrue(until({}))
+            return "settled"
+        game.wait = wait
+        self.assertEqual(game.wait_reload_boundary(), "settled")
+
+
 class PromptProjection(unittest.TestCase):
     def test_a_pending_prompt_projects_text_owner_and_holdoff(self):
         raw = {"prompts": {"pending_text": "TALK TO MAN", "pending_pointer": 4096, "owner_id": 12,

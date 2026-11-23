@@ -359,3 +359,59 @@ fn original_clock_restores_carries_settings_and_exposed_step_before_resuming() {
             .contains("SVGV clock")
     );
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn settled_original_import_consumes_only_the_first_explicit_frame() {
+    let mut bytes = [0u8; 1542];
+    for (offset, value) in [
+        (0x9c, 26u32),
+        (0xa0, 118),
+        (0xc0, 26),
+        (0xc4, 118),
+        (0xd0, 134),
+        (0xd8, 4),
+        (0xe0, 6),
+        (0xe8, 6),
+        (0xec, 300),
+        (0xf0, 1),
+        (0xf4, 1),
+        (0xf8, 3072),
+    ] {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    let saved = rgpre::import::savegame::parse_save_clock(&bytes).unwrap();
+    let mut clock = SimulationClock::from_original(&saved, 900).unwrap();
+    assert_eq!(clock.elapsed_frame_scale(), 0);
+    assert_eq!(
+        clock.step(),
+        ClockStep {
+            frame_scale: 118,
+            nominal_ticks: 0,
+            fine_ticks: 4
+        }
+    );
+    assert_eq!(serde_json::to_value(clock.snapshot()).unwrap()["warmup"], 0);
+    assert_eq!(
+        clock.advance_recorded(900, 118).unwrap(),
+        ClockStep {
+            frame_scale: 118,
+            nominal_ticks: 0,
+            fine_ticks: 3
+        }
+    );
+    let first = serde_json::to_value(clock.snapshot()).unwrap();
+    assert_eq!(first["warmup"], 0);
+    assert_eq!(first["nominal_fraction"], 252);
+    assert_eq!(first["fine_fraction"], 28);
+    assert_eq!(clock.elapsed_frame_scale(), 118);
+    assert_eq!(
+        clock.advance_recorded(900, 118).unwrap(),
+        ClockStep {
+            frame_scale: 118,
+            nominal_ticks: 1,
+            fine_ticks: 4
+        }
+    );
+    assert_eq!(clock.elapsed_frame_scale(), 236);
+}

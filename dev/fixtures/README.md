@@ -323,7 +323,12 @@ Faithful timing. An equal duration tape alone does not establish matched starts.
 `Original.capture_quicksave(destination)` requests F9 and copies the private slot
 only after its changed content remains stable for two game frames. Its caller must
 first enable the original's quick-save consumer and reload that save on both sides
-before tape zero. Enabling `final_version` before boot selects retail startup; it
+before tape zero. Before opening Load, call `Original.wait_reload_boundary()` to
+let the existing world fade and clock warmup finish through ordinary progress.
+The local reader must expose `counters.world_fade` and
+`counters.clock_continuation.warmup`; missing bindings reject admission. A save
+reload does not make an active presentation fade part of the saved clock. Do not
+reset warmup to hide an unmatched start. Enabling `final_version` before boot selects retail startup; it
 is unsuitable for direct debug-world entry. Save capture is staging, not a matched
 start or a completed import of actor animation and task continuations.
 
