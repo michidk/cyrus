@@ -91,6 +91,10 @@ def view(state):
         "world": state.get("world"),
         "lockout": state["counters"].get("player_lockout"),
         "rlisted": listed,
+        "player_combat": player.get("combat_state"),
+        "opponent_combat": opponent.get("combat_state") if opponent else None,
+        "player_command_cursor": player.get("command_frame"),
+        "opponent_command_cursor": opponent.get("command_frame") if opponent else None,
         "rhidden": opponent.get("hidden") if opponent else None,
         # A combat structure is allocated before admission. Combat entry writes
         # lifecycle selector 6; its pointer alone cannot acknowledge the native.
@@ -145,6 +149,87 @@ def classify_tap(before, samples):
     if any(g != before["rg"] for g in groups):
         return {"outcome": "response", "damage": 0, "groups": sorted(set(groups) - {before["rg"]})}
     return {"outcome": "miss", "damage": 0}
+
+
+def combat_geometry(sample):
+    """Diagnostic body-origin geometry, not the engine's model-point contact query.
+
+    Positions are Q8; yaw has 2048 units per turn. atan2 estimates the bearing
+    for ordinary turn input. Actual contact still requires observed combat state.
+    """
+    dx, dy, dz = [b - a for a, b in zip(sample['ppos'], sample['rpos'])]
+    heading = round(math.atan2(-dx, dz) * 1024 / math.pi) % 2048
+    return dict(horizontal_q8=round(math.hypot(dx, dz)),
+                distance_q8=round(math.sqrt(dx * dx + dy * dy + dz * dz)),
+                height_delta_q8=dy,
+                heading_error=(heading - sample['pyaw'] + 1024) % 2048 - 1024)
+
+
+def align_combat_facing(session, max_updates):
+    """Turn through the observed opponent bearing, releasing input at each boundary.
+
+    A broad defence arc is not an attack-alignment threshold. Stop at an exact
+    bearing or its first crossed center; report that actual pose, not a tolerance
+    pass. Wait through a busy animation and recompute from the next armed idle.
+    No actor position, health or heading is written by this driver.
+    """
+    if type(max_updates) is not int or max_updates < 0:
+        raise ValueError('alignment requires a nonnegative update budget')
+    previous = None
+    world = session.snapshot()["world"]
+    for update in range(max_updates + 1):
+        state = session.snapshot()
+        if state["world"] != world:
+            raise ValueError("combat alignment changed world")
+        if (state.get('rhidden') is not False or state.get('rcombat') is not True
+                or state.get('rlisted') is not True or state.get('lockout') != 0):
+            raise ValueError('alignment requires revealed admitted combat and player control')
+        error = combat_geometry(state)['heading_error']
+        if state['pg'] == ARMED_IDLE_GROUP:
+            if error == 0 or (previous is not None and previous * error < 0):
+                return state
+            key = 'ArrowLeft' if error > 0 else 'ArrowRight'
+            previous = error
+        else:
+            key, previous = None, None
+        if update == max_updates:
+            break
+        try:
+            if key:
+                session.input(key, 'press')
+            session.advance_to(state['frame'] + 1)
+        finally:
+            if key:
+                session.input(key, 'release')
+    raise TimeoutError('combat facing did not reach the observed center within update budget')
+
+
+def wait_for_combat_recovery(session, max_updates):
+    """Observe an inactive opponent action before a diagnostic attack input.
+
+    This is a probe policy, not a claim of vulnerability. Group changes alone
+    cannot identify recovery: attack intent may already be cancelled while its
+    animation continues. Unbound action/defence observations reject the probe.
+    """
+    if type(max_updates) is not int or max_updates < 0:
+        raise ValueError('recovery requires a nonnegative update budget')
+    world = session.snapshot()['world']
+    for update in range(max_updates + 1):
+        state = session.snapshot()
+        if state['world'] != world:
+            raise ValueError('combat recovery changed world')
+        if (state.get('rhidden') is not False or state.get('rcombat') is not True
+                or state.get('rlisted') is not True or state.get('lockout') != 0):
+            raise ValueError('recovery requires revealed admitted combat and player control')
+        combat = state.get('opponent_combat')
+        if not combat or 'action' not in combat or 'flags' not in combat:
+            raise ValueError('recovery requires bound combat observations')
+        if (state['pg'] == ARMED_IDLE_GROUP and combat['action'] == -1
+                and not combat['flags'] & 2):
+            return state
+        if update < max_updates:
+            session.advance_to(state['frame'] + 1)
+    raise TimeoutError('opponent did not reach observed recovery within update budget')
 
 
 def record_combat_tap(session, key, held_updates, released_updates):

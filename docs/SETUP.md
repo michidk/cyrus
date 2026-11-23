@@ -1195,6 +1195,24 @@ must reject allocation/identity changes instead of returning stale observations.
 Tap recording requires `rlisted=true`; an off-list observation does not establish
 that the opponent is receiving ordinary updates.
 
+For contact diagnosis, the local reader can expose `combat_state` and the signed
+animation `command_frame`. The fight view retains both actors' combat observations
+and command cursors; an animation group alone does not prove collision admission,
+defence or damage. Record combat intent/contact flags, playback direction, action,
+motion, defence selector, strength/armor and weapon-admission fields when bound.
+`combat_geometry` reports body-origin distance, height and estimated yaw error;
+it does not replace the original's model-point contact query.
+`align_combat_facing` uses ordinary turning until the observed bearing is reached
+or crossed, then returns the actual armed-idle boundary. It recomputes after busy
+animations, so a defence-arc threshold or stale pre-animation pose cannot silently
+become the attack start. The caller still verifies range/contact and health.
+`wait_for_combat_recovery` waits for player armed idle and an observed opponent
+action of -1 with defence intent clear. It refuses missing combat bindings.
+This probe policy avoids starting into an already active opponent attack; it
+neither asserts invulnerability nor guarantees that a subsequent attack hits.
+An incoming hit can clear attack intent before the collision window while the
+attack animation continues, so retain the flags and cursor through the window.
+
 The reader must report top-level `console_mode` as `closed`, `overlay` or
 `interactive`, derived from active console state and its modal/nonmodal mode.
 The public driver requires `interactive` as well as a paused world clock;

@@ -43,6 +43,20 @@ class DriverLogic(unittest.TestCase):
         raw["actors"].append(opponent)
         self.assertTrue(fight.view(raw)["rlisted"])
 
+    def test_view_retains_contact_and_defence_observations_without_inferring_from_groups(self):
+        player = actor(1, 102, 100, selected=True) | {
+            "command_frame": 7, "combat_state": {"flags": 33, "reverse": 0}}
+        opponent = actor(55, 99, 250) | {
+            "command_frame": 3, "combat_state": {"flags": 6, "defence": 2}}
+        raw = {"actors": [player, opponent], "counters": {"mainloop_frame": 1, "fps": 12}}
+        view = fight.view(raw)
+        self.assertEqual(view["player_combat"], player["combat_state"])
+        self.assertEqual(view["opponent_combat"], opponent["combat_state"])
+        self.assertEqual(view["player_command_cursor"], 7)
+        self.assertEqual(view["opponent_command_cursor"], 3)
+        del opponent["combat_state"]
+        self.assertIsNone(fight.view(raw)["opponent_combat"])
+
     def test_a_tap_needs_the_armed_idle_animation_and_a_drawn_sword(self):
         for gate in ("busy", "any"):
             self.assertFalse(fight.ready_to_tap(sample(pg=102, rg=102), gate))
@@ -212,6 +226,57 @@ class ExactCombatTape(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "revealed.*combat"):
             fight.record_combat_tap(session, "ControlLeft", 1, 3)
         self.assertEqual(session.keys, set())
+
+
+class CombatAlignment(unittest.TestCase):
+    class Session(ExactCombatTape.Session):
+        def snapshot(self):
+            return super().snapshot() | {"ppos": [0, 0, 0], "rpos": [0, 0, -100],
+                                        "pyaw": [800, 1000, 1030][min(self.frame, 2)]}
+
+    def test_a_broad_forward_arc_does_not_end_alignment_before_center_crossing(self):
+        session = self.Session()
+        aligned = fight.align_combat_facing(session, 3)
+        self.assertEqual(aligned['frame'], 2)
+        self.assertEqual(fight.combat_geometry(aligned)['heading_error'], -6)
+        self.assertEqual(session.keys, set())
+
+    def test_alignment_failure_releases_turn_key(self):
+        session = self.Session()
+        with self.assertRaisesRegex(TimeoutError, 'center'):
+            fight.align_combat_facing(session, 1)
+        self.assertEqual(session.keys, set())
+
+    def test_alignment_rejects_world_change_and_releases(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"world": 30 if session.frame == 0 else 1}
+        with self.assertRaisesRegex(ValueError, 'changed world'):
+            fight.align_combat_facing(session, 3)
+        self.assertEqual(session.keys, set())
+
+    def test_recovery_uses_action_and_defence_state_not_an_animation_group(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {"rg": 108,
+            "opponent_combat": {"action": 1 if session.frame < 2 else -1,
+                                "flags": 5 if session.frame < 2 else 4}}
+        ready = fight.wait_for_combat_recovery(session, 3)
+        self.assertEqual(ready['frame'], 2)
+        self.assertEqual(session.keys, set())
+
+    def test_unbound_combat_state_cannot_be_treated_as_recovery(self):
+        session = self.Session()
+        with self.assertRaisesRegex(ValueError, 'combat observations'):
+            fight.wait_for_combat_recovery(session, 3)
+
+    def test_geometry_retains_height_and_is_not_a_contact_verdict(self):
+        state = dict(ppos=[0, 0, 0], rpos=[3000, 12000, 4000], pyaw=0)
+        geometry = fight.combat_geometry(state)
+        self.assertEqual(geometry['horizontal_q8'], 5000)
+        self.assertEqual(geometry['distance_q8'], 13000)
+        self.assertEqual(geometry['height_delta_q8'], 12000)
+        self.assertNotIn('contact', geometry)
 
 
 class FakeSampler:
