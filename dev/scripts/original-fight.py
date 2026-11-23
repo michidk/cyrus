@@ -35,6 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from diag_output import DurableLog, verify
+from original_console import Console, frame_hold
 
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
@@ -313,14 +314,29 @@ def main():
     # The player exists before Richton does; wait for a live world, then drive the console.
     wait_frames(sampler, 0, 360, until=lambda s: s["frame"] > 0 and s["ph"])
     wait_frames(sampler, 30, 600)
-    for line in ("item add,79", "getmapmarker 32"):
-        key("key", "--delay", "200", "F12")
-        wait_frames(sampler, 4, 120)
-        key("type", "--delay", "100", line)
-        key("key", "--delay", "300", "KP_Enter")
-        wait_frames(sampler, 6, 120)
-        key("key", "--delay", "200", "F12")
-        wait_frames(sampler, 4, 120)
+    shots = Path(args.out).parent / "console-shots"
+    shots.mkdir(parents=True, exist_ok=True)
+
+    def shot(tag):
+        """Save a screenshot of the original's screen; the console reply is evidence, not a guess."""
+        sh("docker", "exec", "-e", "DISPLAY=:1", name, "scrot", "-o", "/tmp/console.png")
+        target = shots / f"{tag}.png"
+        sh("docker", "cp", f"{name}:/tmp/console.png", str(target))
+        return str(target)
+
+    def current_frame():
+        raw = sampler.get()[1]
+        return ((raw or {}).get("counters") or {}).get("mainloop_frame")
+
+    console = Console(
+        hold=lambda name_, frames: frame_hold(lambda k: key("keydown", k), lambda k: key("keyup", k),
+                                              current_frame, name_, frames),
+        console_mode=lambda: (sampler.get()[1] or {}).get("console_mode"),
+        wait_frames=lambda n: wait_frames(sampler, n, 120),
+        shot=shot)
+    for number, line in enumerate(("item add,79", "getmapmarker 32")):
+        typed, answered = console.run(line, f"console-{number}")
+        emit({"ev": "console", "line": line, "typed": typed, "answered": answered})
     # `getmapmarker 32` replaces the world with the finale staging scene: the opponent leaves the
     # actor list and returns only when the scripted approach ends (measured: ~2,100 frames later).
     # Placing the player before that moves nothing, so wait for the unload and then the return.

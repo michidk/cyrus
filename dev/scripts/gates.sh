@@ -20,6 +20,7 @@ if [[ "$stage" == all || "$stage" == check || "$stage" == lints ]]; then
     python3 -B dev/scripts/test-original-fight.py
     python3 -B dev/scripts/test-original-record-diff.py
     python3 -B dev/scripts/test-diag-output.py
+    python3 -B dev/scripts/test-original-console.py
     python3 -B dev/scripts/test-original-scenario.py
     python3 -B dev/scripts/test-preservation-release.py
     python3 -B dev/scripts/check-preservation-release.py
