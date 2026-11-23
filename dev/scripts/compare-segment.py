@@ -25,8 +25,11 @@ class NativeFrameSession:
     must fit in actor_limit; silently truncating the comparison is an error.
     """
 
-    def __init__(self, control, project, actor_limit=4096):
+    def __init__(self, control, project, actor_limit=4096, frame_scales=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
+        self.frame_scales = None if frame_scales is None else tuple(frame_scales)
+        if self.frame_scales is not None and any(type(scale) is not int or scale < 0 for scale in self.frame_scales):
+            raise ValueError('recorded clock tape requires nonnegative integer Q8 frame scales')
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
 
@@ -60,8 +63,13 @@ class NativeFrameSession:
         current = self.snapshot()['frame']
         if type(frame) is not int or frame < current:
             raise ValueError(f'native frame {frame} already passed or invalid')
+        if self.frame_scales is not None and frame > len(self.frame_scales):
+            raise ValueError('recorded clock tape exhausted')
         while current < frame:
-            self.control.request({'type': 'schedule_input', 'events': [{'after_updates': 0}]})
+            command = ({'type': 'replay_frame', 'frame_scale': self.frame_scales[current]}
+                       if self.frame_scales is not None else
+                       {'type': 'schedule_input', 'events': [{'after_updates': 0}]})
+            self.control.request(command)
             self.current = self._read()
             observed = self.snapshot()['frame']
             if observed != current + 1:

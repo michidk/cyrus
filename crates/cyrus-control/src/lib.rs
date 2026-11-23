@@ -254,6 +254,11 @@ pub enum Command {
     ScheduleInput {
         events: Vec<InputBoundary>,
     },
+    /// Advance one ReplayHold invocation by an observed Q8 nominal-tick scale.
+    /// Requires a staged replay world and its matching initial clock continuation.
+    ReplayFrame {
+        frame_scale: u32,
+    },
     /// Press at the next ordinary boundary, retain every boundary, and release at
     /// the first actually consumed endpoint from the counterpart's receipt set.
     /// Reject exhausted endpoints or the update bound without rounding or changing cadence.

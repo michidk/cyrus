@@ -44,6 +44,26 @@ fn settings(smoothing: bool) -> ClockSettings {
 }
 
 #[test]
+fn recorded_frames_keep_exact_q8_deltas_and_tick_carries() {
+    let mut clock = SimulationClock::new(settings(true)).unwrap();
+    let mut consumed = 0;
+    for scale in [122, 99, 105, 118, 0, 102, 121] {
+        let previous = consumed;
+        consumed += scale;
+        let step = clock
+            .advance_recorded(clock.simulated_bios_tick(), scale)
+            .unwrap();
+        assert_eq!(step.frame_scale, scale);
+        assert_eq!(step.nominal_ticks, consumed / 256 - previous / 256);
+        assert_eq!(step.fine_ticks, consumed / 32 - previous / 32);
+        assert_eq!(clock.elapsed_frame_scale(), u64::from(consumed));
+    }
+    let saved = serde_json::to_value(clock.snapshot()).unwrap();
+    assert!(clock.advance_recorded(100, 3073).is_err());
+    assert_eq!(serde_json::to_value(clock.snapshot()).unwrap(), saved);
+}
+
+#[test]
 fn startup_exposes_one_tick_while_measurement_continues() {
     let mut clock = SimulationClock::new(settings(false)).unwrap();
     for _ in 0..12 {

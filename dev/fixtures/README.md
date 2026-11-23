@@ -312,6 +312,20 @@ failures, actor-list truncation and unexpected simulation progress. Both adapter
 leave launch, exact-pose staging and process cleanup to the scenario backend.
 Record consumed clock steps as well as frame indices: stopped original inspection
 does not establish equal BIOS tick inputs or equal native simulation duration.
+For measured clock playback, pass `frame_scales=[...]` to `NativeFrameSession`.
+Each entry is the original's consumed Q8 movement scale for one update, including
+zero. The adapter issues `replay_frame` under explicit `--replay-step-micros`
+mode and rejects an exhausted tape. The clock consumes the scale directly, without
+converting through milliseconds; nominal and fine tick carries still require a
+matched initial clock continuation. This diagnostic mode does not change normal
+Faithful timing. An equal duration tape alone does not establish matched starts.
+
+`Original.capture_quicksave(destination)` requests F9 and copies the private slot
+only after its changed content remains stable for two game frames. Its caller must
+first enable the original's quick-save consumer and reload that save on both sides
+before tape zero. Enabling `final_version` before boot selects retail startup; it
+is unsuitable for direct debug-world entry. Save capture is staging, not a matched
+start or a completed import of actor animation and task continuations.
 
 Snapshots contain `frame`, `world`, `player`, `actors`, `flags`, `prompts` and `timing`.
 Player and actor records use Q8 positions, engine headings, health and animation

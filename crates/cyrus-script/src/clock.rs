@@ -403,6 +403,36 @@ impl SimulationClock {
         self.step
     }
 
+    /// Consume an observed counterpart movement scale without duration rounding.
+    ///
+    /// Diagnostic replay only: the caller binds this value to one admitted world
+    /// update. Nominal/fine ticks retain this clock's fractions, so matching a
+    /// recording also requires matching its initial clock continuation.
+    pub fn advance_recorded(
+        &mut self,
+        bios_tick: u32,
+        frame_scale: u32,
+    ) -> anyhow::Result<ClockStep> {
+        anyhow::ensure!(
+            frame_scale <= self.settings.normal_frame_rate * 256 / self.settings.min_frame_rate,
+            "recorded frame scale {frame_scale} exceeds installed minimum-FPS bound"
+        );
+        let nominal = self.nominal_fraction + frame_scale;
+        let fine = self.fine_fraction + frame_scale;
+        let elapsed = self.elapsed_scale;
+        self.advance(bios_tick);
+        self.nominal_fraction = nominal & 255;
+        self.fine_fraction = fine & 31;
+        self.elapsed_fraction = 0;
+        self.step = ClockStep {
+            frame_scale,
+            nominal_ticks: nominal >> 8,
+            fine_ticks: fine >> 5,
+        };
+        self.elapsed_scale = elapsed + u64::from(frame_scale);
+        Ok(self.step)
+    }
+
     /// BIOS tick of the simulated time this clock has accumulated. A replay samples this instead
     /// of the host's absolute tick: the host tick includes however long loading took, which
     /// shifts tick boundaries against the updates and flips tick-paced combat decisions between

@@ -174,7 +174,7 @@ mod registry;
 pub use registry::ActionWords;
 pub use registry::ordinary::{
     ModelPreparation, OrdinaryContext, OrdinaryInputs, OrdinaryPhase, OrdinarySoundExecutor,
-    OrdinaryUpdates, ReplayHold, ScriptView, WorldClockSample, run_ordinary,
+    OrdinaryUpdates, ReplayFrameScale, ReplayHold, ScriptView, WorldClockSample, run_ordinary,
 };
 mod sound;
 mod spatial;

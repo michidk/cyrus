@@ -112,6 +112,7 @@ class NativeControl:
         self.update, self.stride, self.failed = 50, 1, 0
         self.events = []
         self.keys = []
+        self.scales = []
 
     def request(self, command):
         if command['type'] == 'state':
@@ -125,10 +126,37 @@ class NativeControl:
         if command['type'] == 'input':
             self.keys.append((self.update, command['key'], command['action']))
             return {}
+        if command['type'] == 'replay_frame':
+            self.scales.append(command['frame_scale'])
+            self.update += self.stride
+            return {}
         raise AssertionError(command)
 
 
 class NativeFrames(unittest.TestCase):
+    def test_counterpart_clock_tape_is_consumed_once_per_frame_without_rounding(self):
+        control = NativeControl()
+        session = pair.NativeFrameSession(control, lambda state, scripts: {},
+                                          frame_scales=[122, 99, 0, 118])
+        session.advance_to(1)
+        session.advance_to(4)
+        self.assertEqual(control.scales, [122, 99, 0, 118])
+        self.assertEqual(control.events, [])
+        with self.assertRaisesRegex(ValueError, 'exhausted'):
+            session.advance_to(5)
+        self.assertEqual(control.update, 54)
+
+    def test_clock_tape_is_frozen_and_invalid_scales_reject_before_control_access(self):
+        control = NativeControl()
+        scales = [99, 122]
+        session = pair.NativeFrameSession(control, lambda state, scripts: {}, frame_scales=scales)
+        scales[0] = 1
+        session.advance_to(2)
+        self.assertEqual(control.scales, [99, 122])
+        for invalid in ([True], [-1], [1.5]):
+            with self.assertRaisesRegex(ValueError, 'integer Q8'):
+                pair.NativeFrameSession(None, None, frame_scales=invalid)
+
     def test_inputs_share_the_boundary_and_frames_only_advance_explicitly(self):
         control = NativeControl()
         session = pair.NativeFrameSession(control, lambda state, scripts: dict(world=20))

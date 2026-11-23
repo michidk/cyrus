@@ -864,13 +864,22 @@ impl ScriptWorld {
 #[derive(Resource, Default, Clone, Copy, Debug)]
 pub struct ReplayHold(pub bool);
 
+/// An exact counterpart Q8 clock scale bound to the next ordinary invocation.
+/// Retained across preparation retries; a completed update invalidates its binding.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct ReplayFrameScale {
+    pub generation: u64,
+    pub previous_update: u64,
+    pub frame_scale: u32,
+}
+
 pub(crate) fn sample_clock(
     time: Res<Time<Real>>,
     mut actors: ResMut<ScriptActors>,
     clock: Option<ResMut<SimulationClock>>,
     prepared: OrdinaryAssets,
     mut admission: ResMut<ClockAdmission>,
-    hold: Option<Res<ReplayHold>>,
+    (hold, recorded): (Option<Res<ReplayHold>>, Option<Res<ReplayFrameScale>>),
     mut commands: Commands,
 ) {
     if hold.as_deref().is_some_and(|hold| hold.0) {
@@ -930,7 +939,26 @@ pub(crate) fn sample_clock(
                 clock.rebase(tick);
                 std::time::Duration::ZERO
             };
-            clock.advance_elapsed(tick, elapsed);
+            if let Some(recorded) = recorded.as_deref() {
+                let world = actors.current.as_ref().expect("ready world");
+                let result = (|| -> anyhow::Result<()> {
+                    anyhow::ensure!(
+                        hold.is_some()
+                            && recorded.generation == generation
+                            && recorded.previous_update == world.ordinary_updates(),
+                        "recorded frame scale does not bind this replay world/update"
+                    );
+                    clock.advance_recorded(tick, recorded.frame_scale)?;
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    *clock = previous_clock;
+                    actors.report_runtime_error(format!("recorded clock: {error:#}"));
+                    return;
+                }
+            } else {
+                clock.advance_elapsed(tick, elapsed);
+            }
             commands.insert_resource(WorldClockSample {
                 generation: actors.current.as_ref().unwrap().generation(),
                 step: clock.step(),

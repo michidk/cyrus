@@ -113,6 +113,69 @@ class FrameWaits(unittest.TestCase):
 
 
 class OriginalFrameSession(unittest.TestCase):
+    def test_quicksave_configuration_is_private_and_explicit(self):
+        import tempfile
+        scenario_spec = importlib.util.spec_from_file_location(
+            'scenario', Path(__file__).with_name('original-scenario.py'))
+        scenario = importlib.util.module_from_spec(scenario_spec)
+        scenario_spec.loader.exec_module(scenario)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / 'run'
+            (run / 'Redguard').mkdir(parents=True)
+            config = run / 'Redguard/SYSTEM.INI'
+            config.write_text('[debug]\nfinal_version=0\n')
+            scenario.enable_quicksave(run)
+            self.assertEqual(config.read_text(), '[debug]\nfinal_version=1\n')
+            external = root / 'shared.ini'
+            external.write_text('final_version=0\n')
+            config.unlink()
+            config.symlink_to(external)
+            with self.assertRaisesRegex(ValueError, 'run-local'):
+                scenario.enable_quicksave(run)
+            self.assertEqual(external.read_text(), 'final_version=0\n')
+
+    def test_quicksave_waits_for_two_game_frames_and_copies_private_slot(self):
+        import subprocess
+        import tempfile
+        from unittest.mock import patch
+        scenario_spec = importlib.util.spec_from_file_location(
+            'scenario', Path(__file__).with_name('original-scenario.py'))
+        scenario = importlib.util.module_from_spec(scenario_spec)
+        scenario_spec.loader.exec_module(scenario)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            game = scenario.Original.__new__(scenario.Original)
+            game.run = root / 'run'
+            slot = game.run / 'Redguard/SAVEGAME/SAVEGAME.000'
+            slot.mkdir(parents=True)
+            source = slot / 'SAVEGAME.SAV'
+            source.write_bytes(b'old synthetic save')
+            keys = []
+            def key(*args):
+                keys.append(args)
+                source.write_bytes(b'new synthetic save')
+                return subprocess.CompletedProcess(args, 0)
+            frames = iter([10, 10, 11, 12])
+            game.key = key
+            game.frame = lambda: next(frames)
+            with patch.object(scenario.time, 'sleep'):
+                receipt = game.capture_quicksave(root / 'copy')
+            self.assertEqual(receipt['frame'], 12)
+            self.assertEqual((root / 'copy/SAVEGAME.SAV').read_bytes(), b'new synthetic save')
+            self.assertEqual(keys, [('key', '--delay', '200', 'F9')])
+            source.unlink()
+            shared = root / 'shared'
+            shared.write_bytes(b'untouched')
+            source.symlink_to(shared)
+            with self.assertRaisesRegex(ValueError, 'linked save content'):
+                with patch.object(scenario.time, 'sleep'):
+                    game.frame = iter([20, 22]).__next__
+                    game.key = lambda *args: subprocess.CompletedProcess(args, 0)
+                    # A linked save must be rejected before any key or read.
+                    game.capture_quicksave(root / 'bad-copy')
+            self.assertEqual(shared.read_bytes(), b'untouched')
+
     def test_real_key_names_and_frame_waits_use_the_stream_counter(self):
         import subprocess
         scenario_spec = importlib.util.spec_from_file_location(

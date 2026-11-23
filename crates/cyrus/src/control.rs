@@ -291,11 +291,12 @@ fn handle(
         player_trace_pending,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
-    (input, mut flycam, mut reference, mut ray_tracing): (
+    (input, mut flycam, mut reference, mut ray_tracing, replay_step): (
         Res<cyrus_script::player::input::PlayerInput>,
         Option<ResMut<cyrus_render::camera::DetachedView>>,
         Option<ResMut<cyrus_render::fog::RayTracingReference>>,
         Option<ResMut<cyrus_render::fog::RayTracing>>,
+        Option<Res<ReplayStep>>,
     ),
     mut camera: Query<&mut Transform, (With<cyrus_render::camera::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
@@ -583,14 +584,47 @@ fn handle(
             Command::ScheduleInput { events } => {
                 let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
                 match input_scheduler.arm(id, reply.clone(), generation, events, &keys) {
-                    Ok(()) => continue,
+                    Ok(()) => {
+                        commands.remove_resource::<cyrus_script::script::ReplayFrameScale>();
+                        continue;
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            Command::ReplayFrame { frame_scale } => {
+                let prepared = (|| -> Result<_, String> {
+                    if replay_step.is_none() {
+                        return Err("recorded frame requires --replay-step-micros".into());
+                    }
+                    let world = script_actors.as_ref().and_then(|actors| actors.current.as_ref())
+                        .ok_or("recorded frame requires a staged world")?;
+                    let mut candidate = clock.as_deref().ok_or("recorded frame requires a clock")?.clone();
+                    candidate.advance_recorded(candidate.simulated_bios_tick(), frame_scale)
+                        .map_err(|error| error.to_string())?;
+                    Ok(cyrus_script::script::ReplayFrameScale {
+                        generation: world.generation(),
+                        previous_update: world.ordinary_updates(),
+                        frame_scale,
+                    })
+                })();
+                match prepared {
+                    Ok(recorded) => match input_scheduler.arm(id, reply.clone(), Some(recorded.generation), vec![cyrus_control::InputBoundary { after_updates: 0, key: None, action: None }], &keys) {
+                        Ok(()) => {
+                            commands.insert_resource(recorded);
+                            continue;
+                        }
+                        Err(error) => Err(error),
+                    },
                     Err(error) => Err(error),
                 }
             }
             Command::AcquireInput { acquisition } => {
                 let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
                 match input_scheduler.arm_clock(id, reply.clone(), generation, acquisition, &keys) {
-                    Ok(()) => continue,
+                    Ok(()) => {
+                        commands.remove_resource::<cyrus_script::script::ReplayFrameScale>();
+                        continue;
+                    }
                     Err(error) => Err(error),
                 }
             }
@@ -1280,6 +1314,27 @@ mod tests {
         assert_eq!(response.id, 43);
         assert_eq!(response.result.unwrap(), json!("pong"));
         assert!(responses.try_recv().is_err());
+    }
+
+    #[test]
+    fn public_recorded_frame_requires_explicit_replay_mode() {
+        let mut app = app();
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, responses) = channel();
+        let request = serde_json::from_value(json!({"id":93,"cmd":{
+            "type":"replay_frame","frame_scale":118
+        }}))
+        .unwrap();
+        tx.send(Pending { request, reply }).unwrap();
+        app.update();
+        let response = responses.try_recv().unwrap();
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("--replay-step-micros"));
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_script::script::ReplayFrameScale>()
+        );
     }
 
     #[test]

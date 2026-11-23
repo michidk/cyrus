@@ -12,6 +12,7 @@ addresses and stay in the gitignored `$CYRUS_MAGIC/tools` and `$CYRUS_MAGIC/help
 """
 import argparse
 import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -41,7 +42,7 @@ def sh(*command, **kwargs):
 class Original:
     """One original-game container with a streaming sampler and key input."""
 
-    def __init__(self, name, world, marker, interval=0.2):
+    def __init__(self, name, world, marker, interval=0.2, quicksave_enabled=False):
         self.fight = load_fight()
         image = subprocess.check_output(
             [str(ROOT / "dev/scripts/ensure-retro-runtime.sh")], text=True).strip()
@@ -63,6 +64,8 @@ class Original:
         text = re.sub(r"(?m)^start_world=\d+", f"start_world={world}", text)
         text = re.sub(r"(?m)^start_marker=\d+", f"start_marker={marker}", text)
         ini.write_text(text, errors="surrogateescape")
+        if quicksave_enabled:
+            enable_quicksave(self.run)
         sh("docker", "rm", "-f", self.name)
         sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{self.run}:/game", image,
            "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
@@ -97,10 +100,56 @@ class Original:
     def wait(self, frames, timeout=900, until=None):
         return self.fight.wait_frames(self.sampler, frames, timeout, until=until)
 
+    def capture_quicksave(self, destination, timeout=180):
+        """Publish a private copy after F9's slot changes and survives two game frames.
+
+        Enable final_version before boot. This stages a save, not tape zero:
+        the original backend must reload it before the paired recording starts.
+        """
+        slot = self.run / 'Redguard/SAVEGAME/SAVEGAME.000'
+        source = slot / 'SAVEGAME.SAV'
+        if slot.is_symlink() or not slot.resolve().is_relative_to(self.run.resolve()):
+            raise ValueError(f'{slot}: quick-save must be run-local')
+        if any(path.is_symlink() for path in slot.rglob('*')):
+            raise ValueError(f'{slot}: linked save content is unsupported')
+        previous = source.read_bytes() if source.exists() else None
+        self.key('key', '--delay', '200', 'F9').check_returncode()
+        deadline, stable, receipt = time.monotonic() + timeout, None, None
+        while time.monotonic() < deadline:
+            frame = self.frame()
+            current = source.read_bytes() if source.exists() else None
+            if current and current != previous and type(frame) is int:
+                digest = hashlib.sha256(current).hexdigest()
+                if stable and stable[0] == digest and frame >= stable[1] + 2:
+                    receipt = dict(frame=frame, sha256=digest)
+                    break
+                if stable is None or stable[0] != digest:
+                    stable = digest, frame
+            time.sleep(.02)
+        if receipt is None:
+            raise TimeoutError(f'{source}: F9 did not publish a new stable quick-save')
+        if any(path.is_symlink() for path in slot.rglob('*')):
+            raise ValueError(f'{slot}: linked save content is unsupported')
+        shutil.copytree(slot, destination)
+        if hashlib.sha256((Path(destination) / 'SAVEGAME.SAV').read_bytes()).hexdigest() != receipt['sha256']:
+            raise RuntimeError('original quick-save changed during copy')
+        return receipt
+
     def stop(self):
         self.sampler.stop()
         sh("docker", "rm", "-f", self.name)
         self.run_lock.close()
+
+
+def enable_quicksave(run):
+    """Enable the documented F9 consumer in the private original configuration."""
+    path = Path(run) / 'Redguard/SYSTEM.INI'
+    if path.is_symlink() or not path.resolve().is_relative_to(Path(run).resolve()):
+        raise ValueError(f'{path}: configuration must be run-local')
+    text, count = re.subn(r'(?m)^final_version=\d+', 'final_version=1', path.read_text())
+    if count != 1:
+        raise ValueError(f'{path}: expected one final_version setting')
+    path.write_text(text)
 
 
 class FrameSession:
