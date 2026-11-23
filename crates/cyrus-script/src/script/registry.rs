@@ -3752,6 +3752,12 @@ impl ScriptWorld {
                     self.actors[index].name()
                 );
             }
+            // Ordinary living-default selection reads the actor attribute each update,
+            // independently of the playback record's stored default. Restore both so
+            // its first selection does not replace imported playback with the baseline.
+            if let Some(group) = record.panic_group {
+                self.actors[index].attributes[Attribute::PanicGroup] = group;
+            }
             let animation = self.actors[index].animation.as_mut().unwrap();
             animation.playback.set_stored_default(record.default);
             animation.playback.set_last_frame(frame);

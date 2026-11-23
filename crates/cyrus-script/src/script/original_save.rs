@@ -10,7 +10,7 @@ use rgpre::import::savegame::{
 
 /// This import stages gameplay scalars, not an original interpreter continuation.
 /// Hosts must show this limitation and must not advertise a full session restore.
-pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory, global flags and clock continuation only. Animation playback with a bound ShowFrame pose is restored. Script/task continuations, other actor state except the static supporting actor, unresolved animation/model or sound-handle bindings, controller state, item-use timers and journal are unsupported; the host supplies the native baseline for unsupported owners.";
+pub const LIMITATION: &str = "Limited original-save import: world, player position, heading, health, inventory, global flags and clock continuation only. Animation playback with a bound ShowFrame pose and its saved panic-group attribute are restored. Script/task continuations, other actor state except the static supporting actor, unresolved animation/model or sound-handle bindings, controller state, item-use timers and journal are unsupported; the host supplies the native baseline for unsupported owners.";
 
 /// Validated replacement values. Apply only to an initialized off-live world and
 /// HUD, and discard both on error. No files are written and no scripts are run.
@@ -34,6 +34,7 @@ pub(super) struct OriginalActorPlayback {
     pub identity: Option<i16>,
     pub playback: rgpre::import::savegame::SaveAnimationPlayback,
     pub default: cyrus_soup::AnimationGroup,
+    pub panic_group: Option<u8>,
     pub model_frame: i16,
     pub last_model_frame: i16,
     pub model_handle: i16,
@@ -194,6 +195,9 @@ impl OriginalSaveSubset {
                             identity: (object.object_id != -2)
                                 .then_some(object.runtime_identifier() as i16),
                             playback: header.into(),
+                            panic_group: object.attributes.as_ref().map(|attributes| {
+                                attributes[cyrus_soup::Attribute::PanicGroup.index()]
+                            }),
                             default: cyrus_soup::AnimationGroup::from_index(word(0x257) as u16),
                             model_frame: word(0x24f),
                             last_model_frame: word(0x253),

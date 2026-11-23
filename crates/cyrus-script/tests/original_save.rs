@@ -124,6 +124,7 @@ fn assert_slot(
     );
     assert_flags_and_inventory(&saved.game, hud_data, &world, &hud)?;
     assert_support_owner(&saved.game, &world, player)?;
+    assert_saved_idle_playback(&saved.game, &mut world)?;
     assert_eq!(std::fs::read(path.join("SAVEGAME.SAV"))?, before);
     // Wrong-world candidates reject before changing initialized state.
     let subset = OriginalSaveSubset::decode(&saved.game, hud_data, &scripts.definition)?;
@@ -138,6 +139,65 @@ fn assert_slot(
     );
     assert_eq!(world.flags(), before);
     assert_saved_fields(&saved.game, hud_data, &scripts)?;
+    Ok(())
+}
+
+fn assert_saved_idle_playback(game: &SaveGame, world: &mut ScriptWorld) -> Result<()> {
+    use cyrus_script::script::{ScriptInputs, ScriptStage};
+    use rgpre::import::savegame::{SaveAnimationPlayback, parse_save_objects};
+    let section = game
+        .sections
+        .iter()
+        .find(|section| section.name == *b"SMOB")
+        .unwrap();
+    for object in parse_save_objects(&section.data)? {
+        let (Some(header), Some(attributes)) = (object.animation_header, object.attributes) else {
+            continue;
+        };
+        let playback = SaveAnimationPlayback::from(&header);
+        if object.object_id < 0
+            || playback.current < 0
+            || i16::from(attributes[Attribute::PanicGroup.index()]) != playback.current
+        {
+            continue;
+        }
+        let Some(index) = world
+            .actors()
+            .iter()
+            .position(|actor| actor.runtime_identifier == Some(object.runtime_identifier() as i16))
+        else {
+            continue;
+        };
+        let actor = world.id(index)?;
+        let before = world.inspect(index, 1)["actors"][0]["animation"]["current_group"].clone();
+        if before.is_null() {
+            continue;
+        }
+        assert_eq!(
+            before, playback.current,
+            "saved idle actor {}",
+            object.object_id
+        );
+        world.select_map_animation_default(actor, false, 1, &mut |_, _| Ok(()))?;
+        world.advance(
+            actor,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+            None,
+            100,
+        )?;
+        assert_eq!(
+            world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+            playback.current,
+            "saved idle actor {} after first update",
+            object.object_id
+        );
+    }
     Ok(())
 }
 

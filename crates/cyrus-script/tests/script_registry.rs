@@ -54003,3 +54003,84 @@ fn original_subset_restores_selected_playback_and_clock_from_synthetic_records()
     assert_eq!(world.animation_frame(player)?, Some(0));
     Ok(())
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_npc_playback_survives_first_default_selection_and_animation_update()
+-> anyhow::Result<()> {
+    use rgpre::import::savegame::{encode_save_objects, parse_save_objects};
+    let (scripts, mut world, mut animations, scene) = player_walking_fixture();
+    let actor = world.id(0)?;
+    let identity = world.actors()[actor.index].runtime_identifier.unwrap();
+    let metadata = animations.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|entry| entry["script_name"] == "LOGIC")
+        .unwrap();
+    metadata["model_load_path"] = "animation_table".into();
+    metadata["raan_entries"] = serde_json::json!([{"file_path":"PLAYER.3D","frame_count":1}]);
+    metadata["animation_groups"] = serde_json::json!([
+        {"group_index":AnimationGroup::PANIC.index(),"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+        {"group_index":AnimationGroup::STILL.index(),"anim_id":1,"anim_type":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]}
+    ]);
+    animations.metadata["mpob_objects"][0]["script_name"] = "LOGIC".into();
+    world.bind_animation(actor, &animations, AnimationGroup::PANIC)?;
+    let mut save = synthetic_original_pose_save(&scripts, [1024, -40000, 3072])?;
+    let section = save
+        .sections
+        .iter_mut()
+        .find(|s| s.name == *b"SMOB")
+        .unwrap();
+    let mut objects = parse_save_objects(&section.data)?;
+    let mut npc = synthetic_original_player([2560, 5120, 7680]);
+    npc.object_id = i32::from(identity);
+    npc.body[20..22].copy_from_slice(&identity.to_le_bytes());
+    npc.body[0x247..0x24b].copy_from_slice(&1u32.to_le_bytes());
+    npc.body[0x257..0x259].copy_from_slice(&(AnimationGroup::STILL.index() as i16).to_le_bytes());
+    let mut attributes = [0; 256];
+    attributes[Attribute::PanicGroup.index()] = AnimationGroup::STILL.index() as u8;
+    npc.body[626..630].copy_from_slice(&1u32.to_le_bytes());
+    npc.attributes = Some(attributes);
+    let mut header = [0; 37];
+    header[..2].copy_from_slice(&(AnimationGroup::STILL.index() as i16).to_le_bytes());
+    header[2..4].copy_from_slice(&(-1i16).to_le_bytes());
+    header[4] = 1;
+    header[7] = 1;
+    npc.animation_header = Some(header);
+    objects.push(npc);
+    section.data = encode_save_objects(&objects)?;
+    let asset = inventory_asset(&[(0, 0)]);
+    let hud = cyrus_script::script::ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    cyrus_script::script::original_save::OriginalSaveSubset::decode(
+        &save,
+        &asset,
+        &scripts.definition,
+    )?
+    .apply(&mut world, &hud, &animations)?;
+    let group = |world: &ScriptWorld| {
+        world.inspect(actor.index, 1)["actors"][0]["animation"]["current_group"].clone()
+    };
+    assert_eq!(group(&world), AnimationGroup::STILL.index());
+    world.update_ordinary(
+        &animations,
+        [10, 30],
+        cyrus_script::script::OrdinaryInputs {
+            scene: Some(&scene),
+            scripts: cyrus_script::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                fine_ticks: Some(1),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+        },
+        &mut cyrus_game::random::EngineRandom::default(),
+        &mut |_, _| Ok(()),
+        100,
+    )?;
+    assert_eq!(group(&world), AnimationGroup::STILL.index());
+    assert_eq!(world.animation_frame(actor)?, Some(0));
+    Ok(())
+}

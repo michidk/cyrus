@@ -177,3 +177,8 @@ on error and must display the limitation before publication. Import also refresh
 game loop, including the wrong-world and unsupported-player rejection paths.
 Set `REDGUARD_ORIGINAL_SAVE_DIR=/path/to/private/SAVEGAME` when slots live
 outside the read-only install. Without installed slots it reports a skip.
+
+Original-save animation import restores the saved panic-group attribute alongside
+its playback default, so the first ordinary default selection preserves the
+imported idle pose. Other controller-dependent default branches remain subject
+to the limited-import warning.
