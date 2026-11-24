@@ -2663,7 +2663,7 @@ fn script_menu_items_take_installed_text_and_report_the_committed_value() {
 
 #[test]
 fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
-    use bevy::prelude::*;
+    use bevy::prelude::{App, AppExtStates, ButtonInput, KeyCode, MinimalPlugins};
     use cyrus_game::preferences::Preferences;
     use cyrus_script::{
         player::input::PlayerInput,
@@ -2776,7 +2776,7 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
             speed: 0.0,
             gait: Gait::Walk,
             jump: false,
-            tuning: default(),
+            tuning: Default::default(),
         })));
         app.update();
         world = app
