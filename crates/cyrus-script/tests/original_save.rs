@@ -73,7 +73,7 @@ fn installed_original_subset_restores_both_retained_slots() -> Result<()> {
     let prepared = cyrus_assets::game::prepare(&files, "hud/overlay.hud")?;
     let hud_data: HudAsset = serde_json::from_slice(&prepared["hud/overlay.hud"])?;
     for path in paths {
-        assert_slot(&files, &hud_data, &path)?;
+        assert_slot(&files, &hud_data, &path, &install)?;
     }
     Ok(())
 }
@@ -82,6 +82,7 @@ fn assert_slot(
     files: &cyrus_assets::native::Files,
     hud_data: &HudAsset,
     path: &Path,
+    install: &GameInstall,
 ) -> Result<()> {
     let before = std::fs::read(path.join("SAVEGAME.SAV"))?;
     let saved = load_save_slot(path)?;
@@ -139,6 +140,9 @@ fn assert_slot(
     );
     assert_eq!(world.flags(), before);
     assert_saved_fields(&saved.game, hud_data, &scripts)?;
+    // The preceding wrong-world control deliberately changed only this identity.
+    world.world = expected.0;
+    assert_bound_pose_owners(&saved.game, &mut world, &animations, install)?;
     Ok(())
 }
 
@@ -348,5 +352,104 @@ fn assert_flags_and_inventory(
             item.player_total
         );
     }
+    Ok(())
+}
+
+// The allocation table comes from the installed map and exported geometry, never
+// the saved handle values. This is component coverage, not session admission.
+fn assert_bound_pose_owners(
+    game: &SaveGame,
+    world: &mut ScriptWorld,
+    animations: &cyrus_assets::animation::Animations,
+    install: &GameInstall,
+) -> Result<()> {
+    use cyrus_script::script::ScriptActorSource;
+    use rgpre::import::savegame::{SaveModelAllocations, parse_save_objects};
+    let worlds = cyrus_assets::scene::read_worlds(install)?;
+    let entry = worlds
+        .entries
+        .iter()
+        .find(|entry| entry.index == game.metadata.world_id)
+        .context("saved world not installed")?;
+    let filename = entry
+        .map
+        .rsplit(['/', '\\'])
+        .next()
+        .context("empty map name")?;
+    let path = cyrus_assets::scene::find_file(&install.root.join("maps"), filename)
+        .context("installed map absent")?;
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path)?)?;
+    let allocations = SaveModelAllocations::from_world(&map, &["CYRUS", "GREMLIN"], |source| {
+        let file = source.rsplit(['/', '\\']).next().unwrap_or(source);
+        let key = file
+            .rsplit_once('.')
+            .map_or(file, |(stem, _)| stem)
+            .to_ascii_uppercase();
+        let geometry = animations.models.get(&key).ok_or_else(|| {
+            rgpre::error::Error::Parse(format!("installed geometry {key} missing"))
+        })?;
+        Ok((key, geometry.positions.len()))
+    })?;
+    let objects = parse_save_objects(
+        &game
+            .sections
+            .iter()
+            .find(|s| s.name == *b"SMOB")
+            .context("SMOB missing")?
+            .data,
+    )?;
+    let bindings = objects
+        .iter()
+        .filter(|object| object.animation_header.is_some())
+        .map(|object| {
+            let mut matches =
+                world
+                    .actors()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, actor)| match actor.source {
+                        ScriptActorSource::Player => object.object_id == -2,
+                        ScriptActorSource::AlternatePlayer => object.object_id == -3,
+                        ScriptActorSource::Map(_) => {
+                            object.object_id >= 0
+                                && actor.runtime_identifier.is_some_and(|identity| {
+                                    identity as u16 == object.runtime_identifier()
+                                })
+                        }
+                        _ => false,
+                    });
+            let (index, _) = matches.next().context("saved pose native owner absent")?;
+            ensure!(
+                matches.next().is_none(),
+                "ambiguous saved pose native owner"
+            );
+            Ok((world.id(index)?, object))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    world.restore_original_bound_animations(&bindings, allocations.entries(), animations)?;
+    for (id, object) in &bindings {
+        let pose = object.pose();
+        let selected = pose.current.bind(allocations.entries())?;
+        let reference = world.animation_frame(*id)?;
+        ensure!(
+            selected.is_some() == reference.is_some(),
+            "selected pose presence differs"
+        );
+        if let (Some(bound), Some(reference)) = (selected, reference) {
+            let resolved = match world.actors()[id.index].source {
+                ScriptActorSource::Map(_) => animations.resolve_map_frame(id.index, reference)?,
+                _ => animations.resolve_frame(world.actors()[id.index].name(), reference)?,
+            };
+            let allocation = &allocations.entries()[bound.allocation];
+            ensure!(
+                resolved.model == allocation.source && resolved.frame == bound.frame,
+                "bound native pose differs from saved installed allocation"
+            );
+        }
+    }
+    eprintln!(
+        "restored {} installed animation owners with independently bound poses",
+        bindings.len()
+    );
     Ok(())
 }

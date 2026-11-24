@@ -64,6 +64,8 @@ mod linked;
 pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
+#[cfg(feature = "original-save-import")]
+mod original_animation;
 pub(super) mod overlap;
 mod persistence;
 mod point;

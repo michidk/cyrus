@@ -360,6 +360,7 @@ module where it is defined and regenerate.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
+- `src/script/registry/original_animation.rs` — Saved pose allocations bind to installed actor frame tables before replacement.
 - `src/script/registry/overlap.rs` — Selected ordinary actor spheres remain separate from body-query working shapes.
 - `src/script/registry/persistence.rs` — Complete actor and world replacements are assembled away from live execution.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.

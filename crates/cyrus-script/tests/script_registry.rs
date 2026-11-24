@@ -54200,3 +54200,7 @@ fn physical_topic_navigation_survives_a_mod_locomotion_claim() -> anyhow::Result
 
 #[path = "script_registry/contact_update.rs"]
 mod contact_update_tests;
+
+#[cfg(feature = "original-save-import")]
+#[path = "script_registry/original_pose_binding.rs"]
+mod original_pose_binding_tests;

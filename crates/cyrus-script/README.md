@@ -175,6 +175,13 @@ matching restored playback owner. `OriginalCodeAllocation::bind` identifies
 SMCO owners by the type-two placement allocation counter, excludes coloured
 lights and validates the entire saved population against installed code. This owner-level API does not admit a complete original session.
 
+`ScriptWorld::restore_original_bound_animations` binds selected and previous poses
+against the installed registration table, receiver frame table and texture variant.
+It validates all requested owners before replacing any animation or stored default,
+without issuing commands or cues. This component transaction does not publish a
+session; the remaining interpreter, native-service and world owners must commit
+with it.
+
 The feature-enabled `original_continuation` tests exercise synthetic public imports
 and the first explicit task update. `original_owner_installed` additionally reads
 an owned save from `CYRUS_ORIGINAL_SAVE` and an install from `REDGUARD_DIR` to
