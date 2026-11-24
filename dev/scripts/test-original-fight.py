@@ -408,6 +408,92 @@ class CombatQueryTape(unittest.TestCase):
         self.assertEqual(session.keys, set())
 
 
+class DefenceAdmissionEvidence(unittest.TestCase):
+    def state(self):
+        return {'player_combat': {'action': 0}, 'opponent_combat': {'defence': 1, 'flags': 2},
+                'player_command_cursor': 7}
+
+    def motion(self):
+        return {'defense': 2, 'first_defend_frame': 2, 'defend_duration': 7}
+
+    def test_state_admission_stops_before_unobserved_contact(self):
+        gates = fight.defence_admission_sample(self.state(), self.motion())
+        self.assertEqual(gates['counter_intent'], 'passed_by_state')
+        self.assertEqual(gates['contact'], 'unobserved')
+
+    def test_selector_mismatch_precedes_window_and_never_implies_geometry_miss(self):
+        state = self.state() | {'opponent_combat': {'defence': -1, 'flags': 5}}
+        gates = fight.defence_admission_sample(state, self.motion())
+        self.assertEqual(gates['defence_selector'], 'rejected_by_state')
+        self.assertEqual(gates['defence_window'], 'not_reached')
+        self.assertEqual(gates['contact'], 'not_reached')
+
+    def test_window_end_is_exclusive_and_missing_data_is_not_a_failure_verdict(self):
+        for cursor, expected in [(1, 'rejected_by_state'), (2, 'passed_by_state'),
+                                 (8, 'passed_by_state'), (9, 'rejected_by_state'), (None, 'unobserved')]:
+            with self.subTest(cursor=cursor):
+                gates = fight.defence_admission_sample(self.state() | {'player_command_cursor': cursor}, self.motion())
+                self.assertEqual(gates['defence_window'], expected)
+        gates = fight.defence_admission_sample(self.state(), self.motion() | {'defend_duration': None})
+        self.assertEqual(gates['defence_window'], 'unobserved')
+
+    def test_inactive_actions_and_missing_counter_intent_reject_before_contact(self):
+        for action in (-1, 9):
+            gates = fight.defence_admission_sample(self.state() | {'player_combat': {'action': action}}, self.motion())
+            self.assertEqual(gates['active_attacker'], 'rejected_by_state')
+        gates = fight.defence_admission_sample(self.state() | {'opponent_combat': {'defence': 1, 'flags': 0}}, self.motion())
+        self.assertEqual(gates['counter_intent'], 'rejected_by_state')
+        self.assertEqual(gates['contact'], 'not_reached')
+
+
+class DefenceResponseEvidence(unittest.TestCase):
+    def events(self):
+        state = {'world': 30, 'player_combat': {'action': 0, 'flags': 5, 'reverse': 1},
+                 'opponent_combat': {'flags': 7, 'contact_radius_q8': 0}}
+        branch = {'event': 'defence_contact_pass_reverse_write', 'frame': 70,
+                  'attacker': 'player', 'defender': 'opponent',
+                  'contact_path': 'zero_radius_range', 'state': state}
+        result = {'event': 'defence_success_result_write', 'frame': 70,
+                  'attacker': 'player', 'defender': 'opponent', 'result': 1,
+                  'state': state | {'player_combat': {'flags': 4, 'reverse': 1},
+                                    'opponent_combat': {'flags': 12}}}
+        return branch, result
+
+    def test_bound_branch_and_success_write_prove_gates_and_ordered_response(self):
+        report = fight.defence_response_evidence(*self.events())
+        self.assertEqual(report['contact_path'], 'zero_radius_range')
+        self.assertEqual(report['gates']['elevation'], 'passed_by_executed_branch')
+        self.assertEqual(report['gates']['orientation'], 'passed_by_executed_branch')
+        self.assertEqual(report['result'], 1)
+        self.assertEqual(report['response'], 'completed')
+        self.assertNotIn('damage', report)
+
+    def test_unrelated_flag_bits_survive_the_response(self):
+        branch, result = self.events()
+        branch['state']['player_combat']['flags'] = 0xb5
+        branch['state']['opponent_combat']['flags'] = 0xa7
+        result['state']['player_combat']['flags'] = 0xb4
+        result['state']['opponent_combat']['flags'] = 0xac
+        self.assertEqual(fight.defence_response_evidence(branch, result)['response'], 'completed')
+
+    def test_post_update_reversal_alone_is_not_branch_evidence(self):
+        branch, result = self.events()
+        for invalid in [branch | {'event': 'snapshot'}, branch | {'contact_path': None},
+                        branch | {'attacker': 'opponent'}, branch | {'state': {}}]:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                fight.defence_response_evidence(invalid, result)
+
+    def test_success_requires_same_update_world_pair_and_actual_flag_consumption(self):
+        branch, result = self.events()
+        invalids = [result | {'frame': 71}, result | {'result': 0}, result | {'defender': 'player'},
+                    result | {'state': result['state'] | {'world': 31}},
+                    result | {'state': result['state'] | {'opponent_combat': {'flags': 4}}},
+                    result | {'state': result['state'] | {'player_combat': {'flags': 5, 'reverse': 1}}}]
+        for invalid in invalids:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                fight.defence_response_evidence(branch, invalid)
+
+
 class CombatAlignment(unittest.TestCase):
     class Session(ExactCombatTape.Session):
         def snapshot(self):

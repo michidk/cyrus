@@ -369,6 +369,114 @@ def combat_events(samples):
     return events
 
 
+class GateEvidence(Enum):
+    PASSED = 'passed_by_state'
+    REJECTED = 'rejected_by_state'
+    UNOBSERVED = 'unobserved'
+    NOT_REACHED = 'not_reached'
+
+
+def defence_admission_sample(state, current_motion):
+    """Project hit-defence admission in service order, without inventing contact.
+
+    Bounds/cursor use signed runtime integers and a wrapping window end. Missing
+    bindings stop the projection as unobserved, not rejected. These state gates
+    do not replace instruction-bound contact/response evidence.
+    """
+    player, opponent = state.get('player_combat') or {}, state.get('opponent_combat') or {}
+    signed = lambda v: type(v) is int and -(1 << 31) <= v < (1 << 31)
+    wrap = lambda v: (v + (1 << 31)) % (1 << 32) - (1 << 31)
+    def action():
+        value = player.get('action')
+        return value not in (-1, 9) if signed(value) else None
+    def selector():
+        value, required = opponent.get('defence'), current_motion.get('defense')
+        return value == wrap(required - 1) if signed(value) and signed(required) else None
+    def window():
+        cursor, start = state.get('player_command_cursor'), current_motion.get('first_defend_frame')
+        if not signed(cursor) or not signed(start): return None
+        if cursor < start: return False
+        duration = current_motion.get('defend_duration')
+        return cursor < wrap(start + duration) if signed(duration) else None
+    def counter():
+        flags = opponent.get('flags')
+        return bool(flags & 2) if type(flags) is int and 0 <= flags <= 255 else None
+    gates, reached = {}, True
+    for name, query in [('active_attacker', action), ('defence_selector', selector),
+                        ('defence_window', window), ('counter_intent', counter)]:
+        status = GateEvidence.NOT_REACHED
+        if reached:
+            value = query()
+            status = (GateEvidence.UNOBSERVED if value is None else
+                      GateEvidence.PASSED if value else GateEvidence.REJECTED)
+            reached = value is True
+        gates[name] = status.value
+    gates['contact'] = (GateEvidence.UNOBSERVED if reached else GateEvidence.NOT_REACHED).value
+    return gates
+
+
+class DefenceEvidenceSite(Enum):
+    """Reader-bound writes within the successful original hit-defence branch."""
+
+    CONTACT_REVERSE = 'defence_contact_pass_reverse_write'
+    SUCCESS_RESULT = 'defence_success_result_write'
+
+
+class ContactPath(Enum):
+    ZERO_RADIUS_RANGE = 'zero_radius_range'
+
+
+def defence_response_evidence(branch, result):
+    """Validate an instruction-bound witness, never infer defence from animation.
+
+    The local observer must bind the reverse setter to the successful hit-defence
+    caller and both actor identities, then observe that same call's success-result
+    write. These sites prove earlier admission and contact gates by control flow;
+    they do not supply individual numeric helper returns. Ordinary frame samples
+    or a changed reverse byte without the bound caller are insufficient.
+    Follows preservation's Hit-defence response and Range/arc motion contact.
+    """
+    try:
+        if (DefenceEvidenceSite(branch.get('event')) is not DefenceEvidenceSite.CONTACT_REVERSE
+                or DefenceEvidenceSite(result.get('event')) is not DefenceEvidenceSite.SUCCESS_RESULT):
+            raise ValueError('wrong defence evidence site')
+        path = ContactPath(branch.get('contact_path'))
+    except (ValueError, TypeError) as error:
+        raise ValueError('defence response requires bound branch and success-result sites') from error
+    for event in (branch, result):
+        if (event.get('attacker') != 'player' or event.get('defender') != 'opponent'
+                or type(event.get('frame')) is not int or event['frame'] < 0):
+            raise ValueError('defence response requires bound player/opponent identities and update')
+    before, after = branch.get('state') or {}, result.get('state') or {}
+    if (branch['frame'] != result['frame'] or type(before.get('world')) is not int
+            or before['world'] != after.get('world')):
+        raise ValueError('defence response changed update or world')
+    if type(result.get('result')) is not int or result['result'] != 1:
+        raise ValueError('defence response requires observed success-result one')
+    for owner in ('player', 'opponent'):
+        old, new = before.get(f'{owner}_combat') or {}, after.get(f'{owner}_combat') or {}
+        if (type(old.get('flags')) is not int or not 0 <= old['flags'] <= 255
+                or type(new.get('flags')) is not int or not 0 <= new['flags'] <= 255):
+            raise ValueError('defence response requires bound combat flags')
+        expected = old['flags'] & ~3
+        if owner == 'opponent':
+            expected ^= 8
+            if (not old['flags'] & 2 or type(old.get('contact_radius_q8')) is not int
+                    or old['contact_radius_q8'] != 0):
+                raise ValueError('zero-radius defence branch lacks counter intent or radius binding')
+        elif (type(old.get('action')) is not int or old['action'] in (-1, 9)
+              or type(old.get('reverse')) is not int or old['reverse'] != 1
+              or type(new.get('reverse')) is not int or new['reverse'] != 1):
+            raise ValueError('defence branch requires active attacker and observed reverse write')
+        if new['flags'] != expected:
+            raise ValueError(f'{owner} defence flags disagree with intent clear/parity response')
+    gates = ('active_attacker', 'defence_selector', 'defence_window', 'counter_intent',
+             'orientation', 'strict_query_range', 'elevation', 'contact')
+    return dict(frame=branch['frame'], world=before['world'], contact_path=path.value,
+                gates={gate: 'passed_by_executed_branch' for gate in gates},
+                result=1, response='completed')
+
+
 def combat_range_sample(state, previous=None):
     """Body-origin geometry and each actor's signed XYZ motion in Q8 units.
 

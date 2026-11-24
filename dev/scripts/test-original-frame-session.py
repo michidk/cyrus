@@ -75,6 +75,7 @@ class FrameTests(unittest.TestCase):
 
     def test_readback_checks_both_slot_and_frame_without_resuming(self):
         boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.observations = {}
         boundary.stopped, boundary.pid, boundary.base = True, 123, 0
         boundary.config = dict(counter='frame', keys={'ControlLeft': dict(guest_offset=4, reader='keys.0')})
         # Synthetic memory models a documented 16-bit key slot, not an executable.
@@ -101,6 +102,7 @@ class FrameTests(unittest.TestCase):
 
     def test_loader_binding_cannot_be_reported_as_an_ordinary_update(self):
         boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.observations = {}
         boundary.config = dict(boundary_guest_offset=16)
         boundary.active_boundary = 24
         boundary.raw_snapshot = lambda: self.fail('custom boundary mislabeled as ordinary')
@@ -109,6 +111,7 @@ class FrameTests(unittest.TestCase):
 
     def test_pause_stops_only_its_attached_emulator_and_is_idempotent(self):
         boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.observations = {}
         boundary.attached, boundary.stopped, boundary.pid = True, False, 123
         waits = []
         def wait(timeout):
@@ -126,6 +129,7 @@ class FrameTests(unittest.TestCase):
 
     def test_boundary_rebinding_is_stopped_and_does_not_resume_execution(self):
         boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.observations = {}
         boundary.stopped, boundary.base = True, 4096
         calls = []
         boundary.ptrace = lambda *args: calls.append(args)
@@ -144,6 +148,7 @@ class FrameTests(unittest.TestCase):
         import json
         from types import SimpleNamespace
         boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.observations = {}
         calls = []
         raw = dict(frame=8, world=2, actors=[], flags={'test': 1}, prompts=['test'],
                    timing={'consumed': 32}, keys=[1])
@@ -250,6 +255,77 @@ class ActorObservation(unittest.TestCase):
         def no_old_read(pointer):
             self.fail('read an allocation from the preceding world')
         self.assertEqual(observer.observe(1, [], no_old_read), [])
+
+
+class WriteObservationTests(unittest.TestCase):
+    def backend(self, stops):
+        session = object.__new__(watchpoint.Watchpoint)
+        session.base, session.stopped, session.observations = 4096, True, {}
+        session.calls, session.registers = [], {}
+        session.registers[848 + 7 * 8] = 1 | (1 << 16) | (3 << 18)
+        def ptrace(op, offset=0, value=0):
+            session.calls.append((op, offset, value))
+            if op == 3: return session.registers.get(offset, 0)
+            if op == 6: session.registers[offset] = value
+        session.ptrace = ptrace
+        def wait(timeout):
+            import signal
+            session.stopped = True
+            session.registers[848 + 6 * 8] = stops.pop(0)
+            return signal.SIGTRAP
+        session.wait = wait
+        return session
+
+    def test_mid_update_write_is_observed_without_becoming_an_ordinary_boundary(self):
+        session = self.backend([2, 1])
+        seen = []
+        session.observe_write(1, 33, 1, lambda: seen.append(session.stopped))
+        session.next_boundary(2)
+        self.assertEqual(seen, [True])
+        self.assertEqual(sum(c[0] == 7 for c in session.calls), 2)
+        self.assertTrue(session.stopped)
+
+    def test_observer_can_bind_result_write_and_simultaneous_frame_stop_is_retained(self):
+        session = self.backend([2, 5])
+        seen = []
+        session.observe_write(1, 33, 1, lambda: session.observe_write(2, 40, 4, lambda: seen.append('result')))
+        session.next_boundary(2)
+        self.assertEqual(seen, ['result'])
+        self.assertEqual(sum(c[0] == 7 for c in session.calls), 2)
+
+    def test_completed_result_observer_disarms_before_stack_slot_reuse(self):
+        session = self.backend([2, 1])
+        seen = []
+        def result():
+            seen.append('complete')
+            session.stop_observing_write(1)
+        session.observe_write(1, 32, 4, result)
+        session.next_boundary(2)
+        self.assertEqual(seen, ['complete'])
+        self.assertEqual(session.observations, {})
+        self.assertEqual(session.registers[848 + 7 * 8], 1 | (1 << 16) | (3 << 18))
+
+    def test_unbound_stop_or_observation_budget_exhaustion_rejects(self):
+        session = self.backend([4])
+        with self.assertRaisesRegex(RuntimeError, 'unidentified'):
+            session.next_boundary(2)
+        session = self.backend([2, 2])
+        session.observe_write(1, 33, 1, lambda: None)
+        with self.assertRaisesRegex(RuntimeError, 'budget'):
+            session.next_boundary(2, max_observations=1)
+        self.assertTrue(session.stopped)
+
+    def test_invalid_bindings_and_callback_failure_leave_emulator_stopped(self):
+        session = self.backend([])
+        for slot, offset, size in [(0, 32, 4), (4, 32, 4), (1, 33, 4), (1, -1, 1), (1, 32, 3)]:
+            with self.subTest(binding=(slot, offset, size)), self.assertRaises(ValueError):
+                session.observe_write(slot, offset, size, lambda: None)
+        session = self.backend([2])
+        def fail(): raise ValueError('lost actor identity')
+        session.observe_write(1, 33, 1, fail)
+        with self.assertRaisesRegex(ValueError, 'identity'):
+            session.next_boundary(2)
+        self.assertTrue(session.stopped)
 
 
 if __name__ == '__main__':

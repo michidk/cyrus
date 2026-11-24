@@ -1208,6 +1208,28 @@ also does not prove those outcomes.
 The result records the input key and release boundary, and control or opponent
 reveal/combat admission loss during a tap rejects it and releases the key.
 
+For instruction-bound defence attribution, `Watchpoint.observe_write` can reserve
+spare slots for a local observer while `FrameSession` keeps consecutive ordinary
+boundaries. Observation stops invoke callbacks while paused; they do not become
+completed frames. Callbacks can bind a follow-up result write and must disarm
+transient storage with `stop_observing_write` once it completes. All observations
+share the caller's deadline and a bounded per-update stop budget. Unknown stops
+and callback errors reject the run, leaving the process stopped for key release.
+Guest bindings and call-frame/actor identity validation stay in local tooling.
+
+`defence_admission_sample` reports active action, matching pending defence,
+current-motion command window and counter intent in service order. A missing
+binding remains unobserved; later gates are not reached. Passing those state
+checks leaves contact unobserved until a separate contact witness exists.
+
+`defence_response_evidence` requires the bound successful hit-defence reverse
+write and the same call's success-result write. It validates intent consumption,
+defender parity toggle and retained reverse playback. Its individual gate labels
+mean passed by the executed branch, not measured numeric helper returns. An
+ordinary reverse-byte change, contact mark or health sample cannot substitute
+for those bound sites. The helper supports the zero-radius range path; other
+contact paths require their own explicit observation support.
+
 The ordinary `actors` list is view-centered, not a world registry. Cinematic
 camera movement can exclude a living opponent. A reader may supply independent
 `observed_actors` bound to a retained actor identity; the fight projection keeps
