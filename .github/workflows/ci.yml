@@ -63,21 +63,20 @@ jobs:
           shared-key: test
           cache-workspace-crates: true
 
+      - name: Check test executable collection
+        run: python3 -B dev/scripts/test-collect-test-executable.py
+
       - name: Test
         env:
           RUST_MIN_STACK: 8388608
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --message-format=json | tee "$RUNNER_TEMP/test-messages.jsonl"
 
       - name: Preserve install-backed session regression executable
         run: |
           mkdir -p "$RUNNER_TEMP/original-runtime-test"
-          for executable in target/debug/deps/original_runtime-*; do
-            if [[ -f "$executable" && -x "$executable" ]]; then
-              cp "$executable" "$RUNNER_TEMP/original-runtime-test/original-runtime-test"
-              break
-            fi
-          done
-          test -x "$RUNNER_TEMP/original-runtime-test/original-runtime-test"
+          python3 dev/scripts/collect-test-executable.py \
+            "$RUNNER_TEMP/test-messages.jsonl" original_runtime \
+            "$RUNNER_TEMP/original-runtime-test/original-runtime-test"
           git rev-parse HEAD > "$RUNNER_TEMP/original-runtime-test/source-sha.txt"
           sha256sum "$RUNNER_TEMP/original-runtime-test/original-runtime-test" > "$RUNNER_TEMP/original-runtime-test/executable-sha256.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
