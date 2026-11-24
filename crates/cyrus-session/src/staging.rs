@@ -55,25 +55,7 @@ impl SessionEntityStage {
                 saved.insert(binding.saved_entity()),
                 "session staging saved entity duplicated"
             );
-            let name = match binding.role() {
-                "map" => Some(crate::entities::map_node_name(
-                    binding.actor().index,
-                    binding.name(),
-                )),
-                // The host player entity is bound to the selected role: CYRUS, or GREMLIN while
-                // the swap state is set. The other role has a standalone entity.
-                "player" | "alternate_player" => {
-                    if binding.saved_entity() == snapshot.player.entity {
-                        players += 1;
-                    }
-                    None
-                }
-                "camera" => None,
-                role => anyhow::bail!(
-                    "session staging actor {}: unsupported role {role}",
-                    binding.name()
-                ),
-            };
+            let name = staging_name(binding, snapshot.player.entity, &mut players)?;
             let target = if scene.is_some()
                 && let Some(name) = &name
             {
@@ -186,4 +168,31 @@ impl SessionEntityStage {
             }
         }
     }
+}
+
+fn staging_name(
+    binding: &crate::EntityBindingSnapshot,
+    selected: u64,
+    players: &mut usize,
+) -> Result<Option<String>> {
+    let name = match binding.role() {
+        "map" => Some(crate::entities::map_node_name(
+            binding.actor().index,
+            binding.name(),
+        )),
+        // The host player entity is bound to the selected role: CYRUS, or GREMLIN while
+        // the swap state is set. The other role has a standalone entity.
+        "player" | "alternate_player" => {
+            if binding.saved_entity() == selected {
+                *players += 1;
+            }
+            None
+        }
+        "camera" => None,
+        role => anyhow::bail!(
+            "session staging actor {}: unsupported role {role}",
+            binding.name()
+        ),
+    };
+    Ok(name)
 }
