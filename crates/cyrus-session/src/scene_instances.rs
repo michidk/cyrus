@@ -11,6 +11,11 @@ use bevy::{
 };
 use cyrus_world::lifecycle::PreparedWorld;
 
+type ModelPaths = (
+    Option<bevy::asset::AssetPath<'static>>,
+    Vec<(u64, bevy::asset::AssetPath<'static>)>,
+);
+
 /// Owns hidden world/model roots and an inactive camera while assets instantiate.
 /// Texture, terrain, sky and actor binding preparation follow instance readiness.
 pub struct SessionSceneInstances {
@@ -105,6 +110,71 @@ impl SessionSceneInstances {
                 .is_none_or(|id| id == snapshot.current_world()),
             "session scene staging current world differs"
         );
+        let (model_path, actor_paths) = Self::model_paths(snapshot, prepared, recipes)?;
+        let server = world
+            .get_resource::<AssetServer>()
+            .context("session scene staging asset server absent")?
+            .clone();
+        let scene: Handle<WorldAsset> =
+            server.load(GltfAssetLabel::Scene(0).from_asset(prepared.scene_path.clone()));
+        let model: Option<Handle<WorldAsset>> =
+            model_path.map(|path| server.load(GltfAssetLabel::Scene(0).from_asset(path)));
+        let actor_assets: Vec<(u64, Handle<WorldAsset>)> = actor_paths
+            .into_iter()
+            .map(|(entity, path)| {
+                (
+                    entity,
+                    server.load(GltfAssetLabel::Scene(0).from_asset(path)),
+                )
+            })
+            .collect();
+        let root = Self::spawn_model_root(world, &scene);
+        let model_root = model
+            .as_ref()
+            .map(|handle| Self::spawn_model_root(world, handle));
+        let actor_models = actor_assets
+            .iter()
+            .map(|(entity, handle)| (*entity, Self::spawn_model_root(world, handle)))
+            .collect();
+        let camera = world
+            .spawn((
+                StagedSessionEntity,
+                Camera3d::default(),
+                Camera {
+                    is_active: false,
+                    ..Default::default()
+                },
+            ))
+            .id();
+        Ok(Self {
+            root,
+            model: model_root,
+            actor_models,
+            camera,
+            assets: std::iter::once(scene)
+                .chain(model)
+                .chain(actor_assets.into_iter().map(|(_, asset)| asset))
+                .collect(),
+            sky: None,
+            sky_images: None,
+        })
+    }
+    fn spawn_model_root(world: &mut World, handle: &Handle<WorldAsset>) -> Entity {
+        world
+            .spawn((
+                StagedSessionEntity,
+                cyrus_render::persistence::StagedRenderRoot,
+                WorldAssetRoot(handle.clone()),
+                Transform::default(),
+                Visibility::Hidden,
+            ))
+            .id()
+    }
+    fn model_paths(
+        snapshot: &RuntimeSessionSnapshot,
+        prepared: &PreparedWorld,
+        recipes: Option<&crate::OriginalRenderRecipes>,
+    ) -> Result<ModelPaths> {
         let (model_path, actor_paths) = if let Some(recipes) = recipes {
             use cyrus_render::player_model::PlayerModelSnapshot;
             let model = recipes
@@ -141,82 +211,7 @@ impl SessionSceneInstances {
                 .collect::<Result<Vec<_>>>()?;
             (model, actors)
         };
-        let server = world
-            .get_resource::<AssetServer>()
-            .context("session scene staging asset server absent")?
-            .clone();
-        let scene: Handle<WorldAsset> =
-            server.load(GltfAssetLabel::Scene(0).from_asset(prepared.scene_path.clone()));
-        let model: Option<Handle<WorldAsset>> =
-            model_path.map(|path| server.load(GltfAssetLabel::Scene(0).from_asset(path)));
-        let actor_assets: Vec<(u64, Handle<WorldAsset>)> = actor_paths
-            .into_iter()
-            .map(|(entity, path)| {
-                (
-                    entity,
-                    server.load(GltfAssetLabel::Scene(0).from_asset(path)),
-                )
-            })
-            .collect();
-        let root = world
-            .spawn((
-                StagedSessionEntity,
-                cyrus_render::persistence::StagedRenderRoot,
-                WorldAssetRoot(scene.clone()),
-                Transform::default(),
-                Visibility::Hidden,
-            ))
-            .id();
-        let model_root = model.as_ref().map(|handle| {
-            world
-                .spawn((
-                    StagedSessionEntity,
-                    cyrus_render::persistence::StagedRenderRoot,
-                    WorldAssetRoot(handle.clone()),
-                    Transform::default(),
-                    Visibility::Hidden,
-                ))
-                .id()
-        });
-        let actor_models = actor_assets
-            .iter()
-            .map(|(entity, handle)| {
-                (
-                    *entity,
-                    world
-                        .spawn((
-                            StagedSessionEntity,
-                            cyrus_render::persistence::StagedRenderRoot,
-                            WorldAssetRoot(handle.clone()),
-                            Transform::default(),
-                            Visibility::Hidden,
-                        ))
-                        .id(),
-                )
-            })
-            .collect();
-        let camera = world
-            .spawn((
-                StagedSessionEntity,
-                Camera3d::default(),
-                Camera {
-                    is_active: false,
-                    ..Default::default()
-                },
-            ))
-            .id();
-        Ok(Self {
-            root,
-            model: model_root,
-            actor_models,
-            camera,
-            assets: std::iter::once(scene)
-                .chain(model)
-                .chain(actor_assets.into_iter().map(|(_, asset)| asset))
-                .collect(),
-            sky: None,
-            sky_images: None,
-        })
+        Ok((model_path, actor_paths))
     }
     /// Describe the exact loaded logical model sources without advancing actors or animations.
     /// Root-local identity and inherited visibility match ordinary frame-source replacement;

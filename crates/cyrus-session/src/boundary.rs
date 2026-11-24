@@ -288,24 +288,7 @@ fn execute_at(world: &mut World, original_boundary: bool) {
     let started = Instant::now();
     let live_capture = matches!(&request, Request::CaptureLive);
     let result = match request {
-        Request::CaptureLive => {
-            cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
-            world
-                .resource::<crate::SessionSourceCatalog>()
-                .for_capture(world)
-                .and_then(|sources| {
-                    let sources = sources
-                        .sources(world)?
-                        .context("session capture sources still loading")?;
-                    let hud = cyrus_render::hud::bound_asset(world)
-                        .context("session capture bound HUD asset absent")?;
-                    RuntimeSessionSnapshot::capture(world, &sources, hud)
-                })
-                .map(|snapshot| {
-                    info!("session capture: snapshot built in {:?}", started.elapsed());
-                    SessionBoundaryResult::Captured(Box::new(snapshot))
-                })
-        }
+        Request::CaptureLive => capture_live(world, started),
         Request::Capture(sources, hud) => {
             cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
             capture(world, &sources, &hud)
@@ -342,6 +325,25 @@ fn execute_at(world: &mut World, original_boundary: bool) {
         return;
     }
     world.resource_mut::<SessionBoundary>().result = Some(result);
+}
+
+fn capture_live(world: &mut World, started: Instant) -> Result<SessionBoundaryResult> {
+    cyrus_audio::sound::persistence::SamplePlaybackSnapshot::reclaim_finished(world);
+    world
+        .resource::<crate::SessionSourceCatalog>()
+        .for_capture(world)
+        .and_then(|sources| {
+            let sources = sources
+                .sources(world)?
+                .context("session capture sources still loading")?;
+            let hud = cyrus_render::hud::bound_asset(world)
+                .context("session capture bound HUD asset absent")?;
+            RuntimeSessionSnapshot::capture(world, &sources, hud)
+        })
+        .map(|snapshot| {
+            info!("session capture: snapshot built in {:?}", started.elapsed());
+            SessionBoundaryResult::Captured(Box::new(snapshot))
+        })
 }
 
 fn capture_pending(error: &anyhow::Error) -> bool {

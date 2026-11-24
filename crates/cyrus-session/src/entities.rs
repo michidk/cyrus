@@ -408,7 +408,7 @@ pub(super) fn prepare_original_projection(
     models: &[(Entity, Entity)],
     world: &World,
 ) -> Result<Vec<OriginalProjection>> {
-    use bevy::prelude::{ChildOf, Children, GlobalTransform, Mat4};
+    use bevy::prelude::{ChildOf, GlobalTransform, Mat4};
     let mut projected: Vec<OriginalProjection> = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     let selected = bindings
@@ -457,46 +457,63 @@ pub(super) fn prepare_original_projection(
                 .copied()
                 .unwrap_or_default()
         };
-        let mut pending = vec![(
+        project_original_subtree(
             binding.entity,
             parent * GlobalTransform::from(Mat4::from(affine)),
-        )];
-        while let Some((entity, global)) = pending.pop() {
-            ensure!(
-                seen.insert(entity),
-                "original runtime projection has overlapping actor/model owners"
-            );
-            ensure!(
-                global.to_matrix().is_finite(),
-                "original runtime entity {entity:?} affine is nonfinite"
-            );
-            projected.push(OriginalProjection {
-                entity,
-                global,
-                parent: world.get::<ChildOf>(entity).map(ChildOf::parent),
-                local: world.get::<Transform>(entity).cloned(),
-            });
-            let children = world
-                .get::<Children>(entity)
-                .into_iter()
-                .flat_map(|children| children.iter().copied())
-                .chain(
-                    models
-                        .iter()
-                        .filter(|(_, parent)| *parent == entity)
-                        .map(|(root, _)| *root),
-                );
-            for child in children {
-                let local = world.get::<Transform>(child).with_context(|| {
-                    format!("original runtime child {child:?} local transform absent")
-                })?;
-                ensure!(
-                    local.to_matrix().is_finite(),
-                    "original runtime child {child:?} local transform is nonfinite"
-                );
-                pending.push((child, global * *local));
-            }
-        }
+            models,
+            world,
+            &mut seen,
+            &mut projected,
+        )?;
     }
     Ok(projected)
+}
+
+fn project_original_subtree(
+    root: Entity,
+    global: bevy::prelude::GlobalTransform,
+    models: &[(Entity, Entity)],
+    world: &World,
+    seen: &mut std::collections::BTreeSet<Entity>,
+    projected: &mut Vec<OriginalProjection>,
+) -> Result<()> {
+    use bevy::prelude::{ChildOf, Children};
+    let mut pending = vec![(root, global)];
+    while let Some((entity, global)) = pending.pop() {
+        ensure!(
+            seen.insert(entity),
+            "original runtime projection has overlapping actor/model owners"
+        );
+        ensure!(
+            global.to_matrix().is_finite(),
+            "original runtime entity {entity:?} affine is nonfinite"
+        );
+        projected.push(OriginalProjection {
+            entity,
+            global,
+            parent: world.get::<ChildOf>(entity).map(ChildOf::parent),
+            local: world.get::<Transform>(entity).cloned(),
+        });
+        let children = world
+            .get::<Children>(entity)
+            .into_iter()
+            .flat_map(|children| children.iter().copied())
+            .chain(
+                models
+                    .iter()
+                    .filter(|(_, parent)| *parent == entity)
+                    .map(|(root, _)| *root),
+            );
+        for child in children {
+            let local = world.get::<Transform>(child).with_context(|| {
+                format!("original runtime child {child:?} local transform absent")
+            })?;
+            ensure!(
+                local.to_matrix().is_finite(),
+                "original runtime child {child:?} local transform is nonfinite"
+            );
+            pending.push((child, global * *local));
+        }
+    }
+    Ok(())
 }

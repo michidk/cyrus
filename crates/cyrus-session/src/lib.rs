@@ -110,21 +110,21 @@ struct PlayerSnapshot {
 }
 
 enum RuntimeLogicalPlan<'a> {
-    Restore(LogicalSessionRestorePlan<'a>),
+    Restore(Box<LogicalSessionRestorePlan<'a>>),
     #[cfg(feature = "original-save-import")]
-    Original(LogicalSessionCandidate),
+    Original(Box<LogicalSessionCandidate>),
 }
 impl RuntimeLogicalPlan<'_> {
     fn finish(self, samples: &BTreeMap<u8, u8>) -> Result<LogicalSessionCandidate> {
         match self {
-            Self::Restore(plan) => plan.finish(samples),
+            Self::Restore(plan) => (*plan).finish(samples),
             #[cfg(feature = "original-save-import")]
             Self::Original(candidate) => {
                 ensure!(
                     samples.iter().all(|(old, new)| old == new),
                     "original runtime sample slots changed after logical validation"
                 );
-                Ok(candidate)
+                Ok(*candidate)
             }
         }
     }
@@ -725,7 +725,7 @@ impl RuntimeSessionSnapshot {
             "session saved player actor absent from world census"
         );
         Ok(self.assemble_plan(
-            RuntimeLogicalPlan::Restore(logical),
+            RuntimeLogicalPlan::Restore(Box::new(logical)),
             source_identities,
             world,
             None,

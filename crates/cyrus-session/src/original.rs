@@ -51,6 +51,33 @@ impl RuntimeSessionSnapshot {
             .as_ref()
             .context("original runtime current world absent")?;
         let source = &sources[&current.world];
+        let recipes = self.prepare_original_entities(current, source, &aliases)?;
+        self.prepare_original_player(current, &aliases)?;
+        self.dialogue = self.dialogue.for_saved_world()?;
+        self.logical = logical.actors.snapshot_session(
+            sources,
+            &logical.hud,
+            &logical.clock,
+            &logical.random,
+            logical.toggles,
+        )?;
+        // Models are rebuilt only after the exact sidecars have loaded independently.
+        self.player_model = None;
+        self.actor_models.clear();
+        Ok(OriginalRuntimeAdmission {
+            snapshot: self,
+            aliases,
+            recipes,
+            logical,
+            source_identities,
+        })
+    }
+    fn prepare_original_entities(
+        &mut self,
+        current: &cyrus_script::script::ScriptWorld,
+        source: &WorldSnapshotSources<'_>,
+        aliases: &[(ScriptActorId, ScriptActorId)],
+    ) -> Result<OriginalRenderRecipes> {
         let mut recipes = OriginalRenderRecipes::default();
         let mut represented = std::collections::BTreeSet::new();
         for binding in &mut self.entity_bindings {
@@ -107,6 +134,14 @@ impl RuntimeSessionSnapshot {
                 actor.name()
             );
         }
+        Ok(recipes)
+    }
+
+    fn prepare_original_player(
+        &mut self,
+        current: &cyrus_script::script::ScriptWorld,
+        aliases: &[(ScriptActorId, ScriptActorId)],
+    ) -> Result<()> {
         let player = current
             .selected_player()
             .context("original runtime player absent")?;
@@ -144,24 +179,7 @@ impl RuntimeSessionSnapshot {
             let frame = cyrus_script::script::CameraFrameState::from_original_world(current)?;
             self.camera = Some(camera.with_logical_view(&frame, current.generation())?);
         }
-        self.dialogue = self.dialogue.for_saved_world()?;
-        self.logical = logical.actors.snapshot_session(
-            sources,
-            &logical.hud,
-            &logical.clock,
-            &logical.random,
-            logical.toggles,
-        )?;
-        // Models are rebuilt only after the exact sidecars have loaded independently.
-        self.player_model = None;
-        self.actor_models.clear();
-        Ok(OriginalRuntimeAdmission {
-            snapshot: self,
-            aliases,
-            recipes,
-            logical,
-            source_identities,
-        })
+        Ok(())
     }
 }
 
@@ -201,7 +219,7 @@ impl OriginalRuntimeAdmission {
         );
         let world = self.snapshot.current_world();
         Ok(self.snapshot.assemble_plan(
-            RuntimeLogicalPlan::Original(self.logical),
+            RuntimeLogicalPlan::Original(Box::new(self.logical)),
             identities,
             world,
             Some(self.aliases),

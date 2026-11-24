@@ -45,27 +45,7 @@ impl SessionEntityStage {
             snapshot.sky.is_some() == scene.is_some(),
             "session entity staging rendered scene census differs"
         );
-        let mut nodes: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
-        if let Some(scene) = scene {
-            scene.validate(world)?;
-            let mut pending = vec![scene.root()];
-            let mut seen = BTreeSet::new();
-            while let Some(entity) = pending.pop() {
-                ensure!(
-                    seen.insert(entity),
-                    "session staging scene hierarchy repeats an entity"
-                );
-                if let Some(name) = world.get::<Name>(entity) {
-                    nodes
-                        .entry(name.as_str().to_owned())
-                        .or_default()
-                        .push(entity);
-                }
-                if let Some(children) = world.get::<Children>(entity) {
-                    pending.extend(children.iter());
-                }
-            }
-        }
+        let nodes = Self::scene_nodes(scene, world)?;
         let mut saved = BTreeSet::new();
         let mut targets = BTreeSet::new();
         let mut choices = Vec::new();
@@ -128,6 +108,14 @@ impl SessionEntityStage {
             );
             choices.push((source.saved_entity, None, None));
         }
+        Ok(Self::allocate(snapshot, choices, world))
+    }
+
+    fn allocate(
+        snapshot: &RuntimeSessionSnapshot,
+        choices: Vec<(u64, Option<String>, Option<Entity>)>,
+        world: &mut World,
+    ) -> Self {
         let mut bindings = Vec::with_capacity(choices.len());
         let mut owned = Vec::new();
         let mut player = None;
@@ -146,11 +134,39 @@ impl SessionEntityStage {
             }
             bindings.push((saved, entity));
         }
-        Ok(Self {
+        Self {
             bindings,
             player: player.expect("validated selected player"),
             owned,
-        })
+        }
+    }
+
+    fn scene_nodes(
+        scene: Option<&SceneCandidate>,
+        world: &World,
+    ) -> Result<BTreeMap<String, Vec<Entity>>> {
+        let mut nodes: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
+        if let Some(scene) = scene {
+            scene.validate(world)?;
+            let mut pending = vec![scene.root()];
+            let mut seen = BTreeSet::new();
+            while let Some(entity) = pending.pop() {
+                ensure!(
+                    seen.insert(entity),
+                    "session staging scene hierarchy repeats an entity"
+                );
+                if let Some(name) = world.get::<Name>(entity) {
+                    nodes
+                        .entry(name.as_str().to_owned())
+                        .or_default()
+                        .push(entity);
+                }
+                if let Some(children) = world.get::<Children>(entity) {
+                    pending.extend(children.iter());
+                }
+            }
+        }
+        Ok(nodes)
     }
 
     pub fn bindings(&self) -> &[(u64, Entity)] {

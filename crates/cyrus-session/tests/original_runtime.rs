@@ -168,137 +168,12 @@ fn retained_runtime_import_preserves_late_rejection_and_reaches_first_service_up
                 .context("models absent")?,
         )?;
         prior.initialize_player_animation(player, &animations[&id], 0, &mut |_| Ok(()))?;
-        let mut app = App::new();
-        app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
-            .init_asset::<Panned>()
-            .init_asset::<AudioSource>()
-            .init_asset::<DialogueClip>()
-            .init_asset::<HudAsset>()
-            .init_asset::<Scripts>()
-            .init_asset::<Animations>()
-            .init_asset::<PlayerScene>();
-        let script_handle = app.world_mut().resource_mut::<Assets<Scripts>>().add(
-            serde_json::from_slice::<Scripts>(&serde_json::to_vec(&scripts[&id])?)?,
-        );
-        let animation =
-            app.world_mut()
-                .resource_mut::<Assets<Animations>>()
-                .add(serde_json::from_slice::<Animations>(&serde_json::to_vec(
-                    &animations[&id],
-                )?)?);
-        let mut loaded_worlds = BTreeMap::new();
-        for (&world, source) in &sources {
-            let sh = if world == id {
-                script_handle.clone()
-            } else {
-                app.world_mut()
-                    .resource_mut::<Assets<Scripts>>()
-                    .add(serde_json::from_slice::<Scripts>(&serde_json::to_vec(
-                        source.scripts,
-                    )?)?)
-            };
-            let ah = if world == id {
-                animation.clone()
-            } else {
-                app.world_mut()
-                    .resource_mut::<Assets<Animations>>()
-                    .add(serde_json::from_slice::<Animations>(&serde_json::to_vec(
-                        source.animations,
-                    )?)?)
-            };
-            let ph = app
-                .world_mut()
-                .resource_mut::<Assets<PlayerScene>>()
-                .add(PlayerScene::decode(&player_bytes[&world])?);
-            loaded_worlds.insert(
-                world,
-                (
-                    cyrus_world::lifecycle::PreparedWorld {
-                        requested_name: world.to_string(),
-                        world: Some(world),
-                        scripts: sh,
-                        animations: ah,
-                        player_path: format!("{world}.player").into(),
-                        scene_path: format!("{world}.glb").into(),
-                        environment_path: format!("{world}.environment").into(),
-                    },
-                    ph,
-                ),
-            );
-        }
-        let (prepared, scene) = loaded_worlds[&id].clone();
-        let mut registry = ScriptActors::default();
-        registry.current = Some(prior);
-        let logical_hud = ScriptHud::default();
-        logical_hud.configure(&hud, &preferences);
-        app.insert_resource(registry)
-            .insert_resource(logical_hud)
-            .insert_resource(cyrus_script::clock::SimulationClock::new(
-                scripts[&id].clock,
-            )?)
-            .insert_resource(EngineRandom::from_state(12345))
-            .insert_resource(PlayerToggles {
-                walk_mode: false,
-                auto_defend: true,
-            })
-            .insert_resource(PlayerRuntime::default())
-            .insert_resource(MarkerEntry::default())
-            .insert_resource(State::new(cyrus_game::AppState::InGame))
-            .insert_resource(prepared.clone())
-            .insert_resource(cyrus_world::lifecycle::CurrentScene {
-                name: id.to_string(),
-                world: Some(id),
-            })
-            .insert_resource(cyrus_world::lifecycle::SceneRequest(id.to_string()))
-            .insert_resource(cyrus_script::player::data::PlayerSceneRequest(
-                scene.clone(),
-            ))
-            .insert_resource(cyrus_world::animation::AnimationRequest(animation.clone()))
-            .init_resource::<cyrus_audio::music::Music>();
-        let owners = app
-            .world()
-            .resource::<ScriptActors>()
-            .current
-            .as_ref()
-            .unwrap()
-            .actors()
-            .iter()
-            .enumerate()
-            .filter(|(_, actor)| !matches!(actor.source, ScriptActorSource::Shell(_)))
-            .map(|(index, actor)| {
-                (
-                    index,
-                    actor.name().to_owned(),
-                    matches!(actor.source, ScriptActorSource::Map(_)),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (index, name, map) in owners {
-            let mut entity = app.world_mut().spawn((
-                ScriptBinding {
-                    actor: ScriptActorId {
-                        generation: 1,
-                        index,
-                    },
-                    source: animation.clone(),
-                },
-                Transform::default(),
-                Visibility::Inherited,
-            ));
-            if map {
-                entity.insert(Name::new(format!("B_{index:03}_{name}")));
-            }
-            if index == player.index {
-                entity.insert((
-                    Player,
-                    PlayerPose {
-                        position: [0; 3],
-                        heading: 0,
-                    },
-                    PlayerEntrySupport::StaticSettled,
-                ));
-            }
-        }
+        let HostFixture {
+            mut app,
+            scene,
+            animation,
+            loaded_worlds,
+        } = prepare_host(prior, &sources, &player_bytes, &hud, &preferences, id)?;
         let snapshot = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud)?;
         let before = serde_json::to_value(&snapshot)?;
         let prepare = |snapshot: RuntimeSessionSnapshot| {
@@ -325,81 +200,15 @@ fn retained_runtime_import_preserves_late_rejection_and_reaches_first_service_up
             loaded_worlds.clone(),
             BTreeMap::new(),
         )?;
-        let stage = SessionEntityStage::prepare(admission.snapshot(), None, app.world_mut())?;
-        let replacement = stage.player();
-        let projection_child = app
-            .world_mut()
-            .spawn((
-                Transform::default(),
-                bevy::prelude::GlobalTransform::default(),
-                bevy::prelude::ChildOf(replacement),
-            ))
-            .id();
-        let finish = |admission: OriginalRuntimeAdmission,
-                      stage: &SessionEntityStage,
-                      app: &App|
-         -> Result<_> {
-            let replacement = stage.player();
-            admission
-                .plan(LogicalSessionRestoreInputs {
-                    sources: &sources,
-                    last_generation: 20,
-                    hud: &hud,
-                    preferences: &preferences,
-                    bios_tick: 100,
-                })?
-                .finish(
-                    PlayerReplacement {
-                        entity: replacement,
-                        scene: scene.clone(),
-                        animation: animation.clone(),
-                    },
-                    SessionServices {
-                        sources: retained.clone(),
-                        scene: None,
-                        camera_entity: None,
-                        entities: stage.bindings(),
-                        source_audio: &BTreeMap::new(),
-                        dialogue: RestoredDialogueAssets {
-                            server: app.world().resource::<AssetServer>(),
-                            audio_sources: app.world().resource::<Assets<AudioSource>>(),
-                            loaded: app.world().resource::<Assets<DialogueClip>>(),
-                            clips: &BTreeMap::new(),
-                            requests: &BTreeMap::new(),
-                            hud: None,
-                        },
-                        music_source: None,
-                        hud_asset: &hud,
-                        hud_images: None,
-                        sky_images: None,
-                        render_playback: None,
-                        player_model_root: None,
-                        actor_model_roots: &BTreeMap::new(),
-                        environments: &BTreeMap::new(),
-                    },
-                    app.world(),
-                )
+        let completion = AdmissionCompletion {
+            sources: &sources,
+            hud: &hud,
+            preferences: &preferences,
+            scene: &scene,
+            animation: &animation,
+            retained: &retained,
         };
-        let candidate = finish(admission, &stage, &app)?;
-        // A late host owner disappearance rejects publication before retiring any live actor.
-        app.world_mut().despawn(projection_child);
-        let error = candidate
-            .commit(app.world_mut())
-            .err()
-            .context("late projection target disappearance admitted")?;
-        ensure!(
-            error.to_string().contains("projection target"),
-            "rejected before late projection validation: {error:#}"
-        );
-        assert_eq!(
-            serde_json::to_value(RuntimeSessionSnapshot::capture(
-                app.world(),
-                &sources,
-                &hud
-            )?)?,
-            before
-        );
-        stage.discard(app.world_mut());
+        completion.assert_late_rejection(admission, &mut app, &before)?;
         let admission = prepare(snapshot)?;
         let hud_handle =
             app.world_mut()
@@ -484,92 +293,326 @@ fn retained_runtime_import_preserves_late_rejection_and_reaches_first_service_up
         // Repeat a late rejection with the imported native continuations already live.
         let active_before = serde_json::to_value(&checkpoint)?;
         let admission = prepare(checkpoint)?;
-        let active_stage =
-            SessionEntityStage::prepare(admission.snapshot(), None, app.world_mut())?;
-        let late_child = app
-            .world_mut()
-            .spawn((
-                Transform::default(),
-                bevy::prelude::GlobalTransform::default(),
-                bevy::prelude::ChildOf(active_stage.player()),
-            ))
-            .id();
-        let candidate = finish(admission, &active_stage, &app)?;
-        app.world_mut().despawn(late_child);
-        let error = candidate
-            .commit(app.world_mut())
-            .err()
-            .context("active session admitted a missing projection owner")?;
-        ensure!(
-            error.to_string().contains("projection target"),
-            "active session rejected before late validation: {error:#}"
-        );
-        assert_eq!(
-            serde_json::to_value(RuntimeSessionSnapshot::capture(
-                app.world(),
-                &sources,
-                &hud
-            )?)?,
-            active_before
-        );
-        active_stage.discard(app.world_mut());
-        let world = app
-            .world_mut()
-            .resource_mut::<ScriptActors>()
-            .into_inner()
-            .current
-            .as_mut()
-            .unwrap();
-        let programs = scripts[&id]
-            .actors
-            .values()
-            .map(|actor| {
-                (
-                    cyrus_soup::CodeOrigin(actor.code_origin),
-                    std::sync::Arc::new(actor.program.clone()),
-                )
-            })
-            .collect();
-        let waiting = world
-            .actors()
-            .iter()
-            .enumerate()
-            .find_map(|(index, actor)| {
-                let runtime = actor.runtime()?;
-                let vm = runtime.snapshot(&programs).ok()?;
-                let calls = vm.task_calls().ok()?;
-                (calls.len() == 1
-                    && calls[0].call.function == cyrus_soup::Native::Wait
-                    && runtime.task_slots()[0].4 < u16::MAX)
-                    .then_some(index)
-            })
-            .context("saved native Wait absent")?;
-        let cursor = world.actors()[waiting]
-            .runtime()
-            .unwrap()
-            .program_counter(cyrus_soup::Thread::Main);
-        world.advance(
-            world.id(waiting)?,
-            ScriptStage::Tasks,
-            ScriptInputs {
-                nominal_ticks: Some(1),
-                frame_scale: Some(256),
-                ..Default::default()
-            },
-            Some(&mut |_, _| Ok(())),
-            None,
-            100,
-        )?;
-        assert_eq!(
-            world.actors()[waiting]
-                .runtime()
-                .unwrap()
-                .program_counter(cyrus_soup::Thread::Main),
-            cursor
-        );
+        completion.assert_late_rejection(admission, &mut app, &active_before)?;
+        assert_first_native_update(&mut app, &scripts[&id])?;
         eprintln!(
             "runtime admitted world {id} through first native update without callback reissue"
         );
     }
     Ok(())
+}
+
+type LoadedWorlds = BTreeMap<
+    u32,
+    (
+        cyrus_world::lifecycle::PreparedWorld,
+        bevy::prelude::Handle<PlayerScene>,
+    ),
+>;
+struct HostFixture {
+    app: App,
+    scene: bevy::prelude::Handle<PlayerScene>,
+    animation: bevy::prelude::Handle<Animations>,
+    loaded_worlds: LoadedWorlds,
+}
+
+fn prepare_host(
+    prior: ScriptWorld,
+    sources: &BTreeMap<u32, WorldSnapshotSources<'_>>,
+    player_bytes: &BTreeMap<u32, Vec<u8>>,
+    hud: &HudAsset,
+    preferences: &Preferences,
+    id: u32,
+) -> Result<HostFixture> {
+    let player = prior.selected_player().context("prior player absent")?;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
+        .init_asset::<Panned>()
+        .init_asset::<AudioSource>()
+        .init_asset::<DialogueClip>()
+        .init_asset::<HudAsset>()
+        .init_asset::<Scripts>()
+        .init_asset::<Animations>()
+        .init_asset::<PlayerScene>();
+    let script_handle =
+        app.world_mut()
+            .resource_mut::<Assets<Scripts>>()
+            .add(serde_json::from_slice::<Scripts>(&serde_json::to_vec(
+                sources[&id].scripts,
+            )?)?);
+    let animation =
+        app.world_mut()
+            .resource_mut::<Assets<Animations>>()
+            .add(serde_json::from_slice::<Animations>(&serde_json::to_vec(
+                sources[&id].animations,
+            )?)?);
+    let mut loaded_worlds = BTreeMap::new();
+    for (&world, source) in sources {
+        let sh = if world == id {
+            script_handle.clone()
+        } else {
+            app.world_mut().resource_mut::<Assets<Scripts>>().add(
+                serde_json::from_slice::<Scripts>(&serde_json::to_vec(source.scripts)?)?,
+            )
+        };
+        let ah = if world == id {
+            animation.clone()
+        } else {
+            app.world_mut()
+                .resource_mut::<Assets<Animations>>()
+                .add(serde_json::from_slice::<Animations>(&serde_json::to_vec(
+                    source.animations,
+                )?)?)
+        };
+        let ph = app
+            .world_mut()
+            .resource_mut::<Assets<PlayerScene>>()
+            .add(PlayerScene::decode(&player_bytes[&world])?);
+        loaded_worlds.insert(
+            world,
+            (
+                cyrus_world::lifecycle::PreparedWorld {
+                    requested_name: world.to_string(),
+                    world: Some(world),
+                    scripts: sh,
+                    animations: ah,
+                    player_path: format!("{world}.player").into(),
+                    scene_path: format!("{world}.glb").into(),
+                    environment_path: format!("{world}.environment").into(),
+                },
+                ph,
+            ),
+        );
+    }
+    let (prepared, scene) = loaded_worlds[&id].clone();
+    let mut registry = ScriptActors::default();
+    registry.current = Some(prior);
+    let logical_hud = ScriptHud::default();
+    logical_hud.configure(hud, preferences);
+    app.insert_resource(registry)
+        .insert_resource(logical_hud)
+        .insert_resource(cyrus_script::clock::SimulationClock::new(
+            sources[&id].scripts.clock,
+        )?)
+        .insert_resource(EngineRandom::from_state(12345))
+        .insert_resource(PlayerToggles {
+            walk_mode: false,
+            auto_defend: true,
+        })
+        .insert_resource(PlayerRuntime::default())
+        .insert_resource(MarkerEntry::default())
+        .insert_resource(State::new(cyrus_game::AppState::InGame))
+        .insert_resource(prepared.clone())
+        .insert_resource(cyrus_world::lifecycle::CurrentScene {
+            name: id.to_string(),
+            world: Some(id),
+        })
+        .insert_resource(cyrus_world::lifecycle::SceneRequest(id.to_string()))
+        .insert_resource(cyrus_script::player::data::PlayerSceneRequest(
+            scene.clone(),
+        ))
+        .insert_resource(cyrus_world::animation::AnimationRequest(animation.clone()))
+        .init_resource::<cyrus_audio::music::Music>();
+    let owners = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .unwrap()
+        .actors()
+        .iter()
+        .enumerate()
+        .filter(|(_, actor)| !matches!(actor.source, ScriptActorSource::Shell(_)))
+        .map(|(index, actor)| {
+            (
+                index,
+                actor.name().to_owned(),
+                matches!(actor.source, ScriptActorSource::Map(_)),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (index, name, map) in owners {
+        let mut entity = app.world_mut().spawn((
+            ScriptBinding {
+                actor: ScriptActorId {
+                    generation: 1,
+                    index,
+                },
+                source: animation.clone(),
+            },
+            Transform::default(),
+            Visibility::Inherited,
+        ));
+        if map {
+            entity.insert(Name::new(format!("B_{index:03}_{name}")));
+        }
+        if index == player.index {
+            entity.insert((
+                Player,
+                PlayerPose {
+                    position: [0; 3],
+                    heading: 0,
+                },
+                PlayerEntrySupport::StaticSettled,
+            ));
+        }
+    }
+    Ok(HostFixture {
+        app,
+        scene,
+        animation,
+        loaded_worlds,
+    })
+}
+
+fn assert_first_native_update(app: &mut App, scripts: &Scripts) -> Result<()> {
+    let world = app
+        .world_mut()
+        .resource_mut::<ScriptActors>()
+        .into_inner()
+        .current
+        .as_mut()
+        .unwrap();
+    let programs = scripts
+        .actors
+        .values()
+        .map(|actor| {
+            (
+                cyrus_soup::CodeOrigin(actor.code_origin),
+                std::sync::Arc::new(actor.program.clone()),
+            )
+        })
+        .collect();
+    let waiting = world
+        .actors()
+        .iter()
+        .enumerate()
+        .find_map(|(index, actor)| {
+            let runtime = actor.runtime()?;
+            let vm = runtime.snapshot(&programs).ok()?;
+            let calls = vm.task_calls().ok()?;
+            (calls.len() == 1
+                && calls[0].call.function == cyrus_soup::Native::Wait
+                && runtime.task_slots()[0].4 < u16::MAX)
+                .then_some(index)
+        })
+        .context("saved native Wait absent")?;
+    let cursor = world.actors()[waiting]
+        .runtime()
+        .unwrap()
+        .program_counter(cyrus_soup::Thread::Main);
+    world.advance(
+        world.id(waiting)?,
+        ScriptStage::Tasks,
+        ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        Some(&mut |_, _| Ok(())),
+        None,
+        100,
+    )?;
+    assert_eq!(
+        world.actors()[waiting]
+            .runtime()
+            .unwrap()
+            .program_counter(cyrus_soup::Thread::Main),
+        cursor
+    );
+    Ok(())
+}
+
+struct AdmissionCompletion<'a> {
+    sources: &'a BTreeMap<u32, WorldSnapshotSources<'a>>,
+    hud: &'a HudAsset,
+    preferences: &'a Preferences,
+    scene: &'a bevy::prelude::Handle<PlayerScene>,
+    animation: &'a bevy::prelude::Handle<Animations>,
+    retained: &'a SessionWorldAssets,
+}
+impl AdmissionCompletion<'_> {
+    fn assert_late_rejection(
+        &self,
+        admission: OriginalRuntimeAdmission,
+        app: &mut App,
+        before: &serde_json::Value,
+    ) -> Result<()> {
+        let stage = SessionEntityStage::prepare(admission.snapshot(), None, app.world_mut())?;
+        let child = app
+            .world_mut()
+            .spawn((
+                Transform::default(),
+                bevy::prelude::GlobalTransform::default(),
+                bevy::prelude::ChildOf(stage.player()),
+            ))
+            .id();
+        let candidate = self.finish(admission, &stage, app)?;
+        app.world_mut().despawn(child);
+        let error = candidate
+            .commit(app.world_mut())
+            .err()
+            .context("late projection target disappearance admitted")?;
+        ensure!(
+            error.to_string().contains("projection target"),
+            "rejected before late projection validation: {error:#}"
+        );
+        assert_eq!(
+            &serde_json::to_value(RuntimeSessionSnapshot::capture(
+                app.world(),
+                self.sources,
+                self.hud
+            )?)?,
+            before
+        );
+        stage.discard(app.world_mut());
+        Ok(())
+    }
+    fn finish(
+        &self,
+        admission: OriginalRuntimeAdmission,
+        stage: &SessionEntityStage,
+        app: &App,
+    ) -> Result<RuntimeSessionCandidate> {
+        let replacement = stage.player();
+        admission
+            .plan(LogicalSessionRestoreInputs {
+                sources: self.sources,
+                last_generation: 20,
+                hud: self.hud,
+                preferences: self.preferences,
+                bios_tick: 100,
+            })?
+            .finish(
+                PlayerReplacement {
+                    entity: replacement,
+                    scene: self.scene.clone(),
+                    animation: self.animation.clone(),
+                },
+                SessionServices {
+                    sources: self.retained.clone(),
+                    scene: None,
+                    camera_entity: None,
+                    entities: stage.bindings(),
+                    source_audio: &BTreeMap::new(),
+                    dialogue: RestoredDialogueAssets {
+                        server: app.world().resource::<AssetServer>(),
+                        audio_sources: app.world().resource::<Assets<AudioSource>>(),
+                        loaded: app.world().resource::<Assets<DialogueClip>>(),
+                        clips: &BTreeMap::new(),
+                        requests: &BTreeMap::new(),
+                        hud: None,
+                    },
+                    music_source: None,
+                    hud_asset: self.hud,
+                    hud_images: None,
+                    sky_images: None,
+                    render_playback: None,
+                    player_model_root: None,
+                    actor_model_roots: &BTreeMap::new(),
+                    environments: &BTreeMap::new(),
+                },
+                app.world(),
+            )
+    }
 }
