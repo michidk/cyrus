@@ -44,6 +44,13 @@ that bind everyone are in `AGENTS.md`.
   work directly to `main` and push; no feature branches or pull requests
   unless asked. Other agents work in the same checkout: stage only the files
   your task touched.
+- Preservation fixes and durable facts go directly to its `main` after testing,
+  under the user-authorized upstream workflow. Do not create preservation
+  issues. Keep remaining scope and blockers in Cyrus issues; administrative
+  closure of an old preservation issue is not acceptance. Publish required
+  stable releases and consume them from crates.io. Resumed SOUP2/SOUP4 work
+  follows this policy without retrying failed providers just for notification;
+  retired SOUP3 must remain retired.
 - Consume the latest stable `redguard-preservation` release from crates.io.
   Renovate updates its exact version pin and lockfile. Local checks and CI reject
   Git/path dependencies and source overrides. Unreleased upstream fixes are

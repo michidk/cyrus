@@ -72,17 +72,25 @@ acceptance, status and session claims. The maintainer's agents also follow
    installer links, keys or game files anywhere in the repository.
 7. **Feed findings back to redguard-preservation.** When you find a bug in
    it, a new format or engine fact, documentation that conflicts with what
-   the game data or the original shows, or anything it is missing, open a pull
-   request against [redguard-preservation](https://github.com/michidk/redguard-preservation)
-   with the fix or documented fact. Preservation docs contain only durable
-   format and engine facts, stated directly without verification labels or
+   the game data or the original shows, or anything it is missing, implement and
+   validate the fix or documented fact in redguard-preservation, then push it
+   directly to its `main` under the user-authorized upstream workflow. Do not
+   create issues in `michidk/redguard-preservation`. Track all remaining scope,
+   dependencies and blockers in the owning Cyrus issue, including #364. An
+   administratively closed preservation issue does not establish acceptance.
+   Preservation docs contain only durable format and engine facts, stated
+   directly without verification labels or
    research narrative. Put supporting samples, observation logs, traces,
-   debugger details, and validation-only counts in the pull request or commit.
+   debugger details, and validation-only counts in the commit or owning Cyrus
+   issue.
    Stable counts that are part of the format may remain in the docs as direct
    facts. Keep open questions, investigation plans, and cyrus implementation
    status out of preservation docs. Do not work around a preservation bug
-   silently in cyrus: link the pull request from the cyrus change, and keep any
-   workaround marked until the fix is released.
+   silently in cyrus: link the tested upstream landing commit from the Cyrus
+   change, publish a stable crate through the authorized release workflow, and
+   consume its exact crates.io version. Do not use an upstream issue as a
+   stopping point. This policy also applies to resumed SOUP2/SOUP4 work; do not
+   retry failed providers merely to deliver it, and do not resume retired SOUP3.
 
 These rules govern what ships, not what may be said. That cyrus is informed by
 reverse engineering of the original, and which projects were read, is stated
