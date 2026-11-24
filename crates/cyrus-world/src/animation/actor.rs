@@ -131,6 +131,39 @@ impl ActorAnimation {
         &mut self,
         saved: &rgpre::import::savegame::SaveAnimationPlayback,
     ) -> anyhow::Result<OriginalPlaybackRestore> {
+        self.restore_original_inner(saved, None)
+    }
+
+    /// Restore playback with independently validated selected and previous file
+    /// frame references and the stored default. The host must bind both original
+    /// model allocations against installed data before calling. No command or
+    /// sound is executed, including when the cursor is not a ShowFrame command.
+    /// An invalid group or cursor leaves this receiver unchanged.
+    #[cfg(feature = "original-save-import")]
+    pub fn restore_original_bound(
+        &mut self,
+        saved: &rgpre::import::savegame::SaveAnimationPlayback,
+        selected: Option<u32>,
+        previous: Option<u32>,
+        default: AnimationGroup,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.groups.contains_key(&default),
+            "{} original default group {default}: absent",
+            self.context
+        );
+        self.restore_original_inner(saved, Some(selected))?;
+        self.default = default;
+        self.last_frame = previous;
+        Ok(())
+    }
+
+    #[cfg(feature = "original-save-import")]
+    fn restore_original_inner(
+        &mut self,
+        saved: &rgpre::import::savegame::SaveAnimationPlayback,
+        bound_pose: Option<Option<u32>>,
+    ) -> anyhow::Result<OriginalPlaybackRestore> {
         let current = if saved.current == -1 {
             None
         } else {
@@ -146,7 +179,7 @@ impl ActorAnimation {
             )?
             .with_alternates(Arc::clone(&self.groups));
             let OriginalPlaybackRestore::Restored { frame: reference } =
-                sequence.restore_original(saved)?
+                sequence.restore_original(saved, bound_pose)?
             else {
                 return Ok(OriginalPlaybackRestore::UnsupportedPose);
             };

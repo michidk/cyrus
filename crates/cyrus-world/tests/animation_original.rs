@@ -66,3 +66,64 @@ fn original_header_restores_group_cursor_countdown_and_history_without_cues() {
     );
     assert_eq!(actor.record_field(PlaybackField::SpeedCount).unwrap(), 1);
 }
+
+#[test]
+fn bound_pose_keeps_previous_frame_and_default_through_first_explicit_update() {
+    let data = Animations {
+        version: 2,
+        world: 17,
+        metadata: json!({"actors":[{"script_name":"ACTOR","animation_groups":[
+            {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":88},{"opcode":0,"frame_reference":89},{"opcode":1}]},
+            {"group_index":152,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":1},{"opcode":1}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap();
+    let mut header = [0u8; 37];
+    header[2..4].copy_from_slice(&(-1i16).to_le_bytes());
+    header[7] = 1;
+    let saved = SaveAnimationPlayback::from(&header);
+    actor
+        .restore_original_bound(&saved, Some(88), Some(86), AnimationGroup::from_index(0))
+        .unwrap();
+    assert_eq!(actor.last_frame(), Some(86));
+    assert_eq!(actor.default_group(), AnimationGroup::from_index(0));
+    let before = serde_json::to_value(actor.snapshot()).unwrap();
+    let mut invalid = saved.clone();
+    invalid.frame = 99;
+    assert!(
+        actor
+            .restore_original_bound(&invalid, Some(88), None, AnimationGroup::PANIC)
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(actor.snapshot()).unwrap(), before);
+    let mut cues = Vec::new();
+    assert_eq!(
+        actor
+            .advance_with_sounds(1, &mut |cue| {
+                cues.push(cue);
+                Ok(())
+            })
+            .unwrap(),
+        Some(89)
+    );
+    assert!(cues.is_empty());
+    assert_eq!(
+        actor.last_frame(),
+        Some(86),
+        "the owner advances frame history explicitly"
+    );
+    let mut at_end = saved.clone();
+    at_end.frame = 2;
+    assert_eq!(
+        actor.restore_original(&at_end).unwrap(),
+        OriginalPlaybackRestore::UnsupportedPose
+    );
+    actor
+        .restore_original_bound(&at_end, Some(89), Some(88), AnimationGroup::from_index(0))
+        .unwrap();
+    assert_eq!(actor.record_field(PlaybackField::Frame).unwrap(), 2);
+    assert_eq!(actor.last_frame(), Some(88));
+}

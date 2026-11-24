@@ -188,9 +188,7 @@ impl OriginalSaveSubset {
                 .filter(|object| object.object_id == -2 || object.object_id >= 0)
                 .filter_map(|object| {
                     object.animation_header.as_ref().map(|header| {
-                        let word = |offset| {
-                            i16::from_le_bytes(object.body[offset..offset + 2].try_into().unwrap())
-                        };
+                        let pose = object.pose();
                         OriginalActorPlayback {
                             identity: (object.object_id != -2)
                                 .then_some(object.runtime_identifier() as i16),
@@ -198,11 +196,13 @@ impl OriginalSaveSubset {
                             panic_group: object.attributes.as_ref().map(|attributes| {
                                 attributes[cyrus_soup::Attribute::PanicGroup.index()]
                             }),
-                            default: cyrus_soup::AnimationGroup::from_index(word(0x257) as u16),
-                            model_frame: word(0x24f),
-                            last_model_frame: word(0x253),
-                            model_handle: word(0x251),
-                            last_model_handle: word(0x255),
+                            default: cyrus_soup::AnimationGroup::from_index(
+                                pose.default_group as u16,
+                            ),
+                            model_frame: pose.current.frame,
+                            last_model_frame: pose.previous.frame,
+                            model_handle: pose.current.model_handle,
+                            last_model_handle: pose.previous.model_handle,
                         }
                     })
                 })

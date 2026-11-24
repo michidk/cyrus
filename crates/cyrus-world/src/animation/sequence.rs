@@ -139,16 +139,30 @@ impl FrameSequence {
     pub(super) fn restore_original(
         &mut self,
         saved: &rgpre::import::savegame::SaveAnimationPlayback,
+        bound_pose: Option<Option<u32>>,
     ) -> anyhow::Result<super::actor::OriginalPlaybackRestore> {
         // A retained ShowFrame cursor identifies the selected installed frame
         // without executing sounds, events or transitions during import.
-        let reference = match usize::try_from(saved.frame)
-            .ok()
-            .and_then(|index| self.commands.get(index))
-        {
-            Some(Command::Frame(reference)) => Some(*reference),
-            _ if saved.frame == -1 => None,
-            _ => return Ok(super::actor::OriginalPlaybackRestore::UnsupportedPose),
+        let reference = if let Some(reference) = bound_pose {
+            anyhow::ensure!(
+                saved.frame == -1
+                    || usize::try_from(saved.frame)
+                        .ok()
+                        .is_some_and(|index| index < self.commands.len()),
+                "{} original command {}: outside installed group",
+                self.context,
+                saved.frame
+            );
+            reference
+        } else {
+            match usize::try_from(saved.frame)
+                .ok()
+                .and_then(|index| self.commands.get(index))
+            {
+                Some(Command::Frame(reference)) => Some(*reference),
+                _ if saved.frame == -1 => None,
+                _ => return Ok(super::actor::OriginalPlaybackRestore::UnsupportedPose),
+            }
         };
         self.command = saved.frame;
         self.speed = saved.speed;

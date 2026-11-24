@@ -37,7 +37,11 @@ belongs to `cyrus-soup`, scripted hosts to `cyrus-script`, pose application to
 - With `original-save-import`, `ActorAnimation::restore_original` binds the
   published save playback header to installed commands without executing them.
   A retained ShowFrame cursor restores the selected pose; unsupported cursors
-  leave playback unchanged. The host owns model bindings and saved sound handles.
+  leave playback unchanged. `restore_original_bound` accepts independently
+  validated selected/previous file-frame bindings and the stored default, so a
+  non-ShowFrame cursor does not discard either pose. It validates the complete
+  receiver before mutation and runs no commands. The host owns model allocations,
+  the displayed pose and saved sound handles.
 - Matrix arithmetic emulates the original's rounding in software and must not
   change host floating-point modes.
 - Still unsupported: animated i16 frames, cross-model mesh replacement, automatic
