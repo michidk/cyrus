@@ -4937,3 +4937,61 @@ fn installed_play_animation_restores_its_pending_slot_only_with_an_animation_bin
         );
     }
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_wait_factory_resumes_native_elapsed_without_starting_the_call() {
+    let (mut vm, mut host, sources) = begin(Native::Wait, &[4]);
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    let saved = vm.snapshot(&sources).unwrap();
+    let native = NativeTasks::from_original(&saved, NativeTaskBindings::default()).unwrap();
+    let tokens = saved.task_tokens().map(|token| (token, token)).collect();
+    let mut restored = Runtime::from_snapshot(
+        CodeOrigin(10),
+        saved,
+        &sources,
+        &tokens,
+        "original native TEST".into(),
+    )
+    .unwrap();
+    let mut restored_host = NativeHost {
+        native,
+        ..Default::default()
+    };
+    assert_eq!(restored_host.polls, 0);
+    restored
+        .invoke_tasks_timed(&mut restored_host, &mut [], 256)
+        .unwrap();
+    assert_eq!(restored_host.polls, 1);
+    assert_eq!(restored_host.calls, 0);
+    assert_eq!(restored.active_tasks(), 1);
+    restored
+        .invoke_tasks_timed(&mut restored_host, &mut [], 256)
+        .unwrap();
+    assert_eq!(restored.active_tasks(), 0);
+    assert_eq!(restored_host.calls, 0);
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_native_factory_validates_contracts_and_rejects_unbound_state() {
+    for (name, arguments) in [
+        (Native::Wait, vec![24]),
+        (Native::WaitOnTasks, vec![]),
+        (Native::MoveMarker, vec![0, 1]),
+        (Native::MoveNodeMarker, vec![0, 1]),
+        (Native::MoveToLocation, vec![0, 8]),
+    ] {
+        let vm = contract_vm(name, CallKind::Task, &arguments);
+        assert!(NativeTasks::from_original(&vm, NativeTaskBindings::default()).is_ok());
+    }
+    let unsupported = contract_vm(Native::RotateByAxis, CallKind::Task, &[1, 1, 5]);
+    assert!(
+        NativeTasks::from_original(&unsupported, NativeTaskBindings::default())
+            .unwrap_err()
+            .to_string()
+            .contains("RotateByAxis")
+    );
+    let wrong_arity = contract_vm(Native::Wait, CallKind::Task, &[]);
+    assert!(NativeTasks::from_original(&wrong_arity, NativeTaskBindings::default()).is_err());
+}

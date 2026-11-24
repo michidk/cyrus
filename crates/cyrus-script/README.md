@@ -160,8 +160,15 @@ complete actor, code-owner or shell interpreter continuation from published type
 save views. It validates saved owner identity and code ownership, binds authored locals, checks all callbacks
 against explicit prepared native sources, and returns the VM snapshot together
 with every slot's invocation words. No call runs and no timer advances during
-staging. Native task variants and services must be restored before publishing
-that candidate. This owner-level API does not admit a complete original session.
+staging. `NativeTasks::from_original` constructs supported descriptor-only native tasks
+without issuing or polling their callbacks and rejects the entire candidate for
+a handler requiring additional native-state binding. It covers waits, direct
+and routed point commands, timed marker/location moves and animation requests.
+`ActorNavigation::from_original` binds the published saved map identity and keeps
+all node history. Full load clears reservations separately; the first navigation
+validation keeps valid held indices without reclaiming their nodes. Native
+invocation words and every remaining task/service owner must be restored before
+publishing that candidate. This owner-level API does not admit a complete original session.
 
 The feature-enabled `original_continuation` tests exercise synthetic public imports
 and the first explicit task update. `original_owner_installed` additionally reads

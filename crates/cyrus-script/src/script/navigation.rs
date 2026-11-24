@@ -171,6 +171,29 @@ impl Default for ActorNavigation {
     }
 }
 
+impl ActorNavigation {
+    /// Bind original saved navigation to explicitly initialized walk-map owners.
+    ///
+    /// This prepares a replacement without choosing a nearest node or claiming
+    /// reservations. Preserve the returned indices through atomic admission;
+    /// ordinary navigation validates them on its first update. Full original
+    /// load clears the shared reservations separately, following preservation's
+    /// save-load contract. This constructor does not admit a session.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original(
+        saved: rgpre::import::savegame::SaveActorNavigation,
+        initialized_map_ids: &[u32],
+    ) -> Result<Self> {
+        Ok(Self {
+            map: saved.bind_map(initialized_map_ids)?,
+            current: saved.current_node,
+            next: saved.next_node,
+            previous_next: saved.previous_next_node,
+            destination: saved.destination_node,
+        })
+    }
+}
+
 /// Which held node receives an ordered release-and-claim operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WalkNodeSlot {
@@ -567,5 +590,47 @@ impl WalkNodeReservations {
         }
         installed.selected_map = snapshot.selected_map;
         Ok(installed)
+    }
+}
+
+#[cfg(all(test, feature = "original-save-import"))]
+mod original_tests {
+    use super::*;
+    use rgpre::import::savegame::SaveActorNavigation;
+
+    #[test]
+    fn original_navigation_survives_first_validation_without_reclaiming_nodes() {
+        let saved = SaveActorNavigation {
+            map_id: Some(7),
+            current_node: -1,
+            next_node: 1,
+            previous_next_node: 2,
+            destination_node: -1,
+        };
+        let mut navigation = ActorNavigation::from_original(saved, &[7]).unwrap();
+        let retained = navigation;
+        let mut nodes = WalkNodeReservations {
+            maps: vec![
+                (0..3)
+                    .map(|_| WalkNode {
+                        position: [0; 3],
+                        owner: 99,
+                        links: vec![],
+                    })
+                    .collect(),
+            ],
+            disabled: vec![false],
+            selected_map: None,
+        };
+        nodes.reset();
+        assert!(nodes.validate(&mut navigation, 42).unwrap());
+        assert_eq!(navigation, retained);
+        assert!(nodes.maps[0].iter().all(|node| node.owner == 0));
+        assert!(ActorNavigation::from_original(saved, &[8]).is_err());
+        assert!(ActorNavigation::from_original(saved, &[7, 7]).is_err());
+        assert_eq!(
+            ActorNavigation::from_original(saved, &[9, 7]).unwrap().map,
+            Some(1)
+        );
     }
 }

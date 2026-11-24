@@ -57,6 +57,57 @@ impl NativeTasks {
         Ok(())
     }
 
+    /// Construct original native task records without starting or polling calls.
+    ///
+    /// Supports handlers whose persistent state lives entirely in the imported
+    /// VM slots, invocation words and separately bound receiver services. No
+    /// native baseline is consulted. A handler needing additional native state
+    /// rejects the whole candidate until that state has an original binding.
+    /// This is not session admission: the host must restore invocation words,
+    /// receiver/navigation and shared service owners before publishing anything.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original(vm: &Snapshot, bindings: NativeTaskBindings<'_>) -> Result<Self> {
+        let mut tasks = Vec::new();
+        let mut tokens = BTreeMap::new();
+        let mut next = 0;
+        for call in vm.task_calls().context("original native task sources")? {
+            let state = match call.call.function {
+                Native::Wait => Task::Duration,
+                Native::WaitOnTasks => Task::Tasks,
+                Native::WaitNonMulti => Task::Blocking,
+                Native::MoveMarker => Task::MoveMarker,
+                Native::MoveLocation => Task::MoveLocation,
+                Native::MovePosition => Task::MovePosition,
+                Native::MoveNodeMarker => Task::MoveNodeMarker,
+                Native::MoveNodeLocation => Task::MoveNodeLocation,
+                Native::MoveNodePosition => Task::MoveNodePosition,
+                Native::MoveToLocation => Task::Location,
+                Native::MoveToMarker => Task::Marker,
+                Native::PlayAnimation => Task::AnimationRequest,
+                function => anyhow::bail!(
+                    "original native task {function} token {} requires an explicit native-state binding",
+                    call.token
+                ),
+            };
+            next = next.max(call.token);
+            tokens.insert(call.token, call.token);
+            tasks.push(SavedTask {
+                token: call.token,
+                state,
+            });
+        }
+        Self::from_snapshot(
+            NativeTasksSnapshot {
+                version: 1,
+                next,
+                tasks,
+            },
+            vm,
+            &tokens,
+            bindings,
+        )
+    }
+
     /// Capture exact native variants and continuation fields without polling.
     pub fn snapshot(&self) -> NativeTasksSnapshot {
         NativeTasksSnapshot {
