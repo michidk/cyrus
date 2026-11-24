@@ -236,3 +236,14 @@ clears shared text/audio rather than reconstructing saved speech. Saved RTX word
 remain intact and the next explicit update observes the inactive record without
 replaying the label. The host must clear cache/audio owners with the dialogue
 candidate. These service constructors do not enable complete session admission.
+
+`ScriptWorld::restore_original_actor_states` validates saved identities and all
+referenced receivers before replacing spatial/controller values. It retains
+independent local, attached, previous, initial and recovery histories, embedded
+model transforms, torch counters and detached position-link caches. The camera
+has a controller allocation alongside its independent spatial owner. Invalid
+bindings leave the existing world unchanged. Attached families and rope
+attachments require additional load bindings and are rejected by this operation.
+This component transaction does not enable original session admission. The host
+must compose it with interpreter, task, navigation, animation and shared service
+replacements off-live before publishing a complete session.

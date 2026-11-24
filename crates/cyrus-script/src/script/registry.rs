@@ -65,6 +65,8 @@ pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
 #[cfg(feature = "original-save-import")]
+mod original_actor;
+#[cfg(feature = "original-save-import")]
 mod original_animation;
 pub(super) mod overlap;
 mod persistence;
@@ -1592,9 +1594,9 @@ impl ScriptWorld {
                 {
                     Some(ActorControlState::default())
                 }
-                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer => {
-                    Some(ActorControlState::default())
-                }
+                ScriptActorSource::Player
+                | ScriptActorSource::AlternatePlayer
+                | ScriptActorSource::Camera => Some(ActorControlState::default()),
                 _ => None,
             };
             let separate = matches!(&source, ScriptActorSource::Map(placement) if placement.object_type.has_separate_record());

@@ -1166,7 +1166,7 @@ impl SpatialWorld {
                 }))
                 .collect();
             ensure!(
-                saved.locations == locations,
+                saved.locations.len() == locations.len() && saved.locations[1..] == locations[1..],
                 "actor {index}: saved authored locations differ"
             );
             restored.push(Some(ActorSpatial {
@@ -1255,6 +1255,64 @@ pub(super) fn query_bearing(x: i32, z: i32) -> u16 {
         (false, false) => angle,
     };
     wrap(-angle) as u16
+}
+
+#[cfg(feature = "original-save-import")]
+impl ActorSpatial {
+    /// Prepare independently retained original histories without refreshing a family.
+    /// The caller binds family/link ownership before this component is published.
+    pub(super) fn restore_original_position_link(
+        &mut self,
+        saved: rgpre::import::savegame::SavePositionLink,
+        owner: Option<usize>,
+    ) {
+        self.link = owner.map(|owner| PositionLink {
+            owner,
+            offset: saved.offset_q8,
+        });
+        self.link_cache = saved.position_q8;
+        self.link_previous = saved.previous_position_q8;
+        self.linked_position = owner.map(|_| saved.position_q8);
+    }
+
+    pub(super) fn from_original(
+        saved: &rgpre::import::savegame::SaveActorState,
+        installed: &Self,
+        attributes: &Attributes,
+    ) -> Result<Self> {
+        let state = saved.spatial;
+        let matrix = Matrix(saved.model_transform.matrix());
+        let mut locations = installed.locations.clone();
+        *locations
+            .first_mut()
+            .context("original actor authored home absent")? = state.initial_position_q8;
+        Ok(Self {
+            local: Pose {
+                position: state.position_q8,
+                angles: state.angles,
+                matrix,
+            },
+            locations,
+            effective: Some(Pose {
+                position: state.attached_position_q8,
+                angles: state.attached_angles,
+                matrix,
+            }),
+            previous_effective_position: Some(state.previous_attached_position_q8),
+            previous_effective_angles: Some(state.previous_attached_angles),
+            previous_local_position: state.previous_position_q8,
+            water_rollback_position: Some(state.water_rollback_position_q8),
+            angle_history: state.previous_angles,
+            initial_angles: state.initial_angles,
+            parent: None,
+            linked_position: None,
+            link: None,
+            link_cache: [0; 3],
+            link_previous: [0; 3],
+            no_slave_rotation: attributes[Attribute::NoSlaveRot] != 0,
+            rotation_mode: attributes[Attribute::Rotation],
+        })
+    }
 }
 
 #[cfg(test)]

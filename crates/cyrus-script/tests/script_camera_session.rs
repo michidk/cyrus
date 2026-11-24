@@ -322,23 +322,17 @@ fn drno_skips_the_map_actor_but_preserves_player_and_camera_stage_admission() {
                 None,
                 30,
             );
-            if index == CAMERA {
-                // The camera has no ordinary control record. Its exemption reaches the same
-                // lifecycle refusal with drno on or off instead of taking the skip return.
-                let error = result.unwrap_err().to_string();
-                assert!(
-                    error.contains("script-control lifecycle unavailable"),
-                    "{error}"
-                );
-            } else {
-                result.unwrap();
-            }
+            result.unwrap();
         }
         let after: Vec<_> = (0..3).map(|index| observe(&world, index)).collect();
         (before, after)
     };
     let (before, ordinary) = main_stage(None);
     assert_ne!(ordinary[0], before[0], "the map actor's main stage starts");
+    assert_ne!(
+        ordinary[CAMERA], before[CAMERA],
+        "the camera controller admits the main stage"
+    );
     let (_, off) = main_stage(Some(false));
     assert_eq!(off, ordinary, "the cheat off changes nothing");
     let (_, skipped) = main_stage(Some(true));

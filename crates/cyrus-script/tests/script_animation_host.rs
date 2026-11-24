@@ -4591,7 +4591,13 @@ fn fighting_query_rejects_unprepared_ordinary_traversal() {
                     )
                 })
                 .unwrap();
-            assert!(world.actors()[camera].control_state().is_none());
+            assert!(
+                world.actors()[camera]
+                    .control_state()
+                    .expect("camera retains its actor controller")
+                    .combat
+                    .is_none()
+            );
             let camera = world.id(camera).unwrap();
             assert!(world.ordinary_actors([0, 0]).unwrap().contains(&camera));
         }

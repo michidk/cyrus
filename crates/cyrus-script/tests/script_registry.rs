@@ -54204,3 +54204,7 @@ mod contact_update_tests;
 #[cfg(feature = "original-save-import")]
 #[path = "script_registry/original_pose_binding.rs"]
 mod original_pose_binding_tests;
+
+#[cfg(feature = "original-save-import")]
+#[path = "script_registry/original_actor_state.rs"]
+mod original_actor_state_tests;
