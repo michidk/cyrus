@@ -839,6 +839,17 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
         legacy.as_object_mut().unwrap().remove(name);
         legacy[old] = serde_json::json!(alpha);
     }
+    // A cache may retain its source stamp while carrying the old alpha-only schema.
+    // Preparation must repair it rather than silently loading full-bright ordinary text.
+    std::fs::write(
+        hud.join("overlay.hud"),
+        serde_json::to_vec(&legacy).unwrap(),
+    )
+    .unwrap();
+    cyrus_assets::hud_export::export_hud(&install, &output).unwrap();
+    let repaired: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(hud.join("overlay.hud")).unwrap()).unwrap();
+    assert_eq!(repaired["player_text_style"], data["player_text_style"]);
     let legacy: cyrus_assets::hud::HudAsset = serde_json::from_value(legacy).unwrap();
     assert_eq!(legacy.player_text_style.color_scale, 255);
     assert_eq!(legacy.used_text_style.alpha, [128, 100]);

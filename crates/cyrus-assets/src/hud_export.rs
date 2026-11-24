@@ -118,7 +118,7 @@ pub(crate) fn prepare(
     (
         // The export format's version: raise it whenever an output's layout changes, so caches
         // written in an older layout are rebuilt rather than failing to parse.
-        17u32,
+        18u32,
         (&system, &items, &keys, &worlds, &inventory_models),
         (&selected_bytes, &border_bytes, &arrow_bytes),
         (&map_bytes, &cross_bytes),
@@ -139,7 +139,14 @@ pub(crate) fn prepare(
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .as_deref()
         == Some(&fingerprint)
-        && output.exists(&directory.join("overlay.hud"))
+        && output
+            .read(&directory.join("overlay.hud"))
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .is_some_and(|hud| {
+                ["text_style", "player_text_style", "used_text_style"]
+                    .iter()
+                    .all(|field| hud[*field].get("color_scale").is_some())
+            })
         && output.exists(&directory.join("examine.models"))
     {
         return Ok(());
