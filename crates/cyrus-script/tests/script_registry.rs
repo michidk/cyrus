@@ -54197,3 +54197,6 @@ fn physical_topic_navigation_survives_a_mod_locomotion_claim() -> anyhow::Result
     }
     Ok(())
 }
+
+#[path = "script_registry/contact_update.rs"]
+mod contact_update_tests;
