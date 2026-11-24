@@ -2,9 +2,9 @@
 """Exercise Cargo-reported test discovery independently of its output layout."""
 import importlib.util
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
     "collector", Path(__file__).with_name("collect-test-executable.py")

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Copy one test executable identified by Cargo's compiler-artifact messages."""
 import json
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 
 
 def collect(messages, target, destination):
