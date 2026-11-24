@@ -616,33 +616,28 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
         });
         image::Rgba([r, g, b, 255])
     };
-    let version = label_colour([32; 3]);
-    let status = label_colour([50, 0, 0]);
-    assert!(
-        title
-            .enumerate_pixels()
-            .any(|(x, y, p)| x < 600 && y >= 990 && *p == version)
+    let labels: cyrus_assets::title::TitleLabels =
+        serde_json::from_slice(&std::fs::read(splash.join("labels.title")).unwrap()).unwrap();
+    assert_eq!(
+        title, shipped,
+        "title artwork contains no baked status labels"
     );
-    assert!(
-        title
-            .enumerate_pixels()
-            .any(|(x, y, p)| x > 1200 && y >= 990 && *p == status)
-    );
+    assert_eq!(labels.version_colour, label_colour([32; 3]).0[..3]);
+    assert_eq!(labels.status_colour, label_colour([50, 0, 0]).0[..3]);
+    let mut labelled = title.clone();
+    labels.draw("Loading", [1820, 1024], |x, y, pixel| {
+        labelled.put_pixel(x, y, image::Rgba(pixel));
+    });
+    for colour in [labels.version_colour, labels.status_colour] {
+        assert!(labelled.enumerate_pixels().any(|(_, y, pixel)| {
+            y >= 990 && pixel.0 == [colour[0], colour[1], colour[2], 255]
+        }));
+    }
+    assert_ne!(labelled, title, "public title draw must paint both labels");
     for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
-        let stage = image(name);
-        assert_eq!(stage.dimensions(), (1820, 1024));
-        assert_eq!(
-            &stage.as_raw()[..1820 * 990 * 4],
-            &title.as_raw()[..1820 * 990 * 4]
-        );
         assert!(
-            stage
-                .enumerate_pixels()
-                .any(|(x, y, p)| { x > 900 && y >= 990 && *p == status })
-        );
-        assert_ne!(
-            stage, title,
-            "{name} must replace the generic loading label"
+            !splash.join(name).exists(),
+            "obsolete baked label image {name}"
         );
     }
     let modified = std::fs::metadata(splash.join("title.png"))
