@@ -31,6 +31,11 @@ A host builds a `Runtime` for an actor and calls one explicit stage per update:
 `invoke_body`, `invoke_tasks_timed`, `invoke_native_hook` or `receive`. Native
 calls reach `Host::call` as a typed `Native` with arguments in authored order.
 `Runtime::snapshot` and `Runtime::from_snapshot` capture and rebuild the VM.
+`Snapshot::from_continuation` validates a complete semantic interpreter import
+without executing a call or advancing a timer. The importing host must bind
+code sources and native tokens, restore native invocation words and service
+owners, and publish those owners together with the VM. This constructor alone
+does not admit an original-game save or establish continuation parity.
 
 ## Notes
 

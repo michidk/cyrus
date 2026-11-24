@@ -31,6 +31,32 @@ pub struct SavedTaskCall<'a> {
     pub call: &'a Call,
 }
 
+/// A semantic task binding prepared by an importing host without issuing a call.
+/// Its token must identify matching actor-owned native continuation state.
+#[derive(Clone, Copy, Debug)]
+pub struct ContinuationTask {
+    pub token: u64,
+    pub source: TaskSource,
+}
+
+/// Complete interpreter continuation supplied by a semantic importer.
+/// Cursors are instruction offsets in the owning program; task sources retain
+/// their own code origins. Native invocation words and service state belong to
+/// the host and must be prepared and committed with this snapshot.
+pub struct ContinuationState {
+    pub variables: Vec<crate::ScriptValue>,
+    /// Main and optional entry cursors, in that order.
+    pub cursors: [Option<u32>; 2],
+    pub return_to: Option<u32>,
+    pub result: u8,
+    pub saved_result: u8,
+    pub anchor: u8,
+    pub tasks: [Option<ContinuationTask>; 6],
+    pub status: [u8; 6],
+    pub pause: [u8; 6],
+    pub timers: [u16; 6],
+}
+
 impl Runtime {
     /// Captures all VM fields and the foreign programs referenced by active task slots.
     /// `sources` contains installed programs keyed in the same RASC offset domain.
@@ -114,6 +140,62 @@ impl Runtime {
 }
 
 impl Snapshot {
+    /// Build a validated snapshot from a complete semantic continuation.
+    /// No program instruction, host call, timer increment or operand evaluation
+    /// occurs. Any invalid cursor, source, local count or token rejects the whole
+    /// candidate. Hosts must validate and restore matching native owners before
+    /// publishing it through `Runtime::from_snapshot`.
+    pub fn from_continuation(
+        origin: CodeOrigin,
+        state: ContinuationState,
+        sources: &BTreeMap<CodeOrigin, Arc<Program>>,
+    ) -> Result<Self> {
+        let mut programs = BTreeMap::new();
+        for origin in std::iter::once(origin)
+            .chain(state.tasks.iter().flatten().map(|task| task.source.origin))
+        {
+            let source = sources
+                .get(&origin)
+                .with_context(|| format!("import code source {} unavailable", origin.0))?;
+            programs.insert(origin, source.as_ref().clone());
+        }
+        let mut tasks = std::array::from_fn(|_| None);
+        for (slot, task) in state.tasks.into_iter().enumerate() {
+            if let Some(task) = task {
+                tasks[slot] = Some(crate::tasks::Task {
+                    token: task.token,
+                    source: task.source,
+                    operand: task.source.operand()?,
+                    legacy: None,
+                });
+            }
+        }
+        let snapshot = Self {
+            version: 2,
+            origin,
+            programs,
+            state: State {
+                variables: state.variables,
+                return_to: state.return_to,
+                script_return: state.result,
+                saved_return: state.saved_result,
+                anchor: state.anchor,
+                threads: state
+                    .cursors
+                    .map(|cursor| cursor.map(|cursor| crate::Continuation { cursor })),
+                tasks,
+                task_status: state.status,
+                task_pause: state.pause,
+                task_timer: state.timers,
+                failure: None,
+            },
+        };
+        snapshot
+            .validate()
+            .context("import interpreter continuation")?;
+        Ok(snapshot)
+    }
+
     /// Rebind logical actor identities before committing a replacement world.
     /// The host validates allocation identity; this operation is atomic on error
     /// and runs no saved instructions or native effects.

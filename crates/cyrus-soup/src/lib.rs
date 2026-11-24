@@ -116,7 +116,8 @@ pub struct TaskSource {
     pub thread: Thread,
 }
 impl TaskSource {
-    fn operand(self) -> Result<u32> {
+    /// Task operand offset in the shared RASC code domain, checked for overflow.
+    pub fn operand(self) -> Result<u32> {
         self.origin
             .0
             .checked_add(self.instruction)

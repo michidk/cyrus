@@ -616,3 +616,131 @@ fn the_slot_bytes_are_saved_with_the_vm_and_older_saves_move_theirs_into_the_slo
     // Its blocking flag still has to agree with the call kind.
     assert!(restore(version_one(&snapshot, false, false, 1)).is_err());
 }
+
+#[test]
+fn imported_continuation_first_update_uses_saved_locals_and_task_clock() {
+    use cyrus_soup::persistence::{ContinuationState, ContinuationTask};
+    let sources = BTreeMap::from([(CodeOrigin(100), source())]);
+    let mut tasks = [None; 6];
+    tasks[0] = Some(ContinuationTask {
+        token: 7,
+        source: TaskSource {
+            origin: CodeOrigin(100),
+            instruction: 6,
+            object_call: false,
+            thread: Thread::Main,
+        },
+    });
+    let saved = Snapshot::from_continuation(
+        CodeOrigin(100),
+        ContinuationState {
+            variables: vec![ScriptValue::Integer(41)],
+            cursors: [Some(7), None],
+            return_to: Some(2),
+            result: 5,
+            saved_result: 9,
+            anchor: 3,
+            tasks,
+            status: [1, 0, 0, 0, 0, 0],
+            pause: [0, 0, 0, 0, 0, 0],
+            timers: [12, 0, 0, 0, 0, 0],
+        },
+        &sources,
+    )
+    .unwrap();
+    let mut restored = Runtime::from_snapshot(
+        CodeOrigin(100),
+        saved,
+        &sources,
+        &BTreeMap::from([(7, 70)]),
+        "imported".into(),
+    )
+    .unwrap();
+    let mut host = Service::default();
+    assert_eq!(host.calls, 0);
+    assert_eq!(restored.script_return(), 5);
+    assert_eq!(restored.anchor(), 3);
+    restored
+        .invoke_tasks_timed(&mut host, &mut [0], 128)
+        .unwrap();
+    assert_eq!(host.polls, [(70, Some(6), vec![Argument::Integer(41)])]);
+    assert_eq!(host.calls, 0);
+    host.ready = true;
+    restored
+        .invoke_tasks_timed(&mut host, &mut [0], 256)
+        .unwrap();
+    restored
+        .invoke_body(Thread::Main, &mut host, &mut [0], 100)
+        .unwrap();
+    assert_eq!(restored.script_return(), 9);
+    assert_eq!(restored.variables(), &[41]);
+    assert_eq!(
+        host.calls, 1,
+        "the next authored call runs only after the restored task finishes"
+    );
+}
+
+#[test]
+fn imported_paused_task_and_invalid_binding_do_not_reissue_effects() {
+    use cyrus_soup::persistence::{ContinuationState, ContinuationTask};
+    let sources = BTreeMap::from([(CodeOrigin(100), source())]);
+    let state = || ContinuationState {
+        variables: vec![ScriptValue::Integer(-17)],
+        cursors: [Some(7), None],
+        return_to: Some(2),
+        result: 5,
+        saved_result: 9,
+        anchor: 3,
+        tasks: [
+            Some(ContinuationTask {
+                token: 7,
+                source: TaskSource {
+                    origin: CodeOrigin(100),
+                    instruction: 6,
+                    object_call: false,
+                    thread: Thread::Main,
+                },
+            }),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+        status: [1, 7, 0, 0, 0, 0],
+        pause: [1, 2, 0, 0, 0, 0],
+        timers: [12, u16::MAX, 0, 0, 0, 0],
+    };
+    let saved = Snapshot::from_continuation(CodeOrigin(100), state(), &sources).unwrap();
+    let mut runtime = Runtime::from_snapshot(
+        CodeOrigin(100),
+        saved,
+        &sources,
+        &BTreeMap::from([(7, 70)]),
+        "paused import".into(),
+    )
+    .unwrap();
+    let mut host = Service::default();
+    runtime
+        .invoke_tasks_timed(&mut host, &mut [0], 256)
+        .unwrap();
+    assert!(host.polls.is_empty());
+    assert_eq!(host.calls, 0);
+    let value = serde_json::to_value(runtime.snapshot(&sources).unwrap()).unwrap();
+    assert_eq!(
+        value["state"]["task_timer"],
+        json!([12, u16::MAX, 0, 0, 0, 0])
+    );
+    assert_eq!(value["state"]["task_status"], json!([1, 7, 0, 0, 0, 0]));
+    assert_eq!(value["state"]["task_pause"], json!([1, 2, 0, 0, 0, 0]));
+    let mut invalid = state();
+    invalid.cursors[0] = Some(u32::MAX);
+    assert!(Snapshot::from_continuation(CodeOrigin(100), invalid, &sources).is_err());
+    let mut invalid = state();
+    invalid.tasks[0].as_mut().unwrap().source.instruction = 0;
+    assert!(Snapshot::from_continuation(CodeOrigin(100), invalid, &sources).is_err());
+    let mut invalid = state();
+    invalid.variables.clear();
+    assert!(Snapshot::from_continuation(CodeOrigin(100), invalid, &sources).is_err());
+    assert_eq!(host.calls, 0);
+}

@@ -154,6 +154,15 @@ Attached rope controls use the accelerated turn accumulators. Downward link
 selection uses its own two-link hand target, while initial attachment retains
 the unbiased hand target (preservation SOUP.md, rope attachment and controls).
 
+The opt-in `original-save-import` feature provides
+`OriginalActorContinuation::decode` for staging one
+complete interpreter continuation from published typed save views. It validates
+saved actor and code ownership, binds authored locals, checks all callbacks
+against explicit prepared native sources, and returns the VM snapshot together
+with every slot's invocation words. No call runs and no timer advances during
+staging. Native task variants and services must be restored before publishing
+that candidate. This actor-level API does not admit a complete original session.
+
 The opt-in `original-save-import` feature exposes
 `script::original_save::OriginalSaveSubset`, which validates original player world, Q8
 position, heading, health, inventory, global flags and retained clock before applying them to an
