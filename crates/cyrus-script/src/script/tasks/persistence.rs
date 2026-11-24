@@ -67,10 +67,50 @@ impl NativeTasks {
     /// receiver/navigation and shared service owners before publishing anything.
     #[cfg(feature = "original-save-import")]
     pub fn from_original(vm: &Snapshot, bindings: NativeTaskBindings<'_>) -> Result<Self> {
+        Self::prepare_original(vm, None, bindings)
+    }
+
+    /// Restore spatial continuations and ambient sample bindings from saved words.
+    ///
+    /// The map must contain exactly one entry for each active VM token, including
+    /// paused tasks. Word order follows preservation's published task-slot view.
+    /// No receiver pose, service state or live session is changed on failure.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original_with_words(
+        vm: &Snapshot,
+        words: &BTreeMap<u64, [u32; 4]>,
+        bindings: NativeTaskBindings<'_>,
+    ) -> Result<Self> {
+        Self::prepare_original(vm, Some(words), bindings)
+    }
+
+    #[cfg(feature = "original-save-import")]
+    fn prepare_original(
+        vm: &Snapshot,
+        words: Option<&BTreeMap<u64, [u32; 4]>>,
+        bindings: NativeTaskBindings<'_>,
+    ) -> Result<Self> {
         let mut tasks = Vec::new();
         let mut tokens = BTreeMap::new();
         let mut next = 0;
-        for call in vm.task_calls().context("original native task sources")? {
+        let calls = vm.task_calls().context("original native task sources")?;
+        if let Some(words) = words {
+            ensure!(
+                words.len() == calls.len(),
+                "original native word owner count differs from VM tasks"
+            );
+        }
+        for call in calls {
+            let retained = words
+                .map(|words| {
+                    words.get(&call.token).with_context(|| {
+                        format!(
+                            "original native {} token {} words absent",
+                            call.call.function, call.token
+                        )
+                    })
+                })
+                .transpose()?;
             let state = match call.call.function {
                 Native::Wait => Task::Duration,
                 Native::WaitOnTasks => Task::Tasks,
@@ -84,6 +124,70 @@ impl NativeTasks {
                 Native::MoveToLocation => Task::Location,
                 Native::MoveToMarker => Task::Marker,
                 Native::PlayAnimation => Task::AnimationRequest,
+                Native::AmbientSound => {
+                    let &[sample, second, third, fourth] = retained.with_context(|| {
+                        format!(
+                            "original AmbientSound token {} requires saved words",
+                            call.token
+                        )
+                    })?;
+                    ensure!(
+                        second == 0 && third == 0 && fourth == 0,
+                        "original AmbientSound token {} has unsupported retained words",
+                        call.token
+                    );
+                    let channel = if sample == u32::MAX {
+                        None
+                    } else {
+                        ensure!(
+                            sample < 16,
+                            "original AmbientSound token {} sample {sample} exceeds slots",
+                            call.token
+                        );
+                        Some(sample as u8)
+                    };
+                    Task::Ambient { channel }
+                }
+                Native::MoveByAxis
+                | Native::MoveObjectAxis
+                | Native::RotateByAxis
+                | Native::RotateToAxis => {
+                    let &[first, second, third, fourth] = retained.with_context(|| {
+                        format!(
+                            "original native {} token {} requires saved words",
+                            call.call.function, call.token
+                        )
+                    })?;
+                    ensure!(
+                        third == 0
+                            && fourth == 0
+                            && (call.call.function != Native::MoveByAxis || second == 0),
+                        "original native {} token {} has unsupported retained words",
+                        call.call.function,
+                        call.token
+                    );
+                    match call.call.function {
+                        Native::MoveByAxis => Task::Movement {
+                            target: first as i32,
+                        },
+                        Native::MoveObjectAxis => Task::ObjectMovement {
+                            target: first as i32,
+                            traveled: second as i32,
+                        },
+                        Native::RotateByAxis => Task::Rotation {
+                            target: first as i32,
+                            accumulator: second as i32,
+                        },
+                        Native::RotateToAxis => Task::AbsoluteRotation {
+                            movement: first as i32,
+                            accumulator: second as i32,
+                        },
+                        _ => anyhow::bail!(
+                            "unsupported original spatial task {}",
+                            call.call.function
+                        ),
+                    }
+                }
                 function => anyhow::bail!(
                     "original native task {function} token {} requires an explicit native-state binding",
                     call.token

@@ -488,3 +488,61 @@ impl OriginalOwnerContinuation {
         })
     }
 }
+
+/// A saved code owner's exact type-two MPOB allocation in installed order.
+/// Coloured lights use separate records but do not consume this identity counter
+/// and are excluded from SMCO. Editor object IDs and save traversal order are
+/// independent of this allocation identity (preservation's save owner contract).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OriginalCodeAllocation {
+    pub owner_id: u32,
+    pub placement_index: usize,
+    pub origin: cyrus_soup::CodeOrigin,
+}
+
+impl OriginalCodeAllocation {
+    /// Bind the complete saved population before changing any native state.
+    /// Reject missing, duplicate or foreign owners and mismatched installed code.
+    pub fn bind(
+        scripts: &cyrus_assets::script::Scripts,
+        owners: &[rgpre::import::savegame::SaveCodeOwner],
+    ) -> Result<Vec<Self>> {
+        use cyrus_assets::script::PlacementType;
+        let allocations = scripts.instances.iter().enumerate()
+            .filter(|(_, placement)| placement.object_type == PlacementType::SCRIPT_ONLY)
+            .enumerate()
+            .map(|(owner, (placement_index, placement))| {
+                let definition = scripts.actors.get(&placement.actor)
+                    .with_context(|| format!("original code allocation {owner} placement {placement_index} script {} absent", placement.actor))?;
+                Ok(Self { owner_id: u32::try_from(owner)?, placement_index,
+                    origin: cyrus_soup::CodeOrigin(definition.code_origin) })
+            }).collect::<Result<Vec<_>>>()?;
+        ensure!(
+            allocations.len() == owners.len(),
+            "original code allocation count {} differs from saved owners {}",
+            allocations.len(),
+            owners.len()
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        for owner in owners {
+            let allocation = allocations.get(owner.owner_id as usize).with_context(|| {
+                format!(
+                    "original code owner {} has no installed allocation",
+                    owner.owner_id
+                )
+            })?;
+            ensure!(
+                seen.insert(owner.owner_id),
+                "original code owner {} duplicated",
+                owner.owner_id
+            );
+            ensure!(
+                allocation.origin.0 == owner.script_continuation().data,
+                "original code owner {} placement {} source differs from installed allocation",
+                owner.owner_id,
+                allocation.placement_index
+            );
+        }
+        Ok(allocations)
+    }
+}

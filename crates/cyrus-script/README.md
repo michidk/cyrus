@@ -168,7 +168,12 @@ and routed point commands, timed marker/location moves and animation requests.
 all node history. Full load clears reservations separately; the first navigation
 validation keeps valid held indices without reclaiming their nodes. Native
 invocation words and every remaining task/service owner must be restored before
-publishing that candidate. This owner-level API does not admit a complete original session.
+publishing that candidate. `NativeTasks::from_original_with_words` additionally
+restores relative/absolute rotation, local-axis movement and ambient sample
+bindings from explicit saved token owners. Active ambient handles require a
+matching restored playback owner. `OriginalCodeAllocation::bind` identifies
+SMCO owners by the type-two placement allocation counter, excludes coloured
+lights and validates the entire saved population against installed code. This owner-level API does not admit a complete original session.
 
 The feature-enabled `original_continuation` tests exercise synthetic public imports
 and the first explicit task update. `original_owner_installed` additionally reads

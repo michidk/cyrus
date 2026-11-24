@@ -1,9 +1,10 @@
-//! Public owner staging against an explicitly supplied original save and install.
-//! Source validation here does not establish initialized native allocation identity.
+//! Public owner staging and exact compact allocation binding against supplied saves.
+//! This does not establish complete native-service or session restoration.
 #![cfg(feature = "original-save-import")]
 use anyhow::{Context, Result, ensure};
 use cyrus_script::script::original_save::{
-    OriginalActorBinding, OriginalCodeBinding, OriginalOwnerContinuation, OriginalShellBinding,
+    OriginalActorBinding, OriginalCodeAllocation, OriginalCodeBinding, OriginalOwnerContinuation,
+    OriginalShellBinding,
 };
 use cyrus_soup::{
     CodeOrigin, TaskSource, Thread,
@@ -118,12 +119,40 @@ fn stage_codes(
     sources: &Sources,
     operands: &Operands,
 ) -> Result<()> {
+    let allocations = OriginalCodeAllocation::bind(scripts, codes)?;
+    let mut reordered = codes.to_vec();
+    reordered.reverse();
+    ensure!(
+        OriginalCodeAllocation::bind(scripts, &reordered)? == allocations,
+        "save traversal must not determine allocation identity"
+    );
+    if !codes.is_empty() {
+        let mut invalid = codes.to_vec();
+        invalid[0].owner_id = u32::MAX;
+        ensure!(
+            OriginalCodeAllocation::bind(scripts, &invalid).is_err(),
+            "foreign allocation accepted"
+        );
+        ensure!(
+            OriginalCodeAllocation::bind(scripts, &codes[1..]).is_err(),
+            "partial population accepted"
+        );
+    }
+    if codes.len() > 1 {
+        let mut duplicate = codes.to_vec();
+        duplicate[0] = duplicate[1].clone();
+        ensure!(
+            OriginalCodeAllocation::bind(scripts, &duplicate).is_err(),
+            "duplicate owner accepted"
+        );
+    }
     for owner in codes {
-        let (name, definition) = scripts
-            .actors
+        let allocation = allocations
             .iter()
-            .find(|(_, definition)| definition.code_origin == owner.script_continuation().data)
-            .context("saved code source absent from installed programs")?;
+            .find(|allocation| allocation.owner_id == owner.owner_id)
+            .context("saved allocation absent")?;
+        let name = &scripts.instances[allocation.placement_index].actor;
+        let definition = &scripts.actors[name];
         OriginalOwnerContinuation::decode_code(
             owner,
             locals,

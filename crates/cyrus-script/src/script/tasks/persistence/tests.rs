@@ -4995,3 +4995,131 @@ fn original_native_factory_validates_contracts_and_rejects_unbound_state() {
     let wrong_arity = contract_vm(Native::Wait, CallKind::Task, &[]);
     assert!(NativeTasks::from_original(&wrong_arity, NativeTaskBindings::default()).is_err());
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_spatial_words_resume_the_saved_target_on_the_first_update() {
+    let (mut vm, mut host, sources) = begin(Native::MoveByAxis, &[0, 4096, 8]);
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    let saved = vm.snapshot(&sources).unwrap();
+    let token = saved.task_tokens().next().unwrap();
+    let words = BTreeMap::from([(token, [8192, 0, 0, 0])]);
+    let native =
+        NativeTasks::from_original_with_words(&saved, &words, NativeTaskBindings::default())
+            .unwrap();
+    let tokens = BTreeMap::from([(token, token)]);
+    let mut restored = Runtime::from_snapshot(
+        CodeOrigin(10),
+        saved.clone(),
+        &sources,
+        &tokens,
+        "original spatial TEST".into(),
+    )
+    .unwrap();
+    let mut restored_host = NativeHost {
+        native,
+        position: [8000, 0, 0],
+        ..Default::default()
+    };
+    restored
+        .invoke_tasks_timed(&mut restored_host, &mut [], 256)
+        .unwrap();
+    assert_eq!(restored_host.position, [8192, 0, 0]);
+    assert_eq!(restored_host.calls, 0);
+    assert_eq!(restored_host.polls, 1);
+    let before = serde_json::to_value(restored_host.native.snapshot()).unwrap();
+    assert!(
+        NativeTasks::from_original_with_words(
+            &saved,
+            &BTreeMap::new(),
+            NativeTaskBindings::default()
+        )
+        .is_err()
+    );
+    assert_eq!(
+        serde_json::to_value(restored_host.native.snapshot()).unwrap(),
+        before
+    );
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_spatial_words_preserve_signed_accumulators_and_require_exact_owners() {
+    for (function, arguments, words, state) in [
+        (
+            Native::RotateByAxis,
+            vec![1, 256, 8],
+            [65536, (-100i32) as u32, 0, 0],
+            json!({"Rotation":{"target":65536,"accumulator":-100}}),
+        ),
+        (
+            Native::MoveObjectAxis,
+            vec![2, 65536, 8],
+            [65536, 7168, 0, 0],
+            json!({"ObjectMovement":{"target":65536,"traveled":7168}}),
+        ),
+    ] {
+        let vm = contract_vm(function, CallKind::Multitask, &arguments);
+        let token = vm.task_tokens().next().unwrap();
+        let native = NativeTasks::from_original_with_words(
+            &vm,
+            &BTreeMap::from([(token, words)]),
+            NativeTaskBindings::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(native.snapshot()).unwrap()["tasks"][0]["state"],
+            state
+        );
+        let mut bad = words;
+        bad[3] = 1;
+        assert!(
+            NativeTasks::from_original_with_words(
+                &vm,
+                &BTreeMap::from([(token, bad)]),
+                NativeTaskBindings::default()
+            )
+            .is_err()
+        );
+        assert!(
+            NativeTasks::from_original_with_words(
+                &vm,
+                &BTreeMap::from([(token + 1, words)]),
+                NativeTaskBindings::default()
+            )
+            .is_err()
+        );
+    }
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_ambient_words_require_the_saved_playback_owner() {
+    let vm = contract_vm(Native::AmbientSound, CallKind::Multitask, &[3, 40, 0]);
+    let token = vm.task_tokens().next().unwrap();
+    let words = BTreeMap::from([(token, [3, 0, 0, 0])]);
+    assert!(
+        NativeTasks::from_original_with_words(&vm, &words, NativeTaskBindings::default()).is_err()
+    );
+    let channels = BTreeMap::from([(3, 9)]);
+    let restored = NativeTasks::from_original_with_words(
+        &vm,
+        &words,
+        NativeTaskBindings {
+            ambient_channels: Some(&channels),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(restored.snapshot()).unwrap()["tasks"][0]["state"],
+        json!({"Ambient":{"channel":9}})
+    );
+    let absent = BTreeMap::from([(token, [u32::MAX, 0, 0, 0])]);
+    let restored =
+        NativeTasks::from_original_with_words(&vm, &absent, NativeTaskBindings::default()).unwrap();
+    assert_eq!(
+        serde_json::to_value(restored.snapshot()).unwrap()["tasks"][0]["state"],
+        json!({"Ambient":{"channel":null}})
+    );
+}
