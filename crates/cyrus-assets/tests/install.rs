@@ -800,7 +800,9 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let ordinary = render(exported.player_text_style);
     let used = render(exported.used_text_style);
     let main_pixel = selected
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .position(|pixel| pixel[3] == 255 && pixel[..3].iter().any(|channel| *channel > 0))
         .expect("installed REDSEL A must draw a coloured main glyph");
     let pixel = |image: &[u8]| image[main_pixel * 4..main_pixel * 4 + 4].to_vec();
