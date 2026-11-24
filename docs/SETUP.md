@@ -1193,6 +1193,18 @@ boundary has no displacement observation. Missing pose/heading bindings reject
 instead of fabricating zero motion. A constant pair distance can hide both
 actors moving; a growing distance alone cannot establish a player retreat.
 These diagnostics do not replace the engine's model-point contact query.
+For zero-sphere/zero-candidate-radius contact, pass `query_motion` with the
+current motion's `col_sphere_size` as `current_col_sphere_size`, and the
+installed retained attack slot's first-motion
+`min_range`/`max_range`. The reader must bind `query_spatial` attachment status,
+link validity and the selected coordinate triple. `QueryPosition` selects attached,
+then valid linked, then local position according to preservation's effective-position
+rules. The tape retains `query_ranges` separately from body geometry, with the
+mixed-precision 3D query distance and strict range-only result. Missing bindings
+or other contact branches reject the observation. Range passing does not prove
+orientation, elevation, defence admission or damage; a contact-tested mark alone
+also does not prove those outcomes.
+
 The result records the input key and release boundary, and control or opponent
 reveal/combat admission loss during a tap rejects it and releases the key.
 

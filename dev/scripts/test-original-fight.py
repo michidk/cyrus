@@ -19,6 +19,79 @@ def sample(pg=8, rg=8, rh=250, drawn=1, ph=100):
 
 
 class DriverLogic(unittest.TestCase):
+    def test_query_position_selects_attachment_before_valid_link_and_local(self):
+        raw = actor(1, 8, 100) | {"query_spatial": {
+            "slave": False, "attached_q8": [1, 2, 3],
+            "link_valid": True, "linked_q8": [4, 5, 6]}}
+        point = fight.QueryPosition.read(raw)
+        self.assertEqual((point.source.value, point.position_q8), ("linked", (4, 5, 6)))
+        raw['query_spatial']['slave'] = True
+        self.assertEqual(fight.QueryPosition.read(raw).position_q8, (1, 2, 3))
+        self.assertEqual(fight.QueryPosition.read(raw).source.value, 'attached')
+        raw['query_spatial'].update(slave=False, link_valid=False)
+        self.assertEqual(fight.QueryPosition.read(raw).position_q8, (0, 0, 0))
+        self.assertEqual(fight.QueryPosition.read(raw).source.value, 'local')
+
+    def test_reader_to_view_preserves_query_owners_instead_of_body_origins(self):
+        player = actor(1, 8, 100, selected=True) | {'query_spatial': {
+            'slave': True, 'attached_q8': [0, 0, 0]}}
+        opponent = actor(55, 8, 250) | {
+            'query_spatial': {'slave': False, 'link_valid': True, 'linked_q8': [3, 4, 0]},
+            'combat_state': {'contact_radius_q8': 0}}
+        state = fight.view({'actors': [player, opponent], 'counters': {'mainloop_frame': 9, 'fps': 12}})
+        result = fight.combat_query_range_sample(state, {
+            'current_col_sphere_size': 0, 'min_range': 0, 'max_range': 6})
+        self.assertEqual((result['frame'], result['distance_q8'], result['strict_range_pass']), (9, 5, True))
+        self.assertEqual(result['player_query']['source'], 'attached')
+        self.assertEqual(result['opponent_query']['source'], 'linked')
+
+    def test_query_position_rejects_unbound_selected_source(self):
+        for spatial in [None, {}, {"slave": False},
+                        {"slave": True, "link_valid": False},
+                        {"slave": False, "link_valid": True}]:
+            with self.subTest(spatial=spatial), self.assertRaises(ValueError):
+                fight.QueryPosition.read(actor(1, 8, 100) | {"query_spatial": spatial})
+
+    def test_contact_range_uses_query_positions_height_and_strict_endpoints(self):
+        state = sample() | {"player_query": {"source": "linked", "position_q8": [0, 0, 0]},
+                            "opponent_query": {"source": "attached", "position_q8": [3, 4, 0]},
+                            "ppos": [999, 999, 999], "rpos": [999, 999, 999],
+                            "opponent_combat": {"contact_radius_q8": 0, "flags": 2}}
+        motion = {"current_col_sphere_size": 0, "min_range": 0, "max_range": 5}
+        result = fight.combat_query_range_sample(state, motion)
+        self.assertEqual(result['distance_q8'], 5)
+        self.assertFalse(result['strict_range_pass'])
+        motion['max_range'] = 6
+        self.assertTrue(fight.combat_query_range_sample(state, motion)['strict_range_pass'])
+        motion['min_range'] = 5
+        self.assertFalse(fight.combat_query_range_sample(state, motion)['strict_range_pass'])
+        # This is only a range observation. Active defence cannot turn it into a miss verdict.
+        self.assertNotIn('contact', result)
+        self.assertNotIn('hit', result)
+
+    def test_contact_range_wraps_and_rounds_stored_single_precision_root(self):
+        state = {"player_query": {"source": "local", "position_q8": [2147483647, 0, 0]},
+                 "opponent_query": {"source": "local", "position_q8": [-2147483648, 0, 0]},
+                 "opponent_combat": {"contact_radius_q8": 0}}
+        motion = {"current_col_sphere_size": 0, "min_range": 0, "max_range": 2}
+        self.assertEqual(fight.combat_query_range_sample(state, motion)['distance_q8'], 1)
+        state['player_query']['position_q8'] = [0, 0, 0]
+        state['opponent_query']['position_q8'] = [16777217, 0, 0]
+        self.assertEqual(fight.combat_query_range_sample(state, motion)['distance_q8'], 16777216)
+
+    def test_contact_range_rejects_other_contact_branches_and_missing_bindings(self):
+        state = {"player_query": {"source": "local", "position_q8": [0, 0, 0]},
+                 "opponent_query": {"source": "local", "position_q8": [1, 0, 0]},
+                 "opponent_combat": {"contact_radius_q8": 0}}
+        motion = {"current_col_sphere_size": 0, "min_range": 0, "max_range": 2}
+        for key in ('player_query', 'opponent_query', 'opponent_combat'):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                fight.combat_query_range_sample({k: v for k, v in state.items() if k != key}, motion)
+        with self.assertRaises(ValueError):
+            fight.combat_query_range_sample(state, motion | {"current_col_sphere_size": 1})
+        with self.assertRaises(ValueError):
+            fight.combat_query_range_sample(state | {"opponent_combat": {"contact_radius_q8": 1}}, motion)
+
     def test_attack_events_separate_cancellation_contact_and_health_changes(self):
         def state(frame, flags, cursor, ph=100, rh=250, defence=0):
             return sample(pg=102, ph=ph, rh=rh) | {
@@ -305,6 +378,33 @@ class CombatRangeTape(unittest.TestCase):
         session.snapshot = lambda: snapshot() | {'lockout': int(session.frame > 0)}
         with self.assertRaisesRegex(ValueError, 'player control'):
             fight.record_combat_tap(session, 'ArrowDown', 1, 1, capture_range=True)
+        self.assertEqual(session.keys, set())
+
+
+class CombatQueryTape(unittest.TestCase):
+    class Session(ExactCombatTape.Session):
+        def snapshot(self):
+            return super().snapshot() | {
+                'player_query': {'source': 'local', 'position_q8': [0, 0, 0]},
+                'opponent_query': {'source': 'linked', 'position_q8': [0, 0, 100 + self.frame]},
+                'opponent_combat': {'contact_radius_q8': 0, 'flags': 2}}
+
+    def test_tape_retains_query_range_separately_from_body_geometry(self):
+        session = self.Session()
+        result = fight.record_combat_tap(session, 'ControlLeft', 1, 2,
+            query_motion={'current_col_sphere_size': 0, 'min_range': 100, 'max_range': 103})
+        self.assertEqual([v['distance_q8'] for v in result['query_ranges']], [100, 101, 102, 103])
+        self.assertEqual([v['strict_range_pass'] for v in result['query_ranges']], [False, True, True, False])
+        self.assertIsNone(result['trajectory'])
+        self.assertEqual(session.keys, set())
+
+    def test_lost_query_binding_during_tap_rejects_and_releases(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | ({'opponent_query': None} if session.frame else {})
+        with self.assertRaisesRegex(ValueError, 'opponent query position unavailable'):
+            fight.record_combat_tap(session, 'ControlLeft', 2, 1,
+                query_motion={'current_col_sphere_size': 0, 'min_range': 0, 'max_range': 200})
         self.assertEqual(session.keys, set())
 
 

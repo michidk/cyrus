@@ -29,6 +29,9 @@ import re
 import shutil
 import subprocess
 import sys
+import struct
+from dataclasses import dataclass
+from enum import Enum
 import threading
 import time
 from pathlib import Path
@@ -66,6 +69,103 @@ while True:
 """
 
 
+class QueryPositionSource(Enum):
+    """Effective-position owners from preservation's PlayerDistance selection."""
+
+    LOCAL = 'local'
+    ATTACHED = 'attached'
+    LINKED = 'linked'
+
+
+def position_q8(value):
+    """Require a bound signed runtime coordinate triple, without coercion."""
+    if (not isinstance(value, (list, tuple)) or len(value) != 3
+            or any(type(v) is not int or not -(1 << 31) <= v < (1 << 31) for v in value)):
+        raise ValueError('query position requires three signed Q8 integers')
+    return tuple(value)
+
+
+@dataclass(frozen=True)
+class QueryPosition:
+    """A selected query point and its observed owner, distinct from model vertices."""
+
+    source: QueryPositionSource
+    position_q8: tuple[int, int, int]
+
+    @classmethod
+    def read(cls, actor):
+        spatial = actor.get('query_spatial')
+        if not isinstance(spatial, dict) or type(spatial.get('slave')) is not bool:
+            raise ValueError('query position requires bound attachment selection')
+        if spatial['slave']:
+            source, point = QueryPositionSource.ATTACHED, spatial.get('attached_q8')
+        else:
+            if type(spatial.get('link_valid')) is not bool:
+                raise ValueError('query position requires bound link validity')
+            if spatial['link_valid']:
+                source, point = QueryPositionSource.LINKED, spatial.get('linked_q8')
+            else:
+                source, point = QueryPositionSource.LOCAL, actor.get('position_q8')
+        return cls(source, position_q8(point))
+
+    def export(self):
+        return dict(source=self.source.value, position_q8=list(self.position_q8))
+
+
+def combat_query_range_sample(state, query_motion):
+    """Observe only zero-sphere/zero-radius range, not orientation, elevation or defence.
+
+    The caller supplies current-motion sphere size and the installed retained
+    attack slot's first-motion bounds separately. Other contact branches require
+    model-point observations and are rejected. The
+    distance follows preservation's node-marker mixed-precision arithmetic,
+    including wrapping subtraction and nearest-even conversion. Missing query
+    bindings never fall back to body origins. This is not a hit verdict.
+    """
+    combat = state.get('opponent_combat') or {}
+    if (type(query_motion.get('current_col_sphere_size')) is not int
+            or query_motion['current_col_sphere_size'] != 0
+            or type(combat.get('contact_radius_q8')) is not int
+            or combat['contact_radius_q8'] != 0):
+        raise ValueError('query range requires bound zero-sphere zero-radius contact branch')
+    bounds = [query_motion.get(name) for name in ('min_range', 'max_range')]
+    if any(type(v) is not int or not -(1 << 31) <= v < (1 << 31) for v in bounds):
+        raise ValueError('query range requires installed signed first-motion bounds')
+    points = []
+    for owner in ('player', 'opponent'):
+        query = state.get(f'{owner}_query')
+        if not isinstance(query, dict):
+            raise ValueError(f'{owner} query position unavailable')
+        try:
+            QueryPositionSource(query.get('source'))
+        except ValueError as error:
+            raise ValueError(f'{owner} query position source unavailable') from error
+        points.append(position_q8(query.get('position_q8')))
+    single = lambda v: struct.unpack('<f', struct.pack('<f', v))[0]
+    differences = [((b - a + (1 << 31)) % (1 << 32)) - (1 << 31)
+                   for a, b in zip(*points)]
+    squared = sum(int(single(v)) ** 2 for v in differences)
+    root = math.sqrt(float(squared))
+    stored = single(root)
+    bits = struct.unpack('<I', struct.pack('<f', stored))[0]
+    neighbor = struct.unpack('<f', struct.pack('<I', bits - 1 if stored > root else bits + 1))[0]
+    midpoint = (stored + neighbor) / 2
+    # Correct a double-rounded root at an f32 midpoint, as the native distance
+    # service does. Compare with the squared sum after its f64 store.
+    if root == midpoint:
+        boundary = midpoint * midpoint
+        if float(squared) < boundary:
+            stored = min(stored, neighbor)
+        elif float(squared) > boundary:
+            stored = max(stored, neighbor)
+    distance = round(stored)
+    if distance > (1 << 31) - 1:
+        raise ValueError('query range distance exceeds signed integer range')
+    return dict(frame=state.get('frame'), distance_q8=distance, strict_range_pass=bounds[0] < distance < bounds[1],
+                min_range_q8=bounds[0], max_range_q8=bounds[1],
+                player_query=state['player_query'], opponent_query=state['opponent_query'])
+
+
 def view(state):
     """The fields the policy needs from one reader sample, or None without a selected player.
     Independent observed_actors retain a bound actor outside the view-centered update
@@ -92,6 +192,9 @@ def view(state):
         "lockout": state["counters"].get("player_lockout"),
         "rlisted": listed,
         "player_combat": player.get("combat_state"),
+        "player_query": QueryPosition.read(player).export() if "query_spatial" in player else None,
+        "opponent_query": (QueryPosition.read(opponent).export()
+                           if opponent and "query_spatial" in opponent else None),
         "opponent_combat": opponent.get("combat_state") if opponent else None,
         "player_command_cursor": player.get("command_frame"),
         "opponent_command_cursor": opponent.get("command_frame") if opponent else None,
@@ -290,7 +393,7 @@ def combat_range_sample(state, previous=None):
     return result
 
 
-def record_combat_tap(session, key, held_updates, released_updates, *, capture_range=False):
+def record_combat_tap(session, key, held_updates, released_updates, *, capture_range=False, query_motion=None):
     """Record one explicit input and every stopped update, never infer a hit from input.
 
     The session projects world, reveal/combat state and the ordinary fight view.
@@ -299,6 +402,8 @@ def record_combat_tap(session, key, held_updates, released_updates, *, capture_r
     releases the key. Health loss is reported over the whole observation window,
     not attributed to a single strike. Optional range capture requires bound
     poses and records each actor's displacement at every held/released boundary.
+    query_motion supplies current_col_sphere_size and installed first-motion
+    min_range/max_range for a separate query_ranges observation, never a hit verdict.
     """
     if type(held_updates) is not int or held_updates < 1 or type(released_updates) is not int or released_updates < 0:
         raise ValueError("combat tap requires positive held and nonnegative released updates")
@@ -313,6 +418,8 @@ def record_combat_tap(session, key, held_updates, released_updates, *, capture_r
         raise ValueError("player must be in armed idle before measuring a tap")
     samples = [before]
     trajectory = [combat_range_sample(before)] if capture_range else None
+    query_ranges = ([combat_query_range_sample(before, query_motion)]
+                    if query_motion is not None else None)
     try:
         session.input(key, "press")
         for offset in range(1, held_updates + released_updates + 1):
@@ -333,11 +440,14 @@ def record_combat_tap(session, key, held_updates, released_updates, *, capture_r
                 raise ValueError("opponent reveal/combat admission lost during combat tap")
             if capture_range:
                 trajectory.append(combat_range_sample(state, samples[-1]))
+            if query_ranges is not None:
+                query_ranges.append(combat_query_range_sample(state, query_motion))
             samples.append(state)
     finally:
         session.input(key, "release")
     return dict(classify_tap(before, samples), samples=samples, events=combat_events(samples),
                 key=key, release_frame=before["frame"] + held_updates, trajectory=trajectory,
+                query_ranges=query_ranges,
                 held_updates=held_updates, released_updates=released_updates)
 
 
