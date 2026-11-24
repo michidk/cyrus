@@ -27,6 +27,10 @@ build does not load mods. Mods start disabled: open the Backtick menu and select
 | `one-punch` | manifest | Cyrus's sword attacks (COMBAT.INI `attack65`–`attack71`) deal 100 damage |
 | `unofficial-patch` | manifest | Port of Dillonn241's Unofficial Redguard Patch 1.01 as data patches |
 
+The movement mod supplies its configured forward/back directions to dialogue
+topic menus. Dialogue keeps the script-owned camera instead of accepting orbit
+input.
+
 Everything these mods add is a mod preference, not recovered original behaviour.
 `unofficial-patch` fixes flags and counters nothing set, wrong tests and receivers,
 misplaced logbook lines and about ninety typos; it leaves out the Soul Sword

@@ -31,6 +31,12 @@ their definitions.
 
 F1/F10 information overlays suspend updates while retaining the player's script binding and displayed animation pose. Closing them resumes that continuation.
 
+Topic menus retain the installed forward/back bindings even when a mod claims
+locomotion. Steering mods also supply their configured raw direction through
+`movement.steer`, so menu navigation does not depend on a movement claim.
+Script-owned dialogue discards orbit input; it does not defer a camera turn
+until player control returns.
+
 ## Usage
 
 Hosts add `GamePlugin`, which installs the `cyrus-game` state (application

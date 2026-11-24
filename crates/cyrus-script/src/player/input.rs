@@ -809,6 +809,7 @@ pub(super) fn sample(
     motion: Option<Res<bevy::input::mouse::AccumulatedMouseMotion>>,
     state: Option<Res<State<cyrus_game::AppState>>>,
     gamepads: Query<&Gamepad>,
+    actors: Option<Res<crate::script::ScriptActors>>,
     time: Option<Res<Time>>,
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
@@ -828,6 +829,12 @@ pub(super) fn sample(
         claimed.0 = None;
         return;
     }
+    let globals = actors
+        .as_deref()
+        .and_then(|actors| actors.current.as_ref())
+        .map(|world| world.globals());
+    let topic_menu = globals.is_some_and(|globals| globals.menu_state() != 0);
+    let dialogue = topic_menu || globals.is_some_and(|globals| globals.dialogue_state() == Some(1));
     // The installed dead zone; an install without a joystick reads no stick, as Faithful does.
     let tilted = |stick: Vec2| {
         inputs
@@ -858,7 +865,7 @@ pub(super) fn sample(
     look.stick = None;
     *input = inputs.bindings().sample_devices(inputs.devices());
     dialogue_skip.0 = input.walk;
-    if claimed.0.is_some() {
+    if claimed.0.is_some() && !topic_menu {
         // The mod owns locomotion: the original movement bindings read as released.
         let input = &mut *input;
         for held in [
@@ -872,14 +879,23 @@ pub(super) fn sample(
             *held = false;
         }
     }
-    look.driven = claimed.0.is_none() && wish.0.is_some();
-    if let Some(wish) = wish.0.filter(|_| claimed.0.is_none()) {
+    look.driven = (claimed.0.is_none() || topic_menu) && wish.0.is_some();
+    if let Some(wish) = wish.0.filter(|_| claimed.0.is_none() || topic_menu) {
         input.jump |= wish.jump;
         if wish.direction != Vec2::ZERO {
             look.stick = Some(wish.direction);
             // The stick's tilt chooses walking or running.
             input.walk = true;
         }
+    }
+    if topic_menu {
+        *input = input.menu_directions(look.stick);
+    }
+    if dialogue {
+        // Script-owned dialogue keeps its camera; discard orbit input rather than deferring it.
+        look.turn = 0.0;
+        look.manual = false;
+        look.orbit = false;
     }
 }
 

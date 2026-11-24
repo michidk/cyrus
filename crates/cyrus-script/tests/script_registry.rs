@@ -54104,3 +54104,96 @@ fn original_npc_playback_survives_first_default_selection_and_animation_update()
 
 #[path = "script_registry/attack_interruption.rs"]
 mod attack_interruption_tests;
+
+#[test]
+fn physical_topic_navigation_survives_a_mod_locomotion_claim() -> anyhow::Result<()> {
+    use bevy::prelude::*;
+    use cyrus_game::{AppState, fidelity::Fidelity};
+    use cyrus_script::player::{PlayerPlugin, input::*};
+    use cyrus_script::script::{MenuInput, MenuState, ScriptActors};
+    for mod_direction in [false, true] {
+        let mut world = ScriptWorld::prepare(&cache(), 1)?;
+        world.globals_mut().begin_topic_menu();
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+            .init_state::<AppState>()
+            .insert_resource(State::new(AppState::InGame))
+            .init_resource::<Fidelity>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
+            .insert_resource(actors)
+            .add_plugins(PlayerPlugin);
+        let mut menu = MenuState::default();
+        menu.add(10, "first", 0, 0, 10, "");
+        menu.add(10, "second", 1, 0, 20, "");
+        let claim = LocomotionClaim {
+            heading: 0,
+            travel: 0,
+            speed: 0.0,
+            gait: Gait::Walk,
+            jump: false,
+            tuning: default(),
+        };
+        let mut poll = |app: &mut App, tick| {
+            app.insert_resource(LocomotionClaimed(Some(claim)));
+            app.update();
+            let held = app.world().resource::<PlayerInput>();
+            menu.step(MenuInput {
+                up: held.forward,
+                down: held.backward,
+                select: held.action,
+                tick,
+                elapsed_delay: true,
+                traverse_delay: 4,
+            })
+        };
+        if mod_direction {
+            app.insert_resource(MovementWish(Some(Wish {
+                direction: Vec2::NEG_Y,
+                jump: false,
+                wasd: true,
+            })));
+        } else {
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::ArrowDown);
+        }
+        app.insert_resource(CameraOrbit {
+            enabled: true,
+            turn: 100.0,
+        });
+        assert!(poll(&mut app, 1));
+        let look = app.world().resource::<ModernLook>();
+        assert_eq!(
+            look.turn, 0.0,
+            "dialogue must not accumulate camera rotation"
+        );
+        assert!(!look.orbit);
+        app.insert_resource(MovementWish(None));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::ArrowDown);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::ControlLeft);
+        assert!(poll(&mut app, 2));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::ControlLeft);
+        assert!(!poll(&mut app, 3));
+        assert_eq!(
+            menu.selection(),
+            20,
+            "physical Down must select the non-first topic"
+        );
+        // The script rebuilds used topics with the alternate-font flag and remembers the highlight.
+        menu.clear();
+        menu.add(10, "first", 0, 0, 10, "second");
+        menu.add(10, "second", 1, 1, 20, "second");
+        assert_eq!(menu.highlighted(), 1);
+        assert_eq!(menu.items()[1].flag, 1);
+    }
+    Ok(())
+}

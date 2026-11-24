@@ -2663,13 +2663,31 @@ fn script_menu_items_take_installed_text_and_report_the_committed_value() {
 
 #[test]
 fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
+    use bevy::prelude::*;
     use cyrus_game::preferences::Preferences;
     use cyrus_script::{
         player::input::PlayerInput,
         script::{PlayerControllerInput, ScriptHud, ScriptInputs},
     };
+    use cyrus_script::{
+        player::{
+            PlayerPlugin,
+            input::{Gait, LocomotionClaim, LocomotionClaimed, PlayerBindings},
+        },
+        script::ScriptActors,
+    };
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<cyrus_game::AppState>()
+        .init_resource::<cyrus_game::fidelity::Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
+        .init_resource::<ScriptActors>()
+        .add_plugins(PlayerPlugin);
     let hud = ScriptHud::default();
-    hud.configure(&hud_asset(), &Preferences::default());
+    let mut asset = hud_asset();
+    asset.labels.insert("SECO".into(), "Second topic".into());
+    hud.configure(&asset, &Preferences::default());
     let call = |index: u16, name: Native, kind: CallKind, arguments: &[i32]| Operation::Call {
         call: Call {
             function_id: index,
@@ -2683,11 +2701,11 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
         },
     };
     let test = i32::from_le_bytes(*b"TEST");
-    let empty = i32::from_le_bytes(*b"EMPT");
+    let empty = i32::from_le_bytes(*b"SECO");
     let mut data = scripts(vec![
         call(3, Native::MenuNew, CallKind::Function, &[]),
         call(4, Native::MenuAddItem, CallKind::Function, &[test, 0, 7]),
-        call(4, Native::MenuAddItem, CallKind::Function, &[empty, 0, 8]),
+        call(4, Native::MenuAddItem, CallKind::Function, &[empty, 1, 8]),
         call(5, Native::MenuProc, CallKind::Task, &[]),
         Operation::Assign {
             destination: Place::Local { index: 0 },
@@ -2740,19 +2758,41 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
         (false, false, false),
     ];
     for (round, (up, down, select)) in rounds.into_iter().enumerate() {
-        let held = PlayerInput {
-            forward: up,
-            backward: down,
-            action: select,
-            ..Default::default()
-        };
+        app.world_mut().resource_mut::<ScriptActors>().current = Some(world);
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.release_all();
+        for (pressed, key) in [
+            (up, KeyCode::ArrowUp),
+            (down, KeyCode::ArrowDown),
+            (select, KeyCode::ControlLeft),
+        ] {
+            if pressed {
+                keys.press(key);
+            }
+        }
+        app.insert_resource(LocomotionClaimed(Some(LocomotionClaim {
+            heading: 0,
+            travel: 0,
+            speed: 0.0,
+            gait: Gait::Walk,
+            jump: false,
+            tuning: default(),
+        })));
+        app.update();
+        world = app
+            .world_mut()
+            .resource_mut::<ScriptActors>()
+            .current
+            .take()
+            .unwrap();
+        let held = app.world().resource::<PlayerInput>();
         let inputs = ScriptInputs {
             hud: Some(&hud),
             nominal_ticks: Some(1),
             frame_scale: Some(256),
             combat_clock_sample: Some(100 + 10 * round as u32),
             player_controller: Some(PlayerControllerInput {
-                held: &held,
+                held,
                 walk_mode: false,
                 auto_defend: false,
                 steer: None,
@@ -2781,12 +2821,9 @@ fn script_menu_proc_highlights_with_the_controls_and_commits_on_release() {
         [7],
         "the menu task completed and the script resumed"
     );
-    // The empty-text item matches the remembered (empty) highlight text, so it starts highlighted;
-    // down then wraps to the first item, which is committed on release.
-    assert_eq!(
-        variable, 7,
-        "down wrapped from the second item to the first"
-    );
+    // A used topic remains selectable. Physical Down selects the second item,
+    // despite the mod claim; Control release commits its installed action.
+    assert_eq!(variable, 8, "physical down selected the second topic");
     assert_eq!(world.globals().menu_state(), 0, "the menu closed");
 }
 

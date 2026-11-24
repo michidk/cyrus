@@ -61,6 +61,8 @@ impl Mod for Steering {
         };
         let run = modifier != run_by_default;
         let jump = held(Action::Jump, Key::SPACE);
+        // Topic menus need the configured raw directions even while this mod claims locomotion.
+        cx.movement.steer(x, y, jump, wasd);
         if let Some(current) = cx.player.animation()
             && JUMPING.iter().any(|groups| groups.contains(&current))
         {
