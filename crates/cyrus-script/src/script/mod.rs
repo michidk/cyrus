@@ -220,7 +220,7 @@ pub use tasks::{
 pub use world_request::request_world;
 pub use world_request::{
     CreditsPlaying, DeathBookEntry, DeathDispatch, EndingEntry, LastGameEntry, LastSaveSelection,
-    ScriptMovieEntry, WorldLoopExit,
+    ScriptMovieEntry, SessionPublicationBoundary, WorldLoopExit,
 };
 
 /// Retain scene submissions before player/object updates mutate their source state.

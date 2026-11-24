@@ -74,6 +74,49 @@ fn model_nodes(world: &World, root: Entity, model: &str) -> Result<Vec<Entity>> 
 }
 
 impl PlayerModelSnapshot {
+    /// Construct presentation ownership from restored logical inputs and an independently loaded root.
+    /// `transform` and `visibility` are explicit local presentation settings supplied by the caller.
+    /// The actor's stored affine world pose is applied separately with `scene_transform_at`;
+    /// it must not be decomposed into this local transform. No actor or animation update runs here.
+    pub fn from_logical(
+        world: &World,
+        root: Entity,
+        pose: AnimationPose,
+        texture_set: Option<u16>,
+        transform: Transform,
+        visibility: Visibility,
+    ) -> Result<Self> {
+        Ok(Self {
+            version: 1,
+            root: root.to_bits(),
+            model: pose.model,
+            frame: pose.frame,
+            source: SceneSourceIdentity::capture(world, root)?,
+            transform,
+            visibility: match visibility {
+                Visibility::Inherited => 0,
+                Visibility::Hidden => 1,
+                Visibility::Visible => 2,
+            },
+            texture_set,
+        })
+    }
+
+    /// Resolve the exact restored model and installed texture set before loading its hidden root.
+    pub fn logical_source_path(
+        prepared: &PreparedWorld,
+        model: &str,
+        texture_set: Option<u16>,
+    ) -> Result<AssetPath<'static>> {
+        ensure!(
+            !model.is_empty()
+                && model
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_'),
+            "player model source key invalid"
+        );
+        Ok(model_source(prepared, model, texture_set))
+    }
     pub fn saved_root(&self) -> u64 {
         self.root
     }
@@ -86,15 +129,7 @@ impl PlayerModelSnapshot {
 
     /// Resolve the installed model sidecar for off-live asset preparation.
     pub fn source_path(&self, prepared: &PreparedWorld) -> Result<AssetPath<'static>> {
-        ensure!(
-            !self.model.is_empty()
-                && self
-                    .model
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_'),
-            "player model source key invalid"
-        );
-        Ok(model_source(prepared, &self.model, self.texture_set))
+        Self::logical_source_path(prepared, &self.model, self.texture_set)
     }
 
     pub fn capture(world: &World, player: Entity) -> Result<Option<Self>> {
@@ -575,6 +610,49 @@ mod tests {
             replacement_player,
             app.world(),
         )?;
+        // Logical adoption obtains identity from the newly loaded source, not the live root.
+        let logical = PlayerModelSnapshot::from_logical(
+            app.world(),
+            replacement,
+            AnimationPose {
+                model: "TEST".into(),
+                frame: 1,
+            },
+            None,
+            Transform::default(),
+            Visibility::Inherited,
+        )?;
+        assert_eq!(logical.saved_root(), replacement.to_bits());
+        assert_eq!(logical.frame(), 1);
+        logical
+            .clone()
+            .prepare(
+                app.world().resource::<PreparedWorld>(),
+                replacement,
+                replacement_player,
+                app.world(),
+            )?
+            .validate(app.world())?;
+        assert!(
+            PlayerModelSnapshot::logical_source_path(
+                app.world().resource::<PreparedWorld>(),
+                "../TEST",
+                None,
+            )
+            .is_err()
+        );
+        let mut invalid_logical = logical;
+        invalid_logical.frame = 2;
+        assert!(
+            invalid_logical
+                .prepare(
+                    app.world().resource::<PreparedWorld>(),
+                    replacement,
+                    replacement_player,
+                    app.world(),
+                )
+                .is_err()
+        );
         let mut malformed = serde_json::to_value(&saved)?;
         malformed["frame"] = serde_json::json!(2);
         assert!(

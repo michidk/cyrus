@@ -92,6 +92,12 @@ from that asset when it becomes available again, including under the same handle
   from a checkpoint.
 - Presentation never advances script stages: logical poses, health, inventory
   and dialogue are owned by `cyrus-game`/`cyrus-script`; this crate presents them.
+- Runtime admission constructs external model snapshots from explicit logical model, frame
+  and installed texture-set inputs, recording the independently loaded hidden root's source
+  identity. Local transform and visibility are supplied by the host. Stored actor affine
+  matrices and displaced positions use `script_transform::scene_transform_at` separately.
+  Camera admission checks the restored publication's logical-world generation and projects
+  that publication while retaining the supplied projection and inspection settings.
 - Stationary model colors consume in-place source prelighting, material and local-light
   table edits in the same frame, before asset notifications publish. Missing source
   meshes, source materials or runtime light tables retire the prepared draw until the

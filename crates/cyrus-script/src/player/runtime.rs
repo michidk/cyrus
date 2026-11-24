@@ -90,6 +90,22 @@ pub struct PlayerRuntimeBinding {
 }
 
 impl PlayerRuntimeSnapshot {
+    /// Bind a restored controller without scheduling marker or animation initialization.
+    #[cfg(feature = "original-save-import")]
+    pub fn original_continuation(player: u64, generation: u64, marker: MarkerEntry) -> Self {
+        Self {
+            version: 1,
+            source: Some(RuntimeSourceSnapshot {
+                player,
+                generation,
+                marker,
+            }),
+            entry_pending: false,
+            explicit_updated: false,
+            error: None,
+        }
+    }
+
     /// Saved player entity and logical generation needed by the host's binding census.
     pub fn source_identity(&self) -> Option<(u64, u64)> {
         self.source

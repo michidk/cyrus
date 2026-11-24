@@ -96,7 +96,10 @@ pub(super) fn register(app: &mut App) {
     embedded_asset!(app, "geometry.wesl");
     app.init_resource::<GeometryContext>()
         .add_plugins(MaterialPlugin::<GeometryMaterial>::default())
-        .add_systems(PostUpdate, refresh);
+        .add_systems(
+            PostUpdate,
+            refresh.in_set(crate::persistence::EnvironmentPresentation),
+        );
 }
 fn refresh(
     request: Option<Res<EnvironmentRequest>>,

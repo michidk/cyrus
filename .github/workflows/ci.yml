@@ -68,6 +68,24 @@ jobs:
           RUST_MIN_STACK: 8388608
         run: cargo test --workspace --all-features
 
+      - name: Preserve install-backed session regression executable
+        run: |
+          mkdir -p "$RUNNER_TEMP/original-runtime-test"
+          for executable in target/debug/deps/original_runtime-*; do
+            if [[ -f "$executable" && -x "$executable" ]]; then
+              cp "$executable" "$RUNNER_TEMP/original-runtime-test/original-runtime-test"
+              break
+            fi
+          done
+          test -x "$RUNNER_TEMP/original-runtime-test/original-runtime-test"
+          git rev-parse HEAD > "$RUNNER_TEMP/original-runtime-test/source-sha.txt"
+          sha256sum "$RUNNER_TEMP/original-runtime-test/original-runtime-test" > "$RUNNER_TEMP/original-runtime-test/executable-sha256.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: original-runtime-test-linux
+          path: ${{ runner.temp }}/original-runtime-test/
+          retention-days: 7
+
   lints:
     name: Lints
     runs-on: ubuntu-26.04

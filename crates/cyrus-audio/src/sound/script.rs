@@ -3166,6 +3166,23 @@ impl RuntimeDialogue {
 }
 
 impl RuntimeDialogueSnapshot {
+    /// Release the RTX cache before original saved-world restoration. Retained
+    /// preparation, torch ownership and ordinary-service continuation stay intact.
+    /// Call before collecting required labels so released payloads need no assets.
+    /// Logical dialogue records and the reset flag are handled by reset_saved_world.
+    pub fn for_saved_world(mut self) -> anyhow::Result<Self> {
+        self.cache = cyrus_assets::sound::DialogueCache::<super::dialogue::DialogueClip>::default()
+            .snapshot(
+                |clip| -> anyhow::Result<super::dialogue::DialogueClipSnapshot> {
+                    anyhow::bail!(
+                        "empty saved-world cache unexpectedly contains {:?}",
+                        clip.entry.label
+                    )
+                },
+            )?;
+        Ok(self)
+    }
+
     /// Installed labels needed before replacement construction. Includes retained
     /// cache payloads, prepared_clips and nonfailed preparation requests, without duplicates.
     /// These are preparation hints, not validated installed source identities.

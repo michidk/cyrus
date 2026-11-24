@@ -17,7 +17,7 @@ For player-facing save and load behavior, see [Save and resume](../../docs/PLAYI
 | --- | --- |
 | [lib](src/lib.rs) | `RuntimeSessionSnapshot`, `RuntimeSessionPlan`, `SessionServices` and `RuntimeSessionCandidate`: capture, plan, assemble |
 | [document](src/document.rs) | `encode_document` / `decode_document`: versioned UTF-8 framing with a payload digest |
-| [boundary](src/boundary.rs) | `SessionBoundaryPlugin`, `SessionBoundary` requests run in `Last`, read-only `SessionBoundaryInspection` |
+| [boundary](src/boundary.rs) | `SessionBoundaryPlugin`, `SessionBoundary` native requests run in `Last`, complete original publication precedes `PostUpdate` presentation, read-only `SessionBoundaryInspection` |
 | [loading](src/loading.rs) | `SessionLoadAssets` and frame-spanning hidden preparation before publication |
 | [sources](src/sources.rs) | `SessionWorldAssets` and `SessionSourceCatalog`: host-resolved world sources for the saved census |
 | [scene_instances](src/scene_instances.rs) | Hidden world/model instances, staging camera, sky, texture and material preparation |
@@ -25,6 +25,7 @@ For player-facing save and load behavior, see [Save and resume](../../docs/PLAYI
 | [render_playback](src/render_playback.rs) | Texture and terrain continuation on the shared presentation epoch |
 | [music](src/music.rs) | CD transport capture |
 | [lifecycle](src/lifecycle.rs) | Settled world identity and prepared host references |
+| [original](src/original.rs) | Complete original logical candidate and exact host-owner recipes |
 | [publication](src/publication.rs) | Exclusive commit of the prepared owners |
 
 ## Usage
@@ -36,11 +37,14 @@ requests on `SessionBoundary`:
   `commit(candidate)`, `load(...)` and `load_saved_game(...)` replace it.
 - The request runs in an exclusive `Last` system after ordinary updates; read it
   with `take_result()`. An unread result blocks the next submission.
-- Native hosts may enable `original-save-import` and submit `import_original`
-  with a captured matching-world native baseline and validated original subset.
-  The subset changes only the hidden candidate before normal publication, including
-  the imported clock continuation and supported animation playback. Saved
-  continuations are unsupported; this API does not construct a fresh world.
+- Native hosts may enable `original-save-import`, call
+  `RuntimeSessionSnapshot::prepare_original` with published typed save/allocation
+  owners, then submit `SessionBoundary::import_original_session`. This prepares
+  the logical transaction before requesting hidden scene/model roots, joins exact
+  external owners, and publishes at one exclusive boundary. Sample playback stops;
+  live CD transport remains. The old subset admission operation rejects without
+  changing the session. Player-facing admission remains unavailable until strict
+  matched continuation acceptance is complete.
 - Without a render backend, capture excludes render-only environment state even
   when the shared environment plugin has installed its default request. Headless
   loads preserve logical state without requiring rendered actor-prelight inputs.

@@ -437,9 +437,10 @@ pub(crate) fn validate_model_pose(
 
 /// Fully computed private meshes; publication does no fallible frame decoding.
 #[derive(Default)]
-pub(crate) struct PreparedModelFrames(Vec<(Entity, BoundFrameMesh, Mesh)>);
+pub struct PreparedModelFrames(Vec<(Entity, BoundFrameMesh, Mesh)>);
 impl PreparedModelFrames {
-    pub(crate) fn prepare(
+    /// Decode private frame meshes off-live, validating source geometry and mapping.
+    pub fn prepare(
         world: &bevy::prelude::World,
         nodes: &[Entity],
         source: &Handle<Animations>,
@@ -503,7 +504,8 @@ impl PreparedModelFrames {
         }
         Ok(Self(prepared))
     }
-    pub(crate) fn validate(&self, world: &bevy::prelude::World) -> anyhow::Result<()> {
+    /// Reject changed mesh ownership before any live publication.
+    pub fn validate(&self, world: &bevy::prelude::World) -> anyhow::Result<()> {
         for (entity, binding, _) in &self.0 {
             anyhow::ensure!(
                 world
@@ -518,7 +520,8 @@ impl PreparedModelFrames {
         }
         Ok(())
     }
-    pub(crate) fn queue(self, commands: &mut Commands) {
+    /// Publish previously validated private meshes without fallible decoding.
+    pub fn queue(self, commands: &mut Commands) {
         commands.queue(move |world: &mut bevy::prelude::World| {
             for (entity, binding, mesh) in self.0 {
                 let bounds = mesh.get_aabb();

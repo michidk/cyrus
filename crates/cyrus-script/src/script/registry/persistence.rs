@@ -468,6 +468,30 @@ struct ActorSnapshot {
     update_failure: Option<String>,
 }
 impl ScriptWorld {
+    /// Reconstruct allocation order from the checkpoint, including shells created
+    /// before standalone roles. Original-load sessions rebuild their shell census
+    /// after those roles, so fresh-entry shell order cannot stand in for this owner.
+    fn prepare_snapshot_allocations(
+        scripts: &Scripts,
+        generation: u64,
+        saved: &[ActorSnapshot],
+    ) -> Result<Self> {
+        let entry_shells = saved
+            .iter()
+            .take_while(|actor| {
+                !matches!(
+                    actor.source.as_str(),
+                    "player" | "alternate_player" | "camera"
+                )
+            })
+            .filter(|actor| actor.source == "shell")
+            .map(|actor| actor.name.clone())
+            .collect::<Vec<_>>();
+        let mut world = Self::prepare_with_shells(scripts, generation, &entry_shells)?;
+        world.restore_started_shells(saved)?;
+        Ok(world)
+    }
+
     /// Recreate the shells and created objects that were started after preparation, in saved
     /// order, so the saved actor census matches. A created object is placed at the origin with
     /// its own saved spatial state restored afterwards; anything else beyond the installed census
@@ -971,8 +995,8 @@ impl WorldSnapshot {
             "world {}: replacement must use a fresh actor generation",
             self.world
         );
-        let mut candidate = ScriptWorld::prepare(sources.scripts, generation)?;
-        candidate.restore_started_shells(&self.actors)?;
+        let mut candidate =
+            ScriptWorld::prepare_snapshot_allocations(sources.scripts, generation, &self.actors)?;
         ensure!(
             self.actors.len() == candidate.actors.len(),
             "world {}: saved actor census differs",
@@ -1286,8 +1310,11 @@ impl RegistrySnapshot {
                 "world {}: saved content differs",
                 saved.world
             );
-            let mut installed = ScriptWorld::prepare(source.scripts, saved.generation)?;
-            installed.restore_started_shells(&saved.actors)?;
+            let installed = ScriptWorld::prepare_snapshot_allocations(
+                source.scripts,
+                saved.generation,
+                &saved.actors,
+            )?;
             ensure!(
                 saved.actors.len() == installed.actors.len(),
                 "world {}: saved actor census differs",

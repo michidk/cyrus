@@ -24,6 +24,23 @@ impl SessionEntityStage {
         scene: Option<&SceneCandidate>,
         world: &mut World,
     ) -> Result<Self> {
+        Self::prepare_with_samples(snapshot, scene, world, true)
+    }
+
+    pub(crate) fn prepare_stopped(
+        snapshot: &RuntimeSessionSnapshot,
+        scene: Option<&SceneCandidate>,
+        world: &mut World,
+    ) -> Result<Self> {
+        Self::prepare_with_samples(snapshot, scene, world, false)
+    }
+
+    fn prepare_with_samples(
+        snapshot: &RuntimeSessionSnapshot,
+        scene: Option<&SceneCandidate>,
+        world: &mut World,
+        sample_players: bool,
+    ) -> Result<Self> {
         ensure!(
             snapshot.sky.is_some() == scene.is_some(),
             "session entity staging rendered scene census differs"
@@ -100,7 +117,11 @@ impl SessionEntityStage {
             players == 1,
             "session staging requires exactly one selected player"
         );
-        for source in snapshot.sample_playback().sources() {
+        for source in snapshot
+            .sample_playback()
+            .sources()
+            .filter(|_| sample_players)
+        {
             ensure!(
                 saved.insert(source.saved_entity),
                 "session staging sample playback entity duplicates another target"

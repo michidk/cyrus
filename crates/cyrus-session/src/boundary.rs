@@ -4,7 +4,9 @@ use anyhow::{Context, Result, ensure};
 use bevy::{
     log::{debug, info},
     platform::time::Instant,
-    prelude::{App, Assets, Handle, IntoScheduleConfigs, Last, Plugin, Resource, World},
+    prelude::{
+        App, Assets, Handle, IntoScheduleConfigs, Last, Plugin, PostUpdate, Resource, World,
+    },
 };
 use cyrus_assets::hud::HudAsset;
 
@@ -195,23 +197,34 @@ impl SessionBoundary {
         ))
     }
 
-    /// Import supported fields into a replacement of a matching native session.
-    /// The native baseline supplies unsupported owners; no live field is changed
-    /// until the complete candidate passes publication validation.
+    /// Partial original admission is disabled. Use the complete off-live runtime
+    /// operation after validating every saved and retained external owner.
     #[cfg(feature = "original-save-import")]
     pub fn import_original(
         &mut self,
-        snapshot: RuntimeSessionSnapshot,
-        assets: crate::SessionLoadAssets,
-        subset: cyrus_script::script::original_save::OriginalSaveSubset,
+        _snapshot: RuntimeSessionSnapshot,
+        _assets: crate::SessionLoadAssets,
+        _subset: cyrus_script::script::original_save::OriginalSaveSubset,
     ) -> Result<()> {
-        ensure!(
-            snapshot.current_world() == subset.world,
-            "original import requires a matching native world"
-        );
-        let mut load = crate::loading::SessionLoad::new(snapshot, assets);
-        load.original = Some(subset);
-        self.submit(Request::Load(Box::new(load), true))
+        anyhow::bail!(
+            "partial original session admission is disabled; complete runtime restoration and matched continuation are required (Cyrus #364)"
+        )
+    }
+
+    /// Publish a complete original session only after hidden resource preparation
+    /// and the aggregate's exclusive preflight. No subset is applied after staging.
+    #[cfg(feature = "original-save-import")]
+    pub fn import_original_session(
+        &mut self,
+        admission: crate::OriginalRuntimeAdmission,
+        assets: crate::SessionLoadAssets,
+    ) -> Result<()> {
+        self.submit(Request::Load(
+            Box::new(crate::loading::SessionLoad::from_original(
+                admission, assets,
+            )),
+            true,
+        ))
     }
 
     pub fn take_result(&mut self) -> Option<Result<SessionBoundaryResult>> {
@@ -219,8 +232,9 @@ impl SessionBoundary {
     }
 }
 
-/// Registered by both game hosts. Runs exclusively after Update/PostUpdate and
-/// their deferred commands; no simulation system intervenes during publication.
+/// Registered by both game hosts. Captures and native restores run exclusively in Last.
+/// Complete original restores publish after simulation and before rendered presentation,
+/// so transform propagation, frame deformation and visibility observe the replacement together.
 pub struct SessionBoundaryPlugin;
 
 /// Render plugins may initialize environment requests without a render backend.
@@ -234,11 +248,39 @@ impl Plugin for SessionBoundaryPlugin {
         }
         app.init_resource::<SessionBoundary>()
             .init_resource::<crate::SessionSourceCatalog>()
+            .add_systems(
+                PostUpdate,
+                execute_original
+                    .before(bevy::transform::TransformSystems::Propagate)
+                    .before(bevy::camera::CameraUpdateSystems)
+                    .before(cyrus_render::animation::PoseRender)
+                    .before(cyrus_render::persistence::EnvironmentPresentation)
+                    .before(cyrus_render::script_transform::ScriptTransforms)
+                    .before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate)
+                    .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility)
+                    .before(bevy::asset::AssetEventSystems),
+            )
             .add_systems(Last, execute.after(cyrus_script::script::WorldLoopExit));
     }
 }
 
+fn execute_original(world: &mut World) {
+    execute_at(world, true);
+}
+
 fn execute(world: &mut World) {
+    execute_at(world, false);
+}
+
+fn execute_at(world: &mut World, original_boundary: bool) {
+    let original_load = match world.resource::<SessionBoundary>().request.as_ref() {
+        Some(Request::Load(load, _)) => load.is_complete_original(),
+        Some(Request::Commit(candidate)) => candidate.original_load,
+        _ => false,
+    };
+    if original_load != original_boundary {
+        return;
+    }
     crate::sources::retain_settled_sources(world);
     let Some(request) = world.resource_mut::<SessionBoundary>().request.take() else {
         return;
@@ -326,6 +368,18 @@ fn capture(
 mod inspection_tests {
     use super::*;
     use bevy::ecs::system::SystemState;
+
+    #[test]
+    fn original_presentation_boundary_preserves_pending_native_capture() {
+        let mut world = World::new();
+        let mut boundary = SessionBoundary::default();
+        boundary.capture_live().unwrap();
+        world.insert_resource(boundary);
+        execute_original(&mut world);
+        let boundary = world.resource::<SessionBoundary>();
+        assert!(matches!(boundary.request, Some(Request::CaptureLive)));
+        assert!(boundary.result.is_none());
+    }
 
     #[test]
     fn capture_retries_typed_dialogue_export_but_not_permanent_errors() {

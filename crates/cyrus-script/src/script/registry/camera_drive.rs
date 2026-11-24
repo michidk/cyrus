@@ -49,6 +49,26 @@ pub struct CameraFrameState {
 }
 
 impl CameraFrameState {
+    /// Resume a fully restored camera without repeating world-entry setup or sampling shake.
+    /// Load resets collision selections; the first explicit camera update rebuilds them.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original_world(world: &ScriptWorld) -> Result<Self> {
+        let camera = world
+            .camera
+            .as_ref()
+            .context("restored world camera absent")?;
+        Ok(Self {
+            world: Some(world.generation()),
+            hits: Some(empty_hits()),
+            published: Some(PublishedCamera {
+                pose: camera.current,
+                render: camera.render,
+                view_angles: camera.render.angles.map(|angle| (angle & 2047) as u16),
+            }),
+            terrain: None,
+        })
+    }
+
     /// Logical-world generation that owns the retained render publication.
     pub fn generation(&self) -> Option<u64> {
         self.world

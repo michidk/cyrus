@@ -75,6 +75,29 @@ pub struct CameraCandidate {
 }
 
 impl CameraSnapshot {
+    /// Replace the view with the restored logical camera without running framing or camera updates.
+    /// Projection, inspection controls, pending framing, active status and initial inspection view
+    /// remain exactly those supplied by this snapshot. The publication must belong to `generation`.
+    pub fn with_logical_view(
+        mut self,
+        frame: &cyrus_script::script::CameraFrameState,
+        generation: u64,
+    ) -> Result<Self> {
+        ensure!(
+            frame.generation() == Some(generation),
+            "camera publication belongs to a different logical world"
+        );
+        let published = frame
+            .published
+            .as_ref()
+            .context("logical camera publication absent")?;
+        let transform = super::driven_view_transform(published)
+            .context("logical camera orientation cannot be projected")?;
+        self.pose = Pose::capture(&transform);
+        self.clone().restore()?;
+        Ok(self)
+    }
+
     /// Return None only when no view camera exists; incomplete or multiple cameras reject.
     pub fn capture(world: &World) -> Result<Option<Self>> {
         let count = world
@@ -227,6 +250,20 @@ mod tests {
         ));
         let saved = CameraSnapshot::capture(&original).unwrap().unwrap();
         let bytes = serde_json::to_vec(&saved).unwrap();
+        let mut stale = cyrus_script::script::CameraFrameState::default();
+        stale.published = Some(cyrus_script::script::PublishedCamera {
+            pose: cyrus_script::script::camera::CameraPose {
+                position: [0; 3],
+                angles: [0; 3],
+            },
+            render: cyrus_script::script::camera::RenderPose {
+                position: [20.0, 40.0, 60.0],
+                angles: [0; 3],
+            },
+            view_angles: [0; 3],
+        });
+        assert!(saved.clone().with_logical_view(&stale, 1).is_err());
+        assert_eq!(serde_json::to_vec(&saved).unwrap(), bytes);
         let mut invalid = serde_json::to_value(&saved).unwrap();
         invalid["projection"][2] = (-1).into();
         assert!(

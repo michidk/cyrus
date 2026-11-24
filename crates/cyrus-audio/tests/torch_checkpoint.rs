@@ -109,3 +109,57 @@ fn restored_torch_retains_its_shared_channel_instead_of_losing_the_owner() {
         "restoration must retain and rebind the shared torch slot"
     );
 }
+
+#[test]
+fn original_load_releases_cache_hints_and_keeps_retained_service_owners() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_asset::<AudioSource>()
+        .init_asset::<DialogueClip>();
+    let server = app.world().resource::<AssetServer>();
+    let sources = app.world().resource::<Assets<AudioSource>>();
+    let mut document = serde_json::to_value(
+        RuntimeDialogue::default()
+            .snapshot(server, sources)
+            .unwrap(),
+    )
+    .unwrap();
+    let clip = serde_json::json!({
+        "entry": { "version": 1, "label": [84, 69, 83, 84], "text": "line", "text_lifetime": 60, "voice": null },
+        "audio_hash": null
+    });
+    document["cache"]["slots"][0] = serde_json::json!({
+        "label": [84, 69, 83, 84], "payload": clip, "sample": 6, "used": true, "age": 0
+    });
+    document["generation"] = 4.into();
+    document["torch_channel"] = 6.into();
+    document["ordinary_completed"] = true.into();
+    let saved: RuntimeDialogueSnapshot = serde_json::from_value(document.clone()).unwrap();
+    assert_eq!(
+        saved.required_labels(),
+        std::collections::BTreeSet::from([*b"TEST"])
+    );
+    let reset = saved.for_saved_world().unwrap();
+    assert!(
+        reset.required_labels().is_empty(),
+        "released cache must require no installed clip"
+    );
+    let after = serde_json::to_value(reset).unwrap();
+    for field in [
+        "generation",
+        "torch_channel",
+        "ordinary_completed",
+        "hud_bound",
+        "preparation",
+        "taunts",
+    ] {
+        assert_eq!(after[field], document[field], "retained {field} changed");
+    }
+    assert!(
+        after["cache"]["slots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|slot| slot["payload"].is_null())
+    );
+}

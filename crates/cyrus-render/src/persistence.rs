@@ -74,3 +74,7 @@ mod clear_tests {
         assert!(!world.contains_resource::<crate::ReadyScene>());
     }
 }
+
+/// Environment presentation refreshes that must observe a complete published session.
+#[derive(bevy::prelude::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EnvironmentPresentation;

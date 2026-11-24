@@ -34,7 +34,7 @@ impl ScriptActors {
     fn prepare_original_session(
         &self,
         inputs: OriginalSessionInputs<'_>,
-    ) -> Result<LogicalSessionCandidate> {
+    ) -> Result<(LogicalSessionCandidate, Vec<(ScriptActorId, ScriptActorId)>)> {
         let OriginalSessionInputs {
             slot,
             sources,
@@ -243,13 +243,16 @@ impl ScriptActors {
             globals: Default::default(),
             error: None,
         };
-        Ok(LogicalSessionCandidate {
-            actors,
-            hud,
-            clock,
-            random: EngineRandom::from_state(random.state()),
-            toggles,
-        })
+        Ok((
+            LogicalSessionCandidate {
+                actors,
+                hud,
+                clock,
+                random: EngineRandom::from_state(random.state()),
+                toggles,
+            },
+            actor_bindings,
+        ))
     }
 }
 
@@ -270,20 +273,26 @@ impl LogicalSessionCandidate {
     /// The first explicit update belongs to the caller and is never run by import.
     /// This remains an off-live step of the complete runtime session publication.
     pub fn import_original(&mut self, inputs: OriginalSessionImport<'_>) -> Result<()> {
-        let replacement = self
-            .actors
-            .prepare_original_session(OriginalSessionInputs {
-                slot: inputs.slot,
-                sources: inputs.sources,
-                allocations: inputs.allocations,
-                hud: inputs.hud,
-                preferences: inputs.preferences,
-                prior_hud: &self.hud,
-                random: &self.random,
-                toggles: self.toggles,
-                bios_tick: self.clock.bios_sample(),
-            })?;
-        *self = replacement;
+        *self = self.prepare_original(inputs)?.0;
         Ok(())
+    }
+
+    /// Construct a complete replacement and exact prior-to-saved owner bindings.
+    /// Hosts use these bindings to stage external owners before atomic publication.
+    pub fn prepare_original(
+        &self,
+        inputs: OriginalSessionImport<'_>,
+    ) -> Result<(Self, Vec<(ScriptActorId, ScriptActorId)>)> {
+        self.actors.prepare_original_session(OriginalSessionInputs {
+            slot: inputs.slot,
+            sources: inputs.sources,
+            allocations: inputs.allocations,
+            hud: inputs.hud,
+            preferences: inputs.preferences,
+            prior_hud: &self.hud,
+            random: &self.random,
+            toggles: self.toggles,
+            bios_tick: self.clock.bios_sample(),
+        })
     }
 }

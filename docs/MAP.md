@@ -411,6 +411,7 @@ module where it is defined and regenerate.
 - `src/lifecycle.rs` — Settled world identity and prepared host references for coordinated replacement.
 - `src/loading.rs` — Frame-spanning hidden preparation before one exclusive session publication.
 - `src/music.rs` — CD census capture for the same completed session boundary as logical state.
+- `src/original.rs` — Complete original logical state joined to independently prepared host owners.
 - `src/publication.rs` — Exclusive publication of the prepared runtime owners.
 - `src/render_playback.rs` — Texture and terrain continuation published with the shared presentation epoch.
 - `src/scene_instances.rs` — Hidden scene instances loaded without publishing a world entry request.

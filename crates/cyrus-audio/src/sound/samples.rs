@@ -553,6 +553,11 @@ impl ChannelOwnershipSnapshot {
 }
 
 impl ChannelOwnershipCandidate {
+    pub(super) fn stop_all(&mut self) {
+        self.samples.stop_matching(None, None);
+        self.tokens.clear();
+    }
+
     pub(super) fn finish(
         self,
         playing: std::collections::HashMap<u64, super::Channel>,

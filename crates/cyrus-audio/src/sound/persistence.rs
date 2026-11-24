@@ -210,6 +210,41 @@ impl SamplePlaybackSnapshot {
         self.ownership.entity_owners()
     }
 
+    /// Prepare the stopped pool required by original saved-world restoration,
+    /// without installed source loads or decoder construction. Remembered sample
+    /// slots and remapped owners survive; no playback entity bindings are needed.
+    pub fn restore_stopped(
+        self,
+        bindings: &AudioRestoreBindings,
+        live_world: &World,
+    ) -> Result<SamplePlaybackCandidate> {
+        ensure!(
+            self.version == 1,
+            "sample playback snapshot version unsupported"
+        );
+        let live_last_token = live_world
+            .get_resource::<Channels>()
+            .map_or(0, |channels| channels.samples.last_token());
+        let mut ownership = self.ownership.restore(live_last_token, bindings)?;
+        let mut tokens = std::collections::BTreeSet::new();
+        ensure!(
+            self.players.len() == ownership.tokens.len(),
+            "saved sample transport census differs"
+        );
+        for player in self.players {
+            ensure!(
+                ownership.tokens.contains_key(&player.token) && tokens.insert(player.token),
+                "saved sample token {}: absent or duplicate slot",
+                player.token
+            );
+        }
+        ownership.stop_all();
+        Ok(SamplePlaybackCandidate {
+            channels: ownership.finish(HashMap::new())?,
+            playback: Vec::new(),
+        })
+    }
+
     /// Prepare against installed source bytes and fresh host-reserved entities.
     /// Sample slot numbers remain unchanged; transport tokens are minted above both
     /// saved and live allocators so stale completion callbacks cannot retire them.

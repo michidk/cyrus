@@ -24,6 +24,20 @@ pub struct EntityBindingSnapshot {
     visibility: Option<u8>,
 }
 impl EntityBindingSnapshot {
+    #[cfg(feature = "original-save-import")]
+    pub(crate) fn set_original_display(
+        &mut self,
+        pose: Option<&AnimationPose>,
+        hidden: bool,
+        surface: Option<cyrus_assets::surface::Surface>,
+    ) {
+        self.displayed = pose.map(|pose| (pose.model.clone(), pose.frame));
+        self.visibility = Some(if hidden { 1 } else { 0 });
+        self.surface = surface;
+        // The logical stored affine is authoritative; the render projection applies it.
+        self.transform = None;
+    }
+
     pub fn saved_entity(&self) -> u64 {
         self.entity
     }
@@ -124,6 +138,7 @@ pub(super) fn capture(world: &World) -> Result<Vec<EntityBindingSnapshot>> {
 /// Prepared attachment; queued together with actor resources and service replacements.
 pub struct EntityBindingCandidate {
     pub entity: Entity,
+    actor: ScriptActorId,
     binding: ScriptEntityBinding,
     displayed: Option<AnimationPose>,
     surface: Option<SoundSurface>,
@@ -131,6 +146,7 @@ pub struct EntityBindingCandidate {
     visibility: Option<Visibility>,
     player: bool,
     map: bool,
+    frames: Option<cyrus_render::animation::PreparedModelFrames>,
 }
 impl EntityBindingCandidate {
     pub(crate) fn is_map(&self) -> bool {
@@ -152,10 +168,16 @@ impl EntityBindingCandidate {
             self.entity
         );
         validate_retirement_ancestry(world, self.entity)?;
+        if let Some(frames) = &self.frames {
+            frames.validate(world)?;
+        }
         Ok(())
     }
 
     pub fn queue(self, commands: &mut Commands, player: Entity) {
+        if let Some(frames) = self.frames {
+            frames.queue(commands);
+        }
         self.binding.queue(commands, self.entity, player);
         let mut target = commands.entity(self.entity);
         target.remove::<crate::staging::StagedSessionEntity>();
@@ -190,6 +212,7 @@ pub(super) fn restore(
     current: &ScriptWorld,
     animation: &Handle<Animations>,
     live: &World,
+    original: bool,
 ) -> Result<Vec<EntityBindingCandidate>> {
     let mut seen = std::collections::BTreeSet::new();
     saved
@@ -249,6 +272,11 @@ pub(super) fn restore(
                     })
                 })
                 .transpose()?;
+            let transform = if original && !player {
+                Some(live.get::<Transform>(entity).cloned().unwrap_or_default())
+            } else {
+                transform
+            };
             let displayed = entry
                 .displayed
                 .map(|(model, frame)| {
@@ -273,8 +301,29 @@ pub(super) fn restore(
                     _ => anyhow::bail!("restored entity visibility outside supported range"),
                 })
                 .transpose()?;
+            let frames = if original {
+                displayed
+                    .as_ref()
+                    .filter(|pose| {
+                        live.get::<Name>(entity)
+                            .is_some_and(|name| name.as_str() == pose.model)
+                    })
+                    .map(|pose| {
+                        cyrus_render::animation::PreparedModelFrames::prepare(
+                            live,
+                            &[entity],
+                            animation,
+                            pose,
+                        )
+                    })
+                    .transpose()?
+            } else {
+                None
+            };
             Ok(EntityBindingCandidate {
+                frames,
                 entity,
+                actor,
                 binding: current.prepare_entity_binding(actor, animation.clone())?,
                 displayed,
                 surface: entry.surface.map(SoundSurface),
@@ -321,4 +370,133 @@ pub(super) fn validate_retirement_ancestry(world: &World, target: Entity) -> Res
             .map(bevy::prelude::ChildOf::parent);
     }
     Ok(())
+}
+
+/// A staged affine and the exact hierarchy inputs used to compute it.
+pub(super) struct OriginalProjection {
+    pub entity: Entity,
+    pub global: bevy::prelude::GlobalTransform,
+    parent: Option<Entity>,
+    local: Option<Transform>,
+}
+impl OriginalProjection {
+    pub fn validate(&self, world: &World) -> Result<()> {
+        ensure!(
+            world.get_entity(self.entity).is_ok(),
+            "session original projection target {:?} disappeared",
+            self.entity
+        );
+        ensure!(
+            world
+                .get::<bevy::prelude::ChildOf>(self.entity)
+                .map(bevy::prelude::ChildOf::parent)
+                == self.parent
+                && world.get::<Transform>(self.entity) == self.local.as_ref(),
+            "session original projection target {:?} hierarchy/transform changed",
+            self.entity
+        );
+        validate_retirement_ancestry(world, self.entity)
+    }
+}
+
+/// Prepare the first rendered publication from stored affine owners, including
+/// independently loaded model subtrees that will be attached during commit.
+/// No live transform is changed and no matrix is decomposed into Euler/TRS state.
+pub(super) fn prepare_original_projection(
+    bindings: &[EntityBindingCandidate],
+    current: &ScriptWorld,
+    models: &[(Entity, Entity)],
+    world: &World,
+) -> Result<Vec<OriginalProjection>> {
+    use bevy::prelude::{ChildOf, Children, GlobalTransform, Mat4};
+    let mut projected: Vec<OriginalProjection> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let selected = bindings
+        .iter()
+        .find(|binding| binding.player)
+        .context("original projection selected player absent")?
+        .entity;
+    let alternate = |binding: &&EntityBindingCandidate| {
+        !binding.player
+            && matches!(
+                current.actors()[binding.actor.index].source,
+                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+            )
+    };
+    let mut ordered = bindings.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|binding| alternate(binding));
+    for binding in ordered {
+        let affine = match current.model_presentation(binding.actor)? {
+            Some(model) => {
+                cyrus_render::script_transform::scene_transform_at(model.pose, model.position)
+            }
+            None => match current.spatial(binding.actor) {
+                Ok(spatial) => {
+                    cyrus_render::script_transform::scene_transform(spatial.query_pose()?)
+                }
+                Err(_)
+                    if current.actors()[binding.actor.index]
+                        .control_state()
+                        .is_none() =>
+                {
+                    continue;
+                }
+                Err(error) => return Err(error),
+            },
+        };
+        let parent = if alternate(&binding) {
+            projected
+                .iter()
+                .find(|projection| projection.entity == selected)
+                .map(|projection| projection.global)
+                .context("original projection alternate role parent absent")?
+        } else {
+            world
+                .get::<ChildOf>(binding.entity)
+                .and_then(|parent| world.get::<GlobalTransform>(parent.parent()))
+                .copied()
+                .unwrap_or_default()
+        };
+        let mut pending = vec![(
+            binding.entity,
+            parent * GlobalTransform::from(Mat4::from(affine)),
+        )];
+        while let Some((entity, global)) = pending.pop() {
+            ensure!(
+                seen.insert(entity),
+                "original runtime projection has overlapping actor/model owners"
+            );
+            ensure!(
+                global.to_matrix().is_finite(),
+                "original runtime entity {entity:?} affine is nonfinite"
+            );
+            projected.push(OriginalProjection {
+                entity,
+                global,
+                parent: world.get::<ChildOf>(entity).map(ChildOf::parent),
+                local: world.get::<Transform>(entity).cloned(),
+            });
+            let children = world
+                .get::<Children>(entity)
+                .into_iter()
+                .flat_map(|children| children.iter().copied())
+                .chain(
+                    models
+                        .iter()
+                        .filter(|(_, parent)| *parent == entity)
+                        .map(|(root, _)| *root),
+                );
+            for child in children {
+                let local = world.get::<Transform>(child).with_context(|| {
+                    format!("original runtime child {child:?} local transform absent")
+                })?;
+                ensure!(
+                    local.to_matrix().is_finite(),
+                    "original runtime child {child:?} local transform is nonfinite"
+                );
+                pending.push((child, global * *local));
+            }
+        }
+    }
+    Ok(projected)
 }

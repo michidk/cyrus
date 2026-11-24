@@ -13,13 +13,28 @@ impl RuntimeSessionCandidate {
     /// the represented owners; rendered preparation, revisit acceptance and host
     /// admission remain required before exposing a load action.
     pub fn commit(self, world: &mut World) -> Result<()> {
-        self.publish(world, false)
+        let original = self.original_load;
+        self.publish(world, original)
     }
 
     pub(super) fn publish(mut self, world: &mut World, saved_game: bool) -> Result<()> {
         self.validate_publication(world)?;
+        let publication = if self.original_load {
+            Some(cyrus_script::script::SessionPublicationBoundary::new(
+                self.logical
+                    .actors
+                    .current
+                    .as_ref()
+                    .context("original publication current world absent")?,
+            ))
+        } else {
+            None
+        };
         if !saved_game {
-            self.music.enforce_live_pause(world);
+            self.music
+                .as_mut()
+                .context("runtime publication music replacement absent")?
+                .enforce_live_pause(world);
         }
         let same_world = saved_game
             && world
@@ -72,6 +87,8 @@ impl RuntimeSessionCandidate {
             samples,
             dialogue,
             music,
+            original_load: _,
+            projections,
             cheats,
             movie_unlocks,
             hud,
@@ -84,7 +101,13 @@ impl RuntimeSessionCandidate {
             player_model,
             actor_models,
             marker,
+            #[cfg(feature = "original-save-import")]
+            original_camera,
         } = self;
+        let (replacement_music, music_playback) = match music {
+            Some(music) => (Some(music.music), music.playback),
+            None => (None, None),
+        };
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
@@ -138,6 +161,9 @@ impl RuntimeSessionCandidate {
                     .remove::<crate::staging::StagedSessionEntity>();
             }
             commands.entity(player.entity).insert((Player, placement));
+            for projection in projections {
+                commands.entity(projection.entity).insert(projection.global);
+            }
             PlayerSceneRequest(player.scene).queue_restored(&mut commands, &lifecycle.prepared);
             commands.insert_resource(AnimationRequest(player.animation));
             if same_world {
@@ -155,6 +181,13 @@ impl RuntimeSessionCandidate {
                 commands.remove_resource::<SceneLoadError>();
             }
             commands.insert_resource(sources.into_catalog());
+            #[cfg(feature = "original-save-import")]
+            if let Some(frame) = original_camera {
+                commands.insert_resource(frame);
+            }
+            if let Some(publication) = publication {
+                commands.insert_resource(publication);
+            }
             commands.insert_resource(logical.actors);
             commands.insert_resource(logical.hud);
             commands.insert_resource(logical.clock);
@@ -164,7 +197,9 @@ impl RuntimeSessionCandidate {
             commands.insert_resource(marker);
             commands.insert_resource(dialogue);
             if !saved_game {
-                commands.insert_resource(music.music);
+                commands.insert_resource(
+                    replacement_music.context("runtime music replacement absent")?,
+                );
             }
             if let Some(cheats) = cheats {
                 commands.queue(move |world: &mut World| {
@@ -192,7 +227,7 @@ impl RuntimeSessionCandidate {
         world.resource_scope(|world, mut assets: Mut<Assets<Panned>>| {
             samples.queue(&mut Commands::new(&mut queue, world), &mut assets);
         });
-        if let Some((transport, settings)) = music.playback.filter(|_| !saved_game) {
+        if let Some((transport, settings)) = music_playback.filter(|_| !saved_game) {
             let handle = world
                 .resource_mut::<Assets<MusicTransport>>()
                 .add(transport);

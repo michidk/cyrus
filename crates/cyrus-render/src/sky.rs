@@ -154,7 +154,9 @@ impl Plugin for SkyPlugin {
             .add_plugins(MaterialPlugin::<SkyMaterial>::default())
             .add_systems(
                 PostUpdate,
-                animate_sky.before(bevy::asset::AssetEventSystems),
+                animate_sky
+                    .in_set(crate::persistence::EnvironmentPresentation)
+                    .before(bevy::asset::AssetEventSystems),
             );
     }
 }

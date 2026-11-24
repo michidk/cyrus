@@ -521,3 +521,55 @@ fn restored_mixed_case_control_voice_retains_source_hint_and_stop_slot_with_loop
     );
     Ok(())
 }
+
+#[test]
+fn original_load_prepares_stopped_samples_without_sources_or_playback_bindings() -> Result<()> {
+    let (mut app, _) = fixture()?;
+    let saved = SamplePlaybackSnapshot::capture(app.world())?;
+    let before = serde_json::to_value(&saved)?;
+    assert_eq!(saved.sources().len(), 1);
+    let candidate = saved.restore_stopped(&AudioRestoreBindings::new(&[], &[])?, app.world())?;
+    assert_eq!(candidate.entities().count(), 0);
+    candidate.validate_publication(app.world())?;
+    assert_eq!(
+        serde_json::to_value(SamplePlaybackSnapshot::capture(app.world())?)?,
+        before,
+        "off-live preparation must leave the playing sample untouched"
+    );
+    let players: Vec<_> = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>()
+        .iter(app.world())
+        .collect();
+    let mut queue = CommandQueue::default();
+    app.world_mut()
+        .resource_scope(|world, mut assets: Mut<Assets<Panned>>| {
+            let mut commands = Commands::new(&mut queue, world);
+            candidate.queue(&mut commands, &mut assets);
+            for entity in players {
+                commands.entity(entity).despawn();
+            }
+        });
+    queue.apply(app.world_mut());
+    let stopped = serde_json::to_value(SamplePlaybackSnapshot::capture(app.world())?)?;
+    assert!(stopped["players"].as_array().unwrap().is_empty());
+    assert!(
+        stopped["ownership"]["samples"]["slots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(serde_json::Value::is_null)
+    );
+    assert!(
+        stopped["ownership"]["samples"]["next_token"]
+            .as_u64()
+            .unwrap()
+            >= before["ownership"]["samples"]["next_token"]
+                .as_u64()
+                .unwrap()
+    );
+    for field in ["start", "speech", "animation", "checkpoints"] {
+        assert_eq!(stopped["ownership"][field], before["ownership"][field]);
+    }
+    Ok(())
+}

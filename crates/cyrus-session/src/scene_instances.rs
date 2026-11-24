@@ -75,6 +75,26 @@ impl SessionSceneInstances {
         prepared: &PreparedWorld,
         world: &mut World,
     ) -> Result<Self> {
+        Self::request_with_recipes(snapshot, prepared, None, world)
+    }
+
+    /// Load hidden model roots from the restored original logical poses and installed skins.
+    /// Native snapshot frame sources are deliberately excluded from this request.
+    pub fn request_original(
+        snapshot: &RuntimeSessionSnapshot,
+        prepared: &PreparedWorld,
+        recipes: &crate::OriginalRenderRecipes,
+        world: &mut World,
+    ) -> Result<Self> {
+        Self::request_with_recipes(snapshot, prepared, Some(recipes), world)
+    }
+
+    fn request_with_recipes(
+        snapshot: &RuntimeSessionSnapshot,
+        prepared: &PreparedWorld,
+        recipes: Option<&crate::OriginalRenderRecipes>,
+        world: &mut World,
+    ) -> Result<Self> {
         ensure!(
             snapshot.sky.is_some() && snapshot.camera.is_some(),
             "session scene staging requires a rendered snapshot"
@@ -85,15 +105,42 @@ impl SessionSceneInstances {
                 .is_none_or(|id| id == snapshot.current_world()),
             "session scene staging current world differs"
         );
-        let model_path = snapshot
-            .player_model()
-            .map(|model| model.source_path(prepared))
-            .transpose()?;
-        let actor_paths = snapshot
-            .actor_models
-            .iter()
-            .map(|(&entity, model)| Ok((entity, model.source_path(prepared)?)))
-            .collect::<Result<Vec<_>>>()?;
+        let (model_path, actor_paths) = if let Some(recipes) = recipes {
+            use cyrus_render::player_model::PlayerModelSnapshot;
+            let model = recipes
+                .player
+                .as_ref()
+                .map(|(pose, texture_set)| {
+                    PlayerModelSnapshot::logical_source_path(prepared, &pose.model, *texture_set)
+                })
+                .transpose()?;
+            let actors = recipes
+                .actor_models
+                .iter()
+                .map(|(&entity, (pose, texture_set))| {
+                    Ok((
+                        entity,
+                        PlayerModelSnapshot::logical_source_path(
+                            prepared,
+                            &pose.model,
+                            *texture_set,
+                        )?,
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            (model, actors)
+        } else {
+            let model = snapshot
+                .player_model()
+                .map(|model| model.source_path(prepared))
+                .transpose()?;
+            let actors = snapshot
+                .actor_models
+                .iter()
+                .map(|(&entity, model)| Ok((entity, model.source_path(prepared)?)))
+                .collect::<Result<Vec<_>>>()?;
+            (model, actors)
+        };
         let server = world
             .get_resource::<AssetServer>()
             .context("session scene staging asset server absent")?
@@ -171,6 +218,63 @@ impl SessionSceneInstances {
             sky_images: None,
         })
     }
+    /// Describe the exact loaded logical model sources without advancing actors or animations.
+    /// Root-local identity and inherited visibility match ordinary frame-source replacement;
+    /// actor world affine poses remain owned by the separately prepared scene state.
+    pub fn original_models(
+        &self,
+        recipes: &crate::OriginalRenderRecipes,
+        world: &World,
+    ) -> Result<(
+        Option<cyrus_render::player_model::PlayerModelSnapshot>,
+        std::collections::BTreeMap<u64, cyrus_render::player_model::PlayerModelSnapshot>,
+    )> {
+        use cyrus_render::player_model::PlayerModelSnapshot;
+        ensure!(
+            self.ready(world)?,
+            "session logical model instances still loading"
+        );
+        ensure!(
+            self.model.is_some() == recipes.player.is_some()
+                && self.actor_models.keys().eq(recipes.actor_models.keys()),
+            "session logical model recipe/root census differs"
+        );
+        let player = self
+            .model
+            .zip(recipes.player.as_ref())
+            .map(|(root, (pose, texture_set))| {
+                PlayerModelSnapshot::from_logical(
+                    world,
+                    root,
+                    pose.clone(),
+                    *texture_set,
+                    Transform::default(),
+                    Visibility::Inherited,
+                )
+            })
+            .transpose()?;
+        let actors = recipes
+            .actor_models
+            .iter()
+            .map(|(&entity, (pose, texture_set))| {
+                Ok((
+                    entity,
+                    PlayerModelSnapshot::from_logical(
+                        world,
+                        *self.actor_models.get(&entity).with_context(|| {
+                            format!("session logical actor {entity}: model root absent")
+                        })?,
+                        pose.clone(),
+                        *texture_set,
+                        Transform::default(),
+                        Visibility::Inherited,
+                    )?,
+                ))
+            })
+            .collect::<Result<_>>()?;
+        Ok((player, actors))
+    }
+
     /// Prepare private sky images and a hidden triangle using the normal renderer's
     /// asset builder. The environment must include the saved environment edits.
     pub fn prepare_sky(

@@ -33,7 +33,7 @@ pub struct SessionLoadAssets {
 pub(crate) struct SessionLoad {
     snapshot: RuntimeSessionSnapshot,
     #[cfg(feature = "original-save-import")]
-    pub(crate) original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
+    complete_original: Option<crate::OriginalRuntimeAdmission>,
     assets: SessionLoadAssets,
     environments: BTreeMap<u32, Handle<Environment>>,
     scene: Option<SessionSceneInstances>,
@@ -47,13 +47,34 @@ impl SessionLoad {
         Self {
             snapshot,
             #[cfg(feature = "original-save-import")]
-            original: None,
+            complete_original: None,
             assets,
             environments: BTreeMap::new(),
             scene: None,
             entities: None,
             camera: None,
             private_environment: None,
+        }
+    }
+
+    #[cfg(feature = "original-save-import")]
+    pub(crate) fn from_original(
+        admission: crate::OriginalRuntimeAdmission,
+        assets: SessionLoadAssets,
+    ) -> Self {
+        let mut load = Self::new(admission.snapshot.clone(), assets);
+        load.complete_original = Some(admission);
+        load
+    }
+
+    pub(crate) fn is_complete_original(&self) -> bool {
+        #[cfg(feature = "original-save-import")]
+        {
+            self.complete_original.is_some()
+        }
+        #[cfg(not(feature = "original-save-import"))]
+        {
+            false
         }
     }
 
@@ -83,7 +104,12 @@ impl SessionLoad {
                 }
             }
         }
-        for source in self.snapshot.sample_playback().sources() {
+        for source in self
+            .snapshot
+            .sample_playback()
+            .sources()
+            .filter(|_| !self.is_complete_original())
+        {
             let handle = self
                 .assets
                 .samples
@@ -99,7 +125,12 @@ impl SessionLoad {
             }
         }
         let mut clips = BTreeMap::new();
-        for label in self.snapshot.required_dialogue_labels() {
+        let labels = if self.is_complete_original() {
+            self.snapshot.dialogue().required_labels()
+        } else {
+            self.snapshot.required_dialogue_labels()
+        };
+        for label in labels {
             let handle = self.assets.dialogue.get(&label).with_context(|| {
                 format!("session load dialogue {label:?}: installed source absent")
             })?;
@@ -113,7 +144,12 @@ impl SessionLoad {
             }
             clips.insert(label, clip.clone());
         }
-        let music = match &self.assets.music {
+        let music = match self
+            .assets
+            .music
+            .as_ref()
+            .filter(|_| !self.is_complete_original())
+        {
             Some(handle) => {
                 let Some(source) = loaded(world, handle, "CD audio")? else {
                     return Ok(None);
@@ -139,16 +175,31 @@ impl SessionLoad {
                 }
             }
             if self.scene.is_none() {
-                self.scene = Some(SessionSceneInstances::request(
-                    &self.snapshot,
-                    &prepared,
-                    world,
-                )?);
+                #[cfg(feature = "original-save-import")]
+                let scene = if let Some(original) = &self.complete_original {
+                    SessionSceneInstances::request_original(
+                        &self.snapshot,
+                        &prepared,
+                        &original.recipes,
+                        world,
+                    )?
+                } else {
+                    SessionSceneInstances::request(&self.snapshot, &prepared, world)?
+                };
+                #[cfg(not(feature = "original-save-import"))]
+                let scene = SessionSceneInstances::request(&self.snapshot, &prepared, world)?;
+                self.scene = Some(scene);
                 return Ok(None);
             }
             if !self.scene.as_ref().unwrap().ready(world)? {
                 return Ok(None);
             }
+        }
+        #[cfg(feature = "original-save-import")]
+        if let (Some(original), Some(scene)) = (&mut self.complete_original, &self.scene) {
+            let (player, actors) = scene.original_models(&original.recipes, world)?;
+            self.snapshot.player_model = player;
+            self.snapshot.actor_models = actors;
         }
         let installed = self
             .environments
@@ -200,11 +251,11 @@ impl SessionLoad {
                     .id(),
             );
         }
-        self.entities = Some(SessionEntityStage::prepare(
-            &self.snapshot,
-            scene.as_ref(),
-            world,
-        )?);
+        self.entities = Some(if self.is_complete_original() {
+            SessionEntityStage::prepare_stopped(&self.snapshot, scene.as_ref(), world)?
+        } else {
+            SessionEntityStage::prepare(&self.snapshot, scene.as_ref(), world)?
+        });
         let stage = self.entities.as_ref().unwrap();
         let sources = self
             .assets
@@ -212,7 +263,7 @@ impl SessionLoad {
             .sources(world)?
             .context("session sources disappeared")?;
         let hud = loaded(world, &self.assets.hud, "HUD")?.context("session HUD disappeared")?;
-        let plan = self.snapshot.clone().plan(LogicalSessionRestoreInputs {
+        let inputs = LogicalSessionRestoreInputs {
             sources: &sources,
             last_generation: crate::resource::<ScriptActors>(world, "session load registry")?
                 .generation_high_water(),
@@ -221,11 +272,21 @@ impl SessionLoad {
             bios_tick: cyrus_script::clock::bios_tick(
                 crate::resource::<Time<Real>>(world, "session load real clock")?.elapsed(),
             ),
-        })?;
+        };
+        #[cfg(feature = "original-save-import")]
+        let plan = if let Some(mut original) = self.complete_original.take() {
+            original.snapshot = self.snapshot.clone();
+            original.plan(inputs)?
+        } else {
+            self.snapshot.clone().plan(inputs)?
+        };
+        #[cfg(not(feature = "original-save-import"))]
+        let plan = self.snapshot.clone().plan(inputs)?;
         let audio = self
             .assets
             .samples
             .iter()
+            .filter(|_| !plan.is_original())
             .map(|(identity, handle)| {
                 Ok((
                     identity.clone(),
@@ -284,40 +345,6 @@ impl SessionLoad {
             },
             world,
         )?;
-        #[cfg(feature = "original-save-import")]
-        let candidate = if let Some(subset) = self.original.take() {
-            let mut candidate = candidate;
-            candidate
-                .placement
-                .import_original_pose(subset.position_q8, subset.heading)?;
-            candidate.logical.clock =
-                subset.restore_clock(candidate.logical.clock.bios_sample())?;
-            let animations = sources
-                .get(&subset.world)
-                .context("original import animation source missing")?
-                .animations;
-            subset.apply(
-                candidate
-                    .logical
-                    .actors
-                    .current
-                    .as_mut()
-                    .context("original import candidate world absent")?,
-                &candidate.logical.hud,
-                animations,
-            )?;
-            candidate
-                .logical
-                .actors
-                .current
-                .as_mut()
-                .unwrap()
-                .globals_mut()
-                .request_camera_reset();
-            candidate
-        } else {
-            candidate
-        };
         Ok(Some(candidate))
     }
 

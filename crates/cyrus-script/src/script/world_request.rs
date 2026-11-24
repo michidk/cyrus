@@ -9,6 +9,23 @@ use cyrus_world::lifecycle::{ReloadScene, SceneRequest};
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorldLoopExit;
 
+/// Suppresses exit arbitration once when a complete session is published before presentation.
+/// Loading is not a simulated world update; retained requests belong to the next explicit update.
+#[derive(Resource)]
+pub struct SessionPublicationBoundary {
+    generation: u64,
+    frame: u32,
+}
+impl SessionPublicationBoundary {
+    /// Bind suppression to the published frame, never to a later simulation update.
+    pub fn new(world: &super::ScriptWorld) -> Self {
+        Self {
+            generation: world.generation(),
+            frame: world.globals().world_loop_frame,
+        }
+    }
+}
+
 /// Main-dispatcher selection, retained outside saved gameplay and world replacement.
 /// Hosts update it when admitting an autosave, preparing a save or selecting a Load row.
 #[derive(Clone, Debug)]
@@ -121,12 +138,25 @@ pub fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyhow::Resu
 pub(super) fn consume(
     mut actors: ResMut<ScriptActors>,
     mut commands: Commands,
-    clock: Option<Res<crate::clock::SimulationClock>>,
+    timing: (
+        Option<Res<crate::clock::SimulationClock>>,
+        Option<Res<SessionPublicationBoundary>>,
+    ),
     state: Option<Res<State<cyrus_game::AppState>>>,
     dispatch: Option<Res<DeathDispatch>>,
     mut next: Option<ResMut<NextState<cyrus_game::AppState>>>,
     mut checked: Local<Option<(u64, u32, u32)>>,
 ) {
+    let (clock, publication) = timing;
+    if let Some(publication) = publication {
+        commands.remove_resource::<SessionPublicationBoundary>();
+        if actors.current.as_ref().is_some_and(|world| {
+            world.generation() == publication.generation
+                && world.globals().world_loop_frame == publication.frame
+        }) {
+            return;
+        }
+    }
     if actors.error.is_some()
         || actors.world_loop_outcome.is_some()
         || state.is_some_and(|state| *state.get() != cyrus_game::AppState::InGame)

@@ -1,4 +1,8 @@
 //! Shared off-live gameplay and audio assembly; native/browser storage stays host-owned.
+#[cfg(feature = "original-save-import")]
+mod original;
+#[cfg(feature = "original-save-import")]
+pub use original::OriginalRuntimeAdmission;
 mod boundary;
 pub use boundary::{
     SessionBoundary, SessionBoundaryInspection, SessionBoundaryPlugin, SessionBoundaryResult,
@@ -62,6 +66,13 @@ use serde::{Deserialize, Serialize};
 pub use sources::{SessionSourceCatalog, SessionWorldAssets};
 use std::collections::BTreeMap;
 
+/// Exact independently loaded model recipes derived from an imported logical world.
+#[derive(Default)]
+pub struct OriginalRenderRecipes {
+    pub player: Option<(cyrus_world::animation::AnimationPose, Option<u16>)>,
+    pub actor_models: BTreeMap<u64, (cyrus_world::animation::AnimationPose, Option<u16>)>,
+}
+
 /// Composed runtime owners with off-live preparation and exclusive publication.
 /// Complete host lifecycle/revisit acceptance remains required before exposing
 /// saves. This is not an original SAV codec.
@@ -98,11 +109,40 @@ struct PlayerSnapshot {
     runtime: PlayerRuntimeSnapshot,
 }
 
+enum RuntimeLogicalPlan<'a> {
+    Restore(LogicalSessionRestorePlan<'a>),
+    #[cfg(feature = "original-save-import")]
+    Original(LogicalSessionCandidate),
+}
+impl RuntimeLogicalPlan<'_> {
+    fn finish(self, samples: &BTreeMap<u8, u8>) -> Result<LogicalSessionCandidate> {
+        match self {
+            Self::Restore(plan) => plan.finish(samples),
+            #[cfg(feature = "original-save-import")]
+            Self::Original(candidate) => {
+                ensure!(
+                    samples.iter().all(|(old, new)| old == new),
+                    "original runtime sample slots changed after logical validation"
+                );
+                Ok(candidate)
+            }
+        }
+    }
+    fn actor_bindings(&self) -> &[(ScriptActorId, ScriptActorId)] {
+        match self {
+            Self::Restore(plan) => plan.actor_bindings(),
+            #[cfg(feature = "original-save-import")]
+            Self::Original(_) => &[],
+        }
+    }
+}
+
 /// Validated logical identity reservation before host asset/entity preparation.
 pub struct RuntimeSessionPlan<'a> {
     source_identities: BTreeMap<u32, String>,
     lifecycle: lifecycle::LifecycleSnapshot,
-    logical: LogicalSessionRestorePlan<'a>,
+    logical: RuntimeLogicalPlan<'a>,
+    original_bindings: Option<Vec<(ScriptActorId, ScriptActorId)>>,
     player: PlayerSnapshot,
     entity_bindings: Vec<EntityBindingSnapshot>,
     samples: SamplePlaybackSnapshot,
@@ -166,7 +206,9 @@ pub struct RuntimeSessionCandidate {
     runtime: PlayerRuntime,
     samples: SamplePlaybackCandidate,
     dialogue: RuntimeDialogue,
-    music: MusicCandidate,
+    music: Option<MusicCandidate>,
+    original_load: bool,
+    projections: Vec<entities::OriginalProjection>,
     cheats: Option<cyrus_game::cheats::CheatReplacement>,
     movie_unlocks: Option<cyrus_game::MovieUnlocks>,
     hud: Option<HudState>,
@@ -179,6 +221,8 @@ pub struct RuntimeSessionCandidate {
     player_model: Option<cyrus_render::player_model::PlayerModelCandidate>,
     actor_models: Vec<cyrus_render::player_model::PlayerModelCandidate>,
     marker: MarkerEntry,
+    #[cfg(feature = "original-save-import")]
+    original_camera: Option<cyrus_script::script::CameraFrameState>,
 }
 
 impl RuntimeSessionCandidate {
@@ -270,6 +314,9 @@ impl RuntimeSessionCandidate {
             "session publication player target absent from entity census"
         );
         self.samples.validate_publication(world)?;
+        for projection in &self.projections {
+            projection.validate(world)?;
+        }
         let mut model_roots = std::collections::BTreeSet::new();
         for model in self.player_model.iter().chain(&self.actor_models) {
             ensure!(
@@ -298,7 +345,9 @@ impl RuntimeSessionCandidate {
             }
         }
         ensure!(
-            self.music.playback.is_none()
+            self.music
+                .as_ref()
+                .is_none_or(|music| music.playback.is_none())
                 || world.contains_resource::<Assets<cyrus_audio::music::MusicTransport>>(),
             "session publication CD transport assets absent"
         );
@@ -666,7 +715,7 @@ impl RuntimeSessionSnapshot {
                 "session source world {id}: player absent"
             );
         }
-        let logical = self.logical.plan(inputs)?;
+        let logical = self.logical.clone().plan(inputs)?;
         let source_identities = logical.source_identities()?;
         ensure!(
             logical
@@ -675,9 +724,25 @@ impl RuntimeSessionSnapshot {
                 .any(|(saved, _)| (saved.generation, saved.index) == self.player.actor),
             "session saved player actor absent from world census"
         );
-        Ok(RuntimeSessionPlan {
+        Ok(self.assemble_plan(
+            RuntimeLogicalPlan::Restore(logical),
+            source_identities,
+            world,
+            None,
+        ))
+    }
+
+    fn assemble_plan<'a>(
+        self,
+        logical: RuntimeLogicalPlan<'a>,
+        source_identities: BTreeMap<u32, String>,
+        world: u32,
+        original_bindings: Option<Vec<(ScriptActorId, ScriptActorId)>>,
+    ) -> RuntimeSessionPlan<'a> {
+        RuntimeSessionPlan {
             source_identities,
             lifecycle: self.lifecycle,
+            original_bindings,
             logical,
             player: self.player,
             entity_bindings: self.entity_bindings,
@@ -696,13 +761,19 @@ impl RuntimeSessionSnapshot {
             player_model: self.player_model,
             actor_models: self.actor_models,
             world,
-        })
+        }
     }
 }
 
 impl RuntimeSessionPlan<'_> {
+    pub(crate) fn is_original(&self) -> bool {
+        self.original_bindings.is_some()
+    }
+
     pub fn actor_bindings(&self) -> &[(ScriptActorId, ScriptActorId)] {
-        self.logical.actor_bindings()
+        self.original_bindings
+            .as_deref()
+            .unwrap_or_else(|| self.logical.actor_bindings())
     }
     pub fn saved_player(&self) -> u64 {
         self.player.entity
@@ -716,6 +787,7 @@ impl RuntimeSessionPlan<'_> {
         services: SessionServices<'_>,
         live_world: &World,
     ) -> Result<RuntimeSessionCandidate> {
+        let actor_bindings = self.actor_bindings().to_vec();
         let SessionServices {
             sources,
             scene,
@@ -832,6 +904,10 @@ impl RuntimeSessionPlan<'_> {
             "session actor model/prepared root census differs"
         );
         let mut actor_models = Vec::new();
+        let mut model_attachments = Vec::new();
+        if let Some(model) = &player_model {
+            model_attachments.push((model.root(), player.entity));
+        }
         for (saved_entity, saved) in self.actor_models {
             let binding = self
                 .entity_bindings
@@ -848,6 +924,7 @@ impl RuntimeSessionPlan<'_> {
                 .find(|(id, _)| *id == saved_entity)
                 .map(|(_, entity)| *entity)
                 .context("session actor model target absent")?;
+            model_attachments.push((actor_model_roots[&saved_entity], entity));
             actor_models.push(saved.prepare(
                 &prepared,
                 actor_model_roots[&saved_entity],
@@ -860,7 +937,12 @@ impl RuntimeSessionPlan<'_> {
             .entity_bindings
             .iter()
             .map(EntityBindingSnapshot::saved_entity)
-            .chain(self.samples.sources().map(|source| source.saved_entity))
+            .chain(
+                self.samples
+                    .sources()
+                    .filter(|_| self.original_bindings.is_none())
+                    .map(|source| source.saved_entity),
+            )
             .collect();
         let supplied_entities: std::collections::BTreeSet<_> =
             entities.iter().map(|(saved, _)| *saved).collect();
@@ -868,7 +950,7 @@ impl RuntimeSessionPlan<'_> {
             saved_entities == supplied_entities,
             "session prepared entity census differs from snapshot"
         );
-        let bindings = AudioRestoreBindings::new(self.logical.actor_bindings(), entities)?;
+        let bindings = AudioRestoreBindings::new(&actor_bindings, entities)?;
         ensure!(
             bindings.entity(self.player.entity)? == player.entity,
             "session replacement player entity differs"
@@ -904,7 +986,11 @@ impl RuntimeSessionPlan<'_> {
             player.animation.clone(),
             player.scene.clone(),
         )?;
-        let samples = self.samples.restore(source_audio, &bindings, live_world)?;
+        let samples = if self.original_bindings.is_some() {
+            self.samples.restore_stopped(&bindings, live_world)?
+        } else {
+            self.samples.restore(source_audio, &bindings, live_world)?
+        };
         let sample_slots = (0..16).map(|slot| (slot, slot)).collect();
         let dialogue = RuntimeDialogue::from_snapshot(
             self.dialogue,
@@ -912,7 +998,12 @@ impl RuntimeSessionPlan<'_> {
             &sample_slots,
             &bindings,
         )?;
-        let music = Music::from_snapshot(self.music, music_source)?;
+        let original_load = self.original_bindings.is_some();
+        let music = if original_load {
+            None
+        } else {
+            Some(Music::from_snapshot(self.music, music_source)?)
+        };
         ensure!(
             self.presentation_clock.is_some()
                 == (self.hud.is_some()
@@ -1002,12 +1093,21 @@ impl RuntimeSessionPlan<'_> {
                 && current.selected_player() == Some(player_actor),
             "session replacement player is not the current logical player"
         );
+        #[cfg(feature = "original-save-import")]
+        let original_camera = if self.original_bindings.is_some() && current.camera().is_some() {
+            Some(cyrus_script::script::CameraFrameState::from_original_world(
+                current,
+            )?)
+        } else {
+            None
+        };
         let entity_bindings = entities::restore(
             self.entity_bindings,
             &bindings,
             current,
             &player.animation,
             live_world,
+            original_load,
         )?;
         if let Some(scene) = &scene {
             if let Some(playback) = &render_playback {
@@ -1019,6 +1119,16 @@ impl RuntimeSessionPlan<'_> {
                 }
             }
         }
+        let projections = if original_load {
+            entities::prepare_original_projection(
+                &entity_bindings,
+                current,
+                &model_attachments,
+                live_world,
+            )?
+        } else {
+            Vec::new()
+        };
         let cheats = self
             .cheats
             .map(|snapshot| {
@@ -1044,6 +1154,8 @@ impl RuntimeSessionPlan<'_> {
             samples,
             dialogue,
             music,
+            original_load,
+            projections,
             hud,
             presentation_clock,
             environment_edits,
@@ -1053,6 +1165,8 @@ impl RuntimeSessionPlan<'_> {
             player_model,
             actor_models,
             marker,
+            #[cfg(feature = "original-save-import")]
+            original_camera,
         })
     }
 }

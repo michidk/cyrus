@@ -37302,6 +37302,31 @@ fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibiti
     host.world_mut()
         .resource_mut::<cyrus_script::script::ScriptActors>()
         .current = Some(world);
+    let publication = cyrus_script::script::SessionPublicationBoundary::new(
+        host.world()
+            .resource::<cyrus_script::script::ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap(),
+    );
+    host.insert_resource(publication);
+    host.world_mut().run_schedule(bevy::prelude::Last);
+    assert!(
+        !host
+            .world()
+            .contains_resource::<cyrus_script::script::SessionPublicationBoundary>()
+    );
+    assert!(
+        !host
+            .world()
+            .contains_resource::<cyrus_script::script::DeathBookEntry>()
+    );
+    assert!(
+        host.world()
+            .resource::<cyrus_script::script::ScriptActors>()
+            .world_loop_outcome
+            .is_none()
+    );
     host.world_mut().run_schedule(bevy::prelude::Last);
     assert_eq!(
         host.world()

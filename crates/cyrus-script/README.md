@@ -257,3 +257,8 @@ census must match. Unsupported retained process owners reject with context. The
 existing candidate changes only after all validation succeeds; import runs no
 callbacks or service updates. This logical transaction must still join prepared
 audio and rendered host services before complete runtime admission is enabled.
+
+Complete original-session publication retains the saved shell allocation order when
+round-tripped through native checkpoints. Publication before presentation suppresses
+exit arbitration for that frame; restored requests are evaluated on the next explicit
+world update, rather than during admission.

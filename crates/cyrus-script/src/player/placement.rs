@@ -35,6 +35,8 @@ pub struct PlayerPose {
 pub enum PlayerEntrySupport {
     /// Static settling completed; dynamic support and controller guards remain separate.
     StaticSettled,
+    /// Complete saved controller and support ownership restored without marker settling.
+    RestoredContinuation,
     /// The marker remains visible for inspection after unsupported settling.
     InspectionOnly(String),
 }
