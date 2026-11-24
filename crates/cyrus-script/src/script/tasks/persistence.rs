@@ -1,4 +1,6 @@
 //! Native task continuations validate against saved VM calls without execution.
+#[cfg(feature = "original-save-import")]
+use super::{Lookup, Speech};
 use super::{NativeTasks, Task};
 use anyhow::{Context, Result, ensure};
 use cyrus_soup::{Native, persistence::Snapshot, program::CallKind};
@@ -70,7 +72,7 @@ impl NativeTasks {
         Self::prepare_original(vm, None, bindings)
     }
 
-    /// Restore spatial continuations and ambient sample bindings from saved words.
+    /// Restore spatial, animation-phase and speech continuations from saved words.
     ///
     /// The map must contain exactly one entry for each active VM token, including
     /// paused tasks. Word order follows preservation's published task-slot view.
@@ -124,6 +126,70 @@ impl NativeTasks {
                 Native::MoveToLocation => Task::Location,
                 Native::MoveToMarker => Task::Marker,
                 Native::PlayAnimation => Task::AnimationRequest,
+                Native::PushAnimation | Native::PushControlAnimation => {
+                    let &[started, second, third, fourth] = retained.with_context(|| {
+                        format!(
+                            "original {} token {} requires saved words",
+                            call.call.function, call.token
+                        )
+                    })?;
+                    ensure!(
+                        started <= 1 && second == 0 && third == 0 && fourth == 0,
+                        "original {} token {} has unsupported phase words",
+                        call.call.function,
+                        call.token
+                    );
+                    let animation = bindings
+                        .animation
+                        .context("original animation receiver unavailable")?;
+                    // The task re-evaluates its group operand before using this cache.
+                    // Its phase belongs to the slot; playback belongs to the receiver.
+                    let group = animation
+                        .current_group()
+                        .map_or(-1, |group| i32::from(group.index() as i16));
+                    if call.call.function == Native::PushAnimation {
+                        Task::Animation {
+                            group,
+                            started: started != 0,
+                        }
+                    } else {
+                        Task::ControlAnimation {
+                            group,
+                            started: started != 0,
+                        }
+                    }
+                }
+                Native::Rtx => {
+                    let &[record, sample, third, fourth] = retained.with_context(|| {
+                        format!("original RTX token {} requires saved words", call.token)
+                    })?;
+                    ensure!(
+                        third == 0 && fourth == 0 && (sample < 16 || sample == u32::MAX),
+                        "original RTX token {} has unsupported retained words",
+                        call.token
+                    );
+                    let dialogue = bindings
+                        .dialogue
+                        .context("original RTX cleared dialogue owner unavailable")?;
+                    dialogue.validate_original_load()?;
+                    ensure!(
+                        record == u32::MAX
+                            || (record as usize) < dialogue.settings().max_dialog_lines as usize,
+                        "original RTX token {} record {} exceeds installed dialogue table",
+                        call.token,
+                        record as i32
+                    );
+                    Task::SpeakerDialogue(Speech {
+                        record: record as i32,
+                        sample: (sample != u32::MAX).then_some(sample as u8),
+                        // Only an unstarted record with zero elapsed may do its first lookup.
+                        lookup: if record == 0 {
+                            Lookup::Idle
+                        } else {
+                            Lookup::Done
+                        },
+                    })
+                }
                 Native::AmbientSound => {
                     let &[sample, second, third, fourth] = retained.with_context(|| {
                         format!(

@@ -70,6 +70,28 @@ pub trait DialogueEffects: DialoguePlayback {
 }
 
 impl DialogueState {
+    /// Build the cleared shared record table required by original world loading.
+    /// The host must also clear RTX cache and audio channels before publication.
+    /// Saved RTX tasks retain their record/sample words; no line is reconstructed.
+    /// Follows preservation's engine/sound.md save-load reset contract.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original_load(settings: &DialogueSettings) -> Result<Self> {
+        let mut state = Self::new(settings)?;
+        state.clear_world_lines();
+        Ok(state)
+    }
+
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn validate_original_load(&self) -> Result<()> {
+        ensure!(
+            self.records
+                .iter()
+                .all(|record| !record.active && record.text.is_empty() && record.sample.is_none()),
+            "original load requires cleared dialogue records and sample handles"
+        );
+        Ok(())
+    }
+
     /// Capture without advancing lifetimes, consuming input or touching playback.
     pub fn snapshot(&self) -> DialogueSnapshot {
         DialogueSnapshot {

@@ -5123,3 +5123,228 @@ fn original_ambient_words_require_the_saved_playback_owner() {
         json!({"Ambient":{"channel":null}})
     );
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_push_animation_restores_slot_phase_against_saved_receiver_playback() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_world::animation::OriginalPlaybackRestore;
+    let data = Animations {
+        version: 2,
+        world: 0,
+        metadata: json!({"actors":[{"script_name":"ACTOR","animation_groups":[
+            {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+            {"group_index":10,"anim_id":1,"anim_type":1,"commands":[{"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},{"opcode":1}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    for started in [0, 1] {
+        let vm = contract_vm(Native::PushAnimation, CallKind::Task, &[10, 2]);
+        let words = BTreeMap::from([(1, [started, 0, 0, 0])]);
+        let mut animation =
+            ActorAnimation::from_asset(&data, "ACTOR", AnimationGroup::PANIC).unwrap();
+        let mut header = [0u8; 37];
+        header[..2].copy_from_slice(&10i16.to_le_bytes());
+        header[2..4].copy_from_slice(&(-1i16).to_le_bytes());
+        header[4] = 1;
+        header[7] = 1;
+        header[8] = 1;
+        header[15] = 4;
+        header[16] = 255;
+        let saved_playback = rgpre::import::savegame::SaveAnimationPlayback::from(&header);
+        assert_eq!(
+            animation.restore_original(&saved_playback).unwrap(),
+            OriginalPlaybackRestore::Restored { frame: Some(10) }
+        );
+        let before = serde_json::to_value(animation.snapshot()).unwrap();
+        let native = NativeTasks::from_original_with_words(
+            &vm,
+            &words,
+            NativeTaskBindings {
+                animation: Some(&animation),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(animation.snapshot()).unwrap(), before);
+        let program = code(Native::PushAnimation, CallKind::Task, &[10, 2]);
+        let sources = BTreeMap::from([(CodeOrigin(10), program)]);
+        let mut runtime = Runtime::from_snapshot(
+            CodeOrigin(10),
+            vm.clone(),
+            &sources,
+            &BTreeMap::from([(1, 1)]),
+            "restored animation".into(),
+        )
+        .unwrap();
+        let mut host = NativeHost {
+            native,
+            animation: Some(animation),
+            ..Default::default()
+        };
+        runtime.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+        assert_eq!(host.calls, 0);
+        assert_eq!(host.polls, 1);
+        assert_eq!(runtime.active_tasks(), 1);
+        let after = serde_json::to_value(host.animation.as_ref().unwrap().snapshot()).unwrap();
+        if started == 1 {
+            assert_eq!(after, before);
+        }
+        assert_eq!(
+            host.animation
+                .as_ref()
+                .unwrap()
+                .record_field(cyrus_world::animation::PlaybackField::LoopCount)
+                .unwrap(),
+            if started == 0 { 2 } else { 4 }
+        );
+        for bad in [[2, 0, 0, 0], [started, 1, 0, 0]] {
+            assert!(
+                NativeTasks::from_original_with_words(
+                    &vm,
+                    &BTreeMap::from([(1, bad)]),
+                    NativeTaskBindings {
+                        animation: host.animation.as_ref(),
+                        ..Default::default()
+                    }
+                )
+                .is_err()
+            );
+        }
+    }
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_rtx_retains_words_but_never_recreates_a_cleared_line() {
+    use crate::script::{DialogueLine, DialogueSource, ScriptActorId};
+    #[derive(Debug)]
+    struct Source;
+    impl DialogueSource for Source {
+        fn player_line(
+            &self,
+            _: [u8; 4],
+            _: ScriptActorId,
+            _: u32,
+        ) -> Result<std::task::Poll<Option<DialogueLine>>> {
+            panic!("saved RTX must not repeat lookup")
+        }
+        fn stop_sample(&self, _: u8) -> Result<()> {
+            Ok(())
+        }
+        fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> Result<bool> {
+            panic!("saved RTX must not start audio")
+        }
+    }
+    let vm = contract_vm(Native::Rtx, CallKind::Task, &[123]);
+    let words = BTreeMap::from([(1, [2, 1, 0, 0])]);
+    let owner = crate::script::DialogueState::from_original_load(dialogue().settings()).unwrap();
+    let tasks = NativeTasks::from_original_with_words(
+        &vm,
+        &words,
+        NativeTaskBindings {
+            dialogue: Some(&owner),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let before = serde_json::to_value(owner.snapshot()).unwrap();
+    struct RestoredHost {
+        tasks: NativeTasks,
+        owner: crate::script::DialogueState,
+        calls: usize,
+        polls: usize,
+    }
+    impl Host for RestoredHost {
+        fn call(
+            &mut self,
+            _: &Target,
+            _: CallKind,
+            _: Native,
+            _: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> Result<CallResult> {
+            self.calls += 1;
+            anyhow::bail!("saved callback was reissued")
+        }
+        fn poll(
+            &mut self,
+            token: u64,
+            arguments: &[Argument],
+            invocation: Invocation,
+            _: &mut [i32],
+        ) -> Result<bool> {
+            self.polls += 1;
+            self.tasks.poll(
+                token,
+                arguments,
+                invocation,
+                &mut None,
+                &mut None,
+                NativeServices {
+                    dialogue: Some(&mut self.owner),
+                    player_dialogue: Some(super::super::PlayerDialogueCall {
+                        source: Some(&Source),
+                        player: None,
+                        reset: Some(false),
+                        speaker: ScriptActorId {
+                            generation: 1,
+                            index: 0,
+                        },
+                        speaker_distance: Ok(0),
+                        player_distance: Ok(0),
+                        player_is_receiver: false,
+                    }),
+                    ..Default::default()
+                },
+            )
+        }
+        fn end(&mut self, _: Thread) -> Result<()> {
+            Ok(())
+        }
+    }
+    let sources = BTreeMap::from([(CodeOrigin(10), code(Native::Rtx, CallKind::Task, &[123]))]);
+    let mut runtime = Runtime::from_snapshot(
+        CodeOrigin(10),
+        vm.clone(),
+        &sources,
+        &BTreeMap::from([(1, 1)]),
+        "restored RTX".into(),
+    )
+    .unwrap();
+    let mut host = RestoredHost {
+        tasks,
+        owner,
+        calls: 0,
+        polls: 0,
+    };
+    runtime.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!((host.calls, host.polls, runtime.active_tasks()), (0, 1, 0));
+    assert_eq!(serde_json::to_value(host.owner.snapshot()).unwrap(), before);
+    let mut owner = host.owner;
+    owner.begin_line(
+        ScriptActorId {
+            generation: 1,
+            index: 0,
+        },
+        "must reject live owner".into(),
+        Some(1),
+        10,
+    );
+    let before = serde_json::to_value(owner.snapshot()).unwrap();
+    assert!(
+        NativeTasks::from_original_with_words(
+            &vm,
+            &words,
+            NativeTaskBindings {
+                dialogue: Some(&owner),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    assert_eq!(serde_json::to_value(owner.snapshot()).unwrap(), before);
+}

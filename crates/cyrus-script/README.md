@@ -220,3 +220,12 @@ to the limited-import warning.
 generation. Replay hosts use it instead of treating the reset observation counter
 as a request to run fresh-world startup updates. Script status exposes this as
 `restored`; changing worlds clears it.
+
+Original native task construction restores PushAnimation/PushControlAnimation
+slot phases against an explicitly bound saved receiver animation. It does not
+request an animation or replay cues during import. RTX construction requires a
+cleared dialogue owner from `DialogueState::from_original_load`; original loading
+clears shared text/audio rather than reconstructing saved speech. Saved RTX words
+remain intact and the next explicit update observes the inactive record without
+replaying the label. The host must clear cache/audio owners with the dialogue
+candidate. These service constructors do not enable complete session admission.

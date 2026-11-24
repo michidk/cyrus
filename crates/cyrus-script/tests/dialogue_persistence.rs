@@ -253,3 +253,21 @@ fn malformed_snapshots_and_incomplete_or_aliased_bindings_are_rejected() {
     assert_eq!(encode(&state), saved);
     assert!(state.waiting());
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_load_builds_cleared_records_without_rebinding_stale_samples() {
+    let mut state = DialogueState::from_original_load(&settings()).unwrap();
+    let before = encode(&state);
+    for record in before["records"].as_array().unwrap() {
+        assert_eq!(record["sample"], Value::Null);
+        assert_eq!(record["active"], false);
+        assert_eq!(record["text"], "");
+    }
+    let mut effects = Effects::default();
+    state.advance_records(1, true, &mut effects).unwrap();
+    assert!(effects.events.is_empty());
+    assert!(!state.line_active(Some(2)));
+    assert_eq!(state.presented_line(), None);
+    assert_eq!(encode(&state), before);
+}
