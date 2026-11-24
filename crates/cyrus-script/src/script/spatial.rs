@@ -267,6 +267,11 @@ impl SpatialWorld {
 
     #[cfg(feature = "original-save-import")]
     pub(super) fn replace_original_actor(&mut self, index: usize, state: ActorSpatial) {
+        // Standalone roles have allocated slots but no fresh-entry spatial owner.
+        // They join traversal when restored, just as on ordinary initialization.
+        if self.actors[index].is_none() {
+            self.order.push(index);
+        }
         self.actors[index] = Some(state);
     }
 
@@ -1462,6 +1467,30 @@ mod tests {
             no_slave_rotation: false,
             rotation_mode: 0,
         }
+    }
+
+    #[cfg(feature = "original-save-import")]
+    #[test]
+    fn original_standalone_spatial_owners_join_traversal_once() {
+        let mut world = SpatialWorld {
+            actors: vec![Some(receiver([10; 3], vec![])), None],
+            order: vec![0],
+            refreshes: 0,
+            families: vec![FamilyGroup::default(); 256],
+            family_updates: Vec::new(),
+        };
+        world.replace_original_actor(1, receiver([20; 3], vec![]));
+        world.replace_original_actor(1, receiver([30; 3], vec![]));
+        assert_eq!(world.snapshot().order, [0, 1]);
+        world.refresh_families().unwrap();
+        assert_eq!(
+            world.actor(1).unwrap().query_pose().unwrap().position,
+            [30; 3]
+        );
+        assert_eq!(
+            world.snapshot().order.len(),
+            world.actors.iter().flatten().count()
+        );
     }
 
     #[cfg(feature = "original-save-import")]

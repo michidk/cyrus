@@ -53,13 +53,13 @@ fn retained_runtime_import_preserves_late_rejection_and_reaches_first_service_up
     ensure!(!paths.is_empty(), "retained slots absent");
     for path in paths {
         if path.path().is_dir() {
-            verify_slot(
-                &load_save_slot(path.path())?,
-                &files,
-                &install,
-                &hud,
-                &preferences,
-            )?;
+            let slot = load_save_slot(path.path())?;
+            verify_slot(&slot, &files, &install, &hud, &preferences).with_context(|| {
+                format!(
+                    "retained world {} runtime admission",
+                    slot.game.metadata.world_id
+                )
+            })?;
         }
     }
     Ok(())

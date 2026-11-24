@@ -74,19 +74,34 @@ impl AdmissionCompletion<'_> {
         prepare: impl Fn(RuntimeSessionSnapshot) -> Result<OriginalRuntimeAdmission>,
     ) -> Result<()> {
         let before = serde_json::to_value(&snapshot)?;
-        self.assert_late_rejection(prepare(snapshot.clone())?, app, &before)?;
-        self.publish(prepare(snapshot)?, app)?;
+        self.assert_late_rejection(
+            prepare(snapshot.clone()).context("initial original preparation")?,
+            app,
+            &before,
+        )?;
+        self.publish(
+            prepare(snapshot).context("public original preparation")?,
+            app,
+        )
+        .context("public original publication")?;
         assert_projection(app)?;
         let checkpoint = RuntimeSessionSnapshot::capture(app.world(), self.sources, self.hud)?;
-        checkpoint.clone().plan(LogicalSessionRestoreInputs {
-            sources: self.sources,
-            last_generation: 100,
-            hud: self.hud,
-            preferences: self.preferences,
-            bios_tick: 100,
-        })?;
+        checkpoint
+            .clone()
+            .plan(LogicalSessionRestoreInputs {
+                sources: self.sources,
+                last_generation: 100,
+                hud: self.hud,
+                preferences: self.preferences,
+                bios_tick: 100,
+            })
+            .context("published checkpoint reconstruction")?;
         let active_before = serde_json::to_value(&checkpoint)?;
-        self.assert_late_rejection(prepare(checkpoint)?, app, &active_before)?;
+        self.assert_late_rejection(
+            prepare(checkpoint).context("active original preparation")?,
+            app,
+            &active_before,
+        )?;
         let id = app
             .world()
             .resource::<ScriptActors>()
