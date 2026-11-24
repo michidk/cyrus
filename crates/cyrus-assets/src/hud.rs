@@ -54,12 +54,15 @@ pub struct HudAsset {
     pub bindings: [u8; 15],
     /// `fonts/REDSEL.FNT`; HUD text is drawn like an NPC subtitle line.
     pub font: cyrus_text::Font,
-    /// SYSTEM.INI `[3dfx] font_sel` as main and shadow alpha.
-    pub text_alpha: [u8; 2],
+    /// SYSTEM.INI `[3dfx] font_sel` as colour scale and main/shadow alpha.
+    #[serde(alias = "text_alpha")]
+    pub text_style: cyrus_text::FontStyle,
     /// SYSTEM.INI [3dfx] font_norm, for reserved player dialogue record zero.
-    pub player_text_alpha: [u8; 2],
+    #[serde(alias = "player_text_alpha")]
+    pub player_text_style: cyrus_text::FontStyle,
     /// SYSTEM.INI [3dfx] font_used, for scripted menu items already chosen.
-    pub used_text_alpha: [u8; 2],
+    #[serde(alias = "used_text_alpha")]
+    pub used_text_style: cyrus_text::FontStyle,
     /// ITEM.INI `torch_time`: torch burn duration in seconds; absent when unset.
     #[serde(default)]
     pub torch_time: Option<i32>,

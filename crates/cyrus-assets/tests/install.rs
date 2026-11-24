@@ -776,9 +776,70 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     assert_eq!(candle.as_raw(), &snuff.frames[0].rgba);
     assert!((0..81).all(|f| hud.join(format!("candle-{f:02}.png")).is_file()));
     assert!(hud.join("item-07.png").is_file());
-    assert_eq!(data["text_alpha"], serde_json::json!([255, 199]));
-    assert_eq!(data["player_text_alpha"], serde_json::json!([255, 199]));
-    assert_eq!(data["used_text_alpha"], serde_json::json!([128, 100]));
+    assert_eq!(
+        data["text_style"],
+        serde_json::json!({"color_scale":255,"alpha":[255,199]})
+    );
+    assert_eq!(
+        data["player_text_style"],
+        serde_json::json!({"color_scale":125,"alpha":[255,199]})
+    );
+    assert_eq!(
+        data["used_text_style"],
+        serde_json::json!({"color_scale":125,"alpha":[128,100]})
+    );
+    let exported: cyrus_assets::hud::HudAsset = serde_json::from_value(data.clone()).unwrap();
+    let render = |style| {
+        let mut rgba = vec![0; 64 * 64 * 4];
+        exported
+            .font
+            .draw_shadowed(&mut rgba, 64, "A", [1, 1], style);
+        rgba
+    };
+    let selected = render(exported.text_style);
+    let ordinary = render(exported.player_text_style);
+    let used = render(exported.used_text_style);
+    let main_pixel = selected
+        .chunks_exact(4)
+        .position(|pixel| pixel[3] == 255 && pixel[..3].iter().any(|channel| *channel > 0))
+        .expect("installed REDSEL A must draw a coloured main glyph");
+    let pixel = |image: &[u8]| image[main_pixel * 4..main_pixel * 4 + 4].to_vec();
+    let selected = pixel(&selected);
+    let ordinary = pixel(&ordinary);
+    let used = pixel(&used);
+    assert!(
+        ordinary[..3]
+            .iter()
+            .zip(&selected[..3])
+            .all(|(a, b)| a <= b)
+    );
+    assert_ne!(
+        ordinary[..3],
+        selected[..3],
+        "export must retain font_norm colour scale"
+    );
+    assert_eq!(
+        ordinary[3], selected[3],
+        "normal text dims RGB, not opacity"
+    );
+    assert_eq!(used[..3], ordinary[..3]);
+    assert!(
+        used[3] < ordinary[3],
+        "font_used must also retain its lower opacity"
+    );
+
+    let mut legacy = data.clone();
+    for (name, old, alpha) in [
+        ("text_style", "text_alpha", [255, 199]),
+        ("player_text_style", "player_text_alpha", [255, 199]),
+        ("used_text_style", "used_text_alpha", [128, 100]),
+    ] {
+        legacy.as_object_mut().unwrap().remove(name);
+        legacy[old] = serde_json::json!(alpha);
+    }
+    let legacy: cyrus_assets::hud::HudAsset = serde_json::from_value(legacy).unwrap();
+    assert_eq!(legacy.player_text_style.color_scale, 255);
+    assert_eq!(legacy.used_text_style.alpha, [128, 100]);
     assert_eq!(data["font"]["line_height"], 26, "REDSEL.FNT");
     assert_eq!(data["prompt"], serde_json::json!([12, 436]));
     assert_eq!(data["override_ticks"], 24);

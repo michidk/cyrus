@@ -148,9 +148,9 @@ impl Font {
         width: usize,
         text: &str,
         at: [i32; 2],
-        alpha: [u8; 2],
+        style: impl Into<FontStyle>,
     ) {
-        self.draw_shadowed_by(rgba, width, text, at, alpha, 1);
+        self.draw_shadowed_by(rgba, width, text, at, style, 1);
     }
 
     /// [`Self::draw_shadowed`] with the shadow copy `shadow_offset` pixels right and down.
@@ -160,7 +160,7 @@ impl Font {
         width: usize,
         text: &str,
         at: [i32; 2],
-        alpha: [u8; 2],
+        style: impl Into<FontStyle>,
         shadow_offset: i32,
     ) {
         let mut pen = at[0];
@@ -169,7 +169,7 @@ impl Font {
             pen += self.advance(ch);
             (ch, position)
         });
-        self.draw_shadowed_glyphs(rgba, width, glyphs, alpha, shadow_offset);
+        self.draw_shadowed_glyphs(rgba, width, glyphs, style.into(), shadow_offset);
     }
 
     /// Draws HUD text with whole-glyph wrapping at the image width, following
@@ -182,7 +182,7 @@ impl Font {
         width: usize,
         text: &str,
         at: [i32; 2],
-        alpha: [u8; 2],
+        style: impl Into<FontStyle>,
     ) {
         let mut pen = at;
         let glyphs = text.bytes().filter_map(|ch| {
@@ -195,7 +195,7 @@ impl Font {
             pen[0] += self.advance(ch);
             Some((ch, position))
         });
-        self.draw_shadowed_glyphs(rgba, width, glyphs, alpha, 1);
+        self.draw_shadowed_glyphs(rgba, width, glyphs, style.into(), 1);
     }
 
     fn draw_shadowed_glyphs(
@@ -203,7 +203,10 @@ impl Font {
         rgba: &mut [u8],
         width: usize,
         glyphs: impl Iterator<Item = (u8, [i32; 2])>,
-        [main, shadow]: [u8; 2],
+        FontStyle {
+            color_scale,
+            alpha: [main, shadow],
+        }: FontStyle,
         shadow_offset: i32,
     ) {
         let height = rgba.len() / 4 / width;
@@ -214,7 +217,9 @@ impl Font {
                         let colour = if shadow_copy {
                             [0; 3]
                         } else {
-                            self.colour(index)
+                            self.colour(index).map(|channel| {
+                                (f32::from(channel) * f32::from(color_scale) / 255.0).round() as u8
+                            })
                         };
                         let at = (y as usize * width + x as usize) * 4;
                         if alpha >= 254 {
@@ -230,19 +235,63 @@ impl Font {
     }
 }
 
-/// SYSTEM.INI `[3dfx] font_*` "A,B" → `[main alpha B, shadow alpha B × 200 / 256]`; the glyph draw reads the shadow
-/// value from the same field as the main value, and `A` does not enter the alpha.
+/// Installed text colour scale and main/shadow alpha. SYSTEM.INI font styles are
+/// `A,B`: A scales palette RGB, B is main alpha; shadow alpha is B × 200 / 256.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct FontStyle {
+    pub color_scale: u8,
+    pub alpha: [u8; 2],
+}
+
+impl<'de> Deserialize<'de> for FontStyle {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StoredStyle {
+            Style { color_scale: u8, alpha: [u8; 2] },
+            LegacyAlpha([u8; 2]),
+        }
+        Ok(match StoredStyle::deserialize(deserializer)? {
+            StoredStyle::Style { color_scale, alpha } => Self { color_scale, alpha },
+            StoredStyle::LegacyAlpha(alpha) => alpha.into(),
+        })
+    }
+}
+
+/// Explicit alpha-only styles retain the palette's full colour, for example movie text.
+impl From<[u8; 2]> for FontStyle {
+    fn from(alpha: [u8; 2]) -> Self {
+        Self {
+            color_scale: 255,
+            alpha,
+        }
+    }
+}
+
+impl std::str::FromStr for FontStyle {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<u8> = value
+            .split(',')
+            .map(|part| {
+                part.trim()
+                    .parse::<u8>()
+                    .map_err(|error| format!("{value}: {error}"))
+            })
+            .collect::<Result<_, _>>()?;
+        let [color_scale, main] = parts[..] else {
+            return Err(format!("{value}: expected two values"));
+        };
+        Ok(Self {
+            color_scale,
+            alpha: [main, (u16::from(main) * 200 / 256) as u8],
+        })
+    }
+}
+
+/// Main and shadow alpha for callers that supply their own text colour.
 pub fn font_alpha(value: &str) -> Result<[u8; 2], String> {
-    let parts: Vec<u32> = value
-        .split(',')
-        .map(|v| v.trim().parse::<u32>().map_err(|e| format!("{value}: {e}")))
-        .collect::<Result<_, _>>()?;
-    let [a, b] = parts[..] else {
-        return Err(format!("{value}: expected two values"));
-    };
-    let byte = |v: u32| u8::try_from(v).map_err(|_| format!("{value}: {v} exceeds 255"));
-    byte(a)?;
-    Ok([byte(b)?, byte(b * 200 / 256)?])
+    value.parse::<FontStyle>().map(|style| style.alpha)
 }
 
 /// Composites `colour` at `alpha` over the pixel (source-over, straight alpha).
@@ -387,14 +436,55 @@ mod tests {
     }
 
     #[test]
-    fn font_sel_pairs_become_main_and_shadow_alpha() {
-        assert_eq!(font_alpha("255,255"), Ok([255, 199]));
+    fn installed_text_styles_make_the_selected_topic_brighter_than_normal_and_used() {
+        let font = Font {
+            start: u16::from(b'A'),
+            line_height: 1,
+            glyphs: vec![Glyph {
+                enabled: true,
+                width: 1,
+                height: 1,
+                offset: [0, 0],
+                pixels: vec![1],
+            }],
+            palette: vec![[0; 3], [60, 30, 15]],
+        };
+        let draw = |style: &str| {
+            let mut pixel = [0; 4];
+            font.draw_shadowed(
+                &mut pixel,
+                1,
+                "A",
+                [0, 0],
+                style.parse::<FontStyle>().unwrap(),
+            );
+            pixel
+        };
+        assert_eq!(draw("255,255"), [240, 120, 60, 255]);
         assert_eq!(
-            font_alpha("125,255"),
+            draw("85,255"),
+            [80, 40, 20, 255],
+            "normal style scales RGB, not opacity"
+        );
+        assert_eq!(draw("85,128"), [80, 40, 20, 128], "used style also blends");
+    }
+
+    #[test]
+    fn installed_styles_retain_color_scale_and_independent_alpha() {
+        assert_eq!(
+            "255,255".parse::<FontStyle>().map(|style| style.alpha),
+            Ok([255, 199])
+        );
+        assert_eq!(
+            "125,255".parse::<FontStyle>().map(|style| style.alpha),
             Ok([255, 199]),
             "A does not enter the alpha"
         );
-        assert_eq!(font_alpha("255,180"), Ok([180, 140]), "the movie copy");
-        assert!(font_alpha("255").is_err());
+        assert_eq!(
+            "255,180".parse::<FontStyle>().map(|style| style.alpha),
+            Ok([180, 140]),
+            "the movie copy"
+        );
+        assert!("255".parse::<FontStyle>().is_err());
     }
 }

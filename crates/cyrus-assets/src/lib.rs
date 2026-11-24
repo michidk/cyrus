@@ -23,7 +23,7 @@ pub mod source;
 #[cfg(feature = "parsers")]
 pub mod software_sky;
 
-pub const CATALOG_VERSION: u32 = 42;
+pub const CATALOG_VERSION: u32 = 43;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

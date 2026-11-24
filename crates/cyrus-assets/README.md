@@ -32,7 +32,8 @@ adapters.
 | [ini_patch](src/ini_patch.rs), [script_patch](src/script_patch.rs), [text_patch](src/text_patch.rs) | Mod-declared changes applied during preparation |
 | [software_sky](src/software_sky.rs) | Software sky previews for the viewer |
 
-`docs/MAP.md` lists every module.
+`docs/MAP.md` lists every module. HUD font styles retain the installed colour scale
+and independent main/shadow alpha; legacy alpha-only records retain full colour.
 
 `framebuffer::blend` reconstructs stored destinations and blends encoded integer channels for loading fades and HUD composition.
 `framebuffer::store` supplies the published ordered RGB565 encoded-channel storage to the logbook reader and HUD artwork. Coordinates are top-left framebuffer pixels.

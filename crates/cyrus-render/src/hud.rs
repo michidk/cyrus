@@ -629,9 +629,9 @@ fn draw_inventory_text(
     font: &cyrus_text::Font,
     text: &str,
     at: [i32; 2],
-    alpha: [u8; 2],
+    style: cyrus_text::FontStyle,
 ) {
-    font.draw_shadowed_by(rgba, 640, text, at, alpha, 2);
+    font.draw_shadowed_by(rgba, 640, text, at, style, 2);
 }
 
 #[allow(clippy::too_many_arguments)] // The inventory and examine states, the HUD asset and the overlay it rebuilds.
@@ -749,7 +749,7 @@ fn inventory_draw(
             if cell.count > 1 {
                 let text = cell.count.to_string();
                 let at = [cell.at[0] + 84 - hud.font.width(&text) / 2, cell.at[1] + 10];
-                draw_inventory_text(&mut rgba, &hud.font, &text, at, hud.text_alpha);
+                draw_inventory_text(&mut rgba, &hud.font, &text, at, hud.text_style);
             }
             if !cell.cursor {
                 continue;
@@ -785,7 +785,7 @@ fn inventory_draw(
                     &hud.font,
                     text,
                     [centre - hud.font.width(text) / 2, y],
-                    hud.text_alpha,
+                    hud.text_style,
                 );
             }
         }
@@ -864,7 +864,7 @@ fn examine_text_draw(
             640,
             text,
             [320 - hud.font.width(text) / 2, y],
-            hud.text_alpha,
+            hud.text_style,
         );
     }
     let mut image = Image::new(
@@ -924,12 +924,12 @@ fn text_lines(
     lines
 }
 
-/// One drawn scripted-menu item: its text, pen position and main/shadow alpha.
-type MenuLine = (String, [i32; 2], [u8; 2]);
+/// One drawn scripted-menu item: its text, pen position and installed colour/alpha style.
+type MenuLine = (String, [i32; 2], cyrus_text::FontStyle);
 
 /// Scripted menu items stacked from the installed menu origin, one font line apart, in 640×480
 /// pixels. The highlighted item uses `font_sel`, items already chosen `font_used`, the rest
-/// `font_norm`. The font's colour parameter beyond its alpha is not modelled.
+/// `font_norm`, retaining both colour scale and alpha.
 fn menu_lines(
     hud: &HudAsset,
     start: [i32; 2],
@@ -940,11 +940,11 @@ fn menu_lines(
         .enumerate()
         .map(|(index, item)| {
             let alpha = if index == menu.highlighted() {
-                hud.text_alpha
+                hud.text_style
             } else if item.flag == 1 {
-                hud.used_text_alpha
+                hud.used_text_style
             } else {
-                hud.player_text_alpha
+                hud.player_text_style
             };
             let at = [
                 start[0],
@@ -980,13 +980,13 @@ fn text_image(
     let mut rgba = vec![0; 640 * 480 * 4];
     for (text, at) in lines {
         hud.font
-            .draw_shadowed_wrapped(&mut rgba, 640, text, *at, hud.text_alpha);
+            .draw_shadowed_wrapped(&mut rgba, 640, text, *at, hud.text_style);
     }
     if let Some((slot, text)) = dialogue {
         let alpha = if *slot == 0 {
-            hud.player_text_alpha
+            hud.player_text_style
         } else {
-            hud.text_alpha
+            hud.text_style
         };
         for (line, at) in dialogue_lines(hud, text) {
             hud.font.draw_shadowed(&mut rgba, 640, &line, at, alpha);
@@ -1592,7 +1592,7 @@ mod tests {
             palette: vec![[0, 0, 0], [63, 0, 0]],
         };
         let mut rgba = vec![0; 640 * 5 * 4];
-        draw_inventory_text(&mut rgba, &font, "5", [1, 1], [255, 199]);
+        draw_inventory_text(&mut rgba, &font, "5", [1, 1], [255, 199].into());
         let pixel = |x: usize, y: usize| &rgba[(y * 640 + x) * 4..][..4];
         assert_eq!(pixel(1, 1), [252, 0, 0, 255]);
         assert_eq!(pixel(3, 3), [0, 0, 0, 199]);
@@ -1744,12 +1744,12 @@ mod tests {
     }
 
     #[test]
-    fn menu_items_stack_from_the_origin_and_take_their_alpha_from_their_state() {
+    fn menu_items_stack_from_the_origin_and_take_their_style_from_their_state() {
         let mut hud = asset(2);
         hud.font.line_height = 26;
-        hud.text_alpha = [255, 199];
-        hud.player_text_alpha = [200, 150];
-        hud.used_text_alpha = [128, 100];
+        hud.text_style = "255,255".parse().unwrap();
+        hud.player_text_style = "125,255".parse().unwrap();
+        hud.used_text_style = "125,128".parse().unwrap();
         let mut menu = cyrus_script::script::MenuState::default();
         for (text, flag) in [("first", 0), ("second", 0), ("third", 1)] {
             menu.add(300, text, 0, flag, 0, "second");
@@ -1757,11 +1757,37 @@ mod tests {
         assert_eq!(
             menu_lines(&hud, [35, 25], &menu),
             vec![
-                ("first".into(), [35, 25], [200, 150]),
-                ("second".into(), [35, 51], [255, 199]),
-                ("third".into(), [35, 77], [128, 100]),
+                ("first".into(), [35, 25], "125,255".parse().unwrap()),
+                ("second".into(), [35, 51], "255,255".parse().unwrap()),
+                ("third".into(), [35, 77], "125,128".parse().unwrap()),
             ],
             "the remembered text is highlighted; used items are dimmer"
+        );
+        hud.font.start = u16::from(b'a');
+        hud.font.palette = vec![[0; 3], [63; 3]];
+        hud.font.glyphs = vec![
+            cyrus_text::Glyph {
+                enabled: true,
+                width: 1,
+                height: 1,
+                pixels: vec![1],
+                ..default()
+            };
+            26
+        ];
+        let image = text_image(&hud, &[], None, &menu_lines(&hud, [35, 25], &menu));
+        let pixels = image.data.as_ref().unwrap();
+        let pixel = |y: usize| &pixels[(y * 640 + 35) * 4..][..4];
+        assert_eq!(pixel(25), [124, 124, 124, 255], "normal topic colour scale");
+        assert_eq!(
+            pixel(51),
+            [252, 252, 252, 255],
+            "highlighted topic colour scale"
+        );
+        assert_eq!(
+            pixel(77),
+            [124, 124, 124, 128],
+            "used topic colour and opacity"
         );
     }
 
@@ -1820,9 +1846,9 @@ mod tests {
             selected: None,
             bindings: [0; 15],
             font: default(),
-            text_alpha: [255, 199],
-            player_text_alpha: [255, 97],
-            used_text_alpha: [128, 100],
+            text_style: [255, 199].into(),
+            player_text_style: [255, 97].into(),
+            used_text_style: [128, 100].into(),
             torch_time: None,
             inventory_screen: Default::default(),
             island_map: Default::default(),
@@ -2788,7 +2814,7 @@ mod tests {
             }],
             palette: vec![[0; 3], [63, 0, 0]],
         };
-        hud.text_alpha = [255, 0];
+        hud.text_style = [255, 0].into();
         let image = text_image(&hud, &[("AA".into(), [638, 10])], None, &[]);
         let pixels = image.data.as_ref().unwrap();
         let pixel = |x: usize, y: usize| &pixels[(y * 640 + x) * 4..][..4];
@@ -2809,7 +2835,7 @@ mod tests {
             let mut hud = assets.get_mut(&handle).unwrap();
             hud.labels.insert("#opn".into(), "AA".into());
             hud.prompt = [638, 10];
-            hud.text_alpha = [255, 0];
+            hud.text_style = [255, 0].into();
             hud.font = cyrus_text::Font {
                 start: u16::from(b'A'),
                 line_height: 8,

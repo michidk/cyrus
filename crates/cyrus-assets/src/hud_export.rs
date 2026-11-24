@@ -164,17 +164,17 @@ pub(crate) fn prepare(
         .ok()
         .filter(|mode| *mode <= 2)
         .context("hud: SYSTEM.INI [screen] candle_mode: expected 0, 1 or 2")?;
-    let text_alpha =
-        cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_sel")?)
-            .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_sel: {e}"))?;
+    let text_style = text(&system_fields, "SYSTEM.INI", "3dfx", "font_sel")?
+        .parse::<cyrus_text::FontStyle>()
+        .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_sel: {e}"))?;
 
-    let player_text_alpha =
-        cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_norm")?)
-            .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_norm: {e}"))?;
+    let player_text_style = text(&system_fields, "SYSTEM.INI", "3dfx", "font_norm")?
+        .parse::<cyrus_text::FontStyle>()
+        .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_norm: {e}"))?;
 
-    let used_text_alpha =
-        cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_used")?)
-            .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_used: {e}"))?;
+    let used_text_style = text(&system_fields, "SYSTEM.INI", "3dfx", "font_used")?
+        .parse::<cyrus_text::FontStyle>()
+        .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_used: {e}"))?;
 
     let flag = |section: &str, key: &str| -> anyhow::Result<bool> {
         Ok(system_number(section, key)? != 0)
@@ -391,9 +391,9 @@ pub(crate) fn prepare(
         selected,
         bindings: keys.control_codes(),
         font,
-        text_alpha,
-        player_text_alpha,
-        used_text_alpha,
+        text_style,
+        player_text_style,
+        used_text_style,
         torch_time: definitions.settings.torch_time,
         inventory_screen: [
             size(&border.frames[0]),

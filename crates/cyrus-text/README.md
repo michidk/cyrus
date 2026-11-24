@@ -9,7 +9,7 @@ dependency and compiles on wasm. Used by `cyrus-assets`, `cyrus-render` and
 
 | Module | Responsibility |
 | --- | --- |
-| [lib](src/lib.rs) | `Font` and `Glyph` (serialisable into exported caches), layout, drawing and `font_alpha` |
+| [lib](src/lib.rs) | `Font` and `Glyph` (serialisable into exported caches), layout, drawing and `FontStyle` |
 
 ## Usage
 
@@ -23,7 +23,7 @@ subtitle documentation:
 - `draw` / `draw_char`: call back with every opaque pixel (index 0 is
   transparent), so the caller decides target and colour.
 - `draw_shadowed` (and `_by`, `_wrapped`): the NPC subtitle and HUD style into
-  RGBA, a black shadow copy beneath each glyph, alpha from `font_alpha`
+  RGBA, a black shadow copy beneath each glyph, colour scale and alpha from `FontStyle`
   (`SYSTEM.INI` `[3dfx] font_*`).
 - `colour`: font palette entries expanded from 6 to 8 bits.
 
