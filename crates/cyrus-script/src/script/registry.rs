@@ -67,6 +67,12 @@ pub(super) mod ordinary;
 #[cfg(feature = "original-save-import")]
 mod original_actor;
 #[cfg(feature = "original-save-import")]
+mod original_camera;
+#[cfg(feature = "original-save-import")]
+mod original_execution;
+#[cfg(feature = "original-save-import")]
+pub use original_execution::OriginalExecutionOwners;
+#[cfg(feature = "original-save-import")]
 mod original_animation;
 pub(super) mod overlap;
 mod persistence;
@@ -1517,6 +1523,10 @@ impl ScriptWorld {
     }
 
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
+        Self::prepare_with_shells(scripts, generation, &scripts.shells)
+    }
+
+    fn prepare_with_shells(scripts: &Scripts, generation: u64, shells: &[String]) -> Result<Self> {
         scripts.validate()?;
         let programs: BTreeMap<_, _> = scripts
             .actors
@@ -1688,7 +1698,7 @@ impl ScriptWorld {
         }
         // Shell scripts exist before the standalone roles; the original prepends each record to its
         // list, so they run newest first (see `update_shells`).
-        for name in &scripts.shells {
+        for name in shells {
             let index = actors.len();
             actors.push(ScriptActor::shell(
                 scripts.world,
@@ -2407,8 +2417,7 @@ impl ScriptWorld {
     /// family update, which is the master's effective pose here. Axis 0 is pitch, 1 yaw and any
     /// other value roll; nothing else changes (the other components, the effective pose and the
     /// matrix wait for the next family refresh). A receiver without a slave group is unchanged. A
-    /// slave group whose master is not the prepared parent has no established table entry and is
-    /// reported instead of read as zero.
+    /// slave group reads its retained group-angle table even when no current master visits it.
     fn fix_slave_angle(&mut self, id: ScriptActorId, axis: i32, angle: i32) -> Result<()> {
         let index = self.resolve(id)?;
         let group = self.actors[index].attributes[Attribute::Slave];
@@ -2419,16 +2428,7 @@ impl ScriptWorld {
             .spatial
             .as_ref()
             .context("FixSlaveAngle: spatial state not prepared")?;
-        let master = spatial
-            .actor(index)?
-            .parent
-            .filter(|&parent| self.actors[parent].attributes[Attribute::Master] == group)
-            .with_context(|| {
-                format!(
-                    "FixSlaveAngle: slave group {group} has no prepared master; its group angle table entry is not established"
-                )
-            })?;
-        let master_angles = spatial.actor(master)?.query_pose()?.angles;
+        let master_angles = spatial.family_angles(group);
         let component = match axis {
             0 => 0,
             1 => 1,
@@ -10850,3 +10850,23 @@ mod selector_tests {
 #[cfg(test)]
 #[path = "registry/lunge_tests.rs"]
 mod lunge_tests;
+
+#[cfg(feature = "original-save-import")]
+mod original_presentation;
+
+#[cfg(feature = "original-save-import")]
+mod original_family;
+#[cfg(feature = "original-save-import")]
+mod original_world;
+
+#[cfg(feature = "original-save-import")]
+mod original_combat;
+#[cfg(feature = "original-save-import")]
+mod original_composition;
+#[cfg(feature = "original-save-import")]
+pub use original_composition::OriginalWorldAllocations;
+
+#[cfg(feature = "original-save-import")]
+mod original_session;
+#[cfg(feature = "original-save-import")]
+pub use original_session::OriginalSessionImport;

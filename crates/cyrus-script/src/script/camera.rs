@@ -56,10 +56,20 @@ impl std::ops::BitOr for CameraFlags {
     }
 }
 
+/// The actor vectors retained by a camera binding. Original save loading always
+/// reconstructs local vectors; ordinary camera natives select from actor state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CameraBinding {
+    #[default]
+    ActorSelectedPose,
+    LocalPose,
+}
+
 /// One initialized camera record. Coordinates have eight fractional bits.
 /// Initialization must supply installed values; missing settings have no default here.
 #[derive(Clone, Debug)]
 pub struct CameraRecord {
+    pub binding: CameraBinding,
     pub actor: super::ScriptActorId,
     pub position_offset: [i32; 3],
     pub angle_offset: [i32; 3],
@@ -253,6 +263,7 @@ pub use cyrus_assets::script::{CameraLimits, CameraModeSettings, CameraSettings}
 impl CameraRecord {
     fn cleared(actor: super::ScriptActorId) -> Self {
         Self {
+            binding: CameraBinding::ActorSelectedPose,
             actor,
             position_offset: [0; 3],
             angle_offset: [0; 3],
@@ -391,6 +402,56 @@ impl CameraState {
         };
         state.reload_player_defaults(settings, player, player_type)?;
         Ok(state)
+    }
+
+    /// Reconstruct original-load camera values on an off-live candidate. Records
+    /// must already have saved owners resolved and initialized angle offsets retained.
+    /// The session finalizer reselects the saved index, clears transition/reselection
+    /// state and forces the first rendered frame to cut to the logical pose.
+    #[cfg(feature = "original-save-import")]
+    pub fn from_original(
+        mut records: [CameraRecord; 9],
+        globals: &rgpre::import::savegame::SaveCameraGlobals,
+        camera: super::ScriptActorId,
+    ) -> Result<Self> {
+        anyhow::ensure!(
+            records
+                .iter()
+                .all(|record| record.binding == CameraBinding::LocalPose),
+            "original camera records require reconstructed local vector bindings"
+        );
+        let selected = CameraSlot::new(globals.index)?;
+        records[selected.index()].flags = CameraFlags::from_bits(globals.selected_flags as u8);
+        let current = CameraPose {
+            position: globals.current_position,
+            angles: globals.current_angles,
+        };
+        Ok(Self {
+            records,
+            selected,
+            index: selected,
+            transition: 0,
+            scripted_active: globals.scripted_active,
+            scripted_nesting: globals.scripted_nesting,
+            reselect_pending: false,
+            current,
+            previous: CameraPose {
+                position: globals.previous_position,
+                angles: globals.previous_angles,
+            },
+            transformed_basis: globals.transformed_basis,
+            camera_actor: camera,
+            alternate_actor: camera,
+            marks: CameraMarks {
+                snap: true,
+                ..Default::default()
+            },
+            render: RenderPose {
+                position: globals.render_position.map(|axis| axis as f32),
+                angles: current.angles,
+            },
+            shake: 0,
+        })
     }
 
     /// Raise the screen shake by one impulse (32), capped at 32.
@@ -538,6 +599,7 @@ impl CameraState {
         }
         let live = &mut self.records[0];
         live.actor = player;
+        live.binding = CameraBinding::ActorSelectedPose;
         live.position_offset = record.position_offset;
         live.angle_offset = record.angle_offset;
         live.target_offset = record.target_offset;
@@ -600,6 +662,8 @@ pub(super) struct CameraSnapshot {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct RecordSnapshot {
+    #[serde(default)]
+    binding: CameraBinding,
     actor: (u64, usize),
     position_offset: [i32; 3],
     angle_offset: [i32; 3],
@@ -622,6 +686,7 @@ impl CameraState {
                 .records
                 .iter()
                 .map(|record| RecordSnapshot {
+                    binding: record.binding,
                     actor: id(record.actor),
                     position_offset: record.position_offset,
                     angle_offset: record.angle_offset,
@@ -661,6 +726,7 @@ impl CameraState {
             .into_iter()
             .map(|record| {
                 Ok(CameraRecord {
+                    binding: record.binding,
                     actor: rebind(record.actor.0, record.actor.1)?,
                     position_offset: record.position_offset,
                     angle_offset: record.angle_offset,
@@ -1155,6 +1221,7 @@ impl CameraState {
         next.begin_scripted()?;
         let slot = next.selected.index();
         next.records[slot].actor = inputs.actor;
+        next.records[slot].binding = CameraBinding::ActorSelectedPose;
         next.set_location_offsets(inputs.attributes);
         let offset = rotate(next.records[slot].position_offset, inputs.bound_angles)?;
         let mut vector = inputs.arguments.map(|argument| argument.wrapping_shl(8));
@@ -1219,6 +1286,7 @@ impl CameraState {
             next.begin_scripted()?;
             let slot = next.selected.index();
             next.records[slot].actor = inputs.actor;
+            next.records[slot].binding = CameraBinding::ActorSelectedPose;
             next.set_location_offsets(inputs.attributes);
             let offset = rotate(next.records[slot].position_offset, inputs.bound_angles)?;
             let mut vector = inputs.arguments.map(|argument| argument.wrapping_shl(8));
@@ -1327,6 +1395,7 @@ impl CameraState {
             next.begin_scripted()?;
             let slot = next.selected.index();
             next.records[slot].actor = look.actor;
+            next.records[slot].binding = CameraBinding::ActorSelectedPose;
             next.set_location_offsets(look.attributes);
             let start = next.current.angles;
             let position = next.current.position;
@@ -1419,6 +1488,7 @@ impl CameraState {
         next.begin_scripted()?;
         let slot = next.selected.index();
         next.records[slot].actor = inputs.actor;
+        next.records[slot].binding = CameraBinding::ActorSelectedPose;
         next.set_location_offsets(inputs.attributes);
         let record = &mut next.records[slot];
         record.flags.insert(CameraFlags::UNLIMITED_MOVEMENT);

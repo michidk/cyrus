@@ -11,6 +11,7 @@ fn state() -> CameraState {
         index: 1,
     };
     let record = CameraRecord {
+        binding: CameraBinding::ActorSelectedPose,
         actor,
         position_offset: [0; 3],
         angle_offset: [0; 3],
@@ -624,4 +625,63 @@ fn show_player_pan_reproduces_the_original_step_by_step() {
     assert_eq!(state.selected.index(), 0);
     assert_eq!(state.scripted_active, 0);
     assert_eq!(state.records[0].angle_offset, before.angle_offset);
+}
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_camera_load_reselects_and_cuts_without_replaying_native_requests() {
+    let initialized = state();
+    let globals = rgpre::import::savegame::SaveCameraGlobals {
+        previous_position: [-300, 400, 500],
+        current_position: [1000, -2000, 3000],
+        current_angles: [10, 20, 30],
+        previous_angles: [40, 50, 60],
+        transformed_basis: [[1, 2, 3], [4, 5, 6]],
+        index: 3,
+        scripted_active: 1,
+        scripted_nesting: 7,
+        render_position: [90, -80, 70],
+        selected_flags: 0x8042,
+        obstacle_size_q8: 0,
+        maximum_acceleration: 0,
+        maximum_vertical_velocity: 0,
+        static_rope_threshold: 0,
+        static_rope_aim: [[0; 3]; 2],
+    };
+    let mut records = initialized.records;
+    for record in &mut records {
+        record.binding = CameraBinding::LocalPose;
+    }
+    let saved_request = records[3].request;
+    let mut restored =
+        CameraState::from_original(records, &globals, initialized.camera_actor).unwrap();
+    assert_eq!(restored.selected.index(), 3);
+    assert_eq!(restored.index.index(), 3);
+    assert_eq!(restored.current.position, globals.current_position);
+    assert_eq!(restored.previous.position, globals.previous_position);
+    assert_eq!(restored.previous.angles, globals.previous_angles);
+    assert_eq!(restored.transformed_basis, globals.transformed_basis);
+    assert_eq!(restored.scripted_nesting, 7);
+    assert_eq!(restored.records[3].flags.bits(), 0x42);
+    assert_eq!(restored.records[3].request, saved_request);
+    assert!(restored.marks.snap);
+    assert_eq!(restored.transition, 0);
+    assert!(!restored.reselect_pending);
+    assert_eq!(restored.render.position, [90.0, -80.0, 70.0]);
+    restored
+        .present(
+            &GlideSettings {
+                position: [0.25; 3],
+                angles: [0.25; 3],
+            },
+            &GlidePlayer {
+                holding_weapon: false,
+                rope_attached: false,
+            },
+            true,
+            &mut |_| panic!("load cut must not run glide terrain correction"),
+        )
+        .unwrap();
+    assert_eq!(restored.render.position, [3.0, -7.0, 11.0]);
+    assert_eq!(restored.render.angles, globals.current_angles);
 }

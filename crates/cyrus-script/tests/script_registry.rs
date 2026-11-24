@@ -4023,14 +4023,11 @@ fn fix_slave_angle_leaves_a_receiver_without_a_slave_group_unchanged_and_reports
         world.spatial(world.id(0).unwrap()).unwrap().local.angles,
         before
     );
-    // A slave byte rewritten to group 3 after preparation names no master: the group angle table
-    // entry is not established.
-    let error = fix_slave_angle_world(1, Some((1, 5)), true, Some(3))
-        .err()
-        .unwrap();
-    assert!(
-        format!("{error:#}").contains("slave group 3 has no prepared master"),
-        "{error:#}"
+    // An unvisited freshly allocated group retains its zero angle-table entry.
+    let world = fix_slave_angle_world(1, Some((1, 5)), true, Some(3)).unwrap();
+    assert_eq!(
+        world.spatial(world.id(0).unwrap()).unwrap().local.angles[1],
+        5
     );
     let error = fix_slave_angle_world(1, Some((1, 5)), false, None)
         .err()
@@ -54208,3 +54205,48 @@ mod original_pose_binding_tests;
 #[cfg(feature = "original-save-import")]
 #[path = "script_registry/original_actor_state.rs"]
 mod original_actor_state_tests;
+
+#[cfg(feature = "original-save-import")]
+#[path = "script_registry/original_globals.rs"]
+mod original_globals;
+
+#[cfg(feature = "original-save-import")]
+#[path = "script_registry/original_world.rs"]
+mod original_world;
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_family_orphan_angles_drive_the_first_public_fix_slave_angle_call() -> anyhow::Result<()>
+{
+    let mut world = fix_slave_angle_world(1, None, true, Some(77))?;
+    let mut families = vec![
+        rgpre::import::savegame::SaveFamily {
+            actor_id: -1,
+            position_q8: [0; 3],
+            angles: [0; 3],
+        };
+        256
+    ];
+    families[77].angles = [321, -654, 987];
+    families[77].position_q8 = [-256, 512, 768];
+    world.restore_original_families(&[], &families)?;
+    let id = world.id(0)?;
+    let before = world.spatial(id)?.local.angles;
+    world.advance(
+        id,
+        cyrus_script::script::ScriptStage::OrdinaryMain,
+        cyrus_script::script::ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    assert_eq!(
+        world.spatial(id)?.local.angles,
+        [(-321i32) & 2047, before[1], before[2]]
+    );
+    Ok(())
+}

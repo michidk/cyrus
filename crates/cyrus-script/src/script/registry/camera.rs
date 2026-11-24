@@ -66,6 +66,26 @@ impl ScriptWorld {
         Ok((pose.position, pose.wrapped_angles()))
     }
 
+    /// Read the vector binding reconstructed by original loading, or the ordinary
+    /// actor-selected binding installed by a camera native.
+    pub(super) fn camera_record_pose(
+        &self,
+        record: &super::super::camera::CameraRecord,
+    ) -> Result<([i32; 3], [u16; 3])> {
+        let index = self.resolve(record.actor)?;
+        if record.binding == super::super::camera::CameraBinding::LocalPose {
+            let pose = self
+                .spatial
+                .as_ref()
+                .context("original camera spatial owner absent")?
+                .actor(index)?
+                .local;
+            Ok((pose.position, pose.wrapped_angles()))
+        } else {
+            self.camera_follow_pose(index)
+        }
+    }
+
     /// The pose the follow camera places itself from: [`Self::camera_binding_pose`], with the
     /// Modern mouse camera's heading for the selected player.
     pub(super) fn camera_follow_pose(&self, index: usize) -> Result<([i32; 3], [u16; 3])> {
@@ -112,8 +132,7 @@ impl ScriptWorld {
         if !state.reselection_inhibited() {
             state.select(self.automatic_camera_slot(inputs)?)?;
         }
-        let bound = self.resolve(state.records[state.selected.index()].actor)?;
-        let (position, angles) = self.camera_follow_pose(bound)?;
+        let (position, angles) = self.camera_record_pose(&state.records[state.selected.index()])?;
         let angles = camera_aim(&self.camera_settings, state.selected.index() as u8, angles);
         let updated = service.update(&mut state, position, angles);
         let published = service.take_published();
@@ -365,9 +384,8 @@ impl ScriptWorld {
             .camera
             .as_ref()
             .with_context(|| context("session unavailable"))?;
-        let bound = self.resolve(camera.records[camera.selected.index()].actor)?;
         let (bound_position, bound_angles) = self
-            .camera_follow_pose(bound)
+            .camera_record_pose(&camera.records[camera.selected.index()])
             .with_context(|| context("bound actor pose"))?;
         let bound_angles = camera_aim(
             &self.camera_settings,

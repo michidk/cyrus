@@ -247,3 +247,13 @@ attachments require additional load bindings and are rejected by this operation.
 This component transaction does not enable original session admission. The host
 must compose it with interpreter, task, navigation, animation and shared service
 replacements off-live before publishing a complete session.
+
+
+The feature-gated `LogicalSessionCandidate::import_original` assembles original
+worlds, interpreter continuations, allocation-bound native tasks, navigation,
+combat, animation, controller, family/camera caches, saved globals, inventory,
+journal and simulation clock on a detached candidate. Every source and allocation
+census must match. Unsupported retained process owners reject with context. The
+existing candidate changes only after all validation succeeds; import runs no
+callbacks or service updates. This logical transaction must still join prepared
+audio and rendered host services before complete runtime admission is enabled.

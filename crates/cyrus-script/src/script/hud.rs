@@ -842,3 +842,6 @@ mod tests {
         assert_eq!(hud.health_feedback_ticks(), 0);
     }
 }
+
+#[cfg(feature = "original-save-import")]
+mod original;

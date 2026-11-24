@@ -12,6 +12,12 @@ pub struct GroundTurn {
 }
 
 impl GroundTurn {
+    /// Whether neither held direction has accumulated input acceleration.
+    #[cfg(feature = "original-save-import")]
+    pub(crate) fn is_idle(&self) -> bool {
+        self.left == 0 && self.right == 0
+    }
+
     /// One original input update: a released direction resets, a held one adds
     /// `increment` while below `limit`. `increment` and `limit` are the nonnegative
     /// SYSTEM.INI `turn_speed` and `turn_max_speed`.

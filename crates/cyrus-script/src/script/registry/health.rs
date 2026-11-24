@@ -48,6 +48,31 @@ impl SelectedDeathState {
 }
 
 impl SelectedHealthState {
+    #[cfg(feature = "original-save-import")]
+    pub(in crate::script) fn restore_original_load(
+        &mut self,
+        saved: &rgpre::import::savegame::SaveGameplayGlobals,
+        session: &rgpre::import::savegame::SaveSessionGlobals,
+    ) -> Result<()> {
+        self.validate()?;
+        ensure!(
+            (0..=255).contains(&session.player_health),
+            "original health outside native byte range"
+        );
+        let death = self
+            .death
+            .as_mut()
+            .context("original load: prior death owner unavailable")?;
+        self.falling_elapsed
+            .context("original load: prior falling timer unavailable")?;
+        self.displayed = session.player_health;
+        self.hit_inhibited = false;
+        death.progress = 0;
+        death.mode = saved.controller.death_mode;
+        death.local_position = Some(saved.controller.death_position_q8);
+        self.falling_elapsed = Some(saved.controller.falling_elapsed);
+        Ok(())
+    }
     pub(in crate::script) fn initialized(health: u8) -> Self {
         Self {
             falling_elapsed: Some(0),

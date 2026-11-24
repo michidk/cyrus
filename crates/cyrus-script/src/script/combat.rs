@@ -40,6 +40,12 @@ impl ExecutorState {
     pub const DEFENDING: Self = Self(1);
     pub const ATTACKING: Self = Self(2);
 
+    /// Restore the complete retained executor word without normalizing unknown states.
+    #[cfg(feature = "original-save-import")]
+    pub(crate) const fn from_word(value: i32) -> Self {
+        Self(value)
+    }
+
     pub const fn is_idle(self) -> bool {
         self.0 == Self::IDLE.0
     }

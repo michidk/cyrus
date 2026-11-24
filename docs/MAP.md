@@ -284,6 +284,7 @@ module where it is defined and regenerate.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
+- `src/script/activation/original.rs` — Original save fields and load resets for the gameplay-global owner.
 - `src/script/ai_type.rs` — The actor's AI type byte (`ai_type`, `MyAiType`/`SetAiType`): its lifecycle selector.
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
@@ -298,6 +299,7 @@ module where it is defined and regenerate.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/group_sync.rs` — Group synchronization channels: a rendezvous between actors that share an `attr_group` channel.
 - `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
+- `src/script/hud/original.rs` — Saved HUD ownership is decoded without acquisition callbacks or storage writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
 - `src/script/jump_motion.rs` — The code shared by an actor's queued-motion (`jump_flag`) and falling (`fall_flag`) bytes.
@@ -362,6 +364,14 @@ module where it is defined and regenerate.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
 - `src/script/registry/original_actor.rs` — Retained actor values bind before any native receiver is changed.
 - `src/script/registry/original_animation.rs` — Saved pose allocations bind to installed actor frame tables before replacement.
+- `src/script/registry/original_camera.rs` — Original camera restoration shares the initialized actor ownership census.
+- `src/script/registry/original_combat.rs` — Original combat allocations bind installed moves before retained values replace defaults.
+- `src/script/registry/original_composition.rs` — Original world owners are assembled on an unpublished replacement.
+- `src/script/registry/original_execution.rs` — Original interpreter and native continuations share one validated ownership census.
+- `src/script/registry/original_family.rs` — Original family lookup tables retain vectors independently of native traversal.
+- `src/script/registry/original_presentation.rs` — Original retained light and flat controls bind without rerunning script natives.
+- `src/script/registry/original_session.rs` — Original logical sessions are constructed from installed sources off-live.
+- `src/script/registry/original_world.rs` — Saved rope owners bind against an independently initialized rope allocation.
 - `src/script/registry/overlap.rs` — Selected ordinary actor spheres remain separate from body-query working shapes.
 - `src/script/registry/persistence.rs` — Complete actor and world replacements are assembled away from live execution.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.

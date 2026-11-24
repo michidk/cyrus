@@ -194,3 +194,37 @@ impl Journal {
         Ok(())
     }
 }
+
+#[cfg(feature = "original-save-import")]
+impl Journal {
+    /// Load already decoded original text verbatim, with saved duplicate tags.
+    /// Original text is one accepted storage document, not replayed AddLog calls.
+    pub(super) fn original_snapshot(
+        mut prior: JournalSnapshot,
+        hud: &HudAsset,
+        tags: &[u32; 400],
+        text: Option<&str>,
+    ) -> Result<JournalSnapshot> {
+        let mut seen = Vec::new();
+        let mut unique = std::collections::BTreeSet::new();
+        for &tag in tags {
+            if tag != 0 {
+                anyhow::ensure!(
+                    unique.insert(tag),
+                    "original SVG2 journal repeats duplicate tag {tag}"
+                );
+                seen.push(tag as i32);
+            }
+        }
+        anyhow::ensure!(
+            prior.labels == hud.labels,
+            "original journal installed RTX catalog differs"
+        );
+        prior.seen = seen;
+        prior.entries = text
+            .filter(|text| !text.is_empty())
+            .map(|text| vec![text.to_owned()])
+            .unwrap_or_default();
+        Ok(prior)
+    }
+}

@@ -175,7 +175,12 @@ impl Inventory {
         );
         let mut items = hud.inventory.clone();
         let mut saved_counts = BTreeMap::new();
+        let mut used = items
+            .keys()
+            .map(|&id| (id, None))
+            .collect::<BTreeMap<_, _>>();
         for ((&id, item), saved) in items.iter_mut().zip(&saved.items) {
+            used.insert(id, Some(saved.item_used()));
             item.count = saved
                 .player_total
                 .try_into()
@@ -202,11 +207,35 @@ impl Inventory {
             .filter(|id| items.contains_key(id));
         Ok(Self {
             definitions: hud.inventory.clone(),
-            used: items.keys().map(|&id| (id, None)).collect(),
+            used,
             items,
             selected,
             saved_counts,
         })
+    }
+
+    /// Full load overwrites every serialized item and retains the unsaved terminal
+    /// initialized record. The prior allocation must belong to the same ITEM.INI.
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn from_original_load(
+        hud: &HudAsset,
+        saved: &rgpre::import::savegame::SaveInventory,
+        prior: &InventorySnapshot,
+    ) -> Result<Self> {
+        let previous = Self::from_snapshot(hud, prior.clone())?;
+        let mut replacement = Self::from_original(hud, saved)?;
+        let (&last, _) = hud
+            .inventory
+            .last_key_value()
+            .context("original inventory is empty")?;
+        replacement
+            .items
+            .insert(last, previous.items[&last].clone());
+        replacement.used.insert(last, previous.used[&last]);
+        if let Some(count) = previous.saved_counts.get(&last) {
+            replacement.saved_counts.insert(last, count.clone());
+        }
+        Ok(replacement)
     }
 
     pub(super) fn new(hud: &HudAsset) -> Result<Self> {

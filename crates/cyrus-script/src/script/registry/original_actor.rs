@@ -87,6 +87,12 @@ impl ScriptWorld {
                         .all(|v| v.is_finite()),
                     "saved model transform is nonfinite"
                 );
+                anyhow::ensure!(
+                    self.spatial
+                        .as_ref()
+                        .is_some_and(|spatial| spatial.original_slot(id.index)),
+                    "native spatial allocation absent"
+                );
                 let actor = &self.actors[id.index];
                 actor
                     .control
@@ -101,7 +107,7 @@ impl ScriptWorld {
                 });
                 let mut spatial = super::super::ActorSpatial::from_original(
                     &state,
-                    self.spatial(id)?,
+                    &actor.location_offsets,
                     &attributes,
                 )?;
                 if let Some(link) = object.position_link()? {
@@ -126,7 +132,10 @@ impl ScriptWorld {
         }
         // All fallible work ends above this boundary.
         for (index, (spatial, retained, attributes, support, translation, matrix)) in replacements {
-            *self.spatial.as_mut().unwrap().actor_mut(index).unwrap() = spatial;
+            self.spatial
+                .as_mut()
+                .unwrap()
+                .replace_original_actor(index, spatial);
             let actor = &mut self.actors[index];
             actor.attributes = attributes;
             actor.surface = Some(Surface::from_byte(retained.controller.surface));

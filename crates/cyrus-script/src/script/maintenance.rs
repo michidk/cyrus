@@ -26,6 +26,25 @@ pub struct SoundMaintenance {
 }
 
 impl SoundMaintenance {
+    /// Shared inhibition also controls player-proximity exclusion in node admission.
+    #[cfg(feature = "original-save-import")]
+    pub(in crate::script) fn inhibited(&self) -> bool {
+        self.inhibited
+    }
+
+    /// Complete the original-load sound reset on an unpublished service owner.
+    /// The enclosing transaction owns cleared RTX/dialogue and stopped samples.
+    /// Inhibition retains its established prior-session value.
+    #[cfg(feature = "original-save-import")]
+    pub(in crate::script) fn restore_original_load(&mut self) -> Result<()> {
+        if let Some(error) = &self.failure {
+            bail!("{error}");
+        }
+        self.ticks = 0;
+        self.reset = true;
+        Ok(())
+    }
+
     pub(super) fn initialize_player(&mut self) {
         self.inhibited = false;
     }

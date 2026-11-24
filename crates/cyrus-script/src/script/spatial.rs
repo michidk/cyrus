@@ -81,7 +81,18 @@ pub struct PositionLink {
     pub offset: [i32; 3],
 }
 
+/// Retained group lookup state, distinct from actor position-link caches and the
+/// initialized family traversal. An absent owner does not clear either vector.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub(super) struct FamilyGroup {
+    pub master: Option<usize>,
+    pub position_q8: [i32; 3],
+    pub angles: [i32; 3],
+}
+
 pub(super) struct SpatialWorld {
+    families: Vec<FamilyGroup>,
+    family_updates: Vec<(u8, usize)>,
     actors: Vec<Option<ActorSpatial>>,
     order: Vec<usize>,
     /// Family refreshes since the world's families were initialized; attached supports
@@ -230,11 +241,33 @@ impl SpatialWorld {
         for index in 0..states.len() {
             visit(index, &states, &mut marks, &mut order)?;
         }
+        let family_updates = masters.into_iter().collect::<Vec<_>>();
+        let mut families = vec![FamilyGroup::default(); 256];
+        for &(group, index) in &family_updates {
+            let pose = poses[index].context("family group initial pose absent")?;
+            families[usize::from(group)] = FamilyGroup {
+                master: Some(index),
+                position_q8: pose.position,
+                angles: pose.angles,
+            };
+        }
         Ok(Self {
+            families,
+            family_updates,
             actors: states,
             order,
             refreshes: 0,
         })
+    }
+
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn original_slot(&self, index: usize) -> bool {
+        index < self.actors.len()
+    }
+
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn replace_original_actor(&mut self, index: usize, state: ActorSpatial) {
+        self.actors[index] = Some(state);
     }
 
     /// Account for an actor started after preparation that has no spatial state, such as a shell.
@@ -428,6 +461,28 @@ impl SpatialWorld {
         Ok(())
     }
 
+    /// The retained angle-table entry, including entries without a master.
+    pub(super) fn family_angles(&self, group: u8) -> [i32; 3] {
+        self.families[usize::from(group)].angles
+    }
+
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn restore_original_families(&mut self, families: Vec<FamilyGroup>) -> Result<()> {
+        ensure!(
+            families.len() == 256,
+            "original family table needs 256 slots"
+        );
+        for (group, family) in families.iter().enumerate() {
+            if let Some(master) = family.master {
+                self.actor(master).with_context(|| {
+                    format!("original family group {group}: actor {master} absent")
+                })?;
+            }
+        }
+        self.families = families;
+        Ok(())
+    }
+
     /// One family pass. Does not run scripts or refresh ordinary root matrices.
     pub fn refresh_families(&mut self) -> Result<()> {
         self.refreshes = self.refreshes.saturating_add(1);
@@ -491,6 +546,12 @@ impl SpatialWorld {
                 angles,
                 matrix,
             });
+        }
+        for &(group, index) in &self.family_updates {
+            let pose = self.actor(index)?.query_pose()?;
+            let family = &mut self.families[usize::from(group)];
+            family.position_q8 = pose.position;
+            family.angles = pose.angles;
         }
         Ok(())
     }
@@ -999,6 +1060,10 @@ pub(super) fn normalized_direction(differences: [i32; 3]) -> [i32; 3] {
 /// Stored poses use float bits so serialization cannot round retained matrices.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SpatialSnapshot {
+    #[serde(default)]
+    families: Vec<FamilyGroup>,
+    #[serde(default)]
+    family_updates: Vec<(u8, usize)>,
     actors: Vec<Option<SavedSpatialActor>>,
     order: Vec<usize>,
     #[serde(default)]
@@ -1102,6 +1167,8 @@ impl From<&ActorSpatial> for SavedSpatialActor {
 impl SpatialWorld {
     pub(super) fn snapshot(&self) -> SpatialSnapshot {
         SpatialSnapshot {
+            families: self.families.clone(),
+            family_updates: self.family_updates.clone(),
             actors: self
                 .actors
                 .iter()
@@ -1218,7 +1285,39 @@ impl SpatialWorld {
             visited.len() == restored.iter().flatten().count(),
             "saved family traversal census differs"
         );
+        let (families, family_updates) = if snapshot.families.is_empty() {
+            ensure!(
+                actors
+                    .iter()
+                    .all(|actor| actor.attributes()[Attribute::Master] == 0
+                        && actor.attributes()[Attribute::Slave] == 0),
+                "saved family lookup table absent for grouped actors"
+            );
+            (vec![FamilyGroup::default(); 256], Vec::new())
+        } else {
+            ensure!(
+                snapshot.families.len() == 256,
+                "saved family table count differs"
+            );
+            for family in &snapshot.families {
+                ensure!(
+                    family
+                        .master
+                        .is_none_or(|index| restored.get(index).is_some_and(Option::is_some)),
+                    "saved family table names an absent spatial actor"
+                );
+            }
+            for &(_, index) in &snapshot.family_updates {
+                ensure!(
+                    restored.get(index).is_some_and(Option::is_some),
+                    "saved family update owner absent"
+                );
+            }
+            (snapshot.families, snapshot.family_updates)
+        };
         Ok(Self {
+            families,
+            family_updates,
             actors: restored,
             order: snapshot.order,
             refreshes: snapshot.refreshes,
@@ -1277,15 +1376,18 @@ impl ActorSpatial {
 
     pub(super) fn from_original(
         saved: &rgpre::import::savegame::SaveActorState,
-        installed: &Self,
+        location_offsets: &[[i32; 3]],
         attributes: &Attributes,
     ) -> Result<Self> {
         let state = saved.spatial;
         let matrix = Matrix(saved.model_transform.matrix());
-        let mut locations = installed.locations.clone();
-        *locations
-            .first_mut()
-            .context("original actor authored home absent")? = state.initial_position_q8;
+        let locations = std::iter::once(state.initial_position_q8)
+            .chain(location_offsets.iter().map(|offset| {
+                std::array::from_fn(|axis| {
+                    state.initial_position_q8[axis].wrapping_add(offset[axis])
+                })
+            }))
+            .collect();
         Ok(Self {
             local: Pose {
                 position: state.position_q8,
@@ -1360,6 +1462,40 @@ mod tests {
             no_slave_rotation: false,
             rotation_mode: 0,
         }
+    }
+
+    #[cfg(feature = "original-save-import")]
+    #[test]
+    fn original_family_tables_retain_orphan_angles_across_refresh_and_snapshot() {
+        let actor = receiver([100, 200, 300], vec![]);
+        let mut world = SpatialWorld {
+            actors: vec![Some(actor)],
+            order: vec![0],
+            refreshes: 0,
+            families: vec![FamilyGroup::default(); 256],
+            family_updates: vec![(3, 0)],
+        };
+        let mut saved = vec![FamilyGroup::default(); 256];
+        saved[77] = FamilyGroup {
+            master: None,
+            position_q8: [-10, -20, -30],
+            angles: [2050, -40, 50],
+        };
+        saved[3] = FamilyGroup {
+            master: Some(0),
+            position_q8: [8; 3],
+            angles: [9; 3],
+        };
+        world.restore_original_families(saved).unwrap();
+        assert_eq!(world.family_angles(77), [2050, -40, 50]);
+        assert_eq!(world.family_angles(3), [9; 3]);
+        let snapshot = world.snapshot();
+        assert_eq!(snapshot.families[77].position_q8, [-10, -20, -30]);
+        world.refresh_families().unwrap();
+        assert_eq!(world.family_angles(77), [2050, -40, 50]);
+        assert_eq!(world.family_angles(3), [0; 3]);
+        assert_eq!(world.families[3].position_q8, [100, 200, 300]);
+        assert_eq!(world.families[77].position_q8, [-10, -20, -30]);
     }
 
     fn inputs() -> QueryInputs {

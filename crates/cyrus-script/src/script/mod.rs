@@ -346,3 +346,12 @@ impl Plugin for ScriptPlugin {
             );
     }
 }
+
+#[cfg(feature = "original-save-import")]
+pub use registry::OriginalExecutionOwners;
+
+#[cfg(feature = "original-save-import")]
+pub use registry::OriginalWorldAllocations;
+
+#[cfg(feature = "original-save-import")]
+pub use registry::OriginalSessionImport;

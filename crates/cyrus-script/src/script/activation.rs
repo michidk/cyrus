@@ -1653,3 +1653,7 @@ mod contact_tests {
         assert!(!contacts.touches_actor(0) && !contacts.touches_static(0));
     }
 }
+
+#[cfg(feature = "original-save-import")]
+#[path = "activation/original.rs"]
+mod original;
