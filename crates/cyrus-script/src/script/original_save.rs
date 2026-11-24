@@ -253,19 +253,19 @@ pub struct OriginalActorBinding {
     pub object_id: i32,
     pub runtime_identifier: u16,
     pub origin: cyrus_soup::CodeOrigin,
-    pub anchor: u8,
     pub tasks: [Option<cyrus_soup::persistence::ContinuationTask>; 6],
 }
 
-/// Complete actor interpreter candidate and all six native invocation-word sets.
+/// Complete actor, code-owner or shell interpreter candidate and all six native
+/// invocation-word sets.
 /// This is not world/session admission. Publish only with matching native task
 /// variants, dialogue/audio/animation owners and the rest of the imported world.
-pub struct OriginalActorContinuation {
+pub struct OriginalOwnerContinuation {
     pub vm: cyrus_soup::persistence::Snapshot,
     pub invocation_words: [[u32; 4]; 6],
 }
 
-impl OriginalActorContinuation {
+impl OriginalOwnerContinuation {
     /// Decode one actor through published semantic save APIs, validating owner,
     /// source, cursor and every callback before returning any replacement state.
     /// No baseline locals, task bytes or invocation words are substituted.
@@ -278,10 +278,7 @@ impl OriginalActorContinuation {
             std::sync::Arc<cyrus_soup::program::Program>,
         >,
     ) -> Result<Self> {
-        use cyrus_soup::{
-            ScriptValue,
-            persistence::{ContinuationState, Snapshot},
-        };
+        use cyrus_soup::ScriptValue;
         let context = format!(
             "original actor {} runtime {} continuation",
             binding.object_id, binding.runtime_identifier
@@ -299,27 +296,6 @@ impl OriginalActorContinuation {
             let program = sources
                 .get(&binding.origin)
                 .context("installed owning program missing")?;
-            let saved = object.script_continuation();
-            ensure!(
-                saved.data == binding.origin.0,
-                "saved code origin differs from installed binding"
-            );
-            let relative = |cursor: u32| {
-                cursor
-                    .checked_sub(saved.data)
-                    .context("script cursor precedes owning code origin")
-            };
-            let main = relative(saved.cursor)?;
-            let entry = if program.entry == 0 {
-                ensure!(saved.entry == 0, "unexpected entry continuation");
-                None
-            } else {
-                ensure!(saved.entry != 0, "missing entry continuation");
-                Some(relative(saved.entry)?)
-            };
-            let return_to = (saved.return_to != 0)
-                .then(|| relative(saved.return_to))
-                .transpose()?;
             let values = locals.bind_actor(object, program.variables.len())?;
             let variables = values.map_or_else(Vec::new, |bound| {
                 bound
@@ -329,43 +305,186 @@ impl OriginalActorContinuation {
                     .map(ScriptValue::Integer)
                     .collect()
             });
-            let slots = object.task_slots();
-            for (index, (slot, task)) in slots.iter().zip(&binding.tasks).enumerate() {
-                match task {
-                    None => ensure!(
-                        slot.callback == 0,
-                        "slot {index}: saved callback has no native binding"
-                    ),
-                    Some(task) => {
-                        let operand = task.source.operand()?;
-                        ensure!(
-                            slot.callback != 0 && slot.callback == operand,
-                            "slot {index}: saved callback differs from native source binding"
-                        );
-                    }
-                }
-            }
-            let vm = Snapshot::from_continuation(
+            Self::decode_state(
+                object.script_continuation(),
+                object.task_slots(),
+                variables,
                 binding.origin,
-                ContinuationState {
-                    variables,
-                    cursors: [Some(main), entry],
-                    return_to,
-                    result: saved.result,
-                    saved_result: saved.saved_result,
-                    anchor: binding.anchor,
-                    tasks: binding.tasks,
-                    status: slots.map(|slot| slot.status),
-                    pause: slots.map(|slot| slot.pause),
-                    timers: slots.map(|slot| slot.timer),
-                },
+                binding.tasks,
                 sources,
-            )?;
-            Ok(Self {
-                vm,
-                invocation_words: slots.map(|slot| slot.variables),
-            })
+            )
         };
         decode().with_context(|| context)
+    }
+}
+
+/// Installed map-code identity and native task source bindings.
+pub struct OriginalCodeBinding {
+    pub owner_id: u32,
+    pub origin: cyrus_soup::CodeOrigin,
+    pub tasks: [Option<cyrus_soup::persistence::ContinuationTask>; 6],
+}
+
+/// Installed eight-byte shell identity and native task source bindings.
+pub struct OriginalShellBinding {
+    pub name: [u8; 8],
+    pub origin: cyrus_soup::CodeOrigin,
+    pub tasks: [Option<cyrus_soup::persistence::ContinuationTask>; 6],
+}
+
+impl OriginalOwnerContinuation {
+    /// Stage a code owner's complete VM, binding SVRG words to its installed
+    /// declaration. No task handler or initialized baseline state is used.
+    pub fn decode_code(
+        owner: &rgpre::import::savegame::SaveCodeOwner,
+        locals: &rgpre::import::savegame::SaveScriptLocals,
+        binding: OriginalCodeBinding,
+        sources: &std::collections::BTreeMap<
+            cyrus_soup::CodeOrigin,
+            std::sync::Arc<cyrus_soup::program::Program>,
+        >,
+    ) -> Result<Self> {
+        let decode = || -> Result<Self> {
+            ensure!(
+                owner.owner_id == binding.owner_id,
+                "saved code owner differs from initialized binding"
+            );
+            let program = sources
+                .get(&binding.origin)
+                .context("installed owning program missing")?;
+            let variables = locals
+                .bind_code_owner(owner, program.variables.len())?
+                .map_or_else(Vec::new, |bound| {
+                    bound
+                        .words
+                        .iter()
+                        .copied()
+                        .map(cyrus_soup::ScriptValue::Integer)
+                        .collect()
+                });
+            Self::decode_state(
+                owner.script_continuation(),
+                owner.task_slots(),
+                variables,
+                binding.origin,
+                binding.tasks,
+                sources,
+            )
+        };
+        decode().with_context(|| format!("original code owner {} continuation", binding.owner_id))
+    }
+
+    /// Stage a shell using its named installed definition and private allocation.
+    /// The published execution view supplies the cleared temporary-actor Anchor
+    /// and pause values; these fields are not borrowed from a native baseline.
+    pub fn decode_shell(
+        owner: &rgpre::import::savegame::SaveShell,
+        binding: OriginalShellBinding,
+        sources: &std::collections::BTreeMap<
+            cyrus_soup::CodeOrigin,
+            std::sync::Arc<cyrus_soup::program::Program>,
+        >,
+    ) -> Result<Self> {
+        let decode = || -> Result<Self> {
+            ensure!(
+                owner.name() == binding.name,
+                "saved shell differs from initialized binding"
+            );
+            let program = sources
+                .get(&binding.origin)
+                .context("installed owning program missing")?;
+            let variables = owner
+                .bind_locals(program.variables.len())?
+                .words
+                .into_iter()
+                .map(cyrus_soup::ScriptValue::Integer)
+                .collect();
+            Self::decode_state(
+                owner.script_continuation(),
+                owner.task_slots(),
+                variables,
+                binding.origin,
+                binding.tasks,
+                sources,
+            )
+        };
+        decode().with_context(|| {
+            format!(
+                "original shell {:?} continuation",
+                String::from_utf8_lossy(&binding.name)
+            )
+        })
+    }
+
+    fn decode_state(
+        saved: rgpre::import::savegame::SaveScriptContinuation,
+        slots: [rgpre::import::savegame::SaveTaskSlot; 6],
+        variables: Vec<cyrus_soup::ScriptValue>,
+        origin: cyrus_soup::CodeOrigin,
+        tasks: [Option<cyrus_soup::persistence::ContinuationTask>; 6],
+        sources: &std::collections::BTreeMap<
+            cyrus_soup::CodeOrigin,
+            std::sync::Arc<cyrus_soup::program::Program>,
+        >,
+    ) -> Result<Self> {
+        use cyrus_soup::persistence::{ContinuationState, Snapshot};
+        let program = sources
+            .get(&origin)
+            .context("installed owning program missing")?;
+        ensure!(
+            saved.data == origin.0,
+            "saved code origin differs from installed binding"
+        );
+        let relative = |cursor: u32| {
+            cursor
+                .checked_sub(saved.data)
+                .context("script cursor precedes owning code origin")
+        };
+        let main = relative(saved.cursor)?;
+        let entry = if program.entry == 0 {
+            ensure!(saved.entry == 0, "unexpected entry continuation");
+            None
+        } else {
+            ensure!(saved.entry != 0, "missing entry continuation");
+            Some(relative(saved.entry)?)
+        };
+        let return_to = (saved.return_to != 0)
+            .then(|| relative(saved.return_to))
+            .transpose()?;
+        for (index, (slot, task)) in slots.iter().zip(&tasks).enumerate() {
+            match task {
+                None => ensure!(
+                    slot.callback == 0,
+                    "slot {index}: saved callback has no native binding"
+                ),
+                Some(task) => {
+                    let operand = task.source.operand()?;
+                    ensure!(
+                        slot.callback != 0 && slot.callback == operand,
+                        "slot {index}: saved callback differs from native source binding"
+                    );
+                }
+            }
+        }
+        let vm = Snapshot::from_continuation(
+            origin,
+            ContinuationState {
+                variables,
+                cursors: [Some(main), entry],
+                return_to,
+                result: saved.result,
+                saved_result: saved.saved_result,
+                anchor: saved.anchor,
+                tasks,
+                status: slots.map(|slot| slot.status),
+                pause: slots.map(|slot| slot.pause),
+                timers: slots.map(|slot| slot.timer),
+            },
+            sources,
+        )?;
+        Ok(Self {
+            vm,
+            invocation_words: slots.map(|slot| slot.variables),
+        })
     }
 }

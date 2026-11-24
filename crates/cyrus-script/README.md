@@ -155,13 +155,19 @@ selection uses its own two-link hand target, while initial attachment retains
 the unbiased hand target (preservation SOUP.md, rope attachment and controls).
 
 The opt-in `original-save-import` feature provides
-`OriginalActorContinuation::decode` for staging one
-complete interpreter continuation from published typed save views. It validates
-saved actor and code ownership, binds authored locals, checks all callbacks
+`OriginalOwnerContinuation::{decode, decode_code, decode_shell}` for staging a
+complete actor, code-owner or shell interpreter continuation from published typed
+save views. It validates saved owner identity and code ownership, binds authored locals, checks all callbacks
 against explicit prepared native sources, and returns the VM snapshot together
 with every slot's invocation words. No call runs and no timer advances during
 staging. Native task variants and services must be restored before publishing
-that candidate. This actor-level API does not admit a complete original session.
+that candidate. This owner-level API does not admit a complete original session.
+
+The feature-enabled `original_continuation` tests exercise synthetic public imports
+and the first explicit task update. `original_owner_installed` additionally reads
+an owned save from `CYRUS_ORIGINAL_SAVE` and an install from `REDGUARD_DIR` to
+validate every saved scripted owner against installed sources. This source check
+does not establish native allocation identity or matched-session acceptance.
 
 The opt-in `original-save-import` feature exposes
 `script::original_save::OriginalSaveSubset`, which validates original player world, Q8
