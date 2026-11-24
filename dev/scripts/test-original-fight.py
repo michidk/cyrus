@@ -253,6 +253,61 @@ class ExactCombatTape(unittest.TestCase):
         self.assertEqual(session.keys, set())
 
 
+class CombatRangeTape(unittest.TestCase):
+    class Session(ExactCombatTape.Session):
+        def snapshot(self):
+            return super().snapshot() | {"pyaw": 0,
+                "ppos": [0, 0, -10 * self.frame],
+                "rpos": [0, 12, 100 - 10 * self.frame]}
+
+    def test_constant_range_does_not_hide_both_actors_moving(self):
+        session = self.Session()
+        result = fight.record_combat_tap(session, 'ArrowDown', 1, 2, capture_range=True)
+        self.assertEqual((result['key'], result['release_frame']), ('ArrowDown', 1))
+        rows = result['trajectory']
+        self.assertEqual([row['frame'] for row in rows], [0, 1, 2, 3])
+        self.assertEqual([row['l1_q8'] for row in rows], [112] * 4)
+        self.assertEqual(rows[1]['player_delta_q8'], [0, 0, -10])
+        self.assertEqual(rows[1]['opponent_delta_q8'], [0, 0, -10])
+        self.assertIsNone(rows[0]['player_delta_q8'])
+        self.assertEqual(rows[1]['height_delta_q8'], 12)
+        self.assertNotIn('hit', rows[1])
+        self.assertEqual(session.keys, set())
+
+    def test_missing_pose_rejects_before_input_instead_of_inventing_zero_motion(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {'rpos': None}
+        with self.assertRaisesRegex(ValueError, 'bound.*positions'):
+            fight.record_combat_tap(session, 'ArrowDown', 1, 1, capture_range=True)
+        self.assertEqual(session.frame, 0)
+        self.assertEqual(session.keys, set())
+
+    def test_failed_range_read_releases_and_rejects_incomplete_measurement(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | ({'pyaw': None} if session.frame else {})
+        with self.assertRaisesRegex(ValueError, 'heading'):
+            fight.record_combat_tap(session, 'ArrowDown', 1, 1, capture_range=True)
+        self.assertEqual(session.keys, set())
+
+    def test_reveal_loss_during_range_tap_rejects_and_releases(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {'rhidden': session.frame > 0}
+        with self.assertRaisesRegex(ValueError, 'reveal/combat admission'):
+            fight.record_combat_tap(session, 'ArrowDown', 1, 1, capture_range=True)
+        self.assertEqual(session.keys, set())
+
+    def test_control_loss_during_range_tap_rejects_and_releases(self):
+        session = self.Session()
+        snapshot = session.snapshot
+        session.snapshot = lambda: snapshot() | {'lockout': int(session.frame > 0)}
+        with self.assertRaisesRegex(ValueError, 'player control'):
+            fight.record_combat_tap(session, 'ArrowDown', 1, 1, capture_range=True)
+        self.assertEqual(session.keys, set())
+
+
 class CombatAlignment(unittest.TestCase):
     class Session(ExactCombatTape.Session):
         def snapshot(self):

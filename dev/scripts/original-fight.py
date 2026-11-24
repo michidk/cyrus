@@ -266,14 +266,39 @@ def combat_events(samples):
     return events
 
 
-def record_combat_tap(session, key, held_updates, released_updates):
+def combat_range_sample(state, previous=None):
+    """Body-origin geometry and each actor's signed XYZ motion in Q8 units.
+
+    Pair distance alone cannot distinguish a retreat from opponent movement or
+    hit displacement. These observations make no contact or step-back verdict.
+    The first boundary has no displacement observation; missing bindings reject.
+    """
+    for name in ('ppos', 'rpos'):
+        position = state.get(name)
+        if (not isinstance(position, (list, tuple)) or len(position) != 3
+                or any(type(value) is not int for value in position)):
+            raise ValueError('range capture requires bound player and opponent positions')
+    if type(state.get('pyaw')) is not int:
+        raise ValueError('range capture requires bound player heading')
+    if previous is not None:
+        if state['frame'] != previous['frame'] + 1 or state['world'] != previous['world']:
+            raise ValueError('range capture requires consecutive same-world updates')
+    result = dict(frame=state['frame'], l1_q8=player_distance_q8(state), **combat_geometry(state))
+    for owner, position in [('player', 'ppos'), ('opponent', 'rpos')]:
+        result[f'{owner}_delta_q8'] = (None if previous is None else
+            [value - old for value, old in zip(state[position], previous[position])])
+    return result
+
+
+def record_combat_tap(session, key, held_updates, released_updates, *, capture_range=False):
     """Record one explicit input and every stopped update, never infer a hit from input.
 
     The session projects world, reveal/combat state and the ordinary fight view.
     Counts are original game updates supplied by the caller's input tape.
     Frame gaps and world changes reject the measurement; a failed read still
     releases the key. Health loss is reported over the whole observation window,
-    not attributed to a single strike.
+    not attributed to a single strike. Optional range capture requires bound
+    poses and records each actor's displacement at every held/released boundary.
     """
     if type(held_updates) is not int or held_updates < 1 or type(released_updates) is not int or released_updates < 0:
         raise ValueError("combat tap requires positive held and nonnegative released updates")
@@ -287,6 +312,7 @@ def record_combat_tap(session, key, held_updates, released_updates):
     if before["pg"] != ARMED_IDLE_GROUP:
         raise ValueError("player must be in armed idle before measuring a tap")
     samples = [before]
+    trajectory = [combat_range_sample(before)] if capture_range else None
     try:
         session.input(key, "press")
         for offset in range(1, held_updates + released_updates + 1):
@@ -301,10 +327,17 @@ def record_combat_tap(session, key, held_updates, released_updates):
                 raise ValueError("combat tap changed world")
             if state.get("rlisted") is not True:
                 raise ValueError("opponent left the ordinary update list during combat tap")
+            if state.get("lockout") != 0:
+                raise ValueError("player control lost during combat tap")
+            if state.get("rhidden") is not False or state.get("rcombat") is not True:
+                raise ValueError("opponent reveal/combat admission lost during combat tap")
+            if capture_range:
+                trajectory.append(combat_range_sample(state, samples[-1]))
             samples.append(state)
     finally:
         session.input(key, "release")
     return dict(classify_tap(before, samples), samples=samples, events=combat_events(samples),
+                key=key, release_frame=before["frame"] + held_updates, trajectory=trajectory,
                 held_updates=held_updates, released_updates=released_updates)
 
 

@@ -1187,6 +1187,15 @@ held and released update with positions and health, and releases input even
 when a frame gap or world change rejects the measurement. Health loss is the
 observation-window total, not a count of individual strikes.
 
+Pass `capture_range=True` to retain per-update body-origin L1/3D range, height,
+heading error and separate signed XYZ displacements for both actors. The first
+boundary has no displacement observation. Missing pose/heading bindings reject
+instead of fabricating zero motion. A constant pair distance can hide both
+actors moving; a growing distance alone cannot establish a player retreat.
+These diagnostics do not replace the engine's model-point contact query.
+The result records the input key and release boundary, and control or opponent
+reveal/combat admission loss during a tap rejects it and releases the key.
+
 The ordinary `actors` list is view-centered, not a world registry. Cinematic
 camera movement can exclude a living opponent. A reader may supply independent
 `observed_actors` bound to a retained actor identity; the fight projection keeps
