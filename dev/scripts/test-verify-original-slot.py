@@ -40,5 +40,29 @@ class SlotSelectionTest(unittest.TestCase):
             module.slot_row(menu, 2, 20)
 
 
+class ScriptCensusTest(unittest.TestCase):
+    class Inspector:
+        def __init__(self, replace=False):
+            self.calls=[]
+            self.replace=replace
+        def request(self, command):
+            self.calls.append(command)
+            start=command.get('offset',0)
+            return {'total':130,'world':1,'generation':2 if self.replace and start else 1,
+                    'content_id':'installed','actors':[{'id':i,'selected':i==129}
+                    for i in range(start,min(start+64,130))]}
+
+    def test_selected_owner_after_the_first_page_is_retained(self):
+        control=self.Inspector()
+        result=module.inspect_scripts(control)
+        self.assertEqual(len(result['actors']),130)
+        self.assertEqual([a['id'] for a in result['actors'] if a['selected']],[129])
+        self.assertEqual([c['offset'] for c in control.calls],[0,64,128])
+
+    def test_replacement_during_inspection_rejects_mixed_owners(self):
+        with self.assertRaisesRegex(AssertionError,'changed.*inspection'):
+            module.inspect_scripts(self.Inspector(replace=True))
+
+
 if __name__ == "__main__":
     unittest.main()

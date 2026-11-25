@@ -38,6 +38,23 @@ def wait_state(control, predicate, timeout):
         time.sleep(0.1)
 
 
+def inspect_scripts(control):
+    """Retain every owner across the public inspector's bounded pages.
+
+    An original world may place its selected player after hundreds of actors.
+    Reject a concurrent replacement instead of composing observations from two
+    different logical worlds.
+    """
+    result = control.request({'type': 'scripts', 'offset': 0, 'limit': 64})
+    identity = ('generation', 'content_id', 'world', 'total')
+    for offset in range(64, result['total'], 64):
+        page = control.request({'type': 'scripts', 'offset': offset, 'limit': 64})
+        assert all(page[key] == result[key] for key in identity), 'world changed during script inspection'
+        result['actors'].extend(page['actors'])
+    assert len(result['actors']) == result['total'], 'incomplete script owner census'
+    return result
+
+
 def verify(control, args):
     driver = load_driver()
     control.ready(timeout=args.timeout)
@@ -65,7 +82,7 @@ def verify(control, args):
         observed = control.request({"type": "state"})
         assert observed["scripts"]["ordinary_updates"] == 0, observed["scripts"]
         assert observed["clock"]["continuation"] == clock, "observation advanced the clock"
-    before = control.request({"type": "scripts", "limit": 4096})
+    before = inspect_scripts(control)
     control.request({"type": "replay_frame", "frame_scale": args.frame_scale})
     after = control.request({"type": "state"})
     assert after["scripts"]["ordinary_updates"] == 1, after["scripts"]
@@ -73,7 +90,7 @@ def verify(control, args):
     driver.capture_session(control, args.output / "first-update.session")
     report = {"slot": args.slot, "world": args.world, "frame_scale": args.frame_scale,
               "admitted": state, "before_scripts": before, "first_update": after,
-              "after_scripts": control.request({"type": "scripts", "limit": 4096})}
+              "after_scripts": inspect_scripts(control)}
     (args.output / "result.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"original slot {args.slot} world {args.world}: public admission and first update passed")
 
