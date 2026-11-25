@@ -17,6 +17,7 @@ debug crates do that on top of it.
 | [script](src/script/mod.rs) | Game-owned SOUP hosts, logical actors, native functions and ordinary updates |
 | [script/registry](src/script/registry.rs) | `ScriptWorld`: logical instances in authored order and the ordinary update stages |
 | [script/tasks](src/script/tasks.rs) | Actor-owned native task tokens, waits and their persistence |
+| [script/tasks/completion](src/script/tasks/completion.rs) | Private completion families selected by the exhaustive task-variant dispatcher |
 | [script/sound_dispatch](src/script/sound_dispatch.rs) | Ordered animation-sound admission before actors have presentation bindings |
 | [clock](src/clock.rs) | Shared simulation timing and validated timing snapshots |
 | [logbook](src/logbook.rs) | Logbook reader layout, scrolling and manual-entry editor |

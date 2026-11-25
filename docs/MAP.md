@@ -440,6 +440,19 @@ module where it is defined and regenerate.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
+- `src/script/tasks/completion.rs` — Completion families for actor-owned native task variants.
+- `src/script/tasks/completion/alignment.rs` — Receiver and selected-player alignment task completion.
+- `src/script/tasks/completion/ambient.rs` — Ambient playback task completion.
+- `src/script/tasks/completion/animation.rs` — Actor-animation request and frame-wait completion.
+- `src/script/tasks/completion/camera.rs` — Camera task completion.
+- `src/script/tasks/completion/dialogue.rs` — Speech, dialogue and topic-menu task completion.
+- `src/script/tasks/completion/effects.rs` — Light-effect task completion.
+- `src/script/tasks/completion/locomotion.rs` — Grounded directional locomotion task completion.
+- `src/script/tasks/completion/overlay.rs` — GXA overlay task completion.
+- `src/script/tasks/completion/point.rs` — Point navigation, facing and actor-control task completion.
+- `src/script/tasks/completion/rotation.rs` — Axis rotation task completion.
+- `src/script/tasks/completion/translation.rs` — Local-axis and timed spatial-transform task completion.
+- `src/script/tasks/completion/waits.rs` — Synchronization and task-wait completion.
 - `src/script/tasks/persistence.rs` — Native task continuations validate against saved VM calls without execution.
 - `src/script/tasks/persistence/tests.rs` — Native continuations resume through VM calls and explicit restored service bindings.
 - `src/script/test_support.rs` — Integration-fixture access, excluded unless `test-support` is enabled.

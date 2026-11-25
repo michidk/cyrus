@@ -46,11 +46,11 @@ impl NativeTasks {
                 Task::LineUp {
                     reference: Some(index),
                     ..
-                } => ("PlayerLineUp", *index),
+                } => (Native::PlayerLineUp, *index),
                 Task::ReceiverLineUp {
                     reference: Some(index),
                     ..
-                } => ("LineUp", *index),
+                } => (Native::LineUp, *index),
                 _ => continue,
             };
             validate(index)
