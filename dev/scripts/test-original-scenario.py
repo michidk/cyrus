@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """Controls for the original-scenario driver's pure logic, independent of the original and of game bytes."""
-import importlib.util
-from pathlib import Path
 import unittest
+from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('scenario', Path(__file__).with_name('original-scenario.py'))
-scenario = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(scenario)
+import original_scenario as scenario
 
 
 class RetailEntryDriver(unittest.TestCase):

@@ -8,13 +8,16 @@ import sys
 import unittest
 from pathlib import Path
 
+import original_fight
+import original_scenario
 import replay_chain
 
 
 class SharedModules(unittest.TestCase):
     def test_documented_commands_forward_to_importable_modules(self):
         root = Path(__file__).parent
-        for module in ('native_session_capture', 'native_trace', 'book_audio_continuity', 'replay_chain'):
+        for module in ('native_session_capture', 'native_trace', 'book_audio_continuity', 'replay_chain',
+                       'original_scenario', 'original_fight'):
             with self.subTest(module=module):
                 command = root / (module.replace('_', '-') + '.py')
                 canonical = root / (module + '.py')
@@ -35,12 +38,16 @@ class SharedModules(unittest.TestCase):
                 namespace = runpy.run_path(str(Path(__file__).with_name(name)))
                 self.assertIs(namespace[binding], replay_chain)
 
+    def test_original_scenario_reuses_the_imported_sampler(self):
+        self.assertIs(original_scenario.fight, original_fight)
+
     def test_trace_commands_remain_directly_executable(self):
         for name in ('native-trace.py', 'native_trace.py'):
             self.assertTrue(os.access(Path(__file__).with_name(name), os.X_OK))
 
     def test_compatibility_commands_contain_only_import_and_main(self):
-        for name in ('native-session-capture', 'native-trace', 'book-audio-continuity', 'replay-chain'):
+        for name in ('native-session-capture', 'native-trace', 'book-audio-continuity', 'replay-chain',
+                     'original-scenario', 'original-fight'):
             tree = ast.parse(Path(__file__).with_name(name + '.py').read_text())
             self.assertEqual([type(node).__name__ for node in tree.body],
                              ['Expr', 'ImportFrom', 'If'])
