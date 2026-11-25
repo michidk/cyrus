@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Original CLI run ownership without Docker, a game install or a display."""
+import io
 import json
+import runpy
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from harness import exclusive_lock
 
@@ -85,6 +90,48 @@ sys.exit(0 if sys.argv[1] == 'rm' else 3)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0][0], 'cp')
             self.assertEqual(calls[0][-1], 'caller-owned:/tmp/original-state.py')
+
+
+class DuelPhases(unittest.TestCase):
+    def setUp(self):
+        self.driver = runpy.run_path(str(SCRIPTS / 'original-duel.py'))
+
+    def test_combat_result_controls_story_admission(self):
+        drive = self.driver['drive']
+        for result in (None, {'actors': 2}):
+            with self.subTest(result=result):
+                story = Mock(return_value=0)
+                with patch.dict(drive.__globals__,
+                                prepare_original=Mock(return_value='owned'),
+                                wait_for_start=Mock(return_value=(
+                                    {'counters': {'mainloop_frame': 1}}, {'drawn': True})),
+                                fight_pirates=Mock(return_value=result), follow_story=story):
+                    status = drive(SimpleNamespace(), None)
+                self.assertEqual(status, 1 if result is None else 0)
+                self.assertEqual(story.call_count, 0 if result is None else 1)
+
+    def test_combat_keeps_initial_actor_ownership_and_records_completion(self):
+        player = dict(selected=True, pointer=1, combat=True, health=100,
+                      position=[0, 0, 0], yaw=0, id='player', group=1)
+        pirate = dict(selected=False, pointer=2, combat=True, health=50,
+                      position=[0, 0, 100], death_selector=0, id='pirate', group=2)
+        states = iter([{'actors': [player, pirate], 'counters': {'mainloop_frame': 1}},
+                       {'actors': [{**pirate, 'health': 0}, player],
+                        'counters': {'mainloop_frame': 2}}])
+        log, taps = io.StringIO(), Mock()
+        with redirect_stdout(io.StringIO()):
+            result = self.driver['fight_pirates'](
+                SimpleNamespace(limit=2), lambda: next(states), taps, lambda _: 1, 0, log)
+        self.assertEqual(result['mainloop_frame'], 2)
+        self.assertEqual(result['pirates'], [('pirate', 0)])
+        taps.assert_called_once_with('Control_L', 0.3)
+        self.assertEqual(len(log.getvalue().splitlines()), 2)
+
+    def test_exhausted_decision_budget_returns_failure(self):
+        with redirect_stdout(io.StringIO()):
+            result = self.driver['fight_pirates'](
+                SimpleNamespace(limit=0), Mock(), Mock(), Mock(), 0, None)
+        self.assertIsNone(result)
 
 
 if __name__ == '__main__':
