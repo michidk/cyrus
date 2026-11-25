@@ -44,6 +44,17 @@ admitted after Update, before the next host interval; completion is published
 before the next ordinary sound-service poll. Speech and sample slots therefore
 finish without an output device; dialogue waits retain their normal semantics.
 
+Recorded device-free hosts can configure `configure_digital_output` before sample
+admission and deliver measured `DigitalOutputHalf` transitions through
+`service_digital_output`. All sample players join that shared service phase;
+repeated half observations consume nothing. Geometry comes from the host in
+output frames and Hz. Fractional source samples carry between services and finite
+source completion is visible during service, including exact half boundaries.
+Host elapsed time does not also consume sample players in this mode; CD music
+retains its separate transport. The caller must preserve observed callback order
+relative to source admission and ordinary updates. Frame endpoint durations do
+not supply the missing interior callback or admission timestamps.
+
 ## Notes
 
 - Script commands, ambient polls, animation cues and speech share one sixteen-slot

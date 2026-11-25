@@ -100,3 +100,12 @@ of `frame_scale` and `elapsed_bios_ticks`. The native replay gate uses that
 measured interval for host audio and presentation while the admitted frame owns
 the schedule. An explicit zero freezes that host clock; omission retains the
 configured replay step. A rejected command cannot replace a pending interval.
+
+A recorded device-free audio host accepts `configure_digital_output` with
+`frames_per_half` and `sample_rate` before admitting sample players.
+`service_digital_output` then delivers a measured `active_half` (zero or one).
+Repeated halves do not consume sources. These are output callbacks, independent
+of BIOS/game time; they do not set source cursors, statuses or task state. Invalid
+geometry, non-silent hosts and reconfiguration during playback reject the request.
+The acquisition must preserve callback order relative to source admission and
+ordinary updates; this interface does not infer interior events from frame time.

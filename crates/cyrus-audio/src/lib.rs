@@ -6,7 +6,10 @@ mod resampling;
 mod silent;
 pub mod sound;
 #[cfg(not(target_arch = "wasm32"))]
-pub use silent::SilentAudioPlugin;
+pub use silent::{
+    DigitalAudioOutput, DigitalOutputHalf, SilentAudioPlugin, configure_digital_output,
+    service_digital_output,
+};
 #[cfg(any(target_arch = "wasm32", test))]
 mod sound_bank;
 use bevy::prelude::*;

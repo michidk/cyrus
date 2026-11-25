@@ -608,6 +608,27 @@ fn handle(
                     Err(error) => Err(error),
                 }
             }
+            Command::ConfigureDigitalOutput { frames_per_half, sample_rate } => {
+                commands.queue(move |world: &mut World| {
+                    let result = cyrus_audio::configure_digital_output(world, frames_per_half, sample_rate);
+                    let _ = reply.send(match result { Ok(()) => Response::ok(id, json!({"configured":true})), Err(error) => Response::err(id, format!("{error:#}")) });
+                });
+                break;
+            }
+            Command::ServiceDigitalOutput { active_half } => {
+                let half = match active_half {
+                    0 => Some(cyrus_audio::DigitalOutputHalf::First),
+                    1 => Some(cyrus_audio::DigitalOutputHalf::Second),
+                    _ => None,
+                };
+                if let Some(half) = half {
+                    commands.queue(move |world: &mut World| {
+                        let result = cyrus_audio::service_digital_output(world, half);
+                        let _ = reply.send(match result { Ok(()) => Response::ok(id, json!({"serviced":true})), Err(error) => Response::err(id, format!("{error:#}")) });
+                    });
+                    break;
+                } else { Err("digital output active half must be zero or one".into()) }
+            }
             Command::ReplayFrame { frame_scale, elapsed_bios_ticks, elapsed_host_nanos } => {
                 let prepared = (|| -> Result<_, String> {
                     if replay_step.is_none() {

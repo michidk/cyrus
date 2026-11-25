@@ -304,3 +304,10 @@ Recorded frames accept independent host elapsed nanoseconds for source playback
 and presentation. The replay scheduler retains that interval through preparation
 holds, and uses it only while admitting its recorded update. Movement scale and
 BIOS measurement phase remain separate inputs.
+
+Recorded silent-host audio can use `configure_digital_output` and
+`service_digital_output` to deliver independently measured output-half callbacks.
+Geometry must be selected before sample admission. Shared servicing consumes
+source data and publishes completion without replacing script or sample state.
+This acquisition path requires actual callback/admission ordering; elapsed frame
+host time alone does not establish digital mixer phase.

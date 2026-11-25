@@ -190,6 +190,27 @@ impl Panned {
             .map_err(|_| anyhow::anyhow!("audio transport decoder lock poisoned"))?;
         Ok(state.snapshot())
     }
+    /// Whether the admitted decoder has consumed every finite source sample,
+    /// including pending stereo output. Backend queue bookkeeping may still need
+    /// its terminal read; that read cannot consume another source sample.
+    pub(crate) fn source_exhausted(&self) -> bool {
+        let Ok(capture) = self.capture.lock() else {
+            return false;
+        };
+        let Some(state) = &capture.state else {
+            return false;
+        };
+        let Ok(state) = state.lock() else {
+            return false;
+        };
+        state
+            .repetitions
+            .remaining()
+            .is_some_and(|passes| passes.get() == 1)
+            && state.input_samples == state.sample_count
+            && state.right.is_none()
+    }
+
     /// Validate exact source identity and decoder continuation before returning
     /// an off-live transport. Does not start a sink, allocate channels or emit cues.
     pub fn from_snapshot(

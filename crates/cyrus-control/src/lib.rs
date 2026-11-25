@@ -254,6 +254,17 @@ pub enum Command {
     ScheduleInput {
         events: Vec<InputBoundary>,
     },
+    /// Configure the silent host's observed stereo digital output before sample admission.
+    ConfigureDigitalOutput {
+        frames_per_half: u32,
+        sample_rate: u32,
+    },
+    /// Deliver an observed shared output-half transition, independently of BIOS/game time.
+    /// Requires configured device-free output. Repeated halves do not consume sources.
+    ServiceDigitalOutput {
+        /// Zero selects the first half, one the second; other values reject.
+        active_half: u8,
+    },
     /// Advance one ReplayHold invocation by an observed Q8 nominal-tick scale.
     /// Requires a staged replay world and its matching initial clock continuation.
     ReplayFrame {
