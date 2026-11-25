@@ -39,7 +39,9 @@ cancels that pending request. Preference updates do not replay a consumed entry.
 
 Headless native hosts add `SilentAudioPlugin` after the source plugins. It consumes
 the same Rodio sources on the host clock without producing audio, and publishes
-ordinary `AudioSink` controls and completion. Speech and sample slots therefore
+ordinary `AudioSink` controls and completion. Sources queued during gameplay are
+admitted after Update, before the next host interval; completion is published
+before the next ordinary sound-service poll. Speech and sample slots therefore
 finish without an output device; dialogue waits retain their normal semantics.
 
 ## Notes

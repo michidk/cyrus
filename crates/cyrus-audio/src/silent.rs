@@ -19,12 +19,10 @@ impl Plugin for SilentAudioPlugin {
 }
 
 fn register<T: Asset + Decodable>(app: &mut App) {
-    app.add_systems(
-        Update,
-        (start::<T>, advance::<T>)
-            .chain()
-            .before(crate::ApplyPreferences),
-    );
+    // Match device playback admission: gameplay queues sources during Update,
+    // then PostUpdate creates their sinks before the next host interval begins.
+    app.add_systems(PostUpdate, start::<T>)
+        .add_systems(Update, advance::<T>.before(crate::ApplyPreferences));
 }
 
 #[derive(Component)]
