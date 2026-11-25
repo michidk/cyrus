@@ -21,12 +21,13 @@ each `--cheat NAME=VALUE` you give; pass --keep-cheats to leave the stored value
 
     native_trace.py --out run.jsonl --cheat magiccarpet=1 --place 40816,-1744,41024 --seconds 6
 """
-from harness import control_response
 import argparse
 import json
 import os
 import sys
 import time
+
+from harness import control_response
 
 
 def call(addr, cmd, timeout=120):
@@ -87,7 +88,8 @@ def boundary_sample(boundary, ev, expected_input=(None, None)):
     import math
     actors = boundary.get("player", {}).get("actors", [])
     if ((boundary.get("key"), boundary.get("action")) != expected_input or len(actors) != 1
-            or type(boundary.get("update")) is not int or type(boundary.get("generation")) is not int
+            or any(not isinstance(boundary.get(field), int) or isinstance(boundary.get(field), bool)
+                   for field in ("update", "generation"))
             or not isinstance(boundary.get("game_seconds"), (int, float))
             or not math.isfinite(boundary["game_seconds"])):
         raise ValueError("native-trace: inconsistent selected boundary snapshot")

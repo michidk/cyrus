@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Exercise the shared control transport against local JSONL servers."""
-from contextlib import contextmanager
 import json
 import socket
 import threading
 import unittest
+from contextlib import contextmanager
 
 from harness import control_response, exchange
 

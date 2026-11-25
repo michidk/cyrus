@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Original runtime setup contracts without Docker or an installed game."""
 import importlib
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 scenario = importlib.import_module('original-scenario')
 

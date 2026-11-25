@@ -175,7 +175,7 @@ def main():
             source=str(args.keys_ini.resolve()), sha256=hashlib.sha256(args.keys_ini.read_bytes()).hexdigest())), indent=2)+'\n')
         temporary.replace(args.output)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output.with_suffix('.lock')) as lock:
+    with exclusive_lock(args.output.with_suffix('.lock')):
         try:
             capture(lambda: request('observe'), lambda: request('arm'),
                     lambda held: request('key', scan_code=scan_code, held=held), lambda: request('finish'),

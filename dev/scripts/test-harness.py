@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Public process-lock behavior without a game, display or Docker."""
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from harness import exclusive_lock
 
@@ -15,7 +15,7 @@ class ExclusiveLock(unittest.TestCase):
                 'with exclusive_lock(sys.argv[1]): print("acquired")\n')
         return subprocess.run([sys.executable, '-c', code, str(path)],
                               cwd=Path(__file__).parent, capture_output=True,
-                              text=True, timeout=5)
+                              text=True, timeout=5, check=False)
 
     def test_contention_is_nonblocking_and_release_allows_another_process(self):
         with tempfile.TemporaryDirectory() as directory:

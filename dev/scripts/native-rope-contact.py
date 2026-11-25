@@ -6,19 +6,19 @@ Unmatched or uncertain timing is rejected before comparing displacement/contact.
 Audio and attachment evidence remain explicit in the resulting record.
 """
 import argparse
-import importlib.util
 import hashlib
-from harness import exclusive_lock
-import os
+import importlib.util
 import json
-from pathlib import Path
-import time
+import os
 import signal
 import subprocess
+import time
 import wave
 from contextlib import nullcontext
+from pathlib import Path
 
 import native_trace as trace
+from harness import exclusive_lock
 
 
 def interval(start, end):
@@ -60,8 +60,8 @@ def planned_updates(expected, step_seconds, tolerance=0):
     try:
         compare_interval(expected, dict(duration=[count * step_seconds] * 2), tolerance)
     except ValueError as error:
-        from fractions import Fraction
         import math
+        from fractions import Fraction
         original = Fraction(target).limit_denominator(1_000_000)
         native = Fraction(step_seconds).limit_denominator(1_000_000)
         denominator = math.lcm(original.denominator, native.denominator)
@@ -454,7 +454,7 @@ class Driver:
 def execute(args):
     original, schedule = accepted_schedule(args.original, attachment=args.attachment)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output.with_suffix(args.output.suffix + '.lock')) as lock:
+    with exclusive_lock(args.output.with_suffix(args.output.suffix + '.lock')):
         execute_locked(args, original, schedule)
 
 

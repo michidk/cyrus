@@ -1,10 +1,9 @@
 """Shared process coordination for bounded native and original test drivers."""
-from contextlib import contextmanager
 import fcntl
 import json
 import socket
+from contextlib import contextmanager
 from pathlib import Path
-
 
 LIVE_LOCK = Path('/tmp/cyrus-live.lock')
 

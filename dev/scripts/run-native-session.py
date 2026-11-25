@@ -5,16 +5,17 @@ The original installation stays in place. Optional session loading uses a prior
 public checkpoint; it does not establish original book-slot adapter acceptance.
 """
 import argparse
-from harness import LIVE_LOCK, exclusive_lock
 import importlib.util
 import json
 import math
 import os
-from pathlib import Path
 import signal
 import socket
 import subprocess
 import time
+from pathlib import Path
+
+from harness import LIVE_LOCK, exclusive_lock
 
 
 def helper(name, filename):
@@ -25,6 +26,7 @@ def helper(name, filename):
 
 
 import native_session_capture as capture
+
 replay = helper('native_replay', 'replay-chain.py')
 
 
@@ -53,7 +55,7 @@ def run(args):
         if not target.exists():
             target.symlink_to(cache, target_is_directory=True)
     environment = dict(os.environ, CYRUS_CONFIG_DIR=str(config), RUST_MIN_STACK='8388608')
-    with exclusive_lock(args.lock) as lock, (output / 'process.log').open('x') as log:
+    with exclusive_lock(args.lock), (output / 'process.log').open('x') as log:
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]

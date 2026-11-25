@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Verify public native light restoration, rejection continuity and world retirement."""
 import argparse
-from harness import exclusive_lock
 import json
 from pathlib import Path
 
 import native_session_capture as capture
+from harness import exclusive_lock
 
 
 def changed_eligibility(data, actor_index):
@@ -183,7 +183,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'capture.lock') as lock:
+    with exclusive_lock(args.output / 'capture.lock'):
         (args.output / 'result.json').unlink(missing_ok=True)
         (args.output / 'failure.json').unlink(missing_ok=True)
         try:

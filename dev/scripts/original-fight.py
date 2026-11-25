@@ -709,7 +709,7 @@ def main():
         ini = run / "Redguard/WORLD.INI"
         ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=30", ini.read_text(errors="surrogateescape")),
                        errors="surrogateescape")
-        sh = lambda *c, **k: subprocess.run(c, capture_output=True, text=True, **k)
+        sh = lambda *c, check=False, **k: subprocess.run(c, capture_output=True, text=True, check=check, **k)
         import importlib
         scenario = importlib.import_module('original-scenario')
         scenario.start_original_runtime(name, run, image, command=sh, magic=MAGIC)
@@ -850,7 +850,8 @@ def main():
         sampler.stop()
         sh("docker", "rm", "-f", name)
         log.seal("original-fight run complete")
-        rows = [json.loads(line) for line in open(args.out)]
+        with open(args.out) as source:
+            rows = [json.loads(line) for line in source]
         print(json.dumps(summarize(rows), indent=1))
         print(f"sealed {args.out}: {verify(args.out)[1]}", flush=True)
 

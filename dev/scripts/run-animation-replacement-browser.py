@@ -43,7 +43,7 @@ def main():
     for name in ['fixture.json', 'replacement_lifecycle.js', 'replacement_lifecycle_bg.wasm']:
         if not (rig / 'web' / name).is_file():
             parser.error(f'missing retained artifact: web/{name}; this launcher never recompiles')
-    with exclusive_lock(rig / 'browser.lock') as lock:
+    with exclusive_lock(rig / 'browser.lock'):
         shutil.copyfile(Path(__file__).resolve().parent.parent / 'fixtures' / 'animation-replacement.html',
                         rig / 'web' / 'index.html')
         (rig / 'config').mkdir(exist_ok=True)

@@ -91,7 +91,7 @@ def main():
         actual = hashlib.file_digest(binary, 'sha256').hexdigest()
     if actual != args.sha256:
         parser.error(f'executable digest mismatch: {actual}')
-    with exclusive_lock(args.runtime / 'transient-runtime.lock') as lock:
+    with exclusive_lock(args.runtime / 'transient-runtime.lock'):
         attempt = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
         output_name = 'transients-pixels' if args.gpu_pixels else 'transients-current'
         logs = args.runtime / 'evidence' / output_name / 'attempts' / attempt

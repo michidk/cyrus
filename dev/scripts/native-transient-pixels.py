@@ -163,7 +163,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'capture.lock') as lock:
+    with exclusive_lock(args.output / 'capture.lock'):
         for name in ('result.json', 'failure.json'):
             (args.output / name).unlink(missing_ok=True)
         try:

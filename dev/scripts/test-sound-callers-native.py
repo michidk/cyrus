@@ -15,7 +15,7 @@ def main():
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'acceptance.lock') as lock:
+    with exclusive_lock(args.output / 'acceptance.lock'):
         results = []
         deadline = time.monotonic() + 85
         while len(results) < 18:

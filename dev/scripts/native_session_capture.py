@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Capture and resume a rendered public session round trip without game-data fixtures."""
-from harness import control_response
 import argparse
-from harness import exclusive_lock
 import hashlib
 import json
 import os
 import re
-from pathlib import Path
 import time
+from pathlib import Path
+
+from harness import control_response, exclusive_lock
 
 
 def digest(data):
@@ -242,7 +242,11 @@ class ContinuationDriver(Driver):
             return observed.result(timeout=self.args.seconds)
 
     def run(self):
-        from native_session_assertions import assert_observation, assert_saved_pose, assert_dormant_preserved
+        from native_session_assertions import (
+            assert_dormant_preserved,
+            assert_observation,
+            assert_saved_pose,
+        )
         metadata = self.output / 'continuation-checkpoint.json'
         identity = {'version': 1, 'binary_sha256': file_digest(self.args.binary),
                     'seed_sha256': file_digest(self.args.continuation_seed),
@@ -323,7 +327,7 @@ def main():
     if any(value is not None for value in continuation) and any(value is None for value in continuation):
         parser.error('continuation requires seed/runtime-seed, attachment-actor, revisit and revisit-actor')
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'capture.lock') as lock:
+    with exclusive_lock(args.output / 'capture.lock'):
         # A prior success must never survive a failed retry as a current result.
         (args.output / 'result.json').unlink(missing_ok=True)
         (args.output / 'failure.json').unlink(missing_ok=True)

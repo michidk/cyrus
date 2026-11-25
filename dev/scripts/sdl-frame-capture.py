@@ -67,7 +67,7 @@ def capture(directory, output, rows, timeout=30, pcm_path=None, at_clock=None):
     directory.mkdir(parents=True, exist_ok=True)
     if len(str(output)) >= 4095 or '\n' in str(output) or '\r' in str(output):
         raise ValueError('capture output must be one path line')
-    with exclusive_lock(directory / 'capture.lock') as lock:
+    with exclusive_lock(directory / 'capture.lock'):
         output.mkdir(parents=True, exist_ok=False)
         request = directory / 'request'
         if request.exists():

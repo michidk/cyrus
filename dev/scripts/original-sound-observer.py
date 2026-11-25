@@ -162,7 +162,7 @@ def main():
         path = args.output / 'status.tmp'
         path.write_text(json.dumps(value) + '\n')
         path.replace(args.output / 'status.json')
-    with exclusive_lock(args.output / 'observer.lock') as lock:
+    with exclusive_lock(args.output / 'observer.lock'):
         if (args.output / 'events.jsonl').exists():
             raise ValueError('preserve previous observer stream; use a fresh output directory')
         observer = WriteWatches(binding.pid())

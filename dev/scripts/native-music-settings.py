@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--muted-publication', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'acceptance.lock') as lock:
+    with exclusive_lock(args.output / 'acceptance.lock'):
         speech.validate_output(args.output)
         expected = hashlib.sha256(args.binary.read_bytes()).hexdigest()
         speech.wait_for_executable(args.container, expected)

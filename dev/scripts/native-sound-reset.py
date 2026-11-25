@@ -6,14 +6,14 @@ is supplied by the caller; no sample data or captured PCM belongs in git.
 """
 import argparse
 import array
-from harness import exclusive_lock
 import json
 import math
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import native_session_capture as capture
+from harness import exclusive_lock
 
 
 def energy(path):
@@ -38,7 +38,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'sound-reset.lock') as lock:
+    with exclusive_lock(args.output / 'sound-reset.lock'):
         driver = capture.Driver(args)
         driver.progress(driver.ready())
         driver.request('console', open=True)

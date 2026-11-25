@@ -6,14 +6,14 @@ an installed emitter and loop effect explicitly; no installed data is embedded.
 """
 import argparse
 import array
-from harness import exclusive_lock
 import json
 import math
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import native_session_capture as capture
+from harness import exclusive_lock
 
 
 def pcm_levels(data):
@@ -49,7 +49,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.2)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'ambient.lock') as lock:
+    with exclusive_lock(args.output / 'ambient.lock'):
         driver = capture.Driver(args)
         actual = capture.file_digest(args.binary)
         results = {'executable': actual, 'stages': {}}

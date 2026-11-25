@@ -205,7 +205,7 @@ def main():
     args = parser.parse_args()
     output = Path(args.out)
     output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(output / 'comparison.lock') as lock:
+    with exclusive_lock(output / 'comparison.lock'):
         subprocess.run([str(Path(__file__).with_name("ensure-retro-runtime.sh"))],
                        check=True, stdout=subprocess.DEVNULL)
         report = run_pair(json.loads(Path(args.segment).read_text()), backend(args.original_backend),

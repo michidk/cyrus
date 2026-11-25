@@ -6,13 +6,13 @@ publication from lifetime. This is a diagnostic continuation fixture, not a clai
 about an installed producer's timing or original pixel parity.
 """
 import argparse
-from copy import deepcopy
-from harness import exclusive_lock
 import json
-from pathlib import Path
 import socket
+from copy import deepcopy
+from pathlib import Path
 
 import native_session_capture as capture
+from harness import exclusive_lock
 
 
 def encode(value):
@@ -332,7 +332,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with exclusive_lock(args.output / 'capture.lock') as lock:
+    with exclusive_lock(args.output / 'capture.lock'):
         for name in ('result.json', 'failure.json'):
             (args.output / name).unlink(missing_ok=True)
         try:

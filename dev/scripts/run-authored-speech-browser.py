@@ -43,7 +43,7 @@ def main():
     runtime.mkdir(parents=True, exist_ok=True)
     if not (ROOT / 'target/web/build-provenance.json').is_file():
         parser.error('sealed installed browser package is required; this launcher never compiles')
-    with exclusive_lock(runtime / 'browser.lock') as lock:
+    with exclusive_lock(runtime / 'browser.lock'):
         name = f'cyrus-authored-speech-{args.cdp_port}'
         prior = subprocess.run(['docker', 'inspect', name], capture_output=True, text=True)
         if prior.returncode == 0:

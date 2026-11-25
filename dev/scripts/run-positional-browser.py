@@ -43,7 +43,7 @@ def main():
     for name in ['index.html', 'fixture.json', 'positional_emitters.js', 'positional_emitters_bg.wasm']:
         if not (rig / 'web' / name).is_file():
             parser.error(f'missing retained artifact: web/{name}; this launcher never recompiles')
-    with exclusive_lock(rig / 'browser.lock') as lock:
+    with exclusive_lock(rig / 'browser.lock'):
         name = f'cyrus-positional-acceptance-{args.cdp_port}'
         existing = subprocess.run(['docker', 'inspect', name], capture_output=True, text=True)
         if existing.returncode == 0:

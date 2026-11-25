@@ -2,10 +2,10 @@
 """Shared driver modules import normally and keep documented CLI compatibility."""
 import ast
 import os
-from pathlib import Path
 import subprocess
 import sys
 import unittest
+from pathlib import Path
 
 
 class SharedModules(unittest.TestCase):
@@ -17,9 +17,9 @@ class SharedModules(unittest.TestCase):
                 canonical = root / (module + '.py')
                 self.assertTrue(canonical.is_file())
                 legacy = subprocess.run([sys.executable, str(command), '--help'],
-                                        capture_output=True, text=True, timeout=10)
+                                        capture_output=True, text=True, timeout=10, check=False)
                 current = subprocess.run([sys.executable, str(canonical), '--help'],
-                                         capture_output=True, text=True, timeout=10)
+                                         capture_output=True, text=True, timeout=10, check=False)
                 self.assertEqual(legacy.returncode, 0, legacy.stderr)
                 self.assertEqual(current.returncode, 0, current.stderr)
                 self.assertEqual(legacy.stdout.replace(command.name, canonical.name), current.stdout)

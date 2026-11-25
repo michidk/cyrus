@@ -8,8 +8,8 @@ Print the JSONL record into an ignored artifact directory.
 """
 import argparse
 import json
-from pathlib import Path
 import time
+from pathlib import Path
 
 import native_trace as trace
 

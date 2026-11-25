@@ -8,10 +8,10 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import numpy as np
-from scipy.io import wavfile
 
 import book_audio_continuity as continuity
+import numpy as np
+from scipy.io import wavfile
 
 
 def analyze(monitor, reference, capture):
