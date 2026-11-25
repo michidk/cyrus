@@ -246,29 +246,7 @@ pub(crate) fn prepare(
             }
         }
     }
-    names.extend(
-        rgm.sections
-            .iter()
-            .filter_map(|section| match section {
-                RgmSection::MpobParsed(_, records) => Some(records),
-                _ => None,
-            })
-            .flatten()
-            .filter(|record| {
-                PlacementType::from_byte(record.object_type) == PlacementType::MODEL
-                    && record.is_static != 1
-                    && metadata["actors"].as_array().is_some_and(|actors| {
-                        actors.iter().any(|actor| {
-                            actor["script_name"].as_str() == Some(record.script_name().as_str())
-                                && actor["raan_entries"]
-                                    .as_array()
-                                    .is_none_or(|entries| entries.is_empty())
-                        })
-                    })
-            })
-            .map(|record| model_key(&record.model_name()))
-            .filter(|name| !name.is_empty()),
-    );
+    names.extend(placed_frame_sources(rgm, &metadata));
     names.extend(
         placed
             .iter()
@@ -328,6 +306,36 @@ pub(crate) fn prepare(
         names: weapon_names,
         archive: weapon_archive,
     })
+}
+
+/// Installed MPOB frame tables used by actors without a separate RAAN source.
+/// Logical animation and standalone render exports must retain the same sources.
+pub(crate) fn placed_frame_sources(
+    rgm: &RgmFile,
+    metadata: &serde_json::Value,
+) -> BTreeSet<String> {
+    rgm.sections
+        .iter()
+        .filter_map(|section| match section {
+            RgmSection::MpobParsed(_, records) => Some(records),
+            _ => None,
+        })
+        .flatten()
+        .filter(|record| {
+            PlacementType::from_byte(record.object_type) == PlacementType::MODEL
+                && record.is_static != 1
+                && metadata["actors"].as_array().is_some_and(|actors| {
+                    actors.iter().any(|actor| {
+                        actor["script_name"].as_str() == Some(record.script_name().as_str())
+                            && actor["raan_entries"]
+                                .as_array()
+                                .is_none_or(|entries| entries.is_empty())
+                    })
+                })
+        })
+        .map(|record| model_key(&record.model_name()))
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 #[cfg(all(test, feature = "native", not(target_arch = "wasm32")))]

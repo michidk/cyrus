@@ -79,6 +79,14 @@ pub(crate) fn prepare(
             names.insert((name, texture_set));
         }
     }
+    // Placed multi-frame models can supply ShowFrame without a separate actor
+    // frame table. They need the same standalone resource as RAAN sources when
+    // a restored pose or later model switch selects their installed geometry.
+    names.extend(
+        crate::animation_export::placed_frame_sources(map, &metadata)
+            .into_iter()
+            .map(|name| (name, None)),
+    );
     // Weapon items draw with their own textures, like an actor frame source without a skin.
     names.extend(weapons.names.iter().map(|name| (name.clone(), None)));
     let directory = out.with_extension("player-models");

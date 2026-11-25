@@ -347,6 +347,7 @@ fn world_exports_include_declared_terrain_and_textures() {
             serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap())
                 .unwrap();
         animations.validate().unwrap();
+        assert_placed_frame_resources(&animations, &path);
         assert!(
             animations.unsupported.is_empty(),
             "{name}: {:?}",
@@ -960,4 +961,39 @@ fn cinematic_subtitle_preparation_preserves_selected_eight_bit_upload_palette() 
         data["subtitle_palette"],
         serde_json::json!(palette.colors.as_slice())
     );
+}
+
+fn assert_placed_frame_resources(
+    animations: &cyrus_assets::animation::Animations,
+    scene: &std::path::Path,
+) {
+    for (index, placement) in animations.metadata["mpob_objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+    {
+        if placement["object_type"] != 1
+            || placement["is_static"]
+                .as_u64()
+                .is_none_or(|count| count <= 1)
+        {
+            continue;
+        }
+        let frame = animations.resolve_map_frame(index, 0).unwrap();
+        let actor = animations
+            .actor(placement["script_name"].as_str().unwrap())
+            .unwrap();
+        let texture_set = cyrus_assets::animation::actor_texture_set(actor).unwrap();
+        let path =
+            scene
+                .with_extension("player-models")
+                .join(cyrus_assets::animation::frame_source_file(
+                    &frame.model,
+                    texture_set,
+                ));
+        let bytes = std::fs::read(&path)
+            .unwrap_or_else(|error| panic!("placed frame resource {}: {error}", path.display()));
+        assert_eq!(&bytes[..4], b"glTF");
+    }
 }
