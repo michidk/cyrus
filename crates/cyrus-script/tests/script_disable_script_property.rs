@@ -28,7 +28,8 @@ fn disable_script_routes_low_bytes_and_preserves_other_motion_state() {
                 world.actors()[1 - receiver]
                     .control_state()
                     .unwrap()
-                    .script_control,
+                    .script_control
+                    .bits(),
                 0
             );
         }
@@ -133,7 +134,11 @@ fn property_controls_real_ordinary_main_without_stopping_explicit_body() {
             .unwrap();
         assert_eq!(world.flags(), [expected]);
         assert_eq!(
-            world.actors()[0].control_state().unwrap().script_control,
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .script_control
+                .bits(),
             flags as u8
         );
         assert!(world.actors()[0].failure().is_none());
@@ -194,10 +199,21 @@ fn native_enable_script_changes_only_its_mask_in_property_seeded_byte() {
     advance(&mut world, 0).unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().variables(), [132]);
     assert_eq!(
-        world.actors()[0].control_state().unwrap().script_control,
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .script_control
+            .bits(),
         132
     );
-    assert_eq!(world.actors()[1].control_state().unwrap().script_control, 0);
+    assert_eq!(
+        world.actors()[1]
+            .control_state()
+            .unwrap()
+            .script_control
+            .bits(),
+        0
+    );
     assert_eq!(world.flags(), [73]);
 }
 
@@ -217,7 +233,14 @@ fn missing_task_timing_fails_before_ordinary_continuation_then_valid_retry_runs(
         .unwrap_err();
     assert!(error.to_string().contains("requires frame_scale"));
     assert_eq!(world.flags(), [73]);
-    assert_eq!(world.actors()[0].control_state().unwrap().script_control, 0);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .script_control
+            .bits(),
+        0
+    );
     world
         .advance(
             id,

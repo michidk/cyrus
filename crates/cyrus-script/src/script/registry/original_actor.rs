@@ -1,5 +1,6 @@
 //! Retained actor values bind before any native receiver is changed.
 use super::*;
+use crate::script::ScriptControl;
 use rgpre::import::savegame::{
     SaveActorBinding, SaveActorController, SaveActorOwners, SaveActorSpatial, SaveObject,
 };
@@ -198,7 +199,7 @@ fn apply_controller(
     state: SaveActorController,
     spatial: SaveActorSpatial,
 ) {
-    control.script_control = state.script_control;
+    control.script_control = ScriptControl::from_bits(state.script_control);
     control.yangle_change = state.heading_change;
     control.jump_selector = state.rope_wait;
     control.sliding_state = state.sliding_state;

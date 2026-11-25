@@ -1,6 +1,7 @@
 //! Live session camera services: first pose establishment and one atomic update.
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::LivingState;
+use crate::script::ScriptControl;
 use crate::script::camera::{
     CameraGeometry, CameraHitSelection, CameraPose, CameraUpdateInputs, CameraUpdateSettings,
     GlidePlayer,
@@ -268,7 +269,7 @@ impl ScriptWorld {
         for index in [player, camera_actor] {
             self.cancel_actor_tasks(index)?;
             if let Some(control) = self.actors[index].control.as_mut() {
-                control.script_control &= !0x1f;
+                control.script_control.remove(ScriptControl::KNOWN_MASKS);
             }
         }
         let actor = self

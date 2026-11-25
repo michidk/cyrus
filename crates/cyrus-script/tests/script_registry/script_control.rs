@@ -6,8 +6,12 @@ fn hook_toggles_set_and_clear_only_the_native_hook_suppression_bit() {
         let world = run_native_world(calls).unwrap();
         let control = world.actors()[0].control_state().unwrap();
         (
-            control.script_control,
-            world.actors()[1].control_state().unwrap().script_control,
+            control.script_control.bits(),
+            world.actors()[1]
+                .control_state()
+                .unwrap()
+                .script_control
+                .bits(),
         )
     };
     assert_eq!(hook_bit(&[(Native::DisableHook, &[])]), (2, 0));
@@ -25,6 +29,7 @@ fn enable_and_disable_natives_toggle_their_script_control_bit() {
             .control_state()
             .unwrap()
             .script_control
+            .bits()
     };
     for (disable, enable, bit) in [
         (Native::DisableScript, Native::EnableScript, 1),

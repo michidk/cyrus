@@ -205,7 +205,7 @@ fn public_property_and_setter_share_the_real_ai_and_death_consumers() {
                         assert_eq!(control.ai_type.byte(), selector as u8);
                         assert_eq!(control.ai_mode, 0);
                         assert!(!control.killed);
-                        assert_eq!(control.script_control, 0);
+                        assert_eq!(control.script_control.bits(), 0);
                         assert_eq!(
                             world.actors()[receiver].attributes()[Attribute::Health],
                             health

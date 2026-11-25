@@ -171,11 +171,11 @@ mod quick_keys;
 pub use quick_keys::{QuickKeys, ScriptKeys};
 mod presentation;
 mod registry;
-pub use registry::ActionWords;
 pub use registry::ordinary::{
     ModelPreparation, OrdinaryContext, OrdinaryInputs, OrdinaryPhase, OrdinarySoundExecutor,
     OrdinaryUpdates, ReplayFrameScale, ReplayHold, ScriptView, WorldClockSample, run_ordinary,
 };
+pub use registry::{ActionWords, ScriptControl};
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;

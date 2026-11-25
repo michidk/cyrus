@@ -326,6 +326,7 @@ impl OrdinaryLineUp {
             .control_state()
             .unwrap()
             .script_control
+            .bits()
             & 2
     }
 
@@ -1085,7 +1086,7 @@ fn object_lineup_walks_the_receiver_to_the_callers_frame_and_ends_with_the_flag_
     );
     let control = world.actors()[index].control_state().unwrap();
     assert_eq!(
-        control.script_control & 2,
+        control.script_control.bits() & 2,
         0,
         "the alignment flag is cleared"
     );
@@ -1560,6 +1561,7 @@ fn a_receivers_player_face_talk_walks_the_selected_player_in_front_of_it_and_fac
             .control_state()
             .unwrap()
             .script_control
+            .bits()
             & 2,
         0
     );

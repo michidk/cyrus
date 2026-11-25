@@ -5,6 +5,7 @@ use crate::script::CombatControlState;
 use crate::script::CombatFlags;
 use crate::script::CombatMessageCode;
 use crate::script::JumpMotion;
+use crate::script::ScriptControl;
 use crate::script::decision::attack_step_with_animation;
 use crate::script::inventory::{FLAMING_SABRE, SABRE};
 use anyhow::{Context, Result};
@@ -1172,7 +1173,7 @@ impl ScriptWorld {
                 control.ai_mode = 0;
             }
             if control.killed {
-                control.script_control &= !2;
+                control.script_control.remove(ScriptControl::HOOK_DISABLED);
             }
         }
         self.set_actor_ai_type(index, AiType::DEAD);

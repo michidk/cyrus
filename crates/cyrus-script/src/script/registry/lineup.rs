@@ -5,6 +5,7 @@
 //! fails with it rather than continuing on a guess.
 use super::{GameHost, ScriptActorId};
 use crate::script::CombatFlags;
+use crate::script::ScriptControl;
 use crate::script::alignment::{self, CloseStep, Facing};
 use crate::script::lineup::{LineupHost, LineupPort, Reference, StepPort, close_step_run};
 use crate::script::locomotion::StepDirection;
@@ -507,7 +508,7 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
             .control
             .as_mut()
         {
-            control.script_control |= 2;
+            control.script_control.insert(ScriptControl::HOOK_DISABLED);
         }
     }
     fn clear_hook_flag(&mut self) {
@@ -515,7 +516,7 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
             .control
             .as_mut()
         {
-            control.script_control &= !2;
+            control.script_control.remove(ScriptControl::HOOK_DISABLED);
         }
     }
     fn abandon(&mut self, clear_hook_flag: bool) {
@@ -525,7 +526,7 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
                 .control
                 .as_mut()
         {
-            control.script_control &= !2;
+            control.script_control.remove(ScriptControl::HOOK_DISABLED);
         }
     }
 }

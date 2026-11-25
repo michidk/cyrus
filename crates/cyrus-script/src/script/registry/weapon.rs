@@ -4,6 +4,7 @@ use crate::script::AiType;
 use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
+use crate::script::ScriptControl;
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 use cyrus_assets::surface::Surface;
@@ -393,7 +394,7 @@ impl<'a> CombatReceiver<'a> {
             .as_mut()
             .context("combat entry control unavailable")?;
         if self.id != inputs.weapon.selected_player {
-            control.script_control |= 2;
+            control.script_control.insert(ScriptControl::HOOK_DISABLED);
         }
         if control.ai_type == AiType::COMBAT {
             return Ok(());

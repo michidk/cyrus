@@ -142,7 +142,7 @@ impl ControlSnapshot {
         Self {
             navigation: control.navigation,
             point_command: control.point_command,
-            script_control: control.script_control,
+            script_control: control.script_control.bits(),
             death_selector: control.ai_type.byte(),
             death_response: control.ai_mode,
             ai_delay: control.ai_delay,
@@ -221,7 +221,7 @@ impl ControlSnapshot {
         Ok(ActorControlState {
             navigation: self.navigation,
             point_command: self.point_command,
-            script_control: self.script_control,
+            script_control: super::ScriptControl::from_bits(self.script_control),
             ai_type: crate::script::AiType::from_byte(self.death_selector),
             ai_mode: self.death_response,
             ai_delay: self.ai_delay,

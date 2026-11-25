@@ -22,7 +22,9 @@ mod camera;
 mod camera_drive;
 mod native;
 mod property;
+mod script_control;
 pub use camera_drive::{CameraDrive, CameraFrameSnapshot, CameraFrameState, PublishedCamera};
+pub use script_control::ScriptControl;
 mod damage;
 mod lifecycle;
 pub use damage::DamageEvent;
@@ -427,7 +429,7 @@ pub struct ActorControlState {
     pub navigation: super::ActorNavigation,
     pub point_command: super::PointCommandState,
     /// Runtime script flags, separate from installed attribute bytes.
-    pub script_control: u8,
+    pub script_control: ScriptControl,
     /// The DEF `ai_type` lifecycle selector.
     pub ai_type: super::AiType,
     /// The DEF `ai_mode` byte, independent of the `ai_type` lifecycle selector.
@@ -3313,7 +3315,9 @@ impl ScriptWorld {
                     self.world
                 )
             })?;
-            if control.script_control & 2 != 0
+            if control
+                .script_control
+                .contains(ScriptControl::HOOK_DISABLED)
                 || (self.updates.task_system
                     && actor
                         .runtime
@@ -3339,10 +3343,15 @@ impl ScriptWorld {
                     self.world
                 )
             })?;
-            if control.script_control & 1 != 0 {
+            if control
+                .script_control
+                .contains(ScriptControl::SCRIPT_DISABLED)
+            {
                 return self.finish_ordinary_script_response(id, nominal_ticks);
             }
-            control.script_control & 4 != 0
+            control
+                .script_control
+                .contains(ScriptControl::TASKS_DISABLED)
         } else {
             false
         };
@@ -4357,7 +4366,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(self.registry.actors[index]
             .control
             .as_ref()
-            .is_some_and(|control| control.script_control & 2 != 0))
+            .is_some_and(|control| {
+                control
+                    .script_control
+                    .contains(ScriptControl::HOOK_DISABLED)
+            }))
     }
 
     fn native_task_call(
@@ -4971,9 +4984,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .as_mut()
             .context("PlayerFaceObj selected-player control unavailable")?;
         if outcome.aligning {
-            control.script_control |= 2;
+            control.script_control.insert(ScriptControl::HOOK_DISABLED);
         } else {
-            control.script_control &= !2;
+            control.script_control.remove(ScriptControl::HOOK_DISABLED);
         }
         if let Some(state) = outcome.return_state {
             self.registry.globals.native_command_return = state;

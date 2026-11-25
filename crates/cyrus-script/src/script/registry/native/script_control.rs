@@ -1,5 +1,5 @@
 //! Script control native-call dispatch.
-use super::super::{Argument, CallResult, GameHost, Native, Result};
+use super::super::{Argument, CallResult, GameHost, Native, Result, ScriptControl};
 use anyhow::Context;
 
 impl GameHost<'_, '_, '_, '_> {
@@ -16,9 +16,9 @@ impl GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("{function}: receiver script-control unavailable"))?;
             // Bit 0x02 of the script-control byte suppresses the native hook.
             if function == Native::DisableHook {
-                control.script_control |= 2;
+                control.script_control.insert(ScriptControl::HOOK_DISABLED);
             } else {
-                control.script_control &= !2;
+                control.script_control.remove(ScriptControl::HOOK_DISABLED);
             }
             return Ok(Some(CallResult::Complete(0)));
         }
@@ -26,14 +26,14 @@ impl GameHost<'_, '_, '_, '_> {
         // Enable*/Disable* clear and set one bit of the script-control byte: 0x01 script,
         // 0x04 tasks, 0x08 object, 0x10 combat (0x02 is the hook, handled above).
         let control_bit = match function {
-            Native::EnableScript => Some((true, 0x01)),
-            Native::DisableScript => Some((false, 0x01)),
-            Native::EnableTasks => Some((true, 0x04)),
-            Native::DisableTasks => Some((false, 0x04)),
-            Native::EnableObject => Some((true, 0x08)),
-            Native::DisableObject => Some((false, 0x08)),
-            Native::EnableCombat => Some((true, 0x10)),
-            Native::DisableCombat => Some((false, 0x10)),
+            Native::EnableScript => Some((true, ScriptControl::SCRIPT_DISABLED)),
+            Native::DisableScript => Some((false, ScriptControl::SCRIPT_DISABLED)),
+            Native::EnableTasks => Some((true, ScriptControl::TASKS_DISABLED)),
+            Native::DisableTasks => Some((false, ScriptControl::TASKS_DISABLED)),
+            Native::EnableObject => Some((true, ScriptControl::OBJECT_DISABLED)),
+            Native::DisableObject => Some((false, ScriptControl::OBJECT_DISABLED)),
+            Native::EnableCombat => Some((true, ScriptControl::COMBAT_DISABLED)),
+            Native::DisableCombat => Some((false, ScriptControl::COMBAT_DISABLED)),
             _ => None,
         };
 
@@ -44,9 +44,9 @@ impl GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .with_context(|| format!("{function}: script-control lifecycle unavailable"))?;
             if enable {
-                control.script_control &= !bit;
+                control.script_control.remove(bit);
             } else {
-                control.script_control |= bit;
+                control.script_control.insert(bit);
             }
             return Ok(Some(CallResult::Complete(0)));
         }

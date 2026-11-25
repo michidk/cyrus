@@ -422,6 +422,7 @@ module where it is defined and regenerate.
 - `src/script/registry/quick_keys.rs` — The quick sword and quick health keys: the world loop's key handler for the selected player.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.
 - `src/script/registry/rope_host.rs` — The selected player on a rope: the attach test, the attached controls, the release and the
+- `src/script/registry/script_control.rs` — Runtime stage-suppression masks retain the complete script-control byte.
 - `src/script/registry/separate.rs` — Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 - `src/script/registry/sight.rs` — Line of sight between two actors follows preservation's combat decision "In sight" rules.
 - `src/script/registry/slope.rs` — Ordinary slope response follows preservation's player engine rules.

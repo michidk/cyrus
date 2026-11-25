@@ -327,7 +327,7 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
                         !drawing
                     )
                 );
-                assert_eq!(control.script_control, if selected { 0 } else { 2 });
+                assert_eq!(control.script_control.bits(), if selected { 0 } else { 2 });
                 assert_eq!(control.combat.as_ref().unwrap().flags.bits(), 4);
                 assert_eq!(
                     world.animation_frame(id).unwrap(),
@@ -518,7 +518,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             assert_eq!(
                 (
                     control.ai_type.byte(),
-                    control.script_control,
+                    control.script_control.bits(),
                     control.weapon_drawn
                 ),
                 (0, 0, false)
@@ -535,7 +535,7 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
         assert_eq!(
             (
                 control.ai_type.byte(),
-                control.script_control,
+                control.script_control.bits(),
                 control.weapon_drawn
             ),
             (6, 2, true),

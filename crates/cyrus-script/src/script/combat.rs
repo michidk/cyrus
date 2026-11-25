@@ -2,6 +2,7 @@
 use super::ScriptActorId;
 use crate::script::AiType;
 use crate::script::LivingState;
+use crate::script::ScriptControl;
 use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 use cyrus_soup::{Attribute, Attributes};
@@ -786,7 +787,7 @@ pub(super) fn end_combat_reset(control: &mut super::registry::ActorControlState)
     combat.attacker_selection_state = CombatControlState::COORDINATION_WAITING;
     control.ai_type = AiType::FIND_PLAYER;
     control.ai_mode = 0;
-    control.script_control &= !2;
+    control.script_control.remove(ScriptControl::HOOK_DISABLED);
     true
 }
 
@@ -864,7 +865,7 @@ mod sheath_tests {
         let mut control = ActorControlState {
             ai_type: AiType::COMBAT,
             ai_mode: 3,
-            script_control: 0b1011,
+            script_control: ScriptControl::from_bits(0b1011),
             combat: Some(CombatControlState {
                 flags: CombatFlags::from_bits(0x07),
                 close_distance_passes: 12,
@@ -882,7 +883,7 @@ mod sheath_tests {
         // The cooldown belongs to sheathing, not to the reset.
         assert_eq!(combat.cooldown, 9);
         assert_eq!((control.ai_type, control.ai_mode), (AiType::FIND_PLAYER, 0));
-        assert_eq!(control.script_control, 0b1001);
+        assert_eq!(control.script_control.bits(), 0b1001);
         let mut bare = ActorControlState {
             ai_type: AiType::COMBAT,
             ..Default::default()

@@ -37,7 +37,7 @@ fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&m
         Property::ActionTime => &mut control.jump_window,
         Property::ArmsTime => &mut control.action_transition_counter,
         Property::LastCollideCount => &mut control.last_collide_count,
-        Property::DisableScript => &mut control.script_control,
+        Property::DisableScript => control.script_control.bits_mut(),
         Property::AiMode => &mut control.ai_mode,
         Property::AiDelay => &mut control.ai_delay,
         _ => return None,

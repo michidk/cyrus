@@ -12,6 +12,7 @@ use crate::script::CombatFlags;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
 use crate::script::MotionDirection;
+use crate::script::ScriptControl;
 use crate::script::locomotion::StepDirection;
 use crate::script::registry::ActionWords;
 use anyhow::{Context, Result, ensure};
@@ -1001,7 +1002,9 @@ impl ScriptWorld {
             && control.queued_motion == JumpMotion::NONE
             && control.falling_state == JumpMotion::NONE
             && !control.rope_attached
-            && control.script_control & 2 == 0
+            && !control
+                .script_control
+                .contains(ScriptControl::HOOK_DISABLED)
             && self
                 .globals
                 .dialogue_state()
@@ -1185,7 +1188,9 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("player native hook control unavailable")?;
-        if control.script_control & 2 != 0
+        if control
+            .script_control
+            .contains(ScriptControl::HOOK_DISABLED)
             || (self.updates.task_system
                 && actor
                     .runtime

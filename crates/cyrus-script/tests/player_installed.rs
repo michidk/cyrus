@@ -532,10 +532,10 @@ fn belltowr_lineup_releases_control(start: [i32; 3]) -> Result<()> {
         let control = world.actors()[player.index]
             .control_state()
             .context("control unavailable")?;
-        saw_alignment |= control.script_control & 2 != 0;
+        saw_alignment |= control.script_control.bits() & 2 != 0;
         if saw_alignment
             && world.spatial(player)?.local.position == [545024, -16384, 587520]
-            && control.script_control & 2 == 0
+            && control.script_control.bits() & 2 == 0
         {
             arrived = true;
             break;

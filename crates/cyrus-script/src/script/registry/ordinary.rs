@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptActors, ScriptInputs, ScriptStage, ScriptWorld};
 use crate::clock::{ClockStep, SimulationClock, bios_tick};
 use crate::script::JumpMotion;
+use crate::script::ScriptControl;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
@@ -279,7 +280,11 @@ impl ScriptWorld {
             {
                 control.object_update_excluded = true;
             }
-            if control.object_update_excluded || control.script_control & 8 != 0 {
+            if control.object_update_excluded
+                || control
+                    .script_control
+                    .contains(ScriptControl::OBJECT_DISABLED)
+            {
                 continue;
             }
             self.globals.locomotion_called = 0;

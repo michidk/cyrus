@@ -31,7 +31,7 @@ fn visibility_calls_return_zero_without_disabling_the_receivers_script() {
             let control = world.actors()[0].control_state().unwrap();
             assert_eq!(control.hidden, hidden);
             assert!(!control.object_update_excluded);
-            assert_eq!(control.script_control, 0);
+            assert_eq!(control.script_control.bits(), 0);
             assert!(!world.actors()[1].control_state().unwrap().hidden);
         }
     }

@@ -1429,7 +1429,8 @@ mod live {
             world.actors()[PLAYER]
                 .control_state()
                 .unwrap()
-                .script_control,
+                .script_control
+                .bits(),
             0xff
         );
         run(&mut world, PLAYER, ScriptStage::OrdinaryMain, Some(&hud)).unwrap();
@@ -1440,7 +1441,11 @@ mod live {
         );
         run_with(&mut world, BODY, Some(&service)).unwrap();
         let control = world.actors()[PLAYER].control_state().unwrap();
-        assert_eq!(control.script_control, 0xe0, "ordinary stages resume");
+        assert_eq!(
+            control.script_control.bits(),
+            0xe0,
+            "ordinary stages resume"
+        );
         assert_eq!(
             control.falling_state.byte(),
             1,

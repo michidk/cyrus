@@ -269,8 +269,22 @@ fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes
         .unwrap();
     assert_eq!(world.flags(), [13]);
     assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
-    assert_eq!(world.actors()[0].control_state().unwrap().script_control, 1);
-    assert_eq!(world.actors()[1].control_state().unwrap().script_control, 0);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .script_control
+            .bits(),
+        1
+    );
+    assert_eq!(
+        world.actors()[1]
+            .control_state()
+            .unwrap()
+            .script_control
+            .bits(),
+        0
+    );
     for _ in 0..200 {
         world
             .advance(id, ScriptStage::OrdinaryMain, inputs, None, None, 20)
@@ -281,7 +295,14 @@ fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes
     world
         .advance(id, ScriptStage::NativeHook, inputs, None, None, 20)
         .unwrap();
-    assert_eq!(world.actors()[0].control_state().unwrap().script_control, 0);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .script_control
+            .bits(),
+        0
+    );
     world
         .advance(id, ScriptStage::OrdinaryMain, inputs, None, None, 20)
         .unwrap();

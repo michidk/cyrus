@@ -215,7 +215,7 @@ fn public_property_and_native_setter_share_mode_without_changing_ai_type() {
                         assert_eq!(control.ai_mode, mode as u8);
                         assert_eq!(control.ai_type.byte(), 8);
                         assert!(!control.killed);
-                        assert_eq!(control.script_control, 0);
+                        assert_eq!(control.script_control.bits(), 0);
                         assert_eq!(
                             world.actors()[receiver].attributes()[Attribute::Health],
                             health
