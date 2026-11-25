@@ -1803,6 +1803,15 @@ does not prove an interrupted layer unpack completed. Preparation resumes stored
 layers without another archive load, network access, game mounts or writable image
 filesystem. A failed preparation remains a failure; rerun the helper after recovery. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
+Each restore writes an append-only `ARCHIVE.restore.log` and an atomically
+replaced `ARCHIVE.restore-state.json` beside the host-retained archive. These
+record daemon identity, command output, stage and exit status. A receipt left in
+`running` state identifies an interrupted operation; rerunning always checks
+current Docker state rather than trusting a prior receipt. When a failed load
+leaves image metadata, preparation resumes that content instead of importing it
+again. If Docker is unavailable or the requested image was not retained, recovery
+fails with the saved diagnostics; it never starts a daemon or retries in a loop.
+
 Pass `--retain` before `IMAGE` to checkpoint the available image. This checkpoints setup before the next reset: concurrent calls share
 the restore lock, and only a successful nonempty Docker save is published by
 atomic rename. A failed save leaves the previous checkpoint intact. Retention checks the

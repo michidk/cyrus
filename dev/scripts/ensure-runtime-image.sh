@@ -12,37 +12,83 @@ if (( $# != 2 )); then
 fi
 image="$1"
 archive="$2"
-# Metadata can survive an interrupted unpack. Preparing a disposable Linux
-# container resumes stored layers and proves the root filesystem works, without
-# game/config mounts, network access or a writable image filesystem.
-prepare_runtime() {
-    docker run --rm --pull never --network none --read-only --entrypoint /bin/true "$image"
-}
-if (( ! retain )) && docker image inspect "$image" >/dev/null 2>&1; then
-    prepare_runtime
-    exit 0
-fi
-if (( ! retain )) && [[ ! -s "$archive" ]]; then
-    echo "runtime image $image is unavailable and archive is missing or empty: $archive" >&2
-    exit 1
-fi
-# Several sessions may discover the same reset. Serialize restore and recheck ownership.
-if (( retain )); then mkdir -p "$(dirname "$archive")"; fi
+# Keep diagnostics beside the host-retained archive, never in the disposable
+# daemon. The receipt is evidence, not an admission flag: always recheck Docker.
+mkdir -p "$(dirname "$archive")"
 exec 8>"$archive.restore.lock"
 flock 8
+restore_log="$archive.restore.log"
+restore_state="$archive.restore-state.json"
+record_state() {
+    python3 - "$restore_state" "$restore_log" "$image" "$1" "$2" "${3:-0}" <<'PYTHON'
+import datetime
+import json
+import os
+import sys
+import tempfile
+
+path, log, image, stage, status, code = sys.argv[1:]
+state = dict(time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+             image=image, stage=stage, status=status, exit_code=int(code))
+with open(log, 'a') as output:
+    output.write(json.dumps(state) + '\n')
+    output.flush()
+    os.fsync(output.fileno())
+fd, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.restore-state-')
+with os.fdopen(fd, 'w') as output:
+    json.dump(state, output)
+    output.write('\n')
+    output.flush()
+    os.fsync(output.fileno())
+os.replace(temporary, path)
+directory = os.open(os.path.dirname(path), os.O_RDONLY | os.O_DIRECTORY)
+try:
+    os.fsync(directory)
+finally:
+    os.close(directory)
+PYTHON
+}
+run_step() {
+    local stage="$1"
+    shift
+    record_state "$stage" running
+    printf '%s\n' "$*" >> "$restore_log"
+    if "$@" 2>&1 | tee -a "$restore_log" >&2; then
+        record_state "$stage" succeeded
+    else
+        local code=$?
+        record_state "$stage" failed "$code"
+        return "$code"
+    fi
+}
+# Record daemon identity on every invocation, including recovery after a reset.
+# Failure here reports unavailable Docker rather than attempting to start it.
+run_step availability docker info --format '{{json .ID}} {{json .ServerVersion}} {{json .Driver}}'
+
 if ! docker image inspect "$image" >/dev/null 2>&1; then
     if [[ ! -s "$archive" ]]; then
+        record_state load failed 1
         echo "runtime image $image is unavailable and archive is missing or empty: $archive" >&2
         exit 1
     fi
-    docker load --input "$archive"
+    # A failed client request can still leave reusable image metadata/content.
+    # Inspect that state before deciding whether the whole import failed.
+    load_code=0
+    run_step load docker load --input "$archive" || load_code=$?
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+        if (( load_code == 0 )); then load_code=1; fi
+        record_state load failed "$load_code"
+        echo "runtime archive $archive did not restore requested image $image; diagnostics: $restore_log" >&2
+        exit 1
+    fi
 fi
-if ! docker image inspect "$image" >/dev/null 2>&1; then
-    echo "runtime archive $archive did not restore requested image $image" >&2
-    exit 1
+# Preparing a disposable container resumes retained layers and checks the rootfs.
+# No game/config mounts, daemon changes, deletion or automatic reload loop.
+run_step prepare docker run --rm --pull never --network none --read-only --entrypoint /bin/true "$image"
+if (( ! retain )); then
+    record_state complete succeeded
+    exit 0
 fi
-
-prepare_runtime
 
 # A mutable tag may have been rebuilt since the previous checkpoint. Compare
 # the saved config digest and tag before reusing it, without extracting files.
@@ -98,7 +144,7 @@ PYTHON
 if (( retain )) && ! archive_matches_image; then
     partial=$(mktemp "$archive.partial.XXXXXX")
     trap 'rm -f "$partial"' EXIT
-    docker save --output "$partial" "$image"
+    run_step save docker save --output "$partial" "$image"
     [[ -s "$partial" ]] || { echo "Docker saved an empty runtime archive: $image" >&2; exit 1; }
     # Verify the newly saved archive too; a changed tag or malformed save must
     # not replace a checkpoint that another run may still need.
@@ -111,3 +157,5 @@ if (( retain )) && ! archive_matches_image; then
     archive="$previous_archive"
     mv "$partial" "$archive"
 fi
+
+record_state complete succeeded

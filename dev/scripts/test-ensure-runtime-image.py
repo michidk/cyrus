@@ -37,7 +37,7 @@ def image_archive(path, payload, oci=False, index=False):
 
 
 class Recovery(unittest.TestCase):
-    def run_restore(self, present=False, archive=True, accepted=True, correct_tag=True, prepared=True):
+    def run_restore(self, present=False, archive=True, accepted=True, correct_tag=True, prepared=True, interrupted=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image = root / 'present'
@@ -49,14 +49,38 @@ class Recovery(unittest.TestCase):
             docker = root / 'docker'
             docker.write_text('#!/bin/sh\necho "$*" >> "$CALLS"\n'
                 'if [ "$1" = image ]; then test -f "$PRESENT"; '
+                'elif [ "$1" = info ]; then echo fixture-daemon; '
                 'elif [ "$1" = run ]; then test "$PREPARED" = yes; '
-                'elif [ "$1" = load ]; then test "$ACCEPTED" = yes || exit 1; [ "$CORRECT_TAG" = no ] || touch "$PRESENT"; fi\n')
+                'elif [ "$1" = load ]; then test "$ACCEPTED" = yes || exit 1; [ "$CORRECT_TAG" = no ] || touch "$PRESENT"; test "$INTERRUPTED" = no; fi\n')
             docker.chmod(0o755)
             result = subprocess.run(['bash', str(SCRIPT), 'fixture:1', str(saved)],
                 env=dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}', PRESENT=str(image),
-                         CALLS=str(root/'calls'), ACCEPTED='yes' if accepted else 'no', CORRECT_TAG='yes' if correct_tag else 'no', PREPARED='yes' if prepared else 'no'),
+                         CALLS=str(root/'calls'), ACCEPTED='yes' if accepted else 'no', CORRECT_TAG='yes' if correct_tag else 'no', PREPARED='yes' if prepared else 'no', INTERRUPTED='yes' if interrupted else 'no'),
                 text=True, capture_output=True)
+            state = root/'runtime.tar.restore-state.json'
+            log = root/'runtime.tar.restore.log'
+            result.restore_state = json.loads(state.read_text()) if state.exists() else None
+            result.restore_log = log.read_text() if log.exists() else ''
             return result, (root/'calls').read_text()
+
+    def test_failed_load_with_retained_metadata_resumes_preparation(self):
+        result, calls = self.run_restore(interrupted=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls.count('load --input'), 1)
+        self.assertIn('run --rm', calls)
+        self.assertEqual(result.restore_state['stage'], 'complete')
+        self.assertIn('fixture-daemon', result.restore_log)
+        self.assertIn('"stage": "load", "status": "failed"', result.restore_log)
+
+    def test_failed_unpack_has_durable_stage_and_daemon_diagnostics(self):
+        result, calls = self.run_restore(present=True, prepared=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.restore_state['stage'], 'prepare')
+        self.assertEqual(result.restore_state['status'], 'failed')
+        self.assertNotEqual(result.restore_state['exit_code'], 0)
+        self.assertIn('fixture-daemon', result.restore_log)
+        self.assertIn('run --rm', result.restore_log)
+        self.assertNotIn('load --input', calls)
 
     def test_retain_available_image_atomically_and_reuse_after_reset(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -142,11 +166,13 @@ esac
         result, calls = self.run_restore()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls.count('load --input'), 1)
-        self.assertEqual(calls.count('image inspect fixture:1'), 3)
+        self.assertEqual(result.restore_state['stage'], 'complete')
 
     def test_successful_load_with_wrong_tag_is_rejected(self):
         result, calls = self.run_restore(correct_tag=False)
         self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.restore_state['status'], 'failed')
+        self.assertEqual(result.restore_state['exit_code'], 1)
         self.assertIn('did not restore requested image fixture:1', result.stderr)
         self.assertIn('load --input', calls)
 
