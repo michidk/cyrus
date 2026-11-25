@@ -361,13 +361,41 @@ module where it is defined and regenerate.
 - `src/script/registry/map_marker.rs` — Console marker placement: the loaded map's own markers and the saved user markers.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
 - `src/script/registry/native.rs` — Native-call families shared by the script host.
+- `src/script/registry/native/action.rs` — Action native-call dispatch.
+- `src/script/registry/native/activation.rs` — Activation native-call dispatch.
+- `src/script/registry/native/ai.rs` — Ai native-call dispatch.
+- `src/script/registry/native/animation.rs` — Animation native-call dispatch.
+- `src/script/registry/native/attributes.rs` — Attributes native-call dispatch.
+- `src/script/registry/native/camera.rs` — Camera native-call dispatch.
+- `src/script/registry/native/combat.rs` — Combat native-call dispatch.
+- `src/script/registry/native/contact.rs` — Contact native-call dispatch.
+- `src/script/registry/native/coordination.rs` — Coordination native-call dispatch.
+- `src/script/registry/native/diagnostics.rs` — Diagnostics native-call dispatch.
 - `src/script/registry/native/dialogue.rs` — Dialogue native-call dispatch.
 - `src/script/registry/native/effects.rs` — Effects native-call dispatch.
+- `src/script/registry/native/flags.rs` — Flags native-call dispatch.
+- `src/script/registry/native/health.rs` — Health native-call dispatch.
 - `src/script/registry/native/input.rs` — Input native-call dispatch.
 - `src/script/registry/native/inventory.rs` — Inventory native-call dispatch.
+- `src/script/registry/native/lifecycle.rs` — Lifecycle native-call dispatch.
+- `src/script/registry/native/lineup.rs` — Lineup native-call dispatch.
 - `src/script/registry/native/menu.rs` — Menu native-call dispatch.
+- `src/script/registry/native/messages.rs` — Messages native-call dispatch.
+- `src/script/registry/native/model.rs` — Model native-call dispatch.
+- `src/script/registry/native/movement.rs` — Movement native-call dispatch.
+- `src/script/registry/native/navigation.rs` — Navigation native-call dispatch.
+- `src/script/registry/native/perception.rs` — Perception native-call dispatch.
+- `src/script/registry/native/player.rs` — Player native-call dispatch.
+- `src/script/registry/native/random.rs` — Random native-call dispatch.
 - `src/script/registry/native/script_control.rs` — Script control native-call dispatch.
+- `src/script/registry/native/shell.rs` — Shell native-call dispatch.
 - `src/script/registry/native/shoot.rs` — Shoot native-call dispatch.
+- `src/script/registry/native/sound.rs` — Sound native-call dispatch.
+- `src/script/registry/native/spatial.rs` — Spatial native-call dispatch.
+- `src/script/registry/native/surface.rs` — Surface native-call dispatch.
+- `src/script/registry/native/tasks.rs` — Tasks native-call dispatch.
+- `src/script/registry/native/weapon.rs` — Weapon native-call dispatch.
+- `src/script/registry/native/world.rs` — World native-call dispatch.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
 - `src/script/registry/original_actor.rs` — Retained actor values bind before any native receiver is changed.
