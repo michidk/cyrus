@@ -360,6 +360,14 @@ module where it is defined and regenerate.
 - `src/script/registry/lunge_tests.rs` — Lunge and ordinary continuation retain classification at their own admission boundaries.
 - `src/script/registry/map_marker.rs` — Console marker placement: the loaded map's own markers and the saved user markers.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
+- `src/script/registry/native.rs` — Native-call families shared by the script host.
+- `src/script/registry/native/dialogue.rs` — Dialogue native-call dispatch.
+- `src/script/registry/native/effects.rs` — Effects native-call dispatch.
+- `src/script/registry/native/input.rs` — Input native-call dispatch.
+- `src/script/registry/native/inventory.rs` — Inventory native-call dispatch.
+- `src/script/registry/native/menu.rs` — Menu native-call dispatch.
+- `src/script/registry/native/script_control.rs` — Script control native-call dispatch.
+- `src/script/registry/native/shoot.rs` — Shoot native-call dispatch.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
 - `src/script/registry/original_actor.rs` — Retained actor values bind before any native receiver is changed.
@@ -381,6 +389,7 @@ module where it is defined and regenerate.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 - `src/script/registry/projectile.rs` — `projectileAI`: one flight step of a created projectile, following preservation's
+- `src/script/registry/property.rs` — Actor property descriptors and their read/write dispatch.
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
 - `src/script/registry/quick_keys.rs` — The quick sword and quick health keys: the world loop's key handler for the selected player.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.
