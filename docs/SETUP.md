@@ -1877,6 +1877,36 @@ PNG stay local. Preparation and game-clock progress have separate bounded
 cutoffs; slow decoding alone is not treated as a stalled game clock. Original
 pixel and timing parity remain unverified.
 
+For a retained executable compatible with the host, `run-native-session.py` runs
+headless acceptance without Docker, a root filesystem or an image import. Use
+the actual installation directory. A directory containing only asset symlinks
+is not an equivalent installation for asset enumeration.
+
+```sh
+python3 dev/scripts/run-native-session.py \
+  --binary /absolute/host/runtime/cyrus --install /absolute/path/to/Redguard \
+  --scene START --output /absolute/host/evidence/new-attempt \
+  --cache /absolute/host/shared-cache \
+  --session /absolute/host/evidence/admitted.session -- \
+  python3 /absolute/host/control-driver.py '{port}' '{output}'
+python3 -B dev/scripts/test-run-native-session.py
+```
+
+The supplied driver uses the public loopback control protocol and must stop on
+its intended game-clock boundary. `--timeout` bounds startup and driver execution
+separately. The runner retains executable/session hashes, command, phase and PID
+in an atomic `runtime.json`, writes native diagnostics to `process.log`, and
+stops its own native child on success, failure or termination. Each attempt needs
+a fresh output directory on persistent host storage; existing logs are never
+overwritten. `CYRUS_CONFIG_DIR` stays under that directory. `--cache` links one
+existing shared cache outside the read-only installation. The live lock covers
+only this run and is released when it ends.
+
+`--session` optionally restores a previously captured public checkpoint. Such a
+run tests checkpoint restoration and continuation; original book-slot admission
+must be exercised separately through its public adapter. Omit `--session` when
+the supplied driver performs that admission itself.
+
 `native-transient-runtime.py` recovers the minimal software-render runtime after
 Docker images disappear, without invoking Cargo. Supply the retained executable
 and its independently recorded digest:
