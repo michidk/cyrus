@@ -7,8 +7,8 @@ This checks decoder progress, not original mixer-buffer or gameplay parity.
 import argparse
 import importlib.util
 import json
-from pathlib import Path
 import socket
+from pathlib import Path
 
 
 def helper(name, filename):

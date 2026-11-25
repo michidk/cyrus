@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Negative controls for the public mono source-clock consumer."""
-from copy import deepcopy
 import importlib.util
-from pathlib import Path
 import unittest
+from copy import deepcopy
+from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('clock', Path(__file__).with_name('native-source-clock.py'))
 clock = importlib.util.module_from_spec(spec)
