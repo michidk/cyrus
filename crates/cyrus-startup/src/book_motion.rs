@@ -1,6 +1,7 @@
 //! Authored book turns and camera requests from preservation's engine/menu.md.
 //! Forward turns target each model's frame count, one past its last authored frame
 //! (redguard-preservation PR #81).
+use cyrus_assets::menu::MenuPageId;
 use cyrus_world::heading::wrap;
 use std::collections::VecDeque;
 
@@ -64,14 +65,14 @@ impl BookMotion {
     /// settled pose (preservation engine/menu.md): Options turns the first and second pages (with their depth shifts), Display
     /// and Sound move the camera, Controls also turns the third page. The shortcut's own
     /// transition is not documented, so none is invented.
-    pub fn settled_on(page: u8, frame_counts: [usize; 5]) -> Self {
+    pub fn settled_on(page: MenuPageId, frame_counts: [usize; 5]) -> Self {
         let mut motion = Self::settled(frame_counts);
         motion.pose.frames[1] = frame_counts[1];
         motion.pose.frames[3] = frame_counts[3];
         motion.pose.depth[1] = 4.0;
         match page {
-            5 => motion.pose.camera = [336.0, -128.0, 0.0],
-            6 => motion.pose.camera = [336.0, 176.0, 0.0],
+            MenuPageId::Display => motion.pose.camera = [336.0, -128.0, 0.0],
+            MenuPageId::Sound => motion.pose.camera = [336.0, 176.0, 0.0],
             _ => {
                 motion.pose.frames[4] = frame_counts[4];
                 motion.pose.depth[4] = -4.0;
@@ -135,45 +136,49 @@ impl BookMotion {
     }
 
     /// Called only between settled supported pages.
-    pub fn navigate(&mut self, from: u8, to: u8) -> Result<(), String> {
+    pub fn navigate(&mut self, from: MenuPageId, to: MenuPageId) -> Result<(), String> {
         debug_assert!(!self.busy());
         match (from, to) {
-            (0, 1) => self.request([336.0, 0.0, 0.0], 0, 0.15),
-            (1, 0) => self.request([0.0; 3], 0, 0.15),
-            (0, 2) => {
+            (MenuPageId::Main, MenuPageId::Save) => self.request([336.0, 0.0, 0.0], 0, 0.15),
+            (MenuPageId::Save, MenuPageId::Main) => self.request([0.0; 3], 0, 0.15),
+            (MenuPageId::Main, MenuPageId::Load) => {
                 self.sweep([0.0; 3]);
                 self.turn(1, self.frame_counts[1], 4);
             }
-            (2, 0) => {
+            (MenuPageId::Load, MenuPageId::Main) => {
                 self.sweep([0.0; 3]);
                 self.turn(1, 0, 4);
             }
-            (0, 3) => {
+            (MenuPageId::Main, MenuPageId::Movies) => {
                 self.sweep([336.0, 0.0, 0.0]);
                 self.turn(1, self.frame_counts[1], 4);
             }
-            (3, 0) => {
+            (MenuPageId::Movies, MenuPageId::Main) => {
                 self.sweep([0.0; 3]);
                 self.turn(1, 0, 4);
             }
-            (0, 4) => {
+            (MenuPageId::Main, MenuPageId::Options) => {
                 self.sweep([0.0; 3]);
                 self.turn(1, self.frame_counts[1], 3);
                 self.turn(3, self.frame_counts[3], 5);
             }
-            (4, 0) => {
+            (MenuPageId::Options, MenuPageId::Main) => {
                 self.sweep([0.0; 3]);
                 self.turn(1, 0, 5);
                 self.turn(3, 0, 3);
             }
-            (4, 5) => self.request([336.0, -128.0, 0.0], 0, 0.15),
-            (4, 6) => self.request([336.0, 176.0, 0.0], 0, 0.15),
-            (5 | 6, 4) => self.request([0.0; 3], 0, 0.15),
-            (4, 7) => {
+            (MenuPageId::Options, MenuPageId::Display) => {
+                self.request([336.0, -128.0, 0.0], 0, 0.15)
+            }
+            (MenuPageId::Options, MenuPageId::Sound) => self.request([336.0, 176.0, 0.0], 0, 0.15),
+            (MenuPageId::Display | MenuPageId::Sound, MenuPageId::Options) => {
+                self.request([0.0; 3], 0, 0.15)
+            }
+            (MenuPageId::Options, MenuPageId::Controls) => {
                 self.sweep([0.0; 3]);
                 self.turn(4, self.frame_counts[4], 4);
             }
-            (7, 4) => {
+            (MenuPageId::Controls, MenuPageId::Options) => {
                 self.sweep([0.0; 3]);
                 self.turn(4, 0, 4);
             }
@@ -294,7 +299,7 @@ mod tests {
             (7, 4, vec![(4, 68)]),
             (4, 0, vec![(3, 67), (5, 66)]),
         ] {
-            motion.navigate(from, to).unwrap();
+            motion.navigate(from.into(), to.into()).unwrap();
             assert_eq!(cues(&mut motion), expected, "page {from} to {to}");
             assert!(cues(&mut motion).is_empty(), "settled page {to}");
         }
@@ -308,18 +313,18 @@ mod tests {
     #[test]
     fn save_camera_moves_without_turning_and_load_turns_the_first_page() {
         let mut motion = settled();
-        motion.navigate(0, 1).unwrap();
+        motion.navigate(0.into(), 1.into()).unwrap();
         assert!(motion.tick(|_| panic!("Save must not turn a page")));
         assert_eq!(motion.pose.camera, [50.0, 0.0, 0.0]);
         assert!(cues(&mut motion).is_empty());
         assert_eq!(motion.pose.camera, [336.0, 0.0, 0.0]);
         assert_eq!(motion.pose.frames, [0; 5]);
-        motion.navigate(1, 0).unwrap();
+        motion.navigate(1.into(), 0.into()).unwrap();
         assert!(cues(&mut motion).is_empty());
         assert_eq!(motion.pose.camera, [0.0; 3]);
         assert_eq!(motion.pose.frames, [0; 5]);
 
-        motion.navigate(0, 2).unwrap();
+        motion.navigate(0.into(), 2.into()).unwrap();
         assert!(motion.tick(|_| panic!("Load page sound must wait four updates")));
         assert_eq!(motion.pose.camera, [28.0, 42.0, -14.0]);
         assert_eq!(motion.pose.pitch, 2026);
@@ -327,7 +332,7 @@ mod tests {
         assert_eq!(motion.pose.camera, [0.0; 3]);
         assert_eq!(motion.pose.pitch, 0);
         assert_eq!(motion.pose.frames, [0, 9, 0, 0, 0]);
-        motion.navigate(2, 0).unwrap();
+        motion.navigate(2.into(), 0.into()).unwrap();
         assert_eq!(cues(&mut motion), [(4, 66)]);
         assert_eq!(motion.pose.camera, [0.0; 3]);
         assert_eq!(motion.pose.pitch, 0);
@@ -337,9 +342,9 @@ mod tests {
     #[test]
     fn options_return_turns_one_update_longer_than_its_authored_frames() {
         let mut motion = settled();
-        motion.navigate(0, 4).unwrap();
+        motion.navigate(0.into(), 4.into()).unwrap();
         while motion.tick(|_| {}) {}
-        motion.navigate(4, 0).unwrap();
+        motion.navigate(4.into(), 0.into()).unwrap();
         let mut last_page_update = 0;
         for update in 1..=64 {
             let before = motion.pose.frames;
@@ -361,7 +366,7 @@ mod tests {
             (6, [336.0, 176.0, 0.0], [0, 9, 0, 9, 0]),
             (7, [0.0; 3], [0, 9, 0, 9, 9]),
         ] {
-            let mut motion = BookMotion::settled_on(page, [9, 9, 0, 9, 9]);
+            let mut motion = BookMotion::settled_on(page.into(), [9, 9, 0, 9, 9]);
             assert!(!motion.busy(), "page {page}");
             assert_eq!(motion.pose.camera, camera, "page {page}");
             assert_eq!(motion.pose.frames, frames, "page {page}");
@@ -369,9 +374,9 @@ mod tests {
                 motion.pose.depth,
                 [0.0, 4.0, 0.0, 0.0, if page == 7 { -4.0 } else { 0.0 }]
             );
-            motion.navigate(page, 4).unwrap();
+            motion.navigate(page.into(), 4.into()).unwrap();
             while motion.tick(|_| {}) {}
-            motion.navigate(4, 0).unwrap();
+            motion.navigate(4.into(), 0.into()).unwrap();
             while motion.tick(|_| {}) {}
             assert_eq!(motion.pose.camera, [0.0; 3], "page {page}");
             assert_eq!(motion.pose.frames, [0; 5], "page {page}");
@@ -383,7 +388,7 @@ mod tests {
     fn unsupported_navigation_preserves_the_settled_book() {
         let mut motion = settled();
         assert_eq!(
-            motion.navigate(0, 7),
+            motion.navigate(0.into(), 7.into()),
             Err("MENU.INI: book transition from page 0 to page 7 is unavailable".into())
         );
         assert!(!motion.busy());
@@ -438,7 +443,7 @@ mod tests {
     #[test]
     fn movies_turn_uses_authored_frames_delays_and_reversible_depth() {
         let mut motion = settled();
-        motion.navigate(0, 3).unwrap();
+        motion.navigate(0.into(), 3.into()).unwrap();
         assert!(motion.tick(|_| {}));
         assert_eq!(motion.pose.camera, [28.0, 42.0, -14.0]);
         assert_eq!(motion.pose.pitch, 2026);
@@ -454,7 +459,7 @@ mod tests {
         while motion.tick(|_| {}) {}
         assert_eq!(motion.pose.camera, [336.0, 0.0, 0.0]);
         assert_eq!(motion.pose.pitch, 0);
-        motion.navigate(3, 0).unwrap();
+        motion.navigate(3.into(), 0.into()).unwrap();
         while motion.tick(|_| {}) {}
         assert_eq!(motion.pose.frames, [0; 5]);
         assert_eq!(motion.pose.depth, [0.0; 5]);
@@ -465,13 +470,13 @@ mod tests {
     fn controls_and_options_restore_the_main_book_and_quit_closes_the_cover() {
         let mut motion = settled();
         for (from, to) in [(0, 4), (4, 5), (5, 4), (4, 6), (6, 4), (4, 7)] {
-            motion.navigate(from, to).unwrap();
+            motion.navigate(from.into(), to.into()).unwrap();
             while motion.tick(|_| {}) {}
         }
         assert_eq!(motion.pose.frames, [0, 9, 0, 9, 9]);
         assert_eq!(motion.pose.depth, [0.0, 4.0, 0.0, 0.0, -4.0]);
         for (from, to) in [(7, 4), (4, 0)] {
-            motion.navigate(from, to).unwrap();
+            motion.navigate(from.into(), to.into()).unwrap();
             while motion.tick(|_| {}) {}
         }
         assert_eq!(motion.pose.frames, [0; 5]);

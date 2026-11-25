@@ -8,8 +8,8 @@ use bevy::{
     input::mouse::MouseButton,
     prelude::*,
 };
-use cyrus_assets::menu::MenuAsset;
 pub use cyrus_assets::menu::MenuItem;
+use cyrus_assets::menu::{MenuAction, MenuAsset, MenuPageId};
 use cyrus_assets::preferences::MenuPreferences;
 use cyrus_game::AppState;
 use cyrus_script::clock::{ClockCheckpoint, SimulationClock, bios_tick};
@@ -125,7 +125,7 @@ pub struct MenuState {
     pub(super) last_game: Option<super::last_game::Presentation>,
     /// True once the installed book is rendered and input can be accepted.
     pub ready: bool,
-    pub page: u8,
+    pub page: MenuPageId,
     pub capturing: Option<i32>,
     /// Cinematic loading/playback; menu input is suspended while present.
     pub movie: Option<MovieStatus>,
@@ -156,7 +156,7 @@ pub struct MenuState {
     #[serde(skip)]
     pub(super) painted: Option<super::menu_raster::Painted>,
     #[serde(skip)]
-    pub(super) selections: BTreeMap<u8, Option<usize>>,
+    pub(super) selections: BTreeMap<MenuPageId, Option<usize>>,
     #[serde(skip)]
     pub(super) blink_on: bool,
     #[serde(skip)]
@@ -181,15 +181,15 @@ pub struct MenuState {
     pub(super) main_disabled: [bool; 2],
     /// Page a gameplay shortcut opens directly; zero for the main page.
     #[serde(skip)]
-    entry_page: u8,
+    entry_page: MenuPageId,
     /// Quit waits for its automatic-save preparation to finish.
     #[serde(skip)]
     quit_pending: bool,
 }
 
 impl MenuState {
-    pub(super) fn main_entry_disabled(&self, page: u8, index: usize) -> bool {
-        page == 0
+    pub(super) fn main_entry_disabled(&self, page: MenuPageId, index: usize) -> bool {
+        page == MenuPageId::Main
             && match index {
                 0 => self.main_disabled[0],
                 5 => self.main_disabled[1],
@@ -204,10 +204,12 @@ impl MenuState {
             .entries
             .iter_mut()
             .enumerate()
-            .filter(|(_, entry)| matches!(entry.action, 102 | 202))
+            .filter(|(_, entry)| {
+                matches!(entry.action, MenuAction::SaveSlot | MenuAction::LoadSlot)
+            })
             .enumerate()
         {
-            let base = if self.page == 1 {
+            let base = if self.page == MenuPageId::Save {
                 if self.list_page == 0 {
                     0
                 } else {
@@ -221,7 +223,7 @@ impl MenuState {
                 .iter()
                 .enumerate()
                 .filter(|(_, slot)| {
-                    self.page != 1
+                    self.page != MenuPageId::Save
                         || (slot.source == super::SaveSlotSource::Native
                             && slot.slot != 0
                             && slot.slot != 1)
@@ -448,7 +450,9 @@ fn setup(
         } else {
             MenuContext::Startup
         },
-        entry_page: pause.as_ref().map_or(0, |entry| entry.page),
+        entry_page: pause
+            .as_ref()
+            .map_or(MenuPageId::Main, |entry| entry.page.into()),
         main_disabled: match (&death, &pause) {
             (Some(entry), _) => [entry.override_group != 0; 2],
             (None, Some(_)) => [false; 2],
@@ -597,21 +601,23 @@ pub(super) fn drive(
         let frames = std::array::from_fn(|i| book.models[i].frames.len());
         menu.motion = Some(match menu.context {
             MenuContext::Startup => BookMotion::opening(frames),
-            MenuContext::InGame if menu.entry_page >= 5 => {
+            MenuContext::InGame if menu.entry_page.is_settings() => {
                 BookMotion::settled_on(menu.entry_page, frames)
             }
-            MenuContext::InGame if menu.entry_page != 0 => BookMotion::settled(frames),
+            MenuContext::InGame if menu.entry_page != MenuPageId::Main => {
+                BookMotion::settled(frames)
+            }
             MenuContext::Death | MenuContext::InGame => BookMotion::death_entry(frames),
             MenuContext::LastGame => return,
         });
         // The first page opened needs no transition; a settings shortcut never shows the main page.
-        if menu.entry_page < 5 {
-            menu.open(book, 0);
+        if !menu.entry_page.is_settings() {
+            menu.open(book, MenuPageId::Main);
         }
-        if menu.entry_page != 0 {
+        if menu.entry_page != MenuPageId::Main {
             let entry_page = menu.entry_page;
             menu.open(book, entry_page);
-            if matches!(entry_page, 1 | 2)
+            if entry_page.is_slot_list()
                 && let Err(error) = save_load.start(super::SaveLoadRequest::List)
             {
                 menu.unavailable = Some(error);
@@ -628,7 +634,7 @@ pub(super) fn drive(
                     Ok(slots) => {
                         menu.slots = slots;
                         menu.unavailable = menu.persistence_error.clone();
-                        if matches!(menu.page, 1 | 2) {
+                        if menu.page.is_slot_list() {
                             menu.fill_load_rows();
                         }
                     }
@@ -735,7 +741,7 @@ pub(super) fn drive(
                 None => menu.delete_confirmation = Some(confirmation),
             }
             menu.dirty = true;
-        } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::Delete) {
+        } else if menu.page.is_slot_list() && keys.just_pressed(KeyCode::Delete) {
             let slot = menu
                 .selected
                 .and_then(|index| menu.slot_rows.get(&index))
@@ -756,9 +762,9 @@ pub(super) fn drive(
                 });
                 menu.dirty = true;
             }
-        } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::PageDown) {
+        } else if menu.page.is_slot_list() && keys.just_pressed(KeyCode::PageDown) {
             menu.change_list_page(1);
-        } else if matches!(menu.page, 1 | 2) && keys.just_pressed(KeyCode::PageUp) {
+        } else if menu.page.is_slot_list() && keys.just_pressed(KeyCode::PageUp) {
             menu.change_list_page(-1);
         } else if menu.capturing.is_some() {
             menu.blink_seconds += input.0.delta_secs();
@@ -792,8 +798,8 @@ pub(super) fn drive(
                 }
             }
         } else if keys.just_released(KeyCode::Escape) {
-            if menu.page != 0 {
-                let target = if matches!(menu.page, 5..=7) { 4 } else { 0 };
+            if menu.page != MenuPageId::Main {
+                let target = menu.page.parent();
                 menu.open(book, target);
             } else if menu.context.is_from_world() && !menu.main_disabled[1] {
                 next.set(AppState::InGame);
@@ -837,108 +843,17 @@ pub(super) fn drive(
                 |input| matches!(input, Input::Key(scan) if keys.just_pressed(scan.key())),
             );
             if (keys.just_pressed(KeyCode::Enter) || activation)
-                && let Some(index) = menu.selected
+                && activate(
+                    &mut menu,
+                    book,
+                    &mut commands,
+                    &mut next,
+                    &mut save_load,
+                    &mut preferences_state,
+                    &mut output.2,
+                )
             {
-                let entry = menu.entries[index].clone();
-                match entry.action {
-                    -1 if menu.context.is_from_world() && !menu.main_disabled[1] => {
-                        next.set(AppState::InGame);
-                    }
-                    -2 if menu.context.is_from_world() => {
-                        // Preservation engine/menu.md: Quit saves the live world, or removes
-                        // the automatic save once the death override is active.
-                        let request = if menu.main_disabled[0] {
-                            Some(super::SaveLoadRequest::DiscardAutoSave)
-                        } else {
-                            menu.gameplay_thumbnail
-                                .is_some()
-                                .then_some(super::SaveLoadRequest::AutoSave)
-                        };
-                        match request.map(|request| save_load.start(request)) {
-                            None => begin_quit(&mut menu, &mut commands),
-                            Some(Ok(())) => menu.quit_pending = true,
-                            Some(Err(error)) => menu.unavailable = Some(error),
-                        }
-                    }
-                    -2 => begin_quit(&mut menu, &mut commands),
-                    1 | 2 => {
-                        menu.open(book, entry.action as u8);
-                        if let Err(error) = save_load.start(super::SaveLoadRequest::List) {
-                            menu.unavailable = Some(error);
-                        }
-                    }
-                    10 => {
-                        reset_for_new_game(&mut commands);
-                        commands.write_message(MovieRequest::NewGame);
-                        menu.ready = false;
-                        return;
-                    }
-                    202 => {
-                        if let Some(slot) = menu
-                            .slot_rows
-                            .get(&index)
-                            .and_then(|row| menu.slots.get(*row))
-                        {
-                            match slot.load_request() {
-                                Ok(request) => {
-                                    if matches!(
-                                        request,
-                                        super::SaveLoadRequest::ImportOriginal { .. }
-                                    ) {
-                                        menu.unavailable =
-                                            Some(super::ORIGINAL_IMPORT_LIMITATION.into());
-                                        menu.dirty = true;
-                                    }
-                                    if let Err(error) = save_load.start(request) {
-                                        menu.unavailable = Some(error);
-                                    }
-                                }
-                                Err(error) => menu.unavailable = Some(error),
-                            }
-                        }
-                    }
-                    101 | 102 => {
-                        let slot = menu
-                            .slot_rows
-                            .get(&index)
-                            .and_then(|row| menu.slots.get(*row))
-                            .cloned();
-                        if entry.action == 101 || slot.is_some() {
-                            menu.description_editor = Some(super::save_load::DescriptionEditor {
-                                text: slot
-                                    .as_ref()
-                                    .map(|slot| slot.description.clone())
-                                    .unwrap_or_default(),
-                                slot,
-                                background: dialog_backdrop(),
-                            });
-                            menu.dirty = true;
-                        }
-                    }
-                    100 | 200 => menu.open(book, 0),
-                    3 | 4 => menu.open(book, entry.action as u8),
-                    300 | 400 => menu.open(book, 0),
-                    405..=407 => menu.open(book, (entry.action - 400) as u8),
-                    500 | 600 | 700 => menu.open(book, 4),
-                    504 | 505 | 603 => {
-                        if adjust_value(book, &mut menu, 0, true, &mut preferences_state) {
-                            output.2.write(flat_sound(13));
-                        }
-                    }
-                    601 | 602 => {}
-                    301..=305 => {
-                        menu.unavailable = None;
-                        commands.write_message(MovieRequest::Menu((entry.action - 301) as usize));
-                    }
-                    710..=724 => {
-                        menu.capturing = Some(entry.action);
-                        menu.blink_on = true;
-                        menu.blink_seconds = 0.0;
-                    }
-                    _ => {
-                        menu.unavailable = Some(format!("{} is not implemented yet.", entry.text));
-                    }
-                }
+                return;
             }
         }
     }
@@ -971,8 +886,119 @@ pub(super) fn drive(
     }
 }
 
+/// Dispatch an eligible installed action after motion, modal and storage admission.
+/// True means New Game handed control to the movie/world pipeline.
+fn activate(
+    menu: &mut MenuState,
+    book: &MenuAsset,
+    commands: &mut Commands,
+    next: &mut NextState<AppState>,
+    save_load: &mut super::SaveLoadHost,
+    preferences: &mut cyrus_game::preferences::Preferences,
+    sounds: &mut MessageWriter<SoundCue>,
+) -> bool {
+    let Some(index) = menu.selected else {
+        return false;
+    };
+    let entry = menu.entries[index].clone();
+    if let Some(page) = entry.action.destination() {
+        menu.open(book, page);
+        if page.is_slot_list()
+            && let Err(error) = save_load.start(super::SaveLoadRequest::List)
+        {
+            menu.unavailable = Some(error);
+        }
+        return false;
+    }
+    match entry.action {
+        MenuAction::Continue if menu.context.is_from_world() && !menu.main_disabled[1] => {
+            next.set(AppState::InGame);
+        }
+        MenuAction::Quit if menu.context.is_from_world() => {
+            // Preservation engine/menu.md: Quit saves the live world, or removes
+            // the automatic save once the death override is active.
+            let request = if menu.main_disabled[0] {
+                Some(super::SaveLoadRequest::DiscardAutoSave)
+            } else {
+                menu.gameplay_thumbnail
+                    .is_some()
+                    .then_some(super::SaveLoadRequest::AutoSave)
+            };
+            match request.map(|request| save_load.start(request)) {
+                None => begin_quit(menu, commands),
+                Some(Ok(())) => menu.quit_pending = true,
+                Some(Err(error)) => menu.unavailable = Some(error),
+            }
+        }
+        MenuAction::Quit => begin_quit(menu, commands),
+        MenuAction::NewGame => {
+            reset_for_new_game(commands);
+            commands.write_message(MovieRequest::NewGame);
+            menu.ready = false;
+            return true;
+        }
+        MenuAction::LoadSlot => {
+            if let Some(slot) = menu
+                .slot_rows
+                .get(&index)
+                .and_then(|row| menu.slots.get(*row))
+            {
+                match slot.load_request() {
+                    Ok(request) => {
+                        if matches!(request, super::SaveLoadRequest::ImportOriginal { .. }) {
+                            menu.unavailable = Some(super::ORIGINAL_IMPORT_LIMITATION.into());
+                            menu.dirty = true;
+                        }
+                        if let Err(error) = save_load.start(request) {
+                            menu.unavailable = Some(error);
+                        }
+                    }
+                    Err(error) => menu.unavailable = Some(error),
+                }
+            }
+        }
+        MenuAction::NewSave | MenuAction::SaveSlot => {
+            let slot = menu
+                .slot_rows
+                .get(&index)
+                .and_then(|row| menu.slots.get(*row))
+                .cloned();
+            if entry.action == MenuAction::NewSave || slot.is_some() {
+                menu.description_editor = Some(super::save_load::DescriptionEditor {
+                    text: slot
+                        .as_ref()
+                        .map(|slot| slot.description.clone())
+                        .unwrap_or_default(),
+                    slot,
+                    background: dialog_backdrop(),
+                });
+                menu.dirty = true;
+            }
+        }
+        MenuAction::Subtitles | MenuAction::MovieInterlace | MenuAction::Speech => {
+            if adjust_value(book, menu, 0, true, preferences) {
+                sounds.write(flat_sound(13));
+            }
+        }
+        MenuAction::SoundVolume | MenuAction::MusicVolume => {}
+        MenuAction::Movie(movie) => {
+            menu.unavailable = None;
+            commands.write_message(MovieRequest::Menu(usize::from(movie)));
+        }
+        MenuAction::Binding(_) => {
+            menu.capturing = Some(i32::from(entry.action));
+            menu.blink_on = true;
+            menu.blink_seconds = 0.0;
+        }
+        _ => {
+            menu.unavailable = Some(format!("{} is not implemented yet.", entry.text));
+        }
+    }
+    false
+}
+
 impl MenuState {
-    fn open(&mut self, book: &MenuAsset, page: u8) {
+    fn open(&mut self, book: &MenuAsset, page: MenuPageId) {
         if !self.entries.is_empty() {
             if let Err(error) = self.motion.as_mut().unwrap().navigate(self.page, page) {
                 self.unavailable = Some(error);
@@ -990,11 +1016,12 @@ impl MenuState {
                 let mut item = e.item.clone();
                 item.grayed |= self.main_entry_disabled(page, index);
                 // Entries for movies 1 through 14 stay hidden until their movie has played.
-                item.visible |= movie_entry_unlocked(page, item.action, self.movie_unlocks);
+                item.visible |=
+                    movie_entry_unlocked(page, i32::from(item.action), self.movie_unlocks);
                 item
             })
             .collect();
-        if matches!(page, 1 | 2) {
+        if page.is_slot_list() {
             self.fill_load_rows();
         }
         let start = self.selections.get(&page).copied().flatten().unwrap_or(0);
@@ -1070,8 +1097,10 @@ fn cleanup(
 }
 
 /// Whether a Movies-page entry (actions 302 through 315, movies 1 through 14) has been unlocked.
-fn movie_entry_unlocked(page: u8, action: i32, unlocks: cyrus_game::MovieUnlocks) -> bool {
-    page == 3 && (302..=315).contains(&action) && unlocks.is_unlocked((action - 301) as usize)
+fn movie_entry_unlocked(page: MenuPageId, action: i32, unlocks: cyrus_game::MovieUnlocks) -> bool {
+    page == MenuPageId::Movies
+        && (302..=315).contains(&action)
+        && unlocks.is_unlocked((action - 301) as usize)
 }
 
 /// The book starts from the session's movie unlock flags.
@@ -1283,7 +1312,7 @@ mod tests {
             app.insert_resource(MenuState {
                 asset: handle,
                 context: MenuContext::InGame,
-                entry_page: page,
+                entry_page: page.into(),
                 ..default()
             });
             for _ in 0..12 {
@@ -1292,7 +1321,10 @@ mod tests {
             let old = {
                 let mut menu = app.world_mut().resource_mut::<MenuState>();
                 assert!(menu.ready, "{:?}", menu.unavailable);
-                menu.selected = menu.entries.iter().position(|entry| entry.action == action);
+                menu.selected = menu
+                    .entries
+                    .iter()
+                    .position(|entry| entry.action == MenuAction::from(action));
                 assert!(menu.selected.is_some());
                 menu.preferences
                     .as_mut()
@@ -1550,6 +1582,14 @@ mod tests {
             .resource_mut::<crate::SaveLoadHost>()
             .start(crate::SaveLoadRequest::List)
             .unwrap();
+        // Model the host taking the refresh before the caller supplies its result.
+        // Otherwise this stale request is mistaken for a dialog-owned operation.
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<crate::SaveLoadHost>()
+                .take_request(),
+            Some(crate::SaveLoadRequest::List)
+        ));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1611,6 +1651,27 @@ mod tests {
         assert!(menu.entries[5].grayed);
         assert_ne!(menu.selected, Some(0));
         assert_ne!(menu.selected, Some(5));
+        // An installed but unsupported action keeps its label and reports unavailability.
+        let selected = menu.selected.unwrap();
+        let installed = menu.entries[selected].clone();
+        app.world_mut().resource_mut::<MenuState>().entries[selected].action =
+            MenuAction::Unavailable(999);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(
+            app.world().resource::<MenuState>().unavailable.as_deref(),
+            Some(format!("{} is not implemented yet.", installed.text).as_str())
+        );
+        assert!(matches!(
+            app.world().resource::<NextState<AppState>>(),
+            NextState::Unchanged
+        ));
+        app.world_mut().resource_mut::<MenuState>().entries[selected] = installed;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Escape);
@@ -1631,14 +1692,14 @@ mod tests {
             .resource::<MenuState>()
             .entries
             .iter()
-            .position(|entry| entry.action == 2)
+            .position(|entry| entry.action == MenuAction::Load)
             .unwrap();
         app.world_mut().resource_mut::<MenuState>().selected = Some(load);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Enter);
         app.update();
-        assert_eq!(app.world().resource::<MenuState>().page, 2);
+        assert_eq!(app.world().resource::<MenuState>().page, MenuPageId::Load);
         assert!(matches!(
             app.world_mut()
                 .resource_mut::<crate::SaveLoadHost>()
@@ -1662,7 +1723,7 @@ mod tests {
             .resource::<MenuState>()
             .entries
             .iter()
-            .position(|entry| entry.action == 202 && entry.eligible())
+            .position(|entry| entry.action == MenuAction::LoadSlot && entry.eligible())
             .unwrap();
         app.world_mut().resource_mut::<MenuState>().selected = Some(row);
         app.world_mut()
@@ -1681,7 +1742,7 @@ mod tests {
             .resource_mut::<ButtonInput<KeyCode>>()
             .reset_all();
         app.update();
-        assert_eq!(app.world().resource::<MenuState>().page, 2);
+        assert_eq!(app.world().resource::<MenuState>().page, MenuPageId::Load);
         assert_eq!(
             app.world().resource::<MenuState>().unavailable.as_deref(),
             Some("save slot 17 changed; refresh the save list")
@@ -1789,14 +1850,14 @@ mod tests {
                 .resource::<MenuState>()
                 .entries
                 .iter()
-                .filter(|entry| entry.action == 202)
+                .filter(|entry| entry.action == MenuAction::LoadSlot)
                 .all(|entry| !entry.eligible() && entry.text.is_empty())
         );
         app.world_mut()
             .resource_scope(|world, mut menu: Mut<MenuState>| {
                 let books = world.resource::<Assets<MenuAsset>>();
                 let handle = menu.asset.clone();
-                menu.open(books.get(&handle).unwrap(), 0);
+                menu.open(books.get(&handle).unwrap(), MenuPageId::Main);
                 while menu.motion.as_ref().is_some_and(BookMotion::busy) {
                     menu.motion.as_mut().unwrap().tick(|_| {});
                 }
@@ -1813,7 +1874,7 @@ mod tests {
             .resource::<MenuState>()
             .entries
             .iter()
-            .position(|entry| entry.action == -2)
+            .position(|entry| entry.action == MenuAction::Quit)
             .unwrap();
         app.world_mut().resource_mut::<MenuState>().selected = Some(quit);
         app.world_mut()
@@ -1850,7 +1911,7 @@ mod tests {
                 menu.entries.clear();
                 let books = world.resource::<Assets<MenuAsset>>();
                 let handle = menu.asset.clone();
-                menu.open(books.get(&handle).unwrap(), 0);
+                menu.open(books.get(&handle).unwrap(), MenuPageId::Main);
             });
         assert!(!app.world().resource::<MenuState>().entries[5].grayed);
         let save = app
@@ -1858,14 +1919,14 @@ mod tests {
             .resource::<MenuState>()
             .entries
             .iter()
-            .position(|entry| entry.action == 1)
+            .position(|entry| entry.action == MenuAction::Save)
             .unwrap();
         app.world_mut().resource_mut::<MenuState>().selected = Some(save);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Enter);
         app.update();
-        assert_eq!(app.world().resource::<MenuState>().page, 1);
+        assert_eq!(app.world().resource::<MenuState>().page, MenuPageId::Save);
         assert!(matches!(
             app.world_mut()
                 .resource_mut::<crate::SaveLoadHost>()
@@ -1889,7 +1950,7 @@ mod tests {
             .resource::<MenuState>()
             .entries
             .iter()
-            .position(|entry| entry.action == 102 && entry.eligible())
+            .position(|entry| entry.action == MenuAction::SaveSlot && entry.eligible())
             .unwrap();
         assert_eq!(
             app.world().resource::<MenuState>().entries[existing].text,
@@ -1934,7 +1995,7 @@ mod tests {
             .resource_scope(|world, mut menu: Mut<MenuState>| {
                 let books = world.resource::<Assets<MenuAsset>>();
                 let handle = menu.asset.clone();
-                menu.open(books.get(&handle).unwrap(), 0);
+                menu.open(books.get(&handle).unwrap(), MenuPageId::Main);
                 while menu.motion.as_ref().is_some_and(BookMotion::busy) {
                     menu.motion.as_mut().unwrap().tick(|_| {});
                 }
@@ -2008,7 +2069,7 @@ mod tests {
             entries: vec![
                 MenuItem {
                     text: "First".into(),
-                    action: 72,
+                    action: MenuAction::from(72),
                     selectable: true,
                     grayed: false,
                     implemented: false,
@@ -2016,7 +2077,7 @@ mod tests {
                 },
                 MenuItem {
                     text: "Disabled".into(),
-                    action: 80,
+                    action: MenuAction::from(80),
                     selectable: true,
                     grayed: true,
                     implemented: false,
@@ -2024,7 +2085,7 @@ mod tests {
                 },
                 MenuItem {
                     text: "Last".into(),
-                    action: -2,
+                    action: MenuAction::from(-2),
                     selectable: true,
                     grayed: false,
                     implemented: true,
@@ -2048,7 +2109,7 @@ mod tests {
     fn load_rows_keep_slot_identity_and_limit_authored_labels() {
         let row = || MenuItem {
             text: "placeholder".into(),
-            action: 202,
+            action: MenuAction::from(202),
             selectable: true,
             grayed: false,
             implemented: true,
@@ -2081,14 +2142,14 @@ mod tests {
     fn save_and_load_pages_advance_by_their_authored_row_counts() {
         let row = |action| MenuItem {
             text: "row".into(),
-            action,
+            action: MenuAction::from(action),
             selectable: true,
             grayed: false,
             implemented: true,
             visible: true,
         };
         let mut menu = MenuState {
-            page: 2,
+            page: MenuPageId::Load,
             entries: (0..9).map(|_| row(202)).collect(),
             slots: (0..20)
                 .map(|slot| super::super::SaveSlot {
@@ -2105,7 +2166,7 @@ mod tests {
         assert_eq!(menu.slots[menu.slot_rows[&0]].slot, 0);
         menu.change_list_page(1);
         assert_eq!(menu.slots[menu.slot_rows[&0]].slot, 9);
-        menu.page = 1;
+        menu.page = MenuPageId::Save;
         menu.list_page = 0;
         menu.entries = std::iter::once(row(101))
             .chain((0..8).map(|_| row(102)))
@@ -2127,7 +2188,7 @@ mod tests {
             menu.slot_rows.is_empty(),
             "original slots must never be overwrite targets"
         );
-        menu.page = 2;
+        menu.page = MenuPageId::Load;
         menu.entries = (0..9).map(|_| row(202)).collect();
         menu.fill_load_rows();
         assert_eq!(menu.slots[menu.slot_rows[&0]].description, "ORIGINAL");
@@ -2136,11 +2197,11 @@ mod tests {
     #[test]
     fn movies_page_entries_unlock_with_their_movie_and_entry_one_is_never_gated() {
         let mut unlocks = cyrus_game::MovieUnlocks::default();
-        assert!(!movie_entry_unlocked(3, 305, unlocks));
+        assert!(!movie_entry_unlocked(MenuPageId::Movies, 305, unlocks));
         unlocks.unlock(4);
-        assert!(movie_entry_unlocked(3, 305, unlocks));
-        assert!(!movie_entry_unlocked(3, 304, unlocks));
-        assert!(!movie_entry_unlocked(2, 305, unlocks));
-        assert!(!movie_entry_unlocked(3, 301, unlocks));
+        assert!(movie_entry_unlocked(MenuPageId::Movies, 305, unlocks));
+        assert!(!movie_entry_unlocked(MenuPageId::Movies, 304, unlocks));
+        assert!(!movie_entry_unlocked(MenuPageId::Load, 305, unlocks));
+        assert!(!movie_entry_unlocked(MenuPageId::Movies, 301, unlocks));
     }
 }

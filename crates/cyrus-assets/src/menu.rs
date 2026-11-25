@@ -5,6 +5,196 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Installed page identity; numeric cache and control representations remain unchanged.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(from = "u8", into = "u8")]
+pub enum MenuPageId {
+    #[default]
+    Main,
+    Save,
+    Load,
+    Movies,
+    Options,
+    Display,
+    Sound,
+    Controls,
+    /// Retained for contextual rejection of unsupported transitions.
+    Unavailable(u8),
+}
+impl From<u8> for MenuPageId {
+    fn from(code: u8) -> Self {
+        match code {
+            0 => Self::Main,
+            1 => Self::Save,
+            2 => Self::Load,
+            3 => Self::Movies,
+            4 => Self::Options,
+            5 => Self::Display,
+            6 => Self::Sound,
+            7 => Self::Controls,
+            _ => Self::Unavailable(code),
+        }
+    }
+}
+impl From<MenuPageId> for u8 {
+    fn from(page: MenuPageId) -> Self {
+        match page {
+            MenuPageId::Main => 0,
+            MenuPageId::Save => 1,
+            MenuPageId::Load => 2,
+            MenuPageId::Movies => 3,
+            MenuPageId::Options => 4,
+            MenuPageId::Display => 5,
+            MenuPageId::Sound => 6,
+            MenuPageId::Controls => 7,
+            MenuPageId::Unavailable(code) => code,
+        }
+    }
+}
+impl std::fmt::Display for MenuPageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        u8::from(*self).fmt(f)
+    }
+}
+impl MenuPageId {
+    pub fn is_slot_list(self) -> bool {
+        matches!(self, Self::Save | Self::Load)
+    }
+    pub fn is_settings(self) -> bool {
+        matches!(self, Self::Display | Self::Sound | Self::Controls)
+    }
+    pub fn parent(self) -> Self {
+        if self.is_settings() {
+            Self::Options
+        } else {
+            Self::Main
+        }
+    }
+}
+
+/// Action decoded once at the installed/cache boundary, independently of entry labels.
+/// Unavailable actions retain their code without acquiring a runtime handler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "i32", into = "i32")]
+pub enum MenuAction {
+    Quit,
+    Continue,
+    Save,
+    Load,
+    Movies,
+    Options,
+    NewGame,
+    SaveBack,
+    NewSave,
+    SaveSlot,
+    LoadBack,
+    LoadSlot,
+    MoviesBack,
+    OptionsBack,
+    Display,
+    Sound,
+    Controls,
+    DisplayBack,
+    Subtitles,
+    MovieInterlace,
+    SoundBack,
+    SoundVolume,
+    MusicVolume,
+    Speech,
+    ControlsBack,
+    Movie(u8),
+    Binding(u8),
+    Unavailable(i32),
+}
+impl From<i32> for MenuAction {
+    fn from(code: i32) -> Self {
+        match code {
+            -2 => Self::Quit,
+            -1 => Self::Continue,
+            1 => Self::Save,
+            2 => Self::Load,
+            3 => Self::Movies,
+            4 => Self::Options,
+            10 => Self::NewGame,
+            100 => Self::SaveBack,
+            101 => Self::NewSave,
+            102 => Self::SaveSlot,
+            200 => Self::LoadBack,
+            202 => Self::LoadSlot,
+            300 => Self::MoviesBack,
+            400 => Self::OptionsBack,
+            405 => Self::Display,
+            406 => Self::Sound,
+            407 => Self::Controls,
+            500 => Self::DisplayBack,
+            504 => Self::Subtitles,
+            505 => Self::MovieInterlace,
+            600 => Self::SoundBack,
+            601 => Self::SoundVolume,
+            602 => Self::MusicVolume,
+            603 => Self::Speech,
+            700 => Self::ControlsBack,
+            301..=305 => Self::Movie((code - 301) as u8),
+            710..=724 => Self::Binding((code - 710) as u8),
+            _ => Self::Unavailable(code),
+        }
+    }
+}
+impl From<MenuAction> for i32 {
+    fn from(action: MenuAction) -> Self {
+        match action {
+            MenuAction::Quit => -2,
+            MenuAction::Continue => -1,
+            MenuAction::Save => 1,
+            MenuAction::Load => 2,
+            MenuAction::Movies => 3,
+            MenuAction::Options => 4,
+            MenuAction::NewGame => 10,
+            MenuAction::SaveBack => 100,
+            MenuAction::NewSave => 101,
+            MenuAction::SaveSlot => 102,
+            MenuAction::LoadBack => 200,
+            MenuAction::LoadSlot => 202,
+            MenuAction::MoviesBack => 300,
+            MenuAction::OptionsBack => 400,
+            MenuAction::Display => 405,
+            MenuAction::Sound => 406,
+            MenuAction::Controls => 407,
+            MenuAction::DisplayBack => 500,
+            MenuAction::Subtitles => 504,
+            MenuAction::MovieInterlace => 505,
+            MenuAction::SoundBack => 600,
+            MenuAction::SoundVolume => 601,
+            MenuAction::MusicVolume => 602,
+            MenuAction::Speech => 603,
+            MenuAction::ControlsBack => 700,
+            MenuAction::Movie(index) => 301 + i32::from(index),
+            MenuAction::Binding(index) => 710 + i32::from(index),
+            MenuAction::Unavailable(code) => code,
+        }
+    }
+}
+impl MenuAction {
+    /// Navigation actions retain distinct codes while sharing their destination.
+    pub fn destination(self) -> Option<MenuPageId> {
+        Some(match self {
+            Self::Save => MenuPageId::Save,
+            Self::Load => MenuPageId::Load,
+            Self::Movies => MenuPageId::Movies,
+            Self::Options | Self::DisplayBack | Self::SoundBack | Self::ControlsBack => {
+                MenuPageId::Options
+            }
+            Self::Display => MenuPageId::Display,
+            Self::Sound => MenuPageId::Sound,
+            Self::Controls => MenuPageId::Controls,
+            Self::SaveBack | Self::LoadBack | Self::MoviesBack | Self::OptionsBack => {
+                MenuPageId::Main
+            }
+            _ => return None,
+        })
+    }
+}
+
 /// Menu cache revision including the startup book palette upload precision.
 pub const MENU_VERSION: u32 = 18;
 
@@ -15,7 +205,7 @@ pub struct MenuAsset {
     pub clock: crate::script::ClockSettings,
     /// Installed WORLD.INI destination and marker, read through preservation.
     pub new_game: NewGameEntry,
-    pub pages: BTreeMap<u8, MenuPage>,
+    pub pages: BTreeMap<MenuPageId, MenuPage>,
     /// Cover, page one, table, page two, page three, in that order.
     pub models: Vec<MenuModel>,
     pub textures: Vec<PageTexture>,
@@ -125,7 +315,7 @@ impl MenuAsset {
             "menu: invalid palette/key-name count"
         );
         ensure!(
-            (0..=7).all(|id| self.pages.contains_key(&id)),
+            (0..=7).all(|id| self.pages.contains_key(&MenuPageId::from(id))),
             "menu: missing supported page"
         );
         ensure!(
@@ -245,7 +435,7 @@ impl MenuAsset {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MenuItem {
     pub text: String,
-    pub action: i32,
+    pub action: MenuAction,
     pub selectable: bool,
     pub grayed: bool,
     pub implemented: bool,
@@ -255,5 +445,55 @@ pub struct MenuItem {
 impl MenuItem {
     pub fn eligible(&self) -> bool {
         self.visible && self.selectable && !self.grayed && !self.text.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    #[test]
+    fn actions_keep_installed_codes_including_unavailable_definitions() {
+        for code in -3..=800 {
+            let action: MenuAction = serde_json::from_value(code.into()).unwrap();
+            assert_eq!(i32::from(action), code);
+            assert_eq!(serde_json::to_value(action).unwrap(), code);
+        }
+        assert_eq!(MenuAction::from(202), MenuAction::LoadSlot);
+        assert_eq!(MenuAction::from(301), MenuAction::Movie(0));
+        assert_eq!(MenuAction::from(724), MenuAction::Binding(14));
+        for code in [201, 306, 501, i32::MIN, i32::MAX] {
+            let action = MenuAction::from(code);
+            assert_eq!(action, MenuAction::Unavailable(code));
+            assert_eq!(action.destination(), None);
+            assert_eq!(i32::from(action), code);
+        }
+    }
+
+    #[test]
+    fn typed_pages_preserve_numeric_cache_keys_and_navigation_destinations() {
+        let keys = BTreeMap::from([(MenuPageId::Main, 1), (MenuPageId::Controls, 2)]);
+        let json = serde_json::to_value(&keys).unwrap();
+        assert_eq!(json, serde_json::json!({"0": 1, "7": 2}));
+        assert_eq!(
+            serde_json::from_value::<BTreeMap<MenuPageId, i32>>(json).unwrap(),
+            keys
+        );
+        for (code, page) in [
+            (1, MenuPageId::Save),
+            (2, MenuPageId::Load),
+            (405, MenuPageId::Display),
+            (406, MenuPageId::Sound),
+            (407, MenuPageId::Controls),
+            (100, MenuPageId::Main),
+            (200, MenuPageId::Main),
+            (300, MenuPageId::Main),
+            (400, MenuPageId::Main),
+            (500, MenuPageId::Options),
+            (600, MenuPageId::Options),
+            (700, MenuPageId::Options),
+        ] {
+            assert_eq!(MenuAction::from(code).destination(), Some(page));
+        }
     }
 }

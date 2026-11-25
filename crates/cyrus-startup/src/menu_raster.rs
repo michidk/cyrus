@@ -2,8 +2,8 @@
 //! the book's 3D scene (`book_scene`) shows.
 use super::menu::MenuState;
 use anyhow::{Context, ensure};
-use cyrus_assets::menu::MenuAsset;
 use cyrus_assets::menu::PageTexture;
+use cyrus_assets::menu::{MenuAction, MenuAsset, MenuPageId};
 use cyrus_assets::menu::{MenuEntry, MenuItem, MenuPage, MenuPicture};
 use cyrus_assets::preferences::MenuPreferences;
 use image::RgbaImage;
@@ -22,7 +22,7 @@ struct PageContext<'a> {
     book: &'a MenuAsset,
     state: &'a MenuState,
     preferences: &'a MenuPreferences,
-    id: u8,
+    id: MenuPageId,
     page: &'a MenuPage,
 }
 
@@ -72,15 +72,20 @@ fn entry_item(context: &PageContext, index: usize) -> MenuItem {
     } else {
         entry.item.clone()
     };
-    if id == 1 && item.action == 101 && state.list_page == 0 {
+    if id == MenuPageId::Save && item.action == MenuAction::NewSave && state.list_page == 0 {
         item.text = "<NEW SAVE GAME>".into();
     }
-    if matches!(id, 1 | 2) && matches!(item.action, 102 | 202) {
+    if id.is_slot_list() && matches!(item.action, MenuAction::SaveSlot | MenuAction::LoadSlot) {
         let row = page.entries[..index]
             .iter()
-            .filter(|entry| matches!(entry.item.action, 102 | 202))
+            .filter(|entry| {
+                matches!(
+                    entry.item.action,
+                    MenuAction::SaveSlot | MenuAction::LoadSlot
+                )
+            })
             .count();
-        let base = if id == 1 {
+        let base = if id == MenuPageId::Save {
             if state.list_page == 0 {
                 0
             } else {
@@ -92,7 +97,7 @@ fn entry_item(context: &PageContext, index: usize) -> MenuItem {
         let slot = state
             .slots
             .iter()
-            .filter(|slot| id != 1 || (slot.slot != 0 && slot.slot != 1))
+            .filter(|slot| id != MenuPageId::Save || (slot.slot != 0 && slot.slot != 1))
             .skip(base)
             .nth(row);
         item.text = slot
@@ -125,7 +130,10 @@ fn paint_entry(
     let selected =
         state.selections.get(&id).copied().flatten() == Some(index) && item.eligible() && !disabled;
     // The original draws the Save and Load list rows with the small font pair.
-    let small = matches!(item.action, 101 | 102 | 202);
+    let small = matches!(
+        item.action,
+        MenuAction::NewSave | MenuAction::SaveSlot | MenuAction::LoadSlot
+    );
     let font = &book.fonts[usize::from(selected) + 2 * usize::from(small)];
     let style = if selected {
         0
@@ -147,7 +155,7 @@ fn paint_entry(
         style,
     )?;
     paint_value(context, surface, entry);
-    if (710..=724).contains(&entry.item.action) {
+    if matches!(entry.item.action, MenuAction::Binding(_)) {
         paint_binding(context, surface, entry)?;
     }
     Ok(())
@@ -158,10 +166,13 @@ fn paint_value(context: &PageContext, surface: &mut PageTexture, entry: &MenuEnt
     let PageContext {
         book, preferences, ..
     } = *context;
-    let Some(value) = preferences.values.get(&entry.item.action) else {
+    let Some(value) = preferences.values.get(&i32::from(entry.item.action)) else {
         return;
     };
-    let slider = matches!(entry.item.action, 601 | 602);
+    let slider = matches!(
+        entry.item.action,
+        MenuAction::SoundVolume | MenuAction::MusicVolume
+    );
     let frames = if slider { &book.sliders } else { &book.checks };
     let frame = if slider {
         ((*value as f32 * (frames.len() - 1) as f32 / (entry.slider[1] - entry.slider[0]) as f32)
@@ -186,7 +197,10 @@ fn paint_binding(
         id,
         ..
     } = *context;
-    let capturing = state.page == id && state.capturing == Some(entry.item.action);
+    let MenuAction::Binding(binding) = entry.item.action else {
+        return Ok(());
+    };
+    let capturing = state.page == id && state.capturing == Some(i32::from(entry.item.action));
     let prompt = if state.blink_on {
         format!("<{}>", book.waiting_message)
     } else {
@@ -195,7 +209,7 @@ fn paint_binding(
     let label = if capturing {
         &prompt
     } else {
-        &book.key_names[usize::from(preferences.bindings[(entry.item.action - 710) as usize])]
+        &book.key_names[usize::from(preferences.bindings[usize::from(binding)])]
     };
     let font = &book.fonts[usize::from(capturing)];
     let shown = drawn_characters(
@@ -218,12 +232,12 @@ fn paint_binding(
 /// The snapshot or save thumbnail the page shows for its selection, as encoded image bytes.
 fn selected_thumbnail<'a>(context: &PageContext<'a>) -> Option<&'a Vec<u8>> {
     let PageContext { state, id, .. } = *context;
-    if matches!(id, 1 | 2) && id == state.page {
+    if id.is_slot_list() && id == state.page {
         state.selected.and_then(|index| {
             if state
                 .entries
                 .get(index)
-                .is_some_and(|entry| entry.action == 101)
+                .is_some_and(|entry| entry.action == MenuAction::NewSave)
             {
                 state.gameplay_thumbnail.as_ref()
             } else {
@@ -234,7 +248,7 @@ fn selected_thumbnail<'a>(context: &PageContext<'a>) -> Option<&'a Vec<u8>> {
                     .and_then(|slot| slot.thumbnail.as_ref())
             }
         })
-    } else if id == 0 {
+    } else if id == MenuPageId::Main {
         state.gameplay_thumbnail.as_ref()
     } else {
         None
@@ -254,7 +268,7 @@ fn paint_thumbnail(context: &PageContext, surfaces: &mut [PageTexture]) {
         && rgba.height() == 192
         // The main page keeps its entries on its second surface, so its snapshot takes the first;
         // the save/load pages show theirs on the second.
-        && let Some(surface) = context.page.surfaces.get(usize::from(context.id != 0))
+        && let Some(surface) = context.page.surfaces.get(usize::from(context.id != MenuPageId::Main))
     {
         picture(
             &mut surfaces[*surface],
@@ -277,15 +291,15 @@ fn paint_movie_preview(context: &PageContext, surfaces: &mut [PageTexture]) {
         page,
         ..
     } = *context;
-    if id != 3 {
+    if id != MenuPageId::Movies {
         return;
     }
     let Some(index) = state.selections.get(&id).copied().flatten() else {
         return;
     };
     let action = page.entries[index].item.action;
-    if (301..=305).contains(&action)
-        && let Some(frame) = book.movies.get((action - 301) as usize)
+    if let MenuAction::Movie(movie) = action
+        && let Some(frame) = book.movies.get(usize::from(movie))
         && let Some(surface) = page.surfaces.get(1)
     {
         picture(&mut surfaces[*surface], frame, [0, 33]);

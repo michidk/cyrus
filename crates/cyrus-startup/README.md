@@ -42,7 +42,9 @@ app.add_plugins(cyrus_startup::LoadingPlugin);
 - `StartGame` selects world-entry loading presentation; `WorldLoadRequest` enters
   a world (WORLD.INI ID or map stem) at marker zero through the same loading path.
 - `MenuState` exposes menu status to control; `QuitRequest` asks the browser host
-  to close its tab.
+  to close its tab. Installed action codes become `MenuAction` at the asset boundary;
+  `MenuPageId` identifies book pages and transitions. Both retain their numeric cache
+  and control representations, including explicitly unavailable actions.
 - The book render target uses the physical window extent on its first publication and follows later window resizes. The initial camera projection and display sprite fit that extent, and the camera and model frames use the current authored book motion pose.
 - Slot provenance distinguishes native saves from read-only original entries. Original entries appear only on Load and submit a distinct `ImportOriginal` request, with the supported-subset warning visible in the book. Native hosts prepare the saved world when necessary, then import into its matching native-session baseline; the browser rejects installed-slot requests explicitly.
 - Hosts serve book storage requests through the `SaveLoadHost` and

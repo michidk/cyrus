@@ -237,12 +237,14 @@ pub(crate) fn prepare_menu(
         let mut entries = Vec::new();
         for entry in &page.entries {
             entries.push(MenuEntry {
-                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | -1 | 2 | 3 | 4 | 10 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
+                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action.into(), selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | -1 | 2 | 3 | 4 | 10 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
                 position: entry.position, output_position: entry.output_position, justify: entry.justify, output_justify: entry.output_justify, slider: entry.slider, texture: surface(entry.texture)?,
             });
         }
         let default = if id == 5 {
-            entries.iter().position(|e| e.item.action == 504)
+            entries
+                .iter()
+                .position(|e| e.item.action == crate::menu::MenuAction::Subtitles)
         } else {
             page.entries.iter().position(|e| e.default)
         }
@@ -255,7 +257,7 @@ pub(crate) fn prepare_menu(
             .map(surface)
             .collect::<anyhow::Result<Vec<_>>>()?;
         exported_pages.insert(
-            id,
+            id.into(),
             MenuPage {
                 entries,
                 selected,

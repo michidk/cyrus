@@ -49,7 +49,7 @@ pub(super) fn adjust_value(
     };
     let entry = &book.pages[&menu.page].entries[index];
     let mut preferences = menu.preferences.clone().unwrap();
-    let Some(value) = preferences.values.get_mut(&entry.item.action) else {
+    let Some(value) = preferences.values.get_mut(&i32::from(entry.item.action)) else {
         return false;
     };
     let next = if toggle {
@@ -62,7 +62,7 @@ pub(super) fn adjust_value(
     }
     *value = next;
     if let Some(actions) = &mut preferences.overrides {
-        actions.insert(entry.item.action);
+        actions.insert(i32::from(entry.item.action));
     }
     persist(menu, preferences, store)
 }
