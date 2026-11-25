@@ -600,6 +600,10 @@ impl RuntimeSessionSnapshot {
     pub fn current_world(&self) -> u32 {
         self.logical.current_world()
     }
+    /// Installed environment sources needed to reconstruct retained effect pools.
+    pub fn environmental_effect_worlds(&self) -> impl Iterator<Item = u32> + '_ {
+        self.logical.environmental_effect_worlds()
+    }
     /// Saved installed scene selection. Hosts must resolve it against WORLD.INI
     /// and verify `current_world` before using it to prepare cache files.
     pub fn current_scene_name(&self) -> &str {

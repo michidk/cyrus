@@ -70,7 +70,7 @@ pub(super) fn load(
     install: &Path,
     slot: u16,
     world_id: u32,
-) -> Result<rgpre::import::savegame::SaveGame> {
+) -> Result<rgpre::import::savegame::SaveSlot> {
     let roots = std::fs::read_dir(install)?.collect::<std::io::Result<Vec<_>>>()?;
     let mut matches = Vec::new();
     for root in roots {
@@ -112,7 +112,7 @@ pub(super) fn load(
         "original save slot {slot}: world changed since listing (expected {world_id}, found {})",
         saved.game.metadata.world_id
     );
-    Ok(saved.game)
+    Ok(saved)
 }
 
 #[cfg(test)]
@@ -177,7 +177,18 @@ mod tests {
     fn original_load_resolves_case_and_rejects_stale_world_identity_without_writes() {
         let install = Install::new();
         let before = install.slot(2, 15);
-        assert_eq!(load(&install.0, 2, 15).unwrap().metadata.world_id, 15);
+        let visited = install.slot(3, 1);
+        let directory = install.0.join("savegame/SAVEGAME.002");
+        std::fs::write(directory.join("START.TSG"), &visited).unwrap();
+        std::fs::write(directory.join("LOGBOOK.TXT"), b"Synthetic journal\r\n").unwrap();
+        let retained = load(&install.0, 2, 15).unwrap();
+        assert_eq!(retained.game.metadata.world_id, 15);
+        assert_eq!(retained.maps["START.TSG"].metadata.world_id, 1);
+        assert_eq!(
+            retained.logbook.as_deref(),
+            Some(b"Synthetic journal\r\n".as_slice())
+        );
+        assert_eq!(std::fs::read(directory.join("START.TSG")).unwrap(), visited);
         let error = load(&install.0, 2, 1).err().unwrap().to_string();
         assert!(error.contains("slot 2") && error.contains("expected 1, found 15"));
         assert!(load(&install.0, 3, 15).is_err());

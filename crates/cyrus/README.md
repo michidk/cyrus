@@ -10,23 +10,25 @@ loading and menu transitions. Presentation receipts include the active world-ent
 
 The native Load list also discovers original `SAVEGAME.NNN` slots under the
 selected install's `SAVEGAME` directory through published rgpre parsing. These
-entries are read-only. Load imports position, heading, health, inventory and
-global flags into an off-live replacement, then publishes through the shared
-session boundary. From the startup menu or a different world, the host first
-loads the saved world's native baseline through the normal loading presentation,
-then pauses that baseline in the Load book before capturing and preparing the
-supported subset and static support restoration. The slot
-bytes remain retained throughout preparation; the previous world's checkpoint
-is never used as the destination baseline. The book shows
-an explicit limited-import message. Original script/task continuations, other
-actors except the static supporting actor, animation, controller state, clock
-and journal are unsupported; native
-baseline owners remain in use. Before preliminary entry, the host checkpoints the
-previous native session or startup menu owners. Rejection cancels pending world
-preparation and restores that checkpoint; errors retain slot/world context. Transformed
-players and unsupported flag encodings reject explicitly.
+entries are read-only. The native adapter retains the complete typed slot, including
+visited worlds and journal, and prepares every interpreter, native service,
+allocation and host binding off-live. The shared complete-session boundary
+validates all resource owners before publishing the replacement together.
+Unsupported state rejects the load; the partial-import operation remains disabled.
+From the startup menu or a different world, the host first prepares the saved
+world's presentation and pauses it in the Load book. This provides process and
+presentation inputs, while every saved logical owner is replaced. Before that
+preliminary entry, the host checkpoints the previous session or startup owners.
+Rejection cancels pending preparation and restores the checkpoint, with slot/world
+context retained in the error.
 Original entries cannot overwrite or delete an installed save. Install-backed listing tests
 use `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard` and report a skip when absent.
+
+The public adapter regression uses an existing replay-controlled native process:
+`python3 dev/scripts/verify-original-slot.py --port 7117 --slot SLOT --world WORLD
+--frame-scale MEASURED_Q8 --output magic/slot-acceptance`. It selects the original
+slot through the book, captures complete admission state without advancing the
+world, then admits one explicit measured update and retains both session documents.
 
 ## Usage
 

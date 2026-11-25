@@ -1,4 +1,5 @@
 //! Native off-live document preparation; shared boundary owns validation and commit.
+mod original_import;
 mod original_rollback;
 mod original_slots;
 pub(crate) mod slots;
@@ -11,7 +12,6 @@ use cyrus_session::{
     RuntimeSessionSnapshot, SessionBoundary, SessionBoundaryResult, SessionLoadAssets,
     SessionWorldAssets,
 };
-use cyrus_startup::ORIGINAL_IMPORT_LIMITATION as ORIGINAL_LIMITATION;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -27,7 +27,7 @@ pub(crate) struct NativeSessionLoad {
     original_rollback: Option<original_rollback::Checkpoint>,
     rollback_error: Option<anyhow::Error>,
     rollback_menu: bool,
-    original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
+    original: Option<rgpre::import::savegame::SaveSlot>,
     original_notice: bool,
     submitted: bool,
     result: Option<Result<()>>,
@@ -43,8 +43,7 @@ pub(crate) struct NativeSessionLoad {
 }
 
 struct OriginalEntry {
-    slot: u16,
-    saved: rgpre::import::savegame::SaveGame,
+    saved: rgpre::import::savegame::SaveSlot,
 }
 
 struct ModSave {
@@ -52,6 +51,7 @@ struct ModSave {
 }
 
 struct PreparedLoad {
+    original: Option<cyrus_session::OriginalRuntimeAdmission>,
     snapshot: RuntimeSessionSnapshot,
     worlds: BTreeMap<u32, String>,
     hud: HudAsset,
@@ -271,9 +271,9 @@ fn request_original(world: &mut World, slot: u16, world_id: u32) -> Result<()> {
 fn begin_original_entry(
     world: &mut World,
     slot: u16,
-    saved: rgpre::import::savegame::SaveGame,
+    saved: rgpre::import::savegame::SaveSlot,
 ) -> Result<()> {
-    let world_id = saved.metadata.world_id;
+    let world_id = saved.game.metadata.world_id;
     let checkpoint = original_rollback::begin(world)?;
     if !matches!(checkpoint, original_rollback::Checkpoint::Capturing) {
         world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
@@ -281,7 +281,7 @@ fn begin_original_entry(
     }
     let mut state = world.resource_mut::<NativeSessionLoad>();
     state.original_rollback = Some(checkpoint);
-    state.original_entry = Some(OriginalEntry { slot, saved });
+    state.original_entry = Some(OriginalEntry { saved });
     state.original_notice = true;
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
@@ -291,34 +291,17 @@ fn begin_original_entry(
 fn capture_original(
     world: &mut World,
     slot: u16,
-    saved: rgpre::import::savegame::SaveGame,
+    saved: rgpre::import::savegame::SaveSlot,
 ) -> Result<()> {
-    let world_id = saved.metadata.world_id;
-    let subset = decode_original(world, &saved)
-        .with_context(|| format!("original save slot {slot} world {world_id}"))?;
+    let world_id = saved.game.metadata.world_id;
     world.resource_mut::<SessionBoundary>().capture_live()?;
     let mut state = world.resource_mut::<NativeSessionLoad>();
     state.original_capture = true;
-    state.original = Some(subset);
+    state.original = Some(saved);
     state.original_notice = true;
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
     Ok(())
-}
-
-fn decode_original(
-    world: &World,
-    saved: &rgpre::import::savegame::SaveGame,
-) -> Result<cyrus_script::script::original_save::OriginalSaveSubset> {
-    let hud = cyrus_render::hud::bound_asset(world).context("original import HUD source absent")?;
-    let prepared = world
-        .get_resource::<cyrus_world::lifecycle::PreparedWorld>()
-        .context("original import prepared world absent")?;
-    let scripts = world
-        .resource::<bevy::prelude::Assets<cyrus_assets::script::Scripts>>()
-        .get(&prepared.scripts)
-        .context("original import script source absent")?;
-    cyrus_script::script::original_save::OriginalSaveSubset::decode(saved, hud, &scripts.definition)
 }
 
 fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Result<()> {
@@ -339,7 +322,7 @@ fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Resu
             .context("original import entry absent")?;
         world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
         world.insert_resource(cyrus_startup::WorldLoadRequest(
-            entry.saved.metadata.world_id.to_string(),
+            entry.saved.game.metadata.world_id.to_string(),
         ));
         return Ok(());
     }
@@ -354,7 +337,7 @@ fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Resu
         .get_resource::<cyrus_script::script::ScriptActors>()
         .and_then(|actors| actors.current.as_ref())
         .is_some_and(|current| {
-            current.world == entry.saved.metadata.world_id
+            current.world == entry.saved.game.metadata.world_id
                 && current
                     .selected_player()
                     .is_some_and(|player| current.actor_prelight(player).is_ok())
@@ -370,14 +353,8 @@ fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Resu
         .original_entry
         .take()
         .context("original import entry disappeared")?;
-    let subset = decode_original(world, &entry.saved).with_context(|| {
-        format!(
-            "original save slot {} world {}",
-            entry.slot, entry.saved.metadata.world_id
-        )
-    })?;
     world.resource_mut::<SessionBoundary>().capture_live()?;
-    state.original = Some(subset);
+    state.original = Some(entry.saved);
     state.original_capture = true;
     Ok(())
 }
@@ -416,12 +393,45 @@ fn start_original_snapshot(
         .context("original import install unavailable")?
         .clone();
     let bytes = snapshot.encode_document()?;
+    let context = state
+        .original
+        .as_ref()
+        .map(|_| -> Result<_> {
+            let preferences = world
+                .get_resource::<cyrus_game::preferences::Preferences>()
+                .context("original import preferences unavailable")?
+                .clone();
+            let generation = world
+                .get_resource::<cyrus_script::script::ScriptActors>()
+                .context("original import registry unavailable")?
+                .generation_high_water();
+            let bios_tick = cyrus_script::clock::bios_tick(
+                world
+                    .get_resource::<bevy::prelude::Time<bevy::prelude::Real>>()
+                    .context("original import real clock unavailable")?
+                    .elapsed(),
+            );
+            Ok((preferences, generation, bios_tick))
+        })
+        .transpose()?;
+    let original = state.original.take().zip(context);
     let (sender, receiver) = mpsc::channel();
     std::thread::Builder::new()
         .name("prepare original import".into())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            let _ = sender.send(prepare_bytes(&bytes, &install));
+            let result = match original {
+                Some((slot, (preferences, generation, bios_tick))) => original_import::prepare(
+                    snapshot,
+                    &slot,
+                    &install,
+                    &preferences,
+                    generation,
+                    bios_tick,
+                ),
+                None => prepare_bytes(&bytes, &install),
+            };
+            let _ = sender.send(result);
         })?;
     state.worker = Some(Mutex::new(receiver));
     Ok(())
@@ -739,7 +749,6 @@ pub(crate) fn poll(world: &mut World) {
                     prepared,
                     world,
                     (state.slot_load || state.last_game) && state.rollback_error.is_none(),
-                    state.original.take(),
                 )
             }) {
                 Ok(()) => state.submitted = true,
@@ -763,7 +772,7 @@ pub(crate) fn poll(world: &mut World) {
             state.original_rollback = None;
         }
         let result = if state.original_notice {
-            result.with_context(|| format!("{}: original subset import", state.path))
+            result.with_context(|| format!("{}: original session import", state.path))
         } else {
             result
         };
@@ -774,13 +783,7 @@ pub(crate) fn poll(world: &mut World) {
                 .finish(completion);
             state.last_game = false;
         } else if state.slot_load {
-            state.slot_result = Some(result.map(|()| {
-                if state.original_notice {
-                    json!({"committed":true,"message": ORIGINAL_LIMITATION})
-                } else {
-                    json!({"committed":true})
-                }
-            }));
+            state.slot_result = Some(result.map(|()| json!({"committed":true})));
             state.original_notice = false;
             state.original = None;
             state.slot_load = false;
@@ -902,6 +905,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
     );
     let hud = serde_json::from_slice(&std::fs::read(cache.join("hud/overlay.hud"))?)?;
     Ok(PreparedLoad {
+        original: None,
         snapshot,
         worlds,
         hud,
@@ -909,12 +913,7 @@ fn prepare_bytes(bytes: &[u8], install: &GameInstall) -> Result<PreparedLoad> {
     })
 }
 
-fn submit(
-    prepared: PreparedLoad,
-    world: &mut World,
-    saved_game: bool,
-    original: Option<cyrus_script::script::original_save::OriginalSaveSubset>,
-) -> Result<()> {
+fn submit(prepared: PreparedLoad, world: &mut World, saved_game: bool) -> Result<()> {
     let server = world
         .get_resource::<AssetServer>()
         .context("native session asset server absent")?;
@@ -963,8 +962,8 @@ fn submit(
     let mut boundary = world
         .get_resource_mut::<SessionBoundary>()
         .context("native session boundary absent")?;
-    if let Some(original) = original {
-        boundary.import_original(prepared.snapshot, assets, original)
+    if let Some(original) = prepared.original {
+        boundary.import_original_session(original, assets)
     } else if saved_game {
         boundary.load_saved_game(prepared.snapshot, assets)
     } else {
@@ -1005,18 +1004,22 @@ mod tests {
         assert!(!world.resource::<NativeSessionLoad>().busy());
     }
 
-    fn synthetic_original_entry(world_id: u32) -> rgpre::import::savegame::SaveGame {
+    fn synthetic_original_entry(world_id: u32) -> rgpre::import::savegame::SaveSlot {
         use rgpre::import::savegame::{SaveGame, SaveMetadata};
-        SaveGame {
-            metadata: SaveMetadata {
-                version: *b"1.31",
-                unknown_04: 0,
-                unknown_08: 0,
-                description: "Synthetic entry".into(),
-                world_id,
-                bitmap_filename: String::new(),
+        rgpre::import::savegame::SaveSlot {
+            game: SaveGame {
+                metadata: SaveMetadata {
+                    version: *b"1.31",
+                    unknown_04: 0,
+                    unknown_08: 0,
+                    description: "Synthetic entry".into(),
+                    world_id,
+                    bitmap_filename: String::new(),
+                },
+                sections: Vec::new(),
             },
-            sections: Vec::new(),
+            maps: BTreeMap::new(),
+            logbook: None,
         }
     }
 
@@ -1057,6 +1060,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .saved
+                .game
                 .metadata
                 .world_id,
             15

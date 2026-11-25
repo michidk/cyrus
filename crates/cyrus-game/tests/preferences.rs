@@ -63,3 +63,23 @@ fn failed_save_keeps_previous_values_and_malformed_load_cannot_be_overwritten() 
     assert!(writes.lock().unwrap().is_empty());
     assert!(Preferences::default().menu().is_err());
 }
+
+#[test]
+fn preparation_clone_keeps_accepted_menu_and_shares_backend_without_writing() {
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let mut state = Preferences::new(Store {
+        text: Ok(Some(serde_json::to_string(&value(7)).unwrap())),
+        fail_save: false,
+        writes: writes.clone(),
+    });
+    let prepared = state.clone();
+    assert_eq!(prepared.menu(), state.menu());
+    assert!(Arc::ptr_eq(
+        &prepared.store().unwrap(),
+        &state.store().unwrap()
+    ));
+    assert!(writes.lock().unwrap().is_empty());
+    state.save_menu(value(9)).unwrap();
+    assert_eq!(prepared.menu(), &Ok(Some(value(7))));
+    assert_eq!(state.menu(), &Ok(Some(value(9))));
+}

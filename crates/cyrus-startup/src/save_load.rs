@@ -49,8 +49,9 @@ pub(super) fn discard_gameplay(mut commands: Commands) {
     commands.remove_resource::<GameplayThumbnail>();
 }
 
-/// Original imports intentionally leave unsupported native owners at their current baseline.
-pub const ORIGINAL_IMPORT_LIMITATION: &str = "Limited import: world, position, heading, health, inventory, flags and static support only. Saved scripts, other actors, animation, controller, clock and journal are unsupported. Unsupported owners use a native baseline.";
+/// Original slots require complete restoration; unsupported owners reject the load.
+pub const ORIGINAL_IMPORT_LIMITATION: &str =
+    "Original save import restores the complete session. Unsupported saves cannot be loaded.";
 
 /// Storage operation requested by the installed book action.
 #[derive(Clone, Debug, Serialize, Deserialize)]

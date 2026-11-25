@@ -22,7 +22,8 @@ pub trait PreferenceStore: Send + Sync + 'static {
     fn load(&self, key: PreferenceKey) -> anyhow::Result<Option<String>>;
     fn save(&self, key: PreferenceKey, value: &str) -> anyhow::Result<()>;
 }
-#[derive(Resource)]
+/// Cloning retains the accepted menu state and shares the same persistence backend.
+#[derive(Resource, Clone)]
 pub struct Preferences {
     store: Option<std::sync::Arc<dyn PreferenceStore>>,
     menu: Result<Option<MenuPreferences>, String>,
