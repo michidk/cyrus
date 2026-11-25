@@ -39,12 +39,13 @@ def main():
     parser.add_argument("--limit", type=int, default=400, help="decision steps before giving up")
     parser.add_argument("--log", help="write every sample as JSON lines")
     args = parser.parse_args()
+    import importlib
+    scenario = importlib.import_module('original-scenario')
     name = args.attach or "retro-duel"
     if not args.attach:
         run = MAGIC / "retro-run"
         ini = run / "Redguard/WORLD.INI"  # an interrupted original-idle.py can leave another start world
         ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=0", ini.read_text(errors="surrogateescape")), errors="surrogateescape")
-        sh("docker", "rm", "-f", name, check=False)
         # Leaving a world saves MAPS\\<world>.TSG, and the game hangs if that write fails. The run copy
         # links `maps` into the read-only install, and the emulator cannot create files through that
         # link, so make it a real directory holding a copy, and clear snapshots of earlier runs.
@@ -55,15 +56,9 @@ def main():
             shutil.copytree(source, maps)
             for path in [maps, *maps.rglob("*")]:
                 path.chmod(0o777 if path.is_dir() else 0o666)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", "cyrus-retro:dev",
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete")
-        sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
-           "-v", f"{run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-           "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", "cyrus-retro:dev")
-    reader = MAGIC / "tools/original-state.py"
-    if not reader.exists():
-        sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
-    sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py")
+        scenario.start_original_runtime(name, run, 'cyrus-retro:dev', command=sh, magic=MAGIC)
+    else:
+        scenario.install_original_reader(name, command=sh, magic=MAGIC)
     log = open(args.log, "w") if args.log else None
     started = time.time()
 

@@ -710,15 +710,9 @@ def main():
         ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=30", ini.read_text(errors="surrogateescape")),
                        errors="surrogateescape")
         sh = lambda *c, **k: subprocess.run(c, capture_output=True, text=True, **k)
-        sh("docker", "rm", "-f", name)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", image,
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
-        sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
-           "-v", f"{run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-           "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
-        sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py", check=True)
-        sh("docker", "cp", str(ROOT / "dev/scripts/original-memory-region.py"),
-           f"{name}:/tmp/original-memory-region.py", check=True)
+        import importlib
+        scenario = importlib.import_module('original-scenario')
+        scenario.start_original_runtime(name, run, image, command=sh, magic=MAGIC)
         sh("docker", "cp", str(place), f"{name}:/tmp/orig_write_in.py", check=True)
         key = lambda *c: sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", *c)
         # Every row is fsynced, optionally mirrored to a second directory, and the run is sealed with a

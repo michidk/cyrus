@@ -46,12 +46,9 @@ def main():
         sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
     try:
         ini.write_text(re.sub(r"(?m)^start_world=\d+", f"start_world={args.world}", original), errors="surrogateescape")
-        sh("docker", "rm", "-f", name, check=False)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", "cyrus-retro:dev",
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=False)
-        sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE", "-v", f"{run}:/game",
-           "-v", f"{MAGIC}/gog:/gog:ro", "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", "cyrus-retro:dev")
-        sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py")
+        import importlib
+        scenario = importlib.import_module('original-scenario')
+        scenario.start_original_runtime(name, run, 'cyrus-retro:dev', command=sh, magic=MAGIC)
 
         def state():
             out = sh("docker", "exec", name, "python3", "/tmp/original-state.py", check=False)
