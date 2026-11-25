@@ -175,6 +175,7 @@ pub(super) struct NativeServices<'a> {
     pub ambient: Option<&'a AmbientCall<'a>>,
     pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
+    pub activation: Option<&'a mut super::ActivationState>,
     pub menu: Option<MenuCall<'a>>,
     pub player_dialogue: Option<PlayerDialogueCall<'a>>,
     /// The selected player's animation, for `RTXpAnim`. Absent when the player is the receiver,
@@ -953,13 +954,17 @@ impl Task {
                 ];
                 let missing =
                     || format!("{name} requires prepared animation and explicit nominal ticks");
-                if *player && !input.player_is_receiver {
+                let complete = if *player && !input.player_is_receiver {
                     let call = services.player_animation.as_mut().with_context(missing)?;
                     talk_cycle(call, dialogue, speech, index, groups, fresh)?
                 } else {
                     let call = animation.as_mut().with_context(missing)?;
                     talk_cycle(call, dialogue, speech, index, groups, fresh)?
+                };
+                if !*player && let Some(activation) = services.activation {
+                    activation.speech_animation_cycle(complete);
                 }
+                complete
             }
             Self::AnimationFrame { player } => {
                 let [group, threshold] = arguments else {

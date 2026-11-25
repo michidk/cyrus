@@ -262,3 +262,9 @@ Complete original-session publication retains the saved shell allocation order w
 round-tripped through native checkpoints. Publication before presentation suppresses
 exit arbitration for that frame; restored requests are evaluated on the next explicit
 world update, rather than during admission.
+
+Speech-animation task polling updates activation HUD ownership independently of
+prompt drawing: a running `rtxAnim` cycle clears pending prompt text and a completed
+cycle clears its override timer. Reset, distance and pending-source early returns
+retain that state; `RTXpAnim` does not mutate it. The contract follows preservation's
+sound and HUD engine references.

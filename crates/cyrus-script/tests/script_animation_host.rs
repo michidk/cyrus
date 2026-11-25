@@ -7615,3 +7615,209 @@ fn positional_sound_uses_live_slave_attribute_instead_of_retained_family_members
         );
     }
 }
+
+#[test]
+fn speech_animation_owns_pending_prompt_and_override_at_its_cycle_boundary() {
+    use cyrus_script::script::{
+        DialogueLine, DialogueSource, PlayerQuery, QueryInputs, ScriptInputs,
+    };
+    #[derive(Debug)]
+    struct Source;
+    impl DialogueSource for Source {
+        fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+        fn stop_sample(&self, _: u8) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn player_line(
+            &self,
+            _: [u8; 4],
+            _: ScriptActorId,
+            _: u32,
+        ) -> anyhow::Result<std::task::Poll<Option<DialogueLine>>> {
+            Ok(std::task::Poll::Ready(Some(DialogueLine {
+                text: "spoken".into(),
+                sample: Some(2),
+                lifetime: 100,
+            })))
+        }
+    }
+    for native in [Native::RtxAnim, Native::RTXpAnim] {
+        for (reset, distance) in [(false, 0), (true, 0), (false, 1601)] {
+            let mut data = lockout_data(1, false);
+            data.definition.functions.push(Function {
+                name: native,
+                param_count: 4,
+                kind: CallKind::Task,
+            });
+            let operations = [
+                Operation::Call {
+                    call: Call {
+                        function_id: 4,
+                        function: Native::Activate,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: vec![Value::Integer {
+                            value: i32::from_le_bytes(*b"#OPN"),
+                        }],
+                    },
+                },
+                Operation::End { target: 0 },
+                Operation::Call {
+                    call: Call {
+                        function_id: 5,
+                        function: native,
+                        kind: CallKind::Task,
+                        target: Object::Me,
+                        arguments: [
+                            i32::from_le_bytes(*b"TEST"),
+                            i32::from(AnimationGroup::TURN_LEFT),
+                            i32::from(AnimationGroup::TURN_LEFT),
+                            i32::from(AnimationGroup::TURN_LEFT),
+                        ]
+                        .map(|value| Value::Integer { value })
+                        .to_vec(),
+                    },
+                },
+                Operation::End { target: 2 },
+            ];
+            let actor = data.actors.get_mut("ACTOR").unwrap();
+            actor.program.entry = 2;
+            actor.program.steps = operations
+                .into_iter()
+                .enumerate()
+                .map(|(i, operation)| {
+                    (
+                        i as u32,
+                        Step {
+                            next: i as u32 + 1,
+                            operation,
+                        },
+                    )
+                })
+                .collect();
+            data.content_id = data.content_identity().unwrap();
+            let animations = Animations {
+                version: 2,
+                world: data.world,
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+                metadata: json!({"script_content_id": data.content_id, "actors":
+                    (["ACTOR", "CYRUS"].map(|name| json!({"script_name":name,"animation_groups":
+                        ([AnimationGroup::PANIC, AnimationGroup::TURN_LEFT].map(|group|
+                            json!({"group_index":i32::from(group),"anim_type":0,"anim_id":1,
+                                "commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]})))})))}),
+            };
+            let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+            world.prepare_spatial().unwrap();
+            let id = world.id(0).unwrap();
+            let player = world.selected_player().unwrap();
+            world
+                .initialize_player_spatial(player, [0; 3], [0; 3])
+                .unwrap();
+            for actor in [id, player] {
+                world
+                    .bind_animation(actor, &animations, AnimationGroup::PANIC)
+                    .unwrap();
+            }
+            let (_, mut activation) = activation_world(Native::Activate);
+            activation.player = player;
+            activation
+                .actors
+                .insert(player.index, activation.actors[&2]);
+            activation.use_held = false;
+            let activate = |world: &mut ScriptWorld| {
+                world
+                    .advance(
+                        id,
+                        ScriptStage::Body(Thread::Interrupt),
+                        ScriptInputs {
+                            activation: Some(&activation),
+                            nominal_ticks: Some(0),
+                            frame_scale: Some(256),
+                            ..Default::default()
+                        },
+                        None,
+                        None,
+                        30,
+                    )
+                    .unwrap();
+            };
+            activate(&mut world);
+            // Selecting an item establishes an override while retaining pending text.
+            world.activation_overlay(&activation, 0, true, 24).unwrap();
+            activate(&mut world);
+            assert_eq!(world.activation().prompt(), Some("Open"));
+            assert_eq!(world.inspect(0, 0)["activation"]["prompt_override"], 24);
+            let before = world.inspect(0, 0)["activation"].clone();
+            let inputs = ScriptInputs {
+                dialogue_source: Some(&Source),
+                sound_reset: Some(reset),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                player_query: Some(QueryInputs {
+                    player: Some(PlayerQuery {
+                        position: [distance * 256, 0, 0],
+                        heading: 0,
+                    }),
+                    distance_override: Some(false),
+                    fallback_position: None,
+                    linked_position: None,
+                }),
+                ..Default::default()
+            };
+            world.advance(id, BODY, inputs, None, None, 30).unwrap();
+            let running = !reset && distance == 0;
+            let clears = running && native == Native::RtxAnim;
+            assert_eq!(
+                world.activation().prompt(),
+                if clears { None } else { Some("Open") },
+                "{native:?}, reset={reset}, distance={distance}"
+            );
+            let after = world.inspect(0, 0)["activation"].clone();
+            for field in ["owner", "holdoff", "prompt_override"] {
+                assert_eq!(after[field], before[field]);
+            }
+            if !running {
+                continue;
+            }
+            // Refill text while speech runs: polling, not only initial admission, clears it.
+            activate(&mut world);
+            world.advance(id, TASKS, inputs, None, None, 30).unwrap();
+            assert_eq!(
+                world.activation().prompt(),
+                if clears { None } else { Some("Open") }
+            );
+            world
+                .globals_mut()
+                .dialogue_mut()
+                .unwrap()
+                .clear_line(Some(1));
+            // The speaking group has finished; completion waits for leaving that group.
+            for actor in [id, player] {
+                world
+                    .advance(actor, ScriptStage::Animation, inputs, None, None, 30)
+                    .unwrap();
+            }
+            activate(&mut world);
+            world.advance(id, TASKS, inputs, None, None, 30).unwrap();
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                0,
+                "{native:?}: {}",
+                world.inspect(0, 8)
+            );
+            assert_eq!(
+                world.activation().prompt(),
+                Some("Open"),
+                "completion preserves pending text"
+            );
+            assert_eq!(
+                world.inspect(0, 0)["activation"]["prompt_override"],
+                if native == Native::RtxAnim { 0 } else { 24 }
+            );
+        }
+    }
+}

@@ -761,6 +761,15 @@ impl ActivationState {
         self.owner = owner;
     }
 
+    /// Speech animation owns these HUD side effects independently of prompt drawing.
+    pub(super) fn speech_animation_cycle(&mut self, complete: bool) {
+        if complete {
+            self.clear_prompt_override();
+        } else {
+            self.prompt = None;
+        }
+    }
+
     pub(super) fn clear_prompt_override(&mut self) {
         self.prompt_override = 0;
     }

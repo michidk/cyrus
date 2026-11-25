@@ -4574,6 +4574,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     .is_some_and(|control| control.object_update_excluded),
             ambient: Some(&ambient),
             dialogue: self.registry.globals.dialogue.as_mut(),
+            activation: Some(&mut self.registry.activation),
             menu: Some(super::tasks::MenuCall {
                 state: &mut self.registry.globals.menu,
                 active: &mut self.registry.globals.menu_state,
@@ -10331,6 +10332,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         .is_some_and(|control| control.object_update_excluded),
                 ambient: Some(&ambient),
                 dialogue: self.registry.globals.dialogue.as_mut(),
+                activation: Some(&mut self.registry.activation),
                 menu: Some(super::tasks::MenuCall {
                     state: &mut self.registry.globals.menu,
                     active: &mut self.registry.globals.menu_state,
