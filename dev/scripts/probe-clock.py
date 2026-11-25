@@ -11,6 +11,31 @@ import math
 from pathlib import Path
 
 
+def bios_measurement_interval(previous_baseline, writes):
+    """Bind one observed ordinary update to its effective BIOS delta, not load time.
+
+    The caller establishes two consecutive stopped ordinary boundaries and captures
+    every baseline write between them. The first write belongs to clock advancement;
+    later blocking restores retain its measurement-frame count. Capture each write
+    after the baseline assignment. Samples and baselines use unsigned 32-bit BIOS
+    ticks. Host audio time must be measured separately, never derived here.
+    Follows preservation's engine/player.md FPS-derived-frame-scale contract.
+    """
+    if (type(previous_baseline) is not int or not 0 <= previous_baseline < 2**32
+            or not writes):
+        raise ValueError('BIOS interval needs a previous baseline and observed writes')
+    for row in writes:
+        if (not isinstance(row, dict)
+                or any(type(row.get(key)) is not int or not 0 <= row[key] < 2**32
+                for key in ('sample', 'baseline', 'frames'))
+                or row['sample'] != row['baseline']
+                or row['frames'] != writes[0]['frames']):
+            raise ValueError('BIOS writes do not bind one complete ordinary measurement')
+    first, last = writes[0]['sample'], writes[-1]['sample']
+    return dict(elapsed_bios_ticks=(first - previous_baseline) % 2**32,
+                next_baseline=last, excluded_bios_ticks=(last - first) % 2**32)
+
+
 def intervals(boundaries):
     """Require a single contiguous ordinary-update lifetime with exact integer clocks."""
     if len(boundaries) < 2:

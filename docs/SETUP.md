@@ -1812,6 +1812,16 @@ required image with its repository Dockerfile first; the helper does not guess
 a build context. Archives remain local; recovery never removes peer images or
 containers.
 
+For a recorded replay interval containing blocking resource work, use
+`bios_measurement_interval` from `dev/scripts/probe-clock.py` with the prior
+baseline and every baseline-write observation between consecutive ordinary
+boundaries. It separates the first clock-advance delta from later restores
+that keep the measurement-frame count. Feed only `elapsed_bios_ticks` to the
+public replay command. Keep independent host-time measurements for audio;
+subtracting final boundary BIOS samples includes suspended time and does not
+reproduce the original measurement. Missing writes or multiple ordinary
+measurements must reject the acquisition.
+
 Original event probes can use `EventJournal` from `dev/scripts/probe-checkpoint.py`
 with a host-mounted output directory. Each attempt gets a new JSONL file; every
 observation is flushed and synchronized before returning. A separate completed

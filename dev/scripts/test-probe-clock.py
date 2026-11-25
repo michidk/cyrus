@@ -17,6 +17,31 @@ def rows(scales, origin=0):
     return result
 
 
+class BiosMeasurement(unittest.TestCase):
+    def test_blocking_restore_does_not_become_recorded_gameplay_elapsed(self):
+        interval = clock.bios_measurement_interval(100, [
+            {'sample': 100, 'baseline': 100, 'frames': 18},
+            {'sample': 104, 'baseline': 104, 'frames': 18}])
+        self.assertEqual(interval, {'elapsed_bios_ticks': 0, 'next_baseline': 104,
+                                    'excluded_bios_ticks': 4})
+        self.assertEqual(clock.bios_measurement_interval(104, [
+            {'sample': 105, 'baseline': 105, 'frames': 19}])['elapsed_bios_ticks'], 1)
+
+    def test_wrapping_counter_is_independent_of_host_time(self):
+        self.assertEqual(clock.bios_measurement_interval(2**32-1, [
+            {'sample': 1, 'baseline': 1, 'frames': 0}]),
+            {'elapsed_bios_ticks': 2, 'next_baseline': 1, 'excluded_bios_ticks': 0})
+
+    def test_missing_or_multiple_ordinary_measurements_are_rejected(self):
+        for writes in [[], [None], [{'sample': 3, 'baseline': 2, 'frames': 1}],
+                       [{'sample': 3, 'baseline': 3, 'frames': 1},
+                        {'sample': 4, 'baseline': 4, 'frames': 2}],
+                       [{'sample': True, 'baseline': True, 'frames': 1}],
+                       [{'sample': 3, 'baseline': 3, 'frames': -1}]]:
+            with self.subTest(writes=writes), self.assertRaises(ValueError):
+                clock.bios_measurement_interval(2, writes)
+
+
 class ObservedClock(unittest.TestCase):
     def test_changing_steps_do_not_turn_twelve_updates_into_two_seconds(self):
         native = rows([512,438,384,384,384,384,384,384,405,426,437,438])
