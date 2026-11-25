@@ -264,7 +264,12 @@ tags, either when pushed or dispatched from the default branch with a `tag` inpu
 such as `v0.2.0`. Orcastrate manages `release.yml` from the shared `rust/release`
 template in `michidk/workflows`. The template owns tag validation, Cargo version
 checks, release notes, checksums, publication and the final completion check.
-A failed, cancelled or skipped build or publication makes `Release complete` fail.
+A failed, cancelled or skipped build or publication makes `Release complete` fail. Standard game,
+mod-bundle and viewer packages upload as `native-<target>` immediately after
+their packaged smoke tests pass. Linux and Windows ray-tracing packages retain
+their separate build and smoke checks and upload as `native-raytracing-<target>`.
+A ray-tracing failure still fails the job, while the already verified standard
+packages remain available for runtime acceptance.
 
 The repository-owned `build-release.yml` is a reusable workflow accepting the
 tag. It owns the game-specific verification, platform builds, packaging and

@@ -309,6 +309,29 @@ done
             # PR runs add an event condition after the platform test, so match the platform test itself.
             self.assertEqual(tracing_steps.count("runner.os == 'Linux' || runner.os == 'Windows'"), 2)
 
+    def test_pr_standard_artifacts_publish_before_optional_raytracing(self):
+        workflow = (Path(__file__).parents[2] / ".github/workflows/pr-artifacts.yml").read_text()
+        native = workflow.split("  native:\n", 1)[1].split("\n  web:", 1)[0]
+        standard_smoke = native.index("- name: Smoke packaged native executables")
+        standard_name = native.index("name: native-${{ matrix.target }}")
+        tracing_build = native.index("- name: Build and package ray-tracing game")
+        tracing_smoke = native.index("- name: Smoke packaged ray-tracing game")
+        tracing_name = native.index("name: native-raytracing-${{ matrix.target }}")
+        self.assertLess(standard_smoke, standard_name)
+        self.assertLess(standard_name, tracing_build)
+        self.assertLess(tracing_build, tracing_smoke)
+        self.assertLess(tracing_smoke, tracing_name)
+        standard = native[standard_name:tracing_build]
+        self.assertNotIn("cyrus-raytracing", standard)
+        for package in ("cyrus-", "cyrus-with-mods-", "cyrus-viewer-"):
+            self.assertIn("target/artifacts/" + package + "${{ matrix.target }}*", standard)
+        tracing_upload = native[tracing_smoke:].split("      - uses: actions/upload-artifact@", 1)[1]
+        self.assertIn("github.event_name == 'pull_request'", tracing_upload)
+        self.assertIn("runner.os == 'Linux' || runner.os == 'Windows'", tracing_upload)
+        self.assertIn("path: target/artifacts/cyrus-raytracing-${{ matrix.target }}*", tracing_upload)
+        self.assertEqual(native.count('build-artifacts.sh native-mods "$BUILD_TARGET"'), 1)
+        self.assertEqual(native.count('build-artifacts.sh native-raytracing "$BUILD_TARGET"'), 1)
+
     def test_mod_build_failure_does_not_leave_a_previous_bundle(self):
         self.mod_fixtures()
         platform = "x86_64-unknown-linux-gnu"

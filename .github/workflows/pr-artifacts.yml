@@ -83,6 +83,16 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-${{ matrix.target }}
+          path: |
+            target/artifacts/cyrus-${{ matrix.target }}*
+            target/artifacts/cyrus-with-mods-${{ matrix.target }}*
+            target/artifacts/cyrus-viewer-${{ matrix.target }}*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ github.event_name == 'push' && 3 || 7 }}
       - name: Build and package ray-tracing game
         if: (runner.os == 'Linux' || runner.os == 'Windows') && github.event_name == 'pull_request'
         env:
@@ -93,17 +103,15 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET" --raytracing
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: (runner.os == 'Linux' || runner.os == 'Windows') && github.event_name == 'pull_request'
         with:
-          name: native-${{ matrix.target }}
-          path: |
-            target/artifacts/cyrus-${{ matrix.target }}*
-            target/artifacts/cyrus-with-mods-${{ matrix.target }}*
-            target/artifacts/cyrus-viewer-${{ matrix.target }}*
-            target/artifacts/cyrus-raytracing-${{ matrix.target }}*
+          name: native-raytracing-${{ matrix.target }}
+          path: target/artifacts/cyrus-raytracing-${{ matrix.target }}*
           if-no-files-found: error
           compression-level: 0
-          retention-days: ${{ github.event_name == 'push' && 3 || 7 }}
+          retention-days: 7
 
   web:
     if: github.event_name == 'pull_request'
