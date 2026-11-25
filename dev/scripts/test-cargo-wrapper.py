@@ -50,7 +50,7 @@ exit 17
     def test_setup_uses_the_same_single_build_limit(self):
         self.assertIn("export CARGO_HAULER_MAX_CONCURRENT=1", (SCRIPTS / "setup-hauler.sh").read_text())
 
-    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail="", package=None):
+    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail="", package=None, script_fail=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             scripts = root / "dev/scripts"
@@ -69,6 +69,9 @@ exit 17
             checks.append(SCRIPTS / "check-preservation-release.py")
             for check in checks:
                 (scripts / check.name).write_text("")
+            (scripts / "test-newly-added.py").write_text(
+                "import sys\nprint('new script discovered')\nsys.exit(" +
+                ("19" if script_fail else "0") + ")\n")
             (scripts / "cargo.sh").write_text('''cargo() {
     echo "cargo $*"
     [[ "$1" != "$FAIL_COMMAND" ]] || return 17
@@ -105,6 +108,14 @@ exit 17
         self.assertEqual(test, ["cargo test --workspace -- --nocapture"])
         self.assertEqual(cargo_calls(self.run_gate()), lint + test)
         self.assertEqual(cargo_calls(self.run_gate(stage="all")), lint + test)
+
+    def test_new_script_is_discovered_and_its_failure_stops_the_gate(self):
+        result = self.run_gate(stage="check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("new script discovered", result.stdout)
+        failed = self.run_gate(stage="check", script_fail=True)
+        self.assertEqual(failed.returncode, 19)
+        self.assertNotIn("cargo fmt", failed.stdout)
 
     def test_check_does_not_compile(self):
         result = self.run_gate(stage="check")

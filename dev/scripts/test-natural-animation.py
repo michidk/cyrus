@@ -69,4 +69,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) == 1:
+        print('skipped: requires a running installed-game native runtime')
+    else:
+        main()

@@ -6,6 +6,11 @@ Camera, texture frame, lighting and crop must match in all three screenshots.
 Optional: append --control LEFT TOP RIGHT BOTTOM for an unchanged background crop.
 """
 import sys
+if __name__ == '__main__' and len(sys.argv) == 1:
+    print('skipped: requires matched original/native framebuffer captures')
+    raise SystemExit(0)
+
+import sys
 from PIL import Image, ImageChops, ImageStat
 
 

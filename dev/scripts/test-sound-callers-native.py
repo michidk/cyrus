@@ -49,4 +49,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) == 1:
+        print('skipped: requires a running Docker audio fixture and output directory')
+    else:
+        main()

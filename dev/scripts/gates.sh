@@ -13,19 +13,11 @@ if [ -z "${REDGUARD_DIR+x}" ] && [ -d redguard ]; then
     export REDGUARD_DIR="$(cd redguard && pwd -P)"
 fi
 if [[ "$stage" == all || "$stage" == check || "$stage" == lints ]]; then
-    python3 -B dev/scripts/test-original-update-recorder.py
-    python3 -B dev/scripts/test-original-frame-session.py
-    python3 -B dev/scripts/test-compare-segment.py
-    python3 -B dev/scripts/test-retro-runtime.py
-    python3 -B dev/scripts/test-original-fight.py
-    python3 -B dev/scripts/test-original-record-diff.py
-    python3 -B dev/scripts/test-diag-output.py
-    python3 -B dev/scripts/test-original-console.py
-    python3 -B dev/scripts/test-original-scenario.py
-    python3 -B dev/scripts/test-original-route-input.py
-    python3 -B dev/scripts/test-verify-original-slot.py
-    python3 -B dev/scripts/test-original-dialogue.py
-    python3 -B dev/scripts/test-preservation-release.py
+    for test in dev/scripts/test-*.py; do
+        echo "gates: $test"
+        python3 -B "$test"
+    done
+    node --test dev/scripts/*.test.mjs
     python3 -B dev/scripts/check-preservation-release.py
 fi
 if [[ "$stage" == check ]]; then
@@ -46,9 +38,6 @@ fi
 if [[ "$stage" != test && "$stage" != verify ]]; then
     dev/scripts/publish-check.sh
     dev/scripts/genmap.sh --check
-    python3 dev/scripts/test-build-provenance.py
-    python3 -B dev/scripts/test-surface-audio.py
-    node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
 fi

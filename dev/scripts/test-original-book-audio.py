@@ -38,7 +38,7 @@ esac
                      'CYRUS_BOOK_REALTIME': '1', 'CYRUS_BOOK_ISOLATE_MUSIC': '1'}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 23, result.stderr)
             commands = (root/'docker.log').read_text().splitlines()
-            run = next(c for c in commands if c.startswith('run '))
+            run = next(c for c in commands if c.startswith('run -d --name '))
             name = run.split('--name ')[1].split()[0]
             self.assertIn(f'-v {out}:/evidence', run)
             self.assertIn('CYRUS_CONFIG_DIR=/evidence/config', run)
@@ -84,7 +84,9 @@ esac
                     str(root/case), str(root/'image.tar'), str(root/'ready.py'), str(root/'driver.py')],
                     env=env, capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertNotIn('run ', (root/'docker.log').read_text())
+                self.assertNotIn('run -d --name ', (root/'docker.log').read_text())
+                self.assertIn('run --rm --pull never --network none --read-only',
+                              (root/'docker.log').read_text())
                 self.assertEqual(ini.read_bytes(), before)
             self.assertEqual(canonical.read_bytes(), b'redbook=on\r\n')
 

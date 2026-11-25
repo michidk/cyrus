@@ -3,6 +3,11 @@
 
 Usage: test-sdl-frame-capture-runtime.py FIXTURE_EXECUTABLE INTERPOSER_SO FAILED_BACKEND_SO [MIXER_SO]
 """
+import sys
+if __name__ == '__main__' and len(sys.argv) == 1:
+    print('skipped: requires compiled SDL fixture and capture interposers')
+    raise SystemExit(0)
+
 import json
 import os
 from pathlib import Path

@@ -3,6 +3,11 @@
 
 Arguments: public SDL fixture, mixer interposer, stalled-writer interposer.
 """
+import sys
+if __name__ == '__main__' and len(sys.argv) == 1:
+    print('skipped: requires compiled SDL fixture and mixer interposers')
+    raise SystemExit(0)
+
 import importlib.util
 import json
 import os

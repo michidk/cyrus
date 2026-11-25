@@ -10,16 +10,27 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER = '''#!/usr/bin/env python3
-import json,os,sys
+import hashlib,io,json,os,sys,tarfile
 from pathlib import Path
 p=Path(os.environ['FAKE_DOCKER_STATE']);s=json.loads(p.read_text());a=sys.argv[1:]
 s['calls'].append(a)
 code=0
-if a[:2]==['image','inspect']:code=0 if a[2] in s['images'] else 1
+if a[0]=='info':pass
+elif a[:2]==['image','inspect']:
+    image=a[-1];code=0 if image in s['images'] else 1
+    if not code and '--format' in a:print('sha256:'+hashlib.sha256(image.encode()).hexdigest())
 elif a[0]=='build':s['images'].append(a[a.index('-t')+1])
-elif a[0]=='save':Path(a[a.index('--output')+1]).write_text(a[-1])
-elif a[0]=='load':s['images'].append(Path(a[a.index('--input')+1]).read_text())
-elif a[0]=='run':print(os.environ.get('FAKE_MARKER','single-cd-volume-v1'))
+elif a[0]=='save':
+    image=a[-1];data=image.encode();config=hashlib.sha256(data).hexdigest()+'.json'
+    with tarfile.open(a[a.index('--output')+1],'w') as archive:
+        for name,payload in [(config,data),('manifest.json',json.dumps([{'Config':config,'RepoTags':[image],'Layers':[]}]).encode())]:
+            entry=tarfile.TarInfo(name);entry.size=len(payload);archive.addfile(entry,io.BytesIO(payload))
+elif a[0]=='load':
+    with tarfile.open(a[a.index('--input')+1]) as archive:
+        s['images'].extend(json.load(archive.extractfile('manifest.json'))[0]['RepoTags'])
+elif a[0]=='run':
+    if '--rm' in a and '/bin/true' in a:pass
+    else:print(os.environ.get('FAKE_MARKER','single-cd-volume-v1'))
 else:raise RuntimeError(a)
 p.write_text(json.dumps(s));sys.exit(code)
 '''

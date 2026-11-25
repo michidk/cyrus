@@ -6,6 +6,11 @@ Regression: test-world-framebuffer.py --regression ORIGINAL BEFORE AFTER LEFT TO
 The caller must select unobscured Faithful sky, terrain, models or placed flats, excluding HUD.
 """
 import sys
+if __name__ == '__main__' and len(sys.argv) == 1:
+    print('skipped: requires an installed-game framebuffer capture')
+    raise SystemExit(0)
+
+import sys
 from PIL import Image
 
 

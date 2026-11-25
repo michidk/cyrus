@@ -5,9 +5,14 @@ Usage: python3 dev/scripts/test-retro-observer-runtime.py [IMAGE]
 Build dev/docker/retro first. Requires Docker, but no game data or preview.
 """
 import subprocess
+import shutil
 import sys
 
 IMAGE = sys.argv[1] if len(sys.argv) > 1 else 'cyrus-retro:dev'
+if not shutil.which('docker') or subprocess.run(
+        ['docker', 'image', 'inspect', IMAGE], capture_output=True).returncode:
+    print(f'skipped: Docker runtime image {IMAGE} is unavailable')
+    raise SystemExit(0)
 PROBE = r'''set -euo pipefail
 export DISPLAY=:97
 Xvfb "$DISPLAY" -screen 0 640x480x24 -nolisten tcp &

@@ -3,6 +3,11 @@
 
 Usage: test-retro-capture-loader.py IMAGE
 """
+import sys
+if __name__ == '__main__' and len(sys.argv) == 1:
+    print('skipped: requires an explicitly prepared Docker capture image')
+    raise SystemExit(0)
+
 import subprocess
 import sys
 
