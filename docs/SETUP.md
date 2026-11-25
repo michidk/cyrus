@@ -712,7 +712,14 @@ and playback frames through the local reader, skips to the installed
 release before another press. It admits success only with a selected player,
 a settled fade and clock warmup, advancing world frames and advancing game
 clock. It does not automatically load
-the staged slot during the opening duel. The output records each acknowledged
+the staged slot during the opening duel. For a subsequent exact-checkpoint
+load, call `open_retail_load(game)` after `enter_retail_world(game)`. It holds
+F3 until the reader acknowledges the completed Load page and releases the key
+even on failure. It validates the installed Load action before sending input;
+its timeout reports the last observed menu state. The caller then confirms the
+selected staged slot through its stopped restoration-boundary adapter. Booting
+a debug world and changing an option afterward does not initialize the retail
+menu route. The output records each acknowledged
 transition and the final state. `--observe-seconds` bounds each transition;
 it does not determine gameplay duration. Missing movie bindings or an
 unacknowledged transition fail explicitly. Run

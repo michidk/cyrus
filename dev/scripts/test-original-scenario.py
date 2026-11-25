@@ -67,6 +67,61 @@ class RetailEntryDriver(unittest.TestCase):
             self.run_driver(acknowledge=False)
 
 
+class RetailLoadDriver(unittest.TestCase):
+    def test_load_holds_the_shortcut_until_the_ready_page_is_observed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Redguard').mkdir()
+            (root / 'Redguard/MENU.INI').write_text('[page2]\naction[1]=202\n')
+            class Game:
+                run = root
+                keys = []
+                polls = 0
+                def raw(self):
+                    self.polls += 1
+                    return {'world':0,'actors':[{'selected':True}],
+                            'counters':{'mainloop_frame':32,'world_fade':0,
+                                        'clock_continuation':{'warmup':0}},
+                            'startup':{'menu_context':6 if self.polls > 1 else 0,
+                                       'menu_page':2,'menu_busy':self.polls < 4,
+                                       'menu_selection':123 if self.polls >= 4 else 0}}
+                def key(self, *args):
+                    self.keys.append(args)
+                    import subprocess
+                    return subprocess.CompletedProcess(args,0)
+                def alive(self):return True
+            game = Game()
+            ticks = iter(range(100))
+            raw = scenario.open_retail_load(game,timeout=10,clock=lambda:next(ticks),sleep=lambda _:None)
+            self.assertEqual(raw['startup']['menu_selection'],123)
+            self.assertEqual(game.keys,[('keydown','F3'),('keyup','F3')])
+            self.assertEqual(game.polls,4)
+
+    def test_failure_releases_the_key_and_reports_the_last_menu_state(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'Redguard').mkdir()
+            (root/'Redguard/MENU.INI').write_text('[page2]\naction[1]=202\n')
+            class Game:
+                run=root
+                keys=[]
+                def raw(self):
+                    return {'world':0,'actors':[{'selected':True}],
+                            'counters':{'mainloop_frame':32,'world_fade':0,
+                                        'clock_continuation':{'warmup':0}},
+                            'startup':{'menu_context':0}}
+                def key(self,*args):
+                    self.keys.append(args)
+                    import subprocess
+                    return subprocess.CompletedProcess(args,0)
+                def alive(self):return True
+            game=Game();ticks=iter(range(100))
+            with self.assertRaisesRegex(TimeoutError,'Load.*menu_context'):
+                scenario.open_retail_load(game,timeout=3,clock=lambda:next(ticks),sleep=lambda _:None)
+            self.assertEqual(game.keys,[('keydown','F3'),('keyup','F3')])
+
+
 class ReloadBoundary(unittest.TestCase):
     def sample(self, fade=0, warmup=0):
         return {"world":20,"counters":{"mainloop_frame":40,"world_fade":fade,

@@ -555,6 +555,40 @@ def enter_retail_world(game, timeout=180, poll=0.1, clock=time.monotonic, sleep=
     return {"events": events, "state": raw}
 
 
+def open_retail_load(game, timeout=60, poll=0.1, clock=time.monotonic, sleep=time.sleep):
+    """Open the retail Load page from a naturally settled retail world.
+
+    Call enter_retail_world first; a direct debug entry does not initialize the
+    retail book. Hold F3 until the reader acknowledges the completed Load page,
+    rather than assuming a host key duration contains a gameplay update. Always
+    release the shortcut, including on timeout or original exit. The caller then
+    selects the staged slot and owns its exact restoration boundary.
+    """
+    if not reload_boundary_ready(game.raw()):
+        raise ValueError('retail Load requires a settled world; use enter_retail_world first')
+    pages = menu_pages((game.run / 'Redguard/MENU.INI').read_text(errors='replace'))
+    if 202 not in selectable_actions(pages, 2):
+        raise ValueError('MENU.INI page 2 has no Load action (202)')
+    deadline = clock() + timeout
+    raw = {}
+    try:
+        game.key('keydown', 'F3').check_returncode()
+        while clock() < deadline:
+            raw = game.raw() or {}
+            menu = raw.get('startup') or {}
+            if (menu.get('menu_context') == 6 and menu.get('menu_page') == 2
+                    and menu.get('menu_busy') is False and menu.get('menu_selection')):
+                return raw
+            if not game.alive():
+                raise RuntimeError('retail Load: original exited before page acknowledgement')
+            sleep(poll)
+        raise TimeoutError(f"retail Load: no acknowledgement; last state {raw.get('startup')}")
+    finally:
+        released = game.key('keyup', 'F3')
+        if game.alive():
+            released.check_returncode()
+
+
 def observe_retail(game, shots, seconds, interval=5.0):
     """Screenshot the retail entry every `interval` seconds for `seconds`, pressing no key, and
     return one row per shot ({"t", "frame", "world", "shot"}), so the first live run records what the
