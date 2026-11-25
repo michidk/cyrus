@@ -21,7 +21,7 @@ opponent's reaction group, or missed) split by whether the opponent was idle or 
 frames and game seconds to the end of the run.
 """
 import argparse
-import fcntl
+from harness import exclusive_lock
 import json
 import math
 import os
@@ -700,168 +700,160 @@ def main():
     for needed in (reader, place):
         if not needed.exists():
             sys.exit(f"{needed} is missing; restore the local original-game tooling bundle")
-    lock = open(Path(args.out).with_suffix(".lock"), "w")
-    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    run_lock = run.with_suffix(".lock").open("w")
-    fcntl.flock(run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    if not run.exists():
-        shutil.copytree(MAGIC / "retro-run", run, symlinks=True)
-    maps = run / "Redguard/maps"
-    if maps.is_symlink() or not maps.resolve().is_relative_to(run.resolve()):
-        sys.exit(f"{maps}: original needs run-local writable maps")
-    ini = run / "Redguard/WORLD.INI"
-    ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=30", ini.read_text(errors="surrogateescape")),
-                   errors="surrogateescape")
-    sh = lambda *c, **k: subprocess.run(c, capture_output=True, text=True, **k)
-    sh("docker", "rm", "-f", name)
-    sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", image,
-       "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
-    sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
-       "-v", f"{run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-       "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
-    sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py", check=True)
-    sh("docker", "cp", str(ROOT / "dev/scripts/original-memory-region.py"),
-       f"{name}:/tmp/original-memory-region.py", check=True)
-    sh("docker", "cp", str(place), f"{name}:/tmp/orig_write_in.py", check=True)
-    key = lambda *c: sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", *c)
-    # Every row is fsynced, optionally mirrored to a second directory, and the run is sealed with a
-    # manifest at the end; a pod replacement or a cleaned artifacts directory has already removed
-    # finished runs before they were read.
-    log = DurableLog(args.out, args.mirror)
+    with exclusive_lock(Path(args.out).with_suffix(".lock")), exclusive_lock(run.with_suffix(".lock")):
+        if not run.exists():
+            shutil.copytree(MAGIC / "retro-run", run, symlinks=True)
+        maps = run / "Redguard/maps"
+        if maps.is_symlink() or not maps.resolve().is_relative_to(run.resolve()):
+            sys.exit(f"{maps}: original needs run-local writable maps")
+        ini = run / "Redguard/WORLD.INI"
+        ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=30", ini.read_text(errors="surrogateescape")),
+                       errors="surrogateescape")
+        sh = lambda *c, check=False, **k: subprocess.run(c, capture_output=True, text=True, check=check, **k)
+        import importlib
+        scenario = importlib.import_module('original-scenario')
+        scenario.start_original_runtime(name, run, image, command=sh, magic=MAGIC)
+        sh("docker", "cp", str(place), f"{name}:/tmp/orig_write_in.py", check=True)
+        key = lambda *c: sh("docker", "exec", "-e", "DISPLAY=:1", name, "xdotool", *c)
+        # Every row is fsynced, optionally mirrored to a second directory, and the run is sealed with a
+        # manifest at the end; a pod replacement or a cleaned artifacts directory has already removed
+        # finished runs before they were read.
+        log = DurableLog(args.out, args.mirror)
 
-    def emit(row):
-        log.append(row)
+        def emit(row):
+            log.append(row)
 
-    def phase(label):
-        sample = sampler.get()[0] if "sampler" in locals() else None
-        print(f"[{time.strftime('%H:%M:%S')}] {label} frame={sample and sample['frame']}", flush=True)
+        def phase(label):
+            sample = sampler.get()[0] if "sampler" in locals() else None
+            print(f"[{time.strftime('%H:%M:%S')}] {label} frame={sample and sample['frame']}", flush=True)
 
-    sampler = Sampler(name, args.interval)
-    # The player exists before Richton does; wait for a live world, then drive the console.
-    wait_frames(sampler, 0, 360, until=lambda s: s["frame"] > 0 and s["ph"])
-    wait_frames(sampler, 30, 600)
-    shots = Path(args.out).parent / "console-shots"
-    shots.mkdir(parents=True, exist_ok=True)
+        sampler = Sampler(name, args.interval)
+        # The player exists before Richton does; wait for a live world, then drive the console.
+        wait_frames(sampler, 0, 360, until=lambda s: s["frame"] > 0 and s["ph"])
+        wait_frames(sampler, 30, 600)
+        shots = Path(args.out).parent / "console-shots"
+        shots.mkdir(parents=True, exist_ok=True)
 
-    def shot(tag):
-        """Save a screenshot of the original's screen; the console reply is evidence, not a guess."""
-        sh("docker", "exec", "-e", "DISPLAY=:1", name, "scrot", "-o", "/tmp/console.png")
-        target = shots / f"{tag}.png"
-        sh("docker", "cp", f"{name}:/tmp/console.png", str(target))
-        return str(target)
+        def shot(tag):
+            """Save a screenshot of the original's screen; the console reply is evidence, not a guess."""
+            sh("docker", "exec", "-e", "DISPLAY=:1", name, "scrot", "-o", "/tmp/console.png")
+            target = shots / f"{tag}.png"
+            sh("docker", "cp", f"{name}:/tmp/console.png", str(target))
+            return str(target)
 
-    # Resolve F12 to its physical X keycode in the container. Named xdotool
-    # F12 can synthesize Alt and select the game's nonmodal overlay instead.
-    sh("docker", "cp", str(Path(__file__).with_name("original_console.py")),
-       f"{name}:/tmp/original_console.py", check=True)
+        # Resolve F12 to its physical X keycode in the container. Named xdotool
+        # F12 can synthesize Alt and select the game's nonmodal overlay instead.
+        sh("docker", "cp", str(Path(__file__).with_name("original_console.py")),
+           f"{name}:/tmp/original_console.py", check=True)
 
-    def console_key(action, symbol):
-        if symbol == "F12":
-            sh("docker", "exec", "-e", "DISPLAY=:1", name, "python3",
-               "/tmp/original_console.py", action, symbol, check=True)
-        else:
-            key(action, symbol)
+        def console_key(action, symbol):
+            if symbol == "F12":
+                sh("docker", "exec", "-e", "DISPLAY=:1", name, "python3",
+                   "/tmp/original_console.py", action, symbol, check=True)
+            else:
+                key(action, symbol)
 
-    def press_wall(name_, seconds):
-        """Balanced input while the console owns its independent editor loop."""
-        console_key("keydown", name_)
+        def press_wall(name_, seconds):
+            """Balanced input while the console owns its independent editor loop."""
+            console_key("keydown", name_)
+            try:
+                time.sleep(seconds)
+            finally:
+                console_key("keyup", name_)
+
+        def mode():
+            return (sampler.get()[1] or {}).get("console_mode")
+
+        console = Console(
+            hold=lambda name_: acknowledged_hold(
+                lambda k: console_key("keydown", k), lambda k: console_key("keyup", k),
+                lambda: mode() in ("interactive", "overlay"), name_),
+            press=press_wall, console_mode=mode, pause=time.sleep, shot=shot,
+            editor_text=lambda: ((sampler.get()[1] or {}).get("console_editor") or {}).get("text"))
+        for number, line in enumerate(("item add,79", "getmapmarker 32")):
+            typed, answered = console.run(line, f"console-{number}")
+            emit({"ev": "console", "line": line, "typed": typed, "answered": answered})
+        # `getmapmarker 32` replaces the world with the finale staging scene: the opponent leaves the
+        # actor list and returns only when the scripted approach ends (measured: ~2,100 frames later).
+        # Placing the player before that moves nothing, so wait for the unload and then the return.
+        phase("console done; waiting for the staging scene to unload the opponent")
+        wait_frames(sampler, 1500, 900, until=lambda s: s["rg"] is None)
+        phase("waiting for the scripted approach to bring the opponent back")
+        first = wait_frames(sampler, 0, 1800, until=lambda s: s["rg"] is not None)
+        emit({"ev": "opponent-present", **first})
+        phase("setting the cheat")
+        if args.cheat:
+            key("key", "--delay", "200", "F12")
+            wait_frames(sampler, 4, 120)
+            key("type", "--delay", "100", f"{args.cheat} = 1")
+            key("key", "--delay", "300", "KP_Enter")
+            wait_frames(sampler, 6, 120)
+            key("key", "--delay", "200", "F12")
+            wait_frames(sampler, 4, 120)
+        # A one-frame press is missed at a few frames per second: hold the key for about 1.5 s of wall
+        # time (measured: held `s` reaches the armed idle group, a one-frame press never does).
+        phase("drawing the sword")
+        key("keydown", "s")
+        time.sleep(1.5)
+        key("keyup", "s")
+        drawn = wait_frames(sampler, 0, 1500, until=lambda s: s["pg"] == ARMED_IDLE_GROUP)
+        emit({"ev": "sword-drawn", **drawn})
+        phase("sword drawn; waiting for the opponent to engage by himself")
         try:
-            time.sleep(seconds)
-        finally:
-            console_key("keyup", name_)
-
-    def mode():
-        return (sampler.get()[1] or {}).get("console_mode")
-
-    console = Console(
-        hold=lambda name_: acknowledged_hold(
-            lambda k: console_key("keydown", k), lambda k: console_key("keyup", k),
-            lambda: mode() in ("interactive", "overlay"), name_),
-        press=press_wall, console_mode=mode, pause=time.sleep, shot=shot,
-        editor_text=lambda: ((sampler.get()[1] or {}).get("console_editor") or {}).get("text"))
-    for number, line in enumerate(("item add,79", "getmapmarker 32")):
-        typed, answered = console.run(line, f"console-{number}")
-        emit({"ev": "console", "line": line, "typed": typed, "answered": answered})
-    # `getmapmarker 32` replaces the world with the finale staging scene: the opponent leaves the
-    # actor list and returns only when the scripted approach ends (measured: ~2,100 frames later).
-    # Placing the player before that moves nothing, so wait for the unload and then the return.
-    phase("console done; waiting for the staging scene to unload the opponent")
-    wait_frames(sampler, 1500, 900, until=lambda s: s["rg"] is None)
-    phase("waiting for the scripted approach to bring the opponent back")
-    first = wait_frames(sampler, 0, 1800, until=lambda s: s["rg"] is not None)
-    emit({"ev": "opponent-present", **first})
-    phase("setting the cheat")
-    if args.cheat:
-        key("key", "--delay", "200", "F12")
-        wait_frames(sampler, 4, 120)
-        key("type", "--delay", "100", f"{args.cheat} = 1")
-        key("key", "--delay", "300", "KP_Enter")
-        wait_frames(sampler, 6, 120)
-        key("key", "--delay", "200", "F12")
-        wait_frames(sampler, 4, 120)
-    # A one-frame press is missed at a few frames per second: hold the key for about 1.5 s of wall
-    # time (measured: held `s` reaches the armed idle group, a one-frame press never does).
-    phase("drawing the sword")
-    key("keydown", "s")
-    time.sleep(1.5)
-    key("keyup", "s")
-    drawn = wait_frames(sampler, 0, 1500, until=lambda s: s["pg"] == ARMED_IDLE_GROUP)
-    emit({"ev": "sword-drawn", **drawn})
-    phase("sword drawn; waiting for the opponent to engage by himself")
-    try:
-        engaged = wait_frames(sampler, 900, 900, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
-    except TimeoutError:
-        if args.approach == "walk":
-            phase("not engaged; walking in with held keys")
-            engaged = walk_in(sampler, key, 3000)
-        else:
-            phase("not engaged; placing the player beside him")
-            sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
-            wait_frames(sampler, 8, 120)
-            engaged = wait_frames(sampler, 1500, 1500, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
-    phase("engaged; fighting")
-    fight_start = engaged["frame"]
-    next_state_frame = fight_start
-    while True:
-        sample, raw = sampler.get()
-        if sample is None:
-            time.sleep(0.05)
-            continue
-        frames = sample["frame"] - fight_start
-        if sample["frame"] >= next_state_frame:
-            # A periodic state row so the original's range and step-back can be set beside the
-            # native fight snapshots (same fields: groups, health, distance, positions).
-            emit({"ev": "state", "frames": frames, "dist": horizontal_distance(sample),
-                  "pdist": player_distance_q8(sample), **sample})
-            next_state_frame = sample["frame"] + STATE_EVERY_FRAMES
-        if sample["rh"] == 0 or sample["ph"] == 0 or frames >= args.max_frames:
-            emit({"ev": "end", "rh": sample["rh"], "ph": sample["ph"], "frames": frames, "fps": sample["fps"],
-                  "reason": "kill" if sample["rh"] == 0 else "player-dead" if sample["ph"] == 0 else "frame-budget"})
-            break
-        if not ready_to_tap(sample, args.gate):
-            time.sleep(0.05)
-            continue
-        sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")  # stay in range, facing him
-        key("keydown", "Control_L")
-        time.sleep(0.6)  # held for a few frames: a one-frame press is missed at this frame rate
-        key("keyup", "Control_L")
-        after = []
-        mark = sampler.get()[0]
-        end_frame = (mark or sample)["frame"] + 14
+            engaged = wait_frames(sampler, 900, 900, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
+        except TimeoutError:
+            if args.approach == "walk":
+                phase("not engaged; walking in with held keys")
+                engaged = walk_in(sampler, key, 3000)
+            else:
+                phase("not engaged; placing the player beside him")
+                sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")
+                wait_frames(sampler, 8, 120)
+                engaged = wait_frames(sampler, 1500, 1500, until=lambda s: s["rg"] != NOT_ENGAGED_GROUP)
+        phase("engaged; fighting")
+        fight_start = engaged["frame"]
+        next_state_frame = fight_start
         while True:
-            now = sampler.get()[0]
-            if now:
-                after.append(now)
-                if now["frame"] >= end_frame:
-                    break
-            time.sleep(0.05)
-        emit({"ev": "tap", "before": sample, **classify_tap(sample, after)})
-    sampler.stop()
-    sh("docker", "rm", "-f", name)
-    log.seal("original-fight run complete")
-    rows = [json.loads(line) for line in open(args.out)]
-    print(json.dumps(summarize(rows), indent=1))
-    print(f"sealed {args.out}: {verify(args.out)[1]}", flush=True)
+            sample, raw = sampler.get()
+            if sample is None:
+                time.sleep(0.05)
+                continue
+            frames = sample["frame"] - fight_start
+            if sample["frame"] >= next_state_frame:
+                # A periodic state row so the original's range and step-back can be set beside the
+                # native fight snapshots (same fields: groups, health, distance, positions).
+                emit({"ev": "state", "frames": frames, "dist": horizontal_distance(sample),
+                      "pdist": player_distance_q8(sample), **sample})
+                next_state_frame = sample["frame"] + STATE_EVERY_FRAMES
+            if sample["rh"] == 0 or sample["ph"] == 0 or frames >= args.max_frames:
+                emit({"ev": "end", "rh": sample["rh"], "ph": sample["ph"], "frames": frames, "fps": sample["fps"],
+                      "reason": "kill" if sample["rh"] == 0 else "player-dead" if sample["ph"] == 0 else "frame-budget"})
+                break
+            if not ready_to_tap(sample, args.gate):
+                time.sleep(0.05)
+                continue
+            sh("docker", "exec", name, "python3", "/tmp/orig_write_in.py", str(OPPONENT_ID), "-1")  # stay in range, facing him
+            key("keydown", "Control_L")
+            time.sleep(0.6)  # held for a few frames: a one-frame press is missed at this frame rate
+            key("keyup", "Control_L")
+            after = []
+            mark = sampler.get()[0]
+            end_frame = (mark or sample)["frame"] + 14
+            while True:
+                now = sampler.get()[0]
+                if now:
+                    after.append(now)
+                    if now["frame"] >= end_frame:
+                        break
+                time.sleep(0.05)
+            emit({"ev": "tap", "before": sample, **classify_tap(sample, after)})
+        sampler.stop()
+        sh("docker", "rm", "-f", name)
+        log.seal("original-fight run complete")
+        with open(args.out) as source:
+            rows = [json.loads(line) for line in source]
+        print(json.dumps(summarize(rows), indent=1))
+        print(f"sealed {args.out}: {verify(args.out)[1]}", flush=True)
 
 
 if __name__ == "__main__":

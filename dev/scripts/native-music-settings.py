@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capture real paced mixer output while the music_settings public owner probe advances."""
 import argparse
-import fcntl
+from harness import exclusive_lock
 import hashlib
 import importlib.util
 import json
@@ -23,8 +23,7 @@ def main():
     parser.add_argument('--muted-publication', action='store_true')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'acceptance.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'acceptance.lock'):
         speech.validate_output(args.output)
         expected = hashlib.sha256(args.binary.read_bytes()).hexdigest()
         speech.wait_for_executable(args.container, expected)

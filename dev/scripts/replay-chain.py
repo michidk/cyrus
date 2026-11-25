@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run input-only chapter fixtures in one headless New Game session."""
 import argparse
-import fcntl
+from harness import exchange, exclusive_lock
 import hashlib
 import json
 import math
@@ -809,12 +809,10 @@ class Control:
 
     def response(self, command):
         self.serial += 1
-        self.file.write(json.dumps({"id": self.serial, "cmd": command}) + "\n")
-        self.file.flush()
-        line = self.file.readline()
-        assert line, "game closed control connection"
-        response = json.loads(line)
-        return response
+        try:
+            return exchange(self.file, command, request_id=self.serial)
+        except ConnectionError as error:
+            raise AssertionError("game closed control connection") from error
 
     def request(self, command):
         response = self.response(command)
@@ -861,8 +859,7 @@ def run(args):
     identity = binary_identity(args.binary)
     # Runs share captured sessions through CYRUS_REPLAY_SESSIONS, else the config directory's parent.
     sessions = Path(os.environ.get("CYRUS_REPLAY_SESSIONS") or args.config.parent / "sessions")
-    with (args.config / "replay.lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.config / "replay.lock"):
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]

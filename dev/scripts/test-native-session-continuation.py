@@ -11,7 +11,7 @@ import threading
 import unittest
 
 HELPERS = runpy.run_path(str(Path(__file__).with_name('test-native-session-assertions.py')))
-SCRIPT = Path(__file__).with_name('native-session-capture.py')
+SCRIPT = Path(__file__).with_name('native_session_capture.py')
 
 
 class Continuation(unittest.TestCase):

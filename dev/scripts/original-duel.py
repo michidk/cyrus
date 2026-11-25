@@ -23,7 +23,10 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
+
+from harness import exclusive_lock
 
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))  # holds retro-run and gog
@@ -39,12 +42,22 @@ def main():
     parser.add_argument("--limit", type=int, default=400, help="decision steps before giving up")
     parser.add_argument("--log", help="write every sample as JSON lines")
     args = parser.parse_args()
+    with ExitStack() as resources:
+        if not args.attach:
+            resources.enter_context(exclusive_lock((MAGIC / "retro-run").with_suffix(".lock")))
+            resources.callback(sh, "docker", "rm", "-f", "retro-duel", check=False)
+        with open(args.log, "w") if args.log else nullcontext(None) as log:
+            return drive(args, log)
+
+
+def prepare_original(args):
+    import importlib
+    scenario = importlib.import_module('original-scenario')
     name = args.attach or "retro-duel"
     if not args.attach:
         run = MAGIC / "retro-run"
         ini = run / "Redguard/WORLD.INI"  # an interrupted original-idle.py can leave another start world
         ini.write_text(re.sub(r"(?m)^start_world=\d+", "start_world=0", ini.read_text(errors="surrogateescape")), errors="surrogateescape")
-        sh("docker", "rm", "-f", name, check=False)
         # Leaving a world saves MAPS\\<world>.TSG, and the game hangs if that write fails. The run copy
         # links `maps` into the read-only install, and the emulator cannot create files through that
         # link, so make it a real directory holding a copy, and clear snapshots of earlier runs.
@@ -55,16 +68,14 @@ def main():
             shutil.copytree(source, maps)
             for path in [maps, *maps.rglob("*")]:
                 path.chmod(0o777 if path.is_dir() else 0o666)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", "cyrus-retro:dev",
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete")
-        sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
-           "-v", f"{run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-           "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", "cyrus-retro:dev")
-    reader = MAGIC / "tools/original-state.py"
-    if not reader.exists():
-        sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
-    sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py")
-    log = open(args.log, "w") if args.log else None
+        scenario.start_original_runtime(name, run, 'cyrus-retro:dev', command=sh, magic=MAGIC)
+    else:
+        scenario.install_original_reader(name, command=sh, magic=MAGIC)
+    return name
+
+
+def drive(args, log):
+    name = prepare_original(args)
     started = time.time()
 
     def state():
@@ -79,15 +90,7 @@ def main():
         time.sleep(hold)
         key("keyup", name_)
 
-    # Wait for START to be live with a selected, living player.
-    while True:
-        if time.time() - started > 300:
-            sys.exit("the original did not reach a live START")
-        s = state()
-        me = next((a for a in s["actors"] if a["selected"]), None) if s else None
-        if me and me["health"] and s["counters"]["mainloop_frame"] > 0:
-            break
-        time.sleep(2)
+    s, me = wait_for_start(state, started)
     t0 = time.time()
     # Game time: the engine scales every frame by its measured frames per BIOS second, so frames
     # advanced divided by that rate is its own clock (wall time differs while the emulator lags).
@@ -103,12 +106,30 @@ def main():
     if not me["drawn"]:
         tap("s", 0.4)  # quick sword
 
+    defeated_at = fight_pirates(args, state, tap, game_seconds, t0, log)
+    if defeated_at is None:
+        return 1
+    return follow_story(name, state, game_seconds, t0, defeated_at)
+
+
+def wait_for_start(state, started):
+    # Wait for START to be live with a selected, living player.
+    while True:
+        if time.time() - started > 300:
+            sys.exit("the original did not reach a live START")
+        s = state()
+        me = next((a for a in s["actors"] if a["selected"]), None) if s else None
+        if me and me["health"] and s["counters"]["mainloop_frame"] > 0:
+            return s, me
+        time.sleep(2)
+
+
+def fight_pirates(args, state, tap, game_seconds, t0, log):
     def bearing(a, b):
         dx, dz = b["position"][0] - a["position"][0], b["position"][2] - a["position"][2]
         return (-math.atan2(dx, dz) * 2048 / math.tau) % 2048, math.hypot(dx, dz)
 
     pirates = None
-    defeated_at = None
     for step in range(args.limit):
         s = state()
         if not s:
@@ -125,10 +146,10 @@ def main():
         if log:
             log.write(json.dumps({**sample, "me": me, "found": found}) + "\n")
         if me["health"] == 0:
-            print("player defeated"); return 1
+            print("player defeated"); return None
         if not alive:
-            defeated_at = sample
-            break
+            print("both pirates defeated", json.dumps(sample))
+            return sample
         target = min(alive, key=lambda a: bearing(me, a)[1])
         want, distance = bearing(me, target)
         diff = (want - me["yaw"] + 1024) % 2048 - 1024
@@ -138,9 +159,11 @@ def main():
             tap("Up", 0.6)
         else:
             tap("Control_L", 0.3)
-    if not defeated_at:
-        print("pirates not defeated within the step limit"); return 1
-    print("both pirates defeated", json.dumps(defeated_at))
+    print("pirates not defeated within the step limit")
+    return None
+
+
+def follow_story(name, state, game_seconds, t0, defeated_at):
     # Follow the story: the world changes when the engine stops advancing frames to load it.
     last, stalled_since, seen_actors = None, None, defeated_at["actors"]
     for _ in range(300):

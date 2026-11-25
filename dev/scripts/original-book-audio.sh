@@ -82,6 +82,6 @@ if (( $# > 6 )); then
     for reference in "${references[@]}"; do
         arguments+=(--reference "$(realpath "$reference")")
     done
-    "${CYRUS_AUDIO_ANALYSIS_PYTHON:-python3}" "$repo/dev/scripts/book-audio-continuity.py" \
+    "${CYRUS_AUDIO_ANALYSIS_PYTHON:-python3}" "$repo/dev/scripts/book_audio_continuity.py" \
         "$out/capture/audio.wav" "$out/continuity.json" "${arguments[@]}"
 fi

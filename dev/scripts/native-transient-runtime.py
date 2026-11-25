@@ -2,7 +2,7 @@
 """Recover the minimal installed transient acceptance runtime without Cargo."""
 import argparse
 from datetime import datetime, timezone
-import fcntl
+from harness import exclusive_lock
 import hashlib
 import json
 import os
@@ -91,8 +91,7 @@ def main():
         actual = hashlib.file_digest(binary, 'sha256').hexdigest()
     if actual != args.sha256:
         parser.error(f'executable digest mismatch: {actual}')
-    with (args.runtime / 'transient-runtime.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.runtime / 'transient-runtime.lock'):
         attempt = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
         output_name = 'transients-pixels' if args.gpu_pixels else 'transients-current'
         logs = args.runtime / 'evidence' / output_name / 'attempts' / attempt

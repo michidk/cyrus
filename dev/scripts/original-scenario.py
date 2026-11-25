@@ -11,7 +11,8 @@ addresses and stay in the gitignored `$CYRUS_MAGIC/tools` and `$CYRUS_MAGIC/help
         --name soup3 --world 1 --marker 22 --quicksave --out boot.json
 """
 import argparse
-import fcntl
+from contextlib import ExitStack
+from harness import exclusive_lock
 import hashlib
 import importlib.util
 import json
@@ -37,6 +38,40 @@ def load_fight():
 
 def sh(*command, **kwargs):
     return subprocess.run(command, capture_output=True, text=True, **kwargs)
+
+
+def install_original_reader(name, *, command=sh, magic=None):
+    """Install the reader and its shared memory helper into an existing runtime."""
+    magic = MAGIC if magic is None else Path(magic)
+    sources = (magic / "tools/original-state.py",
+               ROOT / "dev/scripts/original-memory-region.py")
+    for source in sources:
+        if not source.is_file():
+            raise FileNotFoundError(f"{source}: restore the local original-game tooling bundle")
+    for source in sources:
+        command("docker", "cp", str(source), f"{name}:/tmp/{source.name}", check=True)
+
+
+def start_original_runtime(name, run, image, *, command=sh, magic=None):
+    """Prepare one owned runtime; retain host evidence and clean up failed startup."""
+    magic = MAGIC if magic is None else Path(magic)
+    reader = magic / "tools/original-state.py"
+    if not reader.is_file():
+        raise FileNotFoundError(f"{reader}: restore the local original-game tooling bundle")
+    maps = Path(run) / "Redguard/maps"
+    if maps.is_symlink() or not maps.resolve().is_relative_to(Path(run).resolve()):
+        raise ValueError(f"{maps}: original needs run-local writable maps")
+    command("docker", "rm", "-f", name, check=False)
+    try:
+        command("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", image,
+                "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
+        command("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
+                "-v", f"{run}:/game", "-v", f"{magic}/gog:/gog:ro",
+                "-v", f"{magic}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
+        install_original_reader(name, command=command, magic=magic)
+    except Exception:
+        command("docker", "rm", "-f", name, check=False)
+        raise
 
 
 def reload_boundary_ready(raw):
@@ -66,8 +101,8 @@ class Original:
             [str(ROOT / "dev/scripts/ensure-retro-runtime.sh")], text=True).strip()
         self.name = f"retro-{name}"
         self.run = MAGIC / f"retro-run-{name}"
-        self.run_lock = self.run.with_suffix(".lock").open("w")
-        fcntl.flock(self.run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.run_lock = ExitStack()
+        self.run_lock.enter_context(exclusive_lock(self.run.with_suffix(".lock")))
         reader = MAGIC / "tools/original-state.py"
         if not reader.exists():
             sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
@@ -86,15 +121,7 @@ class Original:
             enable_quicksave(self.run)
         if stage is not None:
             stage(self.run)
-        sh("docker", "rm", "-f", self.name)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{self.run}:/game", image,
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
-        sh("docker", "run", "-d", "--rm", "--name", self.name, "--cap-add", "SYS_PTRACE",
-           "-v", f"{self.run}:/game", "-v", f"{MAGIC}/gog:/gog:ro",
-           "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
-        sh("docker", "cp", str(reader), f"{self.name}:/tmp/original-state.py", check=True)
-        sh("docker", "cp", str(ROOT / "dev/scripts/original-memory-region.py"),
-           f"{self.name}:/tmp/original-memory-region.py", check=True)
+        start_original_runtime(self.name, self.run, image, command=sh)
         self.sampler = self.fight.Sampler(self.name, interval)
 
     def key(self, *args):

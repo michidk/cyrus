@@ -5,13 +5,10 @@ Use the ordinary console and installed map marker; never set won_game or actor h
 Run with CYRUS_CONTROL_ADDR and an existing host-mounted CYRUS_CONFIG_DIR session.
 """
 import argparse
-import importlib.util
 import os
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('native_trace', Path(__file__).with_name('native-trace.py'))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 def await_approach(call, limit=100):

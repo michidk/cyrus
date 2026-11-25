@@ -101,7 +101,7 @@ jobs:
           cache-workspace-crates: true
 
       - name: Install script test dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil python3-numpy python3-scipy
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil python3-numpy python3-scipy python3-blake3
 
       - name: Run script checks, formatting, boundaries and Clippy
         run: dev/scripts/gates.sh lints

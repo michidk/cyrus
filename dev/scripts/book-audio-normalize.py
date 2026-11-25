@@ -13,9 +13,7 @@ import json
 import math
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('continuity', Path(__file__).with_name('book-audio-continuity.py'))
-continuity = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(continuity)
+import book_audio_continuity as continuity
 
 
 def report(monitor, references, input_seconds):

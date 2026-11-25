@@ -6,7 +6,7 @@ runtime must bind-mount the selected output directory at the path passed to the 
 No preview or physical audio device is used.
 """
 import argparse
-import fcntl
+from harness import exclusive_lock
 import hashlib
 import importlib.util
 import json
@@ -44,8 +44,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'acceptance.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'acceptance.lock'):
         validate_output(args.output)
         expected = hashlib.sha256(args.binary.read_bytes()).hexdigest()
         wait_for_executable(args.container, expected)

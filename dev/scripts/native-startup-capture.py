@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Observe production native startup through its control port, preserving failures."""
+from harness import control_response
 import argparse
 import json
 import os
 import uuid
 from pathlib import Path
-import socket
 import time
 
 
@@ -29,13 +29,10 @@ def capture(port, output, expected, prepare_seconds, seconds, interval, screensh
 
     def request(command):
         check_process()
-        with socket.create_connection(("127.0.0.1", port), timeout=1) as connection:
-            connection.settimeout(10 if command["type"] == "screenshot" else 1)
-            connection.sendall((json.dumps({"id": 1, "cmd": command}) + "\n").encode())
-            response = json.loads(connection.makefile("rb").readline())
-            if response.get("ok") is not True:
-                raise ValueError(f"control rejected {command['type']}: {response}")
-            return response["result"]
+        response = control_response(port, command, timeout=10 if command["type"] == "screenshot" else 1, connect_timeout=1)
+        if response.get("ok") is not True:
+            raise ValueError(f"control rejected {command['type']}: {response}")
+        return response["result"]
 
     while time.monotonic() < deadline:
         try:

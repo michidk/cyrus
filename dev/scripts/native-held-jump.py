@@ -2,13 +2,10 @@
 """Capture bounded held input and compare exact ordinary boundaries to original receipts."""
 import argparse
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("native_trace", Path(__file__).with_name("native-trace.py"))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 def original_window(original, updates, original_key="space"):

@@ -10,7 +10,7 @@ import tempfile
 import threading
 import unittest
 
-SCRIPT = Path(__file__).with_name('native-session-capture.py')
+SCRIPT = Path(__file__).with_name('native_session_capture.py')
 DOCUMENT = 'CYRUS-SESSION 1\n' + '0' * 64 + '\n' + json.dumps({'version': 1, 'logical': {'registry': {'version': 1, 'worlds': [
     {'world': index, 'content_id': str(index), 'source_identity': str(index),
      'generation': index, 'actors': []} for index in range(2)]}},

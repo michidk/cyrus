@@ -19,7 +19,7 @@ def helper(name, filename):
 
 
 replay = helper('source_clock_replay', 'replay-chain.py')
-capture = helper('source_clock_capture', 'native-session-capture.py')
+import native_session_capture as capture
 
 
 def source(snapshot, slot):

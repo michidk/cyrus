@@ -6,7 +6,7 @@ monotonic before/after bounds and game_seconds. The transition command emits
 ordinary paced-mixer-capture acknowledgements and owns its bounded audio tail.
 """
 import argparse
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 import os
@@ -102,8 +102,7 @@ def main():
         driver = [sys.executable, str(Path(__file__).resolve()), '--producer', args.producer,
                   '--clock-command', args.clock_command, 'drive', str(args.output), '--', *command]
         args.output.mkdir(parents=True, exist_ok=True)
-        with (args.output / 'pair.lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with exclusive_lock(args.output / 'pair.lock'):
             module('capture', 'paced-mixer-capture.py').capture(
                 args.output / 'capture', driver, 90, .25, shlex.split(args.ready_command))
 

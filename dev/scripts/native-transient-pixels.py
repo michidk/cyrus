@@ -6,7 +6,7 @@ controlled central crop, not original pixels or the exact admission frame.
 """
 import argparse
 from copy import deepcopy
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 from pathlib import Path
@@ -163,8 +163,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'capture.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'capture.lock'):
         for name in ('result.json', 'failure.json'):
             (args.output / name).unlink(missing_ok=True)
         try:

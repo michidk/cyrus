@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic sample-timeline controls; no installed data is included."""
 import importlib.util
-from pathlib import Path
-import unittest
 import tempfile
+import unittest
+from pathlib import Path
+
+import book_audio_continuity as module
 import numpy as np
 
-spec = importlib.util.spec_from_file_location('continuity', Path(__file__).with_name('book-audio-continuity.py'))
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
 
 class Continuity(unittest.TestCase):
     def setUp(self):

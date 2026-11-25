@@ -17,9 +17,9 @@ cyrus with CYRUS_CONTROL_ADDR set (a real-time audio sink, see docs/SETUP.md, le
     dev/scripts/world-sweep.py --port 7117 --seconds 60 START ISLAND DRINT
     dev/scripts/world-sweep.py --port 7117 --seconds 240 --flag CATACOMB:scene2=1 CATACOMB
 """
+from harness import control_response
 import argparse
 import json
-import socket
 import sys
 import time
 
@@ -56,15 +56,7 @@ def main():
         flags.setdefault(world, []).append(assignment.replace("=", ","))
 
     def call(cmd):
-        with socket.create_connection(("127.0.0.1", args.port), timeout=args.request_timeout) as conn:
-            conn.sendall((json.dumps({"id": 1, "cmd": cmd}) + "\n").encode())
-            buf = b""
-            while not buf.endswith(b"\n"):
-                chunk = conn.recv(1 << 24)
-                if not chunk:
-                    raise ConnectionError("control port closed")
-                buf += chunk
-        reply = json.loads(buf)
+        reply = control_response(args.port, cmd, timeout=args.request_timeout)
         if not reply.get("ok", True):
             raise RuntimeError(reply.get("error", "control request failed"))
         return reply.get("result", reply)

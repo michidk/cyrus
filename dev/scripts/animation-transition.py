@@ -14,7 +14,7 @@ never establishes sound emission. Each request must finish within five seconds.
 """
 import argparse
 import configparser
-import fcntl
+from harness import exclusive_lock
 import hashlib
 import importlib.util
 import json
@@ -175,8 +175,7 @@ def main():
             source=str(args.keys_ini.resolve()), sha256=hashlib.sha256(args.keys_ini.read_bytes()).hexdigest())), indent=2)+'\n')
         temporary.replace(args.output)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.with_suffix('.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output.with_suffix('.lock')):
         try:
             capture(lambda: request('observe'), lambda: request('arm'),
                     lambda held: request('key', scan_code=scan_code, held=held), lambda: request('finish'),

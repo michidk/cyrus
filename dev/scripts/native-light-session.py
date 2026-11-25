@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """Verify public native light restoration, rejection continuity and world retirement."""
 import argparse
-import fcntl
-import importlib.util
 import json
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('session_capture', Path(__file__).with_name('native-session-capture.py'))
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+import native_session_capture as capture
+from harness import exclusive_lock
 
 
 def changed_eligibility(data, actor_index):
@@ -186,8 +183,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'capture.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'capture.lock'):
         (args.output / 'result.json').unlink(missing_ok=True)
         (args.output / 'failure.json').unlink(missing_ok=True)
         try:

@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import harness
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -61,8 +62,20 @@ class WorldSweepTests(unittest.TestCase):
                     result = {}
                 self.reply = (json.dumps({"ok": True, "result": result}) + "\n").encode()
 
-            def recv(self, size):
-                return self.reply
+            def settimeout(self, timeout):
+                pass
+
+            def makefile(self, mode):
+                return self
+
+            def write(self, request):
+                self.sendall(request)
+
+            def flush(self):
+                pass
+
+            def readline(self):
+                return self.reply.decode()
 
         output = io.StringIO()
         argv = ["world-sweep.py", "--seconds", "1"]
@@ -71,7 +84,7 @@ class WorldSweepTests(unittest.TestCase):
         if expect_transition:
             argv += ["--expect-transition"]
         argv += ["START"]
-        with patch.object(sweep.socket, "create_connection", side_effect=lambda *a, **k: Connection()), \
+        with patch.object(harness.socket, "create_connection", side_effect=lambda *a, **k: Connection()), \
              patch.object(sweep.time, "time", side_effect=lambda: now[0]), \
              patch.object(sweep.time, "sleep", side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds)), \
              patch.object(sweep.sys, "argv", argv), \

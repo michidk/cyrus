@@ -2,7 +2,7 @@
 """Observe an isolated animation_binding example through a paced Pulse monitor."""
 import argparse
 import array
-import fcntl
+from harness import exclusive_lock
 import json
 from pathlib import Path
 import subprocess
@@ -15,8 +15,7 @@ def main():
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'acceptance.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'acceptance.lock'):
         results = []
         deadline = time.monotonic() + 85
         while len(results) < 7:

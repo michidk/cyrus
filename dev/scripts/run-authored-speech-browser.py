@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run one installed authored speech acceptance using retained browser code, without Cargo."""
 import argparse
-import fcntl
+from harness import exclusive_lock
 import json
 from pathlib import Path
 import subprocess
@@ -43,8 +43,7 @@ def main():
     runtime.mkdir(parents=True, exist_ok=True)
     if not (ROOT / 'target/web/build-provenance.json').is_file():
         parser.error('sealed installed browser package is required; this launcher never compiles')
-    with (runtime / 'browser.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(runtime / 'browser.lock'):
         name = f'cyrus-authored-speech-{args.cdp_port}'
         prior = subprocess.run(['docker', 'inspect', name], capture_output=True, text=True)
         if prior.returncode == 0:

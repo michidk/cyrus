@@ -20,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 
+from harness import exclusive_lock
+
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
 
@@ -38,6 +40,11 @@ def main():
     parser.add_argument("--interval", type=float, default=2.0, help="seconds between samples (each read takes about 0.3)")
     args = parser.parse_args()
     run = MAGIC / "retro-run"
+    with exclusive_lock(run.with_suffix(".lock")):
+        return observe(args, run)
+
+
+def observe(args, run):
     ini = run / "Redguard/WORLD.INI"
     original = re.sub(r"(?m)^start_world=\d+", "start_world=0", ini.read_text(errors="surrogateescape"))  # the install's START
     name = "retro-idle"
@@ -46,12 +53,9 @@ def main():
         sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
     try:
         ini.write_text(re.sub(r"(?m)^start_world=\d+", f"start_world={args.world}", original), errors="surrogateescape")
-        sh("docker", "rm", "-f", name, check=False)
-        sh("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", "cyrus-retro:dev",
-           "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=False)
-        sh("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE", "-v", f"{run}:/game",
-           "-v", f"{MAGIC}/gog:/gog:ro", "-v", f"{MAGIC}/gog/extracted/app/game.gog:/game/game.gog:ro", "cyrus-retro:dev")
-        sh("docker", "cp", str(reader), f"{name}:/tmp/original-state.py")
+        import importlib
+        scenario = importlib.import_module('original-scenario')
+        scenario.start_original_runtime(name, run, 'cyrus-retro:dev', command=sh, magic=MAGIC)
 
         def state():
             out = sh("docker", "exec", name, "python3", "/tmp/original-state.py", check=False)

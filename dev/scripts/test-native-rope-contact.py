@@ -115,10 +115,12 @@ class Comparison(unittest.TestCase):
             root = Path(directory)
             recorder = root / 'parec'
             recorder.write_text("#!/usr/bin/env python3\nimport signal,sys,time,wave\n"
-                "w=wave.open(sys.argv[-1], 'wb');w.setparams((2,2,48000,0,'NONE',''))\n"
-                "w.writeframes(bytes([1,0]) * 4800)\n"
-                "def stop(*args):\n w.close();sys.exit(0)\n"
-                "signal.signal(signal.SIGINT,stop)\nwhile True: time.sleep(.01)\n")
+                "stream=open(sys.argv[-1], 'wb', buffering=64*1024)\n"
+                "w=wave.open(stream, 'wb');w.setparams((2,2,48000,0,'NONE',''))\n"
+                "def stop(*args):\n w.close();stream.close();sys.exit(0)\n"
+                "signal.signal(signal.SIGINT,stop)\n"
+                "w.writeframes(bytes([1,0]) * 4800);stream.flush()\n"
+                "while True: time.sleep(.01)\n")
             recorder.chmod(0o755)
             from unittest.mock import patch
             output = root / 'mixer.wav'

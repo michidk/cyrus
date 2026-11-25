@@ -2,7 +2,7 @@
 """Bounded PulseAudio control independent of an emulator or book input.
 
 Run inside the paced runtime. Retain the generated reference, monitor WAV and
-clock report, then use book-audio-continuity.py on the host to verify sample time.
+clock report, then use book_audio_continuity.py on the host to verify sample time.
 An explicit installed reference can replace the generated deterministic noise.
 """
 import argparse

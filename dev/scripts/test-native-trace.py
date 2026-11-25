@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """Public trace samples bind selected-player health and pose to one update."""
-import importlib.util
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('trace', Path(__file__).with_name('native-trace.py'))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 class AtomicTrace(unittest.TestCase):
@@ -36,6 +33,14 @@ class AtomicTrace(unittest.TestCase):
         self.assertEqual((row['frame'],row['generation'],row['g'],row['health'],row['pos']),
                          (17,3,2.5,90,[1,2,3]))
 
+    def test_boolean_update_or_generation_is_not_an_integer_boundary(self):
+        for field in ('update', 'generation'):
+            with self.subTest(field=field):
+                boundary = self.boundary()
+                boundary[field] = True
+                with self.assertRaisesRegex(ValueError, 'inconsistent'):
+                    trace.boundary_sample(boundary, 'fixture')
+
     def test_continuation_requests_the_next_update_instead_of_resampling_current(self):
         boundary = self.boundary()
         boundary.update(after_updates=1, update=18, game_seconds=3.5)
@@ -51,8 +56,8 @@ class AtomicTrace(unittest.TestCase):
 
     def test_fast_control_replies_do_not_resample_the_placement_update(self):
         import copy
-        import tempfile
         import sys
+        import tempfile
         boundary = self.boundary()
         def call(addr, command):
             if command['type'] != 'schedule_input':
@@ -117,8 +122,8 @@ class AtomicTrace(unittest.TestCase):
 
 
     def test_public_trace_releases_held_input_after_boundary_failure(self):
-        import tempfile
         import sys
+        import tempfile
         with tempfile.TemporaryDirectory() as directory:
             rows=[dict(g=0,frame=1,generation=1),dict(g=1,frame=2,generation=1)]
             with patch.object(sys,'argv',['native-trace','--out',str(Path(directory)/'trace.jsonl'),
