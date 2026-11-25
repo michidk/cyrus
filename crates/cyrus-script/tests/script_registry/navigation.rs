@@ -547,7 +547,7 @@ fn resurrect_runs_the_end_of_combat_reset_for_a_killed_selector_six_receiver() {
         .unwrap();
     let control = world.actors()[0].control_state().unwrap();
     assert!(!control.killed);
-    assert_eq!((control.ai_type.byte(), control.ai_mode), (1, 0));
+    assert_eq!((control.ai_type.byte(), control.ai_mode.byte()), (1, 0));
 }
 
 #[test]

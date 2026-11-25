@@ -1044,7 +1044,7 @@ fn a_falling_actor_hitting_a_wall_keeps_falling_without_turning() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (
-                control.sliding_state,
+                control.slide_flag,
                 control.falling_state,
                 control.queued_motion,
                 control.last_collide.bits()
@@ -1240,7 +1240,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (
-                control.sliding_state,
+                control.slide_flag,
                 control.falling_state,
                 control.queued_motion,
                 control.last_collide.bits()

@@ -9,7 +9,7 @@ use cyrus_world::heading::wrap;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BackwardState {
     pub rope_attached: bool,
-    pub sliding_state: u8,
+    pub slide_flag: u8,
     pub falling_state: JumpMotion,
     pub queued_motion: JumpMotion,
     pub living_state: LivingState,
@@ -135,7 +135,7 @@ pub fn walk_backward_admitted(state: &BackwardState) -> bool {
 /// and a lifecycle byte of 0 or 15.
 fn idle_admitted(state: &BackwardState) -> bool {
     !(state.rope_attached
-        || state.sliding_state != 0
+        || state.slide_flag != 0
         || state.falling_state != JumpMotion::NONE
         || state.queued_motion != JumpMotion::NONE
         || !matches!(
@@ -346,7 +346,7 @@ pub fn strafe_translation(
 /// no rope, sliding, falling or queued motion, and no lifecycle test.
 pub fn forward_admitted(state: &BackwardState) -> bool {
     !(state.rope_attached
-        || state.sliding_state != 0
+        || state.slide_flag != 0
         || state.falling_state != JumpMotion::NONE
         || state.queued_motion != JumpMotion::NONE)
 }
@@ -506,7 +506,7 @@ mod tests {
                 ..ready()
             },
             BackwardState {
-                sliding_state: 1,
+                slide_flag: 1,
                 ..ready()
             },
             BackwardState {
@@ -1867,7 +1867,7 @@ mod tests {
                 ..base
             },
             BackwardState {
-                sliding_state: 1,
+                slide_flag: 1,
                 ..base
             },
             BackwardState {

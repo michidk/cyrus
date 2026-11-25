@@ -47,7 +47,7 @@ impl ScriptWorld {
             || control.rope_attached
             || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
             || !matches!(
                 control.living_state,
                 LivingState::ORDINARY | LivingState::HANGING

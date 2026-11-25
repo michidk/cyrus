@@ -452,7 +452,7 @@ impl ScriptWorld {
         let control = actor.control.as_mut().expect("checked above");
         control.last_collide |= crate::script::CollisionFlags::LANDED_ON_ACTOR;
         if admitted {
-            control.sliding_state = 0;
+            control.slide_flag = 0;
             control.falling_state = JumpMotion::NONE;
             control.queued_motion = JumpMotion::NONE;
             // Both directional action words are cleared before the landed state is entered.

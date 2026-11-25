@@ -498,7 +498,7 @@ impl ScriptWorld {
             .settings
             .slide_speed
             .context("ordinary slope slide_speed absent; re-export world")?;
-        let first = control.sliding_state == 0;
+        let first = control.slide_flag == 0;
         let spatial = self.spatial(id)?;
         let slide = ordinary_slide(
             support.normal,
@@ -547,7 +547,7 @@ impl ScriptWorld {
             control.sliding_distance = 0;
         }
         control.sliding_distance = control.sliding_distance.wrapping_add(slide.distance);
-        control.sliding_state = 1;
+        control.slide_flag = 1;
         Ok(())
     }
 }

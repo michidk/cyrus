@@ -201,8 +201,8 @@ fn apply_controller(
 ) {
     control.script_control = ScriptControl::from_bits(state.script_control);
     control.yangle_change = state.heading_change;
-    control.jump_selector = state.rope_wait;
-    control.sliding_state = state.sliding_state;
+    control.rope_wait = state.rope_wait;
+    control.slide_flag = state.sliding_state;
     control.falling_state = JumpMotion::from_byte(state.falling_state);
     control.queued_motion = JumpMotion::from_byte(state.queued_motion);
     control.living_state = LivingState::from_byte(state.living_state);
@@ -222,7 +222,7 @@ fn apply_controller(
     control.overlap_contact_identifier = state.overlap_identifier;
     control.surface_time = state.surface_time;
     control.ai_type = AiType::from_byte(state.ai_type);
-    control.ai_mode = state.ai_mode;
+    control.ai_mode = crate::script::AiMode::from_byte(state.ai_mode);
     control.ai_delay = state.ai_delay;
     control.ai = AiRecord {
         var1: state.ai_variables[0],

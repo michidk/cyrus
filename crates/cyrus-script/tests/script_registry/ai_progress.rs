@@ -360,7 +360,7 @@ fn ai_progress_preserves_or_resets_mode_after_retained_clearance() {
         if let Some((mode, delay)) = expected {
             assert_eq!(result.unwrap(), 1);
             let control = world.actors()[0].control_state().unwrap();
-            assert_eq!((control.ai_mode, control.ai_delay), (mode, delay));
+            assert_eq!((control.ai_mode.byte(), control.ai_delay), (mode, delay));
             assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 15);
             assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
         } else {
@@ -424,7 +424,7 @@ fn ai_progress_uses_full_response_word_from_real_overlap() {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (
-            control.ai_mode,
+            control.ai_mode.byte(),
             control.ai_delay,
             control.last_collide.bits()
         ),
@@ -547,7 +547,7 @@ fn ai_progress_matches_original_public_caller_heading_and_refusal() {
         assert_eq!(world.spatial(ids[0]).unwrap().local.angles[1], 1224);
         assert_eq!(world.spatial(ids[0]).unwrap().local.position, from);
         let control = world.actors()[0].control_state().unwrap();
-        assert_eq!((control.ai_mode, control.ai_delay), (0, 255));
+        assert_eq!((control.ai_mode.byte(), control.ai_delay), (0, 255));
     }
 }
 
@@ -590,7 +590,7 @@ fn ai_progress_retains_slide_and_collision_writes_before_service_failure() {
     );
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
-        (control.ai_mode, control.ai_delay, control.sliding_state),
+        (control.ai_mode.byte(), control.ai_delay, control.slide_flag),
         (0, 255, 1)
     );
     assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 15);
@@ -647,7 +647,7 @@ fn ai_admission_obeys_mode_delay_clearance_and_releases_owned_nodes() {
         );
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
-            (control.ai_mode, control.ai_delay),
+            (control.ai_mode.byte(), control.ai_delay),
             (if admitted { 11 } else { mode as u8 }, delay as u8)
         );
         assert_eq!(

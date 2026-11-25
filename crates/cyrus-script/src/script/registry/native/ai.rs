@@ -21,7 +21,7 @@ impl GameHost<'_, '_, '_, '_> {
                 self.registry
                     .set_actor_ai_type(self.index, AiType::from_byte(value));
             } else {
-                control.ai_mode = value;
+                control.ai_mode = crate::script::AiMode::from_byte(value);
             }
             return Ok(Some(CallResult::Complete(0)));
         }

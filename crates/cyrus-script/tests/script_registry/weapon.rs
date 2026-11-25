@@ -968,7 +968,7 @@ fn sheath_sword_and_end_combat_dispatch_to_the_combat_services() {
         );
         if function == Native::EndCombat {
             assert_eq!(control.ai_type, AiType::FIND_PLAYER);
-            assert_eq!(control.ai_mode, 0);
+            assert_eq!(control.ai_mode.byte(), 0);
             assert_eq!(control.combat.as_ref().unwrap().flags.bits() & 4, 0);
         } else {
             assert_eq!(

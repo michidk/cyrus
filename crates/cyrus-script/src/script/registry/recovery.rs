@@ -166,7 +166,7 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated stable recovery control");
         control.falling_state = JumpMotion::NONE;
-        control.sliding_state = 0;
+        control.slide_flag = 0;
         control.last_collide |= crate::script::CollisionFlags::ROLLBACK;
         let heading_delta = input.random.rnd(turn * 4)? - turn * 2;
         let spatial = self
@@ -232,7 +232,7 @@ impl ScriptWorld {
             .as_mut()
             .expect("validated stable recovery control");
         control.falling_state = JumpMotion::NONE;
-        control.sliding_state = 0;
+        control.slide_flag = 0;
         control.last_collide |= crate::script::CollisionFlags::ROLLBACK;
         self.spatial
             .as_mut()

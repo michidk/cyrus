@@ -188,7 +188,7 @@ impl ScriptWorld {
             .context("ordinary stable control unavailable")?;
         if control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
         {
             return Ok(false);
         }
@@ -407,7 +407,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("validated landing control")
-            .jump_selector = 0;
+            .rope_wait = 0;
         let effect = match decision {
             OrdinaryLandingDecision::Fatal if environment.selected_player == Some(id) => {
                 let landing = selected
@@ -829,7 +829,7 @@ impl ScriptWorld {
             return Ok(false);
         }
         anyhow::ensure!(
-            control.queued_motion == JumpMotion::NONE && control.sliding_state == 0,
+            control.queued_motion == JumpMotion::NONE && control.slide_flag == 0,
             "world {} instance {index}: static fall entry motion admission unavailable",
             self.world
         );

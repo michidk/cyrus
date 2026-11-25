@@ -213,7 +213,7 @@ fn self_nonarrival_refreshes_on_initial_call_and_poll_without_running_continuati
             (control.ai_type.byte(), control.ai.var1, control.ai_delay),
             (4, 1, after_call)
         );
-        assert_eq!(control.ai_mode, 11);
+        assert_eq!(control.ai_mode.byte(), 11);
         assert_eq!(world.actors()[0].attributes()[Attribute::Collide], 4);
         assert_eq!(
             world.spatial(world.id(0).unwrap()).unwrap().local.position,
@@ -261,7 +261,7 @@ fn pending_goto_location_suppresses_ordinary_hook_without_admitting_mode_eleven_
         advance(&mut world, ScriptStage::OrdinaryMain, Some(1)).unwrap();
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.ai_type, AiType::FIND_LOCATION);
-        assert_eq!(control.ai_mode, 11);
+        assert_eq!(control.ai_mode.byte(), 11);
         assert_eq!(control.ai_delay, 0);
         assert_eq!(world.flags(), [12]);
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
@@ -283,7 +283,7 @@ fn arrival_completes_before_refresh_while_equal_speed_threshold_stays_pending() 
         assert_eq!(control.ai_delay, if arrives { 8 } else { 5 });
         // Arrival leaves the location word at its allocation default, minus one.
         assert_eq!(control.ai.var1, if arrives { -1 } else { 1 });
-        assert_eq!(control.ai_mode, 11);
+        assert_eq!(control.ai_mode.byte(), 11);
         assert_eq!(
             world.actors()[0].attributes()[Attribute::Collide],
             if arrives { 129 } else { 4 }

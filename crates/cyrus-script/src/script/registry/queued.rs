@@ -16,8 +16,8 @@ pub struct OrdinaryQueuedInputs {
     pub torch_burning: u8,
     pub current_group: Option<AnimationGroup>,
     pub pending_group: Option<AnimationGroup>,
-    pub has_group_49: bool,
-    pub has_group_50: bool,
+    pub has_jump_backward: bool,
+    pub has_jump_backward_torch: bool,
     pub holding_weapon: bool,
     pub edge_handled: bool,
 }
@@ -44,9 +44,9 @@ pub fn ordinary_queued_action(input: OrdinaryQueuedInputs) -> OrdinaryQueuedActi
     let torch = input.torch_burning != 0;
     if low == JumpMotion::BACKWARD {
         let available = if torch {
-            input.has_group_50
+            input.has_jump_backward_torch
         } else {
-            input.has_group_49
+            input.has_jump_backward
         };
         if !available {
             action.clear_queued = true;
@@ -151,7 +151,7 @@ impl super::ScriptWorld {
         if native_task_active
             || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
             || !matches!(
                 control.living_state,
                 LivingState::ORDINARY | LivingState::HANGING
@@ -217,7 +217,7 @@ impl super::ScriptWorld {
             || control.rope_attached
             || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
             || !matches!(
                 control.living_state,
                 LivingState::ORDINARY | LivingState::HANGING
@@ -260,7 +260,7 @@ impl super::ScriptWorld {
             || actor.tasks.is_active()
             || control.queued_motion != JumpMotion::NONE
             || control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
             || !matches!(
                 control.living_state,
                 LivingState::ORDINARY | LivingState::HANGING
@@ -647,7 +647,7 @@ impl super::ScriptWorld {
             .playback
             .current_group()
             .context("ordinary jump current group unavailable")?;
-        let force = control.jump_selector != 0;
+        let force = control.rope_wait != 0;
         let selected = environment.selected_player == Some(id);
         let (queued, request) = if force {
             (JumpMotion::ROPE, AnimationGroup::ROPE_JUMP)
@@ -864,8 +864,8 @@ impl super::ScriptWorld {
             torch_burning: control.torch_burning,
             current_group: animation.playback.current_group(),
             pending_group: animation.playback.pending_group(),
-            has_group_49: animation.playback.has_group(AnimationGroup::JUMP_BACKWARD),
-            has_group_50: animation
+            has_jump_backward: animation.playback.has_group(AnimationGroup::JUMP_BACKWARD),
+            has_jump_backward_torch: animation
                 .playback
                 .has_group(AnimationGroup::JUMP_BACKWARD_TORCH),
             holding_weapon: holding,

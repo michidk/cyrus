@@ -112,7 +112,7 @@ fn ordinary_static_model_slope_continues_without_an_animation_receiver() {
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(
             (
-                control.sliding_state,
+                control.slide_flag,
                 control.sliding_distance,
                 control.move_counter
             ),
@@ -245,7 +245,7 @@ fn assert_ordinary_slope_animation_switch(state: u32) {
     let control = world.actors()[0].control_state().unwrap();
     assert_eq!(
         (
-            control.sliding_state,
+            control.slide_flag,
             control.sliding_distance,
             control.move_counter
         ),
@@ -396,7 +396,7 @@ fn static_slide_termination_applies_hurt_and_continues_without_animation() {
                     .unwrap();
                 let actor = &world.actors()[0];
                 assert!(actor.failure().is_none(), "{:?}", actor.failure());
-                assert_eq!(actor.control_state().unwrap().sliding_state, 0);
+                assert_eq!(actor.control_state().unwrap().slide_flag, 0);
                 assert_eq!(
                     actor.attributes()[Attribute::Health],
                     if distance > 256 { 93 } else { 100 }
@@ -411,7 +411,7 @@ fn static_slide_termination_applies_hurt_and_continues_without_animation() {
                 eprintln!(
                     "static slide: animation_system={animation_system} distance={distance} update={update} position={after:?} health={} sliding={}",
                     actor.attributes()[Attribute::Health],
-                    actor.control_state().unwrap().sliding_state
+                    actor.control_state().unwrap().slide_flag
                 );
             }
             assert!(sounds.is_empty());

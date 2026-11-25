@@ -246,7 +246,7 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
         (
             state.move_counter,
             state.falling_state,
-            state.sliding_state,
+            state.slide_flag,
             state.last_collide.bits()
         ),
         (0, JumpMotion::NONE, 0, CollisionFlags::ROLLBACK.bits())

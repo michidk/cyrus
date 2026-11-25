@@ -61,8 +61,8 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
         torch_burning: 0,
         current_group: Some(AnimationGroup::PANIC),
         pending_group: None,
-        has_group_49: true,
-        has_group_50: true,
+        has_jump_backward: true,
+        has_jump_backward_torch: true,
         holding_weapon: false,
         edge_handled: false,
     };
@@ -124,7 +124,7 @@ fn ordinary_queued_arbitration_preserves_group_and_pending_precedence() {
     assert_eq!(
         ordinary_queued_action(OrdinaryQueuedInputs {
             queued: JumpMotion::BACKWARD,
-            has_group_49: false,
+            has_jump_backward: false,
             pending_group: Some(AnimationGroup::JUMP_START),
             edge_handled: true,
             ..input

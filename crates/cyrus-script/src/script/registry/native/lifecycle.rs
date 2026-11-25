@@ -128,13 +128,13 @@ impl GameHost<'_, '_, '_, '_> {
         // notification byte; IsOnEdge holds for the ledge living states.
         let control_test: Option<fn(&ActorControlState) -> i32> = match function {
             Native::MyAiType => Some(|control| i32::from(control.ai_type.byte())),
-            Native::MyAiMode => Some(|control| i32::from(control.ai_mode)),
+            Native::MyAiMode => Some(|control| i32::from(control.ai_mode.byte())),
             Native::IsOnEdge => Some(|control| i32::from(control.living_state.is_ledge())),
             // The original also answers 0 while its transition lock (global word read by
             // dozens of routines) is set; cyrus has no transition state, so it is clear.
             Native::IsInAir => Some(|control| {
                 i32::from(
-                    control.sliding_state != 0
+                    control.slide_flag != 0
                         || control.falling_state != JumpMotion::NONE
                         || control.queued_motion != JumpMotion::NONE
                         || control.living_state.is_actor_bounce(),

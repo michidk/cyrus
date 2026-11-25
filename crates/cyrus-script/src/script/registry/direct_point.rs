@@ -241,7 +241,7 @@ impl ScriptWorld {
                     .control
                     .as_ref()
                     .expect("admitted point control")
-                    .sliding_state
+                    .slide_flag
                     != 0;
                 if sliding {
                     self.globals.native_command.point_phase = PointPhase::START;

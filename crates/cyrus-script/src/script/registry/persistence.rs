@@ -42,7 +42,8 @@ struct ControlSnapshot {
     jump_height: u8,
     #[serde(default)]
     anchor: u8,
-    sliding_state: u8,
+    #[serde(rename = "sliding_state")]
+    slide_flag: u8,
     falling_state: JumpMotion,
     queued_motion: JumpMotion,
     motion_direction: crate::script::MotionDirection,
@@ -62,7 +63,8 @@ struct ControlSnapshot {
     hand_angles: [i32; 3],
     fall_origin_y: i32,
     fall_timer: u8,
-    jump_selector: u8,
+    #[serde(rename = "jump_selector")]
+    rope_wait: u8,
     stable_position_valid: bool,
     stable_local_position: [i32; 3],
     sliding_distance: i32,
@@ -144,7 +146,7 @@ impl ControlSnapshot {
             point_command: control.point_command,
             script_control: control.script_control.bits(),
             death_selector: control.ai_type.byte(),
-            death_response: control.ai_mode,
+            death_response: control.ai_mode.byte(),
             ai_delay: control.ai_delay,
             ai_location: control.ai.var1,
             ai_record: Some(AiRecordSnapshot {
@@ -158,7 +160,7 @@ impl ControlSnapshot {
             jump_time: control.jump_time,
             jump_height: control.jump_height,
             anchor: control.anchor,
-            sliding_state: control.sliding_state,
+            slide_flag: control.slide_flag,
             falling_state: control.falling_state,
             queued_motion: control.queued_motion,
             motion_direction: control.motion_direction,
@@ -173,7 +175,7 @@ impl ControlSnapshot {
             hand_angles: control.hand_angles,
             fall_origin_y: control.fall_origin_y,
             fall_timer: control.fall_timer,
-            jump_selector: control.jump_selector,
+            rope_wait: control.rope_wait,
             stable_position_valid: control.stable_position_valid,
             stable_local_position: control.stable_local_position,
             sliding_distance: control.sliding_distance,
@@ -223,7 +225,7 @@ impl ControlSnapshot {
             point_command: self.point_command,
             script_control: super::ScriptControl::from_bits(self.script_control),
             ai_type: crate::script::AiType::from_byte(self.death_selector),
-            ai_mode: self.death_response,
+            ai_mode: crate::script::AiMode::from_byte(self.death_response),
             ai_delay: self.ai_delay,
             ai: {
                 let defaults = super::AiRecord::default();
@@ -240,7 +242,7 @@ impl ControlSnapshot {
             jump_time: self.jump_time,
             jump_height: self.jump_height,
             anchor: self.anchor,
-            sliding_state: self.sliding_state,
+            slide_flag: self.slide_flag,
             falling_state: self.falling_state,
             queued_motion: self.queued_motion,
             motion_direction: self.motion_direction,
@@ -258,8 +260,8 @@ impl ControlSnapshot {
             },
             fall_origin_y: self.fall_origin_y,
             fall_timer: self.fall_timer,
-            jump_selector: if self.jump_selector != 0 {
-                self.jump_selector
+            rope_wait: if self.rope_wait != 0 {
+                self.rope_wait
             } else {
                 self.motion_companion
             },

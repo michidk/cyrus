@@ -285,6 +285,7 @@ module where it is defined and regenerate.
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 - `src/script/activation/original.rs` — Original save fields and load resets for the gameplay-global owner.
+- `src/script/ai_mode.rs` — Receiver-owned AI mode bytes retain arbitrary script values.
 - `src/script/ai_type.rs` — The actor's AI type byte (`ai_type`, `MyAiType`/`SetAiType`): its lifecycle selector.
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.

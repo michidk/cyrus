@@ -593,7 +593,7 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
     assert_eq!(world.actors()[id.index].attributes()[Attribute::Health], 0);
     let control = world.actors()[id.index].control_state().unwrap();
     assert_eq!(control.ai_type, AiType::DEAD);
-    assert_eq!(control.ai_mode, 0);
+    assert_eq!(control.ai_mode.byte(), 0);
     assert_eq!(world.animation_frame(id).unwrap(), Some(134));
 }
 

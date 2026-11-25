@@ -1296,7 +1296,7 @@ fn selected_health_damage_lets_an_attached_player_go_of_its_rope() {
         .unwrap();
     let control = world.actors()[index].control_state().unwrap();
     assert!(!control.rope_attached);
-    assert_eq!(control.jump_selector, 24);
+    assert_eq!(control.rope_wait, 24);
     assert!(world.ropes()[0].attachments.is_empty());
     assert_eq!(world.actors()[index].attributes()[Attribute::Health], 43);
 }

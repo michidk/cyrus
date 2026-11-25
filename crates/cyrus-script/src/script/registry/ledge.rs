@@ -142,7 +142,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated ledge control");
-            control.sliding_state = 0;
+            control.slide_flag = 0;
             control.falling_state = JumpMotion::NONE;
             control.queued_motion = JumpMotion::NONE;
         }

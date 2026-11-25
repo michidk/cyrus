@@ -594,7 +594,7 @@ impl ScriptWorld {
 
     fn clear_ledge_motion(&mut self, index: usize) {
         if let Some(control) = self.actors[index].control.as_mut() {
-            control.sliding_state = 0;
+            control.slide_flag = 0;
             control.falling_state = JumpMotion::NONE;
             control.queued_motion = JumpMotion::NONE;
         }

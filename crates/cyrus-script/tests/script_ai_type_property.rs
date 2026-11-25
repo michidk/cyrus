@@ -203,7 +203,7 @@ fn public_property_and_setter_share_the_real_ai_and_death_consumers() {
                         assert_eq!(world.flags(), [73]);
                         let control = world.actors()[receiver].control_state().unwrap();
                         assert_eq!(control.ai_type.byte(), selector as u8);
-                        assert_eq!(control.ai_mode, 0);
+                        assert_eq!(control.ai_mode.byte(), 0);
                         assert!(!control.killed);
                         assert_eq!(control.script_control.bits(), 0);
                         assert_eq!(

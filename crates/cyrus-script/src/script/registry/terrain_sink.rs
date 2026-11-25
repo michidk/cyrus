@@ -28,7 +28,7 @@ impl ActorControlState {
     /// actor-bounce living states.
     fn admits_terrain_sink_check(&self) -> bool {
         self.falling_state != JumpMotion::NONE
-            || self.sliding_state != 0
+            || self.slide_flag != 0
             || self.queued_motion != JumpMotion::NONE
             || self.living_state.is_actor_bounce()
     }
@@ -216,7 +216,7 @@ mod tests {
         assert!(control(LivingState::FALLING_FROM_ACTOR, 0, 0).admits_terrain_sink_check());
         assert!(!control(LivingState::BOUNCE_ENTRY, 0, 0).admits_terrain_sink_check());
         let mut sliding = control(LivingState::ORDINARY, 0, 0);
-        sliding.sliding_state = 1;
+        sliding.slide_flag = 1;
         assert!(sliding.admits_terrain_sink_check());
     }
 

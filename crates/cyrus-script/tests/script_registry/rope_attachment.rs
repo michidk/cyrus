@@ -226,7 +226,7 @@ fn second_jump_release_resolves_queued_motion_in_the_same_ordinary_update() {
     // would leave ROPE queued until the following ordinary update.
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(control.queued_motion, JumpMotion::NONE);
-    assert_eq!(control.jump_selector, 23);
+    assert_eq!(control.rope_wait, 23);
 }
 
 #[test]
@@ -253,7 +253,7 @@ fn second_jump_release_advances_regrab_countdown_on_its_ordinary_update() {
         world.actors()[player.index]
             .control_state()
             .unwrap()
-            .jump_selector,
+            .rope_wait,
         22
     );
 }

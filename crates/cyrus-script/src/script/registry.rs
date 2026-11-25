@@ -433,7 +433,7 @@ pub struct ActorControlState {
     /// The DEF `ai_type` lifecycle selector.
     pub ai_type: super::AiType,
     /// The DEF `ai_mode` byte, independent of the `ai_type` lifecycle selector.
-    pub ai_mode: u8,
+    pub ai_mode: crate::script::AiMode,
     /// Receiver-owned unsigned AI delay, retained independently of mode and ordinary countdown.
     pub ai_delay: u8,
     /// The AI scratch fields scripts read and write by property.
@@ -449,7 +449,8 @@ pub struct ActorControlState {
     pub jump_height: u8,
     pub anchor: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
-    pub sliding_state: u8,
+    #[serde(rename = "sliding_state")]
+    pub slide_flag: u8,
     pub falling_state: JumpMotion,
     pub queued_motion: JumpMotion,
     pub motion_direction: MotionDirection,
@@ -480,10 +481,11 @@ pub struct ActorControlState {
     /// Original fall origin in Q8 and byte countdown, allocated as zero.
     pub fall_origin_y: i32,
     pub fall_timer: u8,
-    /// The `rope_wait` byte (+0x1b0), allocator-zero: a rope release sets it to 24, ordinary updates
+    /// The `rope_wait` countdown byte, allocator-zero: a rope release sets it to 24, ordinary updates
     /// count it down and the rope grab skips the released rope while it is nonzero. The weapon
     /// routines retain it.
-    pub jump_selector: u8,
+    #[serde(rename = "jump_selector")]
+    pub rope_wait: u8,
     /// Validity of the separately retained stable local position.
     pub stable_position_valid: bool,
     /// Separately retained stable local Q8 coordinates, allocated as zero.
@@ -2647,7 +2649,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .with_context(|| format!("set sliding: actor {index} has no control state"))?
-            .sliding_state = u8::from(sliding);
+            .slide_flag = u8::from(sliding);
         Ok(())
     }
 
@@ -5066,7 +5068,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .map_err(|error| format!("{error:#}"))?;
         Ok(super::locomotion::BackwardState {
             rope_attached: control.rope_attached,
-            sliding_state: control.sliding_state,
+            slide_flag: control.slide_flag,
             falling_state: control.falling_state,
             queued_motion: control.queued_motion,
             living_state: control.living_state,

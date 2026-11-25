@@ -174,7 +174,7 @@ impl GameHost<'_, '_, '_, '_> {
                     crate::script::player_status::PlayerStatusInput {
                         queued_motion: control.queued_motion,
                         falling_state: control.falling_state,
-                        sliding_state: control.sliding_state,
+                        slide_flag: control.slide_flag,
                         living_state: control.living_state,
                         group: animation.playback.current_group(),
                         moved: spatial.local.position != spatial.previous_local_position,

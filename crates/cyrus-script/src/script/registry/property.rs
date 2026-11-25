@@ -25,20 +25,20 @@ enum PoseProperty {
 /// The independent ordinary countdown and retained movement classification keep their owners.
 fn motion_property(control: &mut ActorControlState, name: Property) -> Option<&mut u8> {
     Some(match name {
-        Property::RopeWait => &mut control.jump_selector,
+        Property::RopeWait => &mut control.rope_wait,
         Property::ExtraTime => &mut control.extra_time,
         Property::SurfaceTime => &mut control.surface_time,
         Property::JumpTime => &mut control.jump_time,
         Property::JumpHeight => &mut control.jump_height,
         Property::Anchor => &mut control.anchor,
-        Property::SlideFlag => &mut control.sliding_state,
+        Property::SlideFlag => &mut control.slide_flag,
         Property::MoveCounter => &mut control.move_counter,
         Property::OriginTime => &mut control.fall_timer,
         Property::ActionTime => &mut control.jump_window,
         Property::ArmsTime => &mut control.action_transition_counter,
         Property::LastCollideCount => &mut control.last_collide_count,
         Property::DisableScript => control.script_control.bits_mut(),
-        Property::AiMode => &mut control.ai_mode,
+        Property::AiMode => control.ai_mode.byte_mut(),
         Property::AiDelay => &mut control.ai_delay,
         _ => return None,
     })

@@ -1170,7 +1170,7 @@ impl ScriptWorld {
         if !was_dead {
             if control.ai_type != AiType::FIND_PLAYER {
                 control.ai_type = AiType::FIND_PLAYER;
-                control.ai_mode = 0;
+                control.ai_mode = crate::script::AiMode::default();
             }
             if control.killed {
                 control.script_control.remove(ScriptControl::HOOK_DISABLED);

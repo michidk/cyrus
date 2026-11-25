@@ -47,7 +47,7 @@ impl super::ScriptActor {
             || control.living_state.is_ledge()
             || control.living_state.is_actor_bounce()
             || control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
             || control.queued_motion != JumpMotion::NONE
             || self.attributes[Attribute::HoldingWeapon] != 0
         {
@@ -418,7 +418,7 @@ impl<'a> CombatReceiver<'a> {
                     let position = self.position;
                     let actor = &mut *self.actor;
                     let surface = actor.surface;
-                    let animation = actor.animation.as_mut().expect("group91 animation");
+                    let animation = actor.animation.as_mut().expect("draw-sword animation");
                     let frame = animation
                         .playback
                         .force_request_with_sounds(
@@ -820,7 +820,7 @@ mod tests {
                     .unwrap();
                 let control = actor.control.as_mut().unwrap();
                 control.living_state = state;
-                control.jump_selector = 7;
+                control.rope_wait = 7;
                 control.weapon_drawn = state == LivingState::SHEATHING_SWORD;
                 let mut globals = Default::default();
                 CombatReceiver::new(&mut actor, &mut globals, 7, id, None)
@@ -853,7 +853,7 @@ mod tests {
                         state == LivingState::SHEATHING_SWORD
                     }
                 );
-                assert_eq!(control.jump_selector, 7);
+                assert_eq!(control.rope_wait, 7);
                 let playback = &actor.animation.as_ref().unwrap().playback;
                 assert_eq!(
                     playback.current_group(),
@@ -885,7 +885,7 @@ mod tests {
         let control = actor.control.as_mut().unwrap();
         control.living_state = LivingState::SHEATHING_SWORD;
         control.weapon_drawn = true;
-        control.jump_selector = 7;
+        control.rope_wait = 7;
         let mut globals = Default::default();
         let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
         let inputs = WeaponInputs {
@@ -901,7 +901,7 @@ mod tests {
             (
                 control.living_state,
                 control.weapon_drawn,
-                control.jump_selector
+                control.rope_wait
             ),
             (LivingState::SHEATHING_SWORD, true, 7)
         );
@@ -923,7 +923,7 @@ mod tests {
             (
                 control.living_state,
                 control.weapon_drawn,
-                control.jump_selector
+                control.rope_wait
             ),
             (LivingState::ORDINARY, false, 7)
         );
@@ -1059,7 +1059,7 @@ mod tests {
                 2 => control.living_state = LivingState::LANDED_ON_ACTOR,
                 3 => control.living_state = LivingState::FALLING_FROM_ACTOR,
                 4 => control.falling_state = JumpMotion::STANDING,
-                5 => control.sliding_state = 1,
+                5 => control.slide_flag = 1,
                 6 => control.queued_motion = JumpMotion::STANDING,
                 7 => {
                     control.weapon_drawn = true;
@@ -1113,10 +1113,10 @@ mod tests {
             let mut actor = actor();
             let control = actor.control.as_mut().unwrap();
             control.falling_state = falling;
-            control.sliding_state = sliding;
+            control.slide_flag = sliding;
             control.queued_motion = queued;
             control.motion_direction = MotionDirection::BACKWARD;
-            control.jump_selector = 9;
+            control.rope_wait = 9;
             let mut globals = Default::default();
             let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
             receiver
@@ -1137,7 +1137,7 @@ mod tests {
             receiver.cleanup(id, 0, &mut |_, _| Ok(())).unwrap();
             let control = receiver.actor.control.as_ref().unwrap();
             assert_eq!(control.motion_direction, MotionDirection::BACKWARD);
-            assert_eq!(control.jump_selector, 9);
+            assert_eq!(control.rope_wait, 9);
         }
     }
 }

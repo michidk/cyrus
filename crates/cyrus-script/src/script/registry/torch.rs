@@ -12,6 +12,9 @@ use cyrus_assets::surface::Surface;
 use cyrus_soup::Native;
 use cyrus_soup::{AnimationGroup, Attribute};
 
+/// Goldfinger refresh value, following preservation `engine/cheats.md`.
+const RETAINED_TORCH_BURN_TICKS: u8 = 100;
+
 impl ScriptWorld {
     fn torch_gates(
         &self,
@@ -119,7 +122,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("checked control")
-                .torch_burning = 100;
+                .torch_burning = RETAINED_TORCH_BURN_TICKS;
             return Ok(());
         }
         let surface = actor.surface.unwrap_or_default();

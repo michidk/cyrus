@@ -179,6 +179,8 @@ pub use registry::{ActionWords, ScriptControl};
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;
+mod ai_mode;
+pub use ai_mode::AiMode;
 mod ai_type;
 /// Pure player-alignment arithmetic: `PlayerFaceObj`'s facing step and `PlayerLineUp`'s helpers.
 pub mod alignment;

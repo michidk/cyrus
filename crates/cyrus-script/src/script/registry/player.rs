@@ -130,7 +130,7 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .context("player controller control unavailable")?;
-            let sliding = control.sliding_state;
+            let sliding = control.slide_flag;
             world.globals.begin_player_controller(
                 timing.nominal_ticks,
                 control.queued_motion,
@@ -259,7 +259,7 @@ impl ScriptWorld {
             );
             // Under the slope response's slide the movement and jump helpers all refuse
             // (preservation player.md, controller under sliding motion).
-            let sliding = control.sliding_state != 0;
+            let sliding = control.slide_flag != 0;
 
             let airborne = control.queued_motion != JumpMotion::NONE
                 || control.falling_state != JumpMotion::NONE;
@@ -998,7 +998,7 @@ impl ScriptWorld {
             .as_ref()
             .context("claimed facing control unavailable")?;
         if control.living_state == LivingState::ORDINARY
-            && control.sliding_state == 0
+            && control.slide_flag == 0
             && control.queued_motion == JumpMotion::NONE
             && control.falling_state == JumpMotion::NONE
             && !control.rope_attached
@@ -1362,7 +1362,7 @@ impl ScriptWorld {
         ensure!(
             control.queued_motion == JumpMotion::NONE
                 && control.falling_state == JumpMotion::NONE
-                && control.sliding_state == 0
+                && control.slide_flag == 0
                 && matches!(
                     control.living_state,
                     LivingState::ORDINARY
@@ -2032,7 +2032,7 @@ fn steer_airborne(
     if held.jump {
         // The retained rope jump latch protects the regrab countdown while falling.
         if control.falling_state != JumpMotion::NONE && !rope_jump_latched {
-            control.jump_selector = 0;
+            control.rope_wait = 0;
         }
         if control
             .actions
@@ -2293,18 +2293,18 @@ mod airborne_tests {
         };
         let mut control = super::super::ActorControlState {
             falling_state: JumpMotion::STANDING,
-            jump_selector: 5,
+            rope_wait: 5,
             actions: [6, 0x82].into(),
             ..Default::default()
         };
         steer_airborne(&mut control, None, &held, false);
         assert_eq!(
-            (control.jump_selector, <[u32; 2]>::from(control.actions)),
+            (control.rope_wait, <[u32; 2]>::from(control.actions)),
             (0, [4, 0x80])
         );
-        control.jump_selector = 24;
+        control.rope_wait = 24;
         steer_airborne(&mut control, None, &held, true);
-        assert_eq!(control.jump_selector, 24);
+        assert_eq!(control.rope_wait, 24);
         control.actions = [1, 0].into();
         steer_airborne(&mut control, None, &held, false);
         assert_eq!(<[u32; 2]>::from(control.actions), [1, 0]);

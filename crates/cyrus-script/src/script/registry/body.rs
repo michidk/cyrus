@@ -202,7 +202,7 @@ impl ScriptWorld {
         {
             return Ok(());
         }
-        let sliding = control.sliding_state != 0;
+        let sliding = control.slide_flag != 0;
         let spatial = self.spatial(id)?;
         let previous = spatial.previous_local_position.map(i64::from);
         let attempted = spatial.local.position.map(i64::from);
@@ -244,7 +244,7 @@ impl ScriptWorld {
             let grounded = control.living_state == LivingState::ORDINARY
                 && control.falling_state == JumpMotion::NONE
                 && control.queued_motion == JumpMotion::NONE
-                && control.sliding_state == 0;
+                && control.slide_flag == 0;
             match contact::resolve_wall(
                 previous,
                 attempted,

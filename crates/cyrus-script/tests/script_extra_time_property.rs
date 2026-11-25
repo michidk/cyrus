@@ -333,7 +333,7 @@ fn extra_time_torch_entry_resets_after_admission_and_retains_on_refusal_or_sound
             );
             let control = world.actors()[0].control_state().unwrap();
             assert_eq!(
-                control.jump_selector, 23,
+                control.rope_wait, 23,
                 "torch entry does not clear rope_wait"
             );
             if failing {

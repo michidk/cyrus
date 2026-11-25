@@ -124,7 +124,7 @@ impl BouncePort for BounceActor<'_, '_, '_, '_, '_> {
         let control = self.control_mut();
         control.falling_state = JumpMotion::NONE;
         control.queued_motion = JumpMotion::NONE;
-        control.sliding_state = 0;
+        control.slide_flag = 0;
         control.motion_vector[0] = 0;
         control.motion_vector[1] = 0;
         self.host.registry.actors[self.id.index].sync_falling_motion();

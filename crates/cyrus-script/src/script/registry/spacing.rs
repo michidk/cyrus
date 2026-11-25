@@ -590,7 +590,7 @@ impl ScriptWorld {
                 .as_ref()
                 .context("forward amount control unavailable")?;
             if control.rope_attached
-                || control.sliding_state != 0
+                || control.slide_flag != 0
                 || control.falling_state != JumpMotion::NONE
                 || control.queued_motion != JumpMotion::NONE
                 || control.living_state != LivingState::ORDINARY
@@ -807,7 +807,7 @@ impl ScriptWorld {
             };
             if self.globals.locomotion_called & step.called_flag() != 0
                 || control.rope_attached
-                || control.sliding_state != 0
+                || control.slide_flag != 0
                 || control.falling_state != JumpMotion::NONE
                 || control.queued_motion != JumpMotion::NONE
                 || control.living_state != LivingState::ORDINARY

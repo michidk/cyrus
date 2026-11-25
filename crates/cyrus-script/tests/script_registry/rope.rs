@@ -361,10 +361,7 @@ fn rope_release_retains_signed_speed_and_defers_its_carried_classification() {
             world.actors()[player.index].failure()
         );
         let control = world.actors()[player.index].control_state().unwrap();
-        assert_eq!(
-            (control.queued_motion.byte(), control.jump_selector),
-            (0, 23)
-        );
+        assert_eq!((control.queued_motion.byte(), control.rope_wait), (0, 23));
         assert_eq!(control.motion_vector[2], speed);
         assert_eq!(control.motion_classification, MotionDirection::FORWARD);
         // The ordinary wrapper clears directions without a locomotion call.
@@ -417,10 +414,7 @@ fn rope_release_sound_failure_keeps_prior_classification_after_detaching_and_que
             .contains("rope release sound rejected")
     );
     let control = world.actors()[player.index].control_state().unwrap();
-    assert_eq!(
-        (control.queued_motion.byte(), control.jump_selector),
-        (24, 24)
-    );
+    assert_eq!((control.queued_motion.byte(), control.rope_wait), (24, 24));
     assert_eq!(control.motion_classification, MotionDirection::FORWARD);
     let failure = world.actors()[player.index].failure().unwrap().to_owned();
     tick_rope_classification(&mut world, &data, &scene, PlayerInput::default(), false);
@@ -521,7 +515,7 @@ fn detached_rope_countdown_fixture_with(
         (
             control.queued_motion.byte(),
             control.falling_state.byte(),
-            control.jump_selector
+            control.rope_wait
         ),
         (0, 0, 24)
     );
@@ -543,7 +537,7 @@ fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initiali
     assert_eq!(
         (
             control.queued_motion.byte(),
-            control.jump_selector,
+            control.rope_wait,
             control.motion_classification
         ),
         (24, 24, MotionDirection::FORWARD)
@@ -554,7 +548,7 @@ fn controller_jump_during_rope_countdown_completes_and_refuses_a_second_initiali
     assert_eq!(
         (
             control.queued_motion.byte(),
-            control.jump_selector,
+            control.rope_wait,
             control.motion_classification
         ),
         (24, 24, MotionDirection::FORWARD)
@@ -580,7 +574,7 @@ fn forced_countdown_jump_sound_failure_retains_queue_before_classification_and_b
     assert_eq!(
         (
             control.queued_motion.byte(),
-            control.jump_selector,
+            control.rope_wait,
             control.motion_classification
         ),
         (24, 24, MotionDirection::FORWARD)
@@ -651,7 +645,7 @@ fn rope_regrab_fixture() -> (
         world.actors()[player.index]
             .control_state()
             .unwrap()
-            .jump_selector,
+            .rope_wait,
         24
     );
     assert_eq!(
@@ -708,7 +702,7 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
         (
-            control.jump_selector,
+            control.rope_wait,
             control.queued_motion.byte(),
             control.falling_state.byte(),
             control.motion_classification
@@ -758,7 +752,7 @@ fn rope_regrab_is_refused_until_the_exact_countdown_expiry_update() {
     let control = world.actors()[player.index].control_state().unwrap();
     assert_eq!(
         (
-            control.jump_selector,
+            control.rope_wait,
             control.queued_motion.byte(),
             control.falling_state.byte(),
             control.motion_classification
@@ -784,7 +778,7 @@ fn rope_expiry_uses_full_nominal_ticks_and_retains_queued_motion_on_grab_failure
             admitted.actors()[admitted.selected_player().unwrap().index]
                 .control_state()
                 .unwrap()
-                .jump_selector,
+                .rope_wait,
             0
         );
         let (mut world, data, scene) = rope_regrab_fixture();
@@ -808,7 +802,7 @@ fn rope_expiry_uses_full_nominal_ticks_and_retains_queued_motion_on_grab_failure
         let control = world.actors()[player.index].control_state().unwrap();
         assert_eq!(
             (
-                control.jump_selector,
+                control.rope_wait,
                 control.queued_motion.byte(),
                 control.motion_classification
             ),
@@ -1069,7 +1063,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(live.selected_player_on_rope());
             let control = live.actors()[index].control_state().unwrap();
             assert_eq!(
-                (control.queued_motion, control.jump_selector),
+                (control.queued_motion, control.rope_wait),
                 (JumpMotion::NONE, 0)
             );
             assert_ne!(
@@ -1083,7 +1077,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
             assert!(!live.selected_player_on_rope());
             assert!(live.ropes()[0].attachments.is_empty());
             let control = live.actors()[index].control_state().unwrap();
-            assert_eq!(control.jump_selector, 23);
+            assert_eq!(control.rope_wait, 23);
             assert_eq!(
                 movement_snapshot(live, &scripts, &data)["actors"][index]["animation"]["playback"]
                     ["current"][0]
@@ -1097,7 +1091,7 @@ fn logical_session_preserves_the_selected_rope_jump_latch() {
                     "jump cooldown must prevent regrabbing the released rope after restore"
                 );
                 assert!(live.ropes()[0].attachments.is_empty());
-                assert!(live.actors()[index].control_state().unwrap().jump_selector > 0);
+                assert!(live.actors()[index].control_state().unwrap().rope_wait > 0);
             }
         }
         let mut detached = ScriptActors::default();

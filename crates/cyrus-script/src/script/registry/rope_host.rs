@@ -239,19 +239,19 @@ impl ScriptWorld {
         if control.falling_state == JumpMotion::NONE && control.queued_motion == JumpMotion::NONE {
             return Ok(None);
         }
-        if control.jump_selector != 0 {
+        if control.rope_wait != 0 {
             let ticks = u8::try_from(ticks).unwrap_or(u8::MAX);
-            if control.jump_selector > ticks {
-                control.jump_selector -= ticks;
+            if control.rope_wait > ticks {
+                control.rope_wait -= ticks;
             } else {
-                control.jump_selector = 0;
+                control.rope_wait = 0;
                 self.player_rope.last_rope = None;
             }
         }
         let skipped = self.actors[index]
             .control
             .as_ref()
-            .is_some_and(|control| control.jump_selector != 0)
+            .is_some_and(|control| control.rope_wait != 0)
             .then_some(self.player_rope.last_rope)
             .flatten();
         let Ok(spheres) = self.ordinary_overlap_spheres(id, data) else {
@@ -328,10 +328,10 @@ impl ScriptWorld {
         control.rope_attached = true;
         control.falling_state = JumpMotion::NONE;
         control.queued_motion = JumpMotion::NONE;
-        control.sliding_state = 0;
+        control.slide_flag = 0;
         control.living_state = LivingState::ORDINARY;
         control.actions = Default::default();
-        control.jump_selector = 0;
+        control.rope_wait = 0;
         let rope = &mut self.ropes[rope_index];
         // The engine links a newly attached node at the rope-list head.  Chain
         // updates and owner scans are list-order sensitive, so appending here
@@ -749,7 +749,7 @@ impl ScriptWorld {
             .context("rope detach control unavailable")?;
         control.rope_attached = false;
         control.motion_vector[2] = speed;
-        control.jump_selector = 24;
+        control.rope_wait = 24;
         self.player_rope.last_rope = Some(rope_index);
         Ok(())
     }

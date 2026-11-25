@@ -52,7 +52,7 @@ impl ScriptWorld {
             return Ok(Surface::UNKNOWN);
         }
         let keep_stored = control.falling_state != JumpMotion::NONE
-            || control.sliding_state != 0
+            || control.slide_flag != 0
             || control.living_state.is_actor_bounce();
         if keep_stored && !selected {
             // Only the selected player's transition handler reads the returned value.
@@ -547,7 +547,7 @@ impl ScriptWorld {
             return Ok(());
         }
         // A jump selector within three of 24 turns the support miss into the scripted jump entry.
-        if control.jump_selector != 0 && control.jump_selector.abs_diff(24) < 4 {
+        if control.rope_wait != 0 && control.rope_wait.abs_diff(24) < 4 {
             if environment.selected_player == Some(id) {
                 self.begin_player_jump(id, query, environment, timing, 8, sounds)?;
             } else {
@@ -643,7 +643,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("slide termination control unavailable")?;
-        if control.sliding_state == 0 {
+        if control.slide_flag == 0 {
             return Ok(());
         }
         let distance = control.sliding_distance;
@@ -698,7 +698,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .context("slide termination control unavailable")?;
-        control.sliding_state = 0;
+        control.slide_flag = 0;
         Ok(())
     }
 
@@ -761,7 +761,7 @@ impl ScriptWorld {
             "yeahbaby ground bypass while attached to a rope is unsupported"
         );
         control.living_state = LivingState::ORDINARY;
-        control.sliding_state = 0;
+        control.slide_flag = 0;
         control.queued_motion = JumpMotion::NONE;
         control.falling_state = JumpMotion::NONE;
         control.motion_classification = MotionDirection::NONE;
@@ -1305,7 +1305,7 @@ impl ScriptWorld {
             // Ordinary entry clears the extra-contact append flag. These admitted
             // stages do not produce an appended normal; heightmap availability
             // is independent of that flag and still feeds the support queries.
-            let sliding = control.sliding_state != 0;
+            let sliding = control.slide_flag != 0;
             let contacts = self.query_ordinary_body(
                 id,
                 super::body::OrdinaryBodyQuery {
@@ -1358,7 +1358,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("admitted body control");
-            control.sliding_state = 0;
+            control.slide_flag = 0;
         }
         self.actors[id.index].attributes[Attribute::Weight] =
             self.actors[id.index].attributes[Attribute::ReservedWeight];
@@ -1366,7 +1366,7 @@ impl ScriptWorld {
             .control
             .as_ref()
             .expect("admitted recovery control");
-        let moving = control.falling_state != JumpMotion::NONE || control.sliding_state != 0;
+        let moving = control.falling_state != JumpMotion::NONE || control.slide_flag != 0;
         let recover = if self.actors[id.index].attributes[Attribute::StickToSurface] != 0 && moving
         {
             true

@@ -78,7 +78,7 @@ impl ScriptWorld {
             control.living_state = LivingState::ORDINARY;
             control.falling_state = JumpMotion::NONE;
             control.queued_motion = JumpMotion::NONE;
-            control.sliding_state = 0;
+            control.slide_flag = 0;
             control.rope_attached = false;
             // A retained stable position would otherwise undo a placement the ground probe rejects.
             control.stable_position_valid = false;
@@ -209,7 +209,7 @@ impl ScriptWorld {
         let movement = self.actors[from].player_movement.clone();
         let motion = self.actors[from].control.as_ref().map(|control| {
             (
-                control.sliding_state,
+                control.slide_flag,
                 control.falling_state,
                 control.queued_motion,
                 control.living_state,
@@ -245,7 +245,7 @@ impl ScriptWorld {
         self.actors[to].player_movement = movement;
         if let (Some(source), Some(target)) = (motion, self.actors[to].control.as_mut()) {
             (
-                target.sliding_state,
+                target.slide_flag,
                 target.falling_state,
                 target.queued_motion,
                 target.living_state,

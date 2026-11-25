@@ -426,7 +426,7 @@ fn installed_island_slide_group_keeps_moving_the_player_across_the_slab() -> Res
             saw_natural_slide = true;
         }
         if let Some(before) = previous
-            && control.sliding_state == 0
+            && control.slide_flag == 0
             && group
                 == Some(u64::from(
                     cyrus_soup::AnimationGroup::SLIDE_BACKWARD.index(),

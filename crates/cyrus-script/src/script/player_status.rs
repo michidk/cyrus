@@ -38,7 +38,7 @@ pub enum PlayerStatus {
 pub struct PlayerStatusInput {
     pub queued_motion: JumpMotion,
     pub falling_state: JumpMotion,
-    pub sliding_state: u8,
+    pub slide_flag: u8,
     pub living_state: LivingState,
     pub group: Option<AnimationGroup>,
     /// Whether the local position differs from the one saved at the update's entry.
@@ -50,7 +50,7 @@ pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
     let PlayerStatusInput {
         queued_motion,
         falling_state,
-        sliding_state,
+        slide_flag,
         living_state,
         group,
         moved,
@@ -91,7 +91,7 @@ pub fn player_status(input: PlayerStatusInput) -> PlayerStatus {
     if let Some((_, _, class)) = by_motion.into_iter().find(|(byte, value, _)| byte == value) {
         return class;
     }
-    if sliding_state != 0 {
+    if slide_flag != 0 {
         return PlayerStatus::Sliding;
     }
     // `LedgeStartPullUp` and `LedgePullUp` repeat the tests of `StartPullUp` and `PullUp` and are
@@ -224,7 +224,7 @@ mod tests {
         ] {
             assert_eq!(status(|i| i.falling_state = value), class);
         }
-        assert_eq!(status(|i| i.sliding_state = 1), PlayerStatus::Sliding);
+        assert_eq!(status(|i| i.slide_flag = 1), PlayerStatus::Sliding);
         for (value, class) in [
             (
                 LivingState::TURNING_TO_HIGH_LEDGE,
