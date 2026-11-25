@@ -37,7 +37,7 @@ def image_archive(path, payload, oci=False, index=False):
 
 
 class Recovery(unittest.TestCase):
-    def run_restore(self, present=False, archive=True, accepted=True, correct_tag=True):
+    def run_restore(self, present=False, archive=True, accepted=True, correct_tag=True, prepared=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image = root / 'present'
@@ -49,11 +49,12 @@ class Recovery(unittest.TestCase):
             docker = root / 'docker'
             docker.write_text('#!/bin/sh\necho "$*" >> "$CALLS"\n'
                 'if [ "$1" = image ]; then test -f "$PRESENT"; '
+                'elif [ "$1" = run ]; then test "$PREPARED" = yes; '
                 'elif [ "$1" = load ]; then test "$ACCEPTED" = yes || exit 1; [ "$CORRECT_TAG" = no ] || touch "$PRESENT"; fi\n')
             docker.chmod(0o755)
             result = subprocess.run(['bash', str(SCRIPT), 'fixture:1', str(saved)],
                 env=dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}', PRESENT=str(image),
-                         CALLS=str(root/'calls'), ACCEPTED='yes' if accepted else 'no', CORRECT_TAG='yes' if correct_tag else 'no'),
+                         CALLS=str(root/'calls'), ACCEPTED='yes' if accepted else 'no', CORRECT_TAG='yes' if correct_tag else 'no', PREPARED='yes' if prepared else 'no'),
                 text=True, capture_output=True)
             return result, (root/'calls').read_text()
 
@@ -118,6 +119,19 @@ esac
             subprocess.run(command, env=env, check=True, capture_output=True)
             self.assertTrue(present.exists())
             self.assertEqual((root/'calls').read_text().count('load --input'), 1)
+
+    def test_metadata_after_interrupted_unpack_requires_container_preparation(self):
+        result, calls = self.run_restore(present=True, archive=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('run --rm --pull never --network none --read-only --entrypoint /bin/true fixture:1', calls)
+        self.assertNotIn('load --input', calls, 'stored layers must be reused after interrupted unpack')
+
+    def test_unpack_failure_is_rejected_without_deleting_or_reloading_metadata(self):
+        result, calls = self.run_restore(present=True, prepared=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('run --rm', calls)
+        self.assertNotIn('load --input', calls)
+        self.assertNotIn('image rm', calls)
 
     def test_existing_image_needs_no_archive_or_load(self):
         result, calls = self.run_restore(present=True, archive=False)

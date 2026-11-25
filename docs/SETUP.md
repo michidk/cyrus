@@ -1798,7 +1798,10 @@ interval is a reacquisition candidate, not accepted timing evidence.
 For an ephemeral original image, set `CYRUS_RETRO_IMAGE_ARCHIVE` to a local Docker
 archive containing `CYRUS_RETRO_IMAGE`. The launcher restores it before taking
 the live-run lock, serializes concurrent restores and verifies the requested
-image exists. An existing image requires no archive load. The helper
+image exists and can prepare a disposable Linux container. Image metadata alone
+does not prove an interrupted layer unpack completed. Preparation resumes stored
+layers without another archive load, network access, game mounts or writable image
+filesystem. A failed preparation remains a failure; rerun the helper after recovery. The helper
 `dev/scripts/ensure-runtime-image.sh IMAGE ARCHIVE` also supports native run rigs.
 Pass `--retain` before `IMAGE` to checkpoint the available image. This checkpoints setup before the next reset: concurrent calls share
 the restore lock, and only a successful nonempty Docker save is published by
@@ -1808,6 +1811,15 @@ replaces an obsolete or invalid archive after a successful, validated save. If b
 required image with its repository Dockerfile first; the helper does not guess
 a build context. Archives remain local; recovery never removes peer images or
 containers.
+
+Original event probes can use `EventJournal` from `dev/scripts/probe-checkpoint.py`
+with a host-mounted output directory. Each attempt gets a new JSONL file; every
+observation is flushed and synchronized before returning. A separate completed
+receipt is published only when the producer explicitly finishes. After interruption,
+keep the earlier tape and its running receipt, and restart from the same fixture
+into a new attempt. Never append a replacement process to an old timeline or
+truncate a prior capture. A completed producer receipt alone does not establish
+matched gameplay acceptance.
 
 For separate transient-geometry restoration, run the native diagnostic driver with
 an explicit installed game, the host config directory mounted into the runtime,

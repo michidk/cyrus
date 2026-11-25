@@ -12,6 +12,34 @@ probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 
 
+class EventJournal(unittest.TestCase):
+    def test_retries_preserve_previous_attempt_and_only_explicit_finish_accepts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = probe.EventJournal(Path(directory))
+            first.append({'event': 'boundary', 'update': 9})
+            second = probe.EventJournal(Path(directory))
+            second.append({'event': 'boundary', 'update': 10})
+            second.finish()
+            self.assertNotEqual(first.path, second.path)
+            self.assertEqual(json.loads(first.path.read_text()), {'event': 'boundary', 'update': 9})
+            self.assertEqual(json.loads(first.receipt.read_text())['status'], 'running')
+            self.assertEqual(json.loads(second.receipt.read_text())['status'], 'completed')
+            with self.assertRaisesRegex(ValueError, 'completed'):
+                second.append({'event': 'late'})
+
+    def test_abrupt_exit_retains_complete_event_without_claiming_completion(self):
+        import subprocess
+        code = ("import runpy,sys,os; from pathlib import Path; "
+                "p=runpy.run_path(sys.argv[1]); r=p['EventJournal'](Path(sys.argv[2])); "
+                "r.append({'event':'audio','playing':False}); os._exit(17)")
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(['python3', '-c', code, str(Path(probe.__file__)), directory])
+            self.assertEqual(result.returncode, 17)
+            path, = Path(directory).glob('*.jsonl')
+            self.assertEqual(json.loads(path.read_text()), {'event': 'audio', 'playing': False})
+            self.assertEqual(json.loads(path.with_suffix('.json').read_text())['status'], 'running')
+
+
 class ProbeCheckpoint(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

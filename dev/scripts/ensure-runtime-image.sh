@@ -12,7 +12,14 @@ if (( $# != 2 )); then
 fi
 image="$1"
 archive="$2"
+# Metadata can survive an interrupted unpack. Preparing a disposable Linux
+# container resumes stored layers and proves the root filesystem works, without
+# game/config mounts, network access or a writable image filesystem.
+prepare_runtime() {
+    docker run --rm --pull never --network none --read-only --entrypoint /bin/true "$image"
+}
 if (( ! retain )) && docker image inspect "$image" >/dev/null 2>&1; then
+    prepare_runtime
     exit 0
 fi
 if (( ! retain )) && [[ ! -s "$archive" ]]; then
@@ -34,6 +41,8 @@ if ! docker image inspect "$image" >/dev/null 2>&1; then
     echo "runtime archive $archive did not restore requested image $image" >&2
     exit 1
 fi
+
+prepare_runtime
 
 # A mutable tag may have been rebuilt since the previous checkpoint. Compare
 # the saved config digest and tag before reusing it, without extracting files.

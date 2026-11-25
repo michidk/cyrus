@@ -33,6 +33,42 @@ def save(path, record):
         os.close(descriptor)
 
 
+class EventJournal:
+    """Append durable observations to a unique host-mounted attempt, never a prior tape.
+
+    A completed receipt means the producer finished, not that gameplay matched.
+    An interrupted producer leaves its last fsynced events and a running receipt;
+    rerunning creates a separate journal rather than joining or truncating it.
+    """
+    def __init__(self, directory):
+        directory = Path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        self.path = directory / f'{uuid.uuid4().hex}.jsonl'
+        self.receipt = self.path.with_suffix('.json')
+        self.completed = False
+        self.count = 0
+        with self.path.open('x') as stream:
+            stream.flush()
+            os.fsync(stream.fileno())
+        save(self.receipt, dict(status='running', events=0, journal=self.path.name))
+
+    def append(self, event):
+        if self.completed:
+            raise ValueError('event journal is completed')
+        encoded = json.dumps(event, allow_nan=False) + '\n'
+        with self.path.open('a') as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        self.count += 1
+
+    def finish(self):
+        if self.completed:
+            raise ValueError('event journal is completed')
+        save(self.receipt, dict(status='completed', events=self.count, journal=self.path.name))
+        self.completed = True
+
+
 def container_alive(container):
     result = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', container],
                             capture_output=True, text=True, timeout=10)
