@@ -2,8 +2,8 @@
 """Original CLI run ownership without Docker, a game install or a display."""
 import io
 import json
-import runpy
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -111,10 +111,10 @@ class DuelPhases(unittest.TestCase):
                 self.assertEqual(story.call_count, 0 if result is None else 1)
 
     def test_combat_keeps_initial_actor_ownership_and_records_completion(self):
-        player = dict(selected=True, pointer=1, combat=True, health=100,
-                      position=[0, 0, 0], yaw=0, id='player', group=1)
-        pirate = dict(selected=False, pointer=2, combat=True, health=50,
-                      position=[0, 0, 100], death_selector=0, id='pirate', group=2)
+        player = {'selected': True, 'pointer': 1, 'combat': True, 'health': 100,
+                  'position': [0, 0, 0], 'yaw': 0, 'id': 'player', 'group': 1}
+        pirate = {'selected': False, 'pointer': 2, 'combat': True, 'health': 50,
+                  'position': [0, 0, 100], 'death_selector': 0, 'id': 'pirate', 'group': 2}
         states = iter([{'actors': [player, pirate], 'counters': {'mainloop_frame': 1}},
                        {'actors': [{**pirate, 'health': 0}, player],
                         'counters': {'mainloop_frame': 2}}])
