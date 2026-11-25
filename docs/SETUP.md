@@ -1812,6 +1812,16 @@ leaves image metadata, preparation resumes that content instead of importing it
 again. If Docker is unavailable or the requested image was not retained, recovery
 fails with the saved diagnostics; it never starts a daemon or retries in a loop.
 
+`dev/scripts/ensure-retro-runtime.sh` accepts the same explicit
+`CYRUS_RETRO_IMAGE` and `CYRUS_RETRO_IMAGE_ARCHIVE` pair. Set both to recover an
+already retained runtime instead of building the default source-keyed image.
+The helper prints the selected image only after recovery succeeds. Explicit
+recovery preserves the supplied archive, including compressed archives, and uses
+its existing restore lock and durable diagnostics. It does not save another
+archive or assign the image a source-keyed identity. Setting only one override
+fails before recovery starts. With neither override, source-keyed build and
+recovery remain the default.
+
 Pass `--retain` before `IMAGE` to checkpoint the available image. This checkpoints setup before the next reset: concurrent calls share
 the restore lock, and only a successful nonempty Docker save is published by
 atomic rename. A failed save leaves the previous checkpoint intact. Retention checks the
