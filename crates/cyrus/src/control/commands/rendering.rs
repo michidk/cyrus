@@ -1,0 +1,183 @@
+//! Presentation transforms and renderer configuration commands.
+use super::*;
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct Rendering<'w, 's> {
+    pub(super) fidelity: ResMut<'w, Fidelity>,
+    pub(super) sky_scroll: Option<ResMut<'w, cyrus_render::environment::SkyScrollSync>>,
+    pub(super) day_night: Option<ResMut<'w, cyrus_render::fog::DayNight>>,
+    pub(super) modern_effects: Option<ResMut<'w, cyrus_render::fog::ModernEffects>>,
+    pub(super) flycam: Option<ResMut<'w, cyrus_render::camera::DetachedView>>,
+    pub(super) reference: Option<ResMut<'w, cyrus_render::fog::RayTracingReference>>,
+    pub(super) ray_tracing: Option<ResMut<'w, cyrus_render::fog::RayTracing>>,
+    pub(super) camera: Query<
+        'w,
+        's,
+        &'static mut Transform,
+        (With<cyrus_render::camera::ViewCamera>, Without<Player>),
+    >,
+    pub(super) player: Query<'w, 's, &'static mut Transform, With<Player>>,
+    pub(super) textures: Option<ResMut<'w, cyrus_render::fog::TextureAnimations>>,
+}
+
+impl Rendering<'_, '_> {
+    pub(super) fn handle(
+        &mut self,
+        command: Command,
+        commands: &mut Commands,
+        scene: &Scene,
+    ) -> Outcome {
+        let Self {
+            fidelity,
+            sky_scroll,
+            day_night,
+            modern_effects,
+            flycam,
+            reference,
+            ray_tracing,
+            camera,
+            player,
+            textures,
+            ..
+        } = self;
+        let Scene {
+            state,
+            scene_request,
+            ready_scene,
+            prepared,
+            ..
+        } = scene;
+        Outcome::Reply(match command {
+            Command::Screenshot { path } => {
+                let path = std::path::PathBuf::from(path);
+                match path.parent().map(std::fs::create_dir_all).unwrap_or(Ok(())) {
+                    Ok(()) => {
+                        commands
+                            .spawn(Screenshot::primary_window())
+                            .observe(save_to_disk(path.clone()));
+                        Ok(json!({"path": path}))
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            Command::Teleport { x, y, z } => match player.single_mut() {
+                Ok(mut t) => {
+                    t.translation = Vec3::new(x, y, z);
+                    Ok(json!({"position": [x, y, z]}))
+                }
+                Err(_) => Err("no player".into()),
+            },
+            Command::Flycam {
+                enabled,
+                position,
+                look_at,
+            } => match flycam.as_deref_mut() {
+                Some(flycam) => {
+                    flycam.enabled = enabled;
+                    if let Ok(mut view) = camera.single_mut() {
+                        if let Some(position) = position {
+                            view.translation = Vec3::from_array(position);
+                        }
+                        if let Some(target) = look_at {
+                            view.look_at(Vec3::from_array(target), Vec3::Y);
+                        }
+                    }
+                    Ok(json!({"enabled": enabled}))
+                }
+                None => Err("no flycam".into()),
+            },
+            Command::RayTracing { enabled } => match ray_tracing.as_mut() {
+                Some(ray_tracing) => {
+                    ray_tracing.enabled = enabled;
+                    Ok(json!({
+                        "enabled": enabled,
+                        "traced": cyrus_render::fog::ray_traced(&fidelity, ray_tracing),
+                        "support": format!("{:?}", ray_tracing.support),
+                    }))
+                }
+                None => Err("this build has no ray tracing (cargo feature `raytracing`)".into()),
+            },
+            Command::RayTracingReference { enabled } => match reference.as_mut() {
+                Some(reference) => {
+                    reference.0 = enabled;
+                    Ok(json!({"enabled": enabled}))
+                }
+                None => Err("no renderer is running".into()),
+            },
+            Command::SetFidelity { area, mode } => {
+                match (
+                    serde_json::from_value::<Area>(json!(area)),
+                    serde_json::from_value::<Mode>(json!(mode)),
+                ) {
+                    (Ok(area), Ok(mode)) => {
+                        fidelity.set(area, mode);
+                        Ok(json!(**fidelity))
+                    }
+                    (Err(error), _) => Err(format!("invalid fidelity area: {error}")),
+                    (_, Err(error)) => Err(format!("invalid fidelity mode: {error}")),
+                }
+            }
+            Command::SetDayNight { hour, running } => match (day_night.as_deref_mut(), hour) {
+                (None, _) => Err("modern lighting is unavailable".into()),
+                (Some(_), Some(hour)) if !(0.0..=24.0).contains(&hour) => {
+                    Err("hour must be within 0 to 24".into())
+                }
+                (Some(cycle), hour) => {
+                    cycle.enabled = hour.is_some();
+                    cycle.hour = hour.unwrap_or(cycle.hour);
+                    cycle.running = running;
+                    Ok(
+                        json!({"enabled": cycle.enabled, "hour": cycle.hour, "running": cycle.running}),
+                    )
+                }
+            },
+            Command::SetModernEffect { effect, enabled } => {
+                match (
+                            modern_effects.as_deref_mut(),
+                            serde_json::from_value::<cyrus_render::fog::Effect>(json!(effect)),
+                        ) {
+                            (None, _) => Err("modern lighting is unavailable".into()),
+                            (Some(_), Err(_)) => Err(
+                                "effect must be shadows|ambient_occlusion|contact_shadows|anti_aliasing|bloom|object_lights|water_gloss|grading|auto_exposure|god_rays|lens_flare|sky|water_reflections|depth_of_field|motion_blur"
+                                    .into(),
+                            ),
+                            (Some(effects), Ok(effect)) => {
+                                *effects.switch(effect) = enabled;
+                                Ok(json!(*effects))
+                            }
+                        }
+            }
+            Command::SetSkyScroll { direction, offset } => match sky_scroll.as_deref_mut() {
+                Some(reference) => reference
+                    .set(direction, offset)
+                    .map(|()| json!({"direction": direction, "offset": offset}))
+                    .map_err(|error| error.to_string()),
+                None => Err("sky renderer is unavailable".into()),
+            },
+            Command::HoldTextureFrame {
+                world,
+                image,
+                frame,
+            } => {
+                if *state.get() != cyrus_game::AppState::InGame
+                    || world != scene_request.0
+                    || !ready_scene.as_ref().is_some_and(|ready| {
+                        prepared
+                            .as_ref()
+                            .is_some_and(|world| ready.0 == world.animations)
+                    })
+                {
+                    Err("texture capture requires the requested ready world".into())
+                } else if let Some(textures) = textures.as_deref_mut() {
+                    textures
+                        .hold(&image, frame)
+                        .map(|()| json!({"textures": textures.snapshot()}))
+                        .map_err(|error| error.to_string())
+                } else {
+                    Err("texture renderer is unavailable".into())
+                }
+            }
+            _ => unreachable!("command routed to the wrong rendering handler"),
+        })
+    }
+}
