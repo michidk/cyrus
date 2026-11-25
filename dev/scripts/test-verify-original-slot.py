@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The live adapter regression must select an original slot, including shared numbers."""
 import importlib.util
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 path = Path(__file__).with_name("verify-original-slot.py")
 spec = importlib.util.spec_from_file_location("verify_original_slot", path)

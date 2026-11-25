@@ -3,9 +3,9 @@
 import argparse
 import importlib.util
 import json
-from pathlib import Path
 import socket
 import time
+from pathlib import Path
 
 
 def load_driver():
@@ -50,7 +50,7 @@ def verify(control, args):
             break
         previous = state["menu"]["selected"]
         control.request({"type": "input", "key": "ArrowDown", "action": "tap"})
-        state = wait_state(control, lambda s: s["menu"]["selected"] != previous, 30)
+        state = wait_state(control, lambda s, selected=previous: s["menu"]["selected"] != selected, 30)
     assert state["menu"]["selected"] == target, "could not select the original slot"
     control.request({"type": "input", "key": "Enter", "action": "tap"})
     state = wait_state(control, lambda s: s["state"] == "InGame"
