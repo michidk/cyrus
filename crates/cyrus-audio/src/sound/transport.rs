@@ -193,6 +193,7 @@ impl Panned {
     /// Whether the admitted decoder has consumed every finite source sample,
     /// including pending stereo output. Backend queue bookkeeping may still need
     /// its terminal read; that read cannot consume another source sample.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn source_exhausted(&self) -> bool {
         let Ok(capture) = self.capture.lock() else {
             return false;
