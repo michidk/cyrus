@@ -5,7 +5,6 @@ The original installation stays in place. Optional session loading uses a prior
 public checkpoint; it does not establish original book-slot adapter acceptance.
 """
 import argparse
-import importlib.util
 import json
 import math
 import os
@@ -15,19 +14,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from harness import LIVE_LOCK, exclusive_lock
-
-
-def helper(name, filename):
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 import native_session_capture as capture
-
-replay = helper('native_replay', 'replay-chain.py')
+import replay_chain as replay
+from harness import LIVE_LOCK, exclusive_lock
 
 
 def run(args):

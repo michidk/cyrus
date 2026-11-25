@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 """Checkpoint contracts with synthetic public observations, without an install."""
-import copy
 import argparse
 import contextlib
+import copy
 import io
-from unittest import mock
-import importlib.util
 import json
 import math
 import os
 import subprocess
 import tempfile
-from pathlib import Path
 import unittest
+from pathlib import Path
+from unittest import mock
 
-spec = importlib.util.spec_from_file_location("replay_chain", Path(__file__).with_name("replay-chain.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+import replay_chain as replay
 
 
 class Checkpoints(unittest.TestCase):
