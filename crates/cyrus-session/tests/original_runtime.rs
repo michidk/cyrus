@@ -119,7 +119,8 @@ fn verify_slot(
         animation: &animation,
         retained: &retained,
     }
-    .verify(&mut app, snapshot, prepare)
+    .verify(&mut app, snapshot, prepare)?;
+    assert_imported_clock(&mut app, slot)
 }
 
 fn assert_actor_owner_census(
@@ -145,6 +146,33 @@ fn assert_actor_owner_census(
             .to_string()
             .contains(removed["name"].as_str().unwrap()),
         "missing actor owner rejected for another reason: {error:#}"
+    );
+    Ok(())
+}
+
+fn assert_imported_clock(app: &mut App, slot: &SaveSlot) -> Result<()> {
+    let section = slot
+        .game
+        .sections
+        .iter()
+        .find(|section| section.name == *b"SVGV")
+        .context("saved clock section absent")?;
+    let saved = rgpre::import::savegame::parse_save_clock(&section.data)?;
+    let mut expected = cyrus_script::clock::SimulationClock::from_original(&saved, 100)?;
+    let mut clock = app
+        .world_mut()
+        .resource_mut::<cyrus_script::clock::SimulationClock>();
+    assert_eq!(
+        serde_json::to_value(clock.snapshot())?,
+        serde_json::to_value(expected.snapshot())?,
+        "book import must preserve saved clock continuation without entering a new world loop"
+    );
+    let step = clock.advance_recorded(100, saved.next_scale)?;
+    assert_eq!(step, expected.advance_recorded(100, saved.next_scale)?);
+    assert_eq!(
+        serde_json::to_value(clock.snapshot())?,
+        serde_json::to_value(expected.snapshot())?,
+        "first explicit clock update differs after public book admission"
     );
     Ok(())
 }

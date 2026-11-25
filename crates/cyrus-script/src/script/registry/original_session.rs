@@ -220,11 +220,12 @@ impl ScriptActors {
             &session,
             text,
         )?;
-        let mut clock = crate::clock::SimulationClock::from_original(
+        // A book load resumes the current world-loop iteration. Only a new
+        // world-loop entry or an active presentation fade restarts warmup.
+        let clock = crate::clock::SimulationClock::from_original(
             &parse_save_clock(section(*b"SVGV")?)?,
             bios_tick,
         )?;
-        clock.restart_warmup();
         let actors = ScriptActors {
             restored_generation: Some(current.generation),
             current: Some(current),
