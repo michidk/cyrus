@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Clock binding must report observed bounds, never interpolate slow wall time."""
-import importlib.util
-from pathlib import Path
 import unittest
-spec = importlib.util.spec_from_file_location('clock', Path(__file__).with_name('book-audio-clock.py'))
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
+
+import book_audio_clock as module
+import book_audio_normalize as normalized
+
 
 class Clock(unittest.TestCase):
     def test_slow_rendering_uses_observed_game_bounds(self):
@@ -20,9 +19,6 @@ class Clock(unittest.TestCase):
             with self.assertRaises(ValueError): module.bind(samples, onset)
 
     def test_capture_binding_uses_pcm_start_and_rate(self):
-        spec = importlib.util.spec_from_file_location('normalized', Path(__file__).with_name('book-audio-normalize.py'))
-        normalized = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(normalized)
         value = {'references': [{'success': True, 'onset_seconds': .5}]}
         normalized.bind_clock(value, {'start': 100, 'rate': 100,
             'transition': {'clocks': [{'frame': 100, 'game_seconds': 2}, {'frame': 200, 'game_seconds': 2.25}]}})

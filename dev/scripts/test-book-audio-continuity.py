@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic sample-timeline controls; no installed data is included."""
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
 import book_audio_continuity as module
+import book_audio_normalize as normalized
 import numpy as np
 
 
@@ -91,9 +91,6 @@ class Continuity(unittest.TestCase):
             self.assertAlmostEqual(result['median_gain'], .5, delta=.03)
 
     def test_normalized_report_marks_overlapping_continuation(self):
-        spec = importlib.util.spec_from_file_location('normalized', Path(__file__).with_name('book-audio-normalize.py'))
-        normalized = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(normalized)
         other = np.random.default_rng(9).normal(0, 1000, 8000)
         recording = np.zeros(16000)
         recording[1600:9600] += self.reference * .5

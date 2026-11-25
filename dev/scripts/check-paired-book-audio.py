@@ -10,9 +10,10 @@ import hashlib
 import importlib.util
 import json
 import math
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
+import book_audio_normalize
 import numpy as np
 from scipy.io import wavfile
 
@@ -94,7 +95,7 @@ def analyze(root, references):
         offset, transition = segment(event['sent'], len(pcm)/rate)
         path = Path(temp)/'transition.wav'; wavfile.write(path, rate, transition)
         import book_audio_continuity as continuity
-        normalized = module('normalized', 'book-audio-normalize.py').report(
+        normalized = book_audio_normalize.report(
             continuity.load(path), [continuity.load(p) for p in references], event['sent']-offset)
     samples = [json.loads(line) for line in (root/'clocks.jsonl').read_text().splitlines()]
     input_bounds = clock_bounds(samples, epoch+event['sent']-allowance, epoch+event['sent']+allowance)
