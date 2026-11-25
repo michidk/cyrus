@@ -1,118 +1,12 @@
 //! Forward amount queries retain classification before animation admission.
-use cyrus_assets::script::*;
 use cyrus_script::script::MotionDirection;
 use cyrus_script::script::{OrdinaryForwardAmountInputs, ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_soup::program::*;
 use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
 
-fn cache() -> Scripts {
-    let program = Program {
-        version: 4,
-        entry: 0,
-        variables: vec![4],
-        strings: vec!["logic".into()],
-        steps: BTreeMap::new(),
-    };
-    let mut scripts = Scripts {
-        version: 30,
-        weapons: Default::default(),
-        torches: Default::default(),
-        camera: Default::default(),
-        combat_attacks: vec![],
-        combat_defenses: vec![],
-        in_combat_threshold: None,
-        lineup_distance: None,
-        view_distance: None,
-        texture_frames: Default::default(),
-        non_engaged_spacing: None,
-        combat_clank_effects: [None; 2],
-        node_timer: None,
-        dialogue: cyrus_assets::script::DialogueSettings {
-            menu_start: [35, 25],
-            max_menu_items: 300,
-            max_dialog_lines: 20,
-            max_text_width: 500,
-            menu_traverse_delay: 4,
-            print_text: true,
-            use_speech: true,
-            max_distance: 1600,
-            rtx_filename: "ENGLISH.RTX".into(),
-        },
-        player_distance_override: false,
-        updates: cyrus_assets::script::UpdateSettings {
-            rope: None,
-            ropes_load: Some(true),
-            fall_death_ticks: 144,
-            fall_landing: None,
-            dummy_model_manager: false,
-            task_system: true,
-            animation_system: true,
-            disable_slaves: false,
-            disable_master_slaves: false,
-            final_version: false,
-        },
-        clock: cyrus_assets::script::ClockSettings {
-            normal_frame_rate: 12,
-            min_frame_rate: 6,
-            max_frame_rate: 300,
-            use_smooth_fps: true,
-            use_smooth_divisor: true,
-        },
-        actor_pool_capacity: 32,
-        content_id: String::new(),
-        shells: Vec::new(),
-        world: 7,
-        definition: Definition {
-            functions: vec![Function {
-                name: cyrus_soup::Native::NullFunction,
-                param_count: 0,
-                kind: CallKind::Function,
-            }],
-            flags: vec![Flag {
-                name: "Counter".into(),
-                flag_type: "NUMBER".into(),
-                initial_value: 12,
-            }],
-            references: vec![],
-            attributes: vec![],
-        },
-        actors: BTreeMap::from([(
-            "LOGIC".into(),
-            Actor {
-                header_index: 0,
-                code_origin: 0,
-                instances: 2,
-                namespace: Some("logic".into()),
-                instance_variables: vec![vec![4], vec![9]],
-                location_offsets: vec![],
-                program,
-                attributes: Default::default(),
-                combat_taunts: vec![],
-                native_hook: None,
-            },
-        )]),
-        instances: (0..2)
-            .map(|id| Instance {
-                object_id: id,
-                actor: "LOGIC".into(),
-                object_type: Default::default(),
-                active: 0,
-                model_name: String::new(),
-                model_mode: 0,
-                light_intensity: 0,
-                light_radius: 0,
-                light_rgb: [0; 3],
-                texture: 0,
-                map_position: [0; 3],
-                angles: [0; 3],
-            })
-            .collect(),
-        unsupported: BTreeMap::new(),
-    };
-    scripts.content_id = scripts.content_identity().unwrap();
-    scripts
-}
+mod support;
+use support::cache;
 
 fn fixture(
     group_present: bool,

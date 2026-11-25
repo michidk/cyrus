@@ -1,4 +1,5 @@
 //! Logical actors execute independently of geometry through explicit public stages.
+mod support;
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;
 use cyrus_assets::script::*;
@@ -20,6 +21,7 @@ use cyrus_soup::{Attribute, Attributes};
 use cyrus_soup::{Native, Property};
 use cyrus_world::heading::wrap;
 use std::collections::BTreeMap;
+use support::ordinary_collision_scene;
 
 struct NoServices;
 impl Host for NoServices {
@@ -8353,45 +8355,6 @@ fn model_positioning_allows_known_dry_surfaces_with_collision_enabled() {
             .contains("water-dependent model position")
     );
     assert!(world.model_presentation(id).unwrap().is_none());
-}
-
-fn ordinary_collision_scene(
-    world: u32,
-    models: cyrus_collision::actor_models::ActorModelCollision,
-) -> cyrus_script::player::data::PlayerScene {
-    use cyrus_collision::collision_world::StaticCollision;
-    use cyrus_script::player::data::{MovementSettings, PlayerScene};
-    PlayerScene {
-        source_identity: None,
-        world,
-        model_radii: Default::default(),
-        control_codes: None,
-        settings: MovementSettings {
-            standing_height: -2,
-            post_collide_height: 1,
-            slide_range: 1,
-            slide_speed: None,
-            slide_hurt: None,
-            tap_time: None,
-            sheath_sword_delay: None,
-            defend_interval: None,
-            swim_depth: None,
-            max_remap_objects: None,
-            turn_speed: 1,
-            turn_max_speed: 1,
-            poly_push_units: 1,
-            joystick: None,
-        },
-        definition: None,
-        terrain: None,
-        collision: cyrus_assets::collision::CollisionScene {
-            sphere_object_scale: Some(256),
-            ..Default::default()
-        },
-        static_collision: StaticCollision::new(&Default::default()).unwrap(),
-        actor_collision: Some(models),
-        unavailable: None,
-    }
 }
 
 #[test]

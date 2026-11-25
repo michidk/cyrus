@@ -4,172 +4,10 @@ use cyrus_assets::script::*;
 use cyrus_script::script::{ScriptInputs, ScriptStage, ScriptWorld};
 use cyrus_soup::Thread;
 use cyrus_soup::program::*;
-use std::collections::BTreeMap;
 
-fn cache() -> Scripts {
-    let program = Program {
-        version: 4,
-        entry: 0,
-        variables: vec![4],
-        strings: vec!["logic".into()],
-        steps: BTreeMap::new(),
-    };
-    let mut scripts = Scripts {
-        version: 30,
-        weapons: Default::default(),
-        torches: Default::default(),
-        camera: Default::default(),
-        combat_attacks: vec![],
-        combat_defenses: vec![],
-        in_combat_threshold: None,
-        lineup_distance: None,
-        view_distance: None,
-        texture_frames: Default::default(),
-        non_engaged_spacing: None,
-        combat_clank_effects: [None; 2],
-        node_timer: None,
-        dialogue: cyrus_assets::script::DialogueSettings {
-            menu_start: [35, 25],
-            max_menu_items: 300,
-            max_dialog_lines: 20,
-            max_text_width: 500,
-            menu_traverse_delay: 4,
-            print_text: true,
-            use_speech: true,
-            max_distance: 1600,
-            rtx_filename: "ENGLISH.RTX".into(),
-        },
-        player_distance_override: false,
-        updates: cyrus_assets::script::UpdateSettings {
-            rope: None,
-            ropes_load: Some(true),
-            fall_death_ticks: 144,
-            fall_landing: None,
-            dummy_model_manager: false,
-            task_system: true,
-            animation_system: true,
-            disable_slaves: false,
-            disable_master_slaves: false,
-            final_version: false,
-        },
-        clock: cyrus_assets::script::ClockSettings {
-            normal_frame_rate: 12,
-            min_frame_rate: 6,
-            max_frame_rate: 300,
-            use_smooth_fps: true,
-            use_smooth_divisor: true,
-        },
-        actor_pool_capacity: 32,
-        content_id: String::new(),
-        shells: Vec::new(),
-        world: 7,
-        definition: Definition {
-            functions: vec![Function {
-                name: cyrus_soup::Native::NullFunction,
-                param_count: 0,
-                kind: CallKind::Function,
-            }],
-            flags: vec![Flag {
-                name: "Counter".into(),
-                flag_type: "NUMBER".into(),
-                initial_value: 12,
-            }],
-            references: vec![],
-            attributes: vec![],
-        },
-        actors: BTreeMap::from([(
-            "LOGIC".into(),
-            Actor {
-                header_index: 0,
-                code_origin: 0,
-                instances: 2,
-                namespace: Some("logic".into()),
-                instance_variables: vec![vec![4], vec![9]],
-                location_offsets: vec![],
-                program,
-                attributes: Default::default(),
-                combat_taunts: vec![],
-                native_hook: None,
-            },
-        )]),
-        instances: (0..2)
-            .map(|id| Instance {
-                object_id: id,
-                actor: "LOGIC".into(),
-                object_type: Default::default(),
-                active: 0,
-                model_name: String::new(),
-                model_mode: 0,
-                light_intensity: 0,
-                light_radius: 0,
-                light_rgb: [0; 3],
-                texture: 0,
-                map_position: [0; 3],
-                angles: [0; 3],
-            })
-            .collect(),
-        unsupported: BTreeMap::new(),
-    };
-    scripts.content_id = scripts.content_identity().unwrap();
-    scripts
-}
-
-fn counter_scripts(object: Object, value: i32, write: bool) -> Scripts {
-    let mut scripts = cache();
-    scripts.definition.references = vec![cyrus_soup::Property::ExtraTime; 295];
-    let place = Place::Property {
-        object,
-        reference: 294,
-    };
-    let assign = |destination, first| Operation::Assign {
-        destination,
-        formula: Formula {
-            first,
-            rest: vec![],
-        },
-    };
-    let mut operations = Vec::new();
-    if write {
-        operations.push(assign(place.clone(), Value::Integer { value }));
-    }
-    operations.push(assign(Place::Local { index: 0 }, Value::Read { place }));
-    operations.push(assign(
-        Place::Flag { index: 0 },
-        Value::Integer { value: 73 },
-    ));
-    operations.push(Operation::End { target: 0 });
-    scripts.actors.get_mut("LOGIC").unwrap().program.steps = operations
-        .into_iter()
-        .enumerate()
-        .map(|(index, operation)| {
-            (
-                index as u32,
-                Step {
-                    next: index as u32 + 1,
-                    operation,
-                },
-            )
-        })
-        .collect();
-    scripts.content_id = scripts.content_identity().unwrap();
-    scripts
-}
-
-fn advance(world: &mut ScriptWorld, caller: usize) -> anyhow::Result<()> {
-    world.advance(
-        world.id(caller)?,
-        ScriptStage::Body(Thread::Main),
-        ScriptInputs {
-            nominal_ticks: Some(1),
-            frame_scale: Some(256),
-            ..Default::default()
-        },
-        None,
-        None,
-        20,
-    )?;
-    Ok(())
-}
+mod support;
+use support::advance;
+use support::counter_scripts;
 
 #[test]
 fn extra_time_routes_low_bytes_and_continues_without_changing_other_state() {
@@ -185,7 +23,7 @@ fn extra_time_routes_low_bytes_and_continues_without_changing_other_state() {
         (256, 0),
     ] {
         for (object, receiver) in [(Object::Me, 1), (Object::Named { string: 0 }, 0)] {
-            let scripts = counter_scripts(object, value, true);
+            let scripts = counter_scripts(cyrus_soup::Property::ExtraTime, object, value, true);
             let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
             let mut control =
                 serde_json::to_value(world.actors()[receiver].control_state().unwrap()).unwrap();
@@ -210,7 +48,7 @@ fn extra_time_routes_low_bytes_and_continues_without_changing_other_state() {
 
 #[test]
 fn extra_time_reads_allocation_zero_without_spatial_or_animation_preparation() {
-    let scripts = counter_scripts(Object::Me, 99, false);
+    let scripts = counter_scripts(cyrus_soup::Property::ExtraTime, Object::Me, 99, false);
     let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
     advance(&mut world, 0).unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
@@ -226,7 +64,8 @@ fn extra_time_missing_owner_or_receiver_keeps_a_sticky_failure() {
             } else {
                 Object::Me
             };
-            let mut scripts = counter_scripts(object, -12345, write);
+            let mut scripts =
+                counter_scripts(cyrus_soup::Property::ExtraTime, object, -12345, write);
             if !missing_receiver {
                 scripts.instances[0].object_type = PlacementType::SCRIPT_ONLY;
             }
@@ -262,7 +101,7 @@ fn extra_time_is_consumed_by_ordinary_updates_and_preserves_sentinels() {
         (129, 1, 128),
         (7, 0, 7),
     ] {
-        let mut scripts = counter_scripts(Object::Me, value, true);
+        let mut scripts = counter_scripts(cyrus_soup::Property::ExtraTime, Object::Me, value, true);
         for instance in &mut scripts.instances {
             instance.object_type = PlacementType::MODEL;
             instance.active = 1;
@@ -375,7 +214,8 @@ fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
 fn extra_time_torch_entry_resets_after_admission_and_retains_on_refusal_or_sound_failure() {
     for (function, group, living) in [("LightTorch", 149, 33), ("UnlightTorch", 150, 34)] {
         for (shell, failing) in [(false, false), (true, false), (false, true)] {
-            let mut scripts = counter_scripts(Object::Me, 19, true);
+            let mut scripts =
+                counter_scripts(cyrus_soup::Property::ExtraTime, Object::Me, 19, true);
             scripts
                 .definition
                 .references
@@ -518,7 +358,7 @@ fn extra_time_torch_entry_resets_after_admission_and_retains_on_refusal_or_sound
 #[test]
 fn extra_time_is_retained_when_the_ordinary_slave_gate_refuses_the_actor() {
     use cyrus_script::script::OrdinaryInputs;
-    let mut scripts = counter_scripts(Object::Me, 7, true);
+    let mut scripts = counter_scripts(cyrus_soup::Property::ExtraTime, Object::Me, 7, true);
     scripts.updates.disable_slaves = true;
     scripts.actors.get_mut("LOGIC").unwrap().attributes[cyrus_soup::Attribute::Slave] = 1;
     for instance in &mut scripts.instances {

@@ -1,4 +1,5 @@
 //! Deep walking checks its edge before classification and support.
+mod support;
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::*;
 use cyrus_assets::surface::Surface;
@@ -7,6 +8,7 @@ use cyrus_script::script::{ScriptHud, ScriptInputs, ScriptSound, ScriptStage, Sc
 use cyrus_soup::program::*;
 use cyrus_soup::{Attribute, Thread};
 use std::collections::BTreeMap;
+use support::ordinary_collision_scene;
 
 fn cache() -> Scripts {
     let program = Program {
@@ -243,45 +245,6 @@ fn advance(world: &mut ScriptWorld, stage: ScriptStage) -> anyhow::Result<()> {
         None,
         30,
     )
-}
-
-fn ordinary_collision_scene(
-    world: u32,
-    models: cyrus_collision::actor_models::ActorModelCollision,
-) -> cyrus_script::player::data::PlayerScene {
-    use cyrus_collision::collision_world::StaticCollision;
-    use cyrus_script::player::data::{MovementSettings, PlayerScene};
-    PlayerScene {
-        source_identity: None,
-        world,
-        model_radii: Default::default(),
-        control_codes: None,
-        settings: MovementSettings {
-            joystick: None,
-            standing_height: -2,
-            post_collide_height: 1,
-            slide_range: 1,
-            slide_speed: None,
-            slide_hurt: None,
-            tap_time: None,
-            sheath_sword_delay: None,
-            defend_interval: None,
-            swim_depth: None,
-            max_remap_objects: None,
-            turn_speed: 1,
-            turn_max_speed: 1,
-            poly_push_units: 1,
-        },
-        definition: None,
-        terrain: None,
-        collision: cyrus_assets::collision::CollisionScene {
-            sphere_object_scale: Some(256),
-            ..Default::default()
-        },
-        static_collision: StaticCollision::new(&Default::default()).unwrap(),
-        actor_collision: Some(models),
-        unavailable: None,
-    }
 }
 
 fn models() -> cyrus_collision::actor_models::ActorModelCollision {
