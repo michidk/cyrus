@@ -798,8 +798,10 @@ pub fn polled_release(previous: [bool; 2], now: [bool; 2], mouse: Mouse) -> bool
     previous[mouse as usize] && !now[mouse as usize]
 }
 
-// Bevy supplies the independent input locks and output resources.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Bevy supplies independent input locks and output resources to one sampling system"
+)]
 pub(super) fn sample(
     inputs: Inputs,
     suppressed: Res<InputSuppressed>,

@@ -869,8 +869,10 @@ impl ScriptWorld {
     /// Continue an already admitted ordinary fall after a support miss. This
     /// does not initialize a fall or run landing response. The caller runs the selected
     /// player's edge service first.
-    // The continuation consumes two independent tick samples and the probe height.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Fall continuation consumes independent tick samples, probe height and caller-owned services"
+    )]
     pub fn continue_ordinary_falling(
         &mut self,
         id: ScriptActorId,

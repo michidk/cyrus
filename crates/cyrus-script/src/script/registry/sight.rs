@@ -476,37 +476,4 @@ impl ScriptWorld {
             matches!(source, SupportSource::Actor { actor, .. } if *actor == target_index)
         }))
     }
-
-    /// Whether `id` is engaged with its combat target (preservation's "Engagement" rule).
-    /// The target is the receiver's own while that actor is a valid target, otherwise the
-    /// selected player; this does not write the selection back to the combat record.
-    pub fn combat_engaged(
-        &self,
-        id: ScriptActorId,
-        selected_player: ScriptActorId,
-        query: OrdinaryObstacleQuery<'_>,
-    ) -> Result<bool> {
-        let index = self.resolve(id)?;
-        let actor = &self.actors[index];
-        let combat = actor
-            .control
-            .as_ref()
-            .and_then(|control| control.combat.as_ref())
-            .context("combat engagement requires a combat record")?;
-        let own_target_is_valid = |target: ScriptActorId| -> Result<bool> {
-            let index = self.resolve(target)?;
-            Ok(self.actors[index]
-                .control
-                .as_ref()
-                .is_some_and(|control| combat_target_valid(control, target)))
-        };
-        let target = match combat.target {
-            Some(target) if own_target_is_valid(target)? => target,
-            _ => selected_player,
-        };
-        match engagement(&actor.attributes) {
-            Engagement::Always => Ok(true),
-            Engagement::InSightWithin(limit) => self.actor_in_sight(id, target, limit, query),
-        }
-    }
 }

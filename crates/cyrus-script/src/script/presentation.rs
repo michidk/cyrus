@@ -48,8 +48,10 @@ pub(super) struct SceneCandidates {
     roots: bevy::platform::collections::HashMap<Entity, Vec<Entity>>,
 }
 
-// The scene walk, its cache and the role bindings are independent inputs.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Scene traversal, its cache and role bindings are independent Bevy system inputs"
+)]
 pub(super) fn bind_scene(
     mut commands: Commands,
     actors: Res<ScriptActors>,

@@ -31,8 +31,13 @@ impl DialogueSource for NoLines {
 /// Script, final health (from 40), flags set beyond the START baseline, changed counts
 /// `(item, before, after)`. Every potion script leaves health alone at potion state zero and swaps
 /// the full bottle for the empty one; the bottle drop of an unowned item changes nothing.
-#[allow(clippy::type_complexity)]
-const EXPECTED: [(&str, u8, &[usize], &[(u32, i64, i64)]); 13] = [
+type ItemExpectation = (
+    &'static str,
+    u8,
+    &'static [usize],
+    &'static [(u32, i64, i64)],
+);
+const EXPECTED: [ItemExpectation; 13] = [
     ("ihealth", 55, &[364], &[(4, 6, 5)]),
     ("iironsk", 40, &[367], &[]),
     ("istrenth", 40, &[366], &[]),
