@@ -20,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 
+from harness import exclusive_lock
+
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))
 
@@ -38,6 +40,11 @@ def main():
     parser.add_argument("--interval", type=float, default=2.0, help="seconds between samples (each read takes about 0.3)")
     args = parser.parse_args()
     run = MAGIC / "retro-run"
+    with exclusive_lock(run.with_suffix(".lock")):
+        return observe(args, run)
+
+
+def observe(args, run):
     ini = run / "Redguard/WORLD.INI"
     original = re.sub(r"(?m)^start_world=\d+", "start_world=0", ini.read_text(errors="surrogateescape"))  # the install's START
     name = "retro-idle"

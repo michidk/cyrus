@@ -23,7 +23,10 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
+
+from harness import exclusive_lock
 
 ROOT = Path(__file__).resolve().parents[2]
 MAGIC = Path(os.environ.get("CYRUS_MAGIC", ROOT / "magic"))  # holds retro-run and gog
@@ -39,6 +42,14 @@ def main():
     parser.add_argument("--limit", type=int, default=400, help="decision steps before giving up")
     parser.add_argument("--log", help="write every sample as JSON lines")
     args = parser.parse_args()
+    with ExitStack() as resources:
+        if not args.attach:
+            resources.enter_context(exclusive_lock((MAGIC / "retro-run").with_suffix(".lock")))
+            resources.callback(sh, "docker", "rm", "-f", "retro-duel", check=False)
+        return drive(args, resources)
+
+
+def drive(args, resources):
     import importlib
     scenario = importlib.import_module('original-scenario')
     name = args.attach or "retro-duel"
@@ -59,7 +70,7 @@ def main():
         scenario.start_original_runtime(name, run, 'cyrus-retro:dev', command=sh, magic=MAGIC)
     else:
         scenario.install_original_reader(name, command=sh, magic=MAGIC)
-    log = open(args.log, "w") if args.log else None
+    log = resources.enter_context(open(args.log, "w")) if args.log else None
     started = time.time()
 
     def state():
