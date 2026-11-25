@@ -11,12 +11,14 @@ import math
 from pathlib import Path
 
 
-def bios_measurement_interval(previous_baseline, writes):
+def bios_measurement_interval(previous_baseline, writes, *, previous_remainder=None):
     """Bind one observed ordinary update to its effective BIOS delta, not load time.
 
     The caller establishes two consecutive stopped ordinary boundaries and captures
     every baseline write between them. The first write belongs to clock advancement;
-    later blocking restores retain its measurement-frame count. Capture each write
+    later blocking restores retain its completed measurement-frame count. When
+    a window completes between those writes, previous_remainder admits the
+    documented frame-count reset to zero. Capture each write
     after the baseline assignment. Samples and baselines use unsigned 32-bit BIOS
     ticks. Host audio time must be measured separately, never derived here.
     Follows preservation's engine/player.md FPS-derived-frame-scale contract.
@@ -24,13 +26,25 @@ def bios_measurement_interval(previous_baseline, writes):
     if (type(previous_baseline) is not int or not 0 <= previous_baseline < 2**32
             or not writes):
         raise ValueError('BIOS interval needs a previous baseline and observed writes')
+    if previous_remainder is not None and (type(previous_remainder) is not int
+                                           or not 0 <= previous_remainder < 18):
+        raise ValueError('BIOS measurement remainder must be in the retained window')
+    frames = None
+    completed = False
     for row in writes:
         if (not isinstance(row, dict)
                 or any(type(row.get(key)) is not int or not 0 <= row[key] < 2**32
                 for key in ('sample', 'baseline', 'frames'))
-                or row['sample'] != row['baseline']
-                or row['frames'] != writes[0]['frames']):
+                or row['sample'] != row['baseline']):
             raise ValueError('BIOS writes do not bind one complete ordinary measurement')
+        if frames is None:
+            frames = row['frames']
+        elif row['frames'] != frames:
+            elapsed = (writes[0]['sample'] - previous_baseline) % 2**32
+            if (completed or row['frames'] != 0 or previous_remainder is None
+                    or previous_remainder + elapsed < 18):
+                raise ValueError('BIOS writes do not bind one complete ordinary measurement')
+            frames, completed = 0, True
     first, last = writes[0]['sample'], writes[-1]['sample']
     return dict(elapsed_bios_ticks=(first - previous_baseline) % 2**32,
                 next_baseline=last, excluded_bios_ticks=(last - first) % 2**32)

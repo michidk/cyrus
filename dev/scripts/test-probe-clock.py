@@ -27,6 +27,18 @@ class BiosMeasurement(unittest.TestCase):
         self.assertEqual(clock.bios_measurement_interval(104, [
             {'sample': 105, 'baseline': 105, 'frames': 19}])['elapsed_bios_ticks'], 1)
 
+    def test_window_completion_can_reset_frames_before_a_blocking_restore(self):
+        writes=[{'sample':101,'baseline':101,'frames':20},
+                {'sample':104,'baseline':104,'frames':0}]
+        self.assertEqual(clock.bios_measurement_interval(100,writes,previous_remainder=17),
+                         {'elapsed_bios_ticks':1,'next_baseline':104,'excluded_bios_ticks':3})
+        for remainder in (None,16):
+            with self.subTest(remainder=remainder),self.assertRaises(ValueError):
+                clock.bios_measurement_interval(100,writes,previous_remainder=remainder)
+        writes.append({'sample':105,'baseline':105,'frames':1})
+        with self.assertRaises(ValueError):
+            clock.bios_measurement_interval(100,writes,previous_remainder=17)
+
     def test_wrapping_counter_is_independent_of_host_time(self):
         self.assertEqual(clock.bios_measurement_interval(2**32-1, [
             {'sample': 1, 'baseline': 1, 'frames': 0}]),
