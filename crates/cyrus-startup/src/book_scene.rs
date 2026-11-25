@@ -19,7 +19,7 @@ use bevy::{
 };
 use cyrus_assets::menu::{MenuAsset, MenuModel, PageTexture};
 use cyrus_game::BookCamera;
-use cyrus_world::heading::wrap;
+use cyrus_world::heading::{table_radians, wrap};
 use std::collections::{BTreeMap, HashMap};
 
 /// Render layer of the book scene, apart from the world and the 2D startup content.
@@ -121,8 +121,7 @@ fn group_mesh(book: &MenuAsset, group: &Group, shown: Shown) -> Mesh {
 
 /// The camera transform for an engine camera position and pitch (2048 units per revolution).
 fn camera_transform(position: [f32; 3], pitch: i32) -> Transform {
-    #[allow(clippy::approx_constant)] // Decimal period from the original rotation table.
-    let angle = (f64::from(wrap(pitch)) * 6.2831852 / 2048.0) as f32;
+    let angle = table_radians(wrap(pitch)) as f32;
     Transform {
         translation: Vec3::new(position[0], -position[1], -position[2]),
         rotation: Quat::from_rotation_x(-angle),

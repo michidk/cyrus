@@ -12,7 +12,7 @@ use cyrus_assets::{
 };
 use cyrus_game::AppState;
 use cyrus_script::logbook::LogbookScreen;
-use cyrus_world::heading::wrap;
+use cyrus_world::heading::{table_radians, wrap};
 use image::RgbaImage;
 
 #[derive(Default, TypePath)]
@@ -518,8 +518,7 @@ fn paint_paper(
 
 /// The two rotating scrolls as lit triangles in the reader's view space.
 fn build_scene(artwork: &LogbookArtwork, rotation: i32) -> LitScene {
-    #[allow(clippy::approx_constant)] // Original table's decimal period.
-    let sample = |angle: i32| (f64::from(wrap(angle)) * 6.2831852 / 2048.).sin() as f32;
+    let sample = |angle: i32| table_radians(wrap(angle)).sin() as f32;
     let (sin, cos) = (sample(rotation), sample(rotation + 512));
     let mut scene = LitScene::framebuffer();
     for texture in &artwork.textures {

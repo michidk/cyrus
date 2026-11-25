@@ -488,7 +488,7 @@ impl Rope {
 /// and 2, then the pitch rotation of columns 1 and 2, each applied from the right.
 fn matrix(yaw: i32, pitch: i32) -> [[f32; 3]; 3] {
     let angle = |units: i32| {
-        let radians = f64::from(units) * std::f64::consts::TAU / f64::from(TURN);
+        let radians = cyrus_world::heading::radians(units);
         (radians.sin() as f32, radians.cos() as f32)
     };
     let mut m = [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]];

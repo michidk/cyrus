@@ -215,7 +215,7 @@ fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
 /// units per turn).
 fn orientation(pose: &ViewerPose) -> Matrix {
     let sin_cos = |angle: u16| {
-        let radians = f64::from(angle & 0x7ff) * std::f64::consts::TAU / 2048.0;
+        let radians = cyrus_world::heading::radians(i32::from(angle & 0x7ff));
         (radians.sin() as f32, radians.cos() as f32)
     };
     let (s, c) = sin_cos(pose.turn);
