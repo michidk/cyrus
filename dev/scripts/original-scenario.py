@@ -11,7 +11,8 @@ addresses and stay in the gitignored `$CYRUS_MAGIC/tools` and `$CYRUS_MAGIC/help
         --name soup3 --world 1 --marker 22 --quicksave --out boot.json
 """
 import argparse
-import fcntl
+from contextlib import ExitStack
+from harness import exclusive_lock
 import hashlib
 import importlib.util
 import json
@@ -66,8 +67,8 @@ class Original:
             [str(ROOT / "dev/scripts/ensure-retro-runtime.sh")], text=True).strip()
         self.name = f"retro-{name}"
         self.run = MAGIC / f"retro-run-{name}"
-        self.run_lock = self.run.with_suffix(".lock").open("w")
-        fcntl.flock(self.run_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.run_lock = ExitStack()
+        self.run_lock.enter_context(exclusive_lock(self.run.with_suffix(".lock")))
         reader = MAGIC / "tools/original-state.py"
         if not reader.exists():
             sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")

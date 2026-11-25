@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run installed animation replacement controls without starting a preview."""
 import argparse
-import fcntl
+from harness import exclusive_lock
 import json
 import shutil
 from pathlib import Path
@@ -43,8 +43,7 @@ def main():
     for name in ['fixture.json', 'replacement_lifecycle.js', 'replacement_lifecycle_bg.wasm']:
         if not (rig / 'web' / name).is_file():
             parser.error(f'missing retained artifact: web/{name}; this launcher never recompiles')
-    with (rig / 'browser.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(rig / 'browser.lock') as lock:
         shutil.copyfile(Path(__file__).resolve().parent.parent / 'fixtures' / 'animation-replacement.html',
                         rig / 'web' / 'index.html')
         (rig / 'config').mkdir(exist_ok=True)

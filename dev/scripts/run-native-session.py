@@ -5,7 +5,7 @@ The original installation stays in place. Optional session loading uses a prior
 public checkpoint; it does not establish original book-slot adapter acceptance.
 """
 import argparse
-import fcntl
+from harness import LIVE_LOCK, exclusive_lock
 import importlib.util
 import json
 import math
@@ -53,8 +53,7 @@ def run(args):
         if not target.exists():
             target.symlink_to(cache, target_is_directory=True)
     environment = dict(os.environ, CYRUS_CONFIG_DIR=str(config), RUST_MIN_STACK='8388608')
-    with args.lock.open('a') as lock, (output / 'process.log').open('x') as log:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.lock) as lock, (output / 'process.log').open('x') as log:
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]
@@ -121,7 +120,7 @@ def main():
     parser.add_argument('--scene', required=True)
     parser.add_argument('--cache', type=Path)
     parser.add_argument('--session', type=Path)
-    parser.add_argument('--lock', type=Path, default=Path('/tmp/cyrus-live.lock'))
+    parser.add_argument('--lock', type=Path, default=LIVE_LOCK)
     parser.add_argument('--timeout', type=float, default=180)
     parser.add_argument('driver', nargs=argparse.REMAINDER)
     args = parser.parse_args()

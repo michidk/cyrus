@@ -6,7 +6,7 @@ an installed emitter and loop effect explicitly; no installed data is embedded.
 """
 import argparse
 import array
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 import math
@@ -52,8 +52,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.2)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'ambient.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'ambient.lock') as lock:
         driver = capture.Driver(args)
         actual = capture.file_digest(args.binary)
         results = {'executable': actual, 'stages': {}}

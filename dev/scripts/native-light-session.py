@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify public native light restoration, rejection continuity and world retirement."""
 import argparse
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 from pathlib import Path
@@ -186,8 +186,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'capture.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'capture.lock') as lock:
         (args.output / 'result.json').unlink(missing_ok=True)
         (args.output / 'failure.json').unlink(missing_ok=True)
         try:

@@ -10,7 +10,7 @@ animation group or PCM amplitude is converted into a sound-service event here.
 """
 import argparse
 import ctypes
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 import math
@@ -162,8 +162,7 @@ def main():
         path = args.output / 'status.tmp'
         path.write_text(json.dumps(value) + '\n')
         path.replace(args.output / 'status.json')
-    with (args.output / 'observer.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'observer.lock') as lock:
         if (args.output / 'events.jsonl').exists():
             raise ValueError('preserve previous observer stream; use a fresh output directory')
         observer = WriteWatches(binding.pid())

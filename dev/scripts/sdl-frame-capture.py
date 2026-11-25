@@ -5,7 +5,7 @@ The local probe supplies process memory bindings. No game layouts are built in.
 This captures a software surface, not OpenGL, GPU submission or mixer samples.
 """
 import argparse
-import fcntl
+from harness import exclusive_lock
 import json
 import math
 from pathlib import Path
@@ -67,8 +67,7 @@ def capture(directory, output, rows, timeout=30, pcm_path=None, at_clock=None):
     directory.mkdir(parents=True, exist_ok=True)
     if len(str(output)) >= 4095 or '\n' in str(output) or '\r' in str(output):
         raise ValueError('capture output must be one path line')
-    with (directory / 'capture.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(directory / 'capture.lock') as lock:
         output.mkdir(parents=True, exist_ok=False)
         request = directory / 'request'
         if request.exists():

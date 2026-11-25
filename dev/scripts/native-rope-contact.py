@@ -8,7 +8,7 @@ Audio and attachment evidence remain explicit in the resulting record.
 import argparse
 import importlib.util
 import hashlib
-import fcntl
+from harness import exclusive_lock
 import os
 import json
 from pathlib import Path
@@ -456,8 +456,7 @@ class Driver:
 def execute(args):
     original, schedule = accepted_schedule(args.original, attachment=args.attachment)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.with_suffix(args.output.suffix + '.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output.with_suffix(args.output.suffix + '.lock')) as lock:
         execute_locked(args, original, schedule)
 
 

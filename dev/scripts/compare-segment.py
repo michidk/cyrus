@@ -10,7 +10,7 @@ limited import retaining native baseline tasks cannot establish a matched start.
 Original executable bindings belong in an ignored backend, never this script.
 """
 import argparse
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 import subprocess
@@ -205,8 +205,7 @@ def main():
     args = parser.parse_args()
     output = Path(args.out)
     output.mkdir(parents=True, exist_ok=True)
-    with (output / 'comparison.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(output / 'comparison.lock') as lock:
         subprocess.run([str(Path(__file__).with_name("ensure-retro-runtime.sh"))],
                        check=True, stdout=subprocess.DEVNULL)
         report = run_pair(json.loads(Path(args.segment).read_text()), backend(args.original_backend),

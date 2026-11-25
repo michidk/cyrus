@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capture and resume a rendered public session round trip without game-data fixtures."""
 import argparse
-import fcntl
+from harness import exclusive_lock
 import hashlib
 import json
 import os
@@ -326,8 +326,7 @@ def main():
     if any(value is not None for value in continuation) and any(value is None for value in continuation):
         parser.error('continuation requires seed/runtime-seed, attachment-actor, revisit and revisit-actor')
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'capture.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'capture.lock') as lock:
         # A prior success must never survive a failed retry as a current result.
         (args.output / 'result.json').unlink(missing_ok=True)
         (args.output / 'failure.json').unlink(missing_ok=True)

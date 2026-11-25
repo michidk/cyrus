@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run input-only chapter fixtures in one headless New Game session."""
 import argparse
-import fcntl
+from harness import exclusive_lock
 import hashlib
 import json
 import math
@@ -861,8 +861,7 @@ def run(args):
     identity = binary_identity(args.binary)
     # Runs share captured sessions through CYRUS_REPLAY_SESSIONS, else the config directory's parent.
     sessions = Path(os.environ.get("CYRUS_REPLAY_SESSIONS") or args.config.parent / "sessions")
-    with (args.config / "replay.lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.config / "replay.lock") as lock:
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]

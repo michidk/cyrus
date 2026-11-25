@@ -6,7 +6,7 @@ is supplied by the caller; no sample data or captured PCM belongs in git.
 """
 import argparse
 import array
-import fcntl
+from harness import exclusive_lock
 import importlib.util
 import json
 import math
@@ -41,8 +41,7 @@ def main():
     parser.add_argument('--interval', type=float, default=.1)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with (args.output / 'sound-reset.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with exclusive_lock(args.output / 'sound-reset.lock') as lock:
         driver = capture.Driver(args)
         driver.progress(driver.ready())
         driver.request('console', open=True)

@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 import hashlib
-import fcntl
+from harness import exclusive_lock
 from contextlib import ExitStack
 import os
 from pathlib import Path
@@ -480,8 +480,7 @@ def main():
     with ExitStack() as stack:
         if args.progress:
             args.progress.parent.mkdir(parents=True, exist_ok=True)
-            lock = stack.enter_context(args.progress.with_suffix('.lock').open('a'))
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            stack.enter_context(exclusive_lock(args.progress.with_suffix('.lock')))
         driver = Driver(args.reader, args.timeout, args.pulse)
         driver.continue_version_prompt = args.continue_version_prompt
         driver.attachment = args.attachment
