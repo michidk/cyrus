@@ -1929,6 +1929,27 @@ run tests checkpoint restoration and continuation; original book-slot admission
 must be exercised separately through its public adapter. Omit `--session` when
 the supplied driver performs that admission itself.
 
+For an independent decoder-clock check, restore a checkpoint containing a fresh
+zero-cursor finite mono source, then run `native-source-clock.py` as the supplied
+driver. Read the source rate from the installed source metadata and choose the
+active public sample slot:
+
+```sh
+python3 dev/scripts/native-source-clock.py PORT /absolute/host/evidence/source-clock \
+  --slot SLOT --sample-rate SOURCE_HZ --interval-nanos 40000 40000 1 1000000
+python3 -B dev/scripts/test-native-source-clock.py
+```
+
+The driver advances explicit zero-scale gameplay frames with independently
+supplied host nanoseconds and zero BIOS ticks. It captures the public session
+after every interval, resolves the slot's live player, and requires unchanged
+source identity and ownership. It checks stereo output samples exactly, including
+a mono source's pending right sample, and carries fractional elapsed time across
+intervals. Choose intervals that end before source completion. A source that
+finishes, is replaced or has a different speed fails. This isolates host decoder
+progress; it does not model original mixer-buffer service or establish gameplay
+parity. The output directory must be new.
+
 `native-transient-runtime.py` recovers the minimal software-render runtime after
 Docker images disappear, without invoking Cargo. Supply the retained executable
 and its independently recorded digest:
