@@ -71,6 +71,6 @@ def main():
 if __name__ == '__main__':
     import sys
     if len(sys.argv) == 1:
-        print('skipped: requires a running installed-game native runtime')
+        print('skipped: requires retained native animation log and PCM captures')
     else:
         main()

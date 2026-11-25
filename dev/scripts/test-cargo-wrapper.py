@@ -50,7 +50,7 @@ exit 17
     def test_setup_uses_the_same_single_build_limit(self):
         self.assertIn("export CARGO_HAULER_MAX_CONCURRENT=1", (SCRIPTS / "setup-hauler.sh").read_text())
 
-    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail="", package=None, script_fail=False):
+    def run_gate(self, explicit=None, skip=False, linked=True, stage=None, fail="", package=None, script_fail=False, messages=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             scripts = root / "dev/scripts"
@@ -65,7 +65,7 @@ exit 17
             # Exercise orchestration with inert script checks, including newly added
             # checks. Running their real bodies belongs to the real gate, not this
             # synthetic checkout with a mocked Cargo command and install.
-            checks = list(SCRIPTS.glob("test-*.py")) + list(SCRIPTS.glob("*.test.mjs"))
+            checks = list(SCRIPTS.glob("test-*.py")) + list(SCRIPTS.glob("*.test.mjs")) + [SCRIPTS / "test-local-install.mjs", SCRIPTS / "test-game-assets.mjs"]
             checks.append(SCRIPTS / "check-preservation-release.py")
             for check in checks:
                 (scripts / check.name).write_text("")
@@ -81,7 +81,7 @@ exit 17
     fi
 }
 ''')
-            for name in ("publish-check.sh", "genmap.sh"):
+            for name in ("publish-check.sh", "genmap.sh", "check-core-boundaries.sh"):
                 script = scripts / name
                 script.write_text("#!/bin/bash\nexit 0\n")
                 script.chmod(0o755)
@@ -89,12 +89,16 @@ exit 17
             env.pop("REDGUARD_DIR", None)
             if explicit is not None:
                 env["REDGUARD_DIR"] = explicit
+            if messages:
+                env["CYRUS_TEST_MESSAGES"] = str(root / "messages.jsonl")
             args = ["bash", str(scripts / "gates.sh")]
             if stage is not None:
                 args.append(stage)
             if package is not None:
                 args.append(package)
-            return subprocess.run(args, env=env, capture_output=True, text=True)
+            result = subprocess.run(args, env=env, capture_output=True, text=True)
+            result.messages = (root / "messages.jsonl").read_text() if messages and (root / "messages.jsonl").exists() else None
+            return result
 
     def test_split_gates_cover_the_full_gate(self):
         def cargo_calls(result):
@@ -116,6 +120,12 @@ exit 17
         failed = self.run_gate(stage="check", script_fail=True)
         self.assertEqual(failed.returncode, 19)
         self.assertNotIn("cargo fmt", failed.stdout)
+
+    def test_ci_test_stage_retains_all_features_and_artifact_messages(self):
+        result = self.run_gate(stage="test", messages=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("cargo test --workspace --all-features --message-format=json", result.messages)
+        self.assertEqual(self.run_gate(stage="test", messages=True, fail="test").returncode, 17)
 
     def test_check_does_not_compile(self):
         result = self.run_gate(stage="check")
