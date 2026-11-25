@@ -53,8 +53,7 @@ def observe(args, run):
         sys.exit(f"{reader} is missing; restore the local original-game tooling bundle")
     try:
         ini.write_text(re.sub(r"(?m)^start_world=\d+", f"start_world={args.world}", original), errors="surrogateescape")
-        import importlib
-        scenario = importlib.import_module('original-scenario')
+        import original_scenario as scenario
         scenario.start_original_runtime(name, run, 'cyrus-retro:dev', command=sh, magic=MAGIC)
 
         def state():

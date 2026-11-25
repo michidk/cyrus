@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Controls for the original-fight driver's pure logic, independent of the original and of game bytes."""
-import importlib.util
-from pathlib import Path
 import unittest
+from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('fight', Path(__file__).with_name('original-fight.py'))
-fight = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(fight)
+import original_fight as fight
+import original_scenario as scenario
 
 
 def actor(identifier, group, health, selected=False, pending=None, drawn=0):
@@ -576,10 +574,6 @@ class FrameWaits(unittest.TestCase):
 class OriginalFrameSession(unittest.TestCase):
     def test_quicksave_configuration_is_private_and_explicit(self):
         import tempfile
-        scenario_spec = importlib.util.spec_from_file_location(
-            'scenario', Path(__file__).with_name('original-scenario.py'))
-        scenario = importlib.util.module_from_spec(scenario_spec)
-        scenario_spec.loader.exec_module(scenario)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             run = root / 'run'
@@ -600,10 +594,6 @@ class OriginalFrameSession(unittest.TestCase):
         import subprocess
         import tempfile
         from unittest.mock import patch
-        scenario_spec = importlib.util.spec_from_file_location(
-            'scenario', Path(__file__).with_name('original-scenario.py'))
-        scenario = importlib.util.module_from_spec(scenario_spec)
-        scenario_spec.loader.exec_module(scenario)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             game = scenario.Original.__new__(scenario.Original)
@@ -639,10 +629,6 @@ class OriginalFrameSession(unittest.TestCase):
 
     def test_real_key_names_and_frame_waits_use_the_stream_counter(self):
         import subprocess
-        scenario_spec = importlib.util.spec_from_file_location(
-            'scenario', Path(__file__).with_name('original-scenario.py'))
-        scenario = importlib.util.module_from_spec(scenario_spec)
-        scenario_spec.loader.exec_module(scenario)
         class Game:
             count = 80
             keys = []

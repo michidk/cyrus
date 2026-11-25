@@ -51,8 +51,7 @@ def main():
 
 
 def prepare_original(args):
-    import importlib
-    scenario = importlib.import_module('original-scenario')
+    import original_scenario as scenario
     name = args.attach or "retro-duel"
     if not args.attach:
         run = MAGIC / "retro-run"
