@@ -871,6 +871,8 @@ pub struct ReplayFrameScale {
     pub generation: u64,
     pub previous_update: u64,
     pub frame_scale: u32,
+    /// Counterpart BIOS-sample delta, independent of the Q8 movement scale.
+    pub elapsed_bios_ticks: Option<u32>,
 }
 
 pub(crate) fn sample_clock(
@@ -925,7 +927,10 @@ pub(crate) fn sample_clock(
     if let Some(mut clock) = clock {
         // A replay's BIOS tick follows simulated time: the host's absolute tick carries the load
         // time, which changes where tick boundaries fall against the updates.
-        let tick = if hold.is_some() {
+        let measured_delta = recorded.as_ref().and_then(|frame| frame.elapsed_bios_ticks);
+        let tick = if let Some(elapsed) = measured_delta {
+            clock.bios_sample().wrapping_add(elapsed)
+        } else if hold.is_some() {
             clock.simulated_bios_tick()
         } else {
             bios_tick(time.elapsed())
@@ -936,7 +941,9 @@ pub(crate) fn sample_clock(
             let elapsed = if admission.running == Some(generation) {
                 time.delta()
             } else {
-                clock.rebase(tick);
+                if measured_delta.is_none() {
+                    clock.rebase(tick);
+                }
                 std::time::Duration::ZERO
             };
             if let Some(recorded) = recorded.as_deref() {

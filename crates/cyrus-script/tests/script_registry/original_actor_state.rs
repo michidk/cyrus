@@ -79,6 +79,7 @@ fn original_actor_state_preserves_histories_and_rejects_without_mutation() -> an
     assert_eq!(spatial.initial_angles, [83, 0, 0]);
     assert_eq!(spatial.water_rollback_position, Some([61, 0, 0]));
     let control = world.actors()[player.index].control_state().unwrap();
+    assert!(control.object_update_excluded);
     assert_eq!(control.move_counter, 48);
     assert_eq!(control.stable_local_position, [42, 0, 0]);
     assert_eq!((control.torch_burning, control.torch_saved), (3, 87));
@@ -100,6 +101,14 @@ fn original_actor_state_preserves_histories_and_rejects_without_mutation() -> an
     assert_eq!(
         world.spatial(player)?.water_rollback_position,
         Some([100, 200, 300])
+    );
+    object.body[0x237] = 0;
+    world.restore_original_actor_states(&[(player, &object)])?;
+    assert!(
+        !world.actors()[player.index]
+            .control_state()
+            .unwrap()
+            .object_update_excluded
     );
     world.snapshot_spatial(player)?;
     assert_eq!(

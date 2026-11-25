@@ -101,6 +101,7 @@ fn retained_actor_population_restores_without_callbacks() -> Result<()> {
         let control = world.actors()[id.index]
             .control_state()
             .context("controller absent")?;
+        assert_eq!(control.object_update_excluded, saved.controller.active != 0);
         assert_eq!(control.move_counter, saved.controller.movement_counter);
         assert_eq!(
             control.stable_local_position,

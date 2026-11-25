@@ -415,3 +415,33 @@ fn settled_original_import_consumes_only_the_first_explicit_frame() {
     );
     assert_eq!(clock.elapsed_frame_scale(), 236);
 }
+
+#[test]
+fn recorded_movement_does_not_determine_the_bios_measurement_phase() {
+    let clock = SimulationClock::new(settings(false)).unwrap();
+    let mut snapshot = serde_json::to_value(clock.snapshot()).unwrap();
+    snapshot["warmup"] = 0.into();
+    snapshot["frames"] = 9.into();
+    snapshot["remainder"] = 17.into();
+    snapshot["measured"] = 20.into();
+    snapshot["smoothed"] = 20.into();
+    snapshot["next_scale"] = 153.into();
+    let restore = || {
+        SimulationClock::from_snapshot(serde_json::from_value(snapshot.clone()).unwrap(), 100)
+            .unwrap()
+    };
+    let mut before_boundary = restore();
+    let mut at_boundary = restore();
+    assert_eq!(
+        before_boundary.advance_recorded(100, 153).unwrap(),
+        at_boundary.advance_recorded(101, 153).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(before_boundary.snapshot()).unwrap()["next_scale"],
+        153
+    );
+    assert_eq!(
+        serde_json::to_value(at_boundary.snapshot()).unwrap()["next_scale"],
+        307
+    );
+}

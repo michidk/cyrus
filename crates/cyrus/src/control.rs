@@ -608,7 +608,7 @@ fn handle(
                     Err(error) => Err(error),
                 }
             }
-            Command::ReplayFrame { frame_scale } => {
+            Command::ReplayFrame { frame_scale, elapsed_bios_ticks } => {
                 let prepared = (|| -> Result<_, String> {
                     if replay_step.is_none() {
                         return Err("recorded frame requires --replay-step-micros".into());
@@ -616,12 +616,17 @@ fn handle(
                     let world = script_actors.as_ref().and_then(|actors| actors.current.as_ref())
                         .ok_or("recorded frame requires a staged world")?;
                     let mut candidate = clock.as_deref().ok_or("recorded frame requires a clock")?.clone();
-                    candidate.advance_recorded(candidate.simulated_bios_tick(), frame_scale)
+                    let tick = elapsed_bios_ticks.map_or_else(
+                        || candidate.simulated_bios_tick(),
+                        |elapsed| candidate.bios_sample().wrapping_add(elapsed),
+                    );
+                    candidate.advance_recorded(tick, frame_scale)
                         .map_err(|error| error.to_string())?;
                     Ok(cyrus_script::script::ReplayFrameScale {
                         generation: world.generation(),
                         previous_update: world.ordinary_updates(),
                         frame_scale,
+                        elapsed_bios_ticks,
                     })
                 })();
                 match prepared {

@@ -258,6 +258,11 @@ pub enum Command {
     /// Requires a staged replay world and its matching initial clock continuation.
     ReplayFrame {
         frame_scale: u32,
+        /// Observed BIOS ticks since the preceding admitted clock sample.
+        /// Omit for a synthetic simulated-time clock; Q8 movement alone cannot
+        /// reproduce the counterpart’s independent FPS measurement phase.
+        #[serde(default)]
+        elapsed_bios_ticks: Option<u32>,
     },
     /// Press at the next ordinary boundary, retain every boundary, and release at
     /// the first actually consumed endpoint from the counterpart's receipt set.
@@ -530,7 +535,7 @@ pub mod server;
 
 #[cfg(test)]
 mod frame_boundary_tests {
-    use super::FrameBoundary;
+    use super::{Command, FrameBoundary};
     #[test]
     fn player_trace_request_round_trips_placement_and_update_bound() {
         let value = serde_json::json!({"type":"trace_player","x":-10,"y":20,"z":30,"heading":40,"updates":21});
@@ -560,5 +565,23 @@ mod frame_boundary_tests {
         assert_eq!(target.reached(7, 768, 12, Some(12)), Ok(true));
         assert!(target.reached(7, 1024, 13, Some(12)).is_err());
         assert!(target.reached(7, 128, 9, None).is_err());
+    }
+    #[test]
+    fn recorded_frame_retains_independent_bios_measurement_delta() {
+        let value = serde_json::json!({"type":"replay_frame", "frame_scale":118,
+            "elapsed_bios_ticks":0});
+        let command: Command = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(command).unwrap(), value);
+        let command: Command = serde_json::from_value(serde_json::json!({
+            "type":"replay_frame", "frame_scale":118
+        }))
+        .unwrap();
+        assert!(matches!(
+            command,
+            Command::ReplayFrame {
+                elapsed_bios_ticks: None,
+                ..
+            }
+        ));
     }
 }

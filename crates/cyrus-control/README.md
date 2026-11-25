@@ -89,3 +89,8 @@ player, fidelity, the clock, the engine random generator state (`random_state`, 
 cargo test -p cyrus-control
 just smoke-mcp   # headless game driven end to end through cyrus-mcp; needs an install
 ```
+
+Recorded replay frames can supply `elapsed_bios_ticks` as well as the Q8
+movement scale. This preserves the independent FPS-measurement phase; omitting
+it retains the synthetic simulated-time sample. The command remains bound to
+one staged world generation and ordinary-update boundary.

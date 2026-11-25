@@ -238,7 +238,7 @@ fn apply_controller(
     control.hand_angles = state.hand_angles;
     control.grip_override = state.grip.map(Some);
     control.scabbard_override = state.scabbard.map(Some);
-    control.object_update_excluded = state.active == 0;
+    control.object_update_excluded = state.active != 0;
     control.hidden = state.hidden != 0;
     control.killed = state.dead != 0;
     control.invisible = state.invisible != 0;
