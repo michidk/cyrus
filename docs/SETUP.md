@@ -1490,7 +1490,7 @@ With a rendered native process exposing its public control port, capture a
 START/ISLAND diagnostic session round trip without rebuilding the executable:
 
 ```sh
-python3 dev/scripts/native-session-capture.py 7126 /absolute/host/evidence \
+python3 dev/scripts/native_session_capture.py 7126 /absolute/host/evidence \
   --binary /absolute/path/to/cyrus --runtime-output /run/evidence
 python3 dev/scripts/test-native-session-capture.py
 ```
@@ -1558,7 +1558,7 @@ only after a valid placed baseline. It stops the recorder on completion or
 failure; the launcher mounts the run output's `audio/` as the capture directory.
 A recording alone does not establish which sound occurred.
 
-`dev/scripts/native-trace.py` samples the selected player through an observation-only
+`dev/scripts/native_trace.py` samples the selected player through an observation-only
 `schedule_input` event at an ordinary update boundary. Pose, motion, health,
 animation, game clock and logical generation come from that single snapshot.
 `frame` is the ordinary update number. Placement observes the current boundary;
@@ -1638,7 +1638,7 @@ Acceptance rejects gaps, generation changes, early falling, missing falling entr
 and a missing health decrease followed by a nonfalling continuation boundary.
 The raw response is retained as `<out>.raw.json` even when validation fails;
 accepted JSONL is written only after validation, replacing any previous result.
-`native-trace.py` waits for the first admitted ordinary update as well as loaded
+`native_trace.py` waits for the first admitted ordinary update as well as loaded
 scripts, avoiding placement in the initial Loaded-before-update window.
 
 Use `--place X,Y,Z --heading H --settle-updates N` to restore a verified
@@ -1728,7 +1728,7 @@ an installed animated actor with an equipped attachment in each world. Actor
 indices come from `scripts` and the seed's retained actor census:
 
 ```sh
-python3 dev/scripts/native-session-capture.py PORT HOST_OUTPUT \
+python3 dev/scripts/native_session_capture.py PORT HOST_OUTPUT \
   --binary EXECUTABLE --runtime-output RUNTIME_OUTPUT \
   --continuation-seed HOST_SEED --runtime-seed RUNTIME_SEED \
   --attachment-actor ACTIVE_INDEX --revisit SCENE --revisit-actor DORMANT_INDEX
@@ -2244,7 +2244,7 @@ its sample timeline against the exported installed effects:
 ```sh
 python3 -m venv /absolute/host/analysis-env
 /absolute/host/analysis-env/bin/pip install numpy==2.4.6 scipy==1.17.1
-/absolute/host/analysis-env/bin/python dev/scripts/book-audio-continuity.py \
+/absolute/host/analysis-env/bin/python dev/scripts/book_audio_continuity.py \
   /absolute/host/capture/audio.wav /absolute/host/continuity.json \
   --reference /absolute/host/config/cache/sounds/066.wav \
   --reference /absolute/host/config/cache/sounds/067.wav
@@ -2357,7 +2357,7 @@ must appear in the retained sink-input snapshot while playback is active;
 a pre-playback snapshot describes only the warmup stream and cannot establish
 calibration gain. Missing or exited playback rejects the control. This measures
 the PulseAudio capture segment only, not the emulator mixer or native application
-volume, and must not calibrate a browser graph tap taken at a different boundary. Run `book-audio-continuity.py` on the host
+volume, and must not calibrate a browser graph tap taken at a different boundary. Run `book_audio_continuity.py` on the host
 against each generated monitor/reference pair to check the sample timeline.
 `--recorder-latency-ms 0 --cold-sink` selects server defaults without warmup
 as the idle-clock/delayed-drain control;
