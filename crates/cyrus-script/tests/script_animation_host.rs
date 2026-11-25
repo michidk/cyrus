@@ -1,4 +1,5 @@
 //! Shared actor host contracts use synthetic scripts and explicit stage timing.
+mod support;
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::surface::Surface;
 use cyrus_assets::{animation::Animations, script::*};
@@ -79,54 +80,10 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
                 .collect(),
         },
     };
+    let mut base = support::cache();
+    base.updates.ropes_load = None;
     let mut result = Scripts {
-        version: 30,
-        weapons: Default::default(),
-        torches: Default::default(),
-        camera: Default::default(),
-        combat_attacks: vec![],
-        combat_defenses: vec![],
-        in_combat_threshold: None,
-        lineup_distance: None,
-        view_distance: None,
-        texture_frames: Default::default(),
-        non_engaged_spacing: None,
-        combat_clank_effects: [None; 2],
-        node_timer: None,
-        dialogue: cyrus_assets::script::DialogueSettings {
-            menu_start: [35, 25],
-            max_menu_items: 300,
-            max_dialog_lines: 20,
-            max_text_width: 500,
-            menu_traverse_delay: 4,
-            print_text: true,
-            use_speech: true,
-            max_distance: 1600,
-            rtx_filename: "ENGLISH.RTX".into(),
-        },
-        player_distance_override: false,
-        updates: cyrus_assets::script::UpdateSettings {
-            rope: None,
-            ropes_load: None,
-            fall_death_ticks: 144,
-            fall_landing: None,
-            dummy_model_manager: false,
-            task_system: true,
-            animation_system: true,
-            disable_slaves: false,
-            disable_master_slaves: false,
-            final_version: false,
-        },
-        clock: cyrus_assets::script::ClockSettings {
-            normal_frame_rate: 12,
-            min_frame_rate: 6,
-            max_frame_rate: 300,
-            use_smooth_fps: true,
-            use_smooth_divisor: true,
-        },
         actor_pool_capacity: 10,
-        content_id: String::new(),
-        shells: Vec::new(),
         world: 17,
         definition: Definition {
             functions: [
@@ -174,7 +131,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
                 angles: [0; 3],
             })
             .collect(),
-        unsupported: BTreeMap::new(),
+        ..base
     };
     result.actors.get_mut("OTHER").unwrap().code_origin = 100;
     result.content_id = result.content_identity().unwrap();

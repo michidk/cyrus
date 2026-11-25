@@ -17,7 +17,15 @@ use serde_json::json;
 use std::sync::Arc;
 
 #[derive(Default)]
+enum HostMode {
+    #[default]
+    Execute,
+    DescriptorOnly,
+}
+
+#[derive(Default)]
 struct NativeHost {
+    mode: HostMode,
     native: NativeTasks,
     position: [i32; 3],
     angles: [i32; 3],
@@ -38,6 +46,9 @@ impl Host for NativeHost {
         invocation: Invocation,
         _: &mut [i32],
     ) -> Result<CallResult> {
+        if matches!(self.mode, HostMode::DescriptorOnly) {
+            return Ok(CallResult::Pending(1));
+        }
         self.calls += 1;
         let spatial = SpatialCall {
             tick: None,
@@ -88,6 +99,9 @@ impl Host for NativeHost {
         invocation: Invocation,
         _: &mut [i32],
     ) -> Result<bool> {
+        if matches!(self.mode, HostMode::DescriptorOnly) {
+            return Ok(false);
+        }
         self.polls += 1;
         let spatial = SpatialCall {
             tick: None,
@@ -381,32 +395,16 @@ fn invalid_census_tokens_allocator_and_variant_are_rejected_before_replacement()
     }
 }
 
-struct DescriptorHost;
-impl Host for DescriptorHost {
-    fn call(
-        &mut self,
-        _: &Target,
-        _: CallKind,
-        _: Native,
-        _: &[Argument],
-        _: Invocation,
-        _: &mut [i32],
-    ) -> Result<CallResult> {
-        Ok(CallResult::Pending(1))
-    }
-    fn poll(&mut self, _: u64, _: &[Argument], _: Invocation, _: &mut [i32]) -> Result<bool> {
-        Ok(false)
-    }
-    fn end(&mut self, _: Thread) -> Result<()> {
-        Ok(())
-    }
-}
 fn contract_vm(name: Native, kind: CallKind, args: &[i32]) -> Snapshot {
     let program = code(name, kind, args);
     let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
     let mut vm =
         Runtime::from_shared(program, CodeOrigin(10), vec![], "contract TEST".into()).unwrap();
-    vm.invoke_body(Thread::Main, &mut DescriptorHost, &mut [], 20)
+    let mut host = NativeHost {
+        mode: HostMode::DescriptorOnly,
+        ..Default::default()
+    };
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
         .unwrap();
     vm.snapshot(&sources).unwrap()
 }
