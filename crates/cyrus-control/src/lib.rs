@@ -263,6 +263,11 @@ pub enum Command {
         /// reproduce the counterpart’s independent FPS measurement phase.
         #[serde(default)]
         elapsed_bios_ticks: Option<u32>,
+        /// Independently observed elapsed host time for audio and presentation.
+        /// Omit to use the configured replay step. Movement scale and BIOS
+        /// measurement ticks do not determine source-decoder progression.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        elapsed_host_nanos: Option<u64>,
     },
     /// Press at the next ordinary boundary, retain every boundary, and release at
     /// the first actually consumed endpoint from the counterpart's receipt set.
@@ -569,7 +574,7 @@ mod frame_boundary_tests {
     #[test]
     fn recorded_frame_retains_independent_bios_measurement_delta() {
         let value = serde_json::json!({"type":"replay_frame", "frame_scale":118,
-            "elapsed_bios_ticks":0});
+            "elapsed_bios_ticks":0, "elapsed_host_nanos":0});
         let command: Command = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(command).unwrap(), value);
         let command: Command = serde_json::from_value(serde_json::json!({

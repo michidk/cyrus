@@ -94,3 +94,9 @@ Recorded replay frames can supply `elapsed_bios_ticks` as well as the Q8
 movement scale. This preserves the independent FPS-measurement phase; omitting
 it retains the synthetic simulated-time sample. The command remains bound to
 one staged world generation and ordinary-update boundary.
+
+Recorded `replay_frame` commands can supply `elapsed_host_nanos` independently
+of `frame_scale` and `elapsed_bios_ticks`. The native replay gate uses that
+measured interval for host audio and presentation while the admitted frame owns
+the schedule. An explicit zero freezes that host clock; omission retains the
+configured replay step. A rejected command cannot replace a pending interval.

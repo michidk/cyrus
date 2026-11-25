@@ -20,6 +20,7 @@ struct Attempt {
     held: BTreeSet<KeyCode>,
     observations: Vec<serde_json::Value>,
     deadline: std::time::Instant,
+    host_step: Option<std::time::Duration>,
 }
 
 struct Acquisition {
@@ -42,6 +43,11 @@ struct Boundary {
 }
 
 impl InputScheduler {
+    /// Host time belongs to the admitted recorded frame, including a measured zero.
+    pub(super) fn host_step(&self) -> Option<std::time::Duration> {
+        self.active.as_ref().and_then(|attempt| attempt.host_step)
+    }
+
     pub(super) fn arm(
         &mut self,
         id: u64,
@@ -49,6 +55,7 @@ impl InputScheduler {
         generation: Option<u64>,
         events: Vec<InputBoundary>,
         keys: &ButtonInput<KeyCode>,
+        host_step: Option<std::time::Duration>,
     ) -> Result<(), String> {
         if self.active.is_some() {
             return Err("an input schedule is already pending".into());
@@ -100,6 +107,7 @@ impl InputScheduler {
             held,
             observations: Vec::new(),
             deadline: std::time::Instant::now() + std::time::Duration::from_secs(35),
+            host_step,
         });
         Ok(())
     }
@@ -141,6 +149,7 @@ impl InputScheduler {
                 },
             ],
             keys,
+            None,
         )?;
         if let Some(attempt) = self.active.as_mut() {
             attempt.acquisition = Some(Acquisition {
@@ -351,12 +360,40 @@ mod tests {
     }
 
     #[test]
+    fn recorded_host_time_survives_rejected_rebinding_and_retires_with_the_attempt() {
+        for elapsed in [
+            std::time::Duration::ZERO,
+            std::time::Duration::from_millis(7),
+        ] {
+            let (reply, _) = std::sync::mpsc::channel();
+            let mut scheduler = InputScheduler::default();
+            let keys = ButtonInput::default();
+            scheduler
+                .arm(94, reply.clone(), Some(8), events(), &keys, Some(elapsed))
+                .unwrap();
+            assert_eq!(scheduler.host_step(), Some(elapsed));
+            assert!(
+                scheduler
+                    .arm(95, reply, Some(8), events(), &keys, None)
+                    .is_err()
+            );
+            assert_eq!(scheduler.host_step(), Some(elapsed));
+            // An unavailable boundary retires the attempt instead of leaking its
+            // timing into a later schedule.
+            scheduler.advance(None, &mut ButtonInput::default());
+            assert_eq!(scheduler.host_step(), None);
+        }
+    }
+
+    #[test]
     fn a_schedule_armed_while_the_replay_hold_pauses_the_world_stays_pending() {
         let (reply, responses) = std::sync::mpsc::channel();
         let mut world = World::new();
         let mut scheduler = InputScheduler::default();
         let keys = ButtonInput::<KeyCode>::default();
-        scheduler.arm(75, reply, Some(8), events(), &keys).unwrap();
+        scheduler
+            .arm(75, reply, Some(8), events(), &keys, None)
+            .unwrap();
         world.insert_resource(scheduler);
         world.insert_resource(keys);
         world.insert_resource(cyrus_script::script::ReplayHold(true));
@@ -525,7 +562,9 @@ mod tests {
         let (reply, responses) = std::sync::mpsc::channel();
         let mut scheduler = InputScheduler::default();
         let mut keys = ButtonInput::default();
-        scheduler.arm(71, reply, Some(8), events(), &keys).unwrap();
+        scheduler
+            .arm(71, reply, Some(8), events(), &keys, None)
+            .unwrap();
         use cyrus_script::player::input::{Action, Input, PlayerBindings};
         let bindings: PlayerBindings = [(Action::Forward, Input::try_from(72).unwrap())]
             .into_iter()
@@ -562,7 +601,9 @@ mod tests {
             {"after_updates":0}, {"after_updates":1}
         ]))
         .unwrap();
-        scheduler.arm(73, reply, Some(8), events, &keys).unwrap();
+        scheduler
+            .arm(73, reply, Some(8), events, &keys, None)
+            .unwrap();
         for update in 20..=21 {
             scheduler.advance(
                 Some(Boundary {
@@ -601,7 +642,8 @@ mod tests {
                         reply,
                         Some(8),
                         serde_json::from_value(value).unwrap(),
-                        &ButtonInput::default()
+                        &ButtonInput::default(),
+                        None,
                     )
                     .is_err()
             );
@@ -650,7 +692,9 @@ mod tests {
             let mut scheduler = InputScheduler::default();
             let mut keys = ButtonInput::default();
             keys.press(KeyCode::KeyW);
-            scheduler.arm(72, reply, Some(8), events(), &keys).unwrap();
+            scheduler
+                .arm(72, reply, Some(8), events(), &keys, None)
+                .unwrap();
             scheduler.advance(
                 Some(Boundary {
                     generation: 8,

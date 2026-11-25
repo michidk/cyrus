@@ -299,3 +299,8 @@ Replay mode holds a restored session before its first ordinary update. Its
 diagnostic update counter restarts at zero, but the saved continuation is already
 initialized; only fresh worlds receive the two startup updates. Recorded clock
 steps therefore begin at the imported boundary rather than after hidden updates.
+
+Recorded frames accept independent host elapsed nanoseconds for source playback
+and presentation. The replay scheduler retains that interval through preparation
+holds, and uses it only while admitting its recorded update. Movement scale and
+BIOS measurement phase remain separate inputs.

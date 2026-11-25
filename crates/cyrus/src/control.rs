@@ -95,7 +95,7 @@ fn replay_gate(
             .is_some_and(|actors| actors.current_is_restored()),
     );
     *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
-        step.0
+        scheduler.host_step().unwrap_or(step.0)
     } else {
         std::time::Duration::ZERO
     });
@@ -600,7 +600,7 @@ fn handle(
             },
             Command::ScheduleInput { events } => {
                 let generation = script_actors.as_ref().and_then(|actors| actors.current.as_ref()).map(|world| world.generation());
-                match input_scheduler.arm(id, reply.clone(), generation, events, &keys) {
+                match input_scheduler.arm(id, reply.clone(), generation, events, &keys, None) {
                     Ok(()) => {
                         commands.remove_resource::<cyrus_script::script::ReplayFrameScale>();
                         continue;
@@ -608,7 +608,7 @@ fn handle(
                     Err(error) => Err(error),
                 }
             }
-            Command::ReplayFrame { frame_scale, elapsed_bios_ticks } => {
+            Command::ReplayFrame { frame_scale, elapsed_bios_ticks, elapsed_host_nanos } => {
                 let prepared = (|| -> Result<_, String> {
                     if replay_step.is_none() {
                         return Err("recorded frame requires --replay-step-micros".into());
@@ -630,7 +630,7 @@ fn handle(
                     })
                 })();
                 match prepared {
-                    Ok(recorded) => match input_scheduler.arm(id, reply.clone(), Some(recorded.generation), vec![cyrus_control::InputBoundary { after_updates: 0, key: None, action: None }], &keys) {
+                    Ok(recorded) => match input_scheduler.arm(id, reply.clone(), Some(recorded.generation), vec![cyrus_control::InputBoundary { after_updates: 0, key: None, action: None }], &keys, elapsed_host_nanos.map(std::time::Duration::from_nanos)) {
                         Ok(()) => {
                             commands.insert_resource(recorded);
                             continue;
