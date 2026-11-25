@@ -144,7 +144,12 @@ fn spawn_actors(
         .actors()
         .iter()
         .enumerate()
-        .filter(|(_, actor)| !matches!(actor.source, ScriptActorSource::Shell(_)))
+        .filter(|(_, actor)| {
+            !matches!(
+                actor.source,
+                ScriptActorSource::Shell(_) | ScriptActorSource::Camera
+            )
+        })
         .map(|(index, actor)| {
             (
                 index,

@@ -129,7 +129,12 @@ impl RuntimeSessionSnapshot {
         }
         for (index, actor) in current.actors().iter().enumerate() {
             ensure!(
-                matches!(actor.source, ScriptActorSource::Shell(_)) || represented.contains(&index),
+                // Camera presentation has its own CameraSnapshot/target census;
+                // it is not a mesh ScriptBinding. Shells have no presentation owner.
+                matches!(
+                    actor.source,
+                    ScriptActorSource::Shell(_) | ScriptActorSource::Camera
+                ) || represented.contains(&index),
                 "original runtime actor {} has no external owner",
                 actor.name()
             );

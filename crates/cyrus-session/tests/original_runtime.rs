@@ -107,6 +107,7 @@ fn verify_slot(
             },
         )
     };
+    assert_actor_owner_census(&snapshot, &prepare)?;
     let admission = prepare(snapshot.clone())?;
     let retained =
         SessionWorldAssets::from_loaded(admission.snapshot(), loaded_worlds, BTreeMap::new())?;
@@ -119,4 +120,31 @@ fn verify_slot(
         retained: &retained,
     }
     .verify(&mut app, snapshot, prepare)
+}
+
+fn assert_actor_owner_census(
+    snapshot: &RuntimeSessionSnapshot,
+    prepare: &impl Fn(RuntimeSessionSnapshot) -> Result<OriginalRuntimeAdmission>,
+) -> Result<()> {
+    // Native presentation binds meshes and player roles, but the logical camera
+    // has a separate view owner and no ScriptBinding.
+    assert!(
+        snapshot
+            .entity_bindings()
+            .iter()
+            .all(|binding| binding.name() != "CAMERA")
+    );
+    let mut missing_owner = serde_json::to_value(snapshot)?;
+    let bindings = missing_owner["entity_bindings"].as_array_mut().unwrap();
+    let removed = bindings.remove(0);
+    let error = prepare(serde_json::from_value(missing_owner)?)
+        .err()
+        .context("missing actor presentation owner admitted")?;
+    ensure!(
+        error
+            .to_string()
+            .contains(removed["name"].as_str().unwrap()),
+        "missing actor owner rejected for another reason: {error:#}"
+    );
+    Ok(())
 }

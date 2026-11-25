@@ -23,6 +23,14 @@ class SlotSelectionTest(unittest.TestCase):
     def test_original_identity_wins_over_same_native_number(self):
         self.assertEqual(module.slot_row(self.menu(), 2, 20), 2)
 
+    def test_loader_failure_rejects_before_waiting_for_admission(self):
+        class FailedLoad:
+            def request(self, _command):
+                return {"menu": {"unavailable": "original save slot fixture: expected a directory"}}
+
+        with self.assertRaisesRegex(AssertionError, "expected a directory"):
+            module.wait_state(FailedLoad(), lambda _: False, 60)
+
     def test_changed_world_or_duplicate_original_rejects(self):
         with self.assertRaises(AssertionError):
             module.slot_row(self.menu(), 2, 1)

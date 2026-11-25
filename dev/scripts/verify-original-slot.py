@@ -31,7 +31,7 @@ def wait_state(control, predicate, timeout):
     while True:
         state = control.request({"type": "state"})
         message = (state.get("menu") or {}).get("unavailable") or ""
-        assert not message.startswith("original slot "), message
+        assert not message.startswith(("original slot ", "original save ")), message
         if predicate(state):
             return state
         assert time.monotonic() < deadline, f"native slot admission timed out: {state}"
