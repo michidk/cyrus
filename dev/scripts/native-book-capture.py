@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Record bounded Escape/Continue book visits on an already running native game."""
+from harness import control_response
 import argparse
 import json
 import os
 from pathlib import Path
-import socket
 import time
 import uuid
 
@@ -29,10 +29,7 @@ def capture(port, output, screenshot_dir, seconds=120, interval=0.1, process_pid
         timeout = min(remaining, 30) if remaining > 0 else 2
         label = " ".join(str(command[key]) for key in ("type", "key", "action") if key in command)
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=timeout) as connection:
-                connection.settimeout(timeout)
-                connection.sendall((json.dumps({"id": 1, "cmd": command}) + "\n").encode())
-                response = json.loads(connection.makefile("rb").readline())
+            response = control_response(port, command, timeout=timeout)
         except OSError as error:
             raise type(error)(f"{record['stage']}: {label}: {error}") from error
         if response.get("ok") is not True:

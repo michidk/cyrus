@@ -7,9 +7,9 @@ Start a fresh native process with --scene CATACOMB and run under the live-run lo
 Use a separate fresh process for each case. stdout is a JSONL acceptance record.
 Placement follows the original/native dial observation; no installed script is replaced.
 """
+from harness import control_response
 import argparse
 import json
-import socket
 import time
 
 
@@ -58,9 +58,7 @@ def main():
     args = parser.parse_args()
 
     def call(command):
-        with socket.create_connection(('127.0.0.1', args.port), timeout=120) as conn:
-            conn.sendall((json.dumps({'id': 1, 'cmd': command}) + '\n').encode())
-            reply = json.loads(conn.makefile().readline())
+        reply = control_response(args.port, command, timeout=120)
         assert reply.get('ok'), f"{command}: {reply}"
         return reply['result']
 

@@ -11,9 +11,9 @@ power-ups must not.
 
     dev/scripts/new-game-compare.py [--port 7117] [--cycles 3]
 """
+from harness import control_response
 import argparse
 import json
-import socket
 import sys
 import time
 
@@ -35,15 +35,7 @@ def main():
     args = parser.parse_args()
 
     def call(cmd):
-        with socket.create_connection(("127.0.0.1", args.port), timeout=60) as conn:
-            conn.sendall((json.dumps({"id": 1, "cmd": cmd}) + "\n").encode())
-            buf = b""
-            while not buf.endswith(b"\n"):
-                chunk = conn.recv(65536)
-                if not chunk:
-                    break
-                buf += chunk
-        reply = json.loads(buf.decode())
+        reply = control_response(args.port, cmd, timeout=60)
         if not reply.get("ok"):
             sys.exit(f"control {cmd['type']}: {reply.get('error')}")
         return reply["result"]

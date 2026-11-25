@@ -9,10 +9,10 @@ script error, and how many actors reached lost-sight timing and routed pursuit.
 Needs a native build with the control port (see docs/SETUP.md) and an install. Run one world per
 process when comparing runs: `load_scene` keeps the selected player's health across worlds.
 """
+from harness import control_response
 import argparse
 import json
 import math
-import socket
 import sys
 import time
 
@@ -29,15 +29,7 @@ def main():
     args = parser.parse_args()
 
     def call(cmd, timeout=120):
-        with socket.create_connection(("127.0.0.1", args.port), timeout=timeout) as conn:
-            conn.sendall((json.dumps({"id": 1, "cmd": cmd}) + "\n").encode())
-            buf = b""
-            while not buf.endswith(b"\n"):
-                chunk = conn.recv(1 << 24)
-                if not chunk:
-                    break
-                buf += chunk
-        reply = json.loads(buf)
+        reply = control_response(args.port, cmd, timeout=timeout)
         return reply.get("result", reply)
 
     def actors():

@@ -21,25 +21,17 @@ each `--cheat NAME=VALUE` you give; pass --keep-cheats to leave the stored value
 
     native-trace.py --out run.jsonl --cheat magiccarpet=1 --place 40816,-1744,41024 --seconds 6
 """
+from harness import control_response
 import argparse
 import json
 import os
-import socket
 import sys
 import time
 
 
 def call(addr, cmd, timeout=120):
     host, port = addr.rsplit(":", 1)
-    with socket.create_connection((host, int(port)), timeout=timeout) as s:
-        s.sendall((json.dumps({"id": 1, "cmd": cmd}) + "\n").encode())
-        data = b""
-        while not data.endswith(b"\n"):
-            chunk = s.recv(1 << 22)
-            if not chunk:
-                break
-            data += chunk
-    reply = json.loads(data)
+    reply = control_response(port, cmd, host=host, timeout=timeout)
     if not reply.get("ok", True):
         raise RuntimeError(reply.get("error"))
     return reply.get("result", reply)

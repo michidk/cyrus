@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run input-only chapter fixtures in one headless New Game session."""
 import argparse
-from harness import exclusive_lock
+from harness import exchange, exclusive_lock
 import hashlib
 import json
 import math
@@ -809,12 +809,10 @@ class Control:
 
     def response(self, command):
         self.serial += 1
-        self.file.write(json.dumps({"id": self.serial, "cmd": command}) + "\n")
-        self.file.flush()
-        line = self.file.readline()
-        assert line, "game closed control connection"
-        response = json.loads(line)
-        return response
+        try:
+            return exchange(self.file, command, request_id=self.serial)
+        except ConnectionError as error:
+            raise AssertionError("game closed control connection") from error
 
     def request(self, command):
         response = self.response(command)

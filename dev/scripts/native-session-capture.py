@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Capture and resume a rendered public session round trip without game-data fixtures."""
+from harness import control_response
 import argparse
 from harness import exclusive_lock
 import hashlib
@@ -7,7 +8,6 @@ import json
 import os
 import re
 from pathlib import Path
-import socket
 import time
 
 
@@ -82,10 +82,7 @@ class Driver:
         atomic(self.output / 'phase.json', json.dumps({'phase': name, 'wall_time': time.time()}).encode())
 
     def request(self, kind, **fields):
-        with socket.create_connection(('127.0.0.1', self.args.port), timeout=2) as connection:
-            connection.settimeout(self.args.seconds)
-            connection.sendall((json.dumps({'id': 1, 'cmd': {'type': kind, **fields}}) + '\n').encode())
-            reply = json.loads(connection.makefile('rb').readline())
+        reply = control_response(self.args.port, {'type': kind, **fields}, timeout=self.args.seconds, connect_timeout=2)
         if not reply.get('ok'):
             raise RuntimeError(f'{kind}: {reply.get("error", reply)}')
         return reply['result']
