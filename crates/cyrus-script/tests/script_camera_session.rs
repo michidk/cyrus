@@ -1819,3 +1819,32 @@ fn initialized_camera_and_both_player_roles_restore_their_spatial_state() {
         );
     }
 }
+
+#[test]
+fn restored_camera_driver_binds_the_logical_world_without_entry_setup() {
+    use cyrus_script::script::{CameraFrameSnapshot, CameraFrameState};
+    let mut world = ScriptWorld::prepare(&scripts(&["CYRUS", "CAMERA"]), 7).unwrap();
+    world.prepare_spatial().unwrap();
+    let pose = cyrus_script::script::camera::CameraPose {
+        position: [12345, -6789, 23456],
+        angles: [0, 512, 0],
+    };
+    world.initialize_camera_pose(pose).unwrap();
+    let frame = CameraFrameState::from_restored_world(&world).unwrap();
+    assert_eq!(frame.generation(), Some(world.generation()));
+    let publication = frame.published.unwrap();
+    assert_eq!(publication.pose, world.camera().unwrap().current);
+    assert_eq!(publication.render, world.camera().unwrap().render);
+    let snapshot = frame.snapshot(world.generation()).unwrap();
+    let bytes = serde_json::to_vec(&snapshot).unwrap();
+    let decoded: CameraFrameSnapshot = serde_json::from_slice(&bytes).unwrap();
+    let replacement = decoded.restore(42).unwrap();
+    assert_eq!(replacement.generation(), Some(42));
+    assert_eq!(replacement.published, Some(publication));
+    assert!(replacement.snapshot(world.generation()).is_none());
+    assert_eq!(
+        serde_json::to_vec(&replacement.snapshot(42).unwrap()).unwrap(),
+        bytes,
+        "generation remapping must preserve the publication and collision history"
+    );
+}

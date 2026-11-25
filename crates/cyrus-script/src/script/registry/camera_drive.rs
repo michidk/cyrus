@@ -18,7 +18,7 @@ pub struct CameraDrive {
 }
 
 /// The camera as the last driven frame left it, for the presentation to draw.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PublishedCamera {
     pub pose: CameraPose,
     pub render: RenderPose,
@@ -48,11 +48,54 @@ pub struct CameraFrameState {
     pub terrain: Option<std::sync::Arc<cyrus_assets::environment::TerrainHeights>>,
 }
 
+/// Checkpoint-owned driver state. Terrain is retained with the collision selections so
+/// replacing a world never borrows the previous entry world's camera resources.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct CameraFrameSnapshot {
+    hits: Option<CameraHitSelection>,
+    published: Option<PublishedCamera>,
+    terrain: Option<cyrus_assets::environment::TerrainHeights>,
+}
+
+impl CameraFrameSnapshot {
+    /// Rebind the saved driver to the replacement logical generation without camera setup.
+    pub fn restore(self, generation: u64) -> Result<CameraFrameState> {
+        if let Some(terrain) = &self.terrain {
+            terrain.validate()?;
+        }
+        if let Some(published) = &self.published {
+            anyhow::ensure!(
+                published
+                    .render
+                    .position
+                    .iter()
+                    .all(|value| value.is_finite()),
+                "camera publication contains nonfinite render position"
+            );
+        }
+        Ok(CameraFrameState {
+            world: Some(generation),
+            hits: self.hits,
+            published: self.published,
+            terrain: self.terrain.map(std::sync::Arc::new),
+        })
+    }
+}
+
 impl CameraFrameState {
+    /// Capture only a publication belonging to this logical world. An unestablished
+    /// camera has no driver continuation yet and must follow ordinary setup.
+    pub fn snapshot(&self, generation: u64) -> Option<CameraFrameSnapshot> {
+        (self.world == Some(generation)).then(|| CameraFrameSnapshot {
+            hits: self.hits.clone(),
+            published: self.published,
+            terrain: self.terrain.as_deref().cloned(),
+        })
+    }
+
     /// Resume a fully restored camera without repeating world-entry setup or sampling shake.
     /// Load resets collision selections; the first explicit camera update rebuilds them.
-    #[cfg(feature = "original-save-import")]
-    pub fn from_original_world(world: &ScriptWorld) -> Result<Self> {
+    pub fn from_restored_world(world: &ScriptWorld) -> Result<Self> {
         let camera = world
             .camera
             .as_ref()

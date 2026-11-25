@@ -94,6 +94,8 @@ pub struct RuntimeSessionSnapshot {
     presentation_clock: Option<PresentationClockSnapshot>,
     environment_edits: Option<EnvironmentEditsSnapshot>,
     camera: Option<CameraSnapshot>,
+    #[serde(default)]
+    camera_frame: Option<cyrus_script::script::CameraFrameSnapshot>,
     sky: Option<SkySnapshot>,
     render_playback: Option<render_playback::RenderPlaybackSnapshot>,
     player_model: Option<cyrus_render::player_model::PlayerModelSnapshot>,
@@ -155,6 +157,7 @@ pub struct RuntimeSessionPlan<'a> {
     presentation_clock: Option<PresentationClockSnapshot>,
     environment_edits: Option<EnvironmentEditsSnapshot>,
     camera: Option<CameraSnapshot>,
+    camera_frame: Option<cyrus_script::script::CameraFrameSnapshot>,
     sky: Option<SkySnapshot>,
     render_playback: Option<render_playback::RenderPlaybackSnapshot>,
     player_model: Option<cyrus_render::player_model::PlayerModelSnapshot>,
@@ -221,8 +224,7 @@ pub struct RuntimeSessionCandidate {
     player_model: Option<cyrus_render::player_model::PlayerModelCandidate>,
     actor_models: Vec<cyrus_render::player_model::PlayerModelCandidate>,
     marker: MarkerEntry,
-    #[cfg(feature = "original-save-import")]
-    original_camera: Option<cyrus_script::script::CameraFrameState>,
+    camera_frame: Option<cyrus_script::script::CameraFrameState>,
 }
 
 impl RuntimeSessionCandidate {
@@ -551,6 +553,9 @@ impl RuntimeSessionSnapshot {
             })
             .transpose()?;
         let camera = CameraSnapshot::capture(world)?;
+        let camera_frame = world
+            .get_resource::<cyrus_script::script::CameraFrameState>()
+            .and_then(|frame| frame.snapshot(current.generation()));
         let presentation_clock = if hud.is_some() || environment_edits.is_some() || camera.is_some()
         {
             Some(PresentationClock::snapshot(
@@ -586,6 +591,7 @@ impl RuntimeSessionSnapshot {
             presentation_clock,
             environment_edits,
             camera,
+            camera_frame,
             sky,
             render_playback,
             player_model,
@@ -760,6 +766,7 @@ impl RuntimeSessionSnapshot {
             presentation_clock: self.presentation_clock,
             environment_edits: self.environment_edits,
             camera: self.camera,
+            camera_frame: self.camera_frame,
             sky: self.sky,
             render_playback: self.render_playback,
             player_model: self.player_model,
@@ -1097,11 +1104,11 @@ impl RuntimeSessionPlan<'_> {
                 && current.selected_player() == Some(player_actor),
             "session replacement player is not the current logical player"
         );
-        #[cfg(feature = "original-save-import")]
-        let original_camera = if self.original_bindings.is_some() && current.camera().is_some() {
-            Some(cyrus_script::script::CameraFrameState::from_original_world(
-                current,
-            )?)
+        let camera_frame = if current.camera().is_some() {
+            Some(match self.camera_frame {
+                Some(frame) => frame.restore(current.generation())?,
+                None => cyrus_script::script::CameraFrameState::from_restored_world(current)?,
+            })
         } else {
             None
         };
@@ -1169,8 +1176,7 @@ impl RuntimeSessionPlan<'_> {
             player_model,
             actor_models,
             marker,
-            #[cfg(feature = "original-save-import")]
-            original_camera,
+            camera_frame,
         })
     }
 }

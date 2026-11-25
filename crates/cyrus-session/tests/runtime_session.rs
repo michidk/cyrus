@@ -326,6 +326,11 @@ fn exercise_runtime_session(
     player_script.code_origin = 200;
     player_script.namespace = None;
     scripts.actors.insert("CYRUS".into(), player_script);
+    if with_camera {
+        let mut camera_script = scripts.actors["CYRUS"].clone();
+        camera_script.code_origin = 300;
+        scripts.actors.insert("CAMERA".into(), camera_script);
+    }
     scripts.content_id = scripts.content_identity()?;
     let animations: Animations = serde_json::from_value(json!({
         "version":2,"world":17,"metadata":{"script_content_id":scripts.content_id,"actors":[]},
@@ -682,6 +687,20 @@ fn exercise_runtime_session(
         // The headless game installs EnvironmentPlugin too; its default request
         // is not evidence that rendered materials or prelight owners exist.
         app.init_resource::<cyrus_render::environment::EnvironmentRequest>();
+    }
+    let saved_camera_frame = with_camera.then(|| {
+        serde_json::from_value::<cyrus_script::script::CameraFrameSnapshot>(json!({
+            "hits": {"minimum_position":[1,2,3],"maximum_position":[4,5,6],
+                "minimum_normal":[7,8,9],"maximum_normal":[10,11,12]},
+            "published": {"pose":{"position":[123,-456,789],"angles":[0,12,0]},
+                "render":{"position":[1.0,2.0,3.0],"angles":[0,12,0]},
+                "view_angles":[0,12,0]},
+            "terrain":null
+        }))
+        .unwrap()
+    });
+    if let Some(frame) = &saved_camera_frame {
+        app.insert_resource(frame.clone().restore(player_actor.generation)?);
     }
     let saved = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
     if !with_camera {
@@ -1136,6 +1155,15 @@ fn exercise_runtime_session(
             .resource_mut::<cyrus_assets::sound::SoundSettings>()
             .redbook_volume = 0;
     }
+    if with_camera && !saved_game {
+        // Load this complete checkpoint from an unrelated entry world. The driver
+        // must publish the checkpoint view before any ordinary actor selection.
+        app.insert_resource(cyrus_world::lifecycle::CurrentScene {
+            name: "OTHER".into(),
+            world: Some(99),
+        });
+        app.insert_resource(cyrus_script::script::CameraFrameState::default());
+    }
     app.world_mut()
         .resource_mut::<cyrus_session::SessionBoundary>()
         .commit(committed)?;
@@ -1224,6 +1252,26 @@ fn exercise_runtime_session(
     );
     assert!(app.world().get_entity(player).is_err());
     assert!(app.world().get_entity(map_node).is_err());
+    if let Some(expected) = &saved_camera_frame {
+        let restored = app
+            .world()
+            .resource::<cyrus_script::script::CameraFrameState>();
+        let generation = app
+            .world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .generation();
+        let actual = restored
+            .snapshot(generation)
+            .expect("complete checkpoint must replace the entry world's camera driver");
+        assert_eq!(
+            serde_json::to_value(actual)?,
+            serde_json::to_value(expected)?,
+            "publication and retained collision selections must survive complete admission"
+        );
+    }
     if let Some(old) = old_camera {
         assert!(app.world().get_entity(old).is_err());
     }

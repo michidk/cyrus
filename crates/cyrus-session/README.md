@@ -3,7 +3,8 @@
 Shared capture, preparation and publication of a running game session for the
 native (`cyrus`) and browser (`cyrus-web`) hosts. It snapshots the logical
 registry (current and visited worlds), player, HUD, clock, RNG, cheats, audio
-and CD playback, camera, sky, texture and terrain state, prepares a replacement
+and CD playback, camera and its driven publication/collision selections, sky,
+texture and terrain state, prepares a replacement
 off-live, and publishes it in one exclusive commit. It depends on the state
 owners (`cyrus-game`, `cyrus-script`, `cyrus-world`, `cyrus-audio`,
 `cyrus-render`, `cyrus-assets`); none of them depends on this crate. It does no

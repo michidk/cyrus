@@ -20,7 +20,7 @@ mod attack;
 mod attack_input;
 mod camera;
 mod camera_drive;
-pub use camera_drive::{CameraDrive, CameraFrameState, PublishedCamera};
+pub use camera_drive::{CameraDrive, CameraFrameSnapshot, CameraFrameState, PublishedCamera};
 mod damage;
 mod lifecycle;
 pub use damage::DamageEvent;

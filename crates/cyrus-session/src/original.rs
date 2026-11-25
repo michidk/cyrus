@@ -36,6 +36,9 @@ impl RuntimeSessionSnapshot {
             .map(|(&id, source)| Ok((id, source.identity()?)))
             .collect::<Result<_>>()?;
         let (logical, prior_to_saved) = prior.prepare_original(original)?;
+        // The original import replaces the logical camera; the host checkpoint's
+        // publication and collision history belong to the superseded continuation.
+        self.camera_frame = None;
         let aliases = old_to_prior
             .into_iter()
             .filter_map(|(old, prior)| {
@@ -181,7 +184,7 @@ impl RuntimeSessionSnapshot {
             marker,
         );
         if let Some(camera) = self.camera.take() {
-            let frame = cyrus_script::script::CameraFrameState::from_original_world(current)?;
+            let frame = cyrus_script::script::CameraFrameState::from_restored_world(current)?;
             self.camera = Some(camera.with_logical_view(&frame, current.generation())?);
         }
         Ok(())

@@ -101,8 +101,7 @@ impl RuntimeSessionCandidate {
             player_model,
             actor_models,
             marker,
-            #[cfg(feature = "original-save-import")]
-            original_camera,
+            camera_frame,
         } = self;
         let (replacement_music, music_playback) = match music {
             Some(music) => (Some(music.music), music.playback),
@@ -181,10 +180,7 @@ impl RuntimeSessionCandidate {
                 commands.remove_resource::<SceneLoadError>();
             }
             commands.insert_resource(sources.into_catalog());
-            #[cfg(feature = "original-save-import")]
-            if let Some(frame) = original_camera {
-                commands.insert_resource(frame);
-            }
+            commands.insert_resource(camera_frame.unwrap_or_default());
             if let Some(publication) = publication {
                 commands.insert_resource(publication);
             }

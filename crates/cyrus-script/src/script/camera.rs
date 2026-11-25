@@ -182,7 +182,7 @@ fn truncated_i32(value: f64, field: &str) -> Result<i32> {
 }
 
 /// Shared published pose, distinct from an uncorrected record request.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CameraPose {
     pub position: [i32; 3],
     pub angles: [i32; 3],
@@ -1749,7 +1749,7 @@ impl CameraState {
 }
 
 /// Retained outputs of the camera's ordered segment query.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CameraHitSelection {
     pub minimum_position: [i32; 3],
     pub maximum_position: [i32; 3],
