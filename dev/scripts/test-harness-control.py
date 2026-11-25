@@ -50,9 +50,8 @@ class ControlTransport(unittest.TestCase):
 
     def test_eof_and_invalid_json_fail(self):
         for chunks, error in [([], ConnectionError), ([b'bad json\n'], json.JSONDecodeError)]:
-            with self.subTest(chunks=chunks), server([chunks]) as (port, _):
-                with self.assertRaises(error):
-                    control_response(port, {'type': 'state'}, timeout=1)
+            with self.subTest(chunks=chunks), server([chunks]) as (port, _), self.assertRaises(error):
+                control_response(port, {'type': 'state'}, timeout=1)
 
     def test_read_timeout_does_not_wait_for_server_shutdown(self):
         release = threading.Event()
@@ -75,11 +74,13 @@ class ControlTransport(unittest.TestCase):
             self.assertFalse(thread.is_alive())
 
     def test_persistent_stream_keeps_order_and_serial_ids(self):
-        with server([[b'{"ok":true,"result":1}\n'], [b'{"ok":true,"result":2}\n']]) as (port, requests):
-            with socket.create_connection(('127.0.0.1', port), timeout=1) as connection:
-                with connection.makefile('rw') as stream:
-                    for serial in (1, 2):
-                        self.assertEqual(exchange(stream, {'type': 'state'}, request_id=serial)['result'], serial)
+        with (
+            server([[b'{"ok":true,"result":1}\n'], [b'{"ok":true,"result":2}\n']]) as (port, requests),
+            socket.create_connection(('127.0.0.1', port), timeout=1) as connection,
+            connection.makefile('rw') as stream,
+        ):
+            for serial in (1, 2):
+                self.assertEqual(exchange(stream, {'type': 'state'}, request_id=serial)['result'], serial)
         self.assertEqual([row['id'] for row in requests], [1, 2])
 
 

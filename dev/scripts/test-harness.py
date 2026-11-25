@@ -32,16 +32,14 @@ class ExclusiveLock(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'run.lock'
             path.write_text('retained lock metadata')
-            with self.assertRaisesRegex(ValueError, 'driver failed'):
-                with exclusive_lock(path):
-                    raise ValueError('driver failed')
+            with self.assertRaisesRegex(ValueError, 'driver failed'), exclusive_lock(path):
+                raise ValueError('driver failed')
             self.assertEqual(path.read_text(), 'retained lock metadata')
             self.assertEqual(self.contender(path).returncode, 0)
 
     def test_distinct_resources_do_not_block_each_other(self):
-        with tempfile.TemporaryDirectory() as directory:
-            with exclusive_lock(Path(directory) / 'original.lock'):
-                self.assertEqual(self.contender(Path(directory) / 'native.lock').returncode, 0)
+        with tempfile.TemporaryDirectory() as directory, exclusive_lock(Path(directory) / 'original.lock'):
+            self.assertEqual(self.contender(Path(directory) / 'native.lock').returncode, 0)
 
     def test_aliases_of_the_same_resource_contend(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -54,9 +52,8 @@ class ExclusiveLock(unittest.TestCase):
     def test_missing_parent_is_reported_without_creating_it(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'missing/run.lock'
-            with self.assertRaises(FileNotFoundError):
-                with exclusive_lock(path):
-                    self.fail('missing parent admitted')
+            with self.assertRaises(FileNotFoundError), exclusive_lock(path):
+                self.fail('missing parent admitted')
 
 
 if __name__ == '__main__':
