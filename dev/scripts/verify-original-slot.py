@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 """Exercise native original-slot admission through the public book and control port."""
 import argparse
-import importlib.util
 import json
 import socket
 import time
 from pathlib import Path
 
-
-def load_driver():
-    path = Path(__file__).with_name("replay-chain.py")
-    spec = importlib.util.spec_from_file_location("replay_chain", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+import replay_chain as driver
 
 
 def slot_row(menu, slot, world):
@@ -56,7 +49,6 @@ def inspect_scripts(control):
 
 
 def verify(control, args):
-    driver = load_driver()
     control.ready(timeout=args.timeout)
     control.request({"type": "input", "key": "F3", "action": "tap"})
     state = wait_state(control, lambda s: (s.get("menu") or {}).get("ready")
@@ -106,7 +98,7 @@ def main():
     args = parser.parse_args()
     assert 0 <= args.frame_scale <= 2**32 - 1, "frame scale must be a measured Q8 value"
     with socket.create_connection(("127.0.0.1", args.port), timeout=args.timeout) as stream:
-        verify(load_driver().Control(stream), args)
+        verify(driver.Control(stream), args)
 
 
 if __name__ == "__main__":

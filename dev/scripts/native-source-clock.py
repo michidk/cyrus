@@ -5,21 +5,12 @@ Start with one active finite mono voice, then supply explicit host intervals.
 This checks decoder progress, not original mixer-buffer or gameplay parity.
 """
 import argparse
-import importlib.util
 import json
 import socket
 from pathlib import Path
 
-
-def helper(name, filename):
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-replay = helper('source_clock_replay', 'replay-chain.py')
 import native_session_capture as capture
+import replay_chain as replay
 
 
 def source(snapshot, slot):

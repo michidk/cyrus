@@ -2,16 +2,19 @@
 """Shared driver modules import normally and keep documented CLI compatibility."""
 import ast
 import os
+import runpy
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
+import replay_chain
+
 
 class SharedModules(unittest.TestCase):
     def test_documented_commands_forward_to_importable_modules(self):
         root = Path(__file__).parent
-        for module in ('native_session_capture', 'native_trace', 'book_audio_continuity'):
+        for module in ('native_session_capture', 'native_trace', 'book_audio_continuity', 'replay_chain'):
             with self.subTest(module=module):
                 command = root / (module.replace('_', '-') + '.py')
                 canonical = root / (module + '.py')
@@ -24,12 +27,20 @@ class SharedModules(unittest.TestCase):
                 self.assertEqual(current.returncode, 0, current.stderr)
                 self.assertEqual(legacy.stdout.replace(command.name, canonical.name), current.stdout)
 
+    def test_replay_consumers_share_one_imported_driver(self):
+        for name, binding in [('run-native-session.py', 'replay'),
+                              ('native-source-clock.py', 'replay'),
+                              ('verify-original-slot.py', 'driver')]:
+            with self.subTest(command=name):
+                namespace = runpy.run_path(str(Path(__file__).with_name(name)))
+                self.assertIs(namespace[binding], replay_chain)
+
     def test_trace_commands_remain_directly_executable(self):
         for name in ('native-trace.py', 'native_trace.py'):
             self.assertTrue(os.access(Path(__file__).with_name(name), os.X_OK))
 
     def test_compatibility_commands_contain_only_import_and_main(self):
-        for name in ('native-session-capture', 'native-trace', 'book-audio-continuity'):
+        for name in ('native-session-capture', 'native-trace', 'book-audio-continuity', 'replay-chain'):
             tree = ast.parse(Path(__file__).with_name(name + '.py').read_text())
             self.assertEqual([type(node).__name__ for node in tree.body],
                              ['Expr', 'ImportFrom', 'If'])
