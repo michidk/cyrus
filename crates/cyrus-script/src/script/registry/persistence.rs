@@ -632,16 +632,15 @@ impl ActorSnapshot {
             );
         }
         if let Some(light) = &self.light {
-            if let Some(base) = light.starting_rgb {
-                let placement = actor
+            // An original save retains starting-channel words even for dynamic
+            // records whose producer does not initialize them. Only coloured map
+            // placements have an installed base colour to validate against.
+            if let (Some(base), Some(placement)) = (
+                light.starting_rgb,
+                actor
                     .placement()
-                    .filter(|placement| placement.object_type == PlacementType::COLOURED_LIGHT)
-                    .with_context(|| {
-                        format!(
-                            "saved actor {}: light starting RGB has no authored source",
-                            self.name
-                        )
-                    })?;
+                    .filter(|placement| placement.object_type == PlacementType::COLOURED_LIGHT),
+            ) {
                 ensure!(
                     base == placement.light_rgb,
                     "saved actor {}: light starting RGB source differs",

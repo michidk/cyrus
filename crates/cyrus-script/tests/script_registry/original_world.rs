@@ -102,6 +102,44 @@ fn original_light_and_flat_keep_retained_phase_and_playback_without_script_calls
             .is_err()
     );
     assert_eq!(world.actors()[0].flat_state().unwrap(), flat);
+    assert_original_presentation_checkpoint(&world, &scripts);
+}
+
+fn assert_original_presentation_checkpoint(world: &ScriptWorld, scripts: &Scripts) {
+    use cyrus_script::script::{WorldRestoreContext, WorldSnapshotSources};
+    let (_, _, animations) = revisit_test_app(scripts);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let samples = Default::default();
+    let mut snapshot = world.snapshot(&sources).unwrap();
+    for generation in [2, 3] {
+        let restored = ScriptWorld::from_snapshot(
+            snapshot,
+            &sources,
+            WorldRestoreContext {
+                generation,
+                globals: Default::default(),
+                samples: &samples,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            restored.actors()[0].light_state(),
+            world.actors()[0].light_state()
+        );
+        assert_eq!(
+            restored.actors()[0].flat_state(),
+            world.actors()[0].flat_state()
+        );
+        snapshot = restored.snapshot(&sources).unwrap();
+    }
 }
 
 #[test]

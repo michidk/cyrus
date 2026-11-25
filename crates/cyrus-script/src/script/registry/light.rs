@@ -17,7 +17,8 @@ pub(super) struct LightState {
     pub starting_radius: i16,
     pub radius: i16,
     pub rgb: [i16; 3],
-    /// Authored base strengths; absent when the original producer leaves them uninitialized.
+    /// Starting strengths from a coloured placement or retained original record.
+    /// Absent for newly created dynamic records whose producer leaves them uninitialized.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub starting_rgb: Option<[i16; 3]>,
     /// Script flicker parameters (`LightFlicker`): first value, phase, second value.
