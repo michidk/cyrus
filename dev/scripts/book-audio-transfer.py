@@ -7,14 +7,8 @@ transfer, not an assumed generic resampler or a production volume adjustment.
 """
 import argparse
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
-
-
-def load_module(filename):
-    spec=importlib.util.spec_from_file_location(filename,Path(__file__).with_name(filename+'.py'))
-    value=importlib.util.module_from_spec(spec);spec.loader.exec_module(value);return value
 
 
 def compare(before, after):
@@ -44,7 +38,7 @@ def main():
     digest=hashlib.sha256(args.source.read_bytes()).hexdigest()
     if not capture['success'] or capture['playback_volume']!=65536 or capture['reference_sha256']!=digest:
         parser.error('transfer requires admitted explicit-unity playback of the same source hash')
-    continuity=load_module('book-audio-continuity')
+    import book_audio_continuity as continuity
     reports=[]
     for path in [args.source,args.capture/'monitor.wav']:
         cues=[]

@@ -6,14 +6,11 @@ input occurs here. Raw responses survive rejection; acceptance requires the
 complete declared schedule, falling entry and a subsequent health endpoint.
 """
 import argparse
-import importlib.util
 import json
 import os
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('trace', Path(__file__).with_name('native-trace.py'))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 def schedule(key, press, release, updates):

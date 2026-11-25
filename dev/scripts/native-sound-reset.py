@@ -7,16 +7,13 @@ is supplied by the caller; no sample data or captured PCM belongs in git.
 import argparse
 import array
 from harness import exclusive_lock
-import importlib.util
 import json
 import math
 from pathlib import Path
 import subprocess
 import sys
 
-spec = importlib.util.spec_from_file_location('capture', Path(__file__).with_name('native-session-capture.py'))
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+import native_session_capture as capture
 
 
 def energy(path):

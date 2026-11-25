@@ -129,7 +129,7 @@ try {
   const screenshot = await cdp.call('Page.captureScreenshot', {format: 'png'});
   writeFileSync(`${output}/main.png`, Buffer.from(screenshot.data, 'base64'));
   execFileSync(process.env.CYRUS_ANALYSIS_PYTHON ?? 'python3', [
-    new URL('./book-audio-continuity.py', import.meta.url).pathname,
+    new URL('./book_audio_continuity.py', import.meta.url).pathname,
     `${output}/audio.wav`, `${output}/continuity.json`, '--reference', pinnedReference,
   ], {stdio: 'inherit'});
   if (overlapReferences.length) {

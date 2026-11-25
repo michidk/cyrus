@@ -24,7 +24,7 @@ def helper(name, filename):
     return module
 
 
-capture = helper('native_capture', 'native-session-capture.py')
+import native_session_capture as capture
 replay = helper('native_replay', 'replay-chain.py')
 
 

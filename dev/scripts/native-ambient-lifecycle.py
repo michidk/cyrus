@@ -7,16 +7,13 @@ an installed emitter and loop effect explicitly; no installed data is embedded.
 import argparse
 import array
 from harness import exclusive_lock
-import importlib.util
 import json
 import math
 from pathlib import Path
 import subprocess
 import sys
 
-spec = importlib.util.spec_from_file_location('capture', Path(__file__).with_name('native-session-capture.py'))
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+import native_session_capture as capture
 
 
 def pcm_levels(data):

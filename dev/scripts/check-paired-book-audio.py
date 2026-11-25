@@ -93,7 +93,7 @@ def analyze(root, references):
         # not extend this window or pull in unrelated repeated book sounds.
         offset, transition = segment(event['sent'], len(pcm)/rate)
         path = Path(temp)/'transition.wav'; wavfile.write(path, rate, transition)
-        continuity = module('continuity', 'book-audio-continuity.py')
+        import book_audio_continuity as continuity
         normalized = module('normalized', 'book-audio-normalize.py').report(
             continuity.load(path), [continuity.load(p) for p in references], event['sent']-offset)
     samples = [json.loads(line) for line in (root/'clocks.jsonl').read_text().splitlines()]

@@ -7,14 +7,11 @@ with goldfinger on. This does not verify torch insertion, artwork or lighting.
 Print the JSONL record into an ignored artifact directory.
 """
 import argparse
-import importlib.util
 import json
 from pathlib import Path
 import time
 
-spec = importlib.util.spec_from_file_location('native_trace', Path(__file__).with_name('native-trace.py'))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 def verify(counters, retained):

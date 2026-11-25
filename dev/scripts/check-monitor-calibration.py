@@ -6,15 +6,12 @@ sample rates require a separately calibrated resampler and are rejected here.
 """
 import argparse
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 import numpy as np
 from scipy.io import wavfile
 
-spec = importlib.util.spec_from_file_location('continuity', Path(__file__).with_name('book-audio-continuity.py'))
-continuity = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(continuity)
+import book_audio_continuity as continuity
 
 
 def analyze(monitor, reference, capture):

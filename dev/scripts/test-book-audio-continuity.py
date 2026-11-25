@@ -6,9 +6,7 @@ import unittest
 import tempfile
 import numpy as np
 
-spec = importlib.util.spec_from_file_location('continuity', Path(__file__).with_name('book-audio-continuity.py'))
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
+import book_audio_continuity as module
 
 class Continuity(unittest.TestCase):
     def setUp(self):

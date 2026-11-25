@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """Public trace samples bind selected-player health and pose to one update."""
-import importlib.util
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('trace', Path(__file__).with_name('native-trace.py'))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 class AtomicTrace(unittest.TestCase):

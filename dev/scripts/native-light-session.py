@@ -2,13 +2,10 @@
 """Verify public native light restoration, rejection continuity and world retirement."""
 import argparse
 from harness import exclusive_lock
-import importlib.util
 import json
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('session_capture', Path(__file__).with_name('native-session-capture.py'))
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+import native_session_capture as capture
 
 
 def changed_eligibility(data, actor_index):

@@ -8,14 +8,11 @@ about an installed producer's timing or original pixel parity.
 import argparse
 from copy import deepcopy
 from harness import exclusive_lock
-import importlib.util
 import json
 from pathlib import Path
 import socket
 
-spec = importlib.util.spec_from_file_location('session_capture', Path(__file__).with_name('native-session-capture.py'))
-capture = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(capture)
+import native_session_capture as capture
 
 
 def encode(value):

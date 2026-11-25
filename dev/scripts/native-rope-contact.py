@@ -18,9 +18,7 @@ import subprocess
 import wave
 from contextlib import nullcontext
 
-spec = importlib.util.spec_from_file_location('native_trace', Path(__file__).with_name('native-trace.py'))
-trace = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trace)
+import native_trace as trace
 
 
 def interval(start, end):
