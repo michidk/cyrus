@@ -269,7 +269,13 @@ fn installed_carrying_player_keyboard_movement_and_release() -> Result<()> {
         let player = world
             .selected_player()
             .context("selected player unavailable")?;
-        world.set_attribute_for_test(player, cyrus_soup::Attribute::HoldingWeapon, 1);
+        world
+            .set_actor_attribute(
+                (player).index,
+                (cyrus_soup::Attribute::HoldingWeapon).index(),
+                1,
+            )
+            .unwrap();
     }
     walk_route(&mut app, &codes)
 }

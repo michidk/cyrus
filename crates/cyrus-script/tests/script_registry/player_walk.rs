@@ -1069,7 +1069,13 @@ fn a_mod_claim_steers_a_jump_in_the_air_and_scales_the_jump_only_on_the_ground()
     let hud = cyrus_script::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
     // Jump tuning scales the height on the ground; a change waits while the player is airborne.
-    world.set_attribute_for_test(player, cyrus_soup::Attribute::JumpHeight, 80);
+    world
+        .set_actor_attribute(
+            (player).index,
+            (cyrus_soup::Attribute::JumpHeight).index(),
+            80,
+        )
+        .unwrap();
     let base = world.selected_jump_height().unwrap();
     assert_eq!(base, 80);
     let doubled = cyrus_script::player::input::PlayerTuning {

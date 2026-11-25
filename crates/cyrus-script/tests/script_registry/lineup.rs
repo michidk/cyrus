@@ -1578,7 +1578,9 @@ fn player_face_talk_reports_the_selected_player_diagnostic_without_continuing() 
         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
         .unwrap();
     let player = world.id(index).unwrap();
-    world.set_attribute_for_test(player, Attribute::Slave, 1);
+    world
+        .set_actor_attribute((player).index, (Attribute::Slave).index(), 1)
+        .unwrap();
     world.begin_player_movement_update(player, 0).unwrap();
     let position = world.spatial(player).unwrap().local.position;
     let error = face_talk_round(&mut world, &data, &scene, 0).unwrap_err();

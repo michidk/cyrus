@@ -1,5 +1,6 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 
+use cyrus_script::script::test_support::{GameplayGlobalsTestExt, ScriptWorldTestExt};
 mod support;
 use cyrus_assets::script::PlacementType;
 use cyrus_assets::script::TauntType;

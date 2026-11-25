@@ -3375,6 +3375,7 @@ dependencies = [
  "cyrus-collision",
  "cyrus-console",
  "cyrus-game",
+ "cyrus-script",
  "cyrus-soup",
  "cyrus-world",
  "log",

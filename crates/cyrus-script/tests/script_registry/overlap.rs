@@ -1460,8 +1460,12 @@ fn selected_overlap_fixture_retains_mobility_through_ordinary_updates() {
         let held = PlayerInput::default();
         let hud = ScriptHud::default();
         for (id, mask) in [(player, 11), (other, 0)] {
-            world.set_attribute_for_test(id, Attribute::Collide, mask);
-            world.set_attribute_for_test(id, Attribute::ReservedCollide, mask);
+            world
+                .set_actor_attribute((id).index, (Attribute::Collide).index(), mask)
+                .unwrap();
+            world
+                .set_actor_attribute((id).index, (Attribute::ReservedCollide).index(), mask)
+                .unwrap();
         }
         let mut random = cyrus_game::random::EngineRandom::from_state(42);
         for _ in 0..2 {

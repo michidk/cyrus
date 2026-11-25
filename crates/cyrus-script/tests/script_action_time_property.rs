@@ -1,6 +1,7 @@
 //! Receiver-owned pending-action timer uses public property dispatch.
 use cyrus_assets::script::PlacementType;
 use cyrus_script::script::JumpMotion;
+use cyrus_script::script::test_support::ScriptWorldTestExt;
 use cyrus_script::script::{ScriptInputs, ScriptWorld};
 use cyrus_soup::Attribute;
 use cyrus_soup::program::*;

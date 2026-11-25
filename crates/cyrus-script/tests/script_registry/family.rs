@@ -398,7 +398,9 @@ fn fix_slave_angle_world(
         // Preparation rejects a slave group without a master, so that state only arises when the
         // byte is written afterwards.
         let id = world.id(0).unwrap();
-        world.set_attribute_for_test(id, Attribute::Slave, group);
+        world
+            .set_actor_attribute((id).index, (Attribute::Slave).index(), group)
+            .unwrap();
     }
     if call.is_some() {
         let id = world.id(0).unwrap();

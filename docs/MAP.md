@@ -285,6 +285,7 @@ module where it is defined and regenerate.
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 - `src/script/activation/original.rs` — Original save fields and load resets for the gameplay-global owner.
+- `src/script/activation/test_support.rs` — Fixture access excluded from production builds.
 - `src/script/ai_mode.rs` — Receiver-owned AI mode bytes retain arbitrary script values.
 - `src/script/ai_type.rs` — The actor's AI type byte (`ai_type`, `MyAiType`/`SetAiType`): its lifecycle selector.
 - `src/script/alignment.rs` — Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
@@ -429,6 +430,7 @@ module where it is defined and regenerate.
 - `src/script/registry/slope.rs` — Ordinary slope response follows preservation's player engine rules.
 - `src/script/registry/spacing.rs` — Fight spacing reads and mutates the receiver's shared movement state.
 - `src/script/registry/terrain_sink.rs` — The terrain sink check that opens the ordinary ground-support probe.
+- `src/script/registry/test_support.rs` — Fixture access excluded from production builds.
 - `src/script/registry/torch.rs` — Torches: `LightTorch` and `UnlightTorch`, the burn countdown and the held-torch progression.
 - `src/script/registry/transition.rs` — Obstacle motion transitions follow preservation's ordinary forward wrapper.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
@@ -440,6 +442,7 @@ module where it is defined and regenerate.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
 - `src/script/tasks/persistence.rs` — Native task continuations validate against saved VM calls without execution.
 - `src/script/tasks/persistence/tests.rs` — Native continuations resume through VM calls and explicit restored service bindings.
+- `src/script/test_support.rs` — Integration-fixture access, excluded unless `test-support` is enabled.
 - `src/script/world_request.rs` — End-of-frame world exits and host-owned dispatch of retained script requests.
 
 ## `cyrus-session` — Shared off-live gameplay and audio assembly; native/browser storage stays host-owned.

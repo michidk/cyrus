@@ -1769,7 +1769,9 @@ fn lifecycle_observations_distinguish_same_name_actors_and_ignore_raw_health() {
     let first = world.id(0).unwrap();
     let second = world.id(1).unwrap();
     assert_eq!(world.actors()[0].name(), world.actors()[1].name());
-    world.set_attribute_for_test(first, Attribute::Health, 0);
+    world
+        .set_actor_attribute((first).index, (Attribute::Health).index(), 0)
+        .unwrap();
     assert!(!world.actor_snapshot(first).unwrap().dead);
     assert!(world.take_death_events().is_empty());
     world.mark_actor_dead(0).unwrap();

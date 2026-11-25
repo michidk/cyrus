@@ -1,6 +1,7 @@
 //! Installed item use scripts run through the production shell update, with the player animation
 //! advancing, and leave the health, flags and inventory counts their authored steps write.
 use cyrus_assets::{animation::Animations, hud::HudAsset, script::Scripts};
+use cyrus_script::script::test_support::GameplayGlobalsTestExt;
 use cyrus_script::script::{
     AnimationData, DialogueLine, DialogueSource, ScriptActorId, ScriptActorSource, ScriptHud,
     ScriptInputs, ScriptStage, ScriptWorld,
@@ -94,7 +95,9 @@ fn world_with_player(scripts: &Scripts, animations: &Animations) -> (ScriptWorld
     world
         .initialize_player_animation(player, animations, 0, &mut |_| Ok(()))
         .unwrap();
-    world.set_attribute_for_test(player, Attribute::Health, 40);
+    world
+        .set_actor_attribute((player).index, (Attribute::Health).index(), 40)
+        .unwrap();
     world.globals_mut().initialize_selected_health_for_test(40);
     (world, player)
 }

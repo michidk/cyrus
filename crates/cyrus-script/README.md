@@ -268,3 +268,12 @@ prompt drawing: a running `rtxAnim` cycle clears pending prompt text and a compl
 cycle clears its override timer. Reset, distance and pending-source early returns
 retain that state; `RTXpAnim` does not mutate it. The contract follows preservation's
 sound and HUD engine references.
+
+Integration fixtures that need state unavailable through supported gameplay stages
+import extension traits from `script::test_support`. This module and the private
+activation seeding helper compile only with `test-support`, a feature enabled by
+this package's self dev-dependency for both default and original-save-import test
+runs. Production dependencies do not enable it. Hosts must use ordinary stages,
+property dispatch and validated snapshot admission; the fixture traits are not a
+production host interface. Attribute seeds use the existing `set_actor_attribute`
+operation instead of a test hook.

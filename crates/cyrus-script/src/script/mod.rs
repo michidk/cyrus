@@ -171,6 +171,8 @@ mod quick_keys;
 pub use quick_keys::{QuickKeys, ScriptKeys};
 mod presentation;
 mod registry;
+#[cfg(feature = "test-support")]
+pub mod test_support;
 pub use registry::ordinary::{
     ModelPreparation, OrdinaryContext, OrdinaryInputs, OrdinaryPhase, OrdinarySoundExecutor,
     OrdinaryUpdates, ReplayFrameScale, ReplayHold, ScriptView, WorldClockSample, run_ordinary,

@@ -1,4 +1,6 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+#[cfg(feature = "test-support")]
+pub(super) mod test_support;
 use super::locomotion::MotionDirection;
 use crate::script::AiType;
 use crate::script::CombatControlState;
@@ -867,30 +869,6 @@ impl ScriptWorld {
         selected_player_index(&self.actors, &self.globals)
     }
 
-    /// The selected player: CYRUS, or GREMLIN while the swap state is set. Hosts bind their player
-    /// entity, controller and camera to this actor rather than to a fixed role.
-    /// Test hook: write one attribute byte of a logical actor.
-    #[doc(hidden)]
-    pub fn set_attribute_for_test(&mut self, id: ScriptActorId, attribute: Attribute, value: u8) {
-        self.actors[id.index].attributes[attribute] = value;
-    }
-
-    /// Test hook: set the actor that owns the pending activation prompt.
-    #[doc(hidden)]
-    pub fn set_activation_owner_for_test(&mut self, owner: Option<ScriptActorId>) {
-        self.activation.set_owner_for_test(owner);
-    }
-
-    /// Test hook: attach or release a logical actor on a rope without running the attach routine.
-    #[doc(hidden)]
-    pub fn set_rope_attached_for_test(&mut self, id: ScriptActorId, attached: bool) {
-        self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state")
-            .rope_attached = attached;
-    }
-
     /// Whether the `yeahbaby` Insert step holds the camera limiter suspended.
     pub fn yeahbaby_insert_active(&self) -> bool {
         self.insert_camera_flag
@@ -899,85 +877,6 @@ impl ScriptWorld {
     /// Whether the Home toggle of the yeahbaby ground bypass is set.
     pub fn ground_bypass_toggle(&self) -> bool {
         self.ground_bypass_toggle
-    }
-
-    /// Test hook: set a logical actor's queued motion.
-    #[doc(hidden)]
-    pub fn set_queued_motion_for_test(&mut self, id: ScriptActorId, motion: JumpMotion) {
-        self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state")
-            .queued_motion = motion;
-    }
-
-    /// Test hook: set a logical actor's pending and accepted directional action words.
-    #[doc(hidden)]
-    pub fn set_action_words_for_test(&mut self, id: ScriptActorId, pending: u32, accepted: u32) {
-        self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state")
-            .actions = ActionWords { pending, accepted };
-    }
-
-    /// Test hook: give a logical actor a cached link position, as an `Offset` link does.
-    #[doc(hidden)]
-    pub fn set_link_position_for_test(&mut self, id: ScriptActorId, position: [i32; 3]) {
-        self.spatial
-            .as_mut()
-            .expect("test spatial state")
-            .actor_mut(id.index)
-            .expect("test actor spatial state")
-            .set_link_cache(position);
-    }
-
-    /// Test hook: give a logical actor a default combat record.
-    #[doc(hidden)]
-    pub fn set_combat_record_for_test(&mut self, id: ScriptActorId) {
-        self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state")
-            .combat = Some(CombatControlState::default());
-    }
-
-    /// Test hook: set a logical actor's collision-response word.
-    #[doc(hidden)]
-    pub fn set_last_collide_for_test(&mut self, id: ScriptActorId, bits: u32) {
-        self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state")
-            .last_collide = crate::script::CollisionFlags::from_bits(bits);
-    }
-
-    /// Test hook: set a logical actor's living state.
-    #[doc(hidden)]
-    pub fn set_living_state_for_test(&mut self, id: ScriptActorId, state: LivingState) {
-        self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state")
-            .living_state = state;
-    }
-
-    /// Test hook: run the bounce handler's pre-support part for one actor; true when the probe
-    /// ends there.
-    #[doc(hidden)]
-    pub fn bounce_handler_prefix_for_test(&mut self, id: ScriptActorId) -> Result<bool> {
-        self.bounce_handler_prefix(id)
-    }
-
-    /// Test hook: put a logical actor into a falling state with its retained fall origin (Q8 Y).
-    #[doc(hidden)]
-    pub fn set_falling_for_test(&mut self, id: ScriptActorId, state: JumpMotion, origin_y: i32) {
-        let control = self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("test actor has control state");
-        control.falling_state = state;
-        control.fall_origin_y = origin_y;
     }
 
     /// Watch calls to these natives: each call is logged for [`Self::take_native_calls`] until the
@@ -3188,24 +3087,6 @@ impl ScriptWorld {
         if let Some(strict) = inputs.animation_system {
             self.animation_strict = Some(strict);
         }
-    }
-
-    /// Test hook: replace an actor's local angles without refreshing its pose.
-    #[doc(hidden)]
-    pub fn set_local_angles_for_test(&mut self, id: ScriptActorId, angles: [i32; 3]) {
-        self.spatial
-            .as_mut()
-            .expect("spatial state prepared")
-            .actor_mut(id.index)
-            .expect("actor spatial state")
-            .local
-            .angles = angles;
-    }
-
-    /// Test hook: [`Self::animation_waits`].
-    #[doc(hidden)]
-    pub fn animation_waits_for_test(&self) -> bool {
-        self.animation_waits()
     }
 
     /// Whether the movement natives wait for their requested group to become current: the

@@ -164,7 +164,9 @@ fn the_bounce_handler_prefix_ends_bounce_object_states_and_drops_an_invalid_supp
     assert_eq!(living(&world), LivingState::BOUNCING_FROM_ACTOR);
     assert_eq!(world.actors()[0].support_actor(), Some(ids[1]));
     // Zero bounce power on the support empties the reference again.
-    world.set_attribute_for_test(ids[1], Attribute::BouncePower, 0);
+    world
+        .set_actor_attribute((ids[1]).index, (Attribute::BouncePower).index(), 0)
+        .unwrap();
     assert!(!world.bounce_handler_prefix_for_test(ids[0]).unwrap());
     assert_eq!(living(&world), LivingState::ORDINARY);
     assert_eq!(world.actors()[0].support_actor(), None);
@@ -176,7 +178,9 @@ fn an_actor_on_a_bouncy_support_bounces_through_the_ground_probe() {
     for misc_group in [true, false] {
         let (mut world, data, scene, ids) =
             animated_bounce_pair_with_group([10, 20, 30], misc_group);
-        world.set_attribute_for_test(ids[0], Attribute::JumpHeight, 80);
+        world
+            .set_actor_attribute((ids[0]).index, (Attribute::JumpHeight).index(), 80)
+            .unwrap();
         world
             .set_model_support(
                 ids[0],

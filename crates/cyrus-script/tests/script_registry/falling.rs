@@ -330,7 +330,13 @@ fn assert_static_fall_landing(
             .unwrap(),
         );
         assert!(world.begin_static_ordinary_fall(id, &data).unwrap());
-        world.set_attribute_for_test(id, Attribute::FallHold, u8::from(fall_hold));
+        world
+            .set_actor_attribute(
+                (id).index,
+                (Attribute::FallHold).index(),
+                u8::from(fall_hold),
+            )
+            .unwrap();
         world
             .update_ordinary(
                 &data,

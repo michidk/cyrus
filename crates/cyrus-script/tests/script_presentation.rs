@@ -122,7 +122,8 @@ fn session_state_carries_across_world_loads_until_new_game() {
         .current
         .as_mut()
         .unwrap()
-        .set_attribute_for_test(selected, Attribute::Health, 37);
+        .set_actor_attribute((selected).index, (Attribute::Health).index(), 37)
+        .unwrap();
     app.world_mut()
         .resource_mut::<ScriptActors>()
         .current

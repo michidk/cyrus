@@ -72,7 +72,9 @@ fn a_direct_damage_message_hurts_the_selected_player_through_shared_health() {
         })
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
-    world.set_attribute_for_test(sender, Attribute::Damage, 12);
+    world
+        .set_actor_attribute((sender).index, (Attribute::Damage).index(), 12)
+        .unwrap();
     let source = world
         .spatial(sender)
         .unwrap()
@@ -132,7 +134,9 @@ fn a_fatal_direct_damage_message_starts_the_selected_players_death_through_the_c
         })
         .unwrap();
     world.ordinary_actors([0, 0]).unwrap();
-    world.set_attribute_for_test(sender, Attribute::Damage, 255);
+    world
+        .set_actor_attribute((sender).index, (Attribute::Damage).index(), 255)
+        .unwrap();
     world
         .send_combat_message(sender, receiver, CombatMessageCode::DIRECT_DAMAGE)
         .unwrap();

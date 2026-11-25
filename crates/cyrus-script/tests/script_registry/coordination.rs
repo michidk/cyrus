@@ -20,7 +20,9 @@ fn change_group_and_user_store_the_low_byte_and_reject_divergent_membership() {
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let id = world.id(0).unwrap();
         if let Some(value) = direct_write {
-            world.set_attribute_for_test(id, attribute, value);
+            world
+                .set_actor_attribute((id).index, (attribute).index(), value)
+                .unwrap();
         }
         world
             .advance(

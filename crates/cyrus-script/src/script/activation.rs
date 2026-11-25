@@ -1,4 +1,6 @@
 //! Shared activation ownership and eligibility follow preservation's HUD prompt rules.
+#[cfg(feature = "test-support")]
+pub(super) mod test_support;
 use super::ScriptActorId;
 use crate::script::JumpMotion;
 use crate::script::LivingState;
@@ -271,12 +273,6 @@ pub struct HostRequests {
     pub mainloop_exit: Option<i32>,
 }
 impl GameplayGlobals {
-    /// Test hook: stand in for a save written before the ledge point moved into the actor.
-    #[doc(hidden)]
-    pub fn set_legacy_ledge_anchor_for_test(&mut self, point: [i32; 3], heading: u16) {
-        self.legacy_ledge_anchor = Some((point, heading));
-    }
-
     /// Whether the swap state selects GREMLIN instead of CYRUS as the selected player.
     pub fn player_swapped(&self) -> bool {
         self.player_swapped
@@ -663,11 +659,7 @@ impl GameplayGlobals {
     pub fn remember_choice(&mut self, text: String) {
         self.highlighted_choice = Some(text);
     }
-    /// Test hook: establish selected-player health as the selected-player initializer does.
-    #[doc(hidden)]
-    pub fn initialize_selected_health_for_test(&mut self, health: u8) {
-        self.selected_health = Some(super::SelectedHealthState::initialized(health));
-    }
+
     /// Record an actor the selected player's body touched in this iteration's contact pass.
     pub fn record_player_contact(&mut self, actor: usize) {
         self.player_contacts.record(actor);
@@ -756,7 +748,7 @@ impl ActivationState {
     pub fn prompt(&self) -> Option<&str> {
         self.prompt.as_deref()
     }
-    #[doc(hidden)]
+    #[cfg(feature = "test-support")]
     pub(super) fn set_owner_for_test(&mut self, owner: Option<ScriptActorId>) {
         self.owner = owner;
     }

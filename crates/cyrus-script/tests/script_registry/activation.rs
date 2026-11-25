@@ -320,7 +320,9 @@ fn the_action_key_does_not_use_the_selected_item_on_a_rope() {
         asset.inventory.get_mut(&4).unwrap().flags = 4;
         hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
         hud.select_item(4).unwrap();
-        world.set_attribute_for_test(player, Attribute::Health, 60);
+        world
+            .set_actor_attribute((player).index, (Attribute::Health).index(), 60)
+            .unwrap();
         world.globals_mut().initialize_selected_health_for_test(60);
         world.set_rope_attached_for_test(player, rope);
         let inputs = ScriptInputs {

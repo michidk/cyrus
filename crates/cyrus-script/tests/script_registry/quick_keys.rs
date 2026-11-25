@@ -21,7 +21,9 @@ fn quick_health_key_drinks_the_installed_health_potion_once() {
         &inventory_asset(&[(4, 1)]),
         &cyrus_game::preferences::Preferences::default(),
     );
-    world.set_attribute_for_test(player, Attribute::Health, 40);
+    world
+        .set_actor_attribute((player).index, (Attribute::Health).index(), 40)
+        .unwrap();
     world.globals_mut().initialize_selected_health_for_test(40);
     let inputs = || ScriptInputs {
         hud: Some(&hud),
