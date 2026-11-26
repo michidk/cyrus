@@ -958,22 +958,11 @@ fn world_metadata(world: &geometry::WorldGeometry) -> Result<serde_json::Value> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::Manifest;
-
-    struct EmptySource(Manifest);
-    impl ReadAssets for EmptySource {
-        fn manifest(&self) -> &Manifest {
-            &self.0
-        }
-        fn read_range(&self, _: &str, _: u64, _: usize) -> Result<Vec<u8>> {
-            anyhow::bail!("unexpected original-file read")
-        }
-    }
+    use crate::source::test_support::MemoryAssets;
 
     #[test]
     fn invalid_movie_track_keeps_video_and_other_audio() {
-        let library =
-            Library::open(EmptySource(Manifest { files: Vec::new() }), |_, _, _| {}).unwrap();
+        let library = Library::open(MemoryAssets::default(), |_, _, _| {}).unwrap();
         let mut bytes = vec![0; 104];
         bytes[..4].copy_from_slice(b"SMK4");
         for (offset, value) in [

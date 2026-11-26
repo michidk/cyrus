@@ -1,25 +1,9 @@
 #![cfg(feature = "parsers")]
 //! The portable viewer admits and renders configured software skies, not raw GXA previews.
-use cyrus_assets::{
-    Content,
-    runtime::Library,
-    source::{FileInfo, Manifest, ReadAssets},
-};
+use cyrus_assets::{Content, runtime::Library, source::test_support::MemoryAssets};
 use std::collections::BTreeMap;
 
-struct Files {
-    manifest: Manifest,
-    files: BTreeMap<String, Vec<u8>>,
-}
-impl ReadAssets for Files {
-    fn manifest(&self) -> &Manifest {
-        &self.manifest
-    }
-    fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
-        Ok(self.files[path][start as usize..start as usize + length].to_vec())
-    }
-}
-fn fixture() -> Files {
+fn fixture_files() -> BTreeMap<String, Vec<u8>> {
     let mut header = [0; 34];
     header[32..34].copy_from_slice(&1_i16.to_le_bytes());
     let mut palette = vec![0_u8; 768];
@@ -43,23 +27,15 @@ fn fixture() -> Files {
     gxa.extend(b"END ");
     let mut col = vec![0; 8];
     col.extend(palette.iter().map(|c| c * 4));
-    let files = BTreeMap::from([
+    BTreeMap::from([
         ("WORLD.INI".into(), b"[world]\nworld_map[0]=MAPS\\START.RGM\nworld_palette[0]=3DART\\SUNSET.COL\nworld_sky[0]=SYSTEM\\SUNSET.GXA\nworld_haze[0]=28\nworld_background[0]=2\n".to_vec()),
         ("SYSTEM.INI".into(), b"[system]\n[xngine]\nsky_move=1\nsky_xrotate=3\nsky_yrotate=63\n".to_vec()),
         ("system/sunset.gxa".into(),gxa), ("3dart/sunset.col".into(), col),
         ("3dart/HAZE.028".into(), (0..16384).map(|i| ((i/256+i%256)&255) as u8).collect()),
-    ]);
-    let manifest = Manifest {
-        files: files
-            .iter()
-            .map(|(path, bytes): (&String, &Vec<u8>)| FileInfo {
-                path: path.clone(),
-                bytes: bytes.len() as u64,
-                digest: blake3::hash(bytes).to_hex().to_string(),
-            })
-            .collect(),
-    };
-    Files { manifest, files }
+    ])
+}
+fn fixture() -> MemoryAssets {
+    MemoryAssets::new(fixture_files()).unwrap()
 }
 #[test]
 fn configured_software_sky_reaches_portable_viewer_as_projected_opaque_pixels() -> anyhow::Result<()>
@@ -96,7 +72,8 @@ fn configured_software_sky_reaches_portable_viewer_as_projected_opaque_pixels() 
 #[test]
 fn draw_boundary_and_movement_switch_preserve_the_camera_and_background() -> anyhow::Result<()> {
     use cyrus_assets::software_sky::{SoftwareSky, View};
-    let mut source = fixture();
+    let mut files = fixture_files();
+    let source = MemoryAssets::new(files.clone())?;
     let view = View {
         draw: 1,
         angles: [0, 0],
@@ -108,13 +85,14 @@ fn draw_boundary_and_movement_switch_preserve_the_camera_and_background() -> any
     assert_ne!(first[..640 * 240], second[..640 * 240]);
     assert_eq!(first[640 * 240..], second[640 * 240..]);
     assert_eq!(first, sky.indices(view)?);
-    source.files.insert(
+    files.insert(
         "SYSTEM.INI".into(),
-        source.files["SYSTEM.INI"]
+        files["SYSTEM.INI"]
             .iter()
             .map(|&c| if c == b'1' { b'0' } else { c })
             .collect(),
     );
+    let source = MemoryAssets::new(files)?;
     let sky = SoftwareSky::prepare(&source, 0)?;
     assert_eq!(sky.indices(view)?, sky.indices(View { draw: 2, ..view })?);
     Ok(())
@@ -129,20 +107,16 @@ fn software_preparation_retains_six_bit_palette_identity_and_contextual_errors()
         angles: [0, 0],
         screen_scale: 256,
     };
-    let mut source = fixture();
+    let mut files = fixture_files();
+    let source = MemoryAssets::new(files.clone())?;
     let expected = SoftwareSky::prepare(&source, 0)?.rgba(view)?;
-    for channel in &mut source.files.get_mut("3dart/sunset.col").unwrap()[8..] {
+    for channel in &mut files.get_mut("3dart/sunset.col").unwrap()[8..] {
         *channel |= 3;
     }
+    let source = MemoryAssets::new(files.clone())?;
     assert_eq!(SoftwareSky::prepare(&source, 0)?.rgba(view)?, expected);
-    source.files.get_mut("3dart/HAZE.028").unwrap().pop();
-    source
-        .manifest
-        .files
-        .iter_mut()
-        .find(|f| f.path == "3dart/HAZE.028")
-        .unwrap()
-        .bytes -= 1;
+    files.get_mut("3dart/HAZE.028").unwrap().pop();
+    let source = MemoryAssets::new(files)?;
     let error = SoftwareSky::prepare(&source, 0)
         .err()
         .expect("truncated haze must fail");

@@ -200,35 +200,16 @@ mod tests {
 
     #[test]
     fn world_archive_uses_portable_source_key() {
-        use crate::source::{FileInfo, Manifest, ReadAssets};
-        struct Source(Manifest);
-        impl ReadAssets for Source {
-            fn manifest(&self) -> &Manifest {
-                &self.0
-            }
-            fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
-                assert_eq!(path, "WORLD.INI");
-                let bytes =
-                    b"[World]\nworld_map[0]=maps\\start.RGM\nworld_palette[0]=3dart/test.COL\n";
-                Ok(bytes[start as usize..start as usize + length].to_vec())
-            }
-        }
-        let source = Source(Manifest {
-            files: vec![
-                FileInfo {
-                    path: "WORLD.INI".into(),
-                    bytes:
-                        b"[World]\nworld_map[0]=maps\\start.RGM\nworld_palette[0]=3dart/test.COL\n"
-                            .len() as u64,
-                    digest: "0".repeat(64),
-                },
-                FileInfo {
-                    path: "fxart/START.ROB".into(),
-                    bytes: 0,
-                    digest: "0".repeat(64),
-                },
-            ],
-        });
+        use crate::source::{ReadAssets, test_support::MemoryAssets};
+        let source = MemoryAssets::new([
+            (
+                "WORLD.INI",
+                b"[World]\nworld_map[0]=maps\\start.RGM\nworld_palette[0]=3dart/test.COL\n"
+                    .as_slice(),
+            ),
+            ("fxart/START.ROB", b"".as_slice()),
+        ])
+        .unwrap();
         let path = world_archive_path(&source, 0).unwrap();
         assert_eq!(path, "fxart/start.ROB");
         assert!(source.manifest().find(&path).is_some());

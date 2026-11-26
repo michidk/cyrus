@@ -3163,6 +3163,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "blake3",
+ "cyrus-assets",
  "cyrus-media",
  "cyrus-soup",
  "cyrus-text",

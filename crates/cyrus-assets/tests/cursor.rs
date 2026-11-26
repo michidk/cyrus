@@ -2,13 +2,13 @@
 //! Configured cursor archives reach shared preparation and software placement.
 use cyrus_assets::{
     cursor::{ASSET_PATH, CursorArchive},
-    source::{FileInfo, Manifest, ReadAssets},
+    source::{Manifest, ReadAssets, test_support::MemoryAssets},
 };
 use std::{cell::RefCell, collections::BTreeMap};
 
 struct Source {
-    manifest: Manifest,
-    files: BTreeMap<String, Vec<u8>>,
+    assets: MemoryAssets,
+    missing: Option<String>,
     reads: RefCell<Vec<String>>,
 }
 impl Source {
@@ -20,37 +20,24 @@ impl Source {
             ),
             (path.into(), bytes),
         ]);
-        let manifest = Manifest {
-            files: files
-                .iter()
-                .map(|(path, bytes)| FileInfo {
-                    path: path.clone(),
-                    bytes: bytes.len() as u64,
-                    digest: "a".repeat(64),
-                })
-                .collect(),
-        };
         Self {
-            manifest,
-            files,
+            assets: MemoryAssets::new(files).unwrap(),
+            missing: None,
             reads: RefCell::default(),
         }
     }
 }
 impl ReadAssets for Source {
     fn manifest(&self) -> &Manifest {
-        &self.manifest
+        self.assets.manifest()
     }
     fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
         self.reads.borrow_mut().push(path.into());
-        let bytes = self
-            .files
-            .get(path)
-            .ok_or_else(|| anyhow::anyhow!("unexpected read {path}"))?;
-        Ok(bytes
-            .get(start as usize..start as usize + length)
-            .ok_or_else(|| anyhow::anyhow!("truncated read {path}"))?
-            .to_vec())
+        anyhow::ensure!(
+            self.missing.as_deref() != Some(path),
+            "unexpected read {path}"
+        );
+        self.assets.read_range(path, start, length)
     }
 }
 
@@ -155,7 +142,7 @@ fn cache_record_rejects_changed_schema_and_unsafe_origin() {
 #[test]
 fn source_read_failure_identifies_configured_archive_and_setting() {
     let mut source = Source::new("pointers=art/custom.bmp", "art/custom.bmp", gxa());
-    source.files.remove("art/custom.bmp");
+    source.missing = Some("art/custom.bmp".into());
     let error = cyrus_assets::game::prepare(&source, ASSET_PATH).unwrap_err();
     let message = format!("{error:#}");
     assert!(message.contains("art/custom.bmp: reading SYSTEM.INI [system] pointers archive"));

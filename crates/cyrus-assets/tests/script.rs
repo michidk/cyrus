@@ -586,71 +586,21 @@ fn clock_inputs_are_validated_and_part_of_script_identity() {
 #[cfg(feature = "parsers")]
 #[test]
 fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
-    use cyrus_assets::source::{FileInfo, Manifest, ReadAssets};
-    struct Source {
-        manifest: Manifest,
-        system: Vec<u8>,
-        cheats: Option<Vec<u8>>,
-    }
+    use cyrus_assets::source::test_support::MemoryAssets;
     const WORLD_INI: &[u8] =
         b"[world]\nworld_map[17]=MAPS\\ISLAND.rgm\nworld_palette[17]=3DART\\DAY.COL\n";
-    impl ReadAssets for Source {
-        fn manifest(&self) -> &Manifest {
-            &self.manifest
-        }
-        fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
-            let bytes = match path {
-                "SYSTEM.INI" => self.system.as_slice(),
-                "soup386/SOUP386.DEF" => &[],
-                "ITEMS.INI" => b"[items]\n",
-                "WORLD.INI" => WORLD_INI,
-                "REDGUARD.CHT" => self.cheats.as_deref().unwrap(),
-                _ => anyhow::bail!("unexpected source {path}"),
-            };
-            let start = usize::try_from(start)?;
-            Ok(bytes
-                .get(start..start + length)
-                .ok_or_else(|| anyhow::anyhow!("{path}: truncated"))?
-                .to_vec())
-        }
-    }
     let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
         let system = format!("[system]\nmax_active_objects=10\nitem_ini=ITEMS.INI\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nropes_load=yes\nanimation_system=no\n[debug]\nconvert_static_angles=no\ndisable_slaves=yes\ndisable_master_slaves=no\n[game]\nplayer_fall_dead_time=12\nfall_death_height=568\nfall_hurt_height=300\nfall_hurt_zap=10\nrope_jump_add=18\nrope_attach_angle=512\n[3dmanager]\ndummy_manager=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
-        let mut source = Source {
-            manifest: Manifest {
-                files: vec![
-                    FileInfo {
-                        path: "SYSTEM.INI".into(),
-                        bytes: system.len() as u64,
-                        digest: "0".repeat(64),
-                    },
-                    FileInfo {
-                        path: "ITEMS.INI".into(),
-                        bytes: 8,
-                        digest: "0".repeat(64),
-                    },
-                    FileInfo {
-                        path: "WORLD.INI".into(),
-                        bytes: WORLD_INI.len() as u64,
-                        digest: "0".repeat(64),
-                    },
-                    FileInfo {
-                        path: "soup386/SOUP386.DEF".into(),
-                        bytes: 0,
-                        digest: "0".repeat(64),
-                    },
-                ],
-            },
-            system,
-            cheats,
-        };
-        if let Some(cheats) = &source.cheats {
-            source.manifest.files.push(FileInfo {
-                path: "REDGUARD.CHT".into(),
-                bytes: cheats.len() as u64,
-                digest: "0".repeat(64),
-            });
+        let mut files = vec![
+            ("SYSTEM.INI", system),
+            ("ITEMS.INI", b"[items]\n".to_vec()),
+            ("WORLD.INI", WORLD_INI.to_vec()),
+            ("soup386/SOUP386.DEF", Vec::new()),
+        ];
+        if let Some(cheats) = cheats {
+            files.push(("REDGUARD.CHT", cheats));
         }
+        let source = MemoryAssets::new(files).unwrap();
         cyrus_assets::script_export::prepare_source(
             &rgpre::import::rgm::RgmFile { sections: vec![] },
             &source,

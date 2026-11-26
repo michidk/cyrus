@@ -30,6 +30,8 @@ symphonia = { version = "0.6.0", default-features = false, features = ["mp3"], o
 redguard-preservation = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Integration fixtures share the byte-source owner without changing production defaults.
+cyrus-assets = { path = ".", features = ["test-support"] }
 toml.workspace = true
 
 [[example]]

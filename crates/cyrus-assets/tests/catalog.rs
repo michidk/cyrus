@@ -488,31 +488,26 @@ fn installed_asset_families_prepare_portable_previews() {
 
 #[test]
 fn model_texture_loading_reads_only_referenced_banks() {
-    use cyrus_assets::source::{FileInfo, Manifest, ReadAssets};
+    use cyrus_assets::source::{Manifest, ReadAssets, test_support::MemoryAssets};
     use std::cell::RefCell;
     struct Source {
-        manifest: Manifest,
+        assets: MemoryAssets,
         reads: RefCell<Vec<String>>,
     }
     impl ReadAssets for Source {
         fn manifest(&self) -> &Manifest {
-            &self.manifest
+            self.assets.manifest()
         }
-        fn read_range(&self, path: &str, _: u64, _: usize) -> anyhow::Result<Vec<u8>> {
+        fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
             self.reads.borrow_mut().push(path.into());
-            Ok(Vec::new())
+            self.assets.read_range(path, start, length)
         }
     }
     let source = Source {
-        manifest: Manifest {
-            files: [188, 200, 415]
-                .map(|id| FileInfo {
-                    path: format!("fxart/TEXBSI.{id}"),
-                    bytes: 0,
-                    digest: "a".repeat(64),
-                })
-                .into(),
-        },
+        assets: MemoryAssets::new(
+            [188, 200, 415].map(|id| (format!("fxart/TEXBSI.{id}"), Vec::<u8>::new())),
+        )
+        .unwrap(),
         reads: RefCell::new(Vec::new()),
     };
     cyrus_assets::runtime::geometry::textures(&source, None, Some(&[700].into())).unwrap();

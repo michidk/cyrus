@@ -2,22 +2,21 @@
 #![cfg(feature = "parsers")]
 use cyrus_assets::{
     sound::dialogue::DialogueArchive,
-    source::{FileInfo, Manifest, ReadAssets},
+    source::{Manifest, ReadAssets, test_support::MemoryAssets},
 };
 use std::cell::RefCell;
 struct Source {
-    manifest: Manifest,
-    bytes: Vec<u8>,
+    assets: MemoryAssets,
     reads: RefCell<Vec<(usize, usize)>>,
 }
 impl ReadAssets for Source {
     fn manifest(&self) -> &Manifest {
-        &self.manifest
+        self.assets.manifest()
     }
-    fn read_range(&self, _: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+    fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
         let start = start as usize;
         self.reads.borrow_mut().push((start, length));
-        Ok(self.bytes[start..start + length].to_vec())
+        self.assets.read_range(path, start as u64, length)
     }
 }
 #[test]
@@ -43,14 +42,7 @@ fn dialogue_reads_text_without_loading_unrequested_invalid_audio() {
     bytes.extend(offset.to_le_bytes());
     bytes.extend(2u32.to_le_bytes());
     let source = Source {
-        manifest: Manifest {
-            files: vec![FileInfo {
-                path: "ENGLISH.RTX".into(),
-                bytes: bytes.len() as u64,
-                digest: "a".repeat(64),
-            }],
-        },
-        bytes,
+        assets: MemoryAssets::new([("ENGLISH.RTX", bytes)]).unwrap(),
         reads: RefCell::default(),
     };
     let mut archive = DialogueArchive::open(&source, "english.rtx").unwrap();
@@ -131,14 +123,7 @@ fn cache_source() -> Source {
     bytes.extend(offset.to_le_bytes());
     bytes.extend(21u32.to_le_bytes());
     Source {
-        manifest: Manifest {
-            files: vec![FileInfo {
-                path: "ENGLISH.RTX".into(),
-                bytes: bytes.len() as u64,
-                digest: "a".repeat(64),
-            }],
-        },
-        bytes,
+        assets: MemoryAssets::new([("ENGLISH.RTX", bytes)]).unwrap(),
         reads: RefCell::default(),
     }
 }
@@ -241,24 +226,7 @@ fn dialogue_cache_replaces_retained_payload_when_use_flag_is_clear() {
     );
 }
 
-struct PreparationSource {
-    manifest: Manifest,
-    rtx: Vec<u8>,
-}
-impl ReadAssets for PreparationSource {
-    fn manifest(&self) -> &Manifest {
-        &self.manifest
-    }
-    fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
-        let data = if path.eq_ignore_ascii_case("SYSTEM.INI") {
-            b"[system]\nrtx_filename=ENGLISH.RTX\n".as_slice()
-        } else {
-            self.rtx.as_slice()
-        };
-        Ok(data[start as usize..start as usize + length].to_vec())
-    }
-}
-fn preparation_source(tag: [u8; 4], payload: &[u8]) -> PreparationSource {
+fn preparation_source(tag: [u8; 4], payload: &[u8]) -> MemoryAssets {
     let mut rtx = Vec::new();
     rtx.extend(tag);
     rtx.extend((payload.len() as u32).to_be_bytes());
@@ -270,23 +238,14 @@ fn preparation_source(tag: [u8; 4], payload: &[u8]) -> PreparationSource {
     rtx.extend(b"RNAV");
     rtx.extend(offset.to_le_bytes());
     rtx.extend(1u32.to_le_bytes());
-    PreparationSource {
-        manifest: Manifest {
-            files: vec![
-                FileInfo {
-                    path: "SYSTEM.INI".into(),
-                    bytes: b"[system]\nrtx_filename=ENGLISH.RTX\n".len() as u64,
-                    digest: "a".repeat(64),
-                },
-                FileInfo {
-                    path: "ENGLISH.RTX".into(),
-                    bytes: rtx.len() as u64,
-                    digest: "b".repeat(64),
-                },
-            ],
-        },
-        rtx,
-    }
+    MemoryAssets::new([
+        (
+            "SYSTEM.INI",
+            b"[system]\nrtx_filename=ENGLISH.RTX\n".to_vec(),
+        ),
+        ("ENGLISH.RTX", rtx),
+    ])
+    .unwrap()
 }
 
 #[test]

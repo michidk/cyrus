@@ -656,19 +656,7 @@ mod tests {
 
     #[test]
     fn preparation_reads_configured_item_database() {
-        use crate::source::{FileInfo, Manifest, ReadAssets};
-        struct Source {
-            manifest: Manifest,
-            files: BTreeMap<String, Vec<u8>>,
-        }
-        impl ReadAssets for Source {
-            fn manifest(&self) -> &Manifest {
-                &self.manifest
-            }
-            fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
-                Ok(self.files[path][start as usize..start as usize + length].to_vec())
-            }
-        }
+        use crate::source::test_support::MemoryAssets;
         let files: BTreeMap<String, Vec<u8>> = [
             (
                 "SYSTEM.INI".into(),
@@ -681,19 +669,7 @@ mod tests {
             ("ITEM.INI".into(), b"[items]\n".to_vec()),
         ]
         .into();
-        let source = Source {
-            manifest: Manifest {
-                files: files
-                    .iter()
-                    .map(|(path, bytes)| FileInfo {
-                        path: path.clone(),
-                        bytes: bytes.len() as u64,
-                        digest: "0".repeat(64),
-                    })
-                    .collect(),
-            },
-            files,
-        };
+        let source = MemoryAssets::new(files).unwrap();
         let mut output = BTreeMap::<String, Vec<u8>>::new();
         let error = prepare(&source, &mut output).unwrap_err();
         let error = format!("{error:#}");
