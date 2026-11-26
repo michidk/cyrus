@@ -25,6 +25,8 @@ follow camera in `cyrus-script` (`script::camera`).
 | [player_model](src/player_model.rs), [weapon_model](src/weapon_model.rs) | Actor frame-source replacement from `.player-models/`; equipped weapon models |
 | [script_transform](src/script_transform.rs), [flat](src/flat.rs) | Script actor poses on bound scene nodes; camera-facing placed flats (MPSF) |
 | [hud](src/hud.rs) | `HudPlugin`: candle, compass, logbook icon, notices, power-ups, active item, prompt, inventory screen |
+| [hud/overlay](src/hud/overlay.rs) | Ordinary HUD update order, shortcut preferences, activation/item admission and sprite projection |
+| [hud/inventory](src/hud/inventory.rs) | Inventory overlay setup, named artwork sizes and ordered bitmap/text projection |
 | [hud/composition](src/hud/composition.rs) | Inventory layers composed against the live scene with encoded integer blending; opaque destinations reuse the loading-fade framebuffer helper |
 | [hud/artwork](src/hud/artwork.rs) | Ordered RGB565 storage of opaque HUD artwork, including retained world fog for map and inventory artwork |
 | [console](src/console.rs) | F12 console paper and bitmap font for the shared editor |
