@@ -10,6 +10,43 @@ import unittest
 
 DRIVER = Path(__file__).with_name('original-rope-contact.py')
 
+# The synthetic world advances on reads, so its deadline must advance on simulated
+# sleeps rather than interpreter startup or competing build load. Keep subprocess
+# timeouts on the real clock and retain the stalled-world failure contract.
+DRIVER_CLOCK = """
+import importlib.util
+import contextlib
+import io
+import runpy
+from pathlib import Path
+import sys
+path = Path(sys.argv.pop(1))
+sys.argv[0] = str(path)
+sys.path.insert(0, str(path.parent))
+spec = importlib.util.spec_from_file_location('contact_driver', path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+class Clock:
+    now = 0.0
+    def monotonic(self):
+        self.now += 0.05
+        return self.now
+    def sleep(self, seconds): self.now += seconds
+    def time_ns(self): return int(self.now * 1_000_000_000)
+module.time = Clock()
+reader = sys.argv[sys.argv.index('--reader') + 1]
+real_run = module.subprocess.run
+def run(command, **kwargs):
+    if command == [sys.executable, reader]:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            runpy.run_path(reader, run_name='__main__')
+        return module.subprocess.CompletedProcess(command, 0, output.getvalue(), '')
+    return real_run(command, **kwargs)
+module.subprocess.run = run
+module.main()
+"""
+
 
 class ContactDriver(unittest.TestCase):
     def run_driver(self, drawn=True, falling=0, stalled=False, fall_on_walk=False, console_opens=True, overlay=False, record=False, clock=True, acknowledge=True):
@@ -38,7 +75,7 @@ class ContactDriver(unittest.TestCase):
             env = dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
                        CONTACT_LOG=str(root / 'keys'))
             result = subprocess.run(
-                [sys.executable, str(DRIVER), '--reader', str(reader),
+                [sys.executable, '-c', DRIVER_CLOCK, str(DRIVER), '--reader', str(reader),
                  '--frames', '2', '--timeout', '5', '--pulse', '.001',
                  *(['--record'] if record else []),
                  '--place', sys.executable, str(placement)],
