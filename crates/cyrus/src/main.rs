@@ -106,29 +106,29 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         session::slots::SlotStore::default().metadata(slot, None)?;
         app.insert_resource(session::LaunchSlot(slot));
     }
-    let install = if args.audit_worlds
-        || args.headless
-        || args.list_worlds
-        || args.export_scene
-        || args.export_all_worlds
-        || args.export_startup
-    {
-        Some(args.source.locate()?)
-    } else {
-        None
-    };
     if args.audit_worlds {
-        return audit::run(install.as_ref().unwrap());
+        let install =
+            anyhow::Context::context(args.source.locate(), "resolve install for --audit-worlds")?;
+        return audit::run(&install);
     }
     if args.list_worlds {
+        let install =
+            anyhow::Context::context(args.source.locate(), "resolve install for --list-worlds")?;
         println!(
             "{}",
-            serde_json::to_string(&cyrus_assets::scene::world_names(
-                install.as_ref().unwrap()
-            )?)?
+            serde_json::to_string(&cyrus_assets::scene::world_names(&install)?)?
         );
         return Ok(());
     }
+    let install =
+        if args.headless || args.export_scene || args.export_all_worlds || args.export_startup {
+            Some(anyhow::Context::context(
+                args.source.locate(),
+                "resolve install for headless launch or asset export",
+            )?)
+        } else {
+            None
+        };
     let startup = args.launch.scene.is_none();
     let mut settings = Settings::load()?;
     if let Some(scene) = args.launch.scene {
@@ -136,9 +136,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     }
     if let Some(install) = &install {
         install.cache_path(cyrus_config::cache_dir())?;
-    }
-    if args.export_startup || args.export_all_worlds {
-        cyrus_assets::music::export(install.as_ref().unwrap(), cyrus_config::cache_dir())?;
+        if args.export_startup || args.export_all_worlds {
+            cyrus_assets::music::export(install, cyrus_config::cache_dir())?;
+        }
     }
     let mode = |value: &str| {
         if value == "modern" {
@@ -162,34 +162,32 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             settings.fidelity.set(area, mode(&value));
         }
     }
-    if args.export_scene {
-        return cyrus_assets::scene::export_scene(
-            install.as_ref().unwrap(),
-            &settings.scene,
-            &cyrus_config::cache_dir().join(format!("{}.glb", settings.scene)),
-        );
-    }
-    if args.export_startup {
-        let install = install.as_ref().unwrap();
-        cyrus_assets::startup::export_movies(install, cyrus_config::cache_dir())?;
-        cyrus_assets::startup::export_menu(install, cyrus_config::cache_dir())?;
-        cyrus_assets::hud_export::export_hud(install, cyrus_config::cache_dir())?;
-        let menu: cyrus_assets::menu::MenuAsset = serde_json::from_slice(&std::fs::read(
-            cyrus_config::cache_dir().join("menu/book.menu"),
-        )?)?;
-        let name = menu.new_game.world.to_string();
-        cyrus_assets::scene::export_scene(
-            install,
-            &name,
-            &cyrus_config::cache_dir().join(format!("{name}.glb")),
-        )?;
-        return cyrus_assets::startup::export_startup(install, cyrus_config::cache_dir());
-    }
-    if args.export_all_worlds {
-        return cyrus_assets::scene::export_all_worlds(
-            install.as_ref().unwrap(),
-            cyrus_config::cache_dir(),
-        );
+    if let Some(install) = &install {
+        if args.export_scene {
+            return cyrus_assets::scene::export_scene(
+                install,
+                &settings.scene,
+                &cyrus_config::cache_dir().join(format!("{}.glb", settings.scene)),
+            );
+        }
+        if args.export_startup {
+            cyrus_assets::startup::export_movies(install, cyrus_config::cache_dir())?;
+            cyrus_assets::startup::export_menu(install, cyrus_config::cache_dir())?;
+            cyrus_assets::hud_export::export_hud(install, cyrus_config::cache_dir())?;
+            let menu: cyrus_assets::menu::MenuAsset = serde_json::from_slice(&std::fs::read(
+                cyrus_config::cache_dir().join("menu/book.menu"),
+            )?)?;
+            let name = menu.new_game.world.to_string();
+            cyrus_assets::scene::export_scene(
+                install,
+                &name,
+                &cyrus_config::cache_dir().join(format!("{name}.glb")),
+            )?;
+            return cyrus_assets::startup::export_startup(install, cyrus_config::cache_dir());
+        }
+        if args.export_all_worlds {
+            return cyrus_assets::scene::export_all_worlds(install, cyrus_config::cache_dir());
+        }
     }
     let control = ControlAddr(
         args.control
@@ -413,6 +411,36 @@ fn prepare_install(
 #[cfg(test)]
 mod install_tests {
     use super::*;
+
+    #[test]
+    fn required_install_modes_fail_before_application_setup_with_context() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("missing-redguard-cli-install");
+        assert!(!path.exists(), "test requires an absent install path");
+        for (flags, context) in [
+            (vec!["--audit-worlds"], "--audit-worlds"),
+            (vec!["--list-worlds"], "--list-worlds"),
+            (vec!["--headless"], "headless launch or asset export"),
+            (
+                vec!["--export-scene", "--scene", "START"],
+                "headless launch or asset export",
+            ),
+            (vec!["--export-startup"], "headless launch or asset export"),
+            (
+                vec!["--export-all-worlds"],
+                "headless launch or asset export",
+            ),
+            (vec!["--audit-worlds", "--list-worlds"], "--audit-worlds"),
+        ] {
+            let mut command = vec!["cyrus", "--install", path.to_str().unwrap()];
+            command.extend(flags);
+            let args = Args::try_parse_from(command).unwrap();
+            let error = run(args, App::new()).unwrap_err();
+            let message = format!("{error:#}");
+            assert!(message.contains(context), "{message}");
+            assert!(message.contains("missing-redguard"), "{message}");
+        }
+    }
 
     const TEST: &str =
         "install_tests::default_preparation_keeps_book_launch_without_starting_a_world";
