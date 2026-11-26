@@ -414,7 +414,8 @@ mod install_tests {
 
     #[test]
     fn required_install_modes_fail_before_application_setup_with_context() {
-        let path = std::env::temp_dir().join(format!("missing-redguard-{}", std::process::id()));
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("missing-redguard-cli-install");
         assert!(!path.exists(), "test requires an absent install path");
         for (flags, context) in [
             (vec!["--audit-worlds"], "--audit-worlds"),
