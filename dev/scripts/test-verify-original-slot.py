@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """The live adapter regression must select an original slot, including shared numbers."""
 import importlib.util
+import json
 import unittest
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 path = Path(__file__).with_name("verify-original-slot.py")
@@ -38,6 +42,76 @@ class SlotSelectionTest(unittest.TestCase):
         menu["slots"].append(menu["slots"][1])
         with self.assertRaises(AssertionError):
             module.slot_row(menu, 2, 20)
+
+
+class LoadLifecycleTest(unittest.TestCase):
+    class Control:
+        def __init__(self, updates=1):
+            self.calls = []
+            self.updates = updates
+            self.loaded = False
+
+        def ready(self, **kwargs):
+            self.calls.append(("ready", kwargs))
+            return {"scripts": {"ordinary_updates": self.updates, "restored": False}}
+
+        def request(self, command):
+            self.calls.append(command)
+            if command.get("key") == "Enter":
+                self.loaded = True
+            if command["type"] == "state":
+                if self.loaded:
+                    return {"state": "InGame", "scene_ready": True,
+                            "scripts": {"restored": True, "world": 30,
+                                        "ordinary_updates": 0, "failed": 0}}
+                return {"menu": {"ready": True, "page": 2, "selected": 0,
+                                 "slots": [{"slot": 0, "source": {
+                                     "type": "original", "world_id": 30}}],
+                                 "entries": [{"action": 202}]}}
+            return {}
+
+    def test_scene_only_readiness_never_opens_book(self):
+        control = self.Control(updates=0)
+        with self.assertRaisesRegex(AssertionError, "established gameplay"):
+            module.load_slot(control, SimpleNamespace(timeout=1))
+        self.assertEqual(len(control.calls), 1)
+
+    def test_load_waits_for_entry_then_captures_held_restoration(self):
+        control = self.Control()
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
+            with patch.object(module.driver, "capture_session") as capture:
+                result = module.load_slot(control, args)
+            self.assertEqual(control.calls[0], ("ready", {"timeout": 1}))
+            self.assertEqual(control.calls[1], {"type": "input", "key": "F3", "action": "tap"})
+            self.assertTrue(result["scripts"]["restored"])
+            self.assertEqual(result["scripts"]["ordinary_updates"], 0)
+            capture.assert_called_once_with(control, args.output / "admitted.session")
+            self.assertTrue((args.output / "admission.json").is_file())
+
+
+    def test_first_update_failure_retains_both_public_boundaries(self):
+        admitted = {"scripts": {"ordinary_updates": 0}, "clock": {"continuation": {"frames": 3}}}
+        failed = {"scripts": {"ordinary_updates": 1, "failed": 1}}
+        actor_error = {"actors": [{"name": "opponent", "failure": "attack selector absent"}]}
+
+        class Control:
+            def request(self, command):
+                if command["type"] == "state":
+                    return failed if getattr(self, "advanced", False) else admitted
+                self.advanced = True
+                return {}
+
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(output=Path(directory), slot=0, world=30, frame_scale=200)
+            with patch.object(module, "load_slot", return_value=admitted), \
+                    patch.object(module, "inspect_scripts", side_effect=[{"actors": []}, actor_error]):
+                with self.assertRaisesRegex(AssertionError, "attack selector absent"):
+                    module.verify(Control(), args)
+            report = json.loads((args.output / "result.json").read_text())
+            self.assertEqual(report["admitted"], admitted)
+            self.assertEqual(report["first_update"], failed)
+            self.assertEqual(report["after_scripts"], actor_error)
 
 
 class ScriptCensusTest(unittest.TestCase):

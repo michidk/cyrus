@@ -48,8 +48,16 @@ def inspect_scripts(control):
     return result
 
 
-def verify(control, args):
-    control.ready(timeout=args.timeout)
+def load_slot(control, args):
+    """Enter the book only after the selected player's ordinary entry completed.
+
+    Scene/presentation readiness alone does not establish the unsaved controller
+    owner retained by original-slot load. Keep this wait in the shared driver so
+    admission probes cannot pause entry preparation by opening the book early.
+    """
+    entry = control.ready(timeout=args.timeout)
+    assert entry["scripts"].get("ordinary_updates", 0) > 0 or entry["scripts"].get("restored"), \
+        "original-slot driver requires an established gameplay continuation"
     control.request({"type": "input", "key": "F3", "action": "tap"})
     state = wait_state(control, lambda s: (s.get("menu") or {}).get("ready")
                        and s["menu"]["page"] == 2 and s["menu"]["slots"], args.timeout)
@@ -67,9 +75,15 @@ def verify(control, args):
                        and s["scripts"]["world"] == args.world, args.timeout)
     assert state["scripts"]["ordinary_updates"] == 0, state["scripts"]
     assert state["scripts"]["failed"] == 0, state["scripts"]
-    clock = state["clock"]["continuation"]
     args.output.mkdir(parents=True, exist_ok=True)
+    (args.output / "admission.json").write_text(json.dumps({"entry": entry, "admitted": state}, indent=2) + "\n")
     driver.capture_session(control, args.output / "admitted.session")
+    return state
+
+
+def verify(control, args):
+    state = load_slot(control, args)
+    clock = state["clock"]["continuation"]
     for _ in range(3):
         observed = control.request({"type": "state"})
         assert observed["scripts"]["ordinary_updates"] == 0, observed["scripts"]
@@ -77,13 +91,13 @@ def verify(control, args):
     before = inspect_scripts(control)
     control.request({"type": "replay_frame", "frame_scale": args.frame_scale})
     after = control.request({"type": "state"})
-    assert after["scripts"]["ordinary_updates"] == 1, after["scripts"]
-    assert after["scripts"]["failed"] == 0, after["scripts"]
-    driver.capture_session(control, args.output / "first-update.session")
     report = {"slot": args.slot, "world": args.world, "frame_scale": args.frame_scale,
               "admitted": state, "before_scripts": before, "first_update": after,
               "after_scripts": inspect_scripts(control)}
     (args.output / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    assert after["scripts"]["ordinary_updates"] == 1, after["scripts"]
+    assert after["scripts"]["failed"] == 0, report["after_scripts"]
+    driver.capture_session(control, args.output / "first-update.session")
     print(f"original slot {args.slot} world {args.world}: public admission and first update passed")
 
 

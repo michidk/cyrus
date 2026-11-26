@@ -1947,7 +1947,13 @@ only this run and is released when it ends.
 
 `--session` optionally restores a previously captured public checkpoint. Such a
 run tests checkpoint restoration and continuation; original book-slot admission
-must be exercised separately through its public adapter. Omit `--session` when
+must be exercised separately through its public adapter. Shared drivers can call
+`verify-original-slot.py`'s `load_slot(control, args)` to enter the book after
+ordinary gameplay entry and capture the held restoration. Scene readiness alone
+does not establish the selected-player controller retained by original load.
+The helper writes `admission.json` and `admitted.session`; the full verifier
+also writes both public boundaries to `result.json` before asserting first-update
+success, so a rejected continuation retains its actor errors. Omit `--session` when
 the supplied driver performs that admission itself.
 
 For an independent decoder-clock check, restore a checkpoint containing a fresh
