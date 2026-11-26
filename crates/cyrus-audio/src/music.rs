@@ -114,6 +114,14 @@ enum WorldSelection {
     Restored,
 }
 
+impl Music {
+    /// Whether track selection or source preparation still prevents a complete checkpoint.
+    /// Observing this state neither polls nor consumes the pending task.
+    pub fn is_preparing(&self) -> bool {
+        self.load.is_some() || self.world_selection == WorldSelection::Pending
+    }
+}
+
 impl Default for Music {
     fn default() -> Self {
         Self {
@@ -393,6 +401,7 @@ fn finish_track(
     mut commands: Commands,
     mut music: ResMut<Music>,
     state: Option<Res<State<cyrus_game::AppState>>>,
+    paused: Option<Res<cyrus_script::PausedGameplay>>,
     #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
     settings: Option<Res<SoundSettings>>,
@@ -402,11 +411,12 @@ fn finish_track(
     ),
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
 ) {
-    // CurrentScene arrives before rendering finishes. Keep its asynchronous CD
-    // preparation, but publish the destination player only with gameplay.
-    if music.world_selection == WorldSelection::AwaitingGameplay
-        && !state.is_some_and(|state| *state.get() == cyrus_game::AppState::InGame)
-    {
+    // A paused gameplay book retains admission; loading and startup menus do not.
+    let admitted = state.is_some_and(|state| {
+        *state.get() == cyrus_game::AppState::InGame
+            || (*state.get() == cyrus_game::AppState::Menu && paused.is_some())
+    });
+    if music.world_selection == WorldSelection::AwaitingGameplay && !admitted {
         return;
     }
     let (Some(load), Some(transports)) = (music.load.as_mut(), transports.as_mut()) else {
@@ -780,6 +790,7 @@ mod tests {
             load: Some(IoTaskPool::get().spawn(std::future::pending())),
             ..Music::default()
         };
+        assert!(music.is_preparing());
         assert!(
             music
                 .snapshot(&[])
@@ -789,7 +800,76 @@ mod tests {
                 .contains("preparation is in flight")
         );
         assert!(music.load.is_some());
+        assert!(music.is_preparing());
         assert_eq!(music.track, Some(2));
+    }
+
+    #[test]
+    fn pending_world_track_settles_in_paused_gameplay_book() {
+        let source = AudioSource {
+            bytes: cyrus_assets::audio::pcm_wav(
+                rgpre::import::sfx::AudioType::Stereo16,
+                44100,
+                &[0, 64, 0, 192],
+            )
+            .unwrap()
+            .into(),
+        };
+        let mut app = prepared_music(source.clone(), 64, false);
+        // Death-book entry retains the world's pending track instead of requesting menu music.
+        app.insert_resource(cyrus_script::script::DeathBookEntry { override_group: 0 });
+        {
+            let mut music = app.world_mut().resource_mut::<Music>();
+            music.load = Some(IoTaskPool::get().spawn(async move { Ok(source) }));
+            music.world_selection = WorldSelection::AwaitingGameplay;
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !app
+            .world()
+            .resource::<Music>()
+            .load
+            .as_ref()
+            .unwrap()
+            .is_finished()
+        {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        app.world_mut()
+            .resource_mut::<NextState<cyrus_game::AppState>>()
+            .set(cyrus_game::AppState::Menu);
+        app.update();
+        assert!(app.world().resource::<Music>().is_preparing());
+        let clock =
+            cyrus_script::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+                normal_frame_rate: 12,
+                min_frame_rate: 6,
+                max_frame_rate: 300,
+                use_smooth_fps: true,
+                use_smooth_divisor: true,
+            })
+            .unwrap();
+        let before = serde_json::to_value(clock.snapshot()).unwrap();
+        app.insert_resource(cyrus_script::PausedGameplay {
+            clock,
+            active_cameras: Vec::new(),
+        });
+        app.update();
+        assert!(
+            !app.world().resource::<Music>().is_preparing(),
+            "a paused gameplay book must allow pending CD preparation to finish"
+        );
+        assert_eq!(
+            serde_json::to_value(
+                app.world()
+                    .resource::<cyrus_script::PausedGameplay>()
+                    .clock
+                    .snapshot()
+            )
+            .unwrap(),
+            before,
+            "CD preparation advanced the paused gameplay clock"
+        );
     }
 
     #[test]

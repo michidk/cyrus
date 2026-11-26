@@ -184,6 +184,7 @@ fn prepared_world_music_waits_for_gameplay_admission() {
             players.iter(app.world()).all(|playback| playback.paused),
             "prepared world started CD playback before gameplay admission"
         );
+        assert!(app.world().resource::<Music>().is_preparing());
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     // A repeated notification for the same destination must not release its
@@ -213,6 +214,7 @@ fn prepared_world_music_waits_for_gameplay_admission() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert_eq!(app.world().resource::<Music>().track, Some(track as u32));
+    assert!(!app.world().resource::<Music>().is_preparing());
     if device {
         // The paced backend, rather than a render frame count, owns this span.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);

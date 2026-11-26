@@ -265,7 +265,8 @@ fn request_original(world: &mut World, slot: u16, world_id: u32) -> Result<()> {
         begin_original_entry(world, slot, saved)?;
         return Ok(());
     }
-    capture_original(world, slot, saved)
+    queue_original_capture(world, slot, saved);
+    Ok(())
 }
 
 fn begin_original_entry(
@@ -288,20 +289,13 @@ fn begin_original_entry(
     Ok(())
 }
 
-fn capture_original(
-    world: &mut World,
-    slot: u16,
-    saved: rgpre::import::savegame::SaveSlot,
-) -> Result<()> {
+fn queue_original_capture(world: &mut World, slot: u16, saved: rgpre::import::savegame::SaveSlot) {
     let world_id = saved.game.metadata.world_id;
-    world.resource_mut::<SessionBoundary>().capture_live()?;
     let mut state = world.resource_mut::<NativeSessionLoad>();
-    state.original_capture = true;
-    state.original = Some(saved);
+    state.original_entry = Some(OriginalEntry { saved });
     state.original_notice = true;
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
-    Ok(())
 }
 
 fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Result<()> {
@@ -378,6 +372,9 @@ fn pause_original_entry(world: &mut World) -> bool {
                     world.get_resource::<NextState<AppState>>(),
                     Some(NextState::Unchanged)
                 )
+                && !world
+                    .get_resource::<cyrus_audio::music::Music>()
+                    .is_some_and(cyrus_audio::music::Music::is_preparing)
         }
         _ => false,
     }
@@ -1021,6 +1018,21 @@ mod tests {
             maps: BTreeMap::new(),
             logbook: None,
         }
+    }
+
+    #[test]
+    fn same_world_original_load_defers_capture_until_entry_is_ready() {
+        let mut world = World::new();
+        world.init_resource::<NativeSessionLoad>();
+        world.init_resource::<SessionBoundary>();
+        queue_original_capture(&mut world, 2, synthetic_original_entry(15));
+        assert!(world.resource::<SessionBoundary>().is_idle());
+        let state = world.resource::<NativeSessionLoad>();
+        assert!(state.busy());
+        assert!(state.original_entry.is_some());
+        assert!(!state.original_capture);
+        assert!(state.original.is_none());
+        assert_eq!(state.path, "original slot 2 world 15");
     }
 
     #[test]
