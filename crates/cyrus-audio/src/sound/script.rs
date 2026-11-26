@@ -3,6 +3,37 @@ use super::*;
 use bevy::ecs::system::SystemParam;
 use std::{cell::RefCell, task::Poll};
 
+/// Which script owners can emit and retain sounds in this drain.
+#[derive(Clone, Copy)]
+enum ScriptOwnership {
+    Unscoped,
+    NoWorld,
+    World(u64),
+}
+
+impl From<Option<u64>> for ScriptOwnership {
+    fn from(generation: Option<u64>) -> Self {
+        generation.map_or(Self::NoWorld, Self::World)
+    }
+}
+
+impl ScriptOwnership {
+    fn generation(self) -> Option<u64> {
+        match self {
+            Self::Unscoped | Self::NoWorld => None,
+            Self::World(generation) => Some(generation),
+        }
+    }
+
+    fn accepts(self, owner: Owner) -> bool {
+        match (self, owner) {
+            (_, Owner::Entity(_)) | (Self::Unscoped, _) => true,
+            (Self::NoWorld, Owner::Script { .. }) => false,
+            (Self::World(current), Owner::Script { generation, .. }) => current == generation,
+        }
+    }
+}
+
 /// Plays [`SoundCue`]s from game code through the same channels as control requests.
 #[derive(SystemParam)]
 struct SoundFrame<'w, 's> {
@@ -31,14 +62,9 @@ struct SoundFrame<'w, 's> {
 }
 
 impl SoundFrame<'_, '_> {
-    fn prepare(&mut self, ownership: Option<Option<u64>>) {
+    fn prepare(&mut self, ownership: ScriptOwnership) {
         self.channels.reclaim(&self.alive);
-        let current_owner = |owner: Owner| match owner {
-            Owner::Entity(_) => true,
-            Owner::Script { generation, .. } => {
-                ownership.is_none_or(|current| current == Some(generation))
-            }
-        };
+        let current_owner = |owner| ownership.accepts(owner);
         let expired = self.channels.samples.stop_expired(current_owner);
         self.channels.retire(&mut self.commands, expired);
         #[cfg(any(target_arch = "wasm32", test))]
@@ -124,7 +150,7 @@ impl SoundFrame<'_, '_> {
         }
     }
 
-    fn emit(&mut self, cue: &SoundCue, ownership: Option<Option<u64>>) {
+    fn emit(&mut self, cue: &SoundCue, ownership: ScriptOwnership) {
         let Self {
             commands,
             effects,
@@ -146,12 +172,7 @@ impl SoundFrame<'_, '_> {
             sources: sources.as_deref(),
             panned: panned.as_deref_mut(),
         };
-        let current_owner = |owner: Owner| match owner {
-            Owner::Entity(_) => true,
-            Owner::Script { generation, .. } => {
-                ownership.is_none_or(|current| current == Some(generation))
-            }
-        };
+        let current_owner = |owner| ownership.accepts(owner);
         for cue in std::iter::once(cue) {
             match cue {
                 SoundCue::Script {
@@ -459,20 +480,27 @@ fn play_cues(
 ) {
     let ownership = script_actors
         .as_ref()
-        .map(|actors| actors.current.as_ref().map(|world| world.generation()));
+        .map_or(ScriptOwnership::Unscoped, |actors| {
+            actors
+                .current
+                .as_ref()
+                .map_or(ScriptOwnership::NoWorld, |world| {
+                    ScriptOwnership::World(world.generation())
+                })
+        });
     // World teardown stops the entire shared pool, including unowned voices and
     // presentation starts. Keep this observation with that pool: a validated
     // session replacement installs a fresh pool and must not inherit the old
     // world's teardown on its first drain.
     if matches!(frame.channels.script_generation,
-        ScriptGeneration::Observed(Some(previous)) if Some(previous) != ownership.flatten())
+        ScriptGeneration::Observed(Some(previous)) if Some(previous) != ownership.generation())
     {
         frame.channels.stop_all(&mut frame.commands);
         frame.channels.animation.clear();
         frame.channels.animation_checkpoint.clear();
         frame.channels.speech = None;
     }
-    frame.channels.script_generation = ScriptGeneration::Observed(ownership.flatten());
+    frame.channels.script_generation = ScriptGeneration::Observed(ownership.generation());
     frame.prepare(ownership);
     for cue in cues.read() {
         frame.emit(cue, ownership);
@@ -984,7 +1012,7 @@ impl ScriptSounds<'_, '_> {
                     .borrow_mut()
                     .0
                     .frame
-                    .emit(&cue, Some(generation));
+                    .emit(&cue, generation.into());
                 Ok(())
             },
         );
@@ -1090,7 +1118,7 @@ impl ScriptSounds<'_, '_> {
             frame: RefCell::new(&mut self.frame),
         };
         update(&sounds, &mut |cue| {
-            sounds.frame.borrow_mut().emit(&cue, Some(generation));
+            sounds.frame.borrow_mut().emit(&cue, generation.into());
             Ok(())
         })
     }
@@ -1539,7 +1567,7 @@ fn scoped_ordinary(
         if context.has_pending_revisit() {
             let restored = (|| -> anyhow::Result<bool> {
                 if !context.prepare_revisit_entry(&mut |cue| {
-                    sounds.frame.emit(&cue, Some(generation));
+                    sounds.frame.emit(&cue, generation.into());
                     Ok(())
                 })? {
                     return Ok(false);
@@ -2471,6 +2499,60 @@ mod dialogue_tests {
         assert_eq!(channels.playing.len(), 1);
         assert!(channels.animation.contains_key(&replacement));
         assert!(!channels.animation.contains_key(&actor));
+    }
+
+    #[test]
+    fn script_ownership_scopes_cue_admission_and_retirement() {
+        for (registry, expected) in [(false, vec![1, 2]), (true, vec![])] {
+            let mut app = App::new();
+            app.insert_resource(crate::SoundBankHandle(Handle::default()));
+            app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin));
+            if registry {
+                app.init_resource::<cyrus_script::script::ScriptActors>();
+            }
+            app.update();
+            for generation in [1, 2] {
+                app.world_mut().write_message(SoundCue::Script {
+                    generation,
+                    index: 0,
+                    sound: ScriptSound::Flat {
+                        effect: 0,
+                        volume: 0,
+                        rate_offset_hz: 0,
+                    },
+                });
+            }
+            app.update();
+            let generations = |app: &App| {
+                app.world()
+                    .resource::<Channels>()
+                    .pending
+                    .iter()
+                    .filter_map(|cue| match cue.owner() {
+                        Some(Owner::Script { generation, .. }) => Some(generation),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(generations(&app), expected);
+            let mut actors = cyrus_script::script::ScriptActors::default();
+            actors.current = Some(maintenance_world(false));
+            app.insert_resource(actors);
+            for generation in [1, 2] {
+                app.world_mut().write_message(SoundCue::Script {
+                    generation,
+                    index: 0,
+                    sound: ScriptSound::Flat {
+                        effect: 1,
+                        volume: 0,
+                        rate_offset_hz: 0,
+                    },
+                });
+            }
+            app.update();
+            assert!(generations(&app).iter().all(|generation| *generation == 1));
+            assert_eq!(generations(&app).len(), if registry { 1 } else { 2 });
+        }
     }
 
     #[test]
