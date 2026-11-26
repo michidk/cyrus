@@ -1190,6 +1190,13 @@ submission it waits for an editable prompt, so a long report cannot swallow the
 close request. Its controls
 run with `python3 dev/scripts/test-original-console.py` and in `just check`.
 
+Container combat probes use `original_scenario.install_original_combat_driver(name)`
+to copy the shared combat API and its stopped-boundary dependencies. Set the
+probe's `PYTHONPATH` to the returned container directory and use
+`import original_fight`. The hyphenated `original-fight.py` entry point is a
+command shim, so loading it as a library does not expose the combat API.
+The bundle contains no game data or executable-specific reader bindings.
+
 The fight reader exposes `hidden` and `death_selector` for the opponent.
 `original-fight.py` reports combat entry from lifecycle selector 6, as documented
 in preservation's combat-entry rules. An allocated combat structure does not

@@ -70,6 +70,25 @@ class OriginalRuntime(unittest.TestCase):
             self.assertEqual(calls[-1], ('docker', 'rm', '-f', 'owned'))
             self.assertEqual(evidence.read_text(), 'retained')
 
+    def test_combat_bundle_imports_shared_api_outside_script_directory(self):
+        import os
+        import shutil
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / 'bundle'
+            def command(*args, **kwargs):
+                if args[:2] == ('docker', 'exec'):
+                    destination.mkdir()
+                else:
+                    shutil.copy2(args[2], destination / Path(args[2]).name)
+            installed = scenario.install_original_combat_driver('owned', command=command)
+            self.assertEqual(installed, '/tmp/cyrus-combat')
+            result = subprocess.run(['python3', '-c',
+                'import original_fight; assert callable(original_fight.record_combat_tap)'],
+                cwd=directory, env=dict(os.environ, PYTHONPATH=str(destination)),
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((destination / 'original-fight.py').exists())
+
     def test_attach_only_installs_reader_dependencies(self):
         with tempfile.TemporaryDirectory() as directory:
             magic, _ = self.fixture(directory)

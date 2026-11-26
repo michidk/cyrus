@@ -45,6 +45,27 @@ def install_original_reader(name, *, command=sh, magic=None):
         command("docker", "cp", str(source), f"{name}:/tmp/{source.name}", check=True)
 
 
+def install_original_combat_driver(name, *, command=sh):
+    """Install the importable combat API and stopped-boundary dependencies.
+
+    Container probes set PYTHONPATH to the returned directory and import
+    original_fight normally. The hyphenated fight command is a CLI shim,
+    not the shared API. No install data or executable bindings are copied here.
+    """
+    destination = '/tmp/cyrus-combat'
+    names = ('original_fight.py', 'harness.py', 'diag_output.py',
+             'original_console.py', 'original-frame-session.py',
+             'original-update-watchpoint.py')
+    sources = [ROOT / 'dev/scripts' / filename for filename in names]
+    for source in sources:
+        if not source.is_file():
+            raise FileNotFoundError(f'{source}: missing original combat driver dependency')
+    command('docker', 'exec', name, 'mkdir', '-p', destination, check=True)
+    for source in sources:
+        command('docker', 'cp', str(source), f'{name}:{destination}/{source.name}', check=True)
+    return destination
+
+
 def start_original_runtime(name, run, image, *, command=sh, magic=None):
     """Prepare one owned runtime; retain host evidence and clean up failed startup."""
     magic = MAGIC if magic is None else Path(magic)
