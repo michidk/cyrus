@@ -1,5 +1,4 @@
 //! Replay admission contracts.
-use super::*;
 
 #[test]
 fn replay_world_pauses_unless_a_schedule_owns_the_frame_loop() {
