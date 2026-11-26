@@ -127,3 +127,44 @@ fn bound_pose_keeps_previous_frame_and_default_through_first_explicit_update() {
     assert_eq!(actor.record_field(PlaybackField::Frame).unwrap(), 2);
     assert_eq!(actor.last_frame(), Some(88));
 }
+
+#[test]
+fn original_pose_binding_distinguishes_command_clear_and_selected_frame() {
+    let data = Animations {
+        version: 2,
+        world: 17,
+        metadata: json!({"actors":[{"script_name":"ACTOR","animation_groups":[
+            {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":12},{"opcode":1}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut header = [0u8; 37];
+    header[2..4].copy_from_slice(&(-1i16).to_le_bytes());
+    let saved = SaveAnimationPlayback::from(&header);
+    let default = AnimationGroup::from_index(0);
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", default).unwrap();
+    actor
+        .restore_original_bound(&saved, Some(88), None, default)
+        .unwrap();
+    assert_eq!(
+        actor.restore_original(&saved).unwrap(),
+        OriginalPlaybackRestore::Restored { frame: Some(12) }
+    );
+    for selected in [None, Some(44)] {
+        actor
+            .restore_original_bound(&saved, selected, Some(9), default)
+            .unwrap();
+        let snapshot = serde_json::to_value(actor.snapshot()).unwrap();
+        let restored = ActorAnimation::from_snapshot(
+            &data,
+            "ACTOR",
+            serde_json::from_value(snapshot.clone()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(serde_json::to_value(restored.snapshot()).unwrap(), snapshot);
+        assert_eq!(restored.record_field(PlaybackField::Frame).unwrap(), 0);
+        assert_eq!(restored.last_frame(), Some(9));
+    }
+}

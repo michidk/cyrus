@@ -134,16 +134,28 @@ pub(super) struct SequenceSnapshot {
     rotation: [i16; 3],
 }
 
+/// Selected-pose source during original playback restoration, independent of native snapshots.
+#[cfg(feature = "original-save-import")]
+#[derive(Clone, Copy)]
+pub(super) enum OriginalPoseBinding {
+    /// Recover the selected frame from the retained ShowFrame command.
+    FromCommand,
+    /// The validated model binding has no selected frame.
+    Cleared,
+    /// The validated model binding selects this file-frame reference.
+    Frame(u32),
+}
+
 impl FrameSequence {
     #[cfg(feature = "original-save-import")]
     pub(super) fn restore_original(
         &mut self,
         saved: &rgpre::import::savegame::SaveAnimationPlayback,
-        bound_pose: Option<Option<u32>>,
+        bound_pose: OriginalPoseBinding,
     ) -> anyhow::Result<super::actor::OriginalPlaybackRestore> {
         // A retained ShowFrame cursor identifies the selected installed frame
         // without executing sounds, events or transitions during import.
-        let reference = if let Some(reference) = bound_pose {
+        if !matches!(bound_pose, OriginalPoseBinding::FromCommand) {
             anyhow::ensure!(
                 saved.frame == -1
                     || usize::try_from(saved.frame)
@@ -153,16 +165,18 @@ impl FrameSequence {
                 self.context,
                 saved.frame
             );
-            reference
-        } else {
-            match usize::try_from(saved.frame)
+        }
+        let reference = match bound_pose {
+            OriginalPoseBinding::FromCommand => match usize::try_from(saved.frame)
                 .ok()
                 .and_then(|index| self.commands.get(index))
             {
                 Some(Command::Frame(reference)) => Some(*reference),
                 _ if saved.frame == -1 => None,
                 _ => return Ok(super::actor::OriginalPlaybackRestore::UnsupportedPose),
-            }
+            },
+            OriginalPoseBinding::Cleared => None,
+            OriginalPoseBinding::Frame(reference) => Some(reference),
         };
         self.command = saved.frame;
         self.speed = saved.speed;
@@ -961,6 +975,30 @@ impl FrameSequence {
                     self.command
                 ),
             }
+        }
+    }
+}
+
+#[cfg(all(test, feature = "original-save-import"))]
+mod original_pose_tests {
+    use super::super::actor::OriginalPlaybackRestore;
+    use super::*;
+
+    #[test]
+    fn restored_pose_uses_command_clear_or_independent_binding() {
+        let group = serde_json::json!({"group_index":0,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":12},{"opcode":1}]});
+        let saved = rgpre::import::savegame::SaveAnimationPlayback::from(&[0u8; 37]);
+        for (binding, frame) in [
+            (OriginalPoseBinding::FromCommand, Some(12)),
+            (OriginalPoseBinding::Cleared, None),
+            (OriginalPoseBinding::Frame(44), Some(44)),
+        ] {
+            let mut sequence = FrameSequence::from_group("ACTOR".into(), &group, 0, 0).unwrap();
+            assert_eq!(
+                sequence.restore_original(&saved, binding).unwrap(),
+                OriginalPlaybackRestore::Restored { frame }
+            );
         }
     }
 }

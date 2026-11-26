@@ -1,4 +1,6 @@
 //! Request arbitration and default fallback from preservation's engine/animation.md.
+#[cfg(feature = "original-save-import")]
+use super::sequence::OriginalPoseBinding;
 use super::sequence::{SequenceSnapshot, SoundDispatcher};
 use super::{AnimationSound, Animations, FrameSequence, TransitionDecision};
 use anyhow::Context;
@@ -131,7 +133,7 @@ impl ActorAnimation {
         &mut self,
         saved: &rgpre::import::savegame::SaveAnimationPlayback,
     ) -> anyhow::Result<OriginalPlaybackRestore> {
-        self.restore_original_inner(saved, None)
+        self.restore_original_inner(saved, OriginalPoseBinding::FromCommand)
     }
 
     /// Restore playback with independently validated selected and previous file
@@ -152,7 +154,10 @@ impl ActorAnimation {
             "{} original default group {default}: absent",
             self.context
         );
-        self.restore_original_inner(saved, Some(selected))?;
+        self.restore_original_inner(
+            saved,
+            selected.map_or(OriginalPoseBinding::Cleared, OriginalPoseBinding::Frame),
+        )?;
         self.default = default;
         self.last_frame = previous;
         Ok(())
@@ -162,7 +167,7 @@ impl ActorAnimation {
     fn restore_original_inner(
         &mut self,
         saved: &rgpre::import::savegame::SaveAnimationPlayback,
-        bound_pose: Option<Option<u32>>,
+        bound_pose: OriginalPoseBinding,
     ) -> anyhow::Result<OriginalPlaybackRestore> {
         let current = if saved.current == -1 {
             None
