@@ -4,9 +4,9 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
-import time
 import unittest
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -249,26 +249,34 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.assertTrue((self.root / 'run state/config').is_dir())
 
     def test_completed_executable_is_sealed_before_slow_unit_recording(self):
+        os.mkfifo(self.root / 'recorder-ready')
         recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'
         original = recorder.read_text()
-        recorder.write_text("import sys,time\nfrom pathlib import Path\n"
+        recorder.write_text("import sys,signal\nfrom pathlib import Path\n"
                             "if sys.argv[1] == 'record':\n"
-                            " while not Path('release-recorder').exists(): time.sleep(.02)\n" + original)
+                            " with Path('recorder-ready').open('wb') as ready: ready.write(b'ready')\n"
+                            " while True: signal.pause()\n" + original)
+        cargo = self.root / 'bin/fake-cargo'
+        cargo.write_text(cargo.read_text().replace(
+            "exe=target/'debug/cyrus'",
+            "with (root/'recorder-ready').open('rb') as ready:\n"
+            " assert ready.read() == b'ready'\n"
+            "exe=target/'debug/cyrus'"))
         # The shim is a fixture, not a modification made during the build.
         process = subprocess.Popen(['bash', 'dev/scripts/build-native-recovery.sh', str(self.output)],
-                                   cwd=self.root, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                   cwd=self.root, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, start_new_session=True)
         try:
-            deadline = time.monotonic() + 4
-            record = Path(str(self.output) + '.provenance.json')
-            while not record.exists() and time.monotonic() < deadline:
-                time.sleep(.02)
-            self.assertTrue(record.exists(), 'completed executable waited behind unit checkpoint recording')
-            subprocess.run(['python3', 'dev/scripts/build-provenance.py', 'verify', str(record)],
-                           cwd=self.root, check=True, capture_output=True)
+            stdout, stderr = process.communicate(timeout=30)
         finally:
-            (self.root / 'release-recorder').touch()
-            stdout, stderr = process.communicate(timeout=15)
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.communicate(timeout=15)
         self.assertEqual(process.returncode, 0, stdout + stderr)
+        record = Path(str(self.output) + '.provenance.json')
+        self.assertTrue(record.exists(), 'completed executable was not sealed')
+        subprocess.run(['python3', 'dev/scripts/build-provenance.py', 'verify', str(record)],
+                       cwd=self.root, check=True, capture_output=True)
 
     def test_final_publication_stops_competing_unit_recording(self):
         recorder = self.root / 'dev/scripts/web-compile-checkpoint.py'
