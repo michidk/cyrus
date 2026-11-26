@@ -1857,6 +1857,38 @@ leaves image metadata, preparation resumes that content instead of importing it
 again. If Docker is unavailable or the requested image was not retained, recovery
 fails with the saved diagnostics; it never starts a daemon or retries in a loop.
 
+A retained image can also supply missing libraries for an existing host DOSBox-X
+build without loading Docker. Use an owned runtime directory, never the game
+install or a shared asset directory:
+
+```sh
+python3 dev/scripts/prepare-retro-host.py /absolute/retained-image.tar \
+  /absolute/host-runtime libSDL2-2.0.so.0 libSDL2_net-2.0.so.0
+```
+
+The helper restores only requested basenames and their symbolic-link targets.
+It checks archive/tool hashes and recovered files before reusing its completion
+receipt, repairs missing or changed files, and relocates absolute library links
+inside the output root. It rejects escaping paths and unresolved link cycles.
+Existing unrelated files remain untouched. This is dependency preparation, not
+an original-game or observer acceptance result. ABI-compatible libraries and the
+dynamic loader must come from the same retained runtime. Invoke that loader with
+`--library-path` containing its library directories, including the `pulseaudio`
+subdirectory when present. Do not export a replacement libc through the shell's
+`LD_LIBRARY_PATH`. A host that denies ptrace cannot run the stopped-boundary
+observer; library recovery does not grant that capability.
+
+For clock captures, `original-update-recorder.py --require-bios` requires the
+local backend's observed unsigned `bios_ticks` sample at every stopped ordinary
+boundary. The watchpoint backend accepts an optional `bios` reader-field binding.
+Output retains each absolute sample and its measured `elapsed_bios_ticks` since
+the preceding boundary; the baseline interval is null. Missing samples, resets
+and malformed values reject before that row is emitted. Counter wrap is explicitly
+unsupported. Pass intervals from subsequent rows to the native replay's BIOS tape
+only after establishing the same restored start and input boundaries. Omitting
+BIOS samples remains supported for diagnostic recordings and does not establish
+matched clock acceptance.
+
 For a retained standard original image whose package layer cannot finish one
 unpack transaction, opt into smaller layers:
 

@@ -197,7 +197,8 @@ class Watchpoint:
         selected = [actor for actor in state['actors'] if actor['selected']]
         if len(selected) != 1 or state.get('console_mode') != 'closed':
             raise RuntimeError('ordinary world/player boundary unavailable')
-        return dict(execution='stopped', boundary='ordinary_update_start',
+        timing = {} if 'bios' not in self.config else dict(bios_ticks=field(state, self.config['bios']))
+        return dict(execution='stopped', boundary='ordinary_update_start', **timing,
                     update=field(state, self.config['counter']), clock_scale=field(state, self.config['clock']),
                     next_step=field(state, self.config['step']),
                     player={name: selected[0][key] for name, key in self.config['player_fields'].items()})

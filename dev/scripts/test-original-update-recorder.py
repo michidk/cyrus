@@ -64,6 +64,29 @@ class Recorder(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 recorder.record(Session([snapshot(7, 100) | change]), 64, lambda _: None)
 
+    def test_required_bios_intervals_are_observed_and_retained(self):
+        rows = [snapshot(7, 100) | dict(bios_ticks=0),
+                snapshot(8, 132) | dict(bios_ticks=2),
+                snapshot(9, 164) | dict(bios_ticks=5)]
+        output = []
+        recorder.record(Session(rows), 64, output.append, require_bios=True)
+        self.assertEqual([row['elapsed_bios_ticks'] for row in output], [None, 2, 3])
+        self.assertEqual([row['bios_ticks'] for row in output], [0, 2, 5])
+
+    def test_missing_reset_or_invalid_bios_sample_rejects_before_emit(self):
+        for value in [None, -1, True, 2**32, 1]:
+            with self.subTest(value=value):
+                row = snapshot(8, 132)
+                if value is not None:
+                    row['bios_ticks'] = value
+                output = []
+                with self.assertRaises(ValueError):
+                    recorder.record(Session([snapshot(7, 100) | dict(bios_ticks=2), row]),
+                                    32, output.append, require_bios=True)
+                self.assertEqual(len(output), 1)
+        with self.assertRaises(ValueError):
+            recorder.record(Session([snapshot(7, 100)]), 32, lambda _: None, require_bios=True)
+
     def test_backend_stall_propagates_without_accepting_sample(self):
         class Stalled(Session):
             def next_boundary(self, timeout):
@@ -91,6 +114,9 @@ class WatchpointBackend(unittest.TestCase):
         session.stopped = True
         session.active_boundary = 16
         self.assertEqual(session.snapshot(), snapshot(7, 100))
+        session.config['bios'] = 'observed_bios'
+        state['observed_bios'] = 123
+        self.assertEqual(session.snapshot(), snapshot(7, 100) | dict(bios_ticks=123))
         session.stopped = False
         with self.assertRaisesRegex(RuntimeError, 'running'):
             session.snapshot()

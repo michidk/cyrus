@@ -41,12 +41,15 @@ def validate_snapshot(row):
             raise ValueError(f'invalid {name}')
 
 
-def record(session, elapsed, emit, timeout=10):
+def record(session, elapsed, emit, timeout=10, *, require_bios=False):
     """Emit baseline then exactly one row per completed update, until clock progress.
 
     Duplicate counters, gaps, resets, torn reads and clock/consumed-step mismatches
     fail the recording. Partial output must not be used after a nonzero exit.
     timeout bounds a stalled boundary wait, never the requested gameplay span.
+    Optional unsigned BIOS samples produce observed intervals, with null at the
+    baseline. require_bios rejects missing samples. Resets/wrap are unsupported;
+    no interval is inferred from game-clock scales or host time.
     """
     if type(elapsed) is not int or elapsed <= 0:
         raise ValueError('elapsed clock span must be positive')
@@ -57,6 +60,12 @@ def record(session, elapsed, emit, timeout=10):
         session.next_boundary(timeout)
         row = session.snapshot()
         validate_snapshot(row)
+        bios = row.get('bios_ticks')
+        if require_bios or 'bios_ticks' in row or (previous is not None and 'bios_ticks' in previous):
+            if type(bios) is not int or not 0 <= bios <= 2**32 - 1:
+                raise ValueError('observed unsigned BIOS sample unavailable')
+            if previous is not None and ('bios_ticks' not in previous or bios < previous['bios_ticks']):
+                raise ValueError('BIOS sample reset or baseline unavailable')
         if session.snapshot() != row:
             raise ValueError('snapshot changed while execution was stopped')
         if previous is None:
@@ -68,8 +77,10 @@ def record(session, elapsed, emit, timeout=10):
             consumed = row['clock_scale'] - previous['clock_scale']
             if consumed != previous['next_step']:
                 raise ValueError('game clock differs from consumed update step')
+        timing = {} if bios is None else dict(
+            elapsed_bios_ticks=None if previous is None else bios - previous['bios_ticks'])
         emit(dict(sequence=sequence, elapsed_scale=row['clock_scale'] - origin,
-                  consumed_clock_step=consumed, **row))
+                  consumed_clock_step=consumed, **timing, **row))
         if row['clock_scale'] - origin >= elapsed:
             return sequence
         previous = row
@@ -81,12 +92,14 @@ def main():
     parser.add_argument('--backend', required=True, help='ignored executable-specific backend module')
     parser.add_argument('--elapsed', required=True, type=int, help='consumed game-clock units')
     parser.add_argument('--timeout', type=float, default=10, help='boundary stall deadline in seconds')
+    parser.add_argument('--require-bios', action='store_true',
+                        help='require observed unsigned BIOS samples at every stopped boundary')
     args = parser.parse_args()
     spec = importlib.util.spec_from_file_location('original_update_backend', args.backend)
     backend = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(backend)
     with backend.open_session() as session:
-        record(session, args.elapsed, lambda row: print(json.dumps(row), flush=True), args.timeout)
+        record(session, args.elapsed, lambda row: print(json.dumps(row), flush=True), args.timeout, require_bios=args.require_bios)
 
 
 if __name__ == '__main__':
