@@ -17,7 +17,7 @@ use bevy::{
     render::render_resource::VertexFormat,
 };
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub(super) const PROJECTED: MeshVertexAttribute =
     MeshVertexAttribute::new("Model_Projected", 83010, VertexFormat::Float32x4);
@@ -49,18 +49,8 @@ pub(super) struct Draw;
 #[derive(Component)]
 struct Inspected;
 
-// Asset publication also mutably borrows the mesh store. Remember its final tick so
-// preparation detects new input edits without treating its own draw uploads as inputs.
-#[derive(Resource, Default)]
-struct PublishedMeshes(Option<bevy::ecs::change_detection::Tick>);
-
-fn remember_published_meshes(meshes: Res<Assets<Mesh>>, mut published: ResMut<PublishedMeshes>) {
-    published.0 = Some(meshes.last_changed());
-}
-
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<PublishedMeshes>()
-        .add_systems(Update, bind.after(super::apply_scene_fog))
+    app.add_systems(Update, bind.after(super::apply_scene_fog))
         .add_systems(
             PostUpdate,
             prepare
@@ -68,10 +58,6 @@ pub(super) fn register(app: &mut App) {
                 .after(bevy::camera::CameraUpdateSystems)
                 .after(crate::animation::apply_poses)
                 .before(bevy::asset::AssetEventSystems),
-        )
-        .add_systems(
-            PostUpdate,
-            remember_published_meshes.after(bevy::asset::AssetEventSystems),
         )
         .add_systems(PostUpdate, swap_for_modern_lighting.before(prepare))
         .add_systems(
@@ -253,12 +239,12 @@ fn prepare(
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<SceneMaterial>>,
     images: Res<Assets<Image>>,
-    published_meshes: Res<PublishedMeshes>,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
     mut image_events: MessageReader<AssetEvent<Image>>,
     material_events: Option<MessageReader<AssetEvent<SceneMaterial>>>,
     mut clip: Local<Preparation>,
     mut previous_view: Local<Option<(Mat4, Vec2, Vec2)>>,
+    mut light_tables: Local<HashMap<AssetId<Image>, Option<Vec<u8>>>>,
     fidelity: Res<Fidelity>,
 ) {
     let changed_meshes: HashSet<_> = mesh_events
@@ -309,19 +295,40 @@ fn prepare(
     // whose inputs are all unchanged keeps the draw it prepared last.
     let view_unchanged =
         previous_view.replace((camera, scale, viewport)) == Some((camera, scale, viewport));
-    // Asset events publish after preparation. Resource ticks also catch in-place edits
-    // made this frame, before those notifications can reach either cache guard.
-    let meshes_changed = published_meshes.0 != Some(meshes.last_changed());
+    // Asset events publish after preparation, so in-place edits made this frame are found by
+    // value: material extensions are part of each source's key, and light tables are compared
+    // here. In-place source mesh edits mark their entity (animation pose, `Mesh3d`) and are
+    // otherwise caught by the next frame's events; a store-wide mesh tick would re-clip every
+    // model whenever water or any animation writes a mesh.
+    let mut edited_lights = HashSet::new();
+    if images.is_changed() {
+        light_tables.retain(|id, bytes| match images.get(*id) {
+            Some(image) if image.data == *bytes => true,
+            Some(image) => {
+                bytes.clone_from(&image.data);
+                edited_lights.insert(*id);
+                true
+            }
+            None => {
+                edited_lights.insert(*id);
+                false
+            }
+        });
+    }
     for (mesh, transform, material, mut source, animated) in &mut sources {
         if view_unchanged
             && !source.pending
             && !source.is_added()
             && !mesh.is_changed()
-            && !meshes_changed
+            && meshes.contains(&mesh.0)
             && !transform.is_changed()
             && !material.is_changed()
-            && !materials.is_changed()
-            && !images.is_changed()
+            && source.previous.as_ref().is_some_and(|previous| {
+                !edited_lights.contains(&previous.4.lights.id())
+                    && materials
+                        .get(&material.0)
+                        .is_some_and(|asset| asset.extension == previous.4)
+            })
             && !animated.as_ref().is_some_and(|pose| pose.is_changed())
             && !changed_meshes.contains(&mesh.0.id())
             && changed_materials
@@ -360,11 +367,11 @@ fn prepare(
         }
         if source.previous.as_ref() == Some(&key)
             && meshes.contains(&draw.0)
-            && !meshes_changed
+            && meshes.contains(&mesh.0)
             && !animated.as_ref().is_some_and(|pose| pose.is_changed())
             && !changed_meshes.contains(&mesh.0.id())
             && !changed_images.contains(&extension.lights.id())
-            && !images.is_changed()
+            && !edited_lights.contains(&extension.lights.id())
         {
             source.pending = false;
             continue;
@@ -374,6 +381,9 @@ fn prepare(
             source.discard_draw(&mut draw, &mut meshes);
             continue;
         };
+        light_tables
+            .entry(extension.lights.id())
+            .or_insert_with(|| lights.data.clone());
         let result = draw_mesh(
             original,
             &source.polygons,
@@ -1365,6 +1375,8 @@ mod tests {
             .get_mut(&source_mesh)
             .unwrap()
             .insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![recolored; 3]);
+        // An unmarked in-place source edit reaches preparation through its asset event.
+        app.update();
         app.update();
         assert_eq!(
             app.world()
@@ -1373,7 +1385,7 @@ mod tests {
                 .unwrap()
                 .attribute(Mesh::ATTRIBUTE_COLOR),
             Some(&VertexAttributeValues::Float32x4(vec![recolored; 6])),
-            "same-frame source prelighting edits must update a stationary draw"
+            "in-place source prelighting edits must update a stationary draw"
         );
         app.update();
         app.update();
