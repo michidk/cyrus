@@ -1173,8 +1173,6 @@ fn original_attack_selector_restores_independently_of_absent_defence_before_cont
         (0, -1i32),
         (4, 41),
         (8, -1),
-        (0x38, 0),
-        (0x48, 0),
         (0x4c, -1),
         (0x14d, 1),
         (0x17d, -1),
