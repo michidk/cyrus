@@ -271,6 +271,22 @@ their separate build and smoke checks and upload as `native-raytracing-<target>`
 A ray-tracing failure still fails the job, while the already verified standard
 packages remain available for runtime acceptance.
 
+Fetch an uploaded standard Linux executable from a specific PR workflow run with
+its full head SHA, without a local build:
+
+```sh
+python3 -B dev/scripts/download-main-replay.py <full-head-sha> magic/bin/cyrus-<sha> \
+  --run <workflow-run-id> --receipt magic/bin/cyrus-<sha>.json
+```
+
+Explicit run selection requires the artifact workflow's reported head to match,
+checks the downloaded archive against GitHub's SHA256 digest, and records the
+executable hash. It accepts an uploaded standard package while other jobs are
+still running. The receipt binds those bytes to the workflow run; use that run's
+checkout provenance when comparing source trees. Current-head checks remain the
+merge gate. Default main-run selection and `--fallback-main` retain their existing
+behavior; ancestor fallback cannot be combined with `--run`.
+
 The repository-owned `build-release.yml` is a reusable workflow accepting the
 tag. It owns the game-specific verification, platform builds, packaging and
 smoke tests, and uploads `release-*` artifacts for the managed workflow to
