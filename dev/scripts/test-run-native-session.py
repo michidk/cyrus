@@ -113,6 +113,23 @@ assert os.environ['CYRUS_CONFIG_DIR']==sys.argv[2]+'/config'
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((output / 'config/cache').exists())
 
+    def test_read_only_cache_rejects_before_native_launch_with_recovery_hint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            command, output, _, cache = self.setup_runtime(Path(directory))
+            cache.chmod(0o555)
+            try:
+                if os.access(cache, os.W_OK):
+                    self.skipTest('effective user bypasses directory write permissions')
+                result = subprocess.run(command + [sys.executable, '-c', 'pass'],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(str(cache), result.stderr)
+                self.assertIn('omit --cache for a per-run cache', result.stderr)
+                self.assertFalse((output / 'runtime.json').exists())
+                self.assertFalse((output / 'config/cache').exists())
+            finally:
+                cache.chmod(0o755)
+
     def test_install_cannot_be_used_as_output(self):
         with tempfile.TemporaryDirectory() as directory:
             command, _, install, _ = self.setup_runtime(Path(directory))

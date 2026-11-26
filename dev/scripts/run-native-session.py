@@ -38,6 +38,8 @@ def run(args):
         cache = args.cache.resolve(strict=True)
         if not cache.is_dir() or cache == install or install in cache.parents:
             raise ValueError('shared native cache must be a directory outside the original install')
+        if not os.access(cache, os.W_OK | os.X_OK):
+            raise ValueError(f'{cache}: shared native cache must be writable; omit --cache for a per-run cache')
         target = config / 'cache'
         if target.exists() and target.resolve() != cache:
             raise ValueError(f'{target}: existing cache differs from the requested shared cache')
