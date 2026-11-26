@@ -50,4 +50,4 @@ inspection) are sent directly over the control port, as the scripts in
 `just smoke-mcp` builds `cyrus` and `cyrus-mcp`, runs a headless game on
 `START`, and drives state, input, fidelity and quit through this server. It
 needs an install and round-trips every area published in the game state fidelity registry. Run it after touching the control server, this crate or the
-player. The crate has no unit tests (`test = false`).
+player. `just verify mcp` also runs no-install integration tests against the actual MCP executable: stdio negotiation and discovery, parameter schemas, typed TCP forwarding over fresh connections, error recovery and screenshot content. The binary has no unit-test harness (`test = false`).
