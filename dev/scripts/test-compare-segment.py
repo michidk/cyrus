@@ -166,10 +166,12 @@ class NativeControl:
         self.events = []
         self.keys = []
         self.scales = []
+        self.bios_ticks = []
 
     def request(self, command):
         if command['type'] == 'state':
-            return dict(scripts=dict(ordinary_updates=self.update, failed=self.failed))
+            return dict(scripts=dict(ordinary_updates=self.update, failed=self.failed),
+                        clock={'continuation': {'step': {'frame_scale': self.scales[-1] if self.scales else 0}}})
         if command['type'] == 'scripts':
             return dict(actors=[], total=0)
         if command['type'] == 'schedule_input':
@@ -181,12 +183,54 @@ class NativeControl:
             return {}
         if command['type'] == 'replay_frame':
             self.scales.append(command['frame_scale'])
+            self.bios_ticks.append(command.get('elapsed_bios_ticks'))
             self.update += self.stride
             return {}
         raise AssertionError(command)
 
 
 class NativeFrames(unittest.TestCase):
+    def test_recorded_clock_rejects_acknowledged_scale_that_was_not_consumed(self):
+        control = NativeControl()
+        request = control.request
+        def wrong_step(command):
+            value = request(command)
+            if command['type'] == 'state':
+                value['clock'] = {'continuation': {'step': {'frame_scale': 7}}}
+            return value
+        control.request = wrong_step
+        session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[122, 99])
+        with self.assertRaisesRegex(RuntimeError, 'consumed clock scale'):
+            session.advance_to(2)
+        self.assertEqual(control.scales, [122])
+
+    def test_clock_change_without_an_ordinary_update_rejects_observation(self):
+        control = NativeControl()
+        request = control.request
+        samples = 0
+        def moving_clock(command):
+            nonlocal samples
+            value = request(command)
+            if command['type'] == 'state':
+                samples += 1
+                value['clock'] = {'continuation': {'frames': samples}}
+            return value
+        control.request = moving_clock
+        with self.assertRaisesRegex(RuntimeError, 'clock changed'):
+            pair.NativeFrameSession(control, lambda *_: {})
+
+    def test_bios_intervals_are_recorded_not_replaced_by_simulated_time(self):
+        control = NativeControl()
+        session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[122, 99],
+                                          bios_ticks=[0, 2])
+        session.advance_to(2)
+        self.assertEqual(control.bios_ticks, [0, 2])
+        self.assertEqual([row['elapsed_scale'] for row in session.clock_observations], [0, 122, 221])
+        self.assertEqual(session.clock_observations[-1]['continuation']['step']['frame_scale'], 99)
+        for invalid in ([0], [True, 2], [-1, 2], [0, 2**32]):
+            with self.assertRaises(ValueError):
+                pair.NativeFrameSession(None, None, frame_scales=[122, 99], bios_ticks=invalid)
+
     def test_counterpart_clock_tape_is_consumed_once_per_frame_without_rounding(self):
         control = NativeControl()
         session = pair.NativeFrameSession(control, lambda state, scripts: {},

@@ -10,6 +10,7 @@ limited import retaining native baseline tasks cannot establish a matched start.
 Original executable bindings belong in an ignored backend, never this script.
 """
 import argparse
+import copy
 from harness import exclusive_lock
 import importlib.util
 import json
@@ -25,15 +26,27 @@ class NativeFrameSession:
     project(state, scripts) normalizes the measured native state. Input is latched
     while ReplayHold is active, before the next observation-only schedule. All actors
     must fit in actor_limit; silently truncating the comparison is an error.
+    Recorded scales are checked against the observed consumed clock step, with
+    full continuations retained in clock_observations. Optional bios_ticks carries
+    measured per-update BIOS intervals; omitting it uses diagnostic simulated BIOS
+    timing and cannot establish complete original/native clock equivalence.
     """
 
-    def __init__(self, control, project, actor_limit=4096, frame_scales=None):
+    def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
         self.frame_scales = None if frame_scales is None else tuple(frame_scales)
-        if self.frame_scales is not None and any(type(scale) is not int or scale < 0 for scale in self.frame_scales):
+        if self.frame_scales is not None and any(type(scale) is not int or not 0 <= scale <= 2**32 - 1 for scale in self.frame_scales):
             raise ValueError('recorded clock tape requires nonnegative integer Q8 frame scales')
+        self.bios_ticks = None if bios_ticks is None else tuple(bios_ticks)
+        if self.bios_ticks is not None and (
+                self.frame_scales is None or len(self.bios_ticks) != len(self.frame_scales)
+                or any(type(tick) is not int or not 0 <= tick <= 2**32 - 1 for tick in self.bios_ticks)):
+            raise ValueError('recorded BIOS intervals require one unsigned interval per clock scale')
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
+        self.clock_observations = []
+        if self.frame_scales is not None:
+            self.clock_observations.append(self._clock_observation(0))
 
     def _read(self):
         state = self.control.request({'type': 'state'})
@@ -41,11 +54,20 @@ class NativeFrameSession:
         after = self.control.request({'type': 'state'})
         if state['scripts']['ordinary_updates'] != after['scripts']['ordinary_updates']:
             raise RuntimeError('native simulation advanced outside an explicit frame step')
+        if state.get('clock') != after.get('clock'):
+            raise RuntimeError('native clock changed outside an explicit frame step')
         if after['scripts']['failed']:
             raise RuntimeError(f'native script failures: {after["scripts"]}')
         if len(scripts['actors']) != scripts['total']:
             raise RuntimeError('native comparison actor read was truncated')
         return after, scripts
+
+    def _clock_observation(self, elapsed_scale):
+        continuation = self.current[0].get('clock', {}).get('continuation')
+        if not isinstance(continuation, dict):
+            raise RuntimeError('recorded native clock continuation unavailable')
+        return dict(frame=self.current[0]['scripts']['ordinary_updates'] - self.origin,
+                    elapsed_scale=elapsed_scale, continuation=copy.deepcopy(continuation))
 
     def snapshot(self):
         state, scripts = self.current
@@ -71,11 +93,23 @@ class NativeFrameSession:
             command = ({'type': 'replay_frame', 'frame_scale': self.frame_scales[current]}
                        if self.frame_scales is not None else
                        {'type': 'schedule_input', 'events': [{'after_updates': 0}]})
+            if self.bios_ticks is not None:
+                command['elapsed_bios_ticks'] = self.bios_ticks[current]
             self.control.request(command)
             self.current = self._read()
             observed = self.snapshot()['frame']
             if observed != current + 1:
                 raise RuntimeError(f'native frame gap: expected {current + 1}, observed {observed}')
+            if self.frame_scales is not None:
+                observation = self._clock_observation(self.clock_observations[-1]['elapsed_scale'])
+                consumed = observation['continuation'].get('step', {}).get('frame_scale')
+                if type(consumed) is not int or not 0 <= consumed <= 2**32 - 1:
+                    raise RuntimeError('native consumed clock scale unavailable')
+                observation['elapsed_scale'] += consumed
+                observation['requested_scale'] = self.frame_scales[current]
+                self.clock_observations.append(observation)
+                if consumed != self.frame_scales[current]:
+                    raise RuntimeError(f'native consumed clock scale {consumed}, requested {self.frame_scales[current]}')
             current = observed
 
 
