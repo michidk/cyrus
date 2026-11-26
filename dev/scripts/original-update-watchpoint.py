@@ -19,6 +19,35 @@ import struct
 import time
 
 
+def clock_snapshot(state, config):
+    """Normalize a verified publication stop to completed-movement clock units.
+
+    The published accumulator includes the pending movement step. Counter-entry
+    stops precede measurement and cannot supply that forthcoming step. Timer
+    candidates must agree with the engine's observed measurement sample.
+    """
+    phase = config.get('clock_phase', 'completed_update')
+    if phase not in ('completed_update', 'published_pending_update'):
+        raise ValueError(f'unsupported original clock phase: {phase}')
+    total, step = field(state, config['clock']), field(state, config['step'])
+    timing = {} if 'bios' not in config else dict(bios_ticks=field(state, config['bios']))
+    if phase == 'completed_update':
+        return dict(clock_scale=total, next_step=step, **timing)
+    pending = field(state, config['pending_step'])
+    warmup = field(state, config['warmup'])
+    sample = field(state, config['measurement_bios'])
+    candidate = timing.get('bios_ticks')
+    if (type(sample) is not int or not 0 <= sample <= 2**32 - 1
+            or type(candidate) is not int or candidate != sample):
+        raise ValueError('BIOS candidate differs from observed engine measurement sample')
+    if (type(total) is not int or type(step) is not int or type(pending) is not int
+            or pending <= 0 or step != pending or total < pending or warmup != 0):
+        raise ValueError('publication requires a settled matching pending accumulator/movement step')
+    return dict(clock_scale=total - pending, next_step=step, **timing,
+                clock_publication=dict(accumulator=total, pending_step=pending,
+                                       movement_step=step, bios_sample=sample))
+
+
 class Watchpoint:
     def __init__(self, config, reader):
         self.config = config
@@ -199,10 +228,8 @@ class Watchpoint:
         selected = [actor for actor in state['actors'] if actor['selected']]
         if len(selected) != 1 or state.get('console_mode') != 'closed':
             raise RuntimeError('ordinary world/player boundary unavailable')
-        timing = {} if 'bios' not in self.config else dict(bios_ticks=field(state, self.config['bios']))
-        return dict(execution='stopped', boundary='ordinary_update_start', **timing,
-                    update=field(state, self.config['counter']), clock_scale=field(state, self.config['clock']),
-                    next_step=field(state, self.config['step']),
+        return dict(execution='stopped', boundary='ordinary_update_start',
+                    **clock_snapshot(state, self.config), update=field(state, self.config['counter']),
                     player={name: selected[0][key] for name, key in self.config['player_fields'].items()})
 
     def close(self):

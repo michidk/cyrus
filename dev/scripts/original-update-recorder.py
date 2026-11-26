@@ -17,7 +17,7 @@ import sys
 FIELDS = ('position_q8', 'animation', 'fall', 'support_owner', 'link', 'previous_local_q8')
 
 
-def validate_snapshot(row):
+def validate_snapshot(row, clock_only=False):
     """Reject running, partial or untyped snapshots; null support/link is explicit."""
     if row.get('execution') != 'stopped' or row.get('boundary') != 'ordinary_update_start':
         raise ValueError('snapshot is not a stopped ordinary boundary')
@@ -26,6 +26,15 @@ def validate_snapshot(row):
             raise ValueError(f'invalid {name}')
     if row['next_step'] == 0:
         raise ValueError('nonpositive consumed clock step')
+    if clock_only:
+        publication = row.get('clock_publication', {})
+        if (publication.get('accumulator') != row['clock_scale'] + row['next_step']
+                or publication.get('pending_step') != row['next_step']
+                or publication.get('movement_step') != row['next_step']
+                or type(row.get('bios_ticks')) is not int
+                or publication.get('bios_sample') != row['bios_ticks']):
+            raise ValueError('clock-only acquisition requires verified publication and BIOS phase')
+        return
     player = row.get('player', {})
     if any(name not in player for name in FIELDS):
         raise ValueError('incomplete player snapshot')
@@ -41,7 +50,7 @@ def validate_snapshot(row):
             raise ValueError(f'invalid {name}')
 
 
-def record(session, elapsed, emit, timeout=10, *, require_bios=False):
+def record(session, elapsed, emit, timeout=10, *, require_bios=False, clock_only=False):
     """Emit baseline then exactly one row per completed update, until clock progress.
 
     Duplicate counters, gaps, resets, torn reads and clock/consumed-step mismatches
@@ -59,7 +68,7 @@ def record(session, elapsed, emit, timeout=10, *, require_bios=False):
     while True:
         session.next_boundary(timeout)
         row = session.snapshot()
-        validate_snapshot(row)
+        validate_snapshot(row, clock_only=clock_only)
         bios = row.get('bios_ticks')
         if require_bios or 'bios_ticks' in row or (previous is not None and 'bios_ticks' in previous):
             if type(bios) is not int or not 0 <= bios <= 2**32 - 1:
@@ -79,7 +88,8 @@ def record(session, elapsed, emit, timeout=10, *, require_bios=False):
                 raise ValueError('game clock differs from consumed update step')
         timing = {} if bios is None else dict(
             elapsed_bios_ticks=None if previous is None else bios - previous['bios_ticks'])
-        emit(dict(sequence=sequence, elapsed_scale=row['clock_scale'] - origin,
+        scope = dict(acquisition_scope='clock_only') if clock_only else {}
+        emit(dict(**scope, sequence=sequence, elapsed_scale=row['clock_scale'] - origin,
                   consumed_clock_step=consumed, **timing, **row))
         if row['clock_scale'] - origin >= elapsed:
             return sequence
@@ -92,6 +102,8 @@ def main():
     parser.add_argument('--backend', required=True, help='ignored executable-specific backend module')
     parser.add_argument('--elapsed', required=True, type=int, help='consumed game-clock units')
     parser.add_argument('--timeout', type=float, default=10, help='boundary stall deadline in seconds')
+    parser.add_argument('--clock-only', action='store_true',
+                        help='record verified publication timing only; does not establish player/combat parity')
     parser.add_argument('--require-bios', action='store_true',
                         help='require observed unsigned BIOS samples at every stopped boundary')
     args = parser.parse_args()
@@ -99,7 +111,7 @@ def main():
     backend = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(backend)
     with backend.open_session() as session:
-        record(session, args.elapsed, lambda row: print(json.dumps(row), flush=True), args.timeout, require_bios=args.require_bios)
+        record(session, args.elapsed, lambda row: print(json.dumps(row), flush=True), args.timeout, require_bios=args.require_bios, clock_only=args.clock_only)
 
 
 if __name__ == '__main__':
