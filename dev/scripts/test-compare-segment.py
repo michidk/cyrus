@@ -62,11 +62,88 @@ class PairTests(unittest.TestCase):
     def test_original_finishes_before_native_and_both_receive_identical_frame_inputs(self):
         report = self.run_pair({0: state(), 3: state(talking=1)}, {0: state(), 3: state(talking=1)})
         self.assertEqual(report['status'], 'match')
-        self.assertLess(self.calls.index(('close', 'original')), self.calls.index(('open', 'native')))
+        lifecycle = [row for row in self.calls if row[0] in ('open', 'close')]
+        self.assertEqual(lifecycle, [('open', 'original'), ('close', 'original'),
+                                     ('open', 'native'), ('close', 'native')] * 2)
+        last_original_close = len(self.calls) - 1 - self.calls[::-1].index(('close', 'original'))
+        native_input = next(i for i, row in enumerate(self.calls) if row[0] == 'native')
+        self.assertLess(last_original_close, native_input)
         self.assertEqual([row[1:] for row in self.calls if row[0] == 'original'],
                          [(0, 'ControlLeft', 'press'), (2, 'ControlLeft', 'release')])
         self.assertEqual([row[1:] for row in self.calls if row[0] == 'original'],
                          [row[1:] for row in self.calls if row[0] == 'native'])
+
+    def test_entry_mismatch_retains_both_states_without_advancing_either_backend(self):
+        calls = []
+        @contextmanager
+        def factory(name, value):
+            class Stopped(Session):
+                def advance_to(self, frame):
+                    calls.append(('advance', name, frame))
+                    super().advance_to(frame)
+            yield Stopped({0: value}, calls, name)
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, lambda *_: factory('original', state()),
+                                   lambda *_: factory('native', state(7)), Path(directory))
+        self.assertEqual(report['status'], 'blocked')
+        self.assertEqual(calls, [])
+        self.assertEqual(report['entry']['original'], dict(frame=0, **state()))
+        self.assertEqual(report['entry']['native'], dict(frame=0, **state(7)))
+        fields = {row['field']: row for row in report['start_deltas']}
+        self.assertEqual(fields['player.position_q8[0]']['delta'], 7)
+
+    def test_reopened_entry_drift_blocks_before_that_sides_inputs(self):
+        for changed in ('original', 'native'):
+            with self.subTest(changed=changed):
+                calls, opens = [], dict(original=0, native=0)
+                @contextmanager
+                def factory(name):
+                    opens[name] += 1
+                    value = state(7 if name == changed and opens[name] == 2 else 0)
+                    yield Session({0: value}, calls, name)
+                with tempfile.TemporaryDirectory() as directory:
+                    report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                           lambda *_: factory('native'), Path(directory))
+                self.assertEqual(report['status'], 'blocked', report)
+                self.assertIn(changed + ' replay entry differs', report['reason'])
+                self.assertFalse(any(row[0] == changed for row in calls))
+                self.assertEqual(report['replay_entry'][changed]['player']['position_q8'][0], 7)
+
+    def test_malformed_entry_is_retained_with_side_and_phase_context(self):
+        for side in ('original', 'native'):
+            with self.subTest(side=side):
+                @contextmanager
+                def factory(name):
+                    session = Session({0: state()}, [], name)
+                    if name == side:
+                        session.snapshot = lambda: {'frame': 0, 'world': 20}
+                    yield session
+                with tempfile.TemporaryDirectory() as directory:
+                    report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                           lambda *_: factory('native'), Path(directory))
+                self.assertEqual(report['status'], 'blocked')
+                self.assertIn(side + ' entry: frame 0: missing observable player', report['reason'])
+                self.assertEqual(report['entry'][side], {'frame': 0, 'world': 20})
+                self.assertNotIn('original', report)
+
+    def test_rejected_native_preflight_retains_execution_evidence_separately(self):
+        evidence = {'clocks': [{'frame': 0}], 'inputs': []}
+        @contextmanager
+        def original(*_):
+            yield Session({0: state()}, [], 'original')
+        @contextmanager
+        def native(*_):
+            session = Session({0: state()}, [], 'native')
+            session.execution_evidence = lambda: evidence
+            session.snapshot = lambda: {'frame': 0}
+            yield session
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, original, native, Path(directory))
+        self.assertEqual(report['status'], 'blocked')
+        self.assertEqual(report['entry_native_execution'], evidence)
+        self.assertNotIn('native_execution', report)
+        evidence['clocks'].clear()
+        self.assertEqual(report['entry_native_execution']['clocks'], [{'frame': 0}])
 
     def test_wrong_flag_and_position_produce_named_deltas_at_the_checkpoint(self):
         report = self.run_pair({0: state(), 3: state(5, 1)}, {0: state(), 3: state(9, 0)})
@@ -140,11 +217,12 @@ class PairTests(unittest.TestCase):
         self.assertEqual(report['status'], 'blocked')
         self.assertIn('unavailable', {row['status'] for row in report['start_deltas']})
 
-    def test_skipped_original_frame_prevents_native_launch(self):
+    def test_skipped_original_replay_frame_prevents_native_replay(self):
         report = self.run_pair({0: state()}, {0: state()}, overshoot=True)
         self.assertEqual(report['status'], 'blocked')
         self.assertIn('frame boundary missed', report['reason'])
-        self.assertNotIn(('open', 'native'), self.calls)
+        self.assertEqual(self.calls.count(('open', 'native')), 1)
+        self.assertFalse(any(row[0] == 'native' for row in self.calls))
 
     def test_late_key_acknowledgement_rejects_the_pair(self):
         calls = []
@@ -433,7 +511,7 @@ class VerifiedArtifact(unittest.TestCase):
         report = pair.run_pair(SEGMENT, self.original, self.native, self.root,
                                native_artifact=self.artifact())
         self.assertEqual(report['status'], 'match', report)
-        self.assertEqual(self.calls, ['original', 'native'])
+        self.assertEqual(self.calls, ['original', 'native', 'original', 'native'])
         self.assertEqual(report['native_artifact']['checkout_tree'], self.tree)
         self.assertEqual(report['native_artifact']['executable_sha256'], self.digest(self.binary))
 

@@ -318,6 +318,24 @@ acquisition provenance and execution identity, not reproducible-build attestatio
 or original/native gameplay parity. Existing backends without these options
 retain their diagnostic behavior and do not claim artifact binding.
 
+Before replaying either input tape, the runner opens each backend serially for
+an observation-only entry preflight. Both sessions must start stopped at frame
+zero and expose world, player, actors, flags, prompts, timing and continuations.
+The report retains the initial snapshots in `entry`, including malformed
+observations, and their semantic comparison in `start_deltas`. Missing or unequal
+measurements block the pair before any replay inputs or updates.
+
+Each backend must reproducibly stage its initial state on every open. After
+preflight, the runner reopens the original for its full replay, then the native.
+It retains each reopened baseline in `replay_entry` and checks it against that
+side's admitted entry before applying inputs. `replay_entry_deltas` records those
+comparisons. Entry artifacts use separate `entry/original` and `entry/native`
+output directories. Sessions never overlap, and artifact binding applies to both
+native launches. Optional native preflight execution evidence is retained
+separately as `entry_native_execution`, including when its observation fails.
+This admission compares the backend's normalized observables; it does not
+establish unobserved state or gameplay parity.
+
 Native backends using `NativeFrameSession` expose `execution_evidence()`.
 The paired runner copies this into `comparison.json` as `native_execution`,
 including on a rejected step or input acknowledgement. It retains requested

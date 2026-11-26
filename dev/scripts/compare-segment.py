@@ -243,7 +243,12 @@ def delta(original, native, path=''):
 
 
 def snapshot(session, frame):
-    state = session.snapshot()
+    return validate_snapshot(copy.deepcopy(session.snapshot()), frame)
+
+
+def validate_snapshot(state, frame):
+    if not isinstance(state, dict):
+        raise ValueError('snapshot must be an object')
     if type(state.get('frame')) is not int or state['frame'] != frame:
         raise ValueError(f'frame boundary missed: requested {frame}, observed {state.get("frame")}')
     for field in OBSERVABLES:
@@ -252,13 +257,13 @@ def snapshot(session, frame):
     return state
 
 
-def record(session, events, checkpoints):
+def record(session, events, checkpoints, initial):
     """Yield each measured checkpoint before sending inputs at that boundary.
 
     The caller retains completed observations immediately, including when a later
     boundary fails, and can stop native execution at the first actual mismatch.
     """
-    yield snapshot(session, 0)
+    yield initial
     boundaries = sorted(set(checkpoints) | {event['frame'] for event in events})
     for frame in boundaries:
         if frame:
@@ -273,6 +278,30 @@ def record(session, events, checkpoints):
                     raise ValueError(f'input frame missed: requested {frame}, acknowledged {applied}')
 
 
+def entry_snapshot(session, report, phase, side):
+    """Retain the observation before validation, including malformed entries."""
+    try:
+        observed = copy.deepcopy(session.snapshot())
+        report.setdefault(phase, {})[side] = observed
+        return validate_snapshot(observed, 0)
+    except (ValueError, RuntimeError, TimeoutError, OSError) as error:
+        raise ValueError(f'{side} {phase}: {error}') from error
+
+
+def semantic_delta(expected, measured):
+    return delta({key: expected[key] for key in OBSERVABLES},
+                 {key: measured[key] for key in OBSERVABLES})
+
+
+def admit_replay_entry(session, report, side):
+    measured = entry_snapshot(session, report, 'replay_entry', side)
+    fields = semantic_delta(report['entry'][side], measured)
+    report.setdefault('replay_entry_deltas', {})[side] = fields
+    if any(row['status'] != 'match' for row in fields):
+        raise ValueError(f'{side} replay entry differs from admitted entry')
+    return measured
+
+
 def run_pair(segment, original, native, output, native_artifact=None):
     report = dict(version=1, status='blocked', events=[], checkpoints=[])
     try:
@@ -282,20 +311,38 @@ def run_pair(segment, original, native, output, native_artifact=None):
         report['events'] = events
         (output / 'original').mkdir(parents=True, exist_ok=True)
         (output / 'native').mkdir(parents=True, exist_ok=True)
+        options = {} if native_artifact is None else dict(executable=native_artifact)
+        for side, factory in (('original', original), ('native', native)):
+            directory = output / 'entry' / side
+            directory.mkdir(parents=True, exist_ok=True)
+            with factory(segment, directory, **(options if side == 'native' else {})) as session:
+                try:
+                    if side == 'native' and native_artifact is not None:
+                        native_artifact.check_session(session)
+                    entry_snapshot(session, report, 'entry', side)
+                finally:
+                    evidence = getattr(session, 'execution_evidence', None)
+                    if side == 'native' and callable(evidence):
+                        report['entry_native_execution'] = copy.deepcopy(evidence())
+        fields = semantic_delta(report['entry']['original'], report['entry']['native'])
+        report['start_deltas'] = fields
+        if any(row['status'] != 'match' for row in fields):
+            report['reason'] = 'start states differ or are incomplete'
+            return report
         report['original'] = []
         with original(segment, output / 'original') as session:
-            for observation in record(session, events, checkpoints):
+            initial = admit_replay_entry(session, report, 'original')
+            for observation in record(session, events, checkpoints, initial):
                 report['original'].append(observation)
         report['native'] = []
-        options = {} if native_artifact is None else dict(executable=native_artifact)
         with native(segment, output / 'native', **options) as session:
             try:
                 if native_artifact is not None:
                     native_artifact.check_session(session)
-                for expected, measured in zip(report['original'], record(session, events, checkpoints)):
+                initial = admit_replay_entry(session, report, 'native')
+                for expected, measured in zip(report['original'], record(session, events, checkpoints, initial)):
                     report['native'].append(measured)
-                    fields = delta({key: expected[key] for key in OBSERVABLES},
-                                   {key: measured[key] for key in OBSERVABLES})
+                    fields = semantic_delta(expected, measured)
                     mismatch = any(row['status'] != 'match' for row in fields)
                     if mismatch and measured['frame'] == 0:
                         report.update(reason='start states differ or are incomplete', start_deltas=fields)
@@ -307,7 +354,7 @@ def run_pair(segment, original, native, output, native_artifact=None):
             finally:
                 evidence = getattr(session, 'execution_evidence', None)
                 if callable(evidence):
-                    report['native_execution'] = evidence()
+                    report['native_execution'] = copy.deepcopy(evidence())
         report['status'] = 'match'
     except (ValueError, RuntimeError, TimeoutError, OSError) as error:
         report['reason'] = str(error)
