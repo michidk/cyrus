@@ -22,6 +22,16 @@ archive="$cache/cyrus-retro-$fingerprint.tar"
 mkdir -p "$cache"
 exec 7>"$archive.build.lock"
 flock 7
+# Opt-in smaller unpack transactions reuse the retained source archive. This
+# never replaces that archive or silently substitutes a separately built image.
+if [[ -n "${CYRUS_RETRO_LAYER_BYTES:-}" ]]; then
+    layered="$archive.layered-$CYRUS_RETRO_LAYER_BYTES.tar"
+    image=$(python3 "$repo/dev/scripts/layer-runtime-archive.py" \
+        "$archive" "$layered" "$image" --layer-bytes "$CYRUS_RETRO_LAYER_BYTES")
+    "$repo/dev/scripts/ensure-runtime-image.sh" "$image" "$layered" >&2
+    printf '%s\n' "$image"
+    exit 0
+fi
 if ! docker image inspect "$image" >/dev/null 2>&1; then
     if [[ -s "$archive" ]]; then
         "$repo/dev/scripts/ensure-runtime-image.sh" "$image" "$archive" >&2

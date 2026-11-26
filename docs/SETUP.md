@@ -1841,6 +1841,25 @@ leaves image metadata, preparation resumes that content instead of importing it
 again. If Docker is unavailable or the requested image was not retained, recovery
 fails with the saved diagnostics; it never starts a daemon or retries in a loop.
 
+For a retained standard original image whose package layer cannot finish one
+unpack transaction, opt into smaller layers:
+
+```sh
+CYRUS_RETRO_LAYER_BYTES=67108864 dev/scripts/ensure-retro-runtime.sh
+```
+
+This prepares a separate source-bound archive and tag, retaining the original
+archive unchanged. Per-source-layer receipts and checksums reuse completed host
+preparation after interruption. Runtime configuration, file bytes, modes, extended attributes and
+symbolic links are preserved; large layers containing whiteouts, hardlinks or
+special entries reject instead of changing their semantics. Individual files
+remain indivisible and can exceed the layer budget. Docker prepares the derived
+image through the same recovery helper. Its unpack snapshots still belong to the
+current daemon: smaller transactions do not preserve them across daemon
+replacement or establish original-game runtime acceptance. The option requires
+an existing standard source-keyed archive and does not rewrite explicit overrides.
+Run `python3 dev/scripts/test-layer-runtime-archive.py` for synthetic contracts.
+
 `dev/scripts/ensure-retro-runtime.sh` accepts the same explicit
 `CYRUS_RETRO_IMAGE` and `CYRUS_RETRO_IMAGE_ARCHIVE` pair. Set both to recover an
 already retained runtime instead of building the default source-keyed image.

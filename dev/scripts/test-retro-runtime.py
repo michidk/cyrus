@@ -30,6 +30,39 @@ class RetroRecovery(unittest.TestCase):
             self.assertEqual(calls.read_text().splitlines(), ['retained:verified', str(archive)])
             self.assertEqual(archive.read_bytes(), b'retained compressed runtime')
 
+    def test_smaller_layer_recovery_keeps_source_and_uses_derived_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / 'dev/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy2(Path(__file__).with_name('ensure-retro-runtime.sh'), scripts)
+            inputs = root / 'dev/docker/retro'
+            inputs.mkdir(parents=True)
+            for name in ('Dockerfile', 'entrypoint.sh', 'dosbox-x.conf'):
+                (inputs / name).write_text('fixture')
+            import hashlib
+            tag = 'cyrus-retro:' + hashlib.sha256(b'fixture' * 3).hexdigest()
+            cache = root / 'magic/build-tools'
+            cache.mkdir(parents=True)
+            source = cache / (tag.replace(':', '-') + '.tar')
+            source.write_bytes(b'source archive')
+            (scripts / 'layer-runtime-archive.py').write_text(
+                'import pathlib,sys\n'
+                'source,output,image,flag,budget=sys.argv[1:]\n'
+                'assert pathlib.Path(source).read_bytes()==b"source archive"\n'
+                'pathlib.Path(output).write_bytes(b"derived archive")\n'
+                'print(image+"-layered-"+budget)\n')
+            helper = scripts / 'ensure-runtime-image.sh'
+            helper.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$TEST_CALLS"\n')
+            helper.chmod(0o755)
+            env = dict(os.environ, CYRUS_MAGIC=str(root/'magic'), CYRUS_RETRO_LAYER_BYTES='1024',
+                       TEST_CALLS=str(root/'calls'))
+            image = subprocess.check_output([str(scripts/'ensure-retro-runtime.sh')], env=env, text=True).strip()
+            self.assertEqual(image, tag + '-layered-1024')
+            self.assertEqual((root/'calls').read_text().splitlines(),
+                             [image, str(source) + '.layered-1024.tar'])
+            self.assertEqual(source.read_bytes(), b'source archive')
+
     def test_incomplete_explicit_runtime_is_rejected(self):
         script = Path(__file__).with_name('ensure-retro-runtime.sh')
         for present in ('CYRUS_RETRO_IMAGE', 'CYRUS_RETRO_IMAGE_ARCHIVE'):
