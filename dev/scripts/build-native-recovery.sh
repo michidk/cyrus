@@ -45,7 +45,50 @@ flock -n "$checkpoint_lock" || { echo 'native checkpoint build already running' 
 snapshot=$(mktemp)
 current=$(mktemp)
 recorder_pid=
+result_ready=0
+record_result() {
+    python3 - "$CYRUS_NATIVE_CHECKPOINT_DIR" "$snapshot" "$1" "$2" "${output:-}" "$configuration" <<'PYTHON'
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+folder, snapshot, status, code, output, configuration = sys.argv[1:]
+snapshot = json.loads(Path(snapshot).read_text())
+state = dict(time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+             source=snapshot.get('source', snapshot), status=status,
+             exit_code=int(code), output=output,
+             configuration_sha256=hashlib.sha256(configuration.encode()).hexdigest())
+if status == 'succeeded' and output:
+    with open(output, 'rb') as artifact:
+        state['executable_sha256'] = hashlib.file_digest(artifact, 'sha256').hexdigest()
+folder = Path(folder)
+with (folder / 'result-history.jsonl').open('a') as history:
+    history.write(json.dumps(state) + '\n')
+    history.flush()
+    os.fsync(history.fileno())
+fd, temporary = tempfile.mkstemp(dir=folder, prefix='.result-')
+with os.fdopen(fd, 'w') as record:
+    json.dump(state, record)
+    record.write('\n')
+    record.flush()
+    os.fsync(record.fileno())
+os.replace(temporary, folder / 'result.json')
+fd = os.open(folder, os.O_RDONLY | os.O_DIRECTORY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PYTHON
+}
 cleanup() {
+    local code=$?
+    if (( result_ready )); then
+        if (( code == 0 )); then record_result succeeded 0; else record_result failed "$code"; fi
+    fi
     if [ -n "$recorder_pid" ]; then
         kill "$recorder_pid" 2>/dev/null || true
         wait "$recorder_pid" 2>/dev/null || true
@@ -61,11 +104,24 @@ package=${test_package:-cyrus} profile=$profile
 $(rustc -vV)
 $(cargo --version)
 $(env | LC_ALL=C sort | rg '^(CARGO_PROFILE_|CARGO_BUILD_RUSTFLAGS=|CARGO_ENCODED_RUSTFLAGS=|RUSTFLAGS=|RUSTC=|RUSTC_WRAPPER=|CARGO_TARGET_DIR=|CARGO_HOME=|RUSTUP_HOME=)' || true)"
+# The checkpoint lock proves no previous attempt still owns this directory.
+# A retained running record therefore denotes an interrupted attempt, never success.
+if [ -f "$CYRUS_NATIVE_CHECKPOINT_DIR/result.json" ]; then
+    python3 - "$CYRUS_NATIVE_CHECKPOINT_DIR/result.json" <<'PYTHON'
+import json
+import sys
+state = json.load(open(sys.argv[1]))
+if state['status'] == 'running':
+    print('previous native attempt interrupted; inspecting retained units and executable', file=sys.stderr)
+PYTHON
+fi
+record_result running 0
+result_ready=1
 if [ -z "$test_package" ]; then
     if python3 dev/scripts/web-build-checkpoint.py restore "$CYRUS_NATIVE_CHECKPOINT_DIR" \
         "$snapshot" "$configuration" "$output"; then
         python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
-        mv "$snapshot" "$output.provenance.json"
+        cp "$snapshot" "$output.provenance.json"
         echo "restored validated native executable: $output"
         exit
     else
@@ -77,7 +133,7 @@ if [ -z "$test_package" ]; then
     if python3 dev/scripts/web-compile-checkpoint.py restore-executable "$CYRUS_NATIVE_CHECKPOINT_DIR" \
         "$snapshot" "$configuration" "$output"; then
         python3 dev/scripts/build-provenance.py seal "$snapshot" "$output"
-        mv "$snapshot" "$output.provenance.json"
+        cp "$snapshot" "$output.provenance.json"
         echo "restored completed native executable unit: $output"
         exit
     else

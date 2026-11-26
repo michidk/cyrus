@@ -19,17 +19,18 @@ exec 8>"$archive.restore.lock"
 flock 8
 restore_log="$archive.restore.log"
 restore_state="$archive.restore-state.json"
+daemon_identity=unknown
 record_state() {
-    python3 - "$restore_state" "$restore_log" "$image" "$1" "$2" "${3:-0}" <<'PYTHON'
+    python3 - "$restore_state" "$restore_log" "$image" "$1" "$2" "${3:-0}" "$daemon_identity" <<'PYTHON'
 import datetime
 import json
 import os
 import sys
 import tempfile
 
-path, log, image, stage, status, code = sys.argv[1:]
+path, log, image, stage, status, code, daemon = sys.argv[1:]
 state = dict(time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-             image=image, stage=stage, status=status, exit_code=int(code))
+             image=image, stage=stage, status=status, exit_code=int(code), daemon=daemon)
 with open(log, 'a') as output:
     output.write(json.dumps(state) + '\n')
     output.flush()
@@ -61,9 +62,22 @@ run_step() {
         return "$code"
     fi
 }
+previous_state=$(cat "$restore_state" 2>/dev/null || true)
 # Record daemon identity on every invocation, including recovery after a reset.
 # Failure here reports unavailable Docker rather than attempting to start it.
 run_step availability docker info --format '{{json .ID}} {{json .ServerVersion}} {{json .Driver}}'
+daemon_identity=$(docker info --format '{{.ID}}')
+if [ -f "$restore_state" ]; then
+    python3 - "$previous_state" "$daemon_identity" <<'PYTHON'
+import json
+import sys
+state = json.loads(sys.argv[1]) if sys.argv[1] else {}
+previous = state.get('daemon', 'unknown')
+if previous not in ('unknown', sys.argv[2]):
+    print('runtime daemon changed; rechecking image and retained archive', file=sys.stderr)
+PYTHON
+fi
+record_state inspection running
 
 if ! docker image inspect "$image" >/dev/null 2>&1; then
     if [[ ! -s "$archive" ]]; then

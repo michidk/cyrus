@@ -63,6 +63,33 @@ class Recovery(unittest.TestCase):
             result.restore_log = log.read_text() if log.exists() else ''
             return result, (root/'calls').read_text()
 
+    def test_daemon_replacement_restores_only_missing_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            saved = root / 'runtime.tar'
+            saved.write_bytes(b'fixture')
+            docker = root / 'docker'
+            docker.write_text('#!/bin/sh\necho "$*" >> "$CALLS"\n'
+                'case "$1" in\n'
+                'info) echo "$DAEMON";;\n'
+                'image) test -f "$PRESENT";;\n'
+                'load) touch "$PRESENT";;\n'
+                'run) exit 0;;\nesac\n')
+            docker.chmod(0o755)
+            env = dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
+                       PRESENT=str(root / 'present'), CALLS=str(root / 'calls'), DAEMON='first')
+            command = ['bash', str(SCRIPT), 'fixture:1', str(saved)]
+            subprocess.run(command, env=env, check=True, capture_output=True)
+            (root / 'present').unlink()
+            env['DAEMON'] = 'replacement'
+            resumed = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            self.assertIn('runtime daemon changed', resumed.stderr)
+            subprocess.run(command, env=env, check=True, capture_output=True)
+            self.assertEqual((root / 'calls').read_text().count('load --input'), 2)
+            state = json.loads(Path(str(saved) + '.restore-state.json').read_text())
+            self.assertEqual((state['daemon'], state['status']), ('replacement', 'succeeded'))
+
     def test_failed_load_with_retained_metadata_resumes_preparation(self):
         result, calls = self.run_restore(interrupted=True)
         self.assertEqual(result.returncode, 0, result.stderr)

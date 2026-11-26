@@ -176,6 +176,29 @@ if (root/'source-race').exists(): (root/'crates/cyrus/src/main.rs').write_text('
         self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 2)
         self.assertTrue(os.access(self.output, os.X_OK))
 
+    def test_result_receipt_survives_failure_and_target_loss(self):
+        (self.root / 'interrupt').touch()
+        self.run_build(7)
+        receipt = self.root / 'retained/result.json'
+        failed = json.loads(receipt.read_text())
+        self.assertEqual((failed['status'], failed['exit_code']), ('failed', 7))
+        self.assertIn('sha256', failed['source'])
+        # Simulate an uncatchable runtime loss after the running receipt.
+        failed['status'] = 'running'
+        receipt.write_text(json.dumps(failed))
+        shutil.rmtree(self.target)
+        (self.root / 'interrupt').unlink()
+        resumed = self.run_build()
+        self.assertIn('previous native attempt interrupted', resumed.stderr)
+        completed = json.loads(receipt.read_text())
+        self.assertEqual((completed['status'], completed['exit_code']), ('succeeded', 0))
+        self.assertEqual(completed['source'], failed['source'])
+        self.assertEqual(len(completed['executable_sha256']), 64)
+        self.output.unlink()
+        shutil.rmtree(self.target)
+        self.run_build()
+        self.assertEqual(len((self.root / 'cargo.log').read_text().splitlines()), 2)
+
     def test_public_build_preserves_target_and_recovers_with_capture_provenance(self):
         self.env['CYRUS_NATIVE_EXECUTABLE'] = str(self.output)
         for _ in range(2):
