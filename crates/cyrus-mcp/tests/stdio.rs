@@ -235,14 +235,25 @@ fn invalid_parameters_and_control_errors_do_not_poison_stdio() {
         _ => Ok(json!({"fixture_reply": true})),
     });
     let mut client = Mcp::start(game.address, "2025-06-18");
-    for arguments in [
-        json!({"key": "ArrowUp", "action": "invalid"}),
-        json!({"key": 12, "action": "press"}),
-    ] {
-        let response = client.tool("input", arguments);
-        assert_eq!(response["error"]["code"], -32602);
-        assert!(game.commands.try_recv().is_err());
-    }
+    let invalid_action = client.tool("input", json!({"key": "ArrowUp", "action": "invalid"}));
+    assert_eq!(invalid_action["error"]["code"], -32602);
+    assert!(
+        invalid_action["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("unknown action invalid")
+    );
+    assert!(game.commands.try_recv().is_err());
+    let invalid_type = client.tool("input", json!({"key": 12, "action": "press"}));
+    assert!(invalid_type.get("error").is_none(), "{invalid_type}");
+    assert_eq!(invalid_type["result"]["isError"], true);
+    assert!(
+        invalid_type["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("failed to deserialize parameters:")
+    );
+    assert!(game.commands.try_recv().is_err());
     let rejected = client.tool("state", json!({}));
     assert_eq!(rejected["error"]["code"], -32603);
     assert!(
