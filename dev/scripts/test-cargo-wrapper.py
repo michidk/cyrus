@@ -47,6 +47,31 @@ exit 17
                 os.close(slave)
                 os.close(master)
 
+    def test_boundary_consumers_preserve_the_inherited_target_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "dev/scripts"
+            scripts.mkdir(parents=True)
+            shutil.copyfile(SCRIPTS / "check-core-boundaries.sh", scripts / "check-core-boundaries.sh")
+            (root / "Cargo.lock").write_text("version = 4\n")
+            (scripts / "toolchain.sh").write_text("")
+            (scripts / "cargo.sh").write_text('''cargo() {
+    [[ "$CARGO_TARGET_DIR" == "$EXPECTED_TARGET" ]] || return 98
+    [[ "$*" != *--target-dir* ]] || return 99
+    printf '%s\n' "$1" >> "$CARGO_CALLS"
+}
+''')
+            calls = root / "calls"
+            target = str(root / "shared target")
+            env = dict(os.environ, CARGO_TARGET_DIR=target, EXPECTED_TARGET=target,
+                       CARGO_CALLS=str(calls))
+            result = subprocess.run(
+                ["bash", str(scripts / "check-core-boundaries.sh")],
+                env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(calls.read_text().splitlines(), ["tree", "check"] * 5)
+
     def test_setup_uses_the_same_single_build_limit(self):
         self.assertIn("export CARGO_HAULER_MAX_CONCURRENT=1", (SCRIPTS / "setup-hauler.sh").read_text())
 

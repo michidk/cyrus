@@ -5,7 +5,6 @@ cd "$(dirname "$0")/../.."
 source dev/scripts/toolchain.sh
 . dev/scripts/cargo.sh
 root=$PWD
-export CARGO_TARGET_DIR="$root/target/boundary-build"
 
 check_consumer() {
     local name=$1 forbidden=$2 exports=$3
