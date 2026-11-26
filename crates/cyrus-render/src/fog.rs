@@ -920,6 +920,7 @@ pub fn is_water_texture(
     }
 }
 
+// Material assembly combines independently authored surface, instance-lighting and texture inputs.
 #[allow(clippy::too_many_arguments)]
 fn model_material(
     base: &StandardMaterial,

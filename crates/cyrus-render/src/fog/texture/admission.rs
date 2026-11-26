@@ -34,7 +34,6 @@ impl Flat {
         Ok(Self { radius, corners })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn admits(
         &self,
         positions: &[[f32; 3]],
@@ -135,6 +134,7 @@ impl Model {
         Ok(())
     }
 
+    // Authored geometry, model/view transforms and reusable clipping storage have separate owners.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn admits(
         &self,

@@ -905,6 +905,7 @@ fn examine_speech(
     }));
 }
 
+// Bevy injects the request queue, clip banks, listener, mixer assets and shared channel pool separately.
 #[allow(clippy::too_many_arguments)]
 fn play_requests(
     mut commands: Commands,

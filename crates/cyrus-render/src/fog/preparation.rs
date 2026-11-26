@@ -22,6 +22,7 @@ use bevy::gltf::{GltfExtras, GltfMaterialExtras};
 /// All geometry and image validation completes before assets or entities are changed.
 /// Flat geometry must already have passed normal flat preparation. Texture binding must
 /// precede this call, since conversion removes the original standard material component.
+// Destination environment, view and lighting inputs stay explicit before hidden roots are published.
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_scene_materials(
     world: &mut World,
