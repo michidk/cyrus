@@ -233,7 +233,10 @@ module where it is defined and regenerate.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/hud/artwork.rs` — Ordered framebuffer storage for opaque HUD, inventory and island-map artwork.
 - `src/hud/composition.rs` — Encoded framebuffer composition of inventory artwork and text against the live scene.
+- `src/hud/inventory.rs` — Inventory overlay setup, artwork sizing and ordered bitmap/text projection.
+- `src/hud/overlay.rs` — Ordinary HUD update orchestration, input preferences, item admission and sprite projection.
 - `src/hud/persistence.rs` — Retained HUD presentation continuation, separate from inventory and journal owners.
+- `src/hud/tests.rs` — Headless HUD systems, input ordering, persistence and pixel-layout contracts.
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
 - `src/lighting/runtime.rs` — Active authored object lights and quantized distance tables for model shaders.
