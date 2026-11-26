@@ -62,6 +62,9 @@ jobs:
             printf '::error::Workspace versions %s do not match tag %s.\n' "$versions" "$TAG_NAME"
             exit 1
           fi
+      - name: Install script test dependencies
+        if: matrix.stage == 'lints'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil python3-numpy python3-scipy python3-blake3
       - name: Run gates
         env:
           GATE_STAGE: ${{ matrix.stage }}
