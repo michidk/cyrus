@@ -85,13 +85,34 @@ fn placement(width: u32, height: u32) -> (f32, f32, f32, f32) {
     )
 }
 
-/// The cache paths of the two slots the script world asks for; an unsupported image is `None`.
-fn wanted(overlay: &cyrus_script::script::GxaOverlay) -> [Option<Option<String>>; 2] {
+/// A slot can be clear, requested but unsupported, or backed by a cached image.
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+enum OverlayImage {
+    #[default]
+    Absent,
+    Unsupported,
+    Cached(String),
+}
+
+impl From<Option<String>> for OverlayImage {
+    fn from(path: Option<String>) -> Self {
+        match path {
+            Some(path) => Self::Cached(path),
+            None => Self::Unsupported,
+        }
+    }
+}
+
+/// The requested image state of each script overlay slot.
+fn wanted(overlay: &cyrus_script::script::GxaOverlay) -> [OverlayImage; 2] {
     let first = cyrus_assets::overlay::cache_path(&overlay.name, overlay.frame);
     let second = overlay.second_offset.map(|offset| {
         cyrus_assets::overlay::second_slot_cache_path(&overlay.name, overlay.frame, offset)
     });
-    [Some(first), second]
+    [
+        first.into(),
+        second.map(OverlayImage::from).unwrap_or_default(),
+    ]
 }
 
 fn draw(
@@ -100,7 +121,7 @@ fn draw(
     actors: Option<Res<ScriptActors>>,
     mut panels: Query<(&mut Visibility, &mut BackgroundColor), With<Panel>>,
     mut pictures: Query<(&Picture, &mut ImageNode, &mut Node, &mut Visibility), Without<Panel>>,
-    mut shown: Local<[Option<Option<String>>; 2]>,
+    mut shown: Local<[OverlayImage; 2]>,
 ) {
     let overlay = actors
         .as_deref()
@@ -111,7 +132,7 @@ fn draw(
     };
     let Some(overlay) = overlay else {
         *panel = Visibility::Hidden;
-        *shown = [None, None];
+        *shown = default();
         return;
     };
     // `ViewGXA` shows one full-screen image on black; `AnimateGXA` draws over the world frame.
@@ -126,8 +147,8 @@ fn draw(
         let want = &wanted[picture.0];
         if shown[picture.0] != *want {
             node_image.image = match want {
-                Some(Some(path)) => server.load(format!("cache://{path}")),
-                Some(None) => {
+                OverlayImage::Cached(path) => server.load(format!("cache://{path}")),
+                OverlayImage::Unsupported => {
                     error!(
                         "{}: unsupported image {:?} frame {} slot {}",
                         if overlay.second_offset.is_some() {
@@ -141,14 +162,14 @@ fn draw(
                     );
                     Handle::default()
                 }
-                None => Handle::default(),
+                OverlayImage::Absent => Handle::default(),
             };
             shown[picture.0] = want.clone();
         }
         // The original loads synchronously; wait for the cache rather than flash an empty slot.
-        let size = want
-            .as_ref()
-            .and_then(|_| server.is_loaded(&node_image.image).then_some(()))
+        let size = (!matches!(want, OverlayImage::Absent))
+            .then_some(())
+            .and_then(|()| server.is_loaded(&node_image.image).then_some(()))
             .and_then(|()| images.get(&node_image.image))
             .map(Image::size);
         *visibility = match size {
@@ -173,7 +194,33 @@ fn draw(
 
 #[cfg(test)]
 mod tests {
-    use super::placement;
+    use super::{OverlayImage, placement, wanted};
+
+    #[test]
+    fn overlay_slots_distinguish_absent_unsupported_and_cached_requests() {
+        use cyrus_script::script::GxaOverlay;
+        let mut overlay = GxaOverlay {
+            name: "unsupported.gxa".into(),
+            frame: 0,
+            second_offset: None,
+        };
+        assert_eq!(
+            wanted(&overlay),
+            [OverlayImage::Unsupported, OverlayImage::Absent]
+        );
+        overlay.second_offset = Some(1);
+        assert_eq!(
+            wanted(&overlay),
+            [OverlayImage::Unsupported, OverlayImage::Unsupported]
+        );
+        overlay.name = "system\\stmap01.gxa".into();
+        overlay.second_offset = None;
+        let path = cyrus_assets::overlay::cache_path(&overlay.name, overlay.frame).unwrap();
+        assert_eq!(
+            wanted(&overlay),
+            [OverlayImage::Cached(path), OverlayImage::Absent]
+        );
+    }
 
     #[test]
     fn images_are_centered_on_the_screen_rounding_down() {
