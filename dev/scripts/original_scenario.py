@@ -66,6 +66,26 @@ def install_original_combat_driver(name, *, command=sh):
     return destination
 
 
+def prepare_original_disc(run, *, magic=None):
+    """Share the canonical disc on both host and container without copying it.
+
+    The run and read-only gog mount are siblings in both layouts. Docker's
+    missing nested bind target can otherwise leave a zero-byte host mountpoint.
+    Preserve nonempty private media rather than silently replacing it.
+    """
+    magic = MAGIC if magic is None else Path(magic)
+    source = magic / 'gog/extracted/app/game.gog'
+    if not source.is_file() or source.stat().st_size == 0:
+        raise ValueError(f'{source}: canonical game.gog is missing or empty')
+    target = Path(run) / 'game.gog'
+    if target.exists() and target.samefile(source):
+        return
+    if target.is_symlink() or (target.exists() and (not target.is_file() or target.stat().st_size)):
+        raise ValueError(f'{target}: existing game.gog is not the canonical disc or an empty mountpoint')
+    target.unlink(missing_ok=True)
+    target.symlink_to(os.path.relpath(source, target.parent))
+
+
 def start_original_runtime(name, run, image, *, command=sh, magic=None):
     """Prepare one owned runtime; retain host evidence and clean up failed startup."""
     magic = MAGIC if magic is None else Path(magic)
@@ -75,13 +95,13 @@ def start_original_runtime(name, run, image, *, command=sh, magic=None):
     maps = Path(run) / "Redguard/maps"
     if maps.is_symlink() or not maps.resolve().is_relative_to(Path(run).resolve()):
         raise ValueError(f"{maps}: original needs run-local writable maps")
+    prepare_original_disc(run, magic=magic)
     command("docker", "rm", "-f", name, check=False)
     try:
         command("docker", "run", "--rm", "--entrypoint", "find", "-v", f"{run}:/game", image,
                 "/game/Redguard/maps", "-iname", "*.tsg", "-delete", check=True)
         command("docker", "run", "-d", "--rm", "--name", name, "--cap-add", "SYS_PTRACE",
-                "-v", f"{run}:/game", "-v", f"{magic}/gog:/gog:ro",
-                "-v", f"{magic}/gog/extracted/app/game.gog:/game/game.gog:ro", image, check=True)
+                "-v", f"{run}:/game", "-v", f"{magic}/gog:/gog:ro", image, check=True)
         install_original_reader(name, command=command, magic=magic)
     except Exception:
         command("docker", "rm", "-f", name, check=False)

@@ -55,7 +55,7 @@ impl Files {
         text_patches_digest: Option<&str>,
     ) -> Result<Self> {
         let mut paths = BTreeMap::new();
-        for item in walkdir::WalkDir::new(&install.root).follow_links(false) {
+        for item in walkdir::WalkDir::new(&install.root).follow_links(true) {
             let item = item?;
             if item.file_type().is_file() {
                 let relative = item
@@ -386,6 +386,29 @@ pub fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::{Category, Source, runtime::entry};
+
+    #[cfg(unix)]
+    #[test]
+    fn native_source_reads_shared_links_under_the_install_relative_names() -> Result<()> {
+        use std::os::unix::fs::symlink;
+        let root =
+            std::env::temp_dir().join(format!("cyrus-shared-install-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("shared/maps"))?;
+        std::fs::create_dir_all(root.join("run/fxart"))?;
+        std::fs::write(root.join("shared/maps/example.txt"), b"shared map")?;
+        std::fs::write(root.join("shared/text.txt"), b"shared text")?;
+        std::fs::write(root.join("run/RGFX.EXE"), b"synthetic executable")?;
+        symlink("../shared/maps", root.join("run/maps"))?;
+        symlink("../shared/text.txt", root.join("run/ENGLISH.RTX"))?;
+        let install = GameInstall::open(&root.join("run"))?;
+        let source = Files::open(&install)?;
+        let map = source.read_range("maps/example.txt", 0, 10);
+        let text = source.read_range("ENGLISH.RTX", 0, 11);
+        std::fs::remove_dir_all(root)?;
+        assert_eq!(map?, b"shared map");
+        assert_eq!(text?, b"shared text");
+        Ok(())
+    }
 
     #[test]
     fn publish_replaces_changed_files_and_skips_identical_ones() {

@@ -1190,6 +1190,12 @@ submission it waits for an editable prompt, so a long report cannot swallow the
 close request. Its controls
 run with `python3 dev/scripts/test-original-console.py` and in `just check`.
 
+Original runtime preparation links the run's `game.gog` to the canonical shared
+disc. Both the host runner and the container read the same bytes; an empty
+Docker-created mountpoint is replaced, while nonempty private media is preserved
+and reported as a conflict. Native asset discovery follows shared file and
+directory links while retaining their install-relative asset names.
+
 Container combat probes use `original_scenario.install_original_combat_driver(name)`
 to copy the shared combat API and its stopped-boundary dependencies. Set the
 probe's `PYTHONPATH` to the returned container directory and use

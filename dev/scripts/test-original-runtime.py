@@ -13,6 +13,8 @@ class OriginalRuntime(unittest.TestCase):
         magic = Path(directory)
         (magic / 'tools').mkdir()
         (magic / 'tools/original-state.py').write_text('# synthetic reader\n')
+        (magic / 'gog/extracted/app').mkdir(parents=True)
+        (magic / 'gog/extracted/app/game.gog').write_bytes(b'synthetic disc')
         run = magic / 'run'
         (run / 'Redguard/maps').mkdir(parents=True)
         return magic, run
@@ -29,11 +31,28 @@ class OriginalRuntime(unittest.TestCase):
             self.assertEqual(prepare[0][-3:], ('-iname', '*.tsg', '-delete'))
             self.assertIn(f'{run}:/game', launch[0])
             self.assertIn(f'{magic}/gog:/gog:ro', launch[0])
-            self.assertIn(f'{magic}/gog/extracted/app/game.gog:/game/game.gog:ro', launch[0])
+            self.assertEqual((run / 'game.gog').resolve(), magic / 'gog/extracted/app/game.gog')
+            self.assertFalse(any('/game/game.gog:ro' in arg for arg in launch[0]))
             self.assertEqual(launch[0][-1], 'retained:image')
             self.assertEqual([call[0][-1] for call in calls[3:]],
                 ['owned:/tmp/original-state.py', 'owned:/tmp/original-memory-region.py'])
             self.assertTrue(all(kwargs['check'] for _, kwargs in calls[1:]))
+
+    def test_disc_preparation_replaces_only_empty_mountpoint_and_shares_canonical_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            magic, run = self.fixture(directory)
+            target = run / 'game.gog'
+            target.touch()
+            scenario.prepare_original_disc(run, magic=magic)
+            self.assertTrue(target.is_symlink())
+            self.assertEqual(target.read_bytes(), b'synthetic disc')
+            scenario.prepare_original_disc(run, magic=magic)
+            target.unlink()
+            target.write_bytes(b'private media')
+            with self.assertRaisesRegex(ValueError, 'existing.*game.gog'):
+                scenario.prepare_original_disc(run, magic=magic)
+            self.assertEqual(target.read_bytes(), b'private media')
+            self.assertEqual((magic / 'gog/extracted/app/game.gog').read_bytes(), b'synthetic disc')
 
     def test_missing_reader_fails_before_docker(self):
         with tempfile.TemporaryDirectory() as directory:
