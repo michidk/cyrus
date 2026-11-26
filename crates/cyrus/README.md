@@ -84,7 +84,7 @@ opens the cheat console in a world. See [Playing](../../docs/PLAYING.md) for con
 | [session](src/session.rs), [session/slots](src/session/slots.rs) | Off-live session load preparation; save slot files under `slots/` |
 | [settings](src/settings.rs), [preferences](src/preferences.rs), [bindings](src/bindings.rs) | `settings.toml`, local preferences, saved key bindings |
 | [cheats](src/cheats.rs), [console](src/console.rs) | `REDGUARD.CPF` in the config directory, `REDGUARD.CHT` in the game folder, `CONSOLE.LOG` |
-| [control](src/control.rs) | Applies control commands; `control/` holds frame capture, input scheduling and other diagnostics |
+| [control](src/control.rs) | Drains control commands in order; `control/commands/` groups session, scene, gameplay, audio, rendering, acquisition and inspection parameters; `control/tests.rs` covers public contracts |
 | [audit](src/audit.rs) | `--audit-worlds` |
 | [debug](src/debug.rs), [subtitles](src/subtitles.rs), [rendering](src/rendering.rs) | World picker sources, speech-to-subtitle adapter, software-adapter renderer setup |
 

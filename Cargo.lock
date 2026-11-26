@@ -3134,6 +3134,7 @@ dependencies = [
  "redguard-preservation",
  "serde",
  "serde_json",
+ "tempfile",
  "toml",
  "wgpu-types",
  "winit",

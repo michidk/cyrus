@@ -568,12 +568,29 @@ module where it is defined and regenerate.
 - `src/cheats.rs` — Native CHT restore and save in the installation's own `REDGUARD.CHT`, shared with the original game.
 - `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
+- `src/control/commands.rs` — Focused control handlers. The parent drain owns response order and barriers.
+- `src/control/commands/acquisition.rs` — Asynchronous capture, replay and input acquisition commands.
+- `src/control/commands/audio.rs` — Sound admission and digital-output service commands.
+- `src/control/commands/gameplay.rs` — Logical actor inspection and explicit script-stage commands.
+- `src/control/commands/inspection.rs` — Read-only aggregate control-state publication.
+- `src/control/commands/rendering.rs` — Presentation transforms and renderer configuration commands.
+- `src/control/commands/scene.rs` — Startup and world-entry commands and their live presentation boundary.
+- `src/control/commands/script_stage.rs` — Script-stage preparation, sound routing and selected-player query projection.
+- `src/control/commands/session.rs` — Native session and slot ownership commands.
 - `src/control/effect_geometry.rs` — Bounded read-only transient geometry acquisition after presentation publication.
 - `src/control/frame_capture.rs` — Bounded native screenshots whose clock and PCM delivery cursor belong to the extracted frame.
 - `src/control/input_schedule.rs` — Diagnostic input delivery at admitted ordinary simulation boundaries.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/control/player_trace.rs` — Atomic logical placement and bounded observations of completed ordinary updates.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
+- `src/control/tests.rs` — Public native control contracts, grouped by command responsibility.
+- `src/control/tests/acquisition.rs` — Public acquisition command contracts.
+- `src/control/tests/capture.rs` — Public capture command contracts.
+- `src/control/tests/fixtures.rs` — Shared native control app construction and bounded capture completion.
+- `src/control/tests/inspection.rs` — Public inspection command contracts.
+- `src/control/tests/rendering.rs` — Public rendering command contracts.
+- `src/control/tests/replay.rs` — Replay admission contracts.
+- `src/control/tests/script_audio.rs` — Script binding and audio command contracts.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
