@@ -583,8 +583,14 @@ module where it is defined and regenerate.
 - `src/control/light_image.rs` — One-shot acquisition after the renderer's Update material bindings.
 - `src/control/player_trace.rs` — Atomic logical placement and bounded observations of completed ordinary updates.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
-- `src/control/tests.rs` — Public native control and ordering contracts.
+- `src/control/tests.rs` — Public native control contracts, grouped by command responsibility.
+- `src/control/tests/acquisition.rs` — Public acquisition command contracts.
+- `src/control/tests/capture.rs` — Public capture command contracts.
 - `src/control/tests/fixtures.rs` — Shared native control app construction and bounded capture completion.
+- `src/control/tests/inspection.rs` — Public inspection command contracts.
+- `src/control/tests/rendering.rs` — Public rendering command contracts.
+- `src/control/tests/replay.rs` — Replay admission contracts.
+- `src/control/tests/script_audio.rs` — Script binding and audio command contracts.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
