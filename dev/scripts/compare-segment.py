@@ -140,27 +140,25 @@ def snapshot(session, frame):
     return state
 
 
-def record(session, events, checkpoints, baseline=None):
-    first = snapshot(session, 0)
-    if baseline is not None:
-        differences = delta({key: baseline[key] for key in OBSERVABLES},
-                            {key: first[key] for key in OBSERVABLES})
-        if any(row['status'] != 'match' for row in differences):
-            return [first], differences
-    rows = [first]
+def record(session, events, checkpoints):
+    """Yield each measured checkpoint before sending inputs at that boundary.
+
+    The caller retains completed observations immediately, including when a later
+    boundary fails, and can stop native execution at the first actual mismatch.
+    """
+    yield snapshot(session, 0)
     boundaries = sorted(set(checkpoints) | {event['frame'] for event in events})
     for frame in boundaries:
         if frame:
             session.advance_to(frame)
             state = snapshot(session, frame)
             if frame in checkpoints:
-                rows.append(state)
+                yield state
         for event in events:
             if event['frame'] == frame:
                 applied = session.input(event['key'], event['action'])
                 if type(applied) is not int or applied != frame:
                     raise ValueError(f'input frame missed: requested {frame}, acknowledged {applied}')
-    return rows, []
 
 
 def run_pair(segment, original, native, output):
@@ -170,20 +168,25 @@ def run_pair(segment, original, native, output):
         report['events'] = events
         (output / 'original').mkdir(parents=True, exist_ok=True)
         (output / 'native').mkdir(parents=True, exist_ok=True)
+        report['original'] = []
         with original(segment, output / 'original') as session:
-            reference, _ = record(session, events, checkpoints)
-        report['original'] = reference
+            for observation in record(session, events, checkpoints):
+                report['original'].append(observation)
+        report['native'] = []
         with native(segment, output / 'native') as session:
-            candidate, mismatch = record(session, events, checkpoints, reference[0])
-        report['native'] = candidate
-        if mismatch:
-            report.update(reason='start states differ or are incomplete', start_deltas=mismatch)
-            return report
-        for a, b in zip(reference, candidate):
-            fields = delta({key: a[key] for key in OBSERVABLES}, {key: b[key] for key in OBSERVABLES})
-            report['checkpoints'].append(dict(frame=a['frame'], fields=fields))
-        report['status'] = 'match' if all(row['status'] == 'match' for point in report['checkpoints']
-                                        for row in point['fields']) else 'different'
+            for expected, measured in zip(report['original'], record(session, events, checkpoints)):
+                report['native'].append(measured)
+                fields = delta({key: expected[key] for key in OBSERVABLES},
+                               {key: measured[key] for key in OBSERVABLES})
+                mismatch = any(row['status'] != 'match' for row in fields)
+                if mismatch and measured['frame'] == 0:
+                    report.update(reason='start states differ or are incomplete', start_deltas=fields)
+                    return report
+                report['checkpoints'].append(dict(frame=measured['frame'], fields=fields))
+                if mismatch:
+                    report['status'] = 'different'
+                    return report
+        report['status'] = 'match'
     except (ValueError, RuntimeError, TimeoutError, OSError) as error:
         report['reason'] = str(error)
     return report

@@ -72,6 +72,37 @@ class PairTests(unittest.TestCase):
         self.assertEqual(fields['player.position_q8[0]']['delta'], 4)
         self.assertEqual(fields['flags.talking']['original'], 1)
 
+    def test_first_different_checkpoint_stops_native_before_later_inputs(self):
+        segment = copy.deepcopy(SEGMENT)
+        segment['steps'] += [{'input': [{'after_updates': 0, 'key': 'ArrowDown',
+                                        'action': 'press'}]}]
+        self.calls = []
+        @contextmanager
+        def factory(name, values):
+            yield Session(values, self.calls, name)
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(segment, lambda *_: factory('original', {0: state()}),
+                                   lambda *_: factory('native', {0: state(), 3: state(1)}),
+                                   Path(directory))
+        self.assertEqual(report['status'], 'different')
+        self.assertEqual(report['checkpoints'][-1]['frame'], 3)
+        self.assertEqual([row['frame'] for row in report['native']], [0, 3])
+        self.assertNotIn(('native', 3, 'ArrowDown', 'press'), self.calls)
+
+    def test_completed_boundaries_survive_a_later_backend_failure(self):
+        @contextmanager
+        def failing(segment, output):
+            class Failing(Session):
+                def advance_to(self, frame):
+                    raise TimeoutError('ordinary boundary stalled')
+            yield Failing({0: state()}, [], 'original')
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, failing, failing, Path(directory))
+        self.assertEqual(report['status'], 'blocked')
+        self.assertEqual(report['original'], [dict(frame=0, **state())])
+        self.assertNotIn('native', report)
+        self.assertIn('ordinary boundary stalled', report['reason'])
+
     def test_mismatched_start_prevents_native_input(self):
         report = self.run_pair({0: state()}, {0: state(7)})
         self.assertEqual(report['status'], 'blocked')
