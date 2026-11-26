@@ -22,6 +22,19 @@ archive="$cache/cyrus-retro-$fingerprint.tar"
 mkdir -p "$cache"
 exec 7>"$archive.build.lock"
 flock 7
+# Headless observation needs neither browser serving nor the GPU driver stack.
+# Project installed binaries and their retained ELF dependencies into a separate
+# source-bound archive. The normal browser runtime remains the default.
+if [[ "${CYRUS_RETRO_HEADLESS:-0}" == 1 ]]; then
+    minimal="$archive.headless.tar"
+    image=$(python3 "$repo/dev/scripts/prepare-retro-minimal.py" "$archive" "$minimal" "$image")
+    budget="${CYRUS_RETRO_LAYER_BYTES:-8388608}"
+    layered="$minimal.layered-$budget.tar"
+    image=$(python3 "$repo/dev/scripts/layer-runtime-archive.py" "$minimal" "$layered" "$image" --layer-bytes "$budget")
+    "$repo/dev/scripts/ensure-runtime-image.sh" "$image" "$layered" >&2
+    printf '%s\n' "$image"
+    exit 0
+fi
 # Opt-in smaller unpack transactions reuse the retained source archive. This
 # never replaces that archive or silently substitutes a separately built image.
 if [[ -n "${CYRUS_RETRO_LAYER_BYTES:-}" ]]; then

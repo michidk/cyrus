@@ -1942,6 +1942,26 @@ only after establishing the same restored start and input boundaries. Omitting
 BIOS samples remains supported for diagnostic recordings and does not establish
 matched clock acceptance.
 
+For stopped-boundary observation without browser serving, prepare a separate
+headless image from that same retained standard archive:
+
+```sh
+CYRUS_RETRO_HEADLESS=1 dev/scripts/ensure-retro-runtime.sh
+```
+
+This projects DOSBox-X, Python, Xvfb and the input/capture tools with their
+retained ELF dependencies. It keeps the installed surface/software Voodoo
+configuration and omits noVNC and unrelated runtime packages. ELF metadata is read
+with `readelf`; retained programs are not executed during preparation. Completed
+layer decompression and the projected archive have source-bound host receipts.
+Hardlinked executables are materialized with their original bytes so multicall
+name checks still work and unpack chunks need no cross-layer hardlinks. The derived image uses
+8 MiB unpack chunks by default; `CYRUS_RETRO_LAYER_BYTES` overrides this size.
+An individual runtime file remains indivisible. The normal browser image remains
+the default. Run `original_observer_preflight.py` inside the selected container
+with the existing observer capability before mounting game data. Preparation or
+preflight alone does not establish a stopped game boundary or timing parity.
+
 For a retained standard original image whose package layer cannot finish one
 unpack transaction, opt into smaller layers:
 

@@ -30,6 +30,39 @@ class RetroRecovery(unittest.TestCase):
             self.assertEqual(calls.read_text().splitlines(), ['retained:verified', str(archive)])
             self.assertEqual(archive.read_bytes(), b'retained compressed runtime')
 
+    def test_headless_recovery_projects_before_small_layer_loading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / 'dev/scripts'
+            scripts.mkdir(parents=True)
+            shutil.copy2(Path(__file__).with_name('ensure-retro-runtime.sh'), scripts)
+            inputs = root / 'dev/docker/retro'
+            inputs.mkdir(parents=True)
+            for filename in ('Dockerfile', 'entrypoint.sh', 'dosbox-x.conf'):
+                (inputs / filename).write_text('fixture')
+            (scripts / 'prepare-retro-minimal.py').write_text(
+                'import pathlib,sys\n'
+                'source,output,image=sys.argv[1:]\n'
+                'pathlib.Path(output).write_text("minimal")\n'
+                'print(image+"-headless")\n')
+            (scripts / 'layer-runtime-archive.py').write_text(
+                'import pathlib,sys\n'
+                'source,output,image,flag,budget=sys.argv[1:]\n'
+                'assert pathlib.Path(source).read_text()=="minimal"\n'
+                'assert budget=="8388608"\n'
+                'pathlib.Path(output).write_text("small")\n'
+                'print(image+"-small")\n')
+            helper = scripts / 'ensure-runtime-image.sh'
+            helper.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$TEST_CALLS"\n')
+            helper.chmod(0o755)
+            env = dict(os.environ, CYRUS_MAGIC=str(root/'magic'), CYRUS_RETRO_HEADLESS='1',
+                       TEST_CALLS=str(root/'calls'))
+            env.pop('CYRUS_RETRO_LAYER_BYTES', None)
+            image = subprocess.check_output([str(scripts/'ensure-retro-runtime.sh')], env=env, text=True).strip()
+            self.assertTrue(image.endswith('-headless-small'))
+            self.assertEqual((root/'calls').read_text().splitlines()[0], image)
+            self.assertTrue((root/'calls').read_text().splitlines()[1].endswith('.headless.tar.layered-8388608.tar'))
+
     def test_smaller_layer_recovery_keeps_source_and_uses_derived_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
