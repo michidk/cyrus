@@ -119,7 +119,9 @@ Install-free controls run directly, for example
 DevTools endpoint.
 
 New destination CD tracks prepare asynchronously during world loading and publish
-playback only after gameplay admission. A track already playing for the destination
+playback only after gameplay admission. A paused gameplay book retains that admission,
+so pending preparation can finish without advancing the paused world. Loading and
+startup menus still hold destination playback. A track already playing for the destination
 continues through loading. This follows the released preservation
 [world-load CD contract](https://github.com/michidk/redguard-preservation/blob/v0.12.5/docs/engine/music.md#track-selection).
 `tests/music_restoration.rs` checks that a prepared destination stays silent in

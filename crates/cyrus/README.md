@@ -16,9 +16,11 @@ allocation and host binding off-live. The shared complete-session boundary
 validates all resource owners before publishing the replacement together.
 Unsupported state rejects the load; the partial-import operation remains disabled.
 From the startup menu or a different world, the host first prepares the saved
-world's presentation and pauses it in the Load book. This provides process and
-presentation inputs, while every saved logical owner is replaced. Before that
-preliminary entry, the host checkpoints the previous session or startup owners.
+world's presentation and pauses it in the Load book. Capture waits for CD track
+preparation to settle while the book keeps gameplay paused. Same-world loads use
+the same readiness check. This provides process and presentation inputs, while
+every saved logical owner is replaced. Before preliminary entry, the host
+checkpoints the previous session or startup owners.
 Rejection cancels pending preparation and restores the checkpoint, with slot/world
 context retained in the error.
 Original entries cannot overwrite or delete an installed save. Install-backed listing tests
