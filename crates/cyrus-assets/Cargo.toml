@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 
 [features]
+# The ReadAssets owner is in parsers; fixtures stay outside the default production API.
+test-support = ["parsers"]
 # Preservation parsers on any target; the browser worker decodes original bytes with them.
 parsers = ["dep:redguard-preservation", "cyrus-text/native", "dep:image", "dep:hound", "dep:symphonia"]
 native = ["parsers", "dep:walkdir"]

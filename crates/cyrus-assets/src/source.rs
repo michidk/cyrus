@@ -1,4 +1,7 @@
 //! Original-file access. Browser workers and native installs share the same parsers.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek, SeekFrom};

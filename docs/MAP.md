@@ -76,6 +76,7 @@ module where it is defined and regenerate.
 - `src/sound/dialogue/export.rs` — Per-label original RTX preparation for disk caches and browser workers.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/source.rs` — Original-file access. Browser workers and native installs share the same parsers.
+- `src/source/test_support.rs` — In-memory original-file access for parser tests and specialized test wrappers.
 - `src/splash_asset.rs` — The installed Windows 3dfx splash's meshes, textures and authored draws, exported once so the
 - `src/startup/export.rs` — (undocumented)
 - `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.

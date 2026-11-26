@@ -13,7 +13,10 @@ consuming crates; `cyrus-media` owns PCM conversion and the movie decoder, and
 Features: without features only the portable records compile. `parsers` adds
 preparation through `rgpre` on native and browser targets; `native` adds
 read-only install discovery, preload scans and the filesystem/disk-cache
-adapters.
+adapters. `test-support` enables `parsers` and exposes `source::test_support::MemoryAssets` for integration
+tests that need owned original-file bytes. It validates paths and manifests,
+retains listing order, and rejects out-of-bounds reads. Specialized audit,
+sparse-range or fault-injection sources can wrap it where appropriate.
 
 ## Modules
 
