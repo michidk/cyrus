@@ -1137,3 +1137,78 @@ fn selected_wall_contact_receipt_comes_from_admitted_primary_response_not_floor_
         "a capture armed after the response cannot relabel it as a new contact"
     );
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_attack_selector_restores_independently_of_absent_defence_before_continuation() {
+    let (mut world, _, _) =
+        movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.combat_attacks =
+                    vec![combat::Attack {
+                        is_combo: true,
+                        motions: vec![serde_json::from_value(serde_json::json!({
+                    "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                    "first_collide_frame":0,"collide_duration":1
+                })).unwrap()],
+                        min_range: 0,
+                        max_range: 100,
+                    }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(cyrus_script::script::CombatControlState {
+                        attack_indices: [Some(0); 9],
+                        ..Default::default()
+                    })
+                    .unwrap();
+            },
+        );
+    let id = world.id(0).unwrap();
+    let mut bytes = [0; 422];
+    for (offset, value) in [
+        (0, -1i32),
+        (4, 41),
+        (8, -1),
+        (0x38, 0),
+        (0x48, 0),
+        (0x4c, -1),
+        (0x14d, 1),
+        (0x17d, -1),
+    ] {
+        bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes[0x18d] = 1;
+    let mut object = rgpre::import::savegame::SaveObject {
+        object_id: 41,
+        rope_id: 0,
+        record_kind: 0,
+        body: [0; 783],
+        named_resource: None,
+        attributes: None,
+        opaque_41: None,
+        opaque_20: None,
+        animation_header: None,
+        script_state: Some(bytes),
+        attachment: None,
+        vectors: [0; 48],
+        opaque_60: None,
+        private_variables: vec![],
+        extension: vec![],
+    };
+    world.restore_original_combat(&[(id, &object)]).unwrap();
+    assert!(world.combat_attack_window(id).unwrap());
+    let continuation =
+        world.maintain_map_combat(id, 0, false, Default::default(), None, &mut |_, _| Ok(()));
+    assert!(
+        format!("{:#}", continuation.unwrap_err())
+            .contains("attack candidate random owner unavailable")
+    );
+    // Missing active attack state remains an error, never a guessed slot zero.
+    object.script_state.as_mut().unwrap()[0x48..0x4c].copy_from_slice(&(-1i32).to_le_bytes());
+    world.restore_original_combat(&[(id, &object)]).unwrap();
+    assert!(world.combat_attack_window(id).is_err());
+}

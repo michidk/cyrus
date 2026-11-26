@@ -189,6 +189,8 @@ fn original_combat_replaces_constructor_defaults_and_rebinds_target_without_upda
         (8, 41),
         (12, 7),
         (0x38, -1),
+        (0x48, 3),
+        (0x4c, -1),
         (0x58, 88),
         (0x139, 17),
         (0x141, 19),
@@ -236,6 +238,7 @@ fn original_combat_replaces_constructor_defaults_and_rebinds_target_without_upda
         .as_ref()
         .unwrap();
     assert_eq!(state.target, Some(id));
+    assert_eq!(state.retained_action_indices, [-1, 3]);
     assert_eq!(state.strength, 88);
     assert_eq!(state.flags.bits(), 0xbf);
     assert_eq!(state.cooldown, 43);
