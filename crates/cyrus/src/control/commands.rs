@@ -8,6 +8,7 @@ use scene::Scene;
 mod rendering;
 use rendering::Rendering;
 mod gameplay;
+mod script_stage;
 use gameplay::Gameplay;
 mod acquisition;
 use acquisition::Acquisition;
@@ -67,48 +68,106 @@ pub(super) fn handle(
         ) {
             debug!("control #{id}: {:?}", request.cmd);
         }
-        let outcome = match request.cmd {
-            Command::Ping => Outcome::Reply(Ok(json!("pong"))),
-            Command::State => Outcome::Reply(controls.inspection.state(
-                &controls.scene,
-                &controls.rendering,
-                &controls.gameplay,
-                &controls.audio,
-                &controls.acquisition,
+        let outcome = controls.dispatch(
+            request.cmd,
+            Reply {
+                id,
+                reply: reply.clone(),
+            },
+            &mut commands,
+            &mut exit,
+            &mut script_bindings,
+        );
+        let result = match outcome {
+            Outcome::Reply(result) => result,
+            Outcome::Continue => continue,
+            Outcome::Barrier => break,
+        };
+        let _ = reply.send(match result {
+            Ok(v) => Response::ok(id, v),
+            Err(e) => {
+                debug!("control #{id}: rejected: {e}");
+                Response::err(id, e)
+            }
+        });
+    }
+}
+
+impl Controls<'_, '_> {
+    fn dispatch(
+        &mut self,
+        command: Command,
+        reply: Reply,
+        commands: &mut Commands,
+        exit: &mut MessageWriter<AppExit>,
+        script_bindings: &mut std::collections::BTreeMap<
+            Entity,
+            cyrus_script::script::ScriptActorId,
+        >,
+    ) -> Outcome {
+        match CommandGroup::from(&command) {
+            CommandGroup::Ping => Outcome::Reply(Ok(json!("pong"))),
+            CommandGroup::State => Outcome::Reply(self.inspection.state(
+                &self.scene,
+                &self.rendering,
+                &self.gameplay,
+                &self.audio,
+                &self.acquisition,
             )),
-            Command::Quit => {
+            CommandGroup::Quit => {
                 exit.write(AppExit::Success);
                 Outcome::Reply(Ok(json!("bye")))
             }
-            command @ (Command::SessionSlots { .. }
+            CommandGroup::Session => self.session.handle(command, reply, commands),
+            CommandGroup::Audio => self.audio.handle(command, reply, commands),
+            CommandGroup::Scene => self.scene.handle(command),
+            CommandGroup::Rendering => self.rendering.handle(command, commands, &self.scene),
+            CommandGroup::Gameplay => self.gameplay.handle(
+                command,
+                reply,
+                commands,
+                &self.scene,
+                &self.acquisition,
+                script_bindings,
+            ),
+            CommandGroup::Acquisition => {
+                self.acquisition
+                    .handle(command, reply, commands, &self.scene, &self.gameplay)
+            }
+        }
+    }
+}
+
+enum CommandGroup {
+    Ping,
+    State,
+    Quit,
+    Session,
+    Audio,
+    Scene,
+    Rendering,
+    Gameplay,
+    Acquisition,
+}
+impl From<&Command> for CommandGroup {
+    fn from(command: &Command) -> Self {
+        match command {
+            Command::Ping => Self::Ping,
+            Command::State => Self::State,
+            Command::Quit => Self::Quit,
+            Command::SessionSlots { .. }
             | Command::SessionSlotsResult { .. }
             | Command::SessionLoad { .. }
             | Command::SessionLoadResult { .. }
             | Command::SessionCapture
-            | Command::SessionCaptureResult) => controls.session.handle(
-                command,
-                Reply {
-                    id,
-                    reply: reply.clone(),
-                },
-                &mut commands,
-            ),
-            command @ (Command::PlaySound { .. }
+            | Command::SessionCaptureResult => Self::Session,
+            Command::PlaySound { .. }
             | Command::PlaySpeech { .. }
             | Command::StopSounds
             | Command::ConfigureDigitalOutput { .. }
-            | Command::ServiceDigitalOutput { .. }) => controls.audio.handle(
-                command,
-                Reply {
-                    id,
-                    reply: reply.clone(),
-                },
-                &mut commands,
-            ),
-            command @ (Command::LoadScene { .. } | Command::SkipStartup) => {
-                controls.scene.handle(command)
-            }
-            command @ (Command::Screenshot { .. }
+            | Command::ServiceDigitalOutput { .. } => Self::Audio,
+            Command::LoadScene { .. } | Command::SkipStartup => Self::Scene,
+            Command::Screenshot { .. }
             | Command::Teleport { .. }
             | Command::Flycam { .. }
             | Command::RayTracing { .. }
@@ -117,12 +176,8 @@ pub(super) fn handle(
             | Command::SetDayNight { .. }
             | Command::SetModernEffect { .. }
             | Command::SetSkyScroll { .. }
-            | Command::HoldTextureFrame { .. }) => {
-                controls
-                    .rendering
-                    .handle(command, &mut commands, &controls.scene)
-            }
-            command @ (Command::Cheat { .. }
+            | Command::HoldTextureFrame { .. } => Self::Rendering,
+            Command::Cheat { .. }
             | Command::Console { .. }
             | Command::SetAttribute { .. }
             | Command::MarkDead { .. }
@@ -136,18 +191,8 @@ pub(super) fn handle(
             | Command::ScriptLoadWorld { .. }
             | Command::ScriptSummary { .. }
             | Command::BindScriptAnimation { .. }
-            | Command::StepScript { .. }) => controls.gameplay.handle(
-                command,
-                Reply {
-                    id,
-                    reply: reply.clone(),
-                },
-                &mut commands,
-                &controls.scene,
-                &controls.acquisition,
-                &mut script_bindings,
-            ),
-            command @ (Command::RenderedActor { .. }
+            | Command::StepScript { .. } => Self::Gameplay,
+            Command::RenderedActor { .. }
             | Command::EffectGeometry { .. }
             | Command::BoundLightImage { .. }
             | Command::CapturePresentationFrame { .. }
@@ -156,28 +201,7 @@ pub(super) fn handle(
             | Command::ScheduleInput { .. }
             | Command::ReplayFrame { .. }
             | Command::AcquireInput { .. }
-            | Command::Input { .. }) => controls.acquisition.handle(
-                command,
-                Reply {
-                    id,
-                    reply: reply.clone(),
-                },
-                &mut commands,
-                &controls.scene,
-                &controls.gameplay,
-            ),
-        };
-        let result = match outcome {
-            Outcome::Reply(result) => result,
-            Outcome::Continue => continue,
-            Outcome::Barrier => break,
-        };
-        let _ = reply.send(match result {
-            Ok(v) => Response::ok(id, v),
-            Err(e) => {
-                debug!("control #{id}: rejected: {e}");
-                Response::err(id, e)
-            }
-        });
+            | Command::Input { .. } => Self::Acquisition,
+        }
     }
 }

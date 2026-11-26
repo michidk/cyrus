@@ -24,14 +24,28 @@ impl Audio<'_, '_> {
         request: Reply,
         commands: &mut Commands,
     ) -> Outcome {
-        let Self {
-            requests,
-            effects,
-            speech,
-            ..
-        } = self;
-        let Reply { id, reply } = request;
-        Outcome::Reply(match command {
+        match command {
+            command @ Command::ConfigureDigitalOutput { .. } => {
+                self.configure_digital_output(command, request, commands)
+            }
+            command @ Command::ServiceDigitalOutput { .. } => {
+                self.service_digital_output(command, request, commands)
+            }
+            command @ Command::PlaySound { .. } => self.play_sound(command),
+            command @ Command::PlaySpeech { .. } => self.play_speech(command),
+            command @ Command::StopSounds => self.stop_sounds(command),
+            _ => unreachable!("command routed to the wrong audio handler"),
+        }
+    }
+
+    fn configure_digital_output(
+        &mut self,
+        command: Command,
+        request: Reply,
+        commands: &mut Commands,
+    ) -> Outcome {
+        let Reply { id, reply, .. } = request;
+        match command {
             Command::ConfigureDigitalOutput {
                 frames_per_half,
                 sample_rate,
@@ -44,8 +58,20 @@ impl Audio<'_, '_> {
                         Err(error) => Response::err(id, format!("{error:#}")),
                     });
                 });
-                return Outcome::Barrier;
+                Outcome::Barrier
             }
+            _ => unreachable!("command routed to the wrong configure_digital_output handler"),
+        }
+    }
+
+    fn service_digital_output(
+        &mut self,
+        command: Command,
+        request: Reply,
+        commands: &mut Commands,
+    ) -> Outcome {
+        let Reply { id, reply, .. } = request;
+        Outcome::Reply(match command {
             Command::ServiceDigitalOutput { active_half } => {
                 let half = match active_half {
                     0 => Some(cyrus_audio::DigitalOutputHalf::First),
@@ -65,6 +91,15 @@ impl Audio<'_, '_> {
                     Err("digital output active half must be zero or one".into())
                 }
             }
+            _ => unreachable!("command routed to the wrong service_digital_output handler"),
+        })
+    }
+
+    fn play_sound(&mut self, command: Command) -> Outcome {
+        let Self {
+            requests, effects, ..
+        } = self;
+        Outcome::Reply(match command {
             Command::PlaySound { effect, position } => {
                 match effects.as_ref().and_then(|e| e.0.get(effect)?.as_ref()) {
                     Some(loaded) => {
@@ -79,6 +114,15 @@ impl Audio<'_, '_> {
                     None => Err(format!("sound effect {effect} is not loaded")),
                 }
             }
+            _ => unreachable!("command routed to the wrong play_sound handler"),
+        })
+    }
+
+    fn play_speech(&mut self, command: Command) -> Outcome {
+        let Self {
+            requests, speech, ..
+        } = self;
+        Outcome::Reply(match command {
             Command::PlaySpeech { label } => {
                 if speech.as_ref().is_some_and(|s| s.get(&label).is_some()) {
                     requests.write(cyrus_audio::sound::SoundRequest::Speech(label.clone()));
@@ -87,11 +131,18 @@ impl Audio<'_, '_> {
                     Err(format!("voice clip {label} is not loaded"))
                 }
             }
+            _ => unreachable!("command routed to the wrong play_speech handler"),
+        })
+    }
+
+    fn stop_sounds(&mut self, command: Command) -> Outcome {
+        let Self { requests, .. } = self;
+        Outcome::Reply(match command {
             Command::StopSounds => {
                 requests.write(cyrus_audio::sound::SoundRequest::StopAll);
                 Ok(json!("stopped"))
             }
-            _ => unreachable!("command routed to the wrong audio handler"),
+            _ => unreachable!("command routed to the wrong stop_sounds handler"),
         })
     }
 }

@@ -30,7 +30,6 @@ impl Inspection<'_> {
             inventory_screen,
             examine,
             island_map,
-            scripts,
             console,
             input,
             ..
@@ -54,7 +53,6 @@ impl Inspection<'_> {
             ..
         } = rendering;
         let Gameplay {
-            script_actors,
             random,
             cheats,
             script_hud,
@@ -66,16 +64,7 @@ impl Inspection<'_> {
             rendered_actor_pending,
             ..
         } = acquisition;
-        // Preparation status is sampled before ordinary simulation. Report
-        // completed-update observations from the live registry at this boundary.
-        let mut scripts = scripts.as_deref().map(|status| json!(status));
-        if let (Some(status), Some(actors)) = (scripts.as_mut(), script_actors.as_deref())
-            && let Some(world) = actors.current.as_ref()
-            && status.get("world") == Some(&json!(world.world))
-        {
-            status["ordinary_updates"] = json!(world.ordinary_updates());
-            status["restored"] = json!(actors.current_is_restored());
-        }
+        let scripts = self.script_state(gameplay);
         let scene_ready = ready_scene.as_ref().is_some_and(|ready| {
             prepared
                 .as_ref()
@@ -91,5 +80,18 @@ impl Inspection<'_> {
         Ok(
             json!({"random_state": random.state(), "effect_geometry_pending": effect_geometry_pending.is_some(), "rendered_actor_pending": rendered_actor_pending.is_some(), "textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "logbook": logbook.as_deref(), "inventory_screen": inventory_screen.as_deref(), "examine": examine.as_deref(), "island_map": island_map.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": **console, "scripts": scripts, "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": **fidelity, "frame": frames.0, "clock": clock.as_ref().map(|clock| json!({"game_seconds": clock.game_seconds(), "fps": clock.fps(), "continuation": clock.snapshot()})), "preload": preload, "player_input": **input, "music_track": audio.music.as_ref().and_then(|m| m.track), "music_paused": audio.music_sink.iter().next().map(bevy::audio::AudioSinkPlayback::is_paused), "sounds": json!({"playing": audio.playing.iter().count(), "paused": audio.playing.iter().flatten().filter(|sink| bevy::audio::AudioSinkPlayback::is_paused(*sink)).count()}), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
         )
+    }
+    fn script_state(&self, gameplay: &Gameplay) -> Option<serde_json::Value> {
+        // Preparation status is sampled before ordinary simulation. Report
+        // completed-update observations from the live registry at this boundary.
+        let mut scripts = self.scripts.as_deref().map(|status| json!(status));
+        if let (Some(status), Some(actors)) = (scripts.as_mut(), gameplay.script_actors.as_deref())
+            && let Some(world) = actors.current.as_ref()
+            && status.get("world") == Some(&json!(world.world))
+        {
+            status["ordinary_updates"] = json!(world.ordinary_updates());
+            status["restored"] = json!(actors.current_is_restored());
+        }
+        scripts
     }
 }

@@ -1,4 +1,7 @@
 //! Logical actor inspection and explicit script-stage commands.
+use super::script_stage::{
+    binding_entity, execute_stage, player_query, prepare_stage, script_inputs,
+};
 use super::*;
 
 #[derive(bevy::ecs::system::SystemParam)]
@@ -29,33 +32,49 @@ impl Gameplay<'_, '_> {
             cyrus_script::script::ScriptActorId,
         >,
     ) -> Outcome {
-        let Self {
-            script_hud,
-            script_actors,
-            random,
-            cheats,
-            activation,
-            animations,
-            script_nodes,
-            script_sounds,
-            player_poses,
-            ..
-        } = self;
-        let Reply { id, reply } = request;
-        let Scene {
-            prepared,
-            clock,
-            state,
-            ..
-        } = scene;
-        let Acquisition {
-            player_trace_pending,
-            ..
-        } = acquisition;
+        match command {
+            command @ Command::Cheat { .. } => self.cheat(command),
+            command @ Command::Console { .. } => self.console(command, request, commands, scene),
+            command @ Command::SetAttribute { .. } => self.set_attribute(command),
+            command @ Command::MarkDead { .. } => self.mark_dead(command),
+            command @ Command::SetTorch { .. } => self.set_torch(command),
+            command @ Command::ShowItem { .. } => self.show_item(command),
+            command @ Command::ResetCamera => self.reset_camera(command),
+            command @ Command::SelectItem { .. } => self.select_item(command),
+            command @ Command::PlacePlayer { .. } => self.place_player(command, scene, acquisition),
+            command @ Command::Scripts { .. } => self.scripts(command),
+            command @ Command::QueueMovie { .. } => self.queue_movie(command),
+            command @ Command::ScriptLoadWorld { .. } => self.script_load_world(command),
+            command @ Command::ScriptSummary { .. } => self.script_summary(command),
+            command @ Command::BindScriptAnimation { .. } => {
+                self.bind_script_animation(command, commands, scene, script_bindings)
+            }
+            command @ Command::StepScript { .. } => self.step_script(command, script_bindings),
+            _ => unreachable!("command routed to the wrong gameplay handler"),
+        }
+    }
+
+    fn cheat(&mut self, command: Command) -> Outcome {
+        let Self { cheats, .. } = self;
         Outcome::Reply(match command {
-            Command::Cheat { name, value } => cheats.execute(&name, value)
+            Command::Cheat { name, value } => cheats
+                .execute(&name, value)
                 .map(|effect| json!({"effect":effect,"cheats":cheats.inspect()}))
                 .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong cheat handler"),
+        })
+    }
+
+    fn console(
+        &mut self,
+        command: Command,
+        request: Reply,
+        commands: &mut Commands,
+        scene: &Scene,
+    ) -> Outcome {
+        let Reply { id, reply, .. } = request;
+        let Scene { state, .. } = scene;
+        Outcome::Reply(match command {
             Command::Console { open, line } => {
                 if *state.get() != cyrus_game::AppState::InGame {
                     Err("console requires an active world".into())
@@ -70,6 +89,13 @@ impl Gameplay<'_, '_> {
                     return Outcome::Barrier;
                 }
             }
+            _ => unreachable!("command routed to the wrong console handler"),
+        })
+    }
+
+    fn set_attribute(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::SetAttribute {
                 index,
                 attribute,
@@ -83,6 +109,13 @@ impl Gameplay<'_, '_> {
                 Ok(json!({"index": index, "attribute": attribute, "value": value}))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong set_attribute handler"),
+        })
+    }
+
+    fn mark_dead(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::MarkDead { index } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
@@ -92,6 +125,13 @@ impl Gameplay<'_, '_> {
                 Ok(json!({"index": index, "dead": true}))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong mark_dead handler"),
+        })
+    }
+
+    fn set_torch(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::SetTorch { burning } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
@@ -101,15 +141,31 @@ impl Gameplay<'_, '_> {
                 Ok(json!({"burning": burning}))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong set_torch handler"),
+        })
+    }
+
+    fn show_item(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::ShowItem { item, no_text } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
                     .and_then(|actors| actors.current.as_mut())
                     .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
-                world.globals_mut().request_item_viewer(item, [0, 0], no_text);
+                world
+                    .globals_mut()
+                    .request_item_viewer(item, [0, 0], no_text);
                 Ok(json!({"item": item, "no_text": no_text}))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong show_item handler"),
+        })
+    }
+
+    fn reset_camera(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::ResetCamera => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
@@ -119,6 +175,13 @@ impl Gameplay<'_, '_> {
                 Ok(json!({"requested": true}))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong reset_camera handler"),
+        })
+    }
+
+    fn select_item(&mut self, command: Command) -> Outcome {
+        let Self { script_hud, .. } = self;
+        Outcome::Reply(match command {
             Command::SelectItem { id } => (|| -> anyhow::Result<_> {
                 let hud = script_hud
                     .as_ref()
@@ -127,7 +190,28 @@ impl Gameplay<'_, '_> {
                 Ok(json!({"selected": id}))
             })()
             .map_err(|error| format!("{error:#}")),
-            Command::PlacePlayer { .. } if player_trace_pending.is_some() => Err("player trace owns placement until completion".into()),
+            _ => unreachable!("command routed to the wrong select_item handler"),
+        })
+    }
+
+    fn place_player(
+        &mut self,
+        command: Command,
+        scene: &Scene,
+        acquisition: &Acquisition,
+    ) -> Outcome {
+        let Self { script_actors, .. } = self;
+        let Scene {
+            prepared, clock, ..
+        } = scene;
+        let Acquisition {
+            player_trace_pending,
+            ..
+        } = acquisition;
+        Outcome::Reply(match command {
+            Command::PlacePlayer { .. } if player_trace_pending.is_some() => {
+                Err("player trace owns placement until completion".into())
+            }
             Command::PlacePlayer { x, y, z, heading } => (|| -> anyhow::Result<_> {
                 let world = script_actors
                     .as_mut()
@@ -139,23 +223,34 @@ impl Gameplay<'_, '_> {
                 )?;
                 // handle runs in PreUpdate: placement is applied before the next ordinary update.
                 // An absent clock cannot acknowledge an exact simulation event.
-                let player = world.selected_player()
+                let player = world
+                    .selected_player()
                     .ok_or_else(|| anyhow::anyhow!("placement: selected player unavailable"))?;
-                let boundary = clock.as_ref().zip(prepared.as_ref()).map(|(clock, prepared)| {
-                    json!({
-                        "ready": true, "scene": prepared.requested_name,
-                        "frame": world.ordinary_updates(), "generation": world.generation(),
-                        "elapsed_scale": clock.elapsed_frame_scale(),
-                        "normal_frame_rate": clock.settings().normal_frame_rate,
-                        "game_seconds": clock.game_seconds(), "execution": "running",
-                        "event": "placement_applied", "phase": "before_ordinary_update",
-                        "player": world.inspect(player.index, 1)["actors"][0],
-                    })
-                });
+                let boundary = clock
+                    .as_ref()
+                    .zip(prepared.as_ref())
+                    .map(|(clock, prepared)| {
+                        json!({
+                            "ready": true, "scene": prepared.requested_name,
+                            "frame": world.ordinary_updates(), "generation": world.generation(),
+                            "elapsed_scale": clock.elapsed_frame_scale(),
+                            "normal_frame_rate": clock.settings().normal_frame_rate,
+                            "game_seconds": clock.game_seconds(), "execution": "running",
+                            "event": "placement_applied", "phase": "before_ordinary_update",
+                            "player": world.inspect(player.index, 1)["actors"][0],
+                        })
+                    });
                 Ok(json!({"position": [x, y, z], "heading": wrap(heading),
                     "acknowledged": boundary.is_some(), "boundary": boundary}))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong place_player handler"),
+        })
+    }
+
+    fn scripts(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::Scripts { offset, limit } => {
                 match script_actors
                     .as_ref()
@@ -164,16 +259,25 @@ impl Gameplay<'_, '_> {
                     Some(world) => {
                         let mut observation = world.inspect(offset, limit);
                         observation["flags"] = json!(world.snapshot_flags());
-                        observation["player_position_q8"] = json!(world
-                            .selected_player()
-                            .and_then(|id| world.spatial(id).ok())
-                            .and_then(|spatial| spatial.effective.as_ref())
-                            .map(|pose| pose.position));
+                        observation["player_position_q8"] = json!(
+                            world
+                                .selected_player()
+                                .and_then(|id| world.spatial(id).ok())
+                                .and_then(|spatial| spatial.effective.as_ref())
+                                .map(|pose| pose.position)
+                        );
                         Ok(observation)
                     }
                     None => Err("script world is not prepared".into()),
                 }
             }
+            _ => unreachable!("command routed to the wrong scripts handler"),
+        })
+    }
+
+    fn queue_movie(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::QueueMovie { movie } => match script_actors
                 .as_mut()
                 .and_then(|actors| actors.current.as_mut())
@@ -184,6 +288,13 @@ impl Gameplay<'_, '_> {
                 }
                 None => Err("script world is not prepared".into()),
             },
+            _ => unreachable!("command routed to the wrong queue_movie handler"),
+        })
+    }
+
+    fn script_load_world(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::ScriptLoadWorld {
                 world,
                 marker,
@@ -193,11 +304,20 @@ impl Gameplay<'_, '_> {
                 .and_then(|actors| actors.current.as_mut())
             {
                 Some(current) => {
-                    current.globals_mut().request_load_world([world, marker, heading]);
+                    current
+                        .globals_mut()
+                        .request_load_world([world, marker, heading]);
                     Ok(json!({"requested": [world, marker, heading]}))
                 }
                 None => Err("script world is not prepared".into()),
             },
+            _ => unreachable!("command routed to the wrong script_load_world handler"),
+        })
+    }
+
+    fn script_summary(&mut self, command: Command) -> Outcome {
+        let Self { script_actors, .. } = self;
+        Outcome::Reply(match command {
             Command::ScriptSummary { offset, limit } => match script_actors
                 .as_ref()
                 .and_then(|actors| actors.current.as_ref())
@@ -205,6 +325,28 @@ impl Gameplay<'_, '_> {
                 Some(world) => Ok(world.inspect_summary(offset, limit)),
                 None => Err("script world is not prepared".into()),
             },
+            _ => unreachable!("command routed to the wrong script_summary handler"),
+        })
+    }
+
+    fn bind_script_animation(
+        &mut self,
+        command: Command,
+        commands: &mut Commands,
+        scene: &Scene,
+        script_bindings: &mut std::collections::BTreeMap<
+            Entity,
+            cyrus_script::script::ScriptActorId,
+        >,
+    ) -> Outcome {
+        let Self {
+            script_actors,
+            animations,
+            script_nodes,
+            ..
+        } = self;
+        let Scene { prepared, .. } = scene;
+        Outcome::Reply(match command {
             Command::BindScriptAnimation {
                 generation,
                 index,
@@ -222,26 +364,13 @@ impl Gameplay<'_, '_> {
                 let data = animations
                     .get(source)
                     .ok_or_else(|| anyhow::anyhow!("animation data is not loaded"))?;
-                let entity = if let Some(name) = node {
-                    let matches: Vec<_> = script_nodes
-                        .iter()
-                        .filter(|(_, candidate)| candidate.as_str() == name)
-                        .collect();
-                    anyhow::ensure!(
-                        matches.len() == 1,
-                        "scene node {name:?}: expected one match, found {}",
-                        matches.len()
-                    );
-                    anyhow::ensure!(
-                        script_bindings.get(&matches[0].0).is_none_or(|bound| bound.generation != generation),
-                        "scene node {name:?} already has a script binding"
-                    );
-                    Some(matches[0].0)
-                } else {
-                    None
-                };
+                let entity = binding_entity(script_nodes, script_bindings, generation, node)?;
                 let actor = cyrus_script::script::ScriptActorId { generation, index };
-                world.bind_animation(actor, data, cyrus_soup::AnimationGroup::from_index(default_group))?;
+                world.bind_animation(
+                    actor,
+                    data,
+                    cyrus_soup::AnimationGroup::from_index(default_group),
+                )?;
                 if let Some(entity) = entity {
                     script_bindings.insert(entity, actor);
                     commands
@@ -259,6 +388,29 @@ impl Gameplay<'_, '_> {
                 Ok(world.inspect(index, 1))
             })()
             .map_err(|error| format!("{error:#}")),
+            _ => unreachable!("command routed to the wrong bind_script_animation handler"),
+        })
+    }
+
+    fn step_script(
+        &mut self,
+        command: Command,
+        script_bindings: &mut std::collections::BTreeMap<
+            Entity,
+            cyrus_script::script::ScriptActorId,
+        >,
+    ) -> Outcome {
+        let Self {
+            script_hud,
+            script_actors,
+            random,
+            cheats,
+            activation,
+            script_sounds,
+            player_poses,
+            ..
+        } = self;
+        Outcome::Reply(match command {
             Command::StepScript {
                 generation,
                 index,
@@ -268,129 +420,42 @@ impl Gameplay<'_, '_> {
                 distance_override,
                 fallback_position,
             } => (|| -> anyhow::Result<_> {
-                use cyrus_script::script::{ScriptActorId, ScriptStage, Thread};
+                use cyrus_script::script::ScriptActorId;
                 let world = script_actors
                     .as_mut()
                     .and_then(|actors| actors.current.as_mut())
                     .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
                 let id = ScriptActorId { generation, index };
                 anyhow::ensure!(world.id(index)? == id, "stale script actor generation");
-                match stage {
-                    cyrus_control::ScriptStage::PrepareSpatial => world.prepare_spatial()?,
-                    cyrus_control::ScriptStage::Snapshot => world.snapshot_spatial(id)?,
-                    cyrus_control::ScriptStage::AxisLocks => world.restore_axis_locks(id)?,
-                    cyrus_control::ScriptStage::Transform => world.refresh_transform(id)?,
-                    cyrus_control::ScriptStage::Families => world.refresh_families()?,
-                    _ => {},
-                }
-                let stage = match stage {
-                    cyrus_control::ScriptStage::PrepareSpatial | cyrus_control::ScriptStage::Snapshot
-                    | cyrus_control::ScriptStage::AxisLocks | cyrus_control::ScriptStage::Transform | cyrus_control::ScriptStage::Families => return Ok(world.inspect(index, 1)),
-                    cyrus_control::ScriptStage::Animation => ScriptStage::Animation,
-                    cyrus_control::ScriptStage::OrdinaryMain => ScriptStage::OrdinaryMain,
-                    cyrus_control::ScriptStage::OrdinaryHook => ScriptStage::OrdinaryHook,
-                    cyrus_control::ScriptStage::NativeHook => ScriptStage::NativeHook,
-                    cyrus_control::ScriptStage::Entry => ScriptStage::Entry,
-                    cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks,
-                    cyrus_control::ScriptStage::Main => ScriptStage::Body(Thread::Main),
-                    cyrus_control::ScriptStage::Interrupt => ScriptStage::Body(Thread::Interrupt),
+                let Some(stage) = prepare_stage(world, id, stage)? else {
+                    return Ok(world.inspect(index, 1));
                 };
-                let mut captured_sounds = Vec::new();
-                let mut emit = |actor: ScriptActorId, sound| -> anyhow::Result<()> {
-                    use cyrus_script::script::ScriptSound;
-                    let (sound, surface, position) = match sound {
-                        ScriptSound::Animation { sound, surface, position } => (sound, surface, position),
-                        sound => {
-                            let event = match &sound {
-                                ScriptSound::Flat { effect, volume, rate_offset_hz } => json!({"type":"flat", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz}),
-                                ScriptSound::Positional { effect, volume, rate_offset_hz, position, start_index } => json!({"type":"positional", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz, "position":position, "start_index":start_index}),
-                                ScriptSound::StopEffect { effect, owned } => json!({"type":"stop_effect", "effect":effect, "owned":owned}),
-                                ScriptSound::StopOwned => json!({"type":"stop_owned"}),
-                                ScriptSound::StopAll => json!({"type":"stop_all"}),
-                                ScriptSound::AnimationState(state) => json!({"type":"animation_state", "state":format!("{state:?}")}),
-                                ScriptSound::Animation { .. } => unreachable!(),
-                            };
-                            captured_sounds.push(json!({"actor":actor, "sound":event}));
-                            if let Some(sounds) = script_sounds.as_mut() {
-                                sounds.write(cyrus_world::sound::SoundCue::Script {
-                                    generation: actor.generation, index: actor.index, sound,
-                                });
-                            }
-                            return Ok(());
-                        }
-                    };
-                    anyhow::ensure!(
-                        !matches!(
-                            sound,
-                            cyrus_world::animation::AnimationSound::Event { .. }
-                                | cyrus_world::animation::AnimationSound::Transition { .. }
-                        ),
-                        "animation actor events and transitions are unsupported in the control script stage"
-                    );
-                    let mut nodes = script_bindings.iter().filter(|(_, bound)| **bound == actor);
-                    let Some((entity, _)) = nodes.next() else {
-                        use cyrus_world::animation::AnimationSound;
-                        let event = match sound {
-                            AnimationSound::Play { effect, rate_offset_hz } =>
-                                json!({"type":"play", "effect":effect, "rate_offset_hz":rate_offset_hz}),
-                            AnimationSound::CheckSample => json!({"type":"check_sample"}),
-                            AnimationSound::Stop => json!({"type":"stop"}),
-                            AnimationSound::Forget => json!({"type":"forget"}),
-                            AnimationSound::Event { .. } | AnimationSound::Transition { .. } => {
-                                unreachable!()
-                            }
-                        };
-                        captured_sounds.push(json!({"actor":actor, "sound":event}));
-                        return Ok(());
-                    };
-                    let entity = *entity;
-                    anyhow::ensure!(
-                        nodes.next().is_none(),
-                        "script sound receiver has multiple scene bindings"
-                    );
-                    script_sounds
-                        .as_mut()
-                        .ok_or_else(|| anyhow::anyhow!("script sound consumer unavailable"))?
-                        .write(cyrus_world::sound::SoundCue::Animation {
-                            actor: entity,
-                            sound,
-                            surface,
-                            position,
-                        });
-                    Ok(())
-                };
-                let mut poses = player_poses.iter();
-                let selected = poses.next();
-                anyhow::ensure!(poses.next().is_none(), "selected-player query has multiple player poses");
-                let player = selected.map(|pose| -> anyhow::Result<_> {
-                    let mut position = [0; 3];
-                    for (axis, coordinate) in pose.position.into_iter().enumerate() {
-                        position[axis] = i32::try_from(coordinate).map_err(|_| anyhow::anyhow!("player query coordinate axis {axis} outside Q8 i32 range"))?;
-                    }
-                    Ok(cyrus_script::script::PlayerQuery { position, heading: pose.heading })
-                }).transpose()?;
-                let inputs = cyrus_script::script::ScriptInputs {
-                    hud: script_hud.as_deref(),
-                    activation: activation.as_deref(),
-                    death_suppressed: cheats.death_suppressed().ok(),
-                    torch_retained: cheats.torch_retained().ok(),
-                    actor_update_skipped: cheats.actor_update_skipped().ok(),
-                    ground_bypass: cheats.ground_bypass().ok(),
-                    magic_carpet: cheats.magic_carpet().ok(),
-                    player_collision_skipped: cheats.player_collision_skipped().ok(),
-                    nominal_ticks, frame_scale,
-                    player_query: Some(cyrus_script::script::QueryInputs {
-                        player, distance_override: distance_override.or_else(|| cheats.distance_override().ok()), fallback_position, linked_position: None,
-                    }),
-                    ..Default::default()
-                };
-                world.advance(id, stage, inputs, Some(&mut emit), Some(&mut **random), 100_000)?;
-                let mut result = world.inspect(index, 1);
-                result["captured_sounds"] = json!(captured_sounds);
-                Ok(result)
+                let player = player_query(player_poses)?;
+                let inputs = script_inputs(
+                    script_hud.as_deref(),
+                    activation.as_deref(),
+                    cheats,
+                    cyrus_script::script::QueryInputs {
+                        player,
+                        distance_override,
+                        fallback_position,
+                        linked_position: None,
+                    },
+                    frame_scale,
+                    nominal_ticks,
+                );
+                execute_stage(
+                    world,
+                    id,
+                    stage,
+                    inputs,
+                    random,
+                    script_sounds.as_deref_mut(),
+                    script_bindings,
+                )
             })()
             .map_err(|error| format!("{error:#}")),
-        _ => unreachable!("command routed to the wrong gameplay handler"),
+            _ => unreachable!("command routed to the wrong step_script handler"),
         })
     }
 }

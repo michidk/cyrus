@@ -575,6 +575,7 @@ module where it is defined and regenerate.
 - `src/control/commands/inspection.rs` — Read-only aggregate control-state publication.
 - `src/control/commands/rendering.rs` — Presentation transforms and renderer configuration commands.
 - `src/control/commands/scene.rs` — Startup and world-entry commands and their live presentation boundary.
+- `src/control/commands/script_stage.rs` — Script-stage preparation, sound routing and selected-player query projection.
 - `src/control/commands/session.rs` — Native session and slot ownership commands.
 - `src/control/effect_geometry.rs` — Bounded read-only transient geometry acquisition after presentation publication.
 - `src/control/frame_capture.rs` — Bounded native screenshots whose clock and PCM delivery cursor belong to the extracted frame.
@@ -583,6 +584,7 @@ module where it is defined and regenerate.
 - `src/control/player_trace.rs` — Atomic logical placement and bounded observations of completed ordinary updates.
 - `src/control/rendered_actor.rs` — One actor's logical and rendered attachment ownership after the frame update.
 - `src/control/tests.rs` — Public native control and ordering contracts.
+- `src/control/tests/fixtures.rs` — Shared native control app construction and bounded capture completion.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
