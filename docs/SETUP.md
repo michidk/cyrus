@@ -287,6 +287,37 @@ checkout provenance when comparing source trees. Current-head checks remain the
 merge gate. Default main-run selection and `--fallback-main` retain their existing
 behavior; ancestor fallback cannot be combined with `--run`.
 
+For source-bound paired replay, add `--source-tree <expected-git-tree-sha>` to
+that download. The fetcher requires the standard Linux job's checkout log,
+verifies that checkout is the requested head or its merge child, and compares its
+Git tree with the expected tree. Missing logs or a different tree reject the
+acquisition. The receipt then includes `checkout_job`, `checkout_commit` and
+`checkout_tree`. A PR head and its workflow's merge checkout can have different
+trees; use the actual checkout tree, never assume the head tree is equivalent.
+This mode needs the native job log to be available even if other jobs continue.
+
+Pass that receipt into the paired runner:
+
+```sh
+python3 -B dev/scripts/compare-segment.py <segment.json> \
+  --original-backend <local-original.py> --native-backend <local-native.py> \
+  --native-executable magic/bin/cyrus-<sha> --native-receipt magic/bin/cyrus-<sha>.json \
+  --native-head <full-head-sha> --native-source-tree <expected-git-tree-sha> \
+  --out magic/artifacts/<comparison>
+```
+
+These four native options are required together. Before either backend runs, the
+runner compares head, checkout tree and executable hash with the receipt. The
+native backend receives `open_session(segment, output_directory, executable=...)`
+and must start its process with `executable.launch(arguments, **popen_options)`.
+It yields a session exposing that live `Popen` as `session.process`; bypassing the
+launcher rejects the comparison before native inputs. The report retains the
+artifact identity. Backends still own staging, control attachment and process
+cleanup, and remain trusted to observe their launched process. This checks
+acquisition provenance and execution identity, not reproducible-build attestation
+or original/native gameplay parity. Existing backends without these options
+retain their diagnostic behavior and do not claim artifact binding.
+
 The repository-owned `build-release.yml` is a reusable workflow accepting the
 tag. It owns the game-specific verification, platform builds, packaging and
 smoke tests, and uploads `release-*` artifacts for the managed workflow to

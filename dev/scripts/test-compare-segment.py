@@ -3,9 +3,13 @@
 from contextlib import contextmanager
 import copy
 import importlib.util
+import hashlib
+import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location('pair', Path(__file__).with_name('compare-segment.py'))
 pair = importlib.util.module_from_spec(spec)
@@ -283,6 +287,117 @@ class NativeFrames(unittest.TestCase):
         control.request = truncated
         with self.assertRaisesRegex(RuntimeError, 'truncated'):
             pair.NativeFrameSession(control, lambda state, scripts: {})
+
+
+class VerifiedArtifact(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.binary = Path(sys.executable).resolve()
+        self.head, self.tree = 'a' * 40, 'b' * 40
+        self.receipt = dict(commit=self.head, run=7, artifact=11,
+                            archive_sha256='c' * 64, executable_sha256=self.digest(self.binary),
+                            checkout_commit='d' * 40, checkout_tree=self.tree, checkout_job=12)
+        self.receipt_path = self.root / 'receipt.json'
+        self.calls = []
+
+    @staticmethod
+    def digest(path):
+        with path.open('rb') as stream:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+    def artifact(self):
+        self.receipt_path.write_text(json.dumps(self.receipt))
+        return pair.NativeArtifact(self.binary, self.receipt_path, self.head, self.tree)
+
+    @contextmanager
+    def original(self, *_):
+        self.calls.append('original')
+        yield Session({0: state()}, [], 'original')
+
+    @contextmanager
+    def native(self, *_, executable):
+        self.calls.append('native')
+        process = executable.launch(['-c', 'import time; time.sleep(30)'])
+        try:
+            session = Session({0: state()}, [], 'native')
+            session.process = process
+            yield session
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+
+    def test_pair_launches_bound_executable_and_records_identity(self):
+        report = pair.run_pair(SEGMENT, self.original, self.native, self.root,
+                               native_artifact=self.artifact())
+        self.assertEqual(report['status'], 'match', report)
+        self.assertEqual(self.calls, ['original', 'native'])
+        self.assertEqual(report['native_artifact']['checkout_tree'], self.tree)
+        self.assertEqual(report['native_artifact']['executable_sha256'], self.digest(self.binary))
+
+    def test_head_tree_or_bytes_mismatch_prevents_both_backends(self):
+        for field in ['commit', 'checkout_tree', 'executable_sha256']:
+            original = self.receipt[field]
+            self.receipt[field] = '0' * len(original)
+            report = pair.run_pair(SEGMENT, self.original, self.native, self.root,
+                                   native_artifact=self.artifact())
+            self.assertEqual(report['status'], 'blocked')
+            self.assertEqual(self.calls, [])
+            self.assertIn('differs', report['reason'])
+            self.receipt[field] = original
+
+    def test_legacy_receipt_cannot_claim_a_source_bound_pair(self):
+        del self.receipt['checkout_tree']
+        report = pair.run_pair(SEGMENT, self.original, self.native, self.root,
+                               native_artifact=self.artifact())
+        self.assertEqual(report['status'], 'blocked')
+        self.assertEqual(self.calls, [])
+        self.assertIn('checkout', report['reason'])
+
+    def test_replaced_binary_is_rejected_again_at_launch(self):
+        self.binary = self.root / 'cyrus'
+        self.binary.write_bytes(b'initial executable')
+        self.receipt['executable_sha256'] = self.digest(self.binary)
+        artifact = self.artifact()
+        artifact.validate()
+        self.binary.write_bytes(b'replaced executable')
+        with self.assertRaisesRegex(ValueError, 'executable differs'):
+            artifact.launch(['--version'])
+        self.assertEqual(artifact.processes, [])
+
+    def test_changed_receipt_cannot_switch_identity_during_original_replay(self):
+        artifact = self.artifact()
+        artifact.validate()
+        self.receipt['artifact'] = 999
+        self.receipt_path.write_text(json.dumps(self.receipt))
+        with self.assertRaisesRegex(ValueError, 'receipt changed'):
+            artifact.launch(['--version'])
+        self.assertEqual(artifact.processes, [])
+
+    def test_cli_rejects_mismatch_before_original_runtime_preparation(self):
+        self.receipt['checkout_tree'] = '0' * 40
+        self.artifact()
+        arguments = ['compare-segment.py', 'unused.json', '--original-backend', 'unused.py',
+                     '--native-backend', 'unused.py', '--out', str(self.root),
+                     '--native-executable', str(self.binary), '--native-receipt', str(self.receipt_path),
+                     '--native-head', self.head, '--native-source-tree', self.tree]
+        with mock.patch.object(sys, 'argv', arguments), \
+                mock.patch.object(pair.subprocess, 'run') as prepare, \
+                mock.patch('sys.stderr'):
+            with self.assertRaises(SystemExit) as result:
+                pair.main()
+        self.assertEqual(result.exception.code, 2)
+        prepare.assert_not_called()
+
+    def test_backend_cannot_ignore_verified_launcher(self):
+        @contextmanager
+        def bypass(*_, executable):
+            yield Session({0: state()}, [], 'native')
+        report = pair.run_pair(SEGMENT, self.original, bypass, self.root,
+                               native_artifact=self.artifact())
+        self.assertEqual(report['status'], 'blocked')
+        self.assertIn('verified launcher', report['reason'])
 
 
 if __name__ == '__main__':

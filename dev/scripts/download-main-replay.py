@@ -26,7 +26,34 @@ def extract_binary(package, staged, context):
     staged.chmod(0o755)
 
 
-def download_run(commit, destination, run_id):
+def checkout_source(run_id, commit, expected_tree):
+    """Bind a completed native job's checkout to an explicitly expected source tree."""
+    if not re.fullmatch(r'[0-9a-f]{40}', expected_tree):
+        raise ValueError('expected checkout tree must be a full Git tree SHA')
+    prefix = f'repos/{REPOSITORY}'
+    jobs = json.loads(subprocess.check_output(
+        ['gh', 'api', f'{prefix}/actions/runs/{run_id}/jobs?per_page=100'], text=True))
+    native = [job for job in jobs['jobs'] if job['name'] == 'Native (x86_64-unknown-linux-gnu)']
+    if len(native) != 1:
+        raise ValueError(f'run {run_id}: requires one standard Linux native job')
+    job = native[0]['id']
+    log = subprocess.check_output(
+        ['gh', 'api', f'{prefix}/actions/jobs/{job}/logs', '--allow-escape-sequences'], text=True)
+    checkouts = re.findall(
+        r'^\S+ \[command\].*/git log -1 --format=%H\r?\n\S+ ([0-9a-f]{40})\r?$', log, re.MULTILINE)
+    if len(checkouts) != 1:
+        raise ValueError(f'job {job}: requires one recorded checkout commit')
+    source = json.loads(subprocess.check_output(
+        ['gh', 'api', f'{prefix}/git/commits/{checkouts[0]}'], text=True))
+    parents = [parent['sha'] for parent in source['parents']]
+    if source['sha'] != commit and (len(parents) != 2 or commit not in parents):
+        raise ValueError(f'job {job}: checkout does not contain the requested workflow head')
+    if source['tree']['sha'] != expected_tree:
+        raise ValueError(f'job {job}: checkout tree differs from requested {expected_tree}')
+    return dict(checkout_job=job, checkout_commit=source['sha'], checkout_tree=expected_tree)
+
+
+def download_run(commit, destination, run_id, source_tree=None):
     prefix = f"repos/{REPOSITORY}/actions"
     run = json.loads(subprocess.check_output(
         ["gh", "api", f"{prefix}/runs/{run_id}"], text=True))
@@ -44,6 +71,7 @@ def download_run(commit, destination, run_id):
     expected = artifact.get("digest", "")
     if not isinstance(expected, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected):
         raise ValueError(f"artifact {artifact['id']}: missing SHA256 digest")
+    checkout = checkout_source(run_id, commit, source_tree) if source_tree is not None else {}
     print(f"Downloading artifact {artifact['id']} from workflow run {run_id}", flush=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
@@ -69,14 +97,16 @@ def download_run(commit, destination, run_id):
         staged.replace(destination)
     print(f"Replay artifact: workflow head {commit}; https://github.com/{REPOSITORY}/actions/runs/{run_id}", flush=True)
     return dict(commit=commit, run=run_id, artifact=artifact["id"],
-                archive_sha256=archive_hash, executable_sha256=executable_hash)
+                archive_sha256=archive_hash, executable_sha256=executable_hash, **checkout)
 
 
-def download(commit, destination, fallback_main=False, run_id=None):
+def download(commit, destination, fallback_main=False, run_id=None, source_tree=None):
     if run_id is not None:
         if fallback_main:
             raise ValueError("explicit run cannot use main ancestor fallback")
-        return download_run(commit, destination, run_id)
+        return download_run(commit, destination, run_id, source_tree)
+    if source_tree is not None:
+        raise ValueError("checkout-tree binding requires an explicit run")
     runs = json.loads(subprocess.check_output([
         "gh", "run", "list", "--repo", REPOSITORY, "--workflow", "pr-artifacts.yml",
         "--branch", "main", "--event", "push", "--limit", "50",
@@ -131,10 +161,11 @@ if __name__ == "__main__":
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--fallback-main", action="store_true", help="select the newest ancestor main run with an uploaded Linux artifact")
     selection.add_argument("--run", type=int, help="download from this artifact workflow run only, requiring the exact requested head")
+    parser.add_argument("--source-tree", help="require this exact checkout tree, validated from the native job checkout record")
     parser.add_argument("--receipt", type=Path, help="write the selected binary commit and workflow run")
     args = parser.parse_args()
     try:
-        receipt = download(args.commit, args.destination, args.fallback_main, args.run)
+        receipt = download(args.commit, args.destination, args.fallback_main, args.run, args.source_tree)
         if args.receipt:
             args.receipt.write_text(json.dumps(receipt) + "\n")
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:

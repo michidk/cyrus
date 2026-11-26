@@ -105,5 +105,52 @@ class ExactRun(unittest.TestCase):
         self.assertEqual(self.destination.read_bytes(), b"previous")
 
 
+class CheckoutBinding(unittest.TestCase):
+    def query(self, command, **kwargs):
+        endpoint = command[2]
+        if endpoint.endswith('/jobs?per_page=100'):
+            return json.dumps({'jobs': [dict(id=12, name='Native (x86_64-unknown-linux-gnu)')]})
+        if endpoint.endswith('/logs'):
+            return ('2026-11-26T12:00:00Z [command]/usr/bin/git log -1 --format=%H\n'
+                    + '2026-11-26T12:00:01Z ' + 'b' * 40 + '\n')
+        return json.dumps(dict(sha='b' * 40, tree=dict(sha=self.tree),
+                               parents=[dict(sha='e' * 40), dict(sha=COMMIT)]))
+
+    def test_binds_actual_merge_checkout_instead_of_workflow_head(self):
+        self.tree = 'c' * 40
+        with mock.patch.object(MODULE.subprocess, 'check_output', side_effect=self.query):
+            result = MODULE.checkout_source(7, COMMIT, self.tree)
+        self.assertEqual(result, dict(checkout_job=12, checkout_commit='b' * 40,
+                                      checkout_tree=self.tree))
+
+    def test_wrong_checkout_tree_is_rejected(self):
+        self.tree = 'd' * 40
+        with mock.patch.object(MODULE.subprocess, 'check_output', side_effect=self.query):
+            with self.assertRaisesRegex(ValueError, 'checkout tree'):
+                MODULE.checkout_source(7, COMMIT, 'c' * 40)
+
+    def test_missing_log_or_unrelated_head_is_rejected(self):
+        self.tree = 'c' * 40
+        for missing in (True, False):
+            def query(command, **kwargs):
+                response = self.query(command, **kwargs)
+                if missing and command[2].endswith('/logs'):
+                    return 'no checkout record'
+                if not missing and '/git/commits/' in command[2]:
+                    source = json.loads(response)
+                    source['parents'] = []
+                    return json.dumps(source)
+                return response
+            with self.subTest(missing_log=missing):
+                with mock.patch.object(MODULE.subprocess, 'check_output', side_effect=query):
+                    with self.assertRaisesRegex(ValueError, 'checkout'):
+                        MODULE.checkout_source(7, COMMIT, self.tree)
+
+    def test_missing_checkout_evidence_is_not_inferred_from_head(self):
+        with mock.patch.object(MODULE.subprocess, 'check_output', return_value='{"jobs": []}'):
+            with self.assertRaisesRegex(ValueError, 'native job'):
+                MODULE.checkout_source(7, COMMIT, 'c' * 40)
+
+
 if __name__ == "__main__":
     unittest.main()

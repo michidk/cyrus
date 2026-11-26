@@ -11,6 +11,8 @@ Original executable bindings belong in an ignored backend, never this script.
 """
 import argparse
 import copy
+import hashlib
+import re
 from harness import exclusive_lock
 import importlib.util
 import json
@@ -18,6 +20,65 @@ import subprocess
 from pathlib import Path
 
 OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'continuations')
+
+
+class NativeArtifact:
+    """Launch only the executable identified by a source-bound acquisition receipt.
+
+    Local backends remain trusted adapters. In verified mode they must launch with
+    this object and expose that live Popen as session.process before observation.
+    """
+
+    def __init__(self, executable, receipt, head, tree):
+        self.executable = Path(executable).resolve()
+        self.receipt_path, self.head, self.tree = Path(receipt), head, tree
+        self.processes = []
+        self.identity = None
+
+    @staticmethod
+    def digest(path):
+        with path.open('rb') as stream:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+    def validate(self):
+        receipt = json.loads(self.receipt_path.read_text())
+        if not isinstance(receipt, dict):
+            raise ValueError('native artifact receipt must be an object')
+        for field in ('commit', 'checkout_commit', 'checkout_tree'):
+            if not isinstance(receipt.get(field), str) or not re.fullmatch(r'[0-9a-f]{40}', receipt[field]):
+                raise ValueError(f'native artifact receipt lacks {field}')
+        for field in ('archive_sha256', 'executable_sha256'):
+            if not isinstance(receipt.get(field), str) or not re.fullmatch(r'[0-9a-f]{64}', receipt[field]):
+                raise ValueError(f'native artifact receipt lacks {field}')
+        for field in ('run', 'artifact', 'checkout_job'):
+            if type(receipt.get(field)) is not int or receipt[field] <= 0:
+                raise ValueError(f'native artifact receipt lacks {field}')
+        if receipt['commit'] != self.head:
+            raise ValueError('native artifact workflow head differs from requested source')
+        if receipt['checkout_tree'] != self.tree:
+            raise ValueError('native artifact checkout tree differs from requested source')
+        if self.digest(self.executable) != receipt['executable_sha256']:
+            raise ValueError('native executable differs from artifact receipt')
+        if self.identity is not None and receipt != self.identity:
+            raise ValueError('native artifact receipt changed during comparison')
+        self.identity = receipt.copy()
+        return dict(receipt, executable=str(self.executable))
+
+    def launch(self, arguments, **options):
+        self.validate()
+        if options.get('shell') or 'executable' in options:
+            raise ValueError('native artifact launcher cannot override the executable')
+        process = subprocess.Popen([str(self.executable), *arguments], **options)
+        self.processes.append(process)
+        return process
+
+    def check_session(self, session):
+        process = getattr(session, 'process', None)
+        if not any(process is launched for launched in self.processes):
+            raise ValueError('native backend must expose the process from the verified launcher')
+        if process.poll() is not None:
+            raise ValueError('verified native process exited before comparison')
+        self.validate()
 
 
 class NativeFrameSession:
@@ -195,9 +256,11 @@ def record(session, events, checkpoints):
                     raise ValueError(f'input frame missed: requested {frame}, acknowledged {applied}')
 
 
-def run_pair(segment, original, native, output):
+def run_pair(segment, original, native, output, native_artifact=None):
     report = dict(version=1, status='blocked', events=[], checkpoints=[])
     try:
+        if native_artifact is not None:
+            report['native_artifact'] = native_artifact.validate()
         events, checkpoints = input_tape(segment)
         report['events'] = events
         (output / 'original').mkdir(parents=True, exist_ok=True)
@@ -207,7 +270,10 @@ def run_pair(segment, original, native, output):
             for observation in record(session, events, checkpoints):
                 report['original'].append(observation)
         report['native'] = []
-        with native(segment, output / 'native') as session:
+        options = {} if native_artifact is None else dict(executable=native_artifact)
+        with native(segment, output / 'native', **options) as session:
+            if native_artifact is not None:
+                native_artifact.check_session(session)
             for expected, measured in zip(report['original'], record(session, events, checkpoints)):
                 report['native'].append(measured)
                 fields = delta({key: expected[key] for key in OBSERVABLES},
@@ -238,15 +304,28 @@ def main():
     parser.add_argument('segment')
     parser.add_argument('--original-backend', required=True)
     parser.add_argument('--native-backend', required=True)
+    parser.add_argument('--native-executable', type=Path)
+    parser.add_argument('--native-receipt', type=Path)
+    parser.add_argument('--native-head', help='expected full workflow head SHA')
+    parser.add_argument('--native-source-tree', help='expected actual checkout tree SHA')
     parser.add_argument('--out', required=True, help='host directory under magic/')
     args = parser.parse_args()
+    binding = [args.native_executable, args.native_receipt, args.native_head, args.native_source_tree]
+    if any(binding) and not all(binding):
+        parser.error('verified native replay requires executable, receipt, head and source tree together')
+    artifact = NativeArtifact(*binding) if all(binding) else None
+    if artifact is not None:
+        try:
+            artifact.validate()
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
     output = Path(args.out)
     output.mkdir(parents=True, exist_ok=True)
     with exclusive_lock(output / 'comparison.lock'):
         subprocess.run([str(Path(__file__).with_name("ensure-retro-runtime.sh"))],
                        check=True, stdout=subprocess.DEVNULL)
         report = run_pair(json.loads(Path(args.segment).read_text()), backend(args.original_backend),
-                          backend(args.native_backend), output)
+                          backend(args.native_backend), output, native_artifact=artifact)
         report['segment'] = str(args.segment)
         (output / 'comparison.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(dict(status=report['status'], report=str(output / 'comparison.json'))))
