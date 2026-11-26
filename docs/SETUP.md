@@ -1832,7 +1832,11 @@ recovery preserves the supplied archive, including compressed archives, and uses
 its existing restore lock and durable diagnostics. It does not save another
 archive or assign the image a source-keyed identity. Setting only one override
 fails before recovery starts. With neither override, source-keyed build and
-recovery remain the default.
+recovery remain the default. A source build keeps `ARCHIVE.build.log` and an
+atomically replaced `ARCHIVE.build-state.json` on the host. The receipt records
+the source-keyed image, daemon identity, build status and exit code. A receipt
+left as `running` does not establish success; the next invocation checks image
+availability and uses Docker's existing build cache when a build is still needed.
 
 Pass `--retain` before `IMAGE` to checkpoint the available image. This checkpoints setup before the next reset: concurrent calls share
 the restore lock, and only a successful nonempty Docker save is published by
