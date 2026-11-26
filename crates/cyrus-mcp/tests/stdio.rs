@@ -261,7 +261,8 @@ fn invalid_parameters_and_control_errors_do_not_poison_stdio() {
 
 #[test]
 fn screenshots_preserve_text_and_image_content() {
-    let path = std::env::temp_dir().join(format!("cyrus-mcp-stdio-{}.png", std::process::id()));
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("screenshot.png");
     let game = Game::start(|command| {
         if let Command::Screenshot { path } = command {
             std::fs::write(path, b"synthetic screenshot").unwrap();
