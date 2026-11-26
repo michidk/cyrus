@@ -47,6 +47,55 @@ class ClockPhase(unittest.TestCase):
         self.assertEqual([r['elapsed_bios_ticks'] for r in output], [None, 2, 3])
         self.assertTrue(all(r['acquisition_scope'] == 'clock_only' for r in output))
 
+    def test_restore_baseline_and_second_timer_read_bind_the_forthcoming_step(self):
+        # A blocking restore moved the baseline from 100 to 140. The sample
+        # store read 141; the remainder addition independently confirms one tick.
+        sample = row(20, 1200, 200, 141)
+        sample['bios_measurement'] = dict(phase='before_publication', sample=141,
+            baseline=140, remainder_before=3, remainder_after=4)
+        self.assertEqual(recorder.next_bios_input(sample), 1)
+        rows = [sample, row(21, 1402, 202, 190)]
+        rows[1]['bios_measurement'] = dict(phase='before_publication', sample=190,
+            baseline=190, remainder_before=5, remainder_after=5)
+        output = []
+        recorder.record(Session(rows), 200, output.append, clock_only=True)
+        self.assertEqual([r['next_elapsed_bios_ticks'] for r in output], [1, 0])
+        self.assertEqual(output[1]['elapsed_bios_ticks'], 49)
+        tape = recorder.replay_clock_inputs(output)
+        self.assertEqual(tape, dict(frame_scales=[200], bios_ticks=[1]))
+        class Control:
+            update = 0
+            commands = []
+            def request(self, command):
+                if command['type'] == 'state':
+                    return dict(scripts=dict(ordinary_updates=self.update, failed=0),
+                                clock=dict(continuation=dict(step=dict(frame_scale=200))))
+                if command['type'] == 'scripts':
+                    return dict(actors=[], total=0)
+                if command['type'] == 'replay_frame':
+                    self.commands.append(command.copy())
+                    self.update += 1
+                    return {}
+                raise AssertionError(command)
+        control = Control()
+        native = load('compare-segment').NativeFrameSession(control, lambda *_: {}, **tape)
+        native.advance_to(1)
+        self.assertEqual(control.commands, [dict(type='replay_frame', frame_scale=200,
+                                                 elapsed_bios_ticks=1)])
+
+    def test_replay_rejects_missing_measurement_wrong_phase_or_unconsumed_tail(self):
+        sample = row(20, 1200, 200, 141)
+        with self.assertRaisesRegex(ValueError, 'measurement'):
+            recorder.next_bios_input(sample)
+        measurement = dict(phase='before_publication', sample=141, baseline=140,
+                           remainder_before=3, remainder_after=4)
+        for change in [dict(phase='after_publication'), dict(sample=0),
+                       dict(remainder_after=2), dict(remainder_after=5), dict(baseline=True)]:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                recorder.next_bios_input(sample | dict(bios_measurement=measurement | change))
+        with self.assertRaises(ValueError):
+            recorder.replay_clock_inputs([sample])
+
     def test_zero_candidate_cannot_replace_the_engine_measurement_sample(self):
         raw = dict(total=1200, movement=200, pending=200, warmup=0, sample=100, candidate=0)
         with self.assertRaisesRegex(ValueError, 'BIOS candidate'):

@@ -2042,6 +2042,23 @@ subtracting final boundary BIOS samples includes suspended time and does not
 reproduce the original measurement. Missing writes or multiple ordinary
 measurements must reject the acquisition.
 
+At a verified movement-publication stop, `original-update-recorder.py` accepts
+`bios_measurement` containing `phase: "before_publication"`, the engine `sample`,
+the `baseline` in effect at that sample, and `remainder_before` / `remainder_after`
+from the first measurement-remainder addition, before window reduction. Capture
+the sample and old remainder before calculation and all baseline changes around
+blocking restores. The resulting `next_elapsed_bios_ticks` belongs to that
+publication's forthcoming movement, while `elapsed_bios_ticks` remains the
+boundary-to-boundary sample difference for diagnostics. Never substitute the
+latter for replay input.
+
+`replay_clock_inputs(rows)` in that recorder returns `frame_scales` and `bios_ticks`
+for `NativeFrameSession`, pairing each publication's verified calculation with
+its next consumed movement and omitting the unconsumed final publication.
+Missing observations, noncontiguous consumed steps and timer advancement between
+the engine's two BIOS reads reject single-sample replay. This clock-input tape
+establishes neither semantic entry equivalence nor player/combat parity.
+
 Original event probes can use `EventJournal` from `dev/scripts/probe-checkpoint.py`
 with a host-mounted output directory. Each attempt gets a new JSONL file; every
 observation is flushed and synchronized before returning. A separate completed

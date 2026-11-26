@@ -50,6 +50,54 @@ def validate_snapshot(row, clock_only=False):
             raise ValueError(f'invalid {name}')
 
 
+def next_bios_input(row):
+    """Return observed BIOS input for this publication's forthcoming movement.
+
+    The local observer captures the old baseline and remainder at the engine's
+    sample write, then the first remainder addition before window reduction.
+    Blocking restores have already replaced the baseline. The engine reads the
+    timer again for that addition, so subtracting the earlier sample can miss
+    ticks, especially while stopped under a debugger. No guest data is changed.
+    """
+    measurement = row.get('bios_measurement')
+    if not isinstance(measurement, dict):
+        raise ValueError('forthcoming BIOS input requires a measurement observation')
+    names = ('sample', 'baseline', 'remainder_before', 'remainder_after')
+    if (measurement.get('phase') != 'before_publication'
+            or any(type(measurement.get(name)) is not int
+                   or not 0 <= measurement[name] < 2**32 for name in names)
+            or measurement['remainder_before'] >= 18
+            or measurement['sample'] != row.get('bios_ticks')
+            or measurement['sample'] != row.get('clock_publication', {}).get('bios_sample')):
+        raise ValueError('BIOS measurement does not bind this publication phase')
+    elapsed = measurement['remainder_after'] - measurement['remainder_before']
+    sampled_elapsed = (measurement['sample'] - measurement['baseline']) % 2**32
+    if elapsed < sampled_elapsed or elapsed >= 2**31:
+        raise ValueError('BIOS measurement addition is missing, reduced or clamped')
+    if elapsed != sampled_elapsed:
+        raise ValueError('timer advanced between BIOS reads; single-sample replay is unsupported')
+    return elapsed
+
+
+def replay_clock_inputs(rows):
+    """Use each publication's calculation for its next movement, excluding the tail.
+
+    This creates clock inputs only; semantic entry/player equivalence must be
+    established independently. Boundary-to-boundary sample differences belong
+    to the later calculation and may also include time excluded by restores.
+    """
+    if len(rows) < 2:
+        raise ValueError('replay clock inputs require a completed observed movement')
+    for row in rows:
+        validate_snapshot(row, clock_only=True)
+    for before, after in zip(rows, rows[1:]):
+        if (after['update'] != before['update'] + 1
+                or after['clock_scale'] - before['clock_scale'] != before['next_step']):
+            raise ValueError('replay clock inputs require contiguous consumed publication steps')
+    return dict(frame_scales=[row['next_step'] for row in rows[:-1]],
+                bios_ticks=[next_bios_input(row) for row in rows[:-1]])
+
+
 def record(session, elapsed, emit, timeout=10, *, require_bios=False, clock_only=False):
     """Emit baseline then exactly one row per completed update, until clock progress.
 
@@ -88,6 +136,8 @@ def record(session, elapsed, emit, timeout=10, *, require_bios=False, clock_only
                 raise ValueError('game clock differs from consumed update step')
         timing = {} if bios is None else dict(
             elapsed_bios_ticks=None if previous is None else bios - previous['bios_ticks'])
+        if 'bios_measurement' in row:
+            timing['next_elapsed_bios_ticks'] = next_bios_input(row)
         scope = dict(acquisition_scope='clock_only') if clock_only else {}
         emit(dict(**scope, sequence=sequence, elapsed_scale=row['clock_scale'] - origin,
                   consumed_clock_step=consumed, **timing, **row))
