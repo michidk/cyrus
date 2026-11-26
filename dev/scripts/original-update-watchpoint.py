@@ -39,7 +39,9 @@ class Watchpoint:
         result = self.libc.ptrace(operation, self.pid, offset, value)
         error = ctypes.get_errno()
         if result == -1 and error:
-            raise OSError(error, os.strerror(error))
+            name = {16: 'PTRACE_ATTACH', 17: 'PTRACE_DETACH'}.get(operation, f'ptrace request {operation}')
+            raise OSError(error, f'original observer {name} for pid {self.pid}: {os.strerror(error)}; '
+                          'run original_observer_preflight.py in the same runtime')
         return result
 
     def wait(self, timeout):

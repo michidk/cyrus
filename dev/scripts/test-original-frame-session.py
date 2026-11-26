@@ -43,6 +43,19 @@ class FrameTests(unittest.TestCase):
         return adapter.FrameSession(boundary, lambda raw: raw['frame'],
                                     lambda raw: dict(player=raw['player']), emit)
 
+    def test_attach_error_names_operation_target_and_same_runtime_preflight(self):
+        import types
+        boundary = object.__new__(watchpoint.Watchpoint)
+        boundary.pid = 123
+        boundary.libc = types.SimpleNamespace(ptrace=lambda *args: -1)
+        with patch.object(watchpoint.ctypes, 'get_errno', return_value=13):
+            with self.assertRaises(OSError) as raised:
+                boundary.ptrace(16)
+        self.assertEqual(raised.exception.errno, 13)
+        self.assertIn('PTRACE_ATTACH', str(raised.exception))
+        self.assertIn('pid 123', str(raised.exception))
+        self.assertIn('same runtime', str(raised.exception))
+
     def test_key_is_acknowledged_before_advancing_and_all_frames_are_batched(self):
         boundary = Boundary()
         rows = []

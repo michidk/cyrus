@@ -1909,6 +1909,28 @@ subdirectory when present. Do not export a replacement libc through the shell's
 `LD_LIBRARY_PATH`. A host that denies ptrace cannot run the stopped-boundary
 observer; library recovery does not grant that capability.
 
+Before starting a stopped-boundary observer in a new runtime, run:
+
+```sh
+python3 dev/scripts/original_observer_preflight.py --out /absolute/evidence/observer.json
+```
+
+Run it inside the runtime that will host the observer, not in an unrelated shell.
+The diagnostic launches its own same-identity child, waits for a PID/parent/UID
+and dumpability handshake, attempts attach once, waits for its stop and detaches.
+It kills and reaps its child on completion or failure. The receipt distinguishes
+launch/readiness, attach, stop acknowledgement and detach failures, and preserves
+the exact errno and readable capability, seccomp, Yama and LSM policy facts.
+Those policy facts alone do not identify which policy denied an operation.
+Exit zero means this attach/wait/detach contract worked; it does not establish
+hardware breakpoint ownership, game bindings or stopped-game readiness. The
+preflight never grants permissions or changes policy. An errno 13 on a ready,
+dumpable direct child rules out the observer targeting an unrelated launcher
+process or attaching before that child is ready. Preserve that receipt instead
+of repeatedly retrying the denied attach. The existing original container route
+still needs its retained supported image and configured observer capability;
+this command does not restore an image or change its launch permissions.
+
 For clock captures, `original-update-recorder.py --require-bios` requires the
 local backend's observed unsigned `bios_ticks` sample at every stopped ordinary
 boundary. The watchpoint backend accepts an optional `bios` reader-field binding.
