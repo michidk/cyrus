@@ -53,6 +53,20 @@ type ModelOwners<'w, 's> = Query<
     Or<(With<Player>, With<ScriptBinding>)>,
 >;
 
+/// Availability and source of a bound actor's skin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TextureSetLookup {
+    Unavailable,
+    ModelTextures,
+    ActorTextures(u16),
+}
+
+impl From<Option<u16>> for TextureSetLookup {
+    fn from(set: Option<u16>) -> Self {
+        set.map_or(Self::ModelTextures, Self::ActorTextures)
+    }
+}
+
 /// Per-frame lookups that only change with their inputs: each actor's texture set by animation
 /// asset (with the actor name it was read for) and each frame-source path for the current scene.
 #[derive(Default)]
@@ -69,7 +83,7 @@ impl BindCache {
         binding: &ScriptBinding,
         actors: Option<&ScriptActors>,
         animations: Option<&Assets<Animations>>,
-    ) -> anyhow::Result<Option<Option<u16>>> {
+    ) -> anyhow::Result<TextureSetLookup> {
         let Some(name) = actors
             .and_then(|actors| actors.current.as_ref())
             .filter(|world| world.generation() == binding.actor.generation)
@@ -83,11 +97,17 @@ impl BindCache {
             && cached == name
             && animations.is_some_and(|animations| animations.contains(key.0))
         {
-            return Ok(Some(*set));
+            return Ok((*set).into());
         }
         let set = texture_set(binding, actors, animations)?;
-        if let Some(set) = set {
-            self.texture_sets.insert(key, (name.to_owned(), set));
+        match set {
+            TextureSetLookup::Unavailable => {}
+            TextureSetLookup::ModelTextures => {
+                self.texture_sets.insert(key, (name.to_owned(), None));
+            }
+            TextureSetLookup::ActorTextures(set) => {
+                self.texture_sets.insert(key, (name.to_owned(), Some(set)));
+            }
         }
         Ok(set)
     }
@@ -207,10 +227,10 @@ fn bind(
         let texture_set = match binding
             .map(|binding| cache.texture_set(binding, actors.as_deref(), animations.as_deref()))
         {
-            None => None,
-            Some(Ok(Some(set))) => set,
+            None | Some(Ok(TextureSetLookup::ModelTextures)) => None,
+            Some(Ok(TextureSetLookup::ActorTextures(set))) => Some(set),
             // The actor's skin is not known yet; loading the default skin would flash.
-            Some(Ok(None)) => continue,
+            Some(Ok(TextureSetLookup::Unavailable)) => continue,
             Some(Err(error)) => {
                 if changed {
                     error!("player model {}: {error:#}", pose.model);
@@ -266,30 +286,30 @@ fn retire(commands: &mut Commands, root: Entity, player: Entity) {
         .insert(RetiredRoot { player });
 }
 
-/// The bound actor's texture set, or `None` while its world or animation data is unavailable
-/// (the outer `Option`); the inner one is the set itself.
+/// Resolve the bound actor's skin only after its world and animation data are available.
 fn texture_set(
     binding: &ScriptBinding,
     actors: Option<&ScriptActors>,
     animations: Option<&Assets<Animations>>,
-) -> anyhow::Result<Option<Option<u16>>> {
+) -> anyhow::Result<TextureSetLookup> {
     // Without a script registry nothing names a skin; the model's own textures apply.
     let Some(actors) = actors else {
-        return Ok(Some(None));
+        return Ok(TextureSetLookup::ModelTextures);
     };
     let (Some(world), Some(data)) = (
         actors.current.as_ref(),
         animations.and_then(|animations| animations.get(&binding.source)),
     ) else {
-        return Ok(None);
+        return Ok(TextureSetLookup::Unavailable);
     };
     if world.generation() != binding.actor.generation {
-        return Ok(None);
+        return Ok(TextureSetLookup::Unavailable);
     }
     let Some(actor) = world.actors().get(binding.actor.index) else {
-        return Ok(None);
+        return Ok(TextureSetLookup::Unavailable);
     };
-    cyrus_assets::animation::actor_texture_set(data.actor(actor.name())?).map(Some)
+    cyrus_assets::animation::actor_texture_set(data.actor(actor.name())?)
+        .map(TextureSetLookup::from)
 }
 
 pub(crate) fn model_source(
@@ -392,18 +412,76 @@ mod tests {
     }
 
     #[test]
+    fn bound_skin_cache_distinguishes_unavailable_default_and_selected() {
+        use cyrus_assets::script::Scripts;
+        let mut scripts: Scripts = serde_json::from_value(serde_json::json!({
+            "version":30,"weapons":{},"torches":{},"combat_clank_effects":[null,null],"combat_defenses":[],"combat_attacks":[],
+            "dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},
+            "player_distance_override":false,"updates":{"fall_death_ticks":144,"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
+            "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
+            "actor_pool_capacity":10,"content_id":"","world":17,
+            "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
+            "actors":{},
+            "instances":[{"object_id":0,"actor":"STATIC","object_type":1,"active":0,"model_name":"test","model_mode":0,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[0,0,0],"angles":[0,0,0]}],"unsupported":{}
+        })).unwrap();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut actors = ScriptActors::default();
+        actors.current = Some(cyrus_script::script::ScriptWorld::prepare(&scripts, 1).unwrap());
+        for (texture_id, expected) in [
+            (0, TextureSetLookup::ModelTextures),
+            (7, TextureSetLookup::ActorTextures(7)),
+        ] {
+            let mut assets = Assets::<Animations>::default();
+            let source = assets.add(Animations {
+                version: 2,
+                world: 17,
+                metadata: serde_json::json!({"actors":[{"script_name":"STATIC","raex":{"texture_id":texture_id}}]}),
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+            });
+            let binding = ScriptBinding {
+                source,
+                ..binding()
+            };
+            let mut cache = BindCache::default();
+            assert_eq!(
+                cache.texture_set(&binding, Some(&actors), None).unwrap(),
+                TextureSetLookup::Unavailable
+            );
+            assert!(cache.texture_sets.is_empty());
+            for _ in 0..2 {
+                assert_eq!(
+                    cache
+                        .texture_set(&binding, Some(&actors), Some(&assets))
+                        .unwrap(),
+                    expected
+                );
+                assert_eq!(cache.texture_sets.len(), 1);
+            }
+            assets.remove(binding.source.id());
+            assert_eq!(
+                cache
+                    .texture_set(&binding, Some(&actors), Some(&assets))
+                    .unwrap(),
+                TextureSetLookup::Unavailable
+            );
+        }
+    }
+
+    #[test]
     fn bound_actor_waits_for_its_world_before_choosing_a_skin() {
         let assets = Assets::<Animations>::default();
         // No script registry: nothing names a skin, so the model's own textures apply.
         assert_eq!(
             texture_set(&binding(), None, Some(&assets)).unwrap(),
-            Some(None)
+            TextureSetLookup::ModelTextures
         );
         // A registry without a world or animation data must not load the default skin yet.
         let actors = ScriptActors::default();
         assert_eq!(
             texture_set(&binding(), Some(&actors), Some(&assets)).unwrap(),
-            None
+            TextureSetLookup::Unavailable
         );
     }
 }
