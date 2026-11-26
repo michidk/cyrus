@@ -1103,6 +1103,39 @@ fn lbm_screen_preparation_rejects_malformed_ranges_without_an_install() {
     assert_eq!(checked, 3);
 }
 
+// Public BLAKE3 test vectors use bytes cycling through 0..251.
+// https://github.com/BLAKE3-team/BLAKE3/blob/1.8.8/test_vectors/test_vectors.json
+const MANIFEST_FINGERPRINT_VECTORS: [(usize, &str); 7] = [
+    (
+        0,
+        "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+    ),
+    (
+        3,
+        "e1be4d7a8ab5560aa4199eea339849ba8e293d55ca0a81006726d184519e647f",
+    ),
+    (
+        64,
+        "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98",
+    ),
+    (
+        65,
+        "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee",
+    ),
+    (
+        1024,
+        "42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7",
+    ),
+    (
+        1025,
+        "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444",
+    ),
+    (
+        31744,
+        "62b6960e1a44bcc1eb1a611a8d6235b6b4b78f32e7abc4fb4c6cdcce94895c47",
+    ),
+];
+
 #[test]
 fn native_manifest_fingerprints_are_stable_and_detect_same_size_content_changes() {
     use cyrus_assets::{native::Files, source::ReadAssets};
@@ -1113,46 +1146,14 @@ fn native_manifest_fingerprints_are_stable_and_detect_same_size_content_changes(
         std::fs::create_dir_all(root.join(dir)).unwrap();
     }
     std::fs::write(root.join("RGFX.EXE"), []).unwrap();
-    // Public BLAKE3 test vectors use bytes cycling through 0..251.
-    // https://github.com/BLAKE3-team/BLAKE3/blob/1.8.8/test_vectors/test_vectors.json
-    let vectors = [
-        (
-            0,
-            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
-        ),
-        (
-            3,
-            "e1be4d7a8ab5560aa4199eea339849ba8e293d55ca0a81006726d184519e647f",
-        ),
-        (
-            64,
-            "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98",
-        ),
-        (
-            65,
-            "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee",
-        ),
-        (
-            1024,
-            "42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7",
-        ),
-        (
-            1025,
-            "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444",
-        ),
-        (
-            31744,
-            "62b6960e1a44bcc1eb1a611a8d6235b6b4b78f32e7abc4fb4c6cdcce94895c47",
-        ),
-    ];
-    for (length, _) in vectors {
+    for (length, _) in MANIFEST_FINGERPRINT_VECTORS {
         let bytes: Vec<u8> = (0..length).map(|index| (index % 251) as u8).collect();
         std::fs::write(root.join(format!("maps/vector-{length}.bin")), bytes).unwrap();
     }
     let install = GameInstall::open(&root).unwrap();
     let source = Files::open(&install).unwrap();
     source.manifest().validate().unwrap();
-    for (length, digest) in vectors {
+    for (length, digest) in MANIFEST_FINGERPRINT_VECTORS {
         let path = format!("maps/vector-{length}.bin");
         let info = source.manifest().find(&path).unwrap();
         assert_eq!(info.bytes, length as u64, "{path}");
@@ -1166,7 +1167,7 @@ fn native_manifest_fingerprints_are_stable_and_detect_same_size_content_changes(
     changed[1024] ^= 1;
     std::fs::write(root.join(changed_path), &changed).unwrap();
     let refreshed = Files::open(&install).unwrap();
-    for (length, _) in vectors {
+    for (length, _) in MANIFEST_FINGERPRINT_VECTORS {
         let path = format!("maps/vector-{length}.bin");
         let before = source.manifest().find(&path).unwrap();
         let after = refreshed.manifest().find(&path).unwrap();
