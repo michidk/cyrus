@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Exercise recovery through the public TCP protocol in separate driver processes."""
 import json
+import importlib.util
 import fcntl
 from pathlib import Path
+import socket
 import socketserver
 import subprocess
 import sys
 import tempfile
 import threading
+import time
+from types import SimpleNamespace
 import unittest
 
 SCRIPT = Path(__file__).with_name('native_session_capture.py')
@@ -15,6 +19,47 @@ DOCUMENT = 'CYRUS-SESSION 1\n' + '0' * 64 + '\n' + json.dumps({'version': 1, 'lo
     {'world': index, 'content_id': str(index), 'source_identity': str(index),
      'generation': index, 'actors': []} for index in range(2)]}},
     'entity_bindings': [], 'player_model': {}, 'actor_models': {}, 'render_playback': {}})
+
+
+def driver_child(script, descriptor, arguments):
+    spec = importlib.util.spec_from_file_location('session_driver', script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    elapsed = 0
+
+    def sleep(seconds):
+        nonlocal elapsed
+        elapsed += seconds
+
+    module.time = SimpleNamespace(monotonic=lambda: elapsed, sleep=sleep, time=time.time)
+    with socket.socket(fileno=descriptor) as channel:
+        channel.sendall(b'R')
+        if channel.recv(1) != b'G':
+            raise RuntimeError('fixture did not release the ready driver')
+    sys.argv = [script, *arguments]
+    module.main()
+
+
+def run_driver(arguments):
+    channel, child = socket.socketpair()
+    with channel, child:
+        command = [sys.executable, str(Path(__file__).resolve()), '--driver-child',
+                   str(SCRIPT), str(child.fileno()), *arguments]
+        process = subprocess.Popen(command, pass_fds=[child.fileno()],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        child.close()
+        try:
+            # These are hang guards. Fixture deadlines advance only on explicit polling.
+            channel.settimeout(30)
+            if channel.recv(1) != b'R':
+                raise AssertionError('driver exited before fixture readiness')
+            channel.sendall(b'G')
+            stdout, stderr = process.communicate(timeout=30)
+            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
 
 
 class Recovery(unittest.TestCase):
@@ -77,13 +122,13 @@ class Recovery(unittest.TestCase):
                 worker = threading.Thread(target=server.serve_forever, daemon=True)
                 worker.start()
                 def run():
-                    return subprocess.run([sys.executable, str(SCRIPT), str(server.server_address[1]),
-                                           str(output), '--binary', str(binary), '--runtime-output', str(output),
-                                           '--seconds', '0.5', '--prepare-seconds', '0.5', '--interval', '0.01'],
-                                          capture_output=True, text=True, timeout=4)
+                    return run_driver([str(server.server_address[1]), str(output),
+                                       '--binary', str(binary), '--runtime-output', str(output),
+                                       '--seconds', '60', '--prepare-seconds', '60', '--interval', '1'])
                 try:
                     first = run()
                     self.assertNotEqual(first.returncode, 0)
+                    self.assertIn('rejected publication', first.stderr)
                     self.assertTrue((output / 'checkpoint.json').exists())
                     self.assertFalse((output / 'result.json').exists())
                     self.assertEqual(commands.count('load_scene'), 2)
@@ -99,6 +144,9 @@ class Recovery(unittest.TestCase):
                     frozen = True
                     stalled = run()
                     self.assertNotEqual(stalled.returncode, 0)
+                    self.assertEqual(json.loads((output / 'failure.json').read_text())['type'], 'TimeoutError')
+                    self.assertEqual(json.loads((output / 'phase.json').read_text())['phase'],
+                                     'first-update-continuation')
                     self.assertFalse((output / 'result.json').exists())
                     frozen = False
                     changed_source = True
@@ -109,6 +157,8 @@ class Recovery(unittest.TestCase):
                     omit_screenshot = True
                     missing_image = run()
                     self.assertNotEqual(missing_image.returncode, 0)
+                    self.assertEqual(json.loads((output / 'failure.json').read_text())['type'], 'TimeoutError')
+                    self.assertEqual(json.loads((output / 'phase.json').read_text())['phase'], 'rendered-capture')
                     self.assertFalse((output / 'result.json').exists())
                     omit_screenshot = False
                     with (output / 'capture.lock').open('a') as lock:
@@ -135,4 +185,7 @@ class Recovery(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--driver-child':
+        driver_child(sys.argv[2], int(sys.argv[3]), sys.argv[4:])
+    else:
+        unittest.main()
