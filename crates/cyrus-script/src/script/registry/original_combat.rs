@@ -147,7 +147,13 @@ impl ScriptWorld {
                 cooldown: saved.cooldown,
                 allocation_index: saved.allocation_index,
                 attacker_selection_state: saved.attacker_selection_state,
-                retained_action_indices: saved.retained_action_indices,
+                // Serialized attack/defence order differs from the host's pending
+                // four-binding move / current nine-binding motion order.
+                // Preserve absence and raw selectors while binding each owner.
+                retained_action_indices: [
+                    saved.retained_action_indices[1],
+                    saved.retained_action_indices[0],
+                ],
                 taunt_cache: None,
                 taunt_dialogue,
                 taunt_active: saved.taunt_active,

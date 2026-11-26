@@ -30,6 +30,12 @@ The generated [repository map](../../docs/MAP.md) lists every module. API
 contracts, units and preservation references live in the Rust docs beside
 their definitions.
 
+Original combat import binds the saved attack and defence selectors to their
+respective host executor owners. Their serialized order differs from the host's
+retained move order; an absent defence selector does not replace a saved attack
+selector or select an invented motion. The format ownership is documented in
+[preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/SAVEGAME.md#actor-combat-restoration).
+
 F1/F10 information overlays suspend updates while retaining the player's script binding and displayed animation pose. Closing them resumes that continuation.
 
 Topic menus retain the installed forward/back bindings even when a mod claims
