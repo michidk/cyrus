@@ -88,7 +88,9 @@ class NativeFrameSession:
     while ReplayHold is active, before the next observation-only schedule. All actors
     must fit in actor_limit; silently truncating the comparison is an error.
     Recorded scales are checked against the observed consumed clock step, with
-    full continuations retained in clock_observations. Optional bios_ticks carries
+    full continuations retained in clock_observations. Input replies must match the
+    requested key/action without advancing the stopped frame or clock; successful
+    replies are retained in input_observations. Optional bios_ticks carries
     measured per-update BIOS intervals; omitting it uses diagnostic simulated BIOS
     timing and cannot establish complete original/native clock equivalence.
     """
@@ -106,6 +108,7 @@ class NativeFrameSession:
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
         self.clock_observations = []
+        self.input_observations = []
         if self.frame_scales is not None:
             self.clock_observations.append(self._clock_observation(0))
 
@@ -138,10 +141,17 @@ class NativeFrameSession:
         if action not in ('press', 'release'):
             raise ValueError(f'unsupported native key action {action}')
         before = self.snapshot()['frame']
-        self.control.request(dict(type='input', key=key, action=action))
+        clock = copy.deepcopy(self.current[0].get('clock'))
+        reply = self.control.request(dict(type='input', key=key, action=action))
+        if not isinstance(reply, dict) or reply.get('key') != key or reply.get('action') != action:
+            raise RuntimeError(f'native input acknowledgement differs from {key}/{action}: {reply!r}')
         self.current = self._read()
         if self.snapshot()['frame'] != before:
             raise RuntimeError('native frame changed during key acknowledgement')
+        if self.current[0].get('clock') != clock:
+            raise RuntimeError('native clock changed during key acknowledgement')
+        self.input_observations.append(dict(frame=before, key=key, action=action,
+                                            acknowledgement=copy.deepcopy(reply)))
         return self.snapshot()['frame']
 
     def advance_to(self, frame):

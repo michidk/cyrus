@@ -184,7 +184,7 @@ class NativeControl:
             return {}
         if command['type'] == 'input':
             self.keys.append((self.update, command['key'], command['action']))
-            return {}
+            return dict(key=command['key'], action=command['action'])
         if command['type'] == 'replay_frame':
             self.scales.append(command['frame_scale'])
             self.bios_ticks.append(command.get('elapsed_bios_ticks'))
@@ -258,6 +258,37 @@ class NativeFrames(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'integer Q8'):
                 pair.NativeFrameSession(None, None, frame_scales=invalid)
 
+    def test_input_rejects_missing_or_wrong_key_action_acknowledgement(self):
+        for reply in ({}, {'key': 'ArrowUp', 'action': 'press'},
+                      {'key': 'ControlLeft', 'action': 'release'}):
+            with self.subTest(reply=reply):
+                control = NativeControl()
+                request = control.request
+                def wrong(command):
+                    value = request(command)
+                    return reply if command['type'] == 'input' else value
+                control.request = wrong
+                session = pair.NativeFrameSession(control, lambda *_: {})
+                with self.assertRaisesRegex(RuntimeError, 'input acknowledgement'):
+                    session.input('ControlLeft', 'press')
+                self.assertEqual(control.update, 50)
+                self.assertEqual(control.events, [])
+
+    def test_input_cannot_change_clock_without_an_update(self):
+        control = NativeControl()
+        request = control.request
+        def moved(command):
+            value = request(command)
+            if command['type'] == 'state' and control.keys:
+                value['clock']['continuation']['step']['frame_scale'] = 7
+            return value
+        control.request = moved
+        session = pair.NativeFrameSession(control, lambda *_: {})
+        with self.assertRaisesRegex(RuntimeError, 'clock changed during key acknowledgement'):
+            session.input('ControlLeft', 'press')
+        self.assertEqual(control.update, 50)
+        self.assertEqual(control.events, [])
+
     def test_inputs_share_the_boundary_and_frames_only_advance_explicitly(self):
         control = NativeControl()
         session = pair.NativeFrameSession(control, lambda state, scripts: dict(world=20))
@@ -270,6 +301,9 @@ class NativeFrames(unittest.TestCase):
         session.advance_to(3)
         self.assertEqual(session.snapshot(), dict(world=20, frame=3))
         self.assertEqual(control.events[-1], [{'after_updates': 0}])
+        self.assertEqual([row['frame'] for row in session.input_observations], [0, 0, 1])
+        self.assertEqual(session.input_observations[-1]['acknowledgement'],
+                         dict(key='ControlLeft', action='release'))
 
     def test_frame_gap_or_script_failure_rejects_the_native_run(self):
         for stride, failed, message in [(2, 0, 'frame gap'), (1, 1, 'script failures')]:
