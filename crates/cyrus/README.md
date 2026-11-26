@@ -137,6 +137,17 @@ just run-native --fixture dev/fixtures/<world>.json   # matched viewpoint, see d
 
 Tests that need the install skip without one and say so.
 
+Verify a packaged executable's install errors, world listing and CLI precedence without
+opening a window or exporting assets:
+
+```sh
+python3 dev/scripts/smoke-cli-install.py --binary /path/to/cyrus --install /path/to/Redguard --output magic/artifacts/cli-install-run
+```
+
+Use a fresh output directory. Each child uses its own host configuration directory
+and releases the live lock before the next child. Logs survive failed commands;
+a successful run records the executable digest and all ten exit-status checks.
+
 The control `scripts` observation includes a read-only `flags` snapshot with ordered
 installed definitions, current values and independent latches, plus `player_position_q8` from the selected
 player’s effective map pose. Reading it runs no
