@@ -137,6 +137,13 @@ class NativeFrameSession:
         state, scripts = self.current
         return dict(self.project(state, scripts), frame=state['scripts']['ordinary_updates'] - self.origin)
 
+    def execution_evidence(self):
+        """Copy requested tapes and measured boundaries, including an interrupted run."""
+        return copy.deepcopy(dict(
+            frame_scales=None if self.frame_scales is None else list(self.frame_scales),
+            bios_ticks=None if self.bios_ticks is None else list(self.bios_ticks),
+            clocks=self.clock_observations, inputs=self.input_observations))
+
     def input(self, key, action):
         if action not in ('press', 'release'):
             raise ValueError(f'unsupported native key action {action}')
@@ -282,20 +289,25 @@ def run_pair(segment, original, native, output, native_artifact=None):
         report['native'] = []
         options = {} if native_artifact is None else dict(executable=native_artifact)
         with native(segment, output / 'native', **options) as session:
-            if native_artifact is not None:
-                native_artifact.check_session(session)
-            for expected, measured in zip(report['original'], record(session, events, checkpoints)):
-                report['native'].append(measured)
-                fields = delta({key: expected[key] for key in OBSERVABLES},
-                               {key: measured[key] for key in OBSERVABLES})
-                mismatch = any(row['status'] != 'match' for row in fields)
-                if mismatch and measured['frame'] == 0:
-                    report.update(reason='start states differ or are incomplete', start_deltas=fields)
-                    return report
-                report['checkpoints'].append(dict(frame=measured['frame'], fields=fields))
-                if mismatch:
-                    report['status'] = 'different'
-                    return report
+            try:
+                if native_artifact is not None:
+                    native_artifact.check_session(session)
+                for expected, measured in zip(report['original'], record(session, events, checkpoints)):
+                    report['native'].append(measured)
+                    fields = delta({key: expected[key] for key in OBSERVABLES},
+                                   {key: measured[key] for key in OBSERVABLES})
+                    mismatch = any(row['status'] != 'match' for row in fields)
+                    if mismatch and measured['frame'] == 0:
+                        report.update(reason='start states differ or are incomplete', start_deltas=fields)
+                        return report
+                    report['checkpoints'].append(dict(frame=measured['frame'], fields=fields))
+                    if mismatch:
+                        report['status'] = 'different'
+                        return report
+            finally:
+                evidence = getattr(session, 'execution_evidence', None)
+                if callable(evidence):
+                    report['native_execution'] = evidence()
         report['status'] = 'match'
     except (ValueError, RuntimeError, TimeoutError, OSError) as error:
         report['reason'] = str(error)

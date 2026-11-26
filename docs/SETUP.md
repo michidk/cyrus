@@ -318,6 +318,16 @@ acquisition provenance and execution identity, not reproducible-build attestatio
 or original/native gameplay parity. Existing backends without these options
 retain their diagnostic behavior and do not claim artifact binding.
 
+Native backends using `NativeFrameSession` expose `execution_evidence()`.
+The paired runner copies this into `comparison.json` as `native_execution`,
+including on a rejected step or input acknowledgement. It retains requested
+frame-scale/BIOS tapes, observed clock continuations and accepted input replies.
+Requested tapes can extend beyond an interrupted run; only observed entries
+establish execution. Rejected input replies are not recorded as accepted inputs.
+Custom backends can implement the same optional method; reports without it do
+not claim those execution tapes. This evidence does not establish an original
+BIOS binding, matched timing or a health-reducing hit.
+
 The repository-owned `build-release.yml` is a reusable workflow accepting the
 tag. It owns the game-specific verification, platform builds, packaging and
 smoke tests, and uploads `release-*` artifacts for the managed workflow to

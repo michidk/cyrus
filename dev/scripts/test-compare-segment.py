@@ -323,6 +323,73 @@ class NativeFrames(unittest.TestCase):
             pair.NativeFrameSession(control, lambda state, scripts: {})
 
 
+class NativeEvidence(unittest.TestCase):
+    def compare(self, failure=None):
+        control = NativeControl()
+        request = control.request
+        def respond(command):
+            value = request(command)
+            if failure == 'clock' and command['type'] == 'state' and control.update >= 52:
+                value['clock']['continuation']['step']['frame_scale'] = 7
+            if failure == 'input' and command['type'] == 'input' and command['action'] == 'release':
+                return {'key': 'WrongKey', 'action': 'release'}
+            return value
+        control.request = respond
+        native = pair.NativeFrameSession(control, lambda *_: state(),
+                                         frame_scales=[122, 99, 0], bios_ticks=[0, 2, 1])
+        @contextmanager
+        def original(*_):
+            yield Session({0: state()}, [], 'original')
+        @contextmanager
+        def backend(*_):
+            yield native
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, original, backend, Path(directory))
+        return report, native
+
+    def test_successful_report_serializes_requested_and_observed_native_tapes(self):
+        report, native = self.compare()
+        self.assertEqual(report['status'], 'match', report)
+        saved = json.loads(json.dumps(report))['native_execution']
+        self.assertEqual(saved['frame_scales'], [122, 99, 0])
+        self.assertEqual(saved['bios_ticks'], [0, 2, 1])
+        self.assertEqual([row['elapsed_scale'] for row in saved['clocks']], [0, 122, 221, 221])
+        self.assertEqual([row['frame'] for row in saved['inputs']], [0, 2])
+        self.assertEqual(saved['inputs'][-1]['acknowledgement'],
+                         dict(key='ControlLeft', action='release'))
+        native.clock_observations[-1]['continuation']['step']['frame_scale'] = 700
+        native.input_observations.clear()
+        self.assertEqual(report['native_execution'], saved)
+
+    def test_diagnostic_session_does_not_invent_recorded_clock_or_bios_tapes(self):
+        session = pair.NativeFrameSession(NativeControl(), lambda *_: state())
+        session.input('ControlLeft', 'press')
+        evidence = session.execution_evidence()
+        self.assertIsNone(evidence['frame_scales'])
+        self.assertIsNone(evidence['bios_ticks'])
+        self.assertEqual(evidence['clocks'], [])
+        self.assertEqual(len(evidence['inputs']), 1)
+
+    def test_rejected_consumed_scale_retains_partial_clock_and_input_evidence(self):
+        report, _ = self.compare('clock')
+        self.assertEqual(report['status'], 'blocked', report)
+        self.assertIn('consumed clock scale 7, requested 99', report['reason'])
+        evidence = report['native_execution']
+        self.assertEqual([row['frame'] for row in evidence['clocks']], [0, 1, 2])
+        self.assertEqual(evidence['clocks'][-1]['requested_scale'], 99)
+        self.assertEqual(evidence['clocks'][-1]['continuation']['step']['frame_scale'], 7)
+        self.assertEqual(len(evidence['inputs']), 1)
+
+    def test_rejected_input_retains_only_accepted_acknowledgements(self):
+        report, _ = self.compare('input')
+        self.assertEqual(report['status'], 'blocked', report)
+        self.assertIn('input acknowledgement differs', report['reason'])
+        evidence = report['native_execution']
+        self.assertEqual([row['frame'] for row in evidence['clocks']], [0, 1, 2])
+        self.assertEqual([(row['key'], row['action']) for row in evidence['inputs']],
+                         [('ControlLeft', 'press')])
+
+
 class VerifiedArtifact(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
