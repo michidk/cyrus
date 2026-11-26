@@ -32,6 +32,13 @@ def prepare_map_state(run):
         (maps / asset.name).symlink_to(os.path.relpath(asset, maps))
 
 
+def prepare_splash(install, run):
+    """Fill the native startup splash as a private DLL, preserving run edits."""
+    splash = Path(install) / '3DfxSpl2.dll'
+    if splash.is_file():
+        fill_missing(splash, Path(run) / splash.name)
+
+
 def prepare(install, run):
     install, run = Path(install), Path(run)
     if install.resolve() == run.resolve():
@@ -47,6 +54,7 @@ def prepare(install, run):
     prepare_map_state(run)
     for directory in ('soup386', 'system', 'fonts'):
         fill_missing(install / directory, run / directory)
+    prepare_splash(install, run)
 
 
 def main():
