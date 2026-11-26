@@ -8,7 +8,7 @@ use bevy::prelude::{
 use cyrus_console::{Command, ConsoleApp, Invocation};
 use cyrus_world::heading::wrap;
 use cyrus_world::lifecycle::CurrentScene;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, str::FromStr};
 
 #[derive(Resource, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Edits(BTreeMap<u32, WorldEdits>);
@@ -92,35 +92,87 @@ fn show(
     Ok(lines)
 }
 
-fn slot(environment: &mut Environment, index: usize) -> Result<&mut f32> {
-    if index < 2 {
-        let sky = environment
-            .sky
-            .as_mut()
-            .context("current world has no sky")?;
-        Ok(if index == 0 {
-            &mut sky.scale
-        } else {
-            &mut sky.level
-        })
-    } else {
-        Ok(&mut environment
-            .water
-            .as_mut()
-            .context("current world has no waves")?
-            .parameters[index - 2])
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EnvironmentField {
+    SkyScale,
+    SkyLevel,
+    WaveAmplitude,
+    WaveSpeed,
+    WaveFrequency,
+}
+
+impl FromStr for EnvironmentField {
+    type Err = anyhow::Error;
+
+    fn from_str(name: &str) -> Result<Self> {
+        match name {
+            "fxskyscale" => Ok(Self::SkyScale),
+            "fxskylevel" => Ok(Self::SkyLevel),
+            "fxwaveamp" => Ok(Self::WaveAmplitude),
+            "fxwavespeed" => Ok(Self::WaveSpeed),
+            "fxwavefreq" => Ok(Self::WaveFrequency),
+            _ => anyhow::bail!("unsupported environment field {name:?}"),
+        }
+    }
+}
+
+impl EnvironmentField {
+    const ALL: [Self; 5] = [
+        Self::SkyScale,
+        Self::SkyLevel,
+        Self::WaveAmplitude,
+        Self::WaveSpeed,
+        Self::WaveFrequency,
+    ];
+
+    // Version-one snapshots retain their scalar array order and numeric diagnostics.
+    fn storage_slot(self) -> usize {
+        match self {
+            Self::SkyScale => 0,
+            Self::SkyLevel => 1,
+            Self::WaveAmplitude => 2,
+            Self::WaveSpeed => 3,
+            Self::WaveFrequency => 4,
+        }
+    }
+
+    fn is_wave(self) -> bool {
+        matches!(
+            self,
+            Self::WaveAmplitude | Self::WaveSpeed | Self::WaveFrequency
+        )
+    }
+
+    fn scalar(self, environment: &mut Environment) -> Result<&mut f32> {
+        match self {
+            Self::SkyScale | Self::SkyLevel => {
+                let sky = environment
+                    .sky
+                    .as_mut()
+                    .context("current world has no sky")?;
+                Ok(match self {
+                    Self::SkyScale => &mut sky.scale,
+                    _ => &mut sky.level,
+                })
+            }
+            Self::WaveAmplitude | Self::WaveSpeed | Self::WaveFrequency => {
+                let [amplitude, speed, frequency] = &mut environment
+                    .water
+                    .as_mut()
+                    .context("current world has no waves")?
+                    .parameters;
+                Ok(match self {
+                    Self::WaveAmplitude => amplitude,
+                    Self::WaveSpeed => speed,
+                    _ => frequency,
+                })
+            }
+        }
     }
 }
 
 fn edit(In(command): In<Invocation>, world: &mut World) -> Result<Vec<String>> {
-    let index = match command.name.as_str() {
-        "fxskyscale" => 0,
-        "fxskylevel" => 1,
-        "fxwaveamp" => 2,
-        "fxwavespeed" => 3,
-        "fxwavefreq" => 4,
-        _ => unreachable!("only registered environment commands reach this handler"),
-    };
+    let field = command.name.parse::<EnvironmentField>()?;
     let mut output = Vec::new();
     let value = cyrus_console::value(world, command.args.trim(), &mut output)? as i32 as f32;
     let id = world
@@ -137,15 +189,15 @@ fn edit(In(command): In<Invocation>, world: &mut World) -> Result<Vec<String>> {
         let mut environment = environments
             .get_mut(&handle)
             .context("console environment is still loading")?;
-        *slot(&mut environment, index)? = value;
+        *field.scalar(&mut environment)? = value;
     }
     world
         .resource_mut::<Edits>()
         .0
         .entry(id)
         .or_default()
-        .scalars[index] = Some(value);
-    if index >= 2 {
+        .scalars[field.storage_slot()] = Some(value);
+    if field.is_wave() {
         world
             .resource_mut::<crate::water::WaterPlayback>()
             .invalidate();
@@ -233,13 +285,13 @@ pub(crate) fn apply(
         return;
     };
     *applied = Some(key);
-    for (index, value) in values.scalars.iter().enumerate() {
+    for (field, value) in EnvironmentField::ALL.into_iter().zip(&values.scalars) {
         if let Some(value) = value
-            && let Ok(slot) = slot(&mut environment, index)
+            && let Ok(slot) = field.scalar(&mut environment)
             && *slot != *value
         {
             *slot = *value;
-            if index >= 2 {
+            if field.is_wave() {
                 water.invalidate();
             }
         }
@@ -297,6 +349,82 @@ mod tests {
             water_textures: Vec::new(),
             object_lights: Vec::new(),
         }
+    }
+
+    #[test]
+    fn scalar_commands_preserve_names_output_snapshot_slots_and_owner_errors() {
+        let mut app = App::new();
+        app.add_plugins(cyrus_console::ConsolePlugin)
+            .init_resource::<Assets<Environment>>()
+            .init_resource::<crate::water::WaterPlayback>()
+            .insert_resource(CurrentScene {
+                name: "test".into(),
+                world: Some(7),
+            });
+        register(&mut app);
+        let handle = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(environment());
+        app.insert_resource(EnvironmentRequest(handle.clone()));
+        let submit = |app: &mut App, line: &str| {
+            cyrus_console::submit(app.world_mut(), line, cyrus_console::Source::Interactive)
+        };
+        for (name, alias, value) in [
+            ("fxskyscale", "skysc", -800),
+            ("fxskylevel", "skyl", -4500),
+            ("fxwaveamp", "wamp", 0),
+            ("fxwavespeed", "wsp", -2),
+            ("fxwavefreq", "wfrq", 512),
+        ] {
+            let expected = vec![format!("{name} = {value}")];
+            assert_eq!(
+                submit(&mut app, &format!("{name} {value}")).unwrap(),
+                expected
+            );
+            assert_eq!(
+                submit(&mut app, &format!("{alias} {value}")).unwrap(),
+                expected
+            );
+        }
+        let saved =
+            serde_json::to_value(EnvironmentEditsSnapshot::capture(app.world()).unwrap()).unwrap();
+        assert_eq!(
+            saved["edits"]["7"]["scalars"],
+            serde_json::json!([-800.0, -4500.0, 0.0, -2.0, 512.0])
+        );
+        assert!("skysc".parse::<EnvironmentField>().is_err());
+        assert!("fxskyspeed".parse::<EnvironmentField>().is_err());
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .get_mut(&handle)
+            .unwrap()
+            .sky = None;
+        assert_eq!(
+            submit(&mut app, "skysc 1").unwrap_err().to_string(),
+            "current world has no sky"
+        );
+        app.world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .get_mut(&handle)
+            .unwrap()
+            .water = None;
+        assert_eq!(
+            submit(&mut app, "wamp 1").unwrap_err().to_string(),
+            "current world has no waves"
+        );
+        let snapshot: EnvironmentEditsSnapshot = serde_json::from_value(saved).unwrap();
+        assert_eq!(
+            snapshot
+                .restore(&BTreeMap::from([(7, &environment())]))
+                .unwrap()
+                .prepare_environment(7, environment())
+                .unwrap()
+                .water
+                .unwrap()
+                .parameters,
+            [0.0, -2.0, 512.0]
+        );
     }
 
     #[test]
@@ -566,14 +694,15 @@ impl EnvironmentEditsSnapshot {
             let environment = sources.get(id).with_context(|| {
                 format!("environment edits world {id}: installed source absent")
             })?;
-            for (index, value) in edits.scalars.iter().enumerate() {
+            for (field, value) in EnvironmentField::ALL.into_iter().zip(&edits.scalars) {
                 if let Some(value) = value {
+                    let index = field.storage_slot();
                     anyhow::ensure!(
                         value.is_finite(),
                         "environment edits world {id} field {index}: nonfinite scalar"
                     );
                     anyhow::ensure!(
-                        if index < 2 {
+                        if !field.is_wave() {
                             environment.sky.is_some()
                         } else {
                             environment.water.is_some()
@@ -596,13 +725,15 @@ impl EnvironmentEditsCandidate {
     /// sky, terrain and materials. The caller publishes this private asset at commit.
     pub fn prepare_environment(&self, world: u32, mut source: Environment) -> Result<Environment> {
         if let Some(edits) = self.0.0.get(&world) {
-            for (index, value) in edits.scalars.iter().enumerate() {
+            for (field, value) in EnvironmentField::ALL.into_iter().zip(&edits.scalars) {
                 if let Some(value) = value {
+                    let index = field.storage_slot();
                     anyhow::ensure!(
                         value.is_finite(),
                         "environment world {world} field {index}: nonfinite edit"
                     );
-                    *slot(&mut source, index)
+                    *field
+                        .scalar(&mut source)
                         .with_context(|| format!("environment world {world} field {index}"))? =
                         *value;
                 }
