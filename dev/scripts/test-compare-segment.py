@@ -145,6 +145,51 @@ class PairTests(unittest.TestCase):
         evidence['clocks'].clear()
         self.assertEqual(report['entry_native_execution']['clocks'], [{'frame': 0}])
 
+    def test_report_distinguishes_requested_tape_from_accepted_inputs(self):
+        report = self.run_pair({0: state()}, {0: state()})
+        self.assertEqual(report['status'], 'match')
+        for side in ('original', 'native'):
+            self.assertEqual(report['input_attempts'][side], [
+                dict(event, acknowledged_frame=event['frame'], status='accepted')
+                for event in report['events']])
+        blocked = self.run_pair({0: state()}, {0: state(7)})
+        self.assertEqual(blocked['input_attempts'], dict(original=[], native=[]))
+        self.assertEqual(len(blocked['events']), 2)
+
+    def test_rejected_or_failed_input_retains_partial_receipts_for_each_side(self):
+        for side in ('original', 'native'):
+            for reply in (3, None, True, 'failure'):
+                with self.subTest(side=side, reply=reply):
+                    @contextmanager
+                    def factory(name):
+                        class Rejected(Session):
+                            def input(self, key, action):
+                                if name == side and action == 'release':
+                                    if reply == 'failure':
+                                        raise TimeoutError('key transport closed')
+                                    return reply
+                                return super().input(key, action)
+                        yield Rejected({0: state()}, [], name)
+                    with tempfile.TemporaryDirectory() as directory:
+                        report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                               lambda *_: factory('native'), Path(directory))
+                    self.assertEqual(report['status'], 'blocked')
+                    attempts = report['input_attempts'][side]
+                    self.assertEqual(attempts[0]['status'], 'accepted')
+                    self.assertEqual(attempts[0]['acknowledged_frame'], 0)
+                    self.assertEqual(attempts[1]['frame'], 2)
+                    self.assertEqual(attempts[1]['action'], 'release')
+                    if reply == 'failure':
+                        self.assertEqual(attempts[1]['status'], 'failed')
+                        self.assertEqual(attempts[1]['reason'], 'key transport closed')
+                        self.assertNotIn('acknowledged_frame', attempts[1])
+                    else:
+                        self.assertEqual(attempts[1]['status'], 'rejected')
+                        self.assertIs(attempts[1]['acknowledged_frame'], reply)
+                    if side == 'original':
+                        self.assertEqual(report['input_attempts']['native'], [])
+                    json.dumps(report)
+
     def test_wrong_flag_and_position_produce_named_deltas_at_the_checkpoint(self):
         report = self.run_pair({0: state(), 3: state(5, 1)}, {0: state(), 3: state(9, 0)})
         self.assertEqual(report['status'], 'different')

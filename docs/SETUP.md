@@ -336,6 +336,15 @@ separately as `entry_native_execution`, including when its observation fails.
 This admission compares the backend's normalized observables; it does not
 establish unobserved state or gameplay parity.
 
+The requested `events` tape does not establish which inputs were acknowledged.
+`input_attempts.original` and `input_attempts.native` retain each attempted key,
+action and frame, including partial runs. An `accepted` entry has an integer
+`acknowledged_frame` equal to its requested frame. Wrong, absent or boolean frame
+replies are retained as `rejected`; backend exceptions are retained as `failed`
+with their reason and no fabricated acknowledgement. These are adapter frame
+receipts, not proof of physical input consumption or gameplay outcome. Native
+transport replies remain available separately in `native_execution`.
+
 Native backends using `NativeFrameSession` expose `execution_evidence()`.
 The paired runner copies this into `comparison.json` as `native_execution`,
 including on a rejected step or input acknowledgement. It retains requested

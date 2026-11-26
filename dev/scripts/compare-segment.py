@@ -257,7 +257,7 @@ def validate_snapshot(state, frame):
     return state
 
 
-def record(session, events, checkpoints, initial):
+def record(session, events, checkpoints, initial, input_attempts):
     """Yield each measured checkpoint before sending inputs at that boundary.
 
     The caller retains completed observations immediately, including when a later
@@ -273,8 +273,15 @@ def record(session, events, checkpoints, initial):
                 yield state
         for event in events:
             if event['frame'] == frame:
-                applied = session.input(event['key'], event['action'])
-                if type(applied) is not int or applied != frame:
+                try:
+                    applied = session.input(event['key'], event['action'])
+                except (ValueError, RuntimeError, TimeoutError, OSError) as error:
+                    input_attempts.append(dict(event, status='failed', reason=str(error)))
+                    raise
+                accepted = type(applied) is int and applied == frame
+                input_attempts.append(dict(event, acknowledged_frame=copy.deepcopy(applied),
+                                           status='accepted' if accepted else 'rejected'))
+                if not accepted:
                     raise ValueError(f'input frame missed: requested {frame}, acknowledged {applied}')
 
 
@@ -303,7 +310,8 @@ def admit_replay_entry(session, report, side):
 
 
 def run_pair(segment, original, native, output, native_artifact=None):
-    report = dict(version=1, status='blocked', events=[], checkpoints=[])
+    report = dict(version=1, status='blocked', events=[], checkpoints=[],
+                  input_attempts=dict(original=[], native=[]))
     try:
         if native_artifact is not None:
             report['native_artifact'] = native_artifact.validate()
@@ -332,7 +340,7 @@ def run_pair(segment, original, native, output, native_artifact=None):
         report['original'] = []
         with original(segment, output / 'original') as session:
             initial = admit_replay_entry(session, report, 'original')
-            for observation in record(session, events, checkpoints, initial):
+            for observation in record(session, events, checkpoints, initial, report['input_attempts']['original']):
                 report['original'].append(observation)
         report['native'] = []
         with native(segment, output / 'native', **options) as session:
@@ -340,7 +348,8 @@ def run_pair(segment, original, native, output, native_artifact=None):
                 if native_artifact is not None:
                     native_artifact.check_session(session)
                 initial = admit_replay_entry(session, report, 'native')
-                for expected, measured in zip(report['original'], record(session, events, checkpoints, initial)):
+                for expected, measured in zip(report['original'], record(session, events, checkpoints, initial,
+                                                                        report['input_attempts']['native'])):
                     report['native'].append(measured)
                     fields = semantic_delta(expected, measured)
                     mismatch = any(row['status'] != 'match' for row in fields)
