@@ -1263,6 +1263,10 @@ and command cursors; an animation group alone does not prove collision admission
 defence or damage. Record combat intent/contact flags, playback direction, action,
 motion, defence selector, strength/armor and weapon-admission fields when bound.
 Each stopped-frame tap also reports `events` at consecutive update boundaries:
+Reversal start/end events retain the observed cursor and group when both
+reverse bindings are present. They do not prove a successful defence branch or
+a hit; instruction-bound defence evidence and health changes remain separate.
+
 intent clearing, newly tested contact, defence start and health changes for both
 actors. Each intent/contact event includes the observed command cursor and group.
 Missing combat bindings remain unobserved. A contact-tested mark does not prove

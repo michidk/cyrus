@@ -337,10 +337,11 @@ def wait_for_combat_recovery(session, max_updates):
 
 
 def combat_events(samples):
-    """Report observed intent, contact-mark, defence and health transitions per update.
+    """Report observed intent, contact-mark, defence, reversal and health transitions.
 
     Contact-tested is the combat mark, not proof of a hit. Intent clearing and
     health changes at the same boundary do not by themselves establish causality.
+    Reversal is an observation, not instruction-bound proof of defence contact.
     Missing reader bindings remain unobserved; gaps reject event attribution.
     """
     events = []
@@ -363,6 +364,14 @@ def combat_events(samples):
                         if mask != 2:
                             row.update(cursor=after.get(f'{owner}_command_cursor'), group=after.get(f'{prefix}g'))
                         events.append(row)
+            old_reverse = (before.get(f'{owner}_combat') or {}).get('reverse')
+            new_reverse = (after.get(f'{owner}_combat') or {}).get('reverse')
+            if (old_reverse in (0, 1) and new_reverse in (0, 1)
+                    and old_reverse != new_reverse):
+                transition = 'started' if new_reverse else 'ended'
+                events.append({'frame': after['frame'], 'event': f'{owner}_reverse_{transition}',
+                               'cursor': after.get(f'{owner}_command_cursor'),
+                               'group': after.get(f'{prefix}g')})
             old_health, new_health = before.get(f'{prefix}h'), after.get(f'{prefix}h')
             if old_health is not None and new_health is not None and old_health != new_health:
                 events.append({'frame': after['frame'], 'event': f'{owner}_health_changed',

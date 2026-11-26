@@ -17,6 +17,18 @@ def sample(pg=8, rg=8, rh=250, drawn=1, ph=100):
 
 
 class DriverLogic(unittest.TestCase):
+    def test_reverse_transition_is_observed_without_claiming_contact_or_hit(self):
+        rows = [sample() | {'frame': 10, 'player_combat': {'reverse': 0}},
+                sample() | {'frame': 11, 'player_combat': {'reverse': 1},
+                            'player_command_cursor': 7},
+                sample() | {'frame': 12, 'player_combat': {'reverse': 1}},
+                sample() | {'frame': 13, 'player_combat': {'reverse': 0}}]
+        self.assertEqual(fight.combat_events(rows), [
+            {'frame': 11, 'event': 'player_reverse_started', 'cursor': 7, 'group': 8},
+            {'frame': 13, 'event': 'player_reverse_ended', 'cursor': None, 'group': 8}])
+        self.assertEqual(fight.combat_events([
+            sample() | {'frame': 10}, rows[1]]), [])
+
     def test_query_position_selects_attachment_before_valid_link_and_local(self):
         raw = actor(1, 8, 100) | {"query_spatial": {
             "slave": False, "attached_q8": [1, 2, 3],
