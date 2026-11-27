@@ -3772,6 +3772,12 @@ impl ScriptWorld {
     pub fn actors(&self) -> &[ScriptActor] {
         &self.actors
     }
+    /// Retained game main-loop counter, including its saved continuation.
+    /// Unlike diagnostic ordinary updates, restoring a world does not restart it.
+    pub fn world_loop_frame(&self) -> u32 {
+        self.globals.world_loop_frame
+    }
+
     /// Ordinary updates executed by this world since it was created or restored.
     pub fn ordinary_updates(&self) -> u64 {
         self.ordinary_updates
