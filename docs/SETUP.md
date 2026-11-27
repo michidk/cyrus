@@ -318,6 +318,13 @@ acquisition provenance and execution identity, not reproducible-build attestatio
 or original/native gameplay parity. Existing backends without these options
 retain their diagnostic behavior and do not claim artifact binding.
 
+Paired tapes accept only explicit input steps and empty `{"checkpoint": {}}`
+observation markers. Populated checkpoint expectations from the native route
+runner are rejected before either backend opens. Their flags, inventory, globals,
+health and position assertions are not silently reduced to frame markers. A
+paired `match` compares the two normalized observations; it does not establish
+that a native route's expected outcomes were satisfied.
+
 Before replaying either input tape, the runner opens each backend serially for
 an observation-only entry preflight. Both sessions must start stopped at frame
 zero and expose world, player, actors, flags, prompts, timing and continuations.

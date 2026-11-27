@@ -211,6 +211,13 @@ def input_tape(segment):
             cursor += max(event['after_updates'] for event in batch) + 1
             checkpoints.append(cursor)
         elif set(step) == {'checkpoint'}:
+            expected = step['checkpoint']
+            if not isinstance(expected, dict):
+                raise ValueError(f'step {index}: paired checkpoint must be an object')
+            if expected:
+                fields = ', '.join(expected)
+                raise ValueError(f'step {index}: unsupported paired checkpoint expectations: {fields}; '
+                                 'an empty object marks an observation boundary only')
             checkpoints.append(cursor)
         else:
             raise ValueError(f'step {index}: supply expanded input steps; unsupported {list(step)}')

@@ -17,7 +17,7 @@ spec.loader.exec_module(pair)
 
 SEGMENT = {'steps': [{'input': [{'after_updates': 0, 'key': 'ControlLeft', 'action': 'press'},
                               {'after_updates': 2, 'key': 'ControlLeft', 'action': 'release'}]},
-                     {'checkpoint': {'flags': {'talking': {'value': 1}}}}]}
+                     {'checkpoint': {}}]}
 
 
 class Session:
@@ -189,6 +189,40 @@ class PairTests(unittest.TestCase):
                     if side == 'original':
                         self.assertEqual(report['input_attempts']['native'], [])
                     json.dumps(report)
+
+    def test_unsupported_checkpoint_expectations_cannot_be_silently_accepted(self):
+        for expected in ({'flags': {'talking': {'value': 1}}},
+                         {'health': {'opponent': 0}}, {'position_q8': {'value': [0, 0, 0]}}):
+            with self.subTest(expected=expected):
+                segment = copy.deepcopy(SEGMENT)
+                segment['steps'][-1]['checkpoint'] = expected
+                calls = []
+                @contextmanager
+                def factory(*_):
+                    calls.append('opened')
+                    yield Session({0: state()}, [], 'backend')
+                with tempfile.TemporaryDirectory() as directory:
+                    report = pair.run_pair(segment, factory, factory, Path(directory))
+                self.assertEqual(report['status'], 'blocked', report)
+                self.assertIn('step 1: unsupported paired checkpoint expectations', report['reason'])
+                self.assertIn(next(iter(expected)), report['reason'])
+                self.assertEqual(calls, [])
+
+    def test_malformed_checkpoint_is_rejected_before_backend_launch(self):
+        for expected in (None, [], '', False):
+            with self.subTest(expected=expected):
+                segment = copy.deepcopy(SEGMENT)
+                segment['steps'][-1]['checkpoint'] = expected
+                calls = []
+                @contextmanager
+                def factory(*_):
+                    calls.append('opened')
+                    yield Session({0: state()}, [], 'backend')
+                with tempfile.TemporaryDirectory() as directory:
+                    report = pair.run_pair(segment, factory, factory, Path(directory))
+                self.assertEqual(report['status'], 'blocked', report)
+                self.assertIn('step 1: paired checkpoint must be an object', report['reason'])
+                self.assertEqual(calls, [])
 
     def test_wrong_flag_and_position_produce_named_deltas_at_the_checkpoint(self):
         report = self.run_pair({0: state(), 3: state(5, 1)}, {0: state(), 3: state(9, 0)})
