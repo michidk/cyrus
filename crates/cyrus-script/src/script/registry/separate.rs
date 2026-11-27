@@ -5,6 +5,64 @@ use cyrus_assets::surface::Surface;
 use cyrus_soup::Attribute;
 
 impl ScriptWorld {
+    /// Resolve only an active conversion alias, never retained provenance after Load.
+    pub(super) fn active_separate_native_source(&self) -> Option<usize> {
+        let source = self.globals.separate_native_source.as_ref()?.semantic_actor;
+        (source.generation == self.generation
+            && self.actors.get(source.index).is_some_and(|actor| {
+                actor.control.is_some()
+                    && actor
+                        .placement()
+                        .is_some_and(|placement| placement.object_type.has_separate_record())
+            }))
+        .then_some(source.index)
+    }
+
+    /// Copy the temporary source before its semantic record loses scratch state.
+    /// No interpreter entry is implied: an existing Separate source observes the
+    /// next conversion's contents even when that conversion runs only a hook.
+    pub(super) fn retain_separate_native_source(&mut self, index: usize) {
+        let actor = &self.actors[index];
+        if !actor
+            .placement()
+            .is_some_and(|placement| placement.object_type.has_separate_record())
+        {
+            return;
+        }
+        let Some(runtime) = actor.runtime.as_ref() else {
+            return;
+        };
+        let local = self
+            .spatial
+            .as_ref()
+            .and_then(|spatial| spatial.actor(index).ok())
+            .map(|spatial| super::super::activation::NativeSourcePose {
+                position: spatial.local.position,
+                angles: spatial.local.angles,
+                matrix: spatial.local.matrix.0.map(|row| row.map(f32::to_bits)),
+            });
+        self.globals.separate_native_source =
+            Some(super::super::activation::SeparateNativeSource {
+                semantic_actor: super::ScriptActorId {
+                    generation: self.generation,
+                    index,
+                },
+                world: self.world,
+                name: actor.name().to_owned(),
+                attributes: actor.attributes.clone(),
+                locals: runtime.variables().to_vec(),
+                strings: runtime.shared_program().strings.clone(),
+                position: self
+                    .id(index)
+                    .ok()
+                    .and_then(|id| self.query_position(id).ok()),
+                local,
+                model_position: actor
+                    .model
+                    .position
+                    .map(|position| position.map(f32::to_bits)),
+            });
+    }
     /// Start a shell script from its installed definition, as item use and shell-creating natives do.
     /// The new shell runs from the next update, newest first. Fails when the world has no such script.
     pub fn spawn_shell(&mut self, name: &str) -> Result<ScriptActorId> {
@@ -405,6 +463,7 @@ impl ScriptWorld {
                 self.actors[id.index].maintain_flat(inputs.nominal_ticks.unwrap());
                 Ok(())
             })();
+            self.retain_separate_native_source(id.index);
             let actor = &mut self.actors[id.index];
             // Separate records use temporary lifecycle state, so retain KillMe's terminal
             // result before clearing that state for the next traversal.

@@ -30,6 +30,15 @@ The generated [repository map](../../docs/MAP.md) lists every module. API
 contracts, units and preservation references live in the Rust docs beside
 their definitions.
 
+The native-command source distinguishes ordinary registry actors from shared
+separate-object temporary storage. Separate conversion retains its copied
+attributes, script locals/strings and pose after copy-back and original Load,
+including when the semantic record is absent from the replacement world.
+Ordinary actor references still require explicit replacement bindings. A command
+that needs a persistent registry target rejects a temporary source rather than
+substituting its former record index. Source state before any assigning entry
+remains unavailable. Preservation owns the [temporary storage lifetime](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#separate-map-object-script-state).
+
 Original combat import binds the saved attack and defence selectors to their
 respective host executor owners. Their serialized order differs from the host's
 retained move order; an absent defence selector does not replace a saved attack

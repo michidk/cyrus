@@ -64,6 +64,10 @@ impl GameplayGlobals {
                 .is_none_or(String::is_empty),
             "original load: highlighted menu choice load ownership unsupported"
         );
+        // Ordinary actor sources require a replacement identity. The separate
+        // temporary is a process-wide allocation: Load retains its copied contents
+        // even when its semantic record is absent (preservation SOUP, separate map
+        // object script state). Snapshot validation requires those contents below.
         if let super::NativeSource::Actor { generation, index } = prior.native_source {
             ensure!(
                 actor_bindings

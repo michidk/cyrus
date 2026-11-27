@@ -252,3 +252,61 @@ fn original_globals_reject_same_index_from_another_generation_atomically() -> an
     }
     Ok(())
 }
+
+#[test]
+fn original_globals_retain_separate_storage_without_a_registry_replacement() -> anyhow::Result<()> {
+    let (scripts, mut initialized, _, _) = player_walking_fixture();
+    let mut separate_scripts = cache();
+    separate_scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .strings = vec!["retained scratch".into()];
+    for instance in &mut separate_scripts.instances {
+        instance.object_type = PlacementType::SCRIPT_ONLY;
+        instance.map_position = [600, 20, 600];
+    }
+    separate_scripts.content_id = separate_scripts.content_identity()?;
+    let mut world = ScriptWorld::prepare(&separate_scripts, 71)?;
+    *world.globals_mut() = std::mem::take(initialized.globals_mut());
+    world.update_separate(
+        [600, 600],
+        cyrus_script::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        &mut cyrus_game::random::EngineRandom::default(),
+        &mut |_, _| Ok(()),
+        100,
+    )?;
+    let before = serde_json::to_value(world.globals())?;
+    assert_eq!(before["native_source"], "Separate");
+    assert_eq!(
+        before["separate_native_source"]["strings"][0],
+        "retained scratch"
+    );
+    assert!(
+        before["separate_native_source"]["locals"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    );
+    let (saved, session) = saved_globals()?;
+    let replacement = GameplayGlobals::from_original_load(
+        world.globals(),
+        &saved,
+        &session,
+        &scripts.dialogue,
+        &[],
+        &BTreeMap::new(),
+    )?;
+    let after = serde_json::to_value(&replacement)?;
+    assert_eq!(after["native_source"], before["native_source"]);
+    assert_eq!(
+        after["separate_native_source"],
+        before["separate_native_source"]
+    );
+    assert_eq!(serde_json::to_value(world.globals())?, before);
+    Ok(())
+}

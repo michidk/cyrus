@@ -312,14 +312,14 @@ impl GameHost<'_, '_, '_, '_> {
         // differences, written straight to the receiver's yaw without a matrix refresh.
         if function == Native::PointAt {
             anyhow::ensure!(arguments.is_empty(), "PointAt requires no arguments");
-            let source = self.native_source_actor("PointAt")?.index;
+            let target = self.native_source_model_position("PointAt")?;
             let stored = |index: usize, role: &str| {
                 self.registry.actors[index]
                     .model
                     .position
                     .with_context(|| format!("PointAt: {role} stored model position unavailable"))
             };
-            let (target, own) = (stored(source, "target")?, stored(self.index, "receiver")?);
+            let own = stored(self.index, "receiver")?;
             // Extended-precision differences truncate toward zero; an unrepresentable one converts
             // to the integer-indefinite value.
             let truncate = |axis: usize| {
@@ -349,12 +349,10 @@ impl GameHost<'_, '_, '_, '_> {
         // registered in the changed-actor list.
         if function == Native::MoveAboveMe {
             anyhow::ensure!(arguments.len() == 4, "MoveAboveMe requires four arguments");
-            let source = self.native_source_actor("MoveAboveMe")?;
             anyhow::ensure!(
-                self.registry.actors[source.index].attributes[Attribute::Slave] == 0,
-                "MoveAboveMe world {} actor {}: original diagnostic 137: slave source",
-                self.registry.world,
-                source.index
+                self.native_source_attribute("MoveAboveMe", Attribute::Slave)? == 0,
+                "MoveAboveMe world {}: original diagnostic 137: slave source",
+                self.registry.world
             );
             let offset = [
                 arguments[0].integer()?,
@@ -369,12 +367,10 @@ impl GameHost<'_, '_, '_, '_> {
                 .or(self.registry.standing_height)
                 .context("MoveAboveMe: standing height unavailable")?;
             let rotated = self
-                .registry
-                .spatial(source)?
-                .local
+                .native_source_local("MoveAboveMe")?
                 .matrix
                 .transform(offset)?;
-            let base = self.registry.query_position(source)?;
+            let base = self.native_source_position("MoveAboveMe")?;
             let extent = self.registry.ordinary_collision_shape(id)?.positive_extent[1];
             let mut target: [i32; 3] =
                 std::array::from_fn(|axis| base[axis].wrapping_add(rotated[axis]));

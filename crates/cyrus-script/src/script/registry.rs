@@ -3143,6 +3143,9 @@ impl ScriptWorld {
                 "separate stage requires admitted type-two or type-six scratch state"
             );
         }
+        if matches!(stage, ScriptStage::SeparateMain | ScriptStage::SeparateHook) {
+            self.retain_separate_native_source(index);
+        }
         let nominal_ticks = inputs.nominal_ticks;
         if matches!(
             stage,
@@ -3317,6 +3320,9 @@ impl ScriptWorld {
         };
         host.registry.flags = flags;
         host.registry.actors[index].runtime = Some(runtime);
+        if matches!(stage, ScriptStage::SeparateMain | ScriptStage::SeparateHook) {
+            host.registry.retain_separate_native_source(index);
+        }
         result?;
         if matches!(stage, ScriptStage::OrdinaryMain) {
             self.finish_ordinary_script_response(id, nominal_ticks)?;
@@ -4239,7 +4245,96 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             super::activation::NativeSource::Unknown => {
                 anyhow::bail!("{native}: no interpreter entry has established the native source")
             }
+            super::activation::NativeSource::Separate => {
+                anyhow::bail!(
+                    "{native}: shared separate temporary source has no registry actor identity"
+                )
+            }
         }
+    }
+
+    fn separate_native_source(
+        &self,
+        native: &str,
+    ) -> Result<&super::activation::SeparateNativeSource> {
+        self.registry
+            .globals
+            .separate_native_source
+            .as_ref()
+            .with_context(|| format!("{native}: retained separate native source contents absent"))
+    }
+
+    fn native_source_local(&self, native: &str) -> Result<super::spatial::Pose> {
+        if matches!(
+            self.registry.globals.native_source,
+            super::activation::NativeSource::Separate
+        ) {
+            if let Some(index) = self.registry.active_separate_native_source() {
+                return Ok(self.registry.spatial(self.registry.id(index)?)?.local);
+            }
+            return self
+                .separate_native_source(native)?
+                .local
+                .as_ref()
+                .map(super::activation::NativeSourcePose::pose)
+                .with_context(|| format!("{native}: retained separate source pose unavailable"));
+        }
+        Ok(self
+            .registry
+            .spatial(self.native_source_actor(native)?)?
+            .local)
+    }
+
+    fn native_source_position(&self, native: &str) -> Result<[i32; 3]> {
+        if matches!(
+            self.registry.globals.native_source,
+            super::activation::NativeSource::Separate
+        ) {
+            if let Some(index) = self.registry.active_separate_native_source() {
+                return self.registry.query_position(self.registry.id(index)?);
+            }
+            return self
+                .separate_native_source(native)?
+                .position
+                .with_context(|| {
+                    format!("{native}: retained separate source position unavailable")
+                });
+        }
+        self.registry
+            .query_position(self.native_source_actor(native)?)
+    }
+
+    fn native_source_attribute(&self, native: &str, attribute: Attribute) -> Result<u8> {
+        if matches!(
+            self.registry.globals.native_source,
+            super::activation::NativeSource::Separate
+        ) {
+            if let Some(index) = self.registry.active_separate_native_source() {
+                return Ok(self.registry.actors[index].attributes[attribute]);
+            }
+            return Ok(self.separate_native_source(native)?.attributes[attribute]);
+        }
+        Ok(self.registry.actors[self.native_source_actor(native)?.index].attributes[attribute])
+    }
+
+    fn native_source_model_position(&self, native: &str) -> Result<[f32; 3]> {
+        let position = if matches!(
+            self.registry.globals.native_source,
+            super::activation::NativeSource::Separate
+        ) {
+            if let Some(index) = self.registry.active_separate_native_source() {
+                self.registry.actors[index].model.position
+            } else {
+                self.separate_native_source(native)?
+                    .model_position
+                    .map(|position| position.map(f32::from_bits))
+            }
+        } else {
+            self.registry.actors[self.native_source_actor(native)?.index]
+                .model
+                .position
+        };
+        position.with_context(|| format!("{native}: source stored model position unavailable"))
     }
 
     /// Mask 2 of the flag byte of `WaitLineUp`'s argument actor. An actor without a control
@@ -5843,14 +5938,37 @@ impl Host for GameHost<'_, '_, '_, '_> {
         _: cyrus_soup::CodeOrigin,
         program: std::sync::Arc<cyrus_soup::program::Program>,
     ) {
-        self.registry.globals.native_source = super::activation::NativeSource::Actor {
-            generation: self.generation,
-            index: self.index,
+        self.registry.globals.native_source = if self.registry.actors[self.index]
+            .placement()
+            .is_some_and(|placement| placement.object_type.has_separate_record())
+        {
+            super::activation::NativeSource::Separate
+        } else {
+            super::activation::NativeSource::Actor {
+                generation: self.generation,
+                index: self.index,
+            }
         };
         self.native_source_program = Some(program);
     }
 
     fn native_string_parameter(&mut self, index: u32, _: &[String]) -> Result<String> {
+        if matches!(
+            self.registry.globals.native_source,
+            super::activation::NativeSource::Separate
+        ) {
+            return self
+                .separate_native_source("native string parameter")?
+                .strings
+                .get(index as usize)
+                .cloned()
+                .with_context(|| {
+                    format!(
+                        "world {} actor {}: retained separate source string {index} absent",
+                        self.world, self.index
+                    )
+                });
+        }
         self.native_source_program
             .as_ref()
             .with_context(|| {
