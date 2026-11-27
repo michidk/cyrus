@@ -2,7 +2,7 @@
 //! markers the stand-in and light modules share.
 use super::super::modern_lighting::{CameraHandover, candle, day_night};
 use super::{
-    RayTracing, RayTracingReference, RayTracingSupport, StandIn,
+    RayTracing, RayTracingSupport, StandIn,
     lights::sync_lights,
     proxies::{hide_draws, sync_proxies},
     ray_traced,
@@ -21,10 +21,7 @@ use bevy::{
     pbr::DefaultOpaqueRendererMethod,
     prelude::*,
     render::{RenderApp, render_resource::TextureUsages, renderer::RenderDevice},
-    solari::{
-        pathtracer::{Pathtracer, PathtracingPlugin},
-        prelude::{SolariLighting, SolariPlugins},
-    },
+    solari::prelude::{SolariLighting, SolariPlugins},
 };
 use cyrus_game::fidelity::Fidelity;
 
@@ -35,9 +32,8 @@ pub struct RayTracingPlugin;
 impl Plugin for RayTracingPlugin {
     fn build(&self, app: &mut App) {
         CameraHandover::configure(app);
-        app.add_plugins((SolariPlugins, PathtracingPlugin, super::haze::HazePlugin))
+        app.add_plugins((SolariPlugins, super::haze::HazePlugin))
             .init_resource::<RayTracing>()
-            .init_resource::<RayTracingReference>()
             // Solari makes every opaque material deferred, which would bypass this renderer's
             // forward shaders. Only the traced stand-ins opt in.
             .insert_resource(DefaultOpaqueRendererMethod::forward())
@@ -134,17 +130,15 @@ fn solari_lighting() -> SolariLighting {
     }
 }
 
-/// Gives the camera Solari's real-time lighting, or its path tracer while a reference image is
-/// requested. Re-adds the HDR target and prepasses if another module removed them.
+/// Gives the camera Solari's real-time lighting. Re-adds the HDR target and prepasses if another
+/// module removed them.
 #[allow(clippy::type_complexity)] // Bevy query filters.
 pub(super) fn configure_camera(
     mut commands: Commands,
-    reference: Res<RayTracingReference>,
     cameras: Query<
         (
             Entity,
             Has<SolariLighting>,
-            Has<Pathtracer>,
             Has<DeferredPrepass>,
             Has<DepthPrepass>,
             Has<MotionVectorPrepass>,
@@ -154,26 +148,14 @@ pub(super) fn configure_camera(
         With<ViewCamera>,
     >,
 ) {
-    for (camera, lighting, pathtracer, deferred, depth, motion, hdr, tonemapping) in &cameras {
+    for (camera, lighting, deferred, depth, motion, hdr, tonemapping) in &cameras {
         let mut camera = commands.entity(camera);
-        // `Msaa::Off` is already set at spawn. Both renderers write the main texture as storage.
+        // `Msaa::Off` is already set at spawn. Solari writes the main texture as storage.
         // The lights are calibrated so a fully lit surface shows its texture colour, as the raster
         // modern lighting is, so tonemapping stays off.
-        let usages = CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING);
-        if reference.0 {
-            if lighting {
-                camera.remove::<SolariLighting>();
-            }
-            if !pathtracer {
-                camera.insert((Pathtracer { reset: true }, usages));
-            }
-        } else {
-            if pathtracer {
-                camera.remove::<Pathtracer>();
-            }
-            if !lighting {
-                camera.insert((solari_lighting(), usages));
-            }
+        if !lighting {
+            let usages = CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING);
+            camera.insert((solari_lighting(), usages));
         }
         if !(deferred && depth && motion && hdr) {
             camera.insert((DeferredPrepass, DepthPrepass, MotionVectorPrepass, Hdr));
@@ -216,13 +198,7 @@ pub(super) fn reset_on_cut(
 #[allow(clippy::type_complexity)] // Bevy query filters.
 pub(super) fn leave_tracing(
     mut commands: Commands,
-    cameras: Query<
-        Entity,
-        (
-            With<ViewCamera>,
-            Or<(With<SolariLighting>, With<Pathtracer>)>,
-        ),
-    >,
+    cameras: Query<Entity, (With<ViewCamera>, With<SolariLighting>)>,
     owned: Query<Entity, Or<(With<StandIn>, With<Light>)>>,
     hidden: Query<(Entity, &Hidden)>,
 ) {
@@ -231,7 +207,6 @@ pub(super) fn leave_tracing(
             .entity(camera)
             .remove::<(
                 SolariLighting,
-                Pathtracer,
                 CameraMainTextureUsages,
                 Hdr,
                 DeferredPrepass,

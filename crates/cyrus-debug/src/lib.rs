@@ -13,7 +13,7 @@ use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 use cyrus_render::camera::DetachedView;
-use cyrus_render::fog::{RayTracing, RayTracingReference, RayTracingSupport, RenderDistance};
+use cyrus_render::fog::{RayTracing, RayTracingSupport, RenderDistance};
 use cyrus_script::player::Player;
 
 mod day_night;
@@ -130,7 +130,6 @@ fn debug_menu(
     mut fidelity: ResMut<Fidelity>,
     mut distance: ResMut<RenderDistance>,
     ray_tracing: Option<ResMut<RayTracing>>,
-    reference: Option<ResMut<RayTracingReference>>,
     mut transfers: ResMut<cyrus_game::cheats::CheatTransfer>,
     player: Query<&Transform, With<Player>>,
 ) -> Result {
@@ -250,7 +249,7 @@ fn debug_menu(
             Area::Lighting,
             "Lighting (Modern: shadows, PBR)",
         );
-        ray_tracing_control(ui, &fidelity, ray_tracing, reference);
+        ray_tracing_control(ui, &fidelity, ray_tracing);
         fidelity_control(
             ui,
             &mut fidelity,
@@ -363,7 +362,6 @@ fn ray_tracing_control(
     ui: &mut egui::Ui,
     fidelity: &Fidelity,
     ray_tracing: Option<ResMut<RayTracing>>,
-    reference: Option<ResMut<RayTracingReference>>,
 ) {
     let Some(mut ray_tracing) = ray_tracing else {
         return;
@@ -386,19 +384,6 @@ fn ray_tracing_control(
         );
         if let Some(reason) = unavailable.as_deref() {
             response.on_disabled_hover_text(reason);
-        }
-        // The reference only replaces the real-time tracer, so it needs ray tracing to be on.
-        let tracing = unavailable.is_none() && ray_tracing.enabled;
-        if let Some(mut reference) = reference {
-            ui.indent("ray_tracing_reference", |ui| {
-                ui.add_enabled(
-                    tracing,
-                    egui::Checkbox::new(
-                        &mut reference.0,
-                        "Path-traced reference (slow, converges while still)",
-                    ),
-                );
-            });
         }
     });
 }

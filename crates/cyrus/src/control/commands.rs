@@ -171,7 +171,6 @@ impl From<&Command> for CommandGroup {
             | Command::Teleport { .. }
             | Command::Flycam { .. }
             | Command::RayTracing { .. }
-            | Command::RayTracingReference { .. }
             | Command::SetFidelity { .. }
             | Command::SetDayNight { .. }
             | Command::SetModernEffect { .. }
