@@ -95,6 +95,14 @@ recorded per-update BIOS intervals for the measurement/smoothing continuation;
 omitting them uses simulated BIOS timing and establishes only a diagnostic scale
 replay. Equal movement scales alone do not prove matching clock continuations.
 
+`original-frame-session.py`'s `OwnerReferenceObserver` correlates an observed
+retained owner token with a semantic census across world replacement. It records
+an absent owner separately from a reassigned source or changed identity at the
+same token. Census absence does not prove deallocation or continued lifetime;
+observe allocation/removal separately. A matching actor slot in another world
+does not establish owner identity, and absent owners are never dereferenced by
+this correlation helper.
+
 For original per-update recordings, run
 `python3 dev/scripts/original-update-recorder.py --backend <local-backend.py> --elapsed <clock-units>`.
 The Linux x86-64 backend `dev/scripts/original-update-watchpoint.py` uses

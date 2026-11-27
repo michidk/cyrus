@@ -6,6 +6,8 @@ No polling, interpolation or OS-key acknowledgement establishes acceptance here.
 """
 
 
+import copy
+
 from original_acquisition import OriginalAcquisition, RandomWriteHistory
 
 
@@ -228,3 +230,49 @@ class ActorObserver:
                 raise ValueError(f"observed actor {identifier} identity changed in world {world}")
             observed.append(dict(actor, in_update_list=pointer in members))
         return observed
+
+
+class OwnerReferenceObserver:
+    """Correlate a retained reference with an observed owner census across loads.
+
+    Tokens are opaque allocation identities supplied by the executable binding,
+    not actor indices. Each census entry supplies token and semantic identity.
+    Missing census membership establishes neither deallocation nor continued
+    lifetime. This observer never dereferences an absent owner or maps it by slot.
+    """
+
+    def __init__(self):
+        self.source = None
+        self.owner = None
+
+    def observe(self, world, source, owners):
+        if type(world) is not int or type(source) is not int or source < 0:
+            raise ValueError('owner reference requires observed world and nonnegative source token')
+        census = {}
+        for owner in owners:
+            if (not isinstance(owner, dict) or type(owner.get('token')) is not int
+                    or owner['token'] <= 0 or not isinstance(owner.get('identity'), dict)
+                    or not owner['identity']):
+                raise ValueError('owner census requires token and semantic identity')
+            if owner['token'] in census:
+                raise ValueError('duplicate owner token in census')
+            census[owner['token']] = dict(world=world, identity=copy.deepcopy(owner['identity']))
+        current = census.get(source)
+        previous = copy.deepcopy(self.owner)
+        if source == 0:
+            status = 'null'
+        elif current is None:
+            status = 'unlisted'
+        elif self.source not in (None, 0, source):
+            status = 'reassigned'
+        elif previous is not None and current != previous:
+            status = 'identity_changed'
+        else:
+            status = 'listed'
+        if source != self.source:
+            self.owner = None
+        if current is not None:
+            self.owner = copy.deepcopy(current)
+        self.source = source
+        return dict(status=status, source=source, previous=previous,
+                    current=copy.deepcopy(current), allocation_lifetime='unobserved')

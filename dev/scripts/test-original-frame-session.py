@@ -444,5 +444,40 @@ class WriteObservationTests(unittest.TestCase):
         self.assertTrue(session.stopped)
 
 
+class OwnerReferenceTests(unittest.TestCase):
+    def owner(self, token, name='WATER', kind='map-script', slot=24):
+        return dict(token=token, identity=dict(kind=kind, name=name, slot=slot))
+
+    def test_departed_owner_is_retained_as_evidence_without_dereference_or_slot_mapping(self):
+        observer = adapter.OwnerReferenceObserver()
+        before = observer.observe(0, 10, [self.owner(10)])
+        self.assertEqual(before['status'], 'listed')
+        after = observer.observe(30, 10, [self.owner(20, 'SCAFFOLD')])
+        self.assertEqual(after['status'], 'unlisted')
+        self.assertEqual(after['previous']['world'], 0)
+        self.assertEqual(after['previous']['identity']['name'], 'WATER')
+        self.assertIsNone(after['current'])
+        self.assertEqual(after['allocation_lifetime'], 'unobserved')
+
+    def test_reused_token_and_source_reassignment_are_distinct(self):
+        observer = adapter.OwnerReferenceObserver()
+        observer.observe(0, 10, [self.owner(10)])
+        reused = observer.observe(30, 10, [self.owner(10, 'SCAFFOLD')])
+        self.assertEqual(reused['status'], 'identity_changed')
+        self.assertEqual(reused['previous']['identity']['name'], 'WATER')
+        changed = observer.observe(30, 20, [self.owner(20, 'OTHER')])
+        self.assertEqual(changed['status'], 'reassigned')
+        self.assertEqual(changed['current']['identity']['name'], 'OTHER')
+
+    def test_missing_duplicate_and_null_references_are_explicit(self):
+        observer = adapter.OwnerReferenceObserver()
+        self.assertEqual(observer.observe(0, 0, [])['status'], 'null')
+        self.assertEqual(observer.observe(0, 10, [])['status'], 'unlisted')
+        with self.assertRaisesRegex(ValueError, 'duplicate'):
+            observer.observe(0, 10, [self.owner(10), self.owner(10)])
+        with self.assertRaises(ValueError):
+            observer.observe(0, True, [])
+
+
 if __name__ == '__main__':
     unittest.main()
