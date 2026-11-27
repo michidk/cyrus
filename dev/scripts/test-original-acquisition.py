@@ -125,6 +125,44 @@ class AcquisitionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 acquisition.require_native_admission()
 
+    def test_real_native_adapter_requires_independently_observed_entry(self):
+        pair = load('compare-segment')
+        acquisition = self.bind()
+        baseline = self.native(acquisition)
+        observations = baseline.acquisition['observations']
+        class Control:
+            def __init__(self, entry):
+                self.entry, self.update = entry, 0
+            def request(self, command):
+                if command['type'] == 'state':
+                    row = observations[self.update]
+                    return {'scripts': {'ordinary_updates': self.update, 'world': row['world'], 'failed': 0},
+                            'random_state': row['random_state'], 'clock': copy.deepcopy(row['clock']),
+                            'entry': copy.deepcopy(self.entry)}
+                if command['type'] == 'scripts':
+                    return {'actors': [], 'total': 0}
+                if command['type'] == 'replay_frame':
+                    self.update += 1
+                    return {}
+                raise AssertionError(command)
+        measured = {'route': 'retail_introduction', 'scene': 'START', 'world': 0, 'marker': 0}
+        for entry in (measured, None, dict(measured, route='skipped_introduction'),
+                      dict(measured, marker=1), dict(measured, world=30), dict(measured, scene='ISLAND')):
+            with self.subTest(entry=entry):
+                control = Control(entry)
+                session = pair.NativeFrameSession(control, lambda *_: {}, expected_initial_update=0,
+                    frame_scales=baseline.execution['frame_scales'], bios_ticks=baseline.execution['bios_ticks'])
+                session.launcher = self.artifact
+                session.advance_to(2)
+                if entry == measured:
+                    proof = acquisition.admit_native(session)
+                    self.assertEqual(proof['acquisition']['entry'], measured)
+                else:
+                    with self.assertRaises(ValueError):
+                        acquisition.admit_native(session)
+                    with self.assertRaises(ValueError):
+                        acquisition.require_native_admission()
+
     def test_bound_handoff_exposes_measured_inputs_and_natural_rng_expectations(self):
         acquisition = self.bind()
         self.assertIs(self.module.next_bios_input, recorder.next_bios_input)

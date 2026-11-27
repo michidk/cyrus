@@ -613,6 +613,49 @@ class NativeControl:
 
 
 class NativeFrames(unittest.TestCase):
+    def test_entry_provenance_is_observed_once_and_copied(self):
+        control = NativeControl()
+        control.update = 0
+        request = control.request
+        entry = {'route': 'retail_introduction', 'scene': 'START', 'world': 0, 'marker': 0}
+        def observed(command):
+            value = request(command)
+            if command['type'] == 'state':
+                value['entry'] = copy.deepcopy(entry)
+            return value
+        control.request = observed
+        session = pair.NativeFrameSession(control, lambda *_: {}, expected_initial_update=0)
+        self.assertEqual(session.acquisition_evidence()['entry'], entry)
+        entry['route'] = 'skipped_introduction'
+        session.advance_to(1)
+        retained = session.acquisition_evidence()
+        self.assertEqual(retained['entry']['route'], 'retail_introduction')
+        retained['entry']['marker'] = 99
+        self.assertEqual(session.acquisition_evidence()['entry']['marker'], 0)
+        self.assertEqual(retained['observations'][-1]['entry']['route'], 'skipped_introduction')
+
+    def test_torn_entry_provenance_rejects_before_replay(self):
+        control = NativeControl()
+        request = control.request
+        reads = 0
+        def torn(command):
+            nonlocal reads
+            value = request(command)
+            if command['type'] == 'state':
+                reads += 1
+                value['entry'] = {'marker': reads}
+            return value
+        control.request = torn
+        with self.assertRaisesRegex(RuntimeError, 'entry provenance changed'):
+            pair.NativeFrameSession(control, lambda *_: {})
+        self.assertEqual(control.scales, [])
+
+    def test_missing_entry_is_not_invented_from_expected_initial_update(self):
+        control = NativeControl()
+        control.update = 0
+        session = pair.NativeFrameSession(control, lambda *_: {}, expected_initial_update=0)
+        self.assertIsNone(session.acquisition_evidence()['entry'])
+
     def test_acquisition_rejects_uncontrolled_bootstrap_instead_of_rebasing_it_to_zero(self):
         control = NativeControl()
         for invalid in (True, -1, 0.5):

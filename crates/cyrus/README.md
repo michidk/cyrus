@@ -338,3 +338,5 @@ Geometry must be selected before sample admission. Shared servicing consumes
 source data and publishes completion without replacing script or sample state.
 This acquisition path requires actual callback/admission ordering; elapsed frame
 host time alone does not establish digital mixer phase.
+
+Control `state.entry` publishes observed New Game route provenance only with a ready presentation and matching fresh live script world and marker. It resolves the installed WORLD.INI map label independently of numeric request aliases and excludes restored registries. Direct scene controls clear it. The paired native adapter retains the initial entry independently of original expected values and includes later entry observations with its absolute RNG/clock history; missing provenance remains unavailable.

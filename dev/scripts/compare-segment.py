@@ -139,6 +139,8 @@ class NativeFrameSession:
             raise RuntimeError('native simulation advanced outside an explicit frame step')
         if state.get('clock') != after.get('clock'):
             raise RuntimeError('native clock changed outside an explicit frame step')
+        if state.get('entry') != after.get('entry'):
+            raise RuntimeError('native entry provenance changed during observation-only read')
         if after['scripts']['failed']:
             raise RuntimeError(f'native script failures: {after["scripts"]}')
         if len(scripts['actors']) != scripts['total']:
@@ -163,6 +165,7 @@ class NativeFrameSession:
             'world': state['scripts'].get('world'),
             'random_state': state.get('random_state'),
             'clock': state.get('clock'), 'startup': state.get('startup'),
+            'entry': state.get('entry'),
         })
 
     def acquisition_evidence(self):
@@ -170,6 +173,7 @@ class NativeFrameSession:
         return copy.deepcopy({
             'expected_initial_update': self.expected_initial_update,
             'initial_update': self.origin, 'observations': self.acquisition_observations,
+            'entry': self.acquisition_observations[0]['entry'],
         })
 
     def execution_evidence(self):

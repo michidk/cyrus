@@ -35,6 +35,9 @@ sparse-range or fault-injection sources can wrap it where appropriate.
 | [ini_patch](src/ini_patch.rs), [script_patch](src/script_patch.rs), [text_patch](src/text_patch.rs) | Mod-declared changes applied during preparation |
 | [software_sky](src/software_sky.rs) | Software sky previews for the viewer |
 
+Retail New Game uses world zero and marker zero, independently of the configured startup
+destination, and reads that world's transition artwork from WORLD.INI.
+
 `docs/MAP.md` lists every module. HUD font styles retain the installed colour scale
 and independent main/shadow alpha; legacy alpha-only records retain full colour.
 

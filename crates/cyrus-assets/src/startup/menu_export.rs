@@ -41,21 +41,19 @@ pub(crate) fn prepare_menu(
     let ini_bytes = read("MENU.INI")?;
     let world_bytes = read("WORLD.INI")?;
     let world_text = std::str::from_utf8(&world_bytes).context("menu: WORLD.INI is not UTF-8")?;
-    let new_game =
-        rgpre::import::world_ini::NewGameEntry::parse(world_text).map_err(anyhow::Error::msg)?;
+    // Retail New Game loads world zero at marker zero (preservation engine/menu.md).
+    // WORLD.INI start_world/start_marker configure a separate startup destination.
+    let world = 0;
     ensure!(
         rgpre::import::world_ini::WorldIni::parse(world_text)
             .entries
             .iter()
-            .any(|entry| entry.index == new_game.world),
-        "menu: WORLD.INI start_world {} has no map/palette entry",
-        new_game.world
+            .any(|entry| entry.index == world),
+        "menu: WORLD.INI New Game world {world} has no map/palette entry"
     );
-    let flash_name = new_game
-        .flash_filename
-        .as_deref()
-        .context("menu: WORLD.INI new-game transition artwork is missing")?;
-    let flash_bytes = read(flash_name)?;
+    let flash_name = rgpre::import::world_ini::transition_artwork(world_text, world)
+        .context("menu: WORLD.INI New Game world 0 transition artwork is missing")?;
+    let flash_bytes = read(&flash_name)?;
     let decoded = parse_gxa_file(&flash_bytes)
         .with_context(|| format!("menu: transition artwork {flash_name}"))?;
     ensure!(
@@ -312,8 +310,8 @@ pub(crate) fn prepare_menu(
         version: crate::menu::MENU_VERSION,
         clock,
         new_game: crate::menu::NewGameEntry {
-            world: new_game.world,
-            marker: new_game.marker,
+            world,
+            marker: 0,
             loading: decoded
                 .frames
                 .iter()

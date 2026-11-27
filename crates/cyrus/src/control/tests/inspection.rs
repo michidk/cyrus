@@ -289,3 +289,121 @@ fn public_player_trace_rejects_world_retirement_and_conflicting_placement() {
     assert!(error.contains("world retired"));
     assert!(error.contains("observations:"));
 }
+
+fn entry_app() -> (App, tempfile::TempDir) {
+    let mut app = script_app();
+    app.insert_state(cyrus_game::AppState::InGame);
+    app.insert_resource(cyrus_startup::NewGameEntry {
+        route: cyrus_startup::NewGameRoute::RetailIntroduction,
+        world: 17,
+        marker: 3,
+    });
+    app.insert_resource(cyrus_script::script::ScriptStatus::Loaded {
+        world: 17,
+        content_id: String::new(),
+        programs: 1,
+        instances: 1,
+        prepared: 1,
+        waiting: 0,
+        failed: 0,
+        unsupported: 0,
+        actor_flats: 0,
+        ordinary_updates: 0,
+        restored: false,
+        examples: Default::default(),
+    });
+    app.insert_resource(cyrus_script::player::placement::MarkerEntry {
+        marker: 3,
+        heading: 1024,
+    });
+    // The actual New Game loader retains a numeric scene request alias.
+    app.world_mut().resource_mut::<CurrentScene>().name = "17".into();
+    app.world_mut().resource_mut::<CurrentScene>().world = Some(17);
+    let animations = app
+        .world()
+        .resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .animations
+        .clone();
+    app.insert_resource(cyrus_render::ReadyScene(animations));
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("WORLD.INI"),
+        "world_map[17]=MAPS\\contract.rgm\nworld_palette[17]=FXART\\contract.col\n",
+    )
+    .unwrap();
+    app.insert_resource(cyrus_assets::install::GameInstall {
+        root: directory.path().into(),
+    });
+    (app, directory)
+}
+
+fn read_entry(app: &mut App) -> serde_json::Value {
+    run_commands(app, vec![Command::State]).remove(0)["entry"].clone()
+}
+
+#[test]
+fn public_entry_provenance_survives_book_cleanup_and_requires_ready_matching_world_and_marker() {
+    let (mut app, _directory) = entry_app();
+    assert!(!app.world().contains_resource::<cyrus_startup::MenuState>());
+    assert_eq!(
+        read_entry(&mut app),
+        json!({"route":"retail_introduction", "world":17,
+        "marker":3, "scene":"CONTRACT"})
+    );
+    let ready = app
+        .world_mut()
+        .remove_resource::<cyrus_render::ReadyScene>()
+        .unwrap();
+    assert!(
+        read_entry(&mut app).is_null(),
+        "unprepared presentation is not entry evidence"
+    );
+    app.insert_resource(ready);
+    let install = app
+        .world_mut()
+        .remove_resource::<cyrus_assets::install::GameInstall>()
+        .unwrap();
+    assert!(
+        read_entry(&mut app).is_null(),
+        "missing installed map identity cannot establish provenance"
+    );
+    app.insert_resource(install);
+    let retired = app
+        .world_mut()
+        .resource_mut::<cyrus_script::script::ScriptActors>()
+        .current
+        .take();
+    assert!(
+        read_entry(&mut app).is_null(),
+        "cached loaded status cannot replace a live registry"
+    );
+    app.world_mut()
+        .resource_mut::<cyrus_script::script::ScriptActors>()
+        .current = retired;
+    app.world_mut()
+        .resource_mut::<cyrus_script::player::placement::MarkerEntry>()
+        .marker = 2;
+    assert!(read_entry(&mut app).is_null());
+    app.world_mut()
+        .resource_mut::<cyrus_script::player::placement::MarkerEntry>()
+        .marker = 3;
+    app.world_mut()
+        .resource_mut::<cyrus_startup::NewGameEntry>()
+        .world = 18;
+    assert!(read_entry(&mut app).is_null());
+}
+
+#[test]
+fn direct_same_world_entry_cannot_inherit_retail_provenance() {
+    let (mut app, _directory) = entry_app();
+    assert!(!read_entry(&mut app).is_null());
+    run_commands(&mut app, vec![Command::LoadScene { name: "17".into() }]);
+    assert!(
+        !app.world()
+            .contains_resource::<cyrus_startup::NewGameEntry>()
+    );
+    assert!(
+        read_entry(&mut app).is_null(),
+        "direct same-world entry must not inherit retail provenance"
+    );
+}
