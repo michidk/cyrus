@@ -549,8 +549,9 @@ impl ScriptWorld {
         self.start_player_key_jump(id, query, inputs, timing, sounds)
     }
 
-    /// The controller's direct jump entry and the arbitration fallback share this entry.
-    /// The directional dispatch may replace its movement helper before arbitration runs.
+    /// Jump-key arbitration uses the zero-argument Jump rows, including the armed standing jump.
+    /// The parameterized ordinary jump entry remains owned by the deferred jump window.
+    /// See preservation's player.md#jump-key-arbitration and #script-jump.
     fn start_player_key_jump(
         &mut self,
         id: super::ScriptActorId,
@@ -585,8 +586,16 @@ impl ScriptWorld {
                 .context("jump arbitration needs the step's fine-tick increment")?,
             frame_scale: Some(timing.frame_scale),
         };
-        self.begin_player_jump(id, query, environment, ledge_timing, 8, sounds)?;
-        Ok(())
+        self.begin_script_jump(
+            id,
+            Some(super::LocomotionGeometry {
+                ground: query,
+                environment,
+            }),
+            environment,
+            ledge_timing,
+            sounds,
+        )
     }
 
     /// The controller in the ledge states. The jump key drops a hanging player through the hang
