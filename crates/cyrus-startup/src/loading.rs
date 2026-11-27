@@ -92,6 +92,7 @@ struct ArtworkAssets<'w, 's> {
 #[derive(bevy::ecs::system::SystemParam)]
 struct WorldRequests<'w> {
     inspection: Option<Res<'w, super::WorldLoadRequest>>,
+    saved: Option<Res<'w, super::SavedWorldLoadRequest>>,
     reload: Option<Res<'w, cyrus_world::lifecycle::ReloadScene>>,
     scene: Option<Res<'w, cyrus_world::lifecycle::SceneRequest>>,
 }
@@ -115,17 +116,22 @@ fn begin_requested_world(
     let (assets, menus, mut images) = assets;
     let WorldRequests {
         inspection,
+        saved,
         reload,
         scene,
     } = requests;
-    let scripted = reload.is_some() && inspection.is_none();
-    let request = inspection.as_ref().map(|request| &request.0).or_else(|| {
-        if scripted {
-            scene.as_ref().map(|scene| &scene.0)
-        } else {
-            None
-        }
-    });
+    let scripted = reload.is_some() && inspection.is_none() && saved.is_none();
+    let saved_world = saved.as_ref().map(|saved| saved.world.to_string());
+    let request = saved_world
+        .as_ref()
+        .or_else(|| inspection.as_ref().map(|request| &request.0))
+        .or_else(|| {
+            if scripted {
+                scene.as_ref().map(|scene| &scene.0)
+            } else {
+                None
+            }
+        });
     let Some(request) = request else { return };
     if !matches!(state.get(), AppState::InGame | AppState::Menu) {
         return;
@@ -141,14 +147,17 @@ fn begin_requested_world(
             error!("{message}");
             commands.insert_resource(SceneLoadError(message));
             commands.remove_resource::<super::WorldLoadRequest>();
+            commands.remove_resource::<super::SavedWorldLoadRequest>();
             commands.remove_resource::<cyrus_world::lifecycle::ReloadScene>();
             // Re-enter the loader on the next explicit request after cache repair.
             startup.menu = Handle::default();
         }
         return;
     };
-    let (world, pictures) = if *request == book.new_game.world.to_string() {
-        (book.new_game.world, &book.new_game.loading)
+    let (world, pictures) = if let Some(saved) = saved.as_ref() {
+        (saved.world, std::slice::from_ref(&saved.screen))
+    } else if *request == book.new_game.world.to_string() {
+        (book.new_game.world, book.new_game.loading.as_slice())
     } else {
         if artwork
             .pending
@@ -213,7 +222,7 @@ fn begin_requested_world(
             }
             return;
         };
-        (artwork.world, &artwork.pictures)
+        (artwork.world, artwork.pictures.as_slice())
     };
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.clone()));
     commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
@@ -221,6 +230,7 @@ fn begin_requested_world(
         commands.insert_resource(cyrus_script::player::placement::MarkerEntry::default());
     }
     commands.remove_resource::<super::WorldLoadRequest>();
+    commands.remove_resource::<super::SavedWorldLoadRequest>();
     commands.remove_resource::<cyrus_game::PauseBookEntry>();
     commands.remove_resource::<cyrus_script::PausedGameplay>();
     super::menu::begin_world_loading(
@@ -228,8 +238,11 @@ fn begin_requested_world(
         &mut images,
         &mut next,
         book,
-        world,
-        pictures,
+        if saved.is_some() {
+            super::menu::WorldLoadingBackground::Saved(&pictures[0])
+        } else {
+            super::menu::WorldLoadingBackground::Artwork { world, pictures }
+        },
         &mut random,
     );
 }
@@ -682,43 +695,49 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
-        world_entry_recreates_player(false, 0, None, false, false);
+        world_entry_recreates_player(false, 0, None, false, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_from_paused_book_recreates_the_retained_player() {
-        world_entry_recreates_player(true, 0, None, false, false);
+        world_entry_recreates_player(true, 0, None, false, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn destination_world_entry_presents_its_configured_artwork() {
-        world_entry_recreates_player(false, 2, None, false, false);
+        world_entry_recreates_player(false, 2, None, false, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_loading_artwork() {
-        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork), false, false);
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork), false, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_book_asset() {
-        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu), false, false);
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu), false, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn script_world_request_presents_artwork_and_preserves_entry() {
-        world_entry_recreates_player(false, 5, None, true, false);
+        world_entry_recreates_player(false, 5, None, true, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn single_frame_world_entry_preserves_engine_random() {
-        world_entry_recreates_player(false, 0, None, false, true);
+        world_entry_recreates_player(false, 0, None, false, true, false);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn saved_world_entry_uses_saved_screen_without_artwork_or_random_draw() {
+        world_entry_recreates_player(true, 30, None, false, false, true);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -728,6 +747,7 @@ mod tests {
         repair: Option<MissingAsset>,
         scripted: bool,
         single_frame: bool,
+        saved: bool,
     ) {
         use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
@@ -775,7 +795,7 @@ mod tests {
         } else {
             serde_json::to_vec(&destination_artwork).unwrap()
         };
-        if repair != Some(MissingAsset::Artwork) {
+        if repair != Some(MissingAsset::Artwork) && !saved {
             directory.insert_asset(
                 std::path::Path::new(&artwork_path),
                 serde_json::to_vec(&destination_artwork).unwrap(),
@@ -836,7 +856,20 @@ mod tests {
             marker: 9,
             heading: 512,
         });
-        if scripted {
+        let saved_pixels = vec![73; 640 * 480 * 4];
+        if saved {
+            app.insert_resource(
+                super::super::SavedWorldLoadRequest::new(
+                    destination,
+                    cyrus_assets::menu::MenuPicture {
+                        width: 640,
+                        height: 480,
+                        rgba: saved_pixels.clone(),
+                    },
+                )
+                .unwrap(),
+            );
+        } else if scripted {
             let mut commands = app.world_mut().commands();
             cyrus_script::script::request_world(&mut commands, [destination as i32, 9, 2560])
                 .unwrap();
@@ -874,7 +907,7 @@ mod tests {
             640 * 480 * 4
         );
         let mut expected_random = cyrus_game::random::EngineRandom::default();
-        let frame = if artwork.len() == 1 {
+        let frame = if saved || artwork.len() == 1 {
             0
         } else {
             expected_random.rnd(artwork.len() as i32).unwrap() as usize
@@ -884,15 +917,19 @@ mod tests {
                 .resource::<cyrus_game::random::EngineRandom>()
                 .state(),
             expected_random.state(),
-            "loading artwork consumes one shared draw for multiple frames and none for a single frame"
+            "save restoration never selects destination artwork; ordinary multi-frame artwork uses one draw"
         );
         assert_eq!(
             app.world().resource::<StartGame>().background,
-            artwork[frame]
+            if saved {
+                saved_pixels
+            } else {
+                artwork[frame].clone()
+            }
         );
         assert_eq!(
             app.world().resource::<StartGame>().artwork_world(),
-            Some(destination)
+            if saved { None } else { Some(destination) }
         );
         if destination != 0 {
             assert!(!new_game_artwork.contains(&app.world().resource::<StartGame>().background));

@@ -76,11 +76,40 @@ impl StartupPresentation {
 #[derive(Resource)]
 pub struct WorldLoadRequest(pub String);
 
+/// Save restoration uses the saved screen, never randomized destination artwork.
+/// Hosts must decode the save's screen before requesting any world replacement.
+#[derive(Resource)]
+pub struct SavedWorldLoadRequest {
+    pub(crate) world: u32,
+    pub(crate) screen: cyrus_assets::menu::MenuPicture,
+}
+
+impl SavedWorldLoadRequest {
+    /// Require the original full-screen dimensions and complete RGBA pixels.
+    pub fn new(world: u32, screen: cyrus_assets::menu::MenuPicture) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            screen.width == 640 && screen.height == 480 && screen.rgba.len() == 640 * 480 * 4,
+            "world {world} saved loading screen must contain 640 by 480 RGBA pixels"
+        );
+        Ok(Self { world, screen })
+    }
+
+    /// Saved WORLD.INI identity, independent of the departing world.
+    pub fn world(&self) -> u32 {
+        self.world
+    }
+
+    /// Validated full-screen pixels retained for this request.
+    pub fn screen(&self) -> &cyrus_assets::menu::MenuPicture {
+        &self.screen
+    }
+}
+
 /// A world entry waits on the loading screen before entering its world.
 #[derive(Resource, Default)]
 pub struct StartGame {
     artwork_world: Option<u32>,
-    /// Menu entry uses installed transition artwork; direct inspections use the title.
+    /// World entry uses installed transition artwork or a saved screen.
     image: Handle<Image>,
     background: Vec<u8>,
     font: cyrus_text::Font,
@@ -91,7 +120,7 @@ pub struct StartGame {
 }
 
 impl StartGame {
-    /// WORLD.INI destination supplying the selected artwork; absent for direct title inspections.
+    /// WORLD.INI destination supplying artwork; absent for saved screens and startup titles.
     pub fn artwork_world(&self) -> Option<u32> {
         self.artwork_world
     }

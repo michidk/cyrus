@@ -127,3 +127,10 @@ World-loading fades composite the black rectangle in encoded framebuffer channel
 Loading fades and inventory composition share `cyrus_assets::framebuffer::blend` for encoded integer destination reconstruction and storage.
 
 Examine models use the shared integer texture filter and ordered RGB565 storage, as the logbook scrolls do.
+
+Original-save world preparation uses `SavedWorldLoadRequest` with the save’s validated
+640 by 480 screen. It bypasses destination artwork loading and random selection.
+Ordinary inspection, New Game and script-requested world entry retain their artwork
+selection behavior. The renderer still reopens the destination sky and selects its
+direction, including when the installed sky matches the departing world, following
+[preservation’s Load and sky lifetime rules](https://michidk.github.io/redguard-preservation/engine/startup.html#world-loading-screen).
