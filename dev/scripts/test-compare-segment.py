@@ -191,8 +191,8 @@ class PairTests(unittest.TestCase):
                     json.dumps(report)
 
     def test_unsupported_checkpoint_expectations_cannot_be_silently_accepted(self):
-        for expected in ({'flags': {'talking': {'value': 1}}},
-                         {'health': {'opponent': 0}}, {'position_q8': {'value': [0, 0, 0]}}):
+        for expected in ({'expression': 'health < 10'}, {'fight': {'target_health': 0}},
+                         {'position_q8': {'value': [0, 0, 0], 'tolerance': 1, 'unknown': 0}}):
             with self.subTest(expected=expected):
                 segment = copy.deepcopy(SEGMENT)
                 segment['steps'][-1]['checkpoint'] = expected
@@ -204,7 +204,8 @@ class PairTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     report = pair.run_pair(segment, factory, factory, Path(directory))
                 self.assertEqual(report['status'], 'blocked', report)
-                self.assertIn('step 1: unsupported paired checkpoint expectations', report['reason'])
+                self.assertIn('step 1:', report['reason'])
+                self.assertIn('unsupported', report['reason'])
                 self.assertIn(next(iter(expected)), report['reason'])
                 self.assertEqual(calls, [])
 
@@ -319,6 +320,140 @@ class PairTests(unittest.TestCase):
     def test_unexpanded_steering_is_rejected_instead_of_comparing_different_inputs(self):
         with self.assertRaisesRegex(ValueError, 'expanded input'):
             pair.input_tape({'steps': [{'steer': {'position_q8': [1, 2, 3]}}]})
+
+
+class OutcomeTests(unittest.TestCase):
+    def compare(self, expected, original=None, native=None, initial=None):
+        initial = state() if initial is None else initial
+        original = state() if original is None else original
+        native = copy.deepcopy(original) if native is None else native
+        segment = copy.deepcopy(SEGMENT)
+        segment['steps'][-1]['checkpoint'] = expected
+        segment['steps'].append({'input': [{'after_updates': 0, 'key': 'ArrowDown', 'action': 'press'}]})
+        self.calls = []
+        @contextmanager
+        def factory(name, final):
+            self.calls.append(('open', name))
+            yield Session({0: initial, 3: final}, self.calls, name)
+        with tempfile.TemporaryDirectory() as directory:
+            return pair.run_pair(segment, lambda *_: factory('original', original),
+                                 lambda *_: factory('native', native), Path(directory))
+
+    def test_route_checkpoint_evaluates_world_flags_inventory_globals_health_and_full_pose(self):
+        final = state(x=5)
+        final.update(flags={'talking': {'value': 1, 'latched': False}},
+                     globals={'lockout': 0}, inventory={'1': 1, '79': 1})
+        expected = dict(world=20, flags={'talking': {'value': 1}}, globals={'lockout': 0},
+                        inventory={'79': 1}, health=100,
+                        position_q8={'value': [5, -16384, 587520], 'tolerance': 1})
+        report = self.compare(expected, final)
+        self.assertEqual(report['status'], 'match', report)
+        self.assertEqual({row['side'] for row in report['outcomes']}, {'original', 'native'})
+        self.assertTrue(all(field['status'] == 'match' for row in report['outcomes'] for field in row['fields']))
+
+    def test_two_equally_wrong_flags_fail_outcomes_before_later_input(self):
+        final = state()
+        final['flags'] = {'talking': {'value': 0}}
+        report = self.compare({'flags': {'talking': {'value': 1}}}, final)
+        self.assertEqual(report['status'], 'different')
+        self.assertIn('original frame 3', report['reason'])
+        field = report['outcomes'][-1]['fields'][0]
+        self.assertEqual((field['field'], field['expected'], field['actual']), ('flags.talking.value', 1, 0))
+        self.assertNotIn(('original', 3, 'ArrowDown', 'press'), self.calls)
+        self.assertFalse(any(row[0] == 'native' for row in self.calls))
+
+    def test_native_outcome_is_checked_independently_and_stops_before_later_input(self):
+        report = self.compare({'health': 100}, state(), dict(state(), player=dict(state()['player'], health=90)))
+        self.assertEqual(report['status'], 'different')
+        self.assertIn('native frame 3', report['reason'])
+        self.assertEqual([row['side'] for row in report['outcomes']], ['original', 'native'])
+        self.assertNotIn(('native', 3, 'ArrowDown', 'press'), self.calls)
+
+    def test_retreat_pose_tolerance_includes_height_and_boundary_is_inclusive(self):
+        expected = {'position_q8': {'value': [5, -16384, 587520], 'tolerance': 5}}
+        final = state(5)
+        final['player']['position_q8'][1] += 5
+        self.assertEqual(self.compare(expected, final)['status'], 'match')
+        final['player']['position_q8'][1] += 1
+        report = self.compare(expected, final)
+        self.assertEqual(report['status'], 'different')
+        self.assertEqual(report['outcomes'][-1]['fields'][0]['distance_q8'], 6)
+
+    def test_hit_target_requires_observed_health_loss_and_player_survival(self):
+        expected = {'opponent': 'FAVIS', 'target_health': 90}
+        hit = state()
+        hit['actors']['FAVIS']['health'] = 90
+        self.assertEqual(self.compare(expected, hit)['status'], 'match')
+        for initial, final in ((state(), state()), (hit, hit),
+                               (state(), dict(hit, player=dict(hit['player'], health=0)))):
+            with self.subTest(initial=initial['actors'], final=final['player']['health']):
+                report = self.compare(expected, final, initial=initial)
+                self.assertEqual(report['status'], 'different')
+                self.assertTrue(any(row['status'] == 'different' for row in report['outcomes'][-1]['fields']))
+
+    def test_missing_measured_assertion_fields_are_unavailable_and_do_not_pass(self):
+        for expected in ({'inventory': {'79': 1}}, {'globals': {'lockout': 0}},
+                         {'opponent': 'MISSING', 'target_health': 0}):
+            with self.subTest(expected=expected):
+                report = self.compare(expected)
+                self.assertEqual(report['status'], 'blocked')
+                self.assertIn('unavailable', {row['status'] for row in report['outcomes'][-1]['fields']})
+
+    def test_malformed_supported_assertions_reject_before_any_backend_opens(self):
+        for expected in ({'world': True}, {'health': {'opponent': 0}}, {'flags': {}},
+                         {'flags': {'talking': {'value': True}}}, {'globals': {'lockout': None}},
+                         {'inventory': {'79': False}}, {'position_q8': {'value': [0, 0]}},
+                         {'position_q8': {'value': [0, 0, 0], 'tolerance': float('nan')}},
+                         {'position_q8': {'value': [0, 0, 0], 'tolerance': -1}},
+                         {'opponent': 'FAVIS'}, {'target_health': 90},
+                         {'opponent': '', 'target_health': 90}):
+            with self.subTest(expected=expected):
+                report = self.compare(expected)
+                self.assertEqual(report['status'], 'blocked')
+                self.assertIn('step 1:', report['reason'])
+                self.assertEqual(self.calls, [])
+
+    def test_frame_zero_and_multiple_assertions_at_one_boundary_are_all_checked(self):
+        segment = copy.deepcopy(SEGMENT)
+        segment['steps'].insert(0, {'checkpoint': {'world': 20}})
+        segment['steps'] += [{'checkpoint': {'health': 100}}, {'checkpoint': {'world': 21}}]
+        calls = []
+        @contextmanager
+        def backend(*_):
+            calls.append('open')
+            yield Session({0: state()}, calls, 'original')
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(segment, backend, backend, Path(directory))
+        self.assertEqual(report['status'], 'different', report)
+        self.assertEqual([(row['frame'], row['step']) for row in report['outcomes']],
+                         [(0, 0), (3, 3), (3, 4)])
+        self.assertEqual(report['outcomes'][-1]['fields'][0]['actual'], 20)
+        self.assertEqual(calls.count('open'), 3)  # Two preflights, then original replay.
+
+    def test_invalid_measurement_types_are_unavailable_instead_of_coerced(self):
+        for expected, section, key, bad in (
+                ({'health': 1}, 'player', 'health', True),
+                ({'position_q8': {'value': [0, 0, 0], 'tolerance': 5}},
+                 'player', 'position_q8', [False, 0, 0]),
+                ({'flags': {'talking': {'value': 1}}}, 'flags', 'talking', 1),
+                ({'flags': {'talking': {'latched': False}}}, 'flags', 'talking', {'latched': 0})):
+            with self.subTest(expected=expected):
+                final = state()
+                final[section][key] = bad
+                report = self.compare(expected, final)
+                self.assertEqual(report['status'], 'blocked', report)
+                self.assertEqual(report['outcomes'][-1]['fields'][0]['status'], 'unavailable')
+
+    def test_missing_initial_opponent_health_cannot_establish_damage(self):
+        initial, final = state(), state()
+        del initial['actors']['FAVIS']['health']
+        final['actors']['FAVIS']['health'] = 90
+        report = self.compare({'opponent': 'FAVIS', 'target_health': 90}, final, initial=initial)
+        self.assertEqual(report['status'], 'blocked', report)
+        field = next(row for row in report['outcomes'][-1]['fields']
+                     if row['field'].endswith('health_decreased'))
+        self.assertEqual(field['status'], 'unavailable')
+        self.assertIsNone(field['initial_health'])
 
 
 class NativeControl:

@@ -14,6 +14,7 @@ import copy
 import hashlib
 import re
 from harness import exclusive_lock
+from paired_outcomes import validate_checkpoint, evaluate_checkpoint
 import importlib.util
 import json
 import subprocess
@@ -193,7 +194,7 @@ class NativeFrameSession:
 
 def input_tape(segment):
     """Compile input-only replay steps; never silently discard steering or dialogue decisions."""
-    events, checkpoints, cursor = [], [0], 0
+    events, checkpoints, assertions, cursor = [], [0], [], 0
     for index, step in enumerate(segment['steps']):
         if set(step) == {'input'}:
             batch = step['input']
@@ -212,18 +213,18 @@ def input_tape(segment):
             checkpoints.append(cursor)
         elif set(step) == {'checkpoint'}:
             expected = step['checkpoint']
-            if not isinstance(expected, dict):
-                raise ValueError(f'step {index}: paired checkpoint must be an object')
+            try:
+                validate_checkpoint(expected)
+            except ValueError as error:
+                raise ValueError(f'step {index}: {error}') from error
             if expected:
-                fields = ', '.join(expected)
-                raise ValueError(f'step {index}: unsupported paired checkpoint expectations: {fields}; '
-                                 'an empty object marks an observation boundary only')
+                assertions.append(dict(frame=cursor, step=index, expected=copy.deepcopy(expected)))
             checkpoints.append(cursor)
         else:
             raise ValueError(f'step {index}: supply expanded input steps; unsupported {list(step)}')
     if not events:
         raise ValueError('segment has no key input')
-    return sorted(events, key=lambda event: event['frame']), sorted(set(checkpoints))
+    return sorted(events, key=lambda event: event['frame']), sorted(set(checkpoints)), assertions
 
 
 def delta(original, native, path=''):
@@ -316,13 +317,31 @@ def admit_replay_entry(session, report, side):
     return measured
 
 
+def check_outcomes(report, assertions, side, measured):
+    """Check this side before the recorder resumes and sends later inputs."""
+    for assertion in assertions:
+        if assertion['frame'] != measured['frame']:
+            continue
+        fields = evaluate_checkpoint(assertion['expected'], measured, report['replay_entry'][side])
+        report['outcomes'].append(dict(side=side, frame=measured['frame'],
+                                       step=assertion['step'], fields=fields))
+        failed = [row for row in fields if row['status'] != 'match']
+        if failed:
+            report['status'] = ('blocked' if any(row['status'] == 'unavailable' for row in failed)
+                                else 'different')
+            report['reason'] = (f"{side} frame {measured['frame']} step {assertion['step']}: "
+                                f"checkpoint {failed[0]['field']} {failed[0]['status']}")
+            return False
+    return True
+
+
 def run_pair(segment, original, native, output, native_artifact=None):
-    report = dict(version=1, status='blocked', events=[], checkpoints=[],
+    report = dict(version=1, status='blocked', events=[], checkpoints=[], outcomes=[],
                   input_attempts=dict(original=[], native=[]))
     try:
         if native_artifact is not None:
             report['native_artifact'] = native_artifact.validate()
-        events, checkpoints = input_tape(segment)
+        events, checkpoints, assertions = input_tape(segment)
         report['events'] = events
         (output / 'original').mkdir(parents=True, exist_ok=True)
         (output / 'native').mkdir(parents=True, exist_ok=True)
@@ -349,6 +368,8 @@ def run_pair(segment, original, native, output, native_artifact=None):
             initial = admit_replay_entry(session, report, 'original')
             for observation in record(session, events, checkpoints, initial, report['input_attempts']['original']):
                 report['original'].append(observation)
+                if not check_outcomes(report, assertions, 'original', observation):
+                    return report
         report['native'] = []
         with native(segment, output / 'native', **options) as session:
             try:
@@ -358,6 +379,8 @@ def run_pair(segment, original, native, output, native_artifact=None):
                 for expected, measured in zip(report['original'], record(session, events, checkpoints, initial,
                                                                         report['input_attempts']['native'])):
                     report['native'].append(measured)
+                    if not check_outcomes(report, assertions, 'native', measured):
+                        return report
                     fields = semantic_delta(expected, measured)
                     mismatch = any(row['status'] != 'match' for row in fields)
                     if mismatch and measured['frame'] == 0:

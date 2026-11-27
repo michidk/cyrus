@@ -318,12 +318,30 @@ acquisition provenance and execution identity, not reproducible-build attestatio
 or original/native gameplay parity. Existing backends without these options
 retain their diagnostic behavior and do not claim artifact binding.
 
-Paired tapes accept only explicit input steps and empty `{"checkpoint": {}}`
-observation markers. Populated checkpoint expectations from the native route
-runner are rejected before either backend opens. Their flags, inventory, globals,
-health and position assertions are not silently reduced to frame markers. A
-paired `match` compares the two normalized observations; it does not establish
-that a native route's expected outcomes were satisfied.
+Paired tapes accept explicit input steps and `{"checkpoint": {}}` observation
+markers. Populated checkpoints support the route runner's integer `world` and
+player `health`, partial `flags` rows (`value` integer and/or `latched` boolean),
+integer `globals` and `inventory` maps, and `position_q8` with a three-integer
+`value` and finite nonnegative `tolerance`. Position tolerance is inclusive and
+uses Euclidean distance across all three coordinates. Flags retain their named
+row shape; globals and inventory require explicit normalized snapshot fields.
+Missing measurements block acceptance rather than supplying default values.
+
+A paired hit checkpoint can specify `opponent` and `target_health` together. It
+requires that named actor's observed health to reach or fall below the target,
+decrease from that backend's replay-entry health, and leave the player alive.
+An animation or input acknowledgement alone cannot satisfy it. This checks an
+observed outcome; it does not establish which input caused the damage.
+
+Each backend is checked independently against these expected outcomes before
+later inputs, as well as compared with the other backend. The report retains
+per-side `outcomes` with frame, source step, expected and actual values. A known
+wrong value reports `different`; an absent or invalid measurement reports
+`blocked`. Unsupported fields, malformed assertions and unexpanded setup,
+steering or fight directives are rejected before either backend opens. Expand
+such actions into an explicit input tape first. Empty markers impose no expected
+outcome. Passing a synthetic driver contract does not establish live gameplay
+parity.
 
 Before replaying either input tape, the runner opens each backend serially for
 an observation-only entry preflight. Both sessions must start stopped at frame
