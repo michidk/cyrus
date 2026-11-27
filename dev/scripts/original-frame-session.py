@@ -157,11 +157,13 @@ class FrameSession:
         raise TimeoutError(f'world {target_world} not reached within {max_updates} updates')
 
     def input(self, key, action):
+        """Retain acknowledged key state at the stopped frame before advancing."""
         before = self._frame(self.current)
         raw = self.boundary.latch_key(key, action)
         if self._frame(raw) != before:
             raise ValueError('original frame changed during key acknowledgement')
         self.current = raw
+        self.emit(raw)
         return before - self.origin
 
 

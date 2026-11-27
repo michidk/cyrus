@@ -152,10 +152,24 @@ class FrameTests(unittest.TestCase):
         self.assertEqual(session.input('ControlLeft', 'press'), 0)
         session.advance_to(3)
         self.assertEqual(session.input('ControlLeft', 'release'), 3)
-        self.assertEqual([row['frame'] for row in rows], [80, 81, 82, 83])
+        self.assertEqual([row['frame'] for row in rows], [80, 80, 81, 82, 83, 83])
+        self.assertEqual([rows[index]['keys']['ControlLeft'] for index in (0, 1, -1)],
+                         [0, 1, 0])
         self.assertEqual(session.snapshot(), dict(frame=3, player={'health': 100}))
         self.assertLess(boundary.calls.index(('key', 80, 'ControlLeft', 'press')),
                         boundary.calls.index(('read', 81)))
+
+    def test_failed_input_evidence_retention_does_not_resume_game(self):
+        boundary = Boundary()
+        session = self.session(boundary)
+        def reject(raw):
+            raise OSError('evidence sink unavailable')
+        session.emit = reject
+        with self.assertRaisesRegex(OSError, 'evidence sink'):
+            session.input('ControlLeft', 'press')
+        self.assertEqual(boundary.raw['frame'], 80)
+        self.assertEqual(session.current['keys']['ControlLeft'], 1)
+        self.assertNotIn(('read', 81), boundary.calls)
 
     def test_skipped_duplicate_or_reset_frame_is_rejected_without_interpolation(self):
         for stride in (2, 0, -1):
