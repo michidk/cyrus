@@ -11,6 +11,7 @@ Original executable bindings belong in an ignored backend, never this script.
 """
 import argparse
 import copy
+from contextlib import ExitStack, contextmanager
 import hashlib
 import re
 from harness import exclusive_lock
@@ -37,6 +38,7 @@ class NativeArtifact:
         self.receipt_path, self.head, self.tree = Path(receipt), head, tree
         self.processes = []
         self.identity = None
+        self._leased_executable = None
 
     @staticmethod
     def digest(path):
@@ -60,18 +62,50 @@ class NativeArtifact:
             raise ValueError('native artifact workflow head differs from requested source')
         if receipt['checkout_tree'] != self.tree:
             raise ValueError('native artifact checkout tree differs from requested source')
-        if self.digest(self.executable) != receipt['executable_sha256']:
+        if self._leased_executable is None:
+            executable_digest = self.digest(self.executable)
+        else:
+            self._leased_executable.seek(0)
+            executable_digest = hashlib.file_digest(self._leased_executable, 'sha256').hexdigest()
+        if executable_digest != receipt['executable_sha256']:
             raise ValueError('native executable differs from artifact receipt')
         if self.identity is not None and receipt != self.identity:
             raise ValueError('native artifact receipt changed during comparison')
         self.identity = receipt.copy()
         return dict(receipt, executable=str(self.executable))
 
+    @contextmanager
+    def lease(self):
+        """Pin verified Linux executable bytes across sequential acceptance runs.
+
+        The caller owns this lifetime separately from per-run locks. An open
+        inode survives pathname removal; launches use that descriptor rather
+        than silently rebuilding or switching sources. Receipt changes and
+        byte changes still reject. Closing the lease releases only our handle.
+        """
+        if self._leased_executable is not None:
+            raise ValueError('native executable lease already active')
+        self.validate()
+        with self.executable.open('rb') as executable:
+            if not Path('/proc/self/fd').is_dir():
+                raise ValueError('native executable lease requires Linux descriptor execution')
+            self._leased_executable = executable
+            try:
+                self.validate()
+                yield self
+            finally:
+                self._leased_executable = None
+
     def launch(self, arguments, **options):
         self.validate()
         if options.get('shell') or 'executable' in options:
             raise ValueError('native artifact launcher cannot override the executable')
-        process = subprocess.Popen([str(self.executable), *arguments], **options)
+        executable = str(self.executable)
+        if self._leased_executable is not None:
+            descriptor = self._leased_executable.fileno()
+            executable = f'/proc/self/fd/{descriptor}'
+            options['pass_fds'] = tuple(set(options.get('pass_fds', ())) | {descriptor})
+        process = subprocess.Popen([executable, *arguments], **options)
         self.processes.append(process)
         return process
 
@@ -102,7 +136,7 @@ class NativeFrameSession:
     """
 
     def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None,
-                 expected_initial_update=None, host_nanos=None):
+                 expected_initial_update=None, host_nanos=None, cached_bios_samples=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
         self.frame_scales = None if frame_scales is None else tuple(frame_scales)
         if self.frame_scales is not None and any(type(scale) is not int or not 0 <= scale <= 2**32 - 1 for scale in self.frame_scales):
@@ -121,11 +155,19 @@ class NativeFrameSession:
                 self.frame_scales is None or len(self.host_nanos) != len(self.frame_scales)
                 or any(type(nanos) is not int or not 0 <= nanos <= 2**64 - 1 for nanos in self.host_nanos)):
             raise ValueError('recorded host time requires one unsigned nanosecond interval per clock scale')
+        self.cached_bios_samples = None if cached_bios_samples is None else tuple(cached_bios_samples)
+        if self.cached_bios_samples is not None and (
+                self.frame_scales is None or not self.frame_scales
+                or len(self.cached_bios_samples) != len(self.frame_scales) + 1
+                or any(type(sample) is not int or not 0 <= sample < 2**32
+                       for sample in self.cached_bios_samples)):
+            raise ValueError('cached BIOS phase requires an unsigned entry sample and one per body')
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
         if expected_initial_update is not None and self.origin != expected_initial_update:
             raise ValueError(f'native acquisition expected initial update {expected_initial_update}, '
                              f'observed {self.origin}; bootstrap timing was not controlled')
+        self._check_bios_phase(0)
         self.acquisition_observations = [self._acquisition_observation()]
         self.clock_observations = []
         self.input_observations = []
@@ -148,16 +190,29 @@ class NativeFrameSession:
             raise RuntimeError('native comparison actor read was truncated')
         return after, scripts
 
+    def _check_bios_phase(self, frame):
+        if self.cached_bios_samples is None:
+            return
+        actual = self.current[0].get('clock', {}).get('bios_sample')
+        expected = self.cached_bios_samples[frame]
+        if type(actual) is not int or not 0 <= actual < 2**32:
+            raise RuntimeError(f'native cached BIOS sample unavailable at frame {frame}')
+        if actual != expected:
+            raise RuntimeError(f'native cached BIOS phase at frame {frame}: observed {actual}, expected {expected}')
+
     def _clock_observation(self, elapsed_scale):
         continuation = self.current[0].get('clock', {}).get('continuation')
         if not isinstance(continuation, dict):
             raise RuntimeError('recorded native clock continuation unavailable')
         return dict(frame=self.current[0]['scripts']['ordinary_updates'] - self.origin,
-                    elapsed_scale=elapsed_scale, continuation=copy.deepcopy(continuation))
+                    elapsed_scale=elapsed_scale, continuation=copy.deepcopy(continuation),
+                    cached_bios_sample=self.current[0].get('clock', {}).get('bios_sample'))
 
     def snapshot(self):
         state, scripts = self.current
-        return dict(self.project(state, scripts), frame=state['scripts']['ordinary_updates'] - self.origin)
+        frame = state['scripts']['ordinary_updates'] - self.origin
+        self._check_bios_phase(frame)
+        return dict(self.project(state, scripts), frame=frame)
 
     def _acquisition_observation(self):
         state = self.current[0]
@@ -182,6 +237,7 @@ class NativeFrameSession:
         return copy.deepcopy(dict(
             frame_scales=None if self.frame_scales is None else list(self.frame_scales),
             bios_ticks=None if self.bios_ticks is None else list(self.bios_ticks),
+            cached_bios_samples=None if self.cached_bios_samples is None else list(self.cached_bios_samples),
             host_nanos=None if self.host_nanos is None else list(self.host_nanos),
             clocks=self.clock_observations, inputs=self.input_observations))
 
@@ -232,6 +288,7 @@ class NativeFrameSession:
                 self.clock_observations.append(observation)
                 if consumed != self.frame_scales[current]:
                     raise RuntimeError(f'native consumed clock scale {consumed}, requested {self.frame_scales[current]}')
+            self._check_bios_phase(observed)
             current = observed
 
 
@@ -456,11 +513,13 @@ class RestorationPhases:
 def run_pair(segment, original, native, output, native_artifact=None, restoration_history=None):
     report = dict(version=1, status='blocked', events=[], checkpoints=[], outcomes=[],
                   input_attempts=dict(original=[], native=[]))
+    resources = ExitStack()
     try:
         phases = None if restoration_history is None else RestorationPhases(restoration_history)
         if phases is not None:
             report['restoration_history'] = copy.deepcopy(restoration_history)
         if native_artifact is not None:
+            resources.enter_context(native_artifact.lease())
             report['native_artifact'] = native_artifact.validate()
         events, checkpoints, assertions = input_tape(segment)
         report['events'] = events
@@ -537,6 +596,8 @@ def run_pair(segment, original, native, output, native_artifact=None, restoratio
         report['status'] = 'match'
     except (ValueError, RuntimeError, TimeoutError, OSError) as error:
         report['reason'] = str(error)
+    finally:
+        resources.close()
     return report
 
 

@@ -69,6 +69,17 @@ allocation index, distance, action, RNG state and independent divisors from loca
 stopped bindings. A tracee read establishes use; an endpoint alone does not.
 Compare the wrapping pacing sum and signed remainders before attributing an
 animation difference to selection logic.
+Native stopped replay can require `cached_bios_samples`, containing the observed
+entry sample followed by one absolute sample per completed body. The adapter
+requires `state.clock.bios_sample` at that exact phase; absent or differing
+samples reject before projecting outcomes or sending the next input. Effective
+BIOS deltas never substitute for these observations. The native observer and
+absolute-origin control must be available before this gate can pass.
+
+Verified paired execution leases the executable inode across entry, separate
+first-body and combat runs. The lease survives removal of the installed path,
+uses the verified bytes for each Linux launch, and releases its handle at the
+end. Each game run still owns its own lock and process lifetime.
 If a helper-only prediction disagrees with the recording, trace the remaining
 update before implementing or tuning constants to fit the endpoint.
 

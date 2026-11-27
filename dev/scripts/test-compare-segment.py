@@ -5,6 +5,7 @@ import copy
 import importlib.util
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 import tempfile
@@ -777,6 +778,44 @@ class NativeControl:
 
 
 class NativeFrames(unittest.TestCase):
+    def test_absolute_bios_phase_rejects_equal_delta_before_projection(self):
+        control = NativeControl()
+        original = control.request
+        sample, increment = [100], [2]
+        def request(command):
+            if command['type'] == 'replay_frame': sample[0] += increment[0]
+            result = original(command)
+            if command['type'] == 'state': result['clock']['bios_sample'] = sample[0]
+            return result
+        control.request = request
+        session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[256],
+                                           bios_ticks=[1], cached_bios_samples=[100, 101])
+        with self.assertRaisesRegex(RuntimeError, 'cached BIOS phase'):
+            session.advance_to(1)
+        self.assertEqual(control.bios_ticks, [1])
+        with self.assertRaisesRegex(RuntimeError, 'cached BIOS phase'): session.snapshot()
+        sample[0], increment[0], control.update = 100, 1, 0
+        positive = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[256],
+                                           bios_ticks=[1], cached_bios_samples=[100, 101])
+        positive.advance_to(1)
+        self.assertEqual(positive.snapshot()['frame'], 1)
+        self.assertEqual(positive.execution_evidence()['cached_bios_samples'], [100, 101])
+        # Same elapsed delta at another absolute origin has a different pacing remainder.
+        sample[0] = 101
+        with self.assertRaisesRegex(RuntimeError, 'cached BIOS phase'):
+            pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[256],
+                                    bios_ticks=[1], cached_bios_samples=[100, 101])
+        self.assertNotEqual((100 + 3) % 13, (101 + 3) % 13)
+
+    def test_absolute_bios_requires_complete_observed_phase(self):
+        for tape in ([1], [1, True], [-1, 0]):
+            with self.assertRaises(ValueError):
+                pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[256],
+                                        cached_bios_samples=tape)
+        with self.assertRaisesRegex(RuntimeError, 'sample unavailable'):
+            pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[256],
+                                    cached_bios_samples=[100, 101])
+
     def test_entry_provenance_is_observed_once_and_copied(self):
         control = NativeControl()
         control.update = 0
@@ -1111,6 +1150,22 @@ class VerifiedArtifact(unittest.TestCase):
         self.assertEqual(report['native_artifact']['checkout_tree'], self.tree)
         self.assertEqual(report['native_artifact']['executable_sha256'], self.digest(self.binary))
 
+    def test_pair_retains_executable_when_original_backend_removes_path(self):
+        import shutil
+        self.binary = self.root / 'retained-python'
+        shutil.copy2(sys.executable, self.binary)
+        original = self.original
+        @contextmanager
+        def removing_original(*arguments):
+            self.binary.unlink(missing_ok=True)
+            with original(*arguments) as session:
+                yield session
+        report = pair.run_pair(SEGMENT, removing_original, self.native, self.root,
+                               native_artifact=self.artifact())
+        self.assertEqual(report['status'], 'match', report)
+        self.assertEqual(self.calls, ['original', 'native', 'original', 'native'])
+        self.assertFalse(self.binary.exists())
+
     def test_head_tree_or_bytes_mismatch_prevents_both_backends(self):
         for field in ['commit', 'checkout_tree', 'executable_sha256']:
             original = self.receipt[field]
@@ -1129,6 +1184,21 @@ class VerifiedArtifact(unittest.TestCase):
         self.assertEqual(report['status'], 'blocked')
         self.assertEqual(self.calls, [])
         self.assertIn('checkout', report['reason'])
+
+    def test_lease_survives_unlink_for_multiple_real_launches_and_releases(self):
+        import shutil
+        self.binary = self.root / 'retained-python'
+        shutil.copy2(sys.executable, self.binary)
+        artifact = self.artifact()
+        with artifact.lease():
+            self.binary.unlink()
+            for _ in range(2):
+                process = artifact.launch(['-c', 'print("retained")'], stdout=subprocess.PIPE)
+                self.assertEqual(process.communicate(timeout=5)[0], b'retained\n')
+                self.assertEqual(process.returncode, 0)
+            with self.assertRaisesRegex(ValueError, 'already active'):
+                with artifact.lease(): pass
+        with self.assertRaises(FileNotFoundError): artifact.launch(['--version'])
 
     def test_replaced_binary_is_rejected_again_at_launch(self):
         self.binary = self.root / 'cyrus'
