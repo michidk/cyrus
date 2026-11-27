@@ -511,3 +511,37 @@ fn separate_source_retains_attributes_after_copy_back_and_reuses_shared_storage(
     );
     Ok(())
 }
+
+#[test]
+fn separate_temporary_conversion_starts_with_a_cleared_orientation_matrix() -> anyhow::Result<()> {
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = PlacementType::SCRIPT_ONLY;
+        instance.map_position = [600, 20, 600];
+    }
+    scripts.content_id = scripts.content_identity()?;
+    let mut ordinary = ScriptWorld::prepare(&cache(), 80)?;
+    ordinary.prepare_spatial()?;
+    assert_eq!(
+        ordinary.spatial(ordinary.id(0)?)?.local.matrix.0,
+        cyrus_world::transform::Matrix::IDENTITY.0
+    );
+    let mut world = ScriptWorld::prepare(&scripts, 81)?;
+    world.prepare_spatial()?;
+    assert_eq!(world.spatial(world.id(0)?)?.local.matrix.0, [[0.0; 3]; 3]);
+    for _ in 0..2 {
+        world.update_separate(
+            [600, 600],
+            cyrus_script::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )?;
+        assert_eq!(world.spatial(world.id(0)?)?.local.matrix.0, [[0.0; 3]; 3]);
+    }
+    Ok(())
+}

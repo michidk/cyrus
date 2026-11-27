@@ -52,6 +52,7 @@ fn flag() -> Operation {
 fn scripts(operations: Vec<Operation>) -> Scripts {
     let actor = |name: &str, operations: Vec<Operation>| Actor {
         header_index: 0,
+        pool_offsets: None,
         code_origin: 0,
         instances: 1,
         namespace: Some(name.into()),

@@ -7,6 +7,77 @@ use rgpre::import::savegame::{SaveGameplayGlobals, SaveSessionGlobals};
 use std::collections::BTreeMap;
 
 impl GameplayGlobals {
+    /// Refresh retained instance references against replacement process pools.
+    /// The temporary record survives Load; its offsets do not snapshot the pools.
+    /// Validate every range before changing the unpublished global owner.
+    pub fn resolve_original_source_pools(
+        &mut self,
+        locals: &rgpre::import::savegame::SaveScriptLocals,
+        scripts: &cyrus_assets::script::Scripts,
+    ) -> Result<()> {
+        let Some(source) = self.separate_native_source.as_ref() else {
+            return Ok(());
+        };
+        let context = format!(
+            "world {} retained separate source {} from world {}",
+            scripts.world, source.name, source.world
+        );
+        let mut replacement = source.clone();
+        if !source.locals.is_empty() {
+            let offset = source
+                .pool_offsets
+                .and_then(|p| p.locals)
+                .with_context(|| format!("{context}: variable pool offset unavailable"))?;
+            replacement.locals = locals
+                .bind_offset(offset, source.locals.len())
+                .with_context(|| format!("{context}: current variable pool"))?
+                .iter()
+                .copied()
+                .map(cyrus_soup::ScriptValue::Integer)
+                .collect();
+        }
+        if !source.strings.is_empty() {
+            let base = source
+                .pool_offsets
+                .and_then(|p| p.strings)
+                .with_context(|| format!("{context}: string pool offset unavailable"))?;
+            let mut strings = BTreeMap::new();
+            for actor in scripts.actors.values() {
+                let Some(start) = actor.pool_offsets.and_then(|p| p.strings) else {
+                    continue;
+                };
+                for (index, value) in actor.program.strings.iter().enumerate() {
+                    let offset = u32::try_from(index)
+                        .ok()
+                        .and_then(|i| i.checked_mul(4))
+                        .and_then(|i| start.checked_add(i))
+                        .with_context(|| format!("{context}: string pool range overflow"))?;
+                    if let Some(previous) = strings.insert(offset, value) {
+                        ensure!(
+                            previous == value,
+                            "{context}: conflicting current string pool entry {offset}"
+                        );
+                    }
+                }
+            }
+            replacement.strings = (0..source.strings.len())
+                .map(|index| {
+                    let offset = u32::try_from(index)
+                        .ok()
+                        .and_then(|i| i.checked_mul(4))
+                        .and_then(|i| base.checked_add(i))
+                        .with_context(|| {
+                            format!("{context}: retained string pool range overflow")
+                        })?;
+                    strings.get(&offset).map(|s| (*s).clone()).with_context(|| {
+                        format!("{context}: current string pool entry {offset} unavailable")
+                    })
+                })
+                .collect::<Result<_>>()?;
+        }
+        self.separate_native_source = Some(replacement);
+        Ok(())
+    }
     /// Prepare an unpublished original-load global owner from an established session.
     ///
     /// Saved words and verified load resets replace their prior values. Unsaved

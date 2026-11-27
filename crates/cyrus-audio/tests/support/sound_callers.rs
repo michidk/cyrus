@@ -130,6 +130,7 @@ pub fn separate_sound_scripts(shells: bool) -> cyrus_assets::script::Scripts {
             name.into(),
             Actor {
                 header_index: index,
+                pool_offsets: None,
                 code_origin: (index * 100) as u32,
                 instances: 1,
                 namespace: None,

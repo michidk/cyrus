@@ -197,6 +197,10 @@ impl ScriptActors {
             &actor_bindings,
             allocations[&current.world].ambient_channels,
         )?;
+        current.globals.resolve_original_source_pools(
+            &rgpre::import::savegame::parse_save_script_locals(section(*b"SVRG")?)?,
+            sources[&current.world].scripts,
+        )?;
         current.globals.group_sync.register_actors(&current.actors);
         current.restore_session_rope_jump_latch(Some(gameplay.rope_jump_latch != 0))?;
         let inventory = parse_save_inventory(

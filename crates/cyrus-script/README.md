@@ -30,9 +30,13 @@ The generated [repository map](../../docs/MAP.md) lists every module. API
 contracts, units and preservation references live in the Rust docs beside
 their definitions.
 
+Separate-object conversion clears temporary orientation and its stored matrix;
+ordinary actors retain their normal orientation initialization.
+
 The native-command source distinguishes ordinary registry actors from shared
 separate-object temporary storage. Separate conversion retains its copied
-attributes, script locals/strings and pose after copy-back and original Load,
+attributes and pose after copy-back and original Load. Retained instance offsets
+resolve locals and strings in the current process pools after replacement,
 including when the semantic record is absent from the replacement world.
 Ordinary actor references still require explicit replacement bindings. A command
 that needs a persistent registry target rejects a temporary source rather than

@@ -263,6 +263,14 @@ fn original_globals_retain_separate_storage_without_a_registry_replacement() -> 
         .unwrap()
         .program
         .strings = vec!["retained scratch".into()];
+    separate_scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .pool_offsets = Some(cyrus_assets::script::ScriptPoolOffsets {
+        locals: Some(4),
+        strings: Some(16),
+    });
     for instance in &mut separate_scripts.instances {
         instance.object_type = PlacementType::SCRIPT_ONLY;
         instance.map_position = [600, 20, 600];
@@ -308,5 +316,84 @@ fn original_globals_retain_separate_storage_without_a_registry_replacement() -> 
         before["separate_native_source"]
     );
     assert_eq!(serde_json::to_value(world.globals())?, before);
+    let mut replacement = replacement;
+    let words = [0i32, 101, 202, 303, 404];
+    let pool =
+        rgpre::import::savegame::parse_save_script_locals(&words.map(i32::to_le_bytes).concat())?;
+    let mut current_scripts = cache();
+    let actor = current_scripts.actors.get_mut("LOGIC").unwrap();
+    actor.pool_offsets = Some(cyrus_assets::script::ScriptPoolOffsets {
+        locals: Some(4),
+        strings: Some(16),
+    });
+    actor.program.strings = vec!["replacement pool".into()];
+    replacement.resolve_original_source_pools(&pool, &current_scripts)?;
+    let refreshed = serde_json::to_value(&replacement)?;
+    let offset = before["separate_native_source"]["pool_offsets"]["locals"]
+        .as_u64()
+        .unwrap() as usize;
+    assert_eq!(
+        refreshed["separate_native_source"]["locals"][0],
+        words[offset / 4]
+    );
+    assert_eq!(
+        refreshed["separate_native_source"]["strings"][0],
+        "replacement pool"
+    );
+    for retained in ["local", "attributes", "position", "semantic_actor"] {
+        assert_eq!(
+            refreshed["separate_native_source"][retained],
+            before["separate_native_source"][retained]
+        );
+    }
+    let empty = rgpre::import::savegame::parse_save_script_locals(&[])?;
+    assert!(
+        replacement
+            .resolve_original_source_pools(&empty, &current_scripts)
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&replacement)?, refreshed);
+    current_scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .pool_offsets = None;
+    assert!(
+        replacement
+            .resolve_original_source_pools(&pool, &current_scripts)
+            .is_err()
+    );
+    assert_eq!(serde_json::to_value(&replacement)?, refreshed);
+    let actor = current_scripts.actors.get_mut("LOGIC").unwrap();
+    actor.pool_offsets = Some(cyrus_assets::script::ScriptPoolOffsets {
+        locals: Some(4),
+        strings: Some(16),
+    });
+    actor.instance_variables = vec![vec![101], vec![202]];
+    current_scripts.content_id = current_scripts.content_identity()?;
+    let mut next = ScriptWorld::prepare(&current_scripts, 91)?;
+    *next.globals_mut() = replacement;
+    let receiver = next.id(offset / 4 - 1)?;
+    next.advance(
+        receiver,
+        cyrus_script::script::ScriptStage::OrdinaryMain,
+        cyrus_script::script::ScriptInputs {
+            nominal_ticks: Some(0),
+            frame_scale: Some(0),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    assert_eq!(
+        next.actors()[receiver.index].runtime().unwrap().variables()[0],
+        words[offset / 4] + 1
+    );
+    let live = serde_json::to_value(next.globals())?;
+    assert_eq!(
+        live["separate_native_source"]["locals"][0],
+        words[offset / 4] + 1
+    );
     Ok(())
 }

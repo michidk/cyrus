@@ -175,6 +175,8 @@ pub(super) struct SeparateNativeSource {
     pub world: u32,
     pub name: String,
     pub attributes: Attributes,
+    #[serde(default)]
+    pub pool_offsets: Option<cyrus_assets::script::ScriptPoolOffsets>,
     pub locals: Vec<cyrus_soup::ScriptValue>,
     pub strings: Vec<String>,
     pub position: Option<[i32; 3]>,
