@@ -74,6 +74,13 @@ signed residuals. It refuses extrapolation and never interpolates animation or
 controller state. Matching positions alone do not establish matching support
 state or completed-update boundaries.
 
+Paired outcome checkpoints can assert exact named `actor_health` values and
+`separation_l1_q8: {opponent, value}`. Separation sums absolute differences on all
+three Q8 position axes, including height, and requires both observed positions.
+Use observed values at each checkpoint with player health and pose assertions
+to distinguish a damage-free retreat from opponent movement or a hit. Missing
+measurements reject the assertion. These equalities introduce no range threshold.
+
 Input-only paired segments may specify `updates` beside an `input` batch to
 consume exactly that many ordinary bodies. Input offsets may equal this duration:
 the driver acknowledges those terminal inputs without consuming another body.

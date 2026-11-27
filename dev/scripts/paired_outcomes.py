@@ -3,7 +3,7 @@ import math
 
 
 FIELDS = {'world', 'flags', 'globals', 'inventory', 'position_q8', 'health',
-          'opponent', 'target_health'}
+          'opponent', 'target_health', 'actor_health', 'separation_l1_q8'}
 
 
 def integer(value):
@@ -27,6 +27,14 @@ def validate_checkpoint(expected):
             valid = integer(value) and (field != 'target_health' or value >= 0)
         elif field == 'opponent':
             valid = isinstance(value, str) and bool(value.strip())
+        elif field == 'actor_health':
+            valid = (isinstance(value, dict) and bool(value)
+                     and all(isinstance(name, str) and bool(name.strip()) and integer(health)
+                             for name, health in value.items()))
+        elif field == 'separation_l1_q8':
+            valid = (isinstance(value, dict) and set(value) == {'opponent', 'value'}
+                     and isinstance(value['opponent'], str) and bool(value['opponent'].strip())
+                     and integer(value['value']) and value['value'] >= 0)
         elif field == 'position_q8':
             valid = (isinstance(value, dict) and set(value) == {'value', 'tolerance'}
                      and position(value['value'])
@@ -89,6 +97,17 @@ def evaluate_checkpoint(expected, measured, baseline):
                     path = (field, name) if part is None else (field, name, part)
                     actual = lookup(measured, *path)
                     compare('.'.join(path), target, actual, type(actual) is type(target), actual == target)
+        elif field == 'actor_health':
+            for name, health in wanted.items():
+                actual = lookup(measured, 'actors', name, 'health')
+                compare(f'actors.{name}.health', health, actual, integer(actual), actual == health)
+        elif field == 'separation_l1_q8':
+            player = lookup(measured, 'player', 'position_q8')
+            opponent = lookup(measured, 'actors', wanted['opponent'], 'position_q8')
+            actual = (sum(abs(a - b) for a, b in zip(player, opponent))
+                      if position(player) and position(opponent) else None)
+            compare(f"separation_l1_q8.{wanted['opponent']}", wanted['value'], actual,
+                    actual is not None, actual == wanted['value'])
         elif field == 'position_q8':
             actual = lookup(measured, 'player', 'position_q8')
             distance = math.dist(wanted['value'], actual) if position(actual) else None

@@ -506,6 +506,39 @@ class OutcomeTests(unittest.TestCase):
         self.assertEqual(report['status'], 'different')
         self.assertEqual(report['outcomes'][-1]['fields'][0]['distance_q8'], 6)
 
+    def test_retreat_asserts_exact_actor_health_and_three_dimensional_separation(self):
+        final = state()
+        final['player']['position_q8'] = [1, 2, 3]
+        final['actors']['FAVIS']['position_q8'] = [5, 8, 12]
+        expected = dict(health=100, actor_health={'FAVIS': 100},
+                        separation_l1_q8={'opponent': 'FAVIS', 'value': 19},
+                        position_q8={'value': [1, 2, 3], 'tolerance': 0})
+        self.assertEqual(self.compare(expected, final)['status'], 'match')
+        for section, key, value in (('player', 'health', 90),
+                                    ('actors', 'FAVIS', {'health': 99, 'position_q8': [5, 8, 12]}),
+                                    ('player', 'position_q8', [1, 3, 3])):
+            changed = copy.deepcopy(final)
+            changed[section][key] = value
+            report = self.compare(expected, changed)
+            self.assertEqual(report['status'], 'different', report)
+            self.assertNotIn(('original', 3, 'ArrowDown', 'press'), self.calls)
+
+    def test_retreat_missing_or_invalid_observations_do_not_pass(self):
+        expected = {'separation_l1_q8': {'opponent': 'FAVIS', 'value': 19}}
+        for bad in (None, [1, 2], [True, 2, 3]):
+            final = state()
+            final['actors']['FAVIS']['position_q8'] = bad
+            self.assertEqual(self.compare(expected, final)['status'], 'blocked')
+        self.assertEqual(self.compare({'actor_health': {'MISSING': 100}})['status'], 'blocked')
+        for invalid in ({'actor_health': {}}, {'actor_health': {'FAVIS': True}},
+                        {'separation_l1_q8': {'opponent': 'FAVIS', 'value': -1}},
+                        {'separation_l1_q8': {'opponent': '', 'value': 0}},
+                        {'separation_l1_q8': {'opponent': 'FAVIS', 'value': True}},
+                        {'separation_l1_q8': {'opponent': 'FAVIS', 'value': 1, 'tolerance': 2}}):
+            report = self.compare(invalid)
+            self.assertEqual(report['status'], 'blocked')
+            self.assertEqual(self.calls, [])
+
     def test_hit_target_requires_observed_health_loss_and_player_survival(self):
         expected = {'opponent': 'FAVIS', 'target_health': 90}
         hit = state()
