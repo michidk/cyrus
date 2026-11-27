@@ -26,13 +26,18 @@ case "${1:-}" in
             rm -f "$artifacts/cyrus-viewer-$platform".{tar.gz,exe,zip}
             rm -f "$artifacts/cyrus-$platform.exe"
         fi
+        # Both complete bundles share one layout; only the game build differs.
+        bundle_name=""
         if [[ "$1" = native-mods ]]; then
+            bundle_name=cyrus-with-mods
             rm -f "$artifacts/cyrus-with-mods-$platform".{tar.gz,zip}
+        elif [[ "$1" = native-raytracing ]]; then
+            bundle_name=cyrus-raytracing
         fi
         apps=(cyrus)
         if [[ "$1" != native-raytracing && -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
         launcher=false
-        if [[ "$1" = native-mods && -f crates/cyrus-launcher/Cargo.toml ]]; then
+        if [[ -n "$bundle_name" && -f crates/cyrus-launcher/Cargo.toml ]]; then
             apps+=(cyrus-launcher)
             launcher=true
         fi
@@ -45,6 +50,8 @@ case "${1:-}" in
         for app in "${apps[@]}"; do
             # The launcher needs a sibling game; ship it in the complete bundle.
             [[ "$app" != cyrus-launcher ]] || continue
+            # The ray-traced game ships only as its complete bundle.
+            [[ "$1" != native-raytracing ]] || continue
             binary="$build_root/$platform/release/$app$suffix"
             if [[ -n "$suffix" ]]; then
                 python3 - "$binary" "$artifacts/$app$artifact_suffix-$platform.zip" <<'PYZIP'
@@ -58,7 +65,7 @@ PYZIP
                 tar -czf "$artifacts/$app$artifact_suffix-$platform.tar.gz" -C "$(dirname "$binary")" "$app"
             fi
         done
-        if [[ "$1" = native-mods ]]; then
+        if [[ -n "$bundle_name" ]]; then
             bundle="$stage/bundled"
             mkdir -p "$bundle/mods"
             cp "$build_root/$platform/release/cyrus$suffix" "$bundle/"
@@ -121,7 +128,7 @@ for path in root.rglob('*'):
         sys.exit(f"Cannot package symbolic link: {path.relative_to(root)}")
 PYLINKS
             if [[ -n "$suffix" ]]; then
-                python3 - "$bundle" "$artifacts/cyrus-with-mods-$platform.zip" <<'PY'
+                python3 - "$bundle" "$artifacts/$bundle_name-$platform.zip" <<'PY'
 from pathlib import Path
 import sys, zipfile
 root, destination = map(Path, sys.argv[1:])
@@ -131,7 +138,7 @@ with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.write(path, path.relative_to(root).as_posix())
 PY
             else
-                tar -czf "$artifacts/cyrus-with-mods-$platform.tar.gz" -C "$bundle" .
+                tar -czf "$artifacts/$bundle_name-$platform.tar.gz" -C "$bundle" .
             fi
         fi
         ;;
