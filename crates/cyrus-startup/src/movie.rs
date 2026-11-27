@@ -321,7 +321,7 @@ pub(super) fn drive(
         if launch.skip_movies {
             match request {
                 MovieRequest::NewGame => {
-                    menu.enter_world = Some(0);
+                    menu.enter_world = Some(crate::menu::NewGameRoute::SkippedIntroduction);
                     menu.ready = false;
                     continue;
                 }
@@ -625,7 +625,8 @@ pub(super) fn drive(
             commands.entity(entity).despawn();
         }
         // Preservation engine/startup.md: Introduction completion enters at a half turn.
-        menu.enter_world = (failure.is_none() && playback.new_game).then_some(1024);
+        menu.enter_world = (failure.is_none() && playback.new_game)
+            .then_some(crate::menu::NewGameRoute::RetailIntroduction);
         playback.new_game = false;
         playback.playing = None;
         menu.movie = None;
@@ -884,7 +885,10 @@ mod tests {
             .write(MovieRequest::NewGame);
         world.run_system_cached(drive).unwrap();
         let menu = world.resource::<MenuState>();
-        assert_eq!(menu.enter_world, Some(0));
+        assert_eq!(
+            menu.enter_world,
+            Some(crate::menu::NewGameRoute::SkippedIntroduction)
+        );
         assert!(menu.movie.is_none());
         assert!(world.resource::<MoviePlayback>().load.is_none());
     }
@@ -1017,7 +1021,8 @@ mod tests {
             let menu = world.resource::<MenuState>();
             assert_eq!(
                 menu.enter_world,
-                (new_game && complete && !fail).then_some(1024)
+                (new_game && complete && !fail)
+                    .then_some(crate::menu::NewGameRoute::RetailIntroduction)
             );
             // A script movie resumes its world whether it ended or failed, never before.
             assert_eq!(

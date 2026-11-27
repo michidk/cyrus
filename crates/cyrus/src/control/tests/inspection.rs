@@ -289,3 +289,114 @@ fn public_player_trace_rejects_world_retirement_and_conflicting_placement() {
     assert!(error.contains("world retired"));
     assert!(error.contains("observations:"));
 }
+
+#[test]
+fn public_entry_provenance_requires_ready_matching_world_and_marker() {
+    let mut app = script_app();
+    app.insert_state(cyrus_game::AppState::InGame);
+    let mut menu = cyrus_startup::MenuState::default();
+    menu.entry = Some(cyrus_startup::NewGameEntry {
+        route: cyrus_startup::NewGameRoute::RetailIntroduction,
+        world: 17,
+        marker: 3,
+    });
+    app.insert_resource(menu);
+    app.insert_resource(cyrus_script::script::ScriptStatus::Loaded {
+        world: 17,
+        content_id: String::new(),
+        programs: 1,
+        instances: 1,
+        prepared: 1,
+        waiting: 0,
+        failed: 0,
+        unsupported: 0,
+        actor_flats: 0,
+        ordinary_updates: 0,
+        restored: false,
+        examples: Default::default(),
+    });
+    app.insert_resource(cyrus_script::player::placement::MarkerEntry {
+        marker: 3,
+        heading: 1024,
+    });
+    // The actual New Game loader retains a numeric scene request alias.
+    app.world_mut().resource_mut::<CurrentScene>().name = "17".into();
+    app.world_mut().resource_mut::<CurrentScene>().world = Some(17);
+    let read = |app: &mut App| run_commands(app, vec![Command::State]).remove(0)["entry"].clone();
+    assert!(
+        read(&mut app).is_null(),
+        "unprepared presentation is not entry evidence"
+    );
+    let animations = app
+        .world()
+        .resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .animations
+        .clone();
+    app.insert_resource(cyrus_render::ReadyScene(animations));
+    assert!(
+        read(&mut app).is_null(),
+        "missing installed map identity cannot establish provenance"
+    );
+    let root = std::env::temp_dir().join(format!("cyrus-entry-world-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("WORLD.INI"),
+        "world_map[17]=MAPS\\contract.rgm\nworld_palette[17]=FXART\\contract.col\n",
+    )
+    .unwrap();
+    app.insert_resource(cyrus_assets::install::GameInstall { root: root.clone() });
+    assert_eq!(
+        read(&mut app),
+        json!({"route":"retail_introduction", "world":17,
+        "marker":3, "scene":"CONTRACT"})
+    );
+    let retired = app
+        .world_mut()
+        .resource_mut::<cyrus_script::script::ScriptActors>()
+        .current
+        .take();
+    assert!(
+        read(&mut app).is_null(),
+        "cached loaded status cannot replace a live registry"
+    );
+    app.world_mut()
+        .resource_mut::<cyrus_script::script::ScriptActors>()
+        .current = retired;
+    app.world_mut()
+        .resource_mut::<cyrus_script::player::placement::MarkerEntry>()
+        .marker = 2;
+    assert!(read(&mut app).is_null());
+    app.world_mut()
+        .resource_mut::<cyrus_script::player::placement::MarkerEntry>()
+        .marker = 3;
+    app.world_mut()
+        .resource_mut::<cyrus_startup::MenuState>()
+        .entry
+        .as_mut()
+        .unwrap()
+        .world = 18;
+    assert!(read(&mut app).is_null());
+    app.world_mut()
+        .resource_mut::<cyrus_startup::MenuState>()
+        .entry
+        .as_mut()
+        .unwrap()
+        .world = 17;
+    run_commands(
+        &mut app,
+        vec![Command::LoadScene {
+            name: "TEST".into(),
+        }],
+    );
+    assert!(
+        app.world()
+            .resource::<cyrus_startup::MenuState>()
+            .entry
+            .is_none()
+    );
+    assert!(
+        read(&mut app).is_null(),
+        "direct same-world entry must not inherit retail provenance"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}

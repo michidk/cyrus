@@ -42,6 +42,7 @@ app.add_plugins(cyrus_startup::LoadingPlugin);
 - Script and console `SceneRequest` reloads enter the installed loading artwork and fades before world preparation; their marker, wrapped heading and same-world reload semantics are retained. Ready caches complete the artwork fade-in before fade-out, with no simulated load delay.
 - `StartGame` selects world-entry loading presentation; `WorldLoadRequest` enters
   a world (WORLD.INI ID or map stem) at marker zero through the same loading path.
+- `MenuState.entry` records the observed New Game handoff and installed world/marker. Successful Introduction completion and explicit movie skipping have distinct routes. Loading-artwork paths clear the record, including same-world scene reloads. This records a handoff, not completed semantic admission.
 - `MenuState` exposes menu status to control; `QuitRequest` asks the browser host
   to close its tab. Installed action codes become `MenuAction` at the asset boundary;
   `MenuPageId` identifies book pages and transitions. Both retain their numeric cache

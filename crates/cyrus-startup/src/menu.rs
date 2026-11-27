@@ -39,6 +39,33 @@ pub(super) enum MovieRequest {
     Script(usize, Option<[i32; 3]>),
 }
 
+/// Observed New Game handoff, independent of launch-time requests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NewGameRoute {
+    /// The Introduction driver completed successfully before world entry.
+    RetailIntroduction,
+    /// The explicit movie-skip path entered without playing the Introduction.
+    SkippedIntroduction,
+}
+
+impl NewGameRoute {
+    pub(super) fn heading(self) -> i32 {
+        match self {
+            Self::RetailIntroduction => 1024,
+            Self::SkippedIntroduction => 0,
+        }
+    }
+}
+
+/// Installed destination retained when the observed New Game handoff requests it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct NewGameEntry {
+    pub route: NewGameRoute,
+    pub world: u32,
+    pub marker: usize,
+}
+
 /// What the startup book does by itself once it exists, instead of waiting for a key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LaunchAction {
@@ -130,7 +157,9 @@ pub struct MenuState {
     /// Cinematic loading/playback; menu input is suspended while present.
     pub movie: Option<MovieStatus>,
     #[serde(skip)]
-    pub(super) enter_world: Option<i32>,
+    pub(super) enter_world: Option<NewGameRoute>,
+    /// Last New Game handoff; cleared when another world-loading path starts.
+    pub entry: Option<NewGameEntry>,
     /// A script movie ended: the paused world resumes without the book.
     #[serde(skip)]
     pub(super) resume_game: bool,
@@ -664,13 +693,13 @@ pub(super) fn drive(
         next.set(AppState::InGame);
         return;
     }
-    if let Some(heading) = menu.enter_world.take() {
+    if let Some(route) = menu.enter_world.take() {
         begin_world_entry(
             &mut commands,
             &mut images,
             &mut next,
             book,
-            heading,
+            route,
             &mut random,
         );
         menu.ready = false;
@@ -1172,7 +1201,7 @@ fn begin_world_entry(
     images: &mut Assets<Image>,
     next: &mut NextState<AppState>,
     book: &MenuAsset,
-    heading: i32,
+    route: NewGameRoute,
     random: &mut cyrus_game::random::EngineRandom,
 ) {
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
@@ -1180,7 +1209,7 @@ fn begin_world_entry(
     ));
     commands.insert_resource(cyrus_script::player::placement::MarkerEntry {
         marker: book.new_game.marker as usize,
-        heading,
+        heading: route.heading(),
     });
     begin_world_loading(
         commands,
@@ -1191,6 +1220,16 @@ fn begin_world_entry(
         &book.new_game.loading,
         random,
     );
+    let entry = NewGameEntry {
+        route,
+        world: book.new_game.world,
+        marker: book.new_game.marker as usize,
+    };
+    commands.queue(move |world: &mut World| {
+        if !world.contains_resource::<cyrus_world::lifecycle::SceneLoadError>() {
+            world.resource_mut::<MenuState>().entry = Some(entry);
+        }
+    });
 }
 
 pub(super) fn begin_world_loading(
@@ -1202,6 +1241,11 @@ pub(super) fn begin_world_loading(
     pictures: &[cyrus_assets::menu::MenuPicture],
     random: &mut cyrus_game::random::EngineRandom,
 ) {
+    commands.queue(|world: &mut World| {
+        if let Some(mut menu) = world.get_resource_mut::<MenuState>() {
+            menu.entry = None;
+        }
+    });
     let variation = if pictures.len() == 1 {
         0
     } else {
@@ -1261,6 +1305,77 @@ pub(super) fn begin_world_loading(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn observed_new_game_entry_binds_installed_destination_and_expires_on_reload() {
+        let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
+            eprintln!("skipped: no install (New Game entry provenance)");
+            return;
+        };
+        let cache =
+            std::env::temp_dir().join(format!("cyrus-entry-provenance-{}", std::process::id()));
+        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let book: MenuAsset =
+            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+        std::fs::remove_dir_all(cache).unwrap();
+        for route in [
+            NewGameRoute::RetailIntroduction,
+            NewGameRoute::SkippedIntroduction,
+        ] {
+            let mut world = World::new();
+            world.init_resource::<MenuState>();
+            let mut images = Assets::<Image>::default();
+            let mut next = NextState::default();
+            let mut random = cyrus_game::random::EngineRandom::default();
+            let mut queue = bevy::ecs::world::CommandQueue::default();
+            begin_world_entry(
+                &mut Commands::new(&mut queue, &world),
+                &mut images,
+                &mut next,
+                &book,
+                route,
+                &mut random,
+            );
+            queue.apply(&mut world);
+            let entry = world.resource::<MenuState>().entry.unwrap();
+            assert_eq!(
+                entry,
+                NewGameEntry {
+                    route,
+                    world: book.new_game.world,
+                    marker: book.new_game.marker as usize
+                }
+            );
+            assert_eq!(
+                world.resource::<cyrus_world::lifecycle::SceneRequest>().0,
+                book.new_game.world.to_string()
+            );
+            let marker = world.resource::<cyrus_script::player::placement::MarkerEntry>();
+            assert_eq!(marker.marker, entry.marker);
+            assert_eq!(
+                marker.heading,
+                match route {
+                    NewGameRoute::RetailIntroduction => 1024,
+                    NewGameRoute::SkippedIntroduction => 0,
+                }
+            );
+            begin_world_loading(
+                &mut Commands::new(&mut queue, &world),
+                &mut images,
+                &mut next,
+                &book,
+                book.new_game.world,
+                &book.new_game.loading,
+                &mut random,
+            );
+            queue.apply(&mut world);
+            assert!(
+                world.resource::<MenuState>().entry.is_none(),
+                "same-world reload must expire provenance"
+            );
+        }
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
