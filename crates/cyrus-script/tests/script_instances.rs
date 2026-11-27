@@ -8,6 +8,15 @@ use cyrus_world::heading::wrap;
 
 #[test]
 fn installed_island_flags_advance_through_ordinary_updates() {
+    island_host(false);
+}
+
+#[test]
+fn installed_held_entry_prepares_capture_checkpoint_without_an_ordinary_body() {
+    island_host(true);
+}
+
+fn island_host(held_entry: bool) {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
     use cyrus_assets::animation::Animations;
     use cyrus_assets::script::Scripts;
@@ -62,6 +71,21 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         .world_mut()
         .resource_mut::<Assets<Scripts>>()
         .add(scripts);
+    if held_entry {
+        let marker: [i32; 3] =
+            serde_json::from_value(data.metadata["markers"][0]["map_position"].clone()).unwrap();
+        let _player = app
+            .world_mut()
+            .spawn((
+                cyrus_script::player::Player,
+                cyrus_script::player::placement::PlayerPose {
+                    position: marker.map(|value| i64::from(value) * 256),
+                    heading: 0,
+                },
+            ))
+            .id();
+        app.init_resource::<cyrus_script::player::placement::MarkerEntry>();
+    }
     let animations = app
         .world_mut()
         .resource_mut::<Assets<Animations>>()
@@ -110,6 +134,54 @@ fn installed_island_flags_advance_through_ordinary_updates() {
     app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
         std::time::Duration::from_millis(55),
     ));
+    if held_entry {
+        // Entry preparation must complete while update-zero replay acquisition is held.
+        // ImportOriginal needs this checkpoint before capturing its candidate baseline.
+        app.insert_resource(cyrus_script::script::ReplayHold(true));
+        for _ in 0..8 {
+            app.update();
+        }
+        let actors = app.world().resource::<ScriptActors>();
+        let held = actors.current.as_ref().unwrap();
+        assert_eq!(held.ordinary_updates(), 0);
+        assert!(held.actor_prelight(held.id(index).unwrap()).is_ok());
+        let held_clock = app
+            .world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .snapshot();
+        let held_random = app
+            .world()
+            .resource::<cyrus_game::random::EngineRandom>()
+            .state();
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .ordinary_updates(),
+            0
+        );
+        assert_eq!(
+            serde_json::to_value(
+                app.world()
+                    .resource::<cyrus_script::clock::SimulationClock>()
+                    .snapshot()
+            )
+            .unwrap(),
+            serde_json::to_value(held_clock).unwrap()
+        );
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::random::EngineRandom>()
+                .state(),
+            held_random
+        );
+        return;
+    }
     let mut frames = Vec::new();
     for _ in 0..24 {
         app.update();
