@@ -827,6 +827,18 @@ class NativeClockTimelines(unittest.TestCase):
             self.assertEqual(evidence['observed']['ordinary_update'], 51)
             self.assertIn('acknowledgement', evidence)
 
+    def test_missing_input_receipt_fields_do_not_prove_released_inputs(self):
+        for field in ('key', 'action'):
+            def omit(ack, field=field):
+                del ack['boundaries'][0][field]
+                return ack
+            session, _, _ = self.session(change_ack=omit)
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, 'acknowledgement'):
+                session.advance_to(1)
+            evidence = session.execution_evidence()['timeline_observations'][0]
+            self.assertNotIn(field, evidence['acknowledgement']['boundaries'][0])
+            self.assertEqual(evidence['observed']['clock']['bios_sample'], 147)
+
     def test_generation_change_after_reply_retains_actual_rejected_boundary(self):
         session, control, _ = self.session()
         request = control.request

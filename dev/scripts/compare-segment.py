@@ -427,6 +427,8 @@ class NativeFrameSession:
                 for field, value in required.items():
                     if type(boundary.get(field)) is not int or boundary[field] != value:
                         raise RuntimeError(f'native timeline acknowledgement has stale or misaligned {field}')
+                if not {'key', 'action'} <= boundary.keys():
+                    raise RuntimeError('native timeline acknowledgement lacks explicit input receipt')
                 if boundary.get('key') is not None or boundary.get('action') is not None:
                     raise RuntimeError('native timeline acknowledgement contains unexpected input')
             self.acquisition_observations.append(self._acquisition_observation())
