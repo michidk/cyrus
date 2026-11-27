@@ -81,6 +81,9 @@ pub struct SimulationClock {
     warmup: u8,
     /// FPS the exposed step used: twelve during the startup countdown, else measured.
     step_fps: u32,
+    /// Current invocation's measured nominal carry, before the exposed-step override.
+    /// Consumed only with an admitted world clock sample; recomputed rather than saved.
+    measured_nominal_ticks: Option<u32>,
     /// Sum of every step's frame scale, in 1/256 nominal tick. Observation only: it is not part
     /// of a snapshot and restarts at zero after a restore.
     elapsed_scale: u64,
@@ -190,6 +193,7 @@ impl SimulationClock {
             } else {
                 snapshot.measured
             },
+            measured_nominal_ticks: None,
             elapsed_scale: 0,
             elapsed_fraction: snapshot.elapsed_fraction,
         })
@@ -288,6 +292,7 @@ impl SimulationClock {
             fine_fraction: 0,
             warmup: 12,
             step_fps: 12,
+            measured_nominal_ticks: None,
             elapsed_scale: 0,
             elapsed_fraction: 0,
         })
@@ -323,6 +328,13 @@ impl SimulationClock {
         self.fine_fraction = checkpoint.fine_fraction;
         self.elapsed_fraction = checkpoint.elapsed_fraction;
         self.rebase(bios_tick);
+    }
+
+    /// Current invocation's nominal carry from FPS measurement, before warmup or
+    /// elapsed/replay timing overrides the gameplay step. World-entry fades use
+    /// this value following preservation's startup rules. Unavailable until advance.
+    pub fn measured_nominal_ticks(&self) -> Option<u32> {
+        self.measured_nominal_ticks
     }
 
     /// Restart world-entry warmup without resetting accumulated timing state.
@@ -391,6 +403,7 @@ impl SimulationClock {
         let fine = self.fine_fraction + self.next_scale;
         self.nominal_fraction = nominal & 255;
         self.fine_fraction = fine & 31;
+        self.measured_nominal_ticks = Some(nominal >> 8);
         self.step_fps = if warmup { 12 } else { self.measured };
         self.step = if warmup {
             self.warmup -= 1;

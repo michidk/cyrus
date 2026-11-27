@@ -71,6 +71,8 @@ and `run_ordinary`; a missing host service returns a contextual error.
   snapshots (`ScriptWorld::actor_snapshot`, death and damage events) that
   render and audio adapters read. Observations never drive gameplay and are
   not serialized.
+- `ScriptWorld::world_loop_frame` exposes the retained game counter separately from `ordinary_updates`, which restarts after restore.
+- The clock exposes the current measured nominal carry separately from the gameplay step. World-entry fades consume it before the warmup or replay override; it is unavailable until the first clock invocation and is recomputed on each update.
 - Model resource loading, collision admission and host service preparation do not advance the
   simulation clock. The first ready update excludes loading time, so animation
   and BIOS ticks do not depend on asynchronous load duration.

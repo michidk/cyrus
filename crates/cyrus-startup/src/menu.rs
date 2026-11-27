@@ -16,7 +16,7 @@ use cyrus_script::clock::{ClockCheckpoint, SimulationClock, bios_tick};
 use cyrus_script::player::input::{Action, Devices, Input};
 use cyrus_world::sound::SoundCue;
 use serde::Serialize;
-use std::{collections::BTreeMap, hash::BuildHasher};
+use std::collections::BTreeMap;
 
 /// Cinematic progress exposed through the existing menu control state.
 #[derive(Clone, Serialize)]
@@ -313,7 +313,8 @@ pub(super) fn register_assets(app: &mut App) {
 
 pub(super) fn register(app: &mut App) {
     register_assets(app);
-    app.init_resource::<cyrus_game::preferences::Preferences>()
+    app.init_resource::<cyrus_game::random::EngineRandom>()
+        .init_resource::<cyrus_game::preferences::Preferences>()
         .init_resource::<super::SaveLoadHost>()
         .init_resource::<LaunchRequest>()
         .add_message::<MovieRequest>()
@@ -517,7 +518,11 @@ fn description_text(
 
 pub(super) fn drive(
     assets: (Res<AssetServer>, Res<Assets<MenuAsset>>),
-    (launch, clock): (Res<LaunchRequest>, Option<ResMut<SimulationClock>>),
+    (launch, clock, mut random): (
+        Res<LaunchRequest>,
+        Option<ResMut<SimulationClock>>,
+        ResMut<cyrus_game::random::EngineRandom>,
+    ),
     input: Inputs,
     mut menu: ResMut<MenuState>,
     mut images: ResMut<Assets<Image>>,
@@ -666,7 +671,7 @@ pub(super) fn drive(
             &mut next,
             book,
             heading,
-            input.0.elapsed_secs_f64(),
+            &mut random,
         );
         menu.ready = false;
         return;
@@ -1168,7 +1173,7 @@ fn begin_world_entry(
     next: &mut NextState<AppState>,
     book: &MenuAsset,
     heading: i32,
-    elapsed: f64,
+    random: &mut cyrus_game::random::EngineRandom,
 ) {
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
         book.new_game.world.to_string(),
@@ -1184,7 +1189,7 @@ fn begin_world_entry(
         book,
         book.new_game.world,
         &book.new_game.loading,
-        elapsed,
+        random,
     );
 }
 
@@ -1195,8 +1200,25 @@ pub(super) fn begin_world_loading(
     book: &MenuAsset,
     artwork_world: u32,
     pictures: &[cyrus_assets::menu::MenuPicture],
-    elapsed: f64,
+    random: &mut cyrus_game::random::EngineRandom,
 ) {
+    let variation = if pictures.len() == 1 {
+        0
+    } else {
+        let selected = i32::try_from(pictures.len())
+            .map_err(anyhow::Error::from)
+            .and_then(|bound| random.rnd(bound));
+        match selected {
+            Ok(frame) => frame as usize,
+            Err(error) => {
+                commands.insert_resource(cyrus_world::lifecycle::SceneLoadError(format!(
+                    "world {artwork_world} loading artwork frame count {}: {error}",
+                    pictures.len()
+                )));
+                return;
+            }
+        }
+    };
     // The book retains the paused player for Continue and Save. A fresh world entry must
     // replace it even when asset handles and the requested marker are unchanged.
     commands.queue(|world: &mut World| {
@@ -1213,9 +1235,6 @@ pub(super) fn begin_world_loading(
     commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
     commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
     commands.remove_resource::<cyrus_world::lifecycle::PreparationProgress>();
-    let variation = std::collections::hash_map::RandomState::new().hash_one(elapsed.to_bits())
-        as usize
-        % pictures.len();
     let picture = &pictures[variation];
     let image = images.add(Image::new(
         bevy::render::render_resource::Extent3d {
@@ -1301,6 +1320,7 @@ mod tests {
             .add_message::<SoundCue>()
             .init_resource::<crate::SaveLoadHost>()
             .init_resource::<LaunchRequest>()
+            .init_resource::<cyrus_game::random::EngineRandom>()
             .insert_resource(SimulationClock::new(book.clock).unwrap())
             .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_millis(60),
@@ -1627,6 +1647,7 @@ mod tests {
         .add_message::<SoundCue>()
         .init_resource::<crate::SaveLoadHost>()
         .init_resource::<LaunchRequest>()
+        .init_resource::<cyrus_game::random::EngineRandom>()
         .insert_resource(clock)
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(60),

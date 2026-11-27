@@ -1,7 +1,7 @@
 //! Black overlay fades around new-game world entry, from preservation's
-//! `docs/engine/startup.md` ("World loading screen"): each whole nominal tick
-//! changes the overlay by 12 out of 256. The world keeps updating under the
-//! final fade-in; the overlay only covers presentation.
+//! `docs/engine/startup.md` ("World loading screen"). World-entry steps use the
+//! measured nominal carry before warmup overrides gameplay timing, and restart
+//! warmup after drawing. The world keeps updating under the final fade-in.
 use bevy::prelude::*;
 
 /// Installed loading or world-entry black overlay. Query its `BackgroundColor` for opacity.
@@ -60,6 +60,24 @@ pub(crate) fn spawn(
 }
 
 impl Fade {
+    fn advance_world(
+        &mut self,
+        update: u64,
+        world_loop_frame: u32,
+        measured_nominal_ticks: u32,
+        clock: &mut cyrus_script::clock::SimulationClock,
+    ) {
+        if self.world_update == Some(update) {
+            return;
+        }
+        self.world_update = Some(update);
+        if world_loop_frame as i32 <= 1 {
+            return;
+        }
+        self.world_ticks = self.world_ticks.saturating_add(measured_nominal_ticks | 1);
+        clock.restart_warmup();
+    }
+
     /// True while loading artwork is being uncovered.
     pub(crate) fn fading_in(&self) -> bool {
         self.fading_in
@@ -86,7 +104,10 @@ pub(crate) fn advance(
     state: Option<Res<State<cyrus_game::AppState>>>,
     actors: Option<Res<cyrus_script::script::ScriptActors>>,
     camera: Option<Res<cyrus_script::script::CameraFrameState>>,
-    sample: Option<Res<cyrus_script::script::WorldClockSample>>,
+    (sample, mut clock): (
+        Option<Res<cyrus_script::script::WorldClockSample>>,
+        Option<ResMut<cyrus_script::clock::SimulationClock>>,
+    ),
     mut fades: Query<(Entity, &mut Fade, &mut BackgroundColor)>,
 ) {
     for (entity, mut fade, mut color) in &mut fades {
@@ -119,12 +140,16 @@ pub(crate) fn advance(
                 {
                     return None;
                 }
-                let step = sample.as_ref()?.presentation_step(world.generation())?;
-                fade.world_update = Some(update);
-                Some(step)
+                sample.as_ref()?.presentation_step(world.generation())?;
+                Some((update, world.world_loop_frame()))
             });
-            let Some(step) = step else { continue };
-            fade.world_ticks = fade.world_ticks.saturating_add(step.nominal_ticks);
+            let (Some((update, frame)), Some(clock)) = (step, clock.as_deref_mut()) else {
+                continue;
+            };
+            let Some(ticks) = clock.measured_nominal_ticks() else {
+                continue;
+            };
+            fade.advance_world(update, frame, ticks, clock);
             0.0
         } else {
             time.delta_secs_f64()
@@ -148,6 +173,102 @@ mod tests {
     use super::*;
 
     #[test]
+    fn world_fade_restarts_warmup_through_the_clearing_update() {
+        use cyrus_script::clock::SimulationClock;
+        let settings = cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 60,
+            use_smooth_fps: true,
+            use_smooth_divisor: true,
+        };
+        let mut clock = SimulationClock::new(settings).unwrap();
+        let mut fade = Fade {
+            elapsed: 0.0,
+            first_update: false,
+            clock: settings,
+            fading_in: true,
+            world_update: Some(0),
+            world_ticks: 0,
+        };
+        clock.advance(1);
+        fade.advance_world(1, 1, 1, &mut clock);
+        assert_eq!(fade.world_ticks, 0, "first ordinary body remains black");
+        assert_eq!(
+            serde_json::to_value(clock.snapshot()).unwrap()["warmup"],
+            11
+        );
+        for update in 2..=23 {
+            clock.advance(update as u32);
+            let mut expected = serde_json::to_value(clock.snapshot()).unwrap();
+            expected["warmup"] = 12.into();
+            fade.advance_world(update, update as u32, 1, &mut clock);
+            assert_eq!(
+                serde_json::to_value(clock.snapshot()).unwrap(),
+                expected,
+                "fade resets only warmup, including its clearing update"
+            );
+            assert_eq!(
+                world_opacity(fade.world_ticks),
+                world_opacity((update - 1) as u32)
+            );
+        }
+        assert_eq!(world_opacity(fade.world_ticks), 0.0);
+    }
+
+    #[test]
+    fn restored_world_fade_uses_the_retained_loop_counter() {
+        let settings = cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 60,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        };
+        let mut clock = cyrus_script::clock::SimulationClock::new(settings).unwrap();
+        clock.advance(1);
+        let mut fade = Fade {
+            elapsed: 0.0,
+            first_update: false,
+            clock: settings,
+            fading_in: true,
+            world_update: Some(0),
+            world_ticks: 0,
+        };
+        // Restoring resets the diagnostic count, not the game's retained loop counter.
+        fade.advance_world(1, 784, 1, &mut clock);
+        assert_eq!(world_opacity(fade.world_ticks), 244.0 / 256.0);
+        assert_eq!(
+            serde_json::to_value(clock.snapshot()).unwrap()["warmup"],
+            12
+        );
+    }
+
+    #[test]
+    fn world_fade_uses_odd_nominal_ticks_and_ignores_duplicate_updates() {
+        let settings = cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 60,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        };
+        let mut fade = Fade {
+            elapsed: 0.0,
+            first_update: false,
+            clock: settings,
+            fading_in: true,
+            world_update: Some(1),
+            world_ticks: 0,
+        };
+        let mut clock = cyrus_script::clock::SimulationClock::new(settings).unwrap();
+        for (update, measured_ticks, expected) in [(2, 0, 1), (2, 0, 1), (3, 2, 4), (4, 3, 7)] {
+            fade.advance_world(update, update as u32, measured_ticks, &mut clock);
+            assert_eq!(fade.world_ticks, expected);
+        }
+    }
+
+    #[test]
     fn first_world_fade_waits_for_gameplay_publication() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
@@ -157,6 +278,18 @@ mod tests {
                 std::time::Duration::from_secs(1),
             ))
             .add_systems(Update, advance);
+        let mut clock =
+            cyrus_script::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+                normal_frame_rate: 12,
+                min_frame_rate: 6,
+                max_frame_rate: 60,
+                use_smooth_fps: false,
+                use_smooth_divisor: false,
+            })
+            .unwrap();
+        clock.advance(1);
+        let before = serde_json::to_value(clock.snapshot()).unwrap();
+        app.insert_resource(clock);
         let overlay = app
             .world_mut()
             .spawn((
@@ -180,6 +313,16 @@ mod tests {
         for _ in 0..30 {
             app.update();
         }
+        assert_eq!(
+            serde_json::to_value(
+                app.world()
+                    .resource::<cyrus_script::clock::SimulationClock>()
+                    .snapshot()
+            )
+            .unwrap(),
+            before,
+            "unpublished host updates must not restart clock warmup"
+        );
         assert!(
             app.world().get_entity(overlay).is_ok(),
             "world entry cleared while gameplay camera was unavailable"
