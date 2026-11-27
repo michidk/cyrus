@@ -286,6 +286,15 @@ still running. The receipt binds those bytes to the workflow run; use that run's
 checkout provenance when comparing source trees. Current-head checks remain the
 merge gate. Default main-run selection and `--fallback-main` retain their existing
 behavior; ancestor fallback cannot be combined with `--run`.
+Standard native artifacts carry `source-provenance.json`, generated from the
+producer's actual checkout after package smoke checks. It binds the workflow
+run, attempt, requested head, checkout commit/tree and package digests. The
+downloader verifies the immutable artifact digest and source commit through
+GitHub before replacing an executable; optional ray-tracing packaging can
+continue independently. Historical artifacts without this record still require
+completed producer checkout logs. Missing or inconsistent source evidence
+never establishes a source match.
+
 
 For source-bound paired replay, add `--source-tree <expected-git-tree-sha>` to
 that download. The fetcher requires the standard Linux job's checkout log,

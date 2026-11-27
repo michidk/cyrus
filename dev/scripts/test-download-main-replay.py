@@ -99,14 +99,72 @@ class ExactRun(unittest.TestCase):
             self.assertEqual(self.destination.read_bytes(), b"previous")
             self.artifact = original
 
-    def test_pending_source_keeps_existing_executable_without_transfer(self):
+    def test_legacy_pending_source_keeps_existing_executable(self):
         with mock.patch.object(MODULE.subprocess, "check_output", side_effect=self.query), \
                 mock.patch.object(MODULE, "checkout_source", side_effect=MODULE.ArtifactPending("pending")), \
-                mock.patch.object(MODULE.subprocess, "run") as transfer:
+                mock.patch.object(MODULE.subprocess, "run", side_effect=self.transfer):
             with self.assertRaises(MODULE.ArtifactPending):
                 MODULE.download(COMMIT, self.destination, run_id=7, source_tree="c" * 40)
-            transfer.assert_not_called()
         self.assertEqual(self.destination.read_bytes(), b"previous")
+
+    def provenance_bundle(self, record):
+        bundle = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(self.bundle)) as old, zipfile.ZipFile(bundle, 'w') as new:
+            for name in old.namelist():
+                new.writestr(name, old.read(name))
+            new.writestr('source-provenance.json', json.dumps(record))
+        self.bundle = bundle.getvalue()
+        self.artifact['digest'] = 'sha256:' + hashlib.sha256(self.bundle).hexdigest()
+
+    def source_record(self):
+        with zipfile.ZipFile(io.BytesIO(self.bundle)) as archive:
+            digest = hashlib.sha256(archive.read('cyrus-x86_64-unknown-linux-gnu.tar.gz')).hexdigest()
+        return dict(version=1, repository=MODULE.REPOSITORY, run=7, attempt=2,
+                    head=COMMIT, checkout_commit='b'*40, checkout_tree='c'*40,
+                    packages={'cyrus-x86_64-unknown-linux-gnu.tar.gz':digest})
+
+    def bound_query(self, command, **kwargs):
+        if '/git/commits/' in command[2]:
+            return json.dumps(dict(sha='b'*40, tree=dict(sha='c'*40),
+                                   parents=[dict(sha='e'*40),dict(sha=COMMIT)]))
+        if '/jobs?' in command[2]:
+            return json.dumps(dict(jobs=[dict(id=12, name='Native (x86_64-unknown-linux-gnu)',status='in_progress')]))
+        return self.query(command, **kwargs)
+
+    def acquire_bound(self):
+        with mock.patch.object(MODULE.subprocess,'check_output',side_effect=self.bound_query), \
+                mock.patch.object(MODULE.subprocess,'run',side_effect=self.transfer), \
+                mock.patch.object(MODULE,'checkout_source',side_effect=AssertionError('must not wait for logs')):
+            return MODULE.download(COMMIT,self.destination,run_id=7,source_tree='c'*40)
+
+    def test_bundled_source_accepts_running_optional_job(self):
+        self.run['run_attempt'] = 2
+        self.provenance_bundle(self.source_record())
+        receipt=self.acquire_bound()
+        self.assertEqual(receipt['checkout_tree'],'c'*40)
+        self.assertEqual(receipt['source_provenance'],'artifact')
+        self.assertEqual(self.destination.read_bytes(),b'native')
+
+    def test_bundled_source_mismatches_preserve_previous_executable(self):
+        self.run['run_attempt'] = 2
+        record=self.source_record()
+        original_bundle=self.bundle
+        for field, value in [('run',8),('attempt',1),('head','f'*40),
+                             ('checkout_tree','d'*40),('checkout_commit','f'*40),
+                             ('packages',{}),('version',None),('repository','other/repo')]:
+            self.bundle=original_bundle
+            self.provenance_bundle(dict(record,**{field:value}))
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'provenance'):
+                self.acquire_bound()
+            self.assertEqual(self.destination.read_bytes(),b'previous')
+
+    def test_missing_both_bundled_and_legacy_provenance_rejects(self):
+        with mock.patch.object(MODULE.subprocess,'check_output',side_effect=self.query), \
+                mock.patch.object(MODULE.subprocess,'run',side_effect=self.transfer), \
+                mock.patch.object(MODULE,'checkout_source',side_effect=ValueError('missing checkout provenance')):
+            with self.assertRaisesRegex(ValueError,'missing checkout provenance'):
+                MODULE.download(COMMIT,self.destination,run_id=7,source_tree='c'*40)
+        self.assertEqual(self.destination.read_bytes(),b'previous')
 
     def test_explicit_run_cannot_be_combined_with_ancestor_fallback(self):
         with self.assertRaisesRegex(ValueError, "fallback"):

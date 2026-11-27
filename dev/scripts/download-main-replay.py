@@ -62,6 +62,37 @@ def checkout_source(run_id, commit, expected_tree):
     return dict(checkout_job=job, checkout_commit=source['sha'], checkout_tree=expected_tree)
 
 
+def artifact_source(record, run, commit, expected_tree, package_name, package_digest):
+    """Validate source carried inside the digest-verified standard artifact."""
+    if (not isinstance(record, dict) or type(record.get('version')) is not int or record['version'] != 1
+            or type(record.get('run')) is not int or record['run'] <= 0
+            or type(record.get('attempt')) is not int or record['attempt'] <= 0
+            or record.get('repository') != REPOSITORY
+            or record.get('run') != run['id']
+            or record.get('attempt') != run.get('run_attempt')
+            or record.get('head') != commit
+            or record.get('checkout_tree') != expected_tree
+            or not isinstance(record.get('packages'), dict)
+            or record['packages'].get(package_name) != package_digest):
+        raise ValueError('artifact source provenance missing or inconsistent with run/head/tree/package')
+    checkout = record.get('checkout_commit')
+    if not isinstance(checkout, str) or not re.fullmatch(r'[0-9a-f]{40}', checkout):
+        raise ValueError('artifact source provenance requires an immutable checkout commit')
+    source = json.loads(subprocess.check_output(
+        ['gh', 'api', f'repos/{REPOSITORY}/git/commits/{checkout}'], text=True))
+    parents = [parent['sha'] for parent in source['parents']]
+    if (source['sha'] != checkout or source['tree']['sha'] != expected_tree
+            or (checkout != commit and (len(parents) != 2 or commit not in parents))):
+        raise ValueError('artifact source provenance checkout differs from immutable source')
+    jobs = json.loads(subprocess.check_output(
+        ['gh', 'api', f'repos/{REPOSITORY}/actions/runs/{run["id"]}/jobs?per_page=100'], text=True))
+    native = [job for job in jobs['jobs'] if job['name'] == 'Native (x86_64-unknown-linux-gnu)']
+    if len(native) != 1:
+        raise ValueError('artifact source provenance requires one Linux producer job')
+    return dict(checkout_job=native[0]['id'], checkout_commit=checkout,
+                checkout_tree=expected_tree, source_provenance='artifact')
+
+
 def download_run(commit, destination, run_id, source_tree=None):
     prefix = f"repos/{REPOSITORY}/actions"
     run = json.loads(subprocess.check_output(
@@ -80,7 +111,7 @@ def download_run(commit, destination, run_id, source_tree=None):
     expected = artifact.get("digest", "")
     if not isinstance(expected, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected):
         raise ValueError(f"artifact {artifact['id']}: missing SHA256 digest")
-    checkout = checkout_source(run_id, commit, source_tree) if source_tree is not None else {}
+    checkout = {}
     print(f"Downloading artifact {artifact['id']} from workflow run {run_id}", flush=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
@@ -99,6 +130,18 @@ def download_run(commit, destination, run_id, source_tree=None):
                 raise ValueError(f"artifact {artifact['id']}: requires one standard Linux package")
             with archive.open(package.name) as source, package.open("wb") as output:
                 shutil.copyfileobj(source, output)
+            if source_tree is not None:
+                names = archive.namelist()
+                if 'source-provenance.json' in names:
+                    if names.count('source-provenance.json') != 1:
+                        raise ValueError('artifact source provenance must occur exactly once')
+                    record = json.loads(archive.read('source-provenance.json'))
+                    checkout = artifact_source(record, run, commit, source_tree, package.name,
+                                               hashlib.sha256(package.read_bytes()).hexdigest())
+                else:
+                    # Historical artifacts predate the bundled source record. Their
+                    # completed producer logs remain an independent exact-source path.
+                    checkout = checkout_source(run_id, commit, source_tree)
         staged = folder / "cyrus"
         extract_binary(package, staged, f"run {run_id} head {commit}")
         with staged.open("rb") as source:

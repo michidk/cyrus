@@ -83,6 +83,10 @@ jobs:
         env:
           BUILD_TARGET: ${{ matrix.target }}
         run: python3 dev/scripts/smoke-native-artifacts.py target/artifacts "$BUILD_TARGET"
+      - name: Record standard package source provenance
+        env:
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 dev/scripts/artifact_provenance.py target/artifacts "$SOURCE_HEAD"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-${{ matrix.target }}
@@ -90,6 +94,7 @@ jobs:
             target/artifacts/cyrus-${{ matrix.target }}*
             target/artifacts/cyrus-with-mods-${{ matrix.target }}*
             target/artifacts/cyrus-viewer-${{ matrix.target }}*
+            target/artifacts/source-provenance.json
           if-no-files-found: error
           compression-level: 0
           retention-days: ${{ github.event_name == 'push' && 3 || 7 }}
