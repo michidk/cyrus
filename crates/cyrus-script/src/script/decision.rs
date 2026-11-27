@@ -801,7 +801,7 @@ pub fn counter_attack(
 }
 
 /// Facts the defence selection reads, sampled by the caller from the combat records.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct DefenceSelectionInput {
     /// The actor is armed.
     pub armed: bool,

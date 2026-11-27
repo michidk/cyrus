@@ -21,6 +21,8 @@ impl ScriptWorld {
             let clock = inputs
                 .combat_clock_sample
                 .context("combat BIOS-clock sample unavailable")? as i32;
+            let index = self.resolve(id)?;
+            self.observe_combat_pacing(index, clock as u32, random.state(), None);
             let query =
                 inputs
                     .locomotion_geometry
