@@ -39,6 +39,31 @@ class RouteInput(unittest.TestCase):
         self.assertEqual(result['end']['frame'], 45)
         self.assertEqual([item['acknowledged'] for item in result['inputs']], [40, 42])
 
+    def test_hit_checkpoint_requires_opponent_health_loss_before_more_input(self):
+        session = Session()
+        health = 250
+        session.snapshot = lambda: dict(frame=session.frame, world=0,
+            player=dict(health=100), actors=dict(opponent=dict(health=health)))
+        events = [dict(after_updates=0, key='ControlLeft', action='press'),
+                  dict(after_updates=2, expected=dict(opponent='opponent', target_health=250)),
+                  dict(after_updates=3, key='ArrowUp', action='press')]
+        with self.assertRaisesRegex(RuntimeError, 'health_decreased'):
+            route.play_input_block(session, events, 3)
+        self.assertNotIn(('ArrowUp', 'press', 43), session.calls)
+        self.assertEqual(session.calls[-1], ('ControlLeft', 'release', 42))
+        session = Session()
+        session.snapshot = lambda: dict(frame=session.frame, world=0,
+            player=dict(health=100), actors=dict(opponent=dict(health=250 if session.frame == 40 else 240)))
+        result = route.play_input_block(session, events[:2], 3)
+        self.assertTrue(all(row['status'] == 'match' for row in result['checkpoints'][0]['fields']))
+
+    def test_malformed_later_outcome_rejects_before_opening_input(self):
+        session = Session()
+        with self.assertRaisesRegex(ValueError, 'required together'):
+            route.play_input_block(session, [dict(after_updates=0, key='ControlLeft', action='press'),
+                dict(after_updates=2, expected=dict(target_health=240))], 2)
+        self.assertEqual(session.calls, [])
+
     def test_checked_in_opening_fixture_combat_block_reaches_its_last_input_boundary(self):
         fixture = json.loads((Path(__file__).parents[1] / 'fixtures/chapters/000-opening.replay.json').read_text())
         events = fixture['steps'][1]['repeat']['steps'][1]['input']

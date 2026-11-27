@@ -5,6 +5,8 @@ The caller owns the stopped original boundary and checkpoint projection. This
 adapter neither boots a debug world nor treats a native fixture as parity proof.
 """
 
+from paired_outcomes import validate_checkpoint, evaluate_checkpoint
+
 
 def validate_input_block(events, max_updates):
     """Reject malformed or unbounded input before a route changes the original."""
@@ -16,6 +18,8 @@ def validate_input_block(events, max_updates):
         if type(frame) is not int or not 0 <= frame <= max_updates or frame < previous:
             raise ValueError('original route: input offsets must be ordered and bounded')
         previous = frame
+        if 'expected' in event:
+            validate_checkpoint(event['expected'])
         if 'key' in event and event.get('action') not in ('press', 'release'):
             raise ValueError('original route: key needs press or release')
         if 'key' not in event and 'action' in event:
@@ -33,7 +37,7 @@ def play_input_block(session, events, max_updates):
     origin, world = start['frame'], start['world']
     if type(origin) is not int or origin < 0 or world in (None, -1, (1 << 32) - 1):
         raise ValueError('original route: requires a running world boundary')
-    held, receipts = set(), []
+    held, receipts, checkpoints = set(), [], []
     try:
         for event in events:
             target = origin + event['after_updates']
@@ -41,6 +45,12 @@ def play_input_block(session, events, max_updates):
             state = session.snapshot()
             if state['world'] != world:
                 raise RuntimeError(f'original route: world changed from {world} to {state["world"]} at {target}')
+            if 'expected' in event:
+                fields = evaluate_checkpoint(event['expected'], state, start)
+                checkpoints.append(dict(frame=target, fields=fields))
+                failed = [field for field in fields if field['status'] != 'match']
+                if failed:
+                    raise RuntimeError(f'original route: checkpoint at {target} failed: {failed}')
             if 'key' in event:
                 key, action = event['key'], event['action']
                 # A failed acknowledgement can follow an applied press.
@@ -52,7 +62,7 @@ def play_input_block(session, events, max_updates):
                 if action == 'release':
                     held.discard(key)
                 receipts.append(dict(frame=target, key=key, action=action, acknowledged=acknowledged))
-        return dict(start=start, end=session.snapshot(), inputs=receipts)
+        return dict(start=start, end=session.snapshot(), inputs=receipts, checkpoints=checkpoints)
     finally:
         for key in sorted(held):
             session.input(key, 'release')

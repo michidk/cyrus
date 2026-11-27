@@ -879,6 +879,14 @@ unacknowledged transition fail explicitly. Run
 `python3 dev/scripts/test-original-scenario.py` for no-world, decoder readiness,
 checkpoint, key-release and failed-input coverage.
 
+For bounded original input recordings, `play_input_block` accepts an `expected`
+checkpoint on an event before sending that event's next key. It uses the shared
+paired-outcome contract: an opponent-health checkpoint requires observed health
+loss from the block's entry and a living player. Missing or unchanged health
+rejects and releases held keys before subsequent input. Validate the recording's
+effective BIOS and consumed clock evidence separately; passing an original-only
+checkpoint does not establish native parity.
+
 For stopped-boundary retail routes, `original-route-input.py` provides
 `play_walk_route(session, waypoints, resume=..., turn_window=...)`. Supply an
 ordered route derived from the installed world and original observations, with
