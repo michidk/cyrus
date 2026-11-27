@@ -1056,3 +1056,35 @@ fn recorded_dispatch_includes_dead_receiver_before_later_combat_gates() {
     );
     assert_eq!(random.state(), 42);
 }
+
+#[test]
+fn recorded_dispatch_excludes_map_objects_without_a_combat_record() {
+    #[derive(Debug)]
+    struct NoDecision;
+    impl cyrus_script::script::replay_clock::DecisionClock for NoDecision {
+        fn sample(&self, _: cyrus_script::script::ScriptActorId) -> anyhow::Result<u32> {
+            anyhow::bail!("map object without a combat record is not a decision dispatch")
+        }
+    }
+    let mut world = counter_fixture_state(false, true, |saved| {
+        saved["actors"][0]["control"]["combat"] = serde_json::Value::Null;
+    });
+    let id = world.id(0).unwrap();
+    let before = world.inspect(0, 1);
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    world
+        .maintain_map_combat(
+            id,
+            0,
+            false,
+            cyrus_script::script::ScriptInputs {
+                decision_clock: Some(&NoDecision),
+                ..Default::default()
+            },
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(world.inspect(0, 1), before);
+    assert_eq!(random.state(), 42);
+}
