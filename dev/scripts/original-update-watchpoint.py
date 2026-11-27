@@ -8,6 +8,8 @@ The reader supplies find_pid(), find_guest(pid), and main() producing JSON.
 No executable offsets or signatures are distributed with this backend.
 """
 from contextlib import contextmanager, redirect_stdout
+from dataclasses import dataclass
+from enum import Enum
 import ctypes
 import importlib.util
 import io
@@ -46,6 +48,19 @@ def clock_snapshot(state, config):
     return dict(clock_scale=total - pending, next_step=step, **timing,
                 clock_publication=dict(accumulator=total, pending_step=pending,
                                        movement_step=step, bios_sample=sample))
+
+
+class MemoryAccess(str, Enum):
+    READ = 'read'
+    WRITE = 'write'
+
+
+@dataclass
+class MemoryObservation:
+    offset: int
+    size: int
+    callback: object
+    include_reads: bool = False
 
 
 class Watchpoint:
@@ -126,9 +141,10 @@ class Watchpoint:
 
     def _debug_control(self):
         control = 1 | (1 << 16) | (3 << 18)
-        for slot, (_, size, _) in self.observations.items():
-            length = {1: 0, 2: 1, 4: 3, 8: 2}[size]
-            control |= (1 << (2 * slot)) | ((1 | (length << 2)) << (16 + slot * 4))
+        for slot, observation in self.observations.items():
+            length = {1: 0, 2: 1, 4: 3, 8: 2}[observation.size]
+            mode = 3 if observation.include_reads else 1
+            control |= (1 << (2 * slot)) | ((mode | (length << 2)) << (16 + slot * 4))
         return control
 
     def observe_write(self, slot, guest_offset, size, callback):
@@ -139,6 +155,30 @@ class Watchpoint:
         identity validation belong to the local caller. This never changes guest
         code or data. A callback error propagates with the emulator still stopped.
         """
+        self._observe(slot, guest_offset, size, callback)
+
+    def observe_memory_access(self, access_slot, write_slot, guest_offset, size, callback):
+        """Observe tracee reads and writes using paired x86 data comparators.
+
+        The access comparator traps reads and writes; the identical write-only
+        comparator distinguishes stores, including stores of the same value.
+        The callback receives MemoryAccess once per access while stopped. A
+        read-modify-write instruction is classified as WRITE, not a pure read.
+        The observation budget counts comparator hits, so a store consumes two.
+        Both slots must be disarmed when the observation lifetime ends. External
+        observer memory reads do not execute in the tracee and do not fire these.
+        """
+        if (type(access_slot) is not int or type(write_slot) is not int
+                or access_slot not in (1, 2, 3) or write_slot not in (1, 2, 3)
+                or access_slot == write_slot or not callable(callback)):
+            raise ValueError('access observation requires two distinct spare slots and a callback')
+        def access():
+            if write_slot not in self._observation_hits:
+                callback(MemoryAccess.READ)
+        self._observe(access_slot, guest_offset, size, access, include_reads=True)
+        self._observe(write_slot, guest_offset, size, lambda: callback(MemoryAccess.WRITE))
+
+    def _observe(self, slot, guest_offset, size, callback, include_reads=False):
         if not self.stopped:
             raise RuntimeError('cannot bind an observation in a running emulator')
         if (type(slot) is not int or slot not in (1, 2, 3)
@@ -148,7 +188,7 @@ class Watchpoint:
             raise ValueError('write observation requires a spare slot and aligned supported size')
         self.ptrace(6, 848 + 7 * 8, 0)
         self.ptrace(6, 848 + slot * 8, self.base + guest_offset)
-        self.observations[slot] = (guest_offset, size, callback)
+        self.observations[slot] = MemoryObservation(guest_offset, size, callback, include_reads)
         self.ptrace(6, 848 + 7 * 8, self._debug_control())
 
     def stop_observing_write(self, slot):
@@ -161,7 +201,7 @@ class Watchpoint:
         self.ptrace(6, 848 + 7 * 8, self._debug_control())
 
     def next_boundary(self, timeout, max_observations=64):
-        """Resume to the next ordinary boundary, retaining bounded write observations."""
+        """Resume to the next ordinary boundary, retaining bounded memory observations."""
         if type(max_observations) is not int or max_observations < 0:
             raise ValueError('observation budget must be a nonnegative integer')
         deadline, observed = time.monotonic() + timeout, 0
@@ -178,12 +218,13 @@ class Watchpoint:
             if not stops or stops & ~known:
                 raise RuntimeError('unidentified original debug stop')
             self.ptrace(6, 848 + 6 * 8, 0)
-            for slot, (_, _, callback) in list(self.observations.items()):
+            self._observation_hits = frozenset(slot for slot in self.observations if stops & (1 << slot))
+            for slot, observation in list(self.observations.items()):
                 if stops & (1 << slot):
                     observed += 1
                     if observed > max_observations:
                         raise RuntimeError('original write observation budget exhausted')
-                    callback()
+                    observation.callback()
             if stops & 1:
                 return
 

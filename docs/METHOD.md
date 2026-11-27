@@ -103,6 +103,14 @@ observe allocation/removal separately. A matching actor slot in another world
 does not establish owner identity, and absent owners are never dereferenced by
 this correlation helper.
 
+The original watchpoint backend can pair an access comparator with a write-only
+comparator on the same bytes to distinguish reads from stores, including stores
+that leave the value unchanged. Read-modify-write instructions classify as
+writes. Callbacks run with the emulator stopped; observation budgets count
+comparator hits, so a store consumes two hits. Disarm both comparators when the
+observed lifetime ends. Reads performed by the external observer are separate
+from guest execution and do not establish guest access.
+
 For original per-update recordings, run
 `python3 dev/scripts/original-update-recorder.py --backend <local-backend.py> --elapsed <clock-units>`.
 The Linux x86-64 backend `dev/scripts/original-update-watchpoint.py` uses

@@ -392,6 +392,38 @@ class WriteObservationTests(unittest.TestCase):
         session.wait = wait
         return session
 
+    def test_paired_access_watch_distinguishes_reads_from_writes_including_same_value_store(self):
+        session = self.backend([2, 6, 1])
+        seen = []
+        session.observe_memory_access(1, 2, 32, 4, lambda access: seen.append(access))
+        self.assertEqual((session.registers[848 + 7 * 8] >> 20) & 15, 15)
+        self.assertEqual((session.registers[848 + 7 * 8] >> 24) & 15, 13)
+        session.next_boundary(2)
+        self.assertEqual(seen, ['read', 'write'])
+        self.assertTrue(session.stopped)
+
+    def test_access_observation_is_bounded_and_disarms_both_comparators(self):
+        session = self.backend([2, 2])
+        session.observe_memory_access(1, 2, 32, 4, lambda access: None)
+        with self.assertRaisesRegex(RuntimeError, 'budget'):
+            session.next_boundary(2, max_observations=1)
+        session.stop_observing_write(1)
+        session.stop_observing_write(2)
+        self.assertEqual(session.observations, {})
+        with self.assertRaises(ValueError):
+            session.observe_memory_access(1, 1, 32, 4, lambda access: None)
+
+    def test_access_callback_failure_and_simultaneous_boundary_remain_stopped(self):
+        session = self.backend([3])
+        def fail(access):
+            self.assertEqual(access, watchpoint.MemoryAccess.READ)
+            self.assertTrue(session.stopped)
+            raise RuntimeError('capture failed')
+        session.observe_memory_access(1, 2, 33, 1, fail)
+        with self.assertRaisesRegex(RuntimeError, 'capture failed'):
+            session.next_boundary(2)
+        self.assertTrue(session.stopped)
+
     def test_mid_update_write_is_observed_without_becoming_an_ordinary_boundary(self):
         session = self.backend([2, 1])
         seen = []
