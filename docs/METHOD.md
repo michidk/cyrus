@@ -139,7 +139,9 @@ native registry index.
 The driver adds the actual script generation, absolute expected update and
 observed pre-body BIOS sample as the command's compare-and-set fields. Effective
 `elapsed_bios_ticks` stays mandatory and separate. It retains the submitted
-command/reply, checks generation stability, and validates the actual stopped
+command/reply and actual stopped clock, requires one input-boundary acknowledgement
+with the current generation, next absolute update, zero relative offset and no
+unexpected key action, checks generation stability, and validates the actual stopped
 endpoint against the independently observed boundary tape. Fixture execution
 alone does not establish per-decision or original/native outcome acceptance.
 

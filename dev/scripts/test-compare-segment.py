@@ -783,7 +783,7 @@ class NativeClockTimelines(unittest.TestCase):
                     decisions=[dict(index=43, name='GUARDNS3', occurrence=1)],
                     before_decisions=[145], after_decisions=[147])
 
-    def session(self, *, timeline=None, generation=7, final_sample=147):
+    def session(self, *, timeline=None, generation=7, final_sample=147, change_ack=None):
         control = NativeControl(); original = control.request; sample = [100]; commands = []
         def request(command):
             if command['type'] == 'replay_frame':
@@ -791,6 +791,10 @@ class NativeClockTimelines(unittest.TestCase):
             result = original(command)
             if command['type'] == 'state': result['clock']['bios_sample'] = sample[0]
             if command['type'] == 'scripts': result['generation'] = generation
+            if command['type'] == 'replay_frame':
+                result = dict(boundaries=[dict(generation=generation, update=control.update,
+                                              after_updates=0, key=None, action=None)])
+                if change_ack is not None: result = change_ack(result)
             return result
         control.request = request
         session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[202], bios_ticks=[1],
@@ -803,8 +807,40 @@ class NativeClockTimelines(unittest.TestCase):
         expected = dict(self.timeline(), generation=7, expected_update=50, expected_bios_sample=100)
         self.assertEqual(commands[0]['clock_timeline'], expected)
         self.assertEqual(commands[0]['elapsed_bios_ticks'], 1)
-        self.assertEqual(session.execution_evidence()['timeline_observations'][0]['acknowledgement'], {})
+        self.assertEqual(session.execution_evidence()['timeline_observations'][0]['acknowledgement']['boundaries'][0]['generation'], 7)
         self.assertEqual(control.bios_ticks, [1])
+
+    def test_missing_stale_or_wrong_boundary_reply_rejects_even_when_final_clock_matches(self):
+        changes = [lambda ack: {}, lambda ack: None,
+                   lambda ack: dict(boundaries=[]),
+                   lambda ack: dict(boundaries=ack['boundaries'] * 2)]
+        for field, value in [('generation', 8), ('generation', True), ('update', 50),
+                             ('after_updates', 1), ('key', 'ArrowDown'), ('action', 'press')]:
+            changes.append(lambda ack, field=field, value=value:
+                           dict(boundaries=[dict(ack['boundaries'][0], **{field: value})]))
+        for change in changes:
+            session, _, _ = self.session(change_ack=change)
+            with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'acknowledgement'):
+                session.advance_to(1)
+            evidence = session.execution_evidence()['timeline_observations'][0]
+            self.assertEqual(evidence['observed']['clock']['bios_sample'], 147)
+            self.assertEqual(evidence['observed']['ordinary_update'], 51)
+            self.assertIn('acknowledgement', evidence)
+
+    def test_generation_change_after_reply_retains_actual_rejected_boundary(self):
+        session, control, _ = self.session()
+        request = control.request
+        def changed(command):
+            result = request(command)
+            if command['type'] == 'scripts' and control.update == 51:
+                result['generation'] = 8
+            return result
+        control.request = changed
+        with self.assertRaisesRegex(RuntimeError, 'generation changed during frame'):
+            session.advance_to(1)
+        observed = session.execution_evidence()['timeline_observations'][0]['observed']
+        self.assertEqual(observed['generation'], 8)
+        self.assertEqual(observed['clock']['bios_sample'], 147)
 
     def test_malformed_missing_or_misaligned_fixture_rejects_before_execution(self):
         bad = [dict(self.timeline(), stored_sample=True), dict(self.timeline(), decisions=[]),

@@ -411,8 +411,24 @@ class NativeFrameSession:
             else:
                 self.control.request(command)
             self.current = self._read()
-            if self.clock_timelines is not None and self.current[1].get('generation') != self.timeline_generation:
-                raise RuntimeError('native clock timeline generation changed during frame')
+            if self.clock_timelines is not None:
+                evidence['observed'] = dict(generation=self.current[1].get('generation'),
+                    ordinary_update=self.current[0]['scripts']['ordinary_updates'],
+                    clock=copy.deepcopy(self.current[0].get('clock')))
+                if self.current[1].get('generation') != self.timeline_generation:
+                    raise RuntimeError('native clock timeline generation changed during frame')
+                acknowledgement = evidence['acknowledgement']
+                boundaries = acknowledgement.get('boundaries') if isinstance(acknowledgement, dict) else None
+                if not isinstance(boundaries, list) or len(boundaries) != 1 or not isinstance(boundaries[0], dict):
+                    raise RuntimeError('native timeline acknowledgement requires one actual input boundary')
+                boundary = boundaries[0]
+                required = dict(generation=self.timeline_generation,
+                    update=command['clock_timeline']['expected_update'] + 1, after_updates=0)
+                for field, value in required.items():
+                    if type(boundary.get(field)) is not int or boundary[field] != value:
+                        raise RuntimeError(f'native timeline acknowledgement has stale or misaligned {field}')
+                if boundary.get('key') is not None or boundary.get('action') is not None:
+                    raise RuntimeError('native timeline acknowledgement contains unexpected input')
             self.acquisition_observations.append(self._acquisition_observation())
             observed = self.snapshot()['frame']
             if observed != current + 1:
