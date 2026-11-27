@@ -198,19 +198,7 @@ fn imported_local_matrix_refresh_is_independent_of_attached_angles() -> anyhow::
     object.object_id = i32::from(identifier as u16);
     object.body[20..22].copy_from_slice(&identifier.to_le_bytes());
     object.attributes = Some(*world.actors()[id.index].attributes().bytes());
-    for offset in [8, 12] {
-        object.body[offset..offset + 4].copy_from_slice(&(-1i32).to_le_bytes());
-    }
-    // Local and previous yaw name the stored matrix. The independent attached
-    // angle fields retain their allocation zeros.
-    for offset in [0x124, 0x154] {
-        object.body[offset..offset + 4].copy_from_slice(&512i32.to_le_bytes());
-    }
-    let matrix = cyrus_world::transform::Matrix::orientation([0, 512, 0]);
-    for (index, component) in matrix.0.into_iter().flatten().enumerate() {
-        object.body[0x51 + index * 4..0x55 + index * 4]
-            .copy_from_slice(&component.to_bits().to_le_bytes());
-    }
+    let matrix = set_imported_quarter_turn(&mut object);
     world.restore_original_actor_states(&[(id, &object)])?;
     assert_eq!(world.spatial(id)?.effective.unwrap().angles, [0; 3]);
     let collision = Default::default();
@@ -262,4 +250,23 @@ fn imported_local_matrix_refresh_is_independent_of_attached_angles() -> anyhow::
         assert_eq!(turned.spatial(id)?.local.matrix, matrix);
     }
     Ok(())
+}
+
+fn set_imported_quarter_turn(
+    object: &mut rgpre::import::savegame::SaveObject,
+) -> cyrus_world::transform::Matrix {
+    for offset in [8, 12] {
+        object.body[offset..offset + 4].copy_from_slice(&(-1i32).to_le_bytes());
+    }
+    // Local and previous yaw name the stored matrix. The independent attached
+    // angle fields retain their allocation zeros.
+    for offset in [0x124, 0x154] {
+        object.body[offset..offset + 4].copy_from_slice(&512i32.to_le_bytes());
+    }
+    let matrix = cyrus_world::transform::Matrix::orientation([0, 512, 0]);
+    for (index, component) in matrix.0.into_iter().flatten().enumerate() {
+        object.body[0x51 + index * 4..0x55 + index * 4]
+            .copy_from_slice(&component.to_bits().to_le_bytes());
+    }
+    matrix
 }
