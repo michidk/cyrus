@@ -129,6 +129,14 @@ establish the loaded context. Truncated reads, missing metadata, null string
 pointers and strings beyond the observation bound reject the capture. Stored
 orientation is observed directly, without rebuilding a matrix from angles.
 
+`original_native_call.py` resolves a stopped encoded native call through the
+observed runtime handler table and installed function names. It checks the
+handler against the call record and retains receiver/source equality separately.
+A retained source can belong to the preceding dispatch. Observe the handler
+write and subsequent source assignment around the event before attributing an
+RNG write to the current native receiver; a matching snapshot alone does not
+establish that a call is still active. Executable bindings remain local.
+
 The original watchpoint backend can pair an access comparator with a write-only
 comparator on the same bytes to distinguish reads from stores, including stores
 that leave the value unchanged. Read-modify-write instructions classify as
