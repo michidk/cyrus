@@ -357,6 +357,81 @@ mod tests {
             .unwrap();
         assert_eq!(image.data.as_ref().unwrap(), &pixels);
         assert_eq!(image.texture_descriptor.size.depth_or_array_layers, 1);
+        // A world open resets continuation even when the installed sky is identical.
+        // Changing only the sidecar handle must still select exactly one new direction.
+        let mut previous = entity;
+        for speed in [6, 9] {
+            let handle = app
+                .world()
+                .get::<MeshMaterial3d<SkyMaterial>>(previous)
+                .unwrap()
+                .0
+                .clone();
+            app.world_mut()
+                .resource_mut::<Assets<SkyMaterial>>()
+                .get_mut(&handle)
+                .unwrap()
+                .scroll = Vec4::new(12.5, -7.25, 0.0, 0.0);
+            let mut replacement: Environment = serde_json::from_value(
+                serde_json::to_value(
+                    app.world()
+                        .resource::<Assets<Environment>>()
+                        .get(&outdoor)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            replacement.sky.as_mut().unwrap().speed = speed;
+            let replacement = app
+                .world_mut()
+                .resource_mut::<Assets<Environment>>()
+                .add(replacement);
+            let mut expected = cyrus_game::random::EngineRandom::from_state(
+                app.world()
+                    .resource::<cyrus_game::random::EngineRandom>()
+                    .state(),
+            );
+            expected.draw();
+            app.world_mut().resource_mut::<EnvironmentRequest>().0 = replacement;
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<cyrus_game::random::EngineRandom>()
+                    .state(),
+                expected.state(),
+                "each successful world sky open consumes exactly one draw, speed {speed}"
+            );
+            let current = app.world().resource::<ActiveEnvironment>().sky.unwrap();
+            assert_ne!(current, previous);
+            assert!(app.world().get::<Sky>(previous).is_none());
+            let handle = &app
+                .world()
+                .get::<MeshMaterial3d<SkyMaterial>>(current)
+                .unwrap()
+                .0;
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<SkyMaterial>>()
+                    .get(handle)
+                    .unwrap()
+                    .scroll,
+                Vec4::ZERO,
+                "world sky opening resets scroll rather than retaining the previous phase"
+            );
+            app.update();
+            assert_eq!(
+                app.world()
+                    .resource::<cyrus_game::random::EngineRandom>()
+                    .state(),
+                expected.state(),
+                "the same prepared handle must not reopen every presentation update"
+            );
+            previous = current;
+        }
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = outdoor.clone();
+        app.update();
+        let entity = app.world().resource::<ActiveEnvironment>().sky.unwrap();
         let removed = app
             .world_mut()
             .resource_mut::<Assets<Environment>>()

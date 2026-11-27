@@ -44,6 +44,7 @@ pub(crate) struct NativeSessionLoad {
 
 struct OriginalEntry {
     saved: rgpre::import::savegame::SaveSlot,
+    loading: Option<cyrus_startup::SavedWorldLoadRequest>,
 }
 
 struct ModSave {
@@ -275,14 +276,18 @@ fn begin_original_entry(
     saved: rgpre::import::savegame::SaveSlot,
 ) -> Result<()> {
     let world_id = saved.game.metadata.world_id;
+    let loading = original_slots::loading_request(&saved.game)?;
     let checkpoint = original_rollback::begin(world)?;
-    if !matches!(checkpoint, original_rollback::Checkpoint::Capturing) {
+    let loading = if matches!(checkpoint, original_rollback::Checkpoint::Capturing) {
+        Some(loading)
+    } else {
         world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
-        world.insert_resource(cyrus_startup::WorldLoadRequest(world_id.to_string()));
-    }
+        world.insert_resource(loading);
+        None
+    };
     let mut state = world.resource_mut::<NativeSessionLoad>();
     state.original_rollback = Some(checkpoint);
-    state.original_entry = Some(OriginalEntry { saved });
+    state.original_entry = Some(OriginalEntry { saved, loading });
     state.original_notice = true;
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
@@ -292,7 +297,10 @@ fn begin_original_entry(
 fn queue_original_capture(world: &mut World, slot: u16, saved: rgpre::import::savegame::SaveSlot) {
     let world_id = saved.game.metadata.world_id;
     let mut state = world.resource_mut::<NativeSessionLoad>();
-    state.original_entry = Some(OriginalEntry { saved });
+    state.original_entry = Some(OriginalEntry {
+        saved,
+        loading: None,
+    });
     state.original_notice = true;
     state.slot_load = true;
     state.path = format!("original slot {slot} world {world_id}");
@@ -312,12 +320,15 @@ fn poll_original_entry(state: &mut NativeSessionLoad, world: &mut World) -> Resu
         state.original_rollback = Some(original_rollback::Checkpoint::Session(snapshot));
         let entry = state
             .original_entry
-            .as_ref()
+            .as_mut()
             .context("original import entry absent")?;
         world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
-        world.insert_resource(cyrus_startup::WorldLoadRequest(
-            entry.saved.game.metadata.world_id.to_string(),
-        ));
+        world.insert_resource(
+            entry
+                .loading
+                .take()
+                .context("original import loading screen absent")?,
+        );
         return Ok(());
     }
     let entry = state
@@ -1013,10 +1024,76 @@ mod tests {
                     world_id,
                     bitmap_filename: String::new(),
                 },
-                sections: Vec::new(),
+                sections: vec![rgpre::import::savegame::SaveSection {
+                    name: *b"SCR3",
+                    data: vec![0; 640 * 480 * 2],
+                }],
             },
             maps: BTreeMap::new(),
             logbook: None,
+        }
+    }
+
+    #[test]
+    fn original_loading_screen_decodes_saved_framebuffer_without_bitmap_path() {
+        let mut saved = synthetic_original_entry(30);
+        saved.game.metadata.bitmap_filename = "not-a-host-path.bmp".into();
+        for (target, value) in saved.game.sections[0]
+            .data
+            .chunks_exact_mut(2)
+            .zip([0xf800_u16, 0x07e0, 0x001f, 0x8410])
+        {
+            target.copy_from_slice(&value.to_le_bytes());
+        }
+        let request = original_slots::loading_request(&saved.game).unwrap();
+        assert_eq!(request.world(), 30);
+        assert_eq!(
+            (request.screen().width, request.screen().height),
+            (640, 480)
+        );
+        assert_eq!(
+            &request.screen().rgba[..16],
+            &[
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 132, 130, 132, 255
+            ]
+        );
+        assert!(
+            cyrus_startup::SavedWorldLoadRequest::new(
+                30,
+                cyrus_assets::menu::MenuPicture {
+                    width: 640,
+                    height: 480,
+                    rgba: vec![0; 3],
+                }
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn original_entry_rejects_missing_or_malformed_screen_before_checkpoint() {
+        for malformed in [false, true] {
+            let mut world = World::new();
+            world.init_resource::<NativeSessionLoad>();
+            world.init_resource::<SessionBoundary>();
+            let live = world
+                .spawn(Name::new("live scene survives invalid screen"))
+                .id();
+            let mut saved = synthetic_original_entry(30);
+            if malformed {
+                saved.game.sections[0].data.pop();
+            } else {
+                saved.game.sections.clear();
+            }
+            let error = begin_original_entry(&mut world, 0, saved)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("30") && error.contains("SCR3"), "{error}");
+            assert!(world.get_entity(live).is_ok());
+            assert!(world.resource::<SessionBoundary>().is_idle());
+            assert!(!world.resource::<NativeSessionLoad>().busy());
+            assert!(!world.contains_resource::<cyrus_startup::SavedWorldLoadRequest>());
+            assert!(!world.contains_resource::<cyrus_startup::WorldLoadRequest>());
         }
     }
 
@@ -1062,7 +1139,16 @@ mod tests {
         world.init_resource::<NativeSessionLoad>();
         world.init_resource::<SessionBoundary>();
         begin_original_entry(&mut world, 2, synthetic_original_entry(15)).unwrap();
-        assert_eq!(world.resource::<cyrus_startup::WorldLoadRequest>().0, "15");
+        assert!(
+            !world.contains_resource::<cyrus_startup::WorldLoadRequest>(),
+            "save restoration must not request randomized destination artwork"
+        );
+        assert_eq!(
+            world
+                .resource::<cyrus_startup::SavedWorldLoadRequest>()
+                .world(),
+            15
+        );
         let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
         poll_original_entry(&mut state, &mut world).unwrap();
         assert!(state.busy());
@@ -1092,7 +1178,12 @@ mod tests {
         });
         let previous = world.spawn(Name::new("previous world")).id();
         begin_original_entry(&mut world, 2, synthetic_original_entry(0)).unwrap();
-        assert_eq!(world.resource::<cyrus_startup::WorldLoadRequest>().0, "0");
+        assert_eq!(
+            world
+                .resource::<cyrus_startup::SavedWorldLoadRequest>()
+                .world(),
+            0
+        );
         let mut state = world.remove_resource::<NativeSessionLoad>().unwrap();
         poll_original_entry(&mut state, &mut world).unwrap();
         assert!(state.original_entry.is_some());

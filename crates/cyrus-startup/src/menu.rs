@@ -1214,8 +1214,10 @@ fn begin_world_entry(
         images,
         next,
         book,
-        book.new_game.world,
-        &book.new_game.loading,
+        WorldLoadingBackground::Artwork {
+            world: book.new_game.world,
+            pictures: &book.new_game.loading,
+        },
         random,
     );
     let entry = NewGameEntry {
@@ -1230,31 +1232,44 @@ fn begin_world_entry(
     });
 }
 
+pub(super) enum WorldLoadingBackground<'a> {
+    Artwork {
+        world: u32,
+        pictures: &'a [cyrus_assets::menu::MenuPicture],
+    },
+    Saved(&'a cyrus_assets::menu::MenuPicture),
+}
+
 pub(super) fn begin_world_loading(
     commands: &mut Commands,
     images: &mut Assets<Image>,
     next: &mut NextState<AppState>,
     book: &MenuAsset,
-    artwork_world: u32,
-    pictures: &[cyrus_assets::menu::MenuPicture],
+    background: WorldLoadingBackground<'_>,
     random: &mut cyrus_game::random::EngineRandom,
 ) {
     commands.remove_resource::<NewGameEntry>();
-    let variation = if pictures.len() == 1 {
-        0
-    } else {
-        let selected = i32::try_from(pictures.len())
-            .map_err(anyhow::Error::from)
-            .and_then(|bound| random.rnd(bound));
-        match selected {
-            Ok(frame) => frame as usize,
-            Err(error) => {
-                commands.insert_resource(cyrus_world::lifecycle::SceneLoadError(format!(
-                    "world {artwork_world} loading artwork frame count {}: {error}",
-                    pictures.len()
-                )));
-                return;
-            }
+    let (picture, artwork_world) = match background {
+        WorldLoadingBackground::Saved(screen) => (screen, None),
+        WorldLoadingBackground::Artwork { world, pictures } => {
+            let variation = if pictures.len() == 1 {
+                0
+            } else {
+                let selected = i32::try_from(pictures.len())
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bound| random.rnd(bound));
+                match selected {
+                    Ok(frame) => frame as usize,
+                    Err(error) => {
+                        commands.insert_resource(cyrus_world::lifecycle::SceneLoadError(format!(
+                            "world {world} loading artwork frame count {}: {error}",
+                            pictures.len()
+                        )));
+                        return;
+                    }
+                }
+            };
+            (&pictures[variation], Some(world))
         }
     };
     // The book retains the paused player for Continue and Save. A fresh world entry must
@@ -1273,7 +1288,6 @@ pub(super) fn begin_world_loading(
     commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
     commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
     commands.remove_resource::<cyrus_world::lifecycle::PreparationProgress>();
-    let picture = &pictures[variation];
     let image = images.add(Image::new(
         bevy::render::render_resource::Extent3d {
             width: picture.width.into(),
@@ -1287,7 +1301,7 @@ pub(super) fn begin_world_loading(
     ));
     commands.insert_resource(super::StartGame {
         image,
-        artwork_world: Some(artwork_world),
+        artwork_world,
         background: picture.rgba.clone(),
         font: book.new_game.font.clone(),
         progress: (0, 1),
@@ -1360,8 +1374,10 @@ mod tests {
                 &mut images,
                 &mut next,
                 &book,
-                book.new_game.world,
-                &book.new_game.loading,
+                WorldLoadingBackground::Artwork {
+                    world: book.new_game.world,
+                    pictures: &book.new_game.loading,
+                },
                 &mut random,
             );
             queue.apply(&mut world);

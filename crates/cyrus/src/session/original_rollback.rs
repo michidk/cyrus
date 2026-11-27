@@ -115,6 +115,7 @@ pub(super) fn begin(world: &mut World) -> Result<Checkpoint> {
 pub(super) fn cancel_entry(world: &mut World) {
     crate::scene::cancel_preparation(world);
     world.remove_resource::<cyrus_startup::WorldLoadRequest>();
+    world.remove_resource::<cyrus_startup::SavedWorldLoadRequest>();
     world.remove_resource::<cyrus_startup::StartGame>();
     world.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
 }
@@ -178,6 +179,24 @@ pub(super) fn reject(state: &mut NativeSessionLoad, world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cancelling_original_entry_removes_saved_screen_request() {
+        let mut world = World::new();
+        world.insert_resource(
+            cyrus_startup::SavedWorldLoadRequest::new(
+                30,
+                cyrus_assets::menu::MenuPicture {
+                    width: 640,
+                    height: 480,
+                    rgba: vec![0; 640 * 480 * 4],
+                },
+            )
+            .unwrap(),
+        );
+        cancel_entry(&mut world);
+        assert!(!world.contains_resource::<cyrus_startup::SavedWorldLoadRequest>());
+    }
+
     #[test]
     fn checkpoint_rejection_does_not_cancel_the_previous_world_request() {
         let mut world = World::new();

@@ -115,6 +115,43 @@ pub(super) fn load(
     Ok(saved)
 }
 
+/// Decode the saved framebuffer before beginning a destructive world replacement.
+pub(super) fn loading_request(
+    game: &rgpre::import::savegame::SaveGame,
+) -> Result<cyrus_startup::SavedWorldLoadRequest> {
+    use rgpre::import::savegame::SaveImageKind;
+    let screen = game.image(SaveImageKind::Screen)?.with_context(|| {
+        format!(
+            "original save world {}: SCR3 loading screen absent",
+            game.metadata.world_id
+        )
+    })?;
+    // The saved Glide framebuffer contains RGB565 words, not palette indices.
+    let rgba = screen
+        .pixels()
+        .iter()
+        .flat_map(|&pixel| {
+            let red = ((pixel >> 11) & 31) as u8;
+            let green = ((pixel >> 5) & 63) as u8;
+            let blue = (pixel & 31) as u8;
+            [
+                (red << 3) | (red >> 2),
+                (green << 2) | (green >> 4),
+                (blue << 3) | (blue >> 2),
+                255,
+            ]
+        })
+        .collect();
+    cyrus_startup::SavedWorldLoadRequest::new(
+        game.metadata.world_id,
+        cyrus_assets::menu::MenuPicture {
+            width: 640,
+            height: 480,
+            rgba,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
