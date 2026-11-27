@@ -2567,3 +2567,91 @@ fn proximity_world_with_target(
     )
     .unwrap()
 }
+
+#[test]
+fn jump_key_uses_the_script_jump_weapon_rows() {
+    use cyrus_script::script::{OrdinaryGroundQuery, PlayerControllerInput, ScriptInputs};
+    for (holding, expected) in [
+        (0, AnimationGroup::JUMP_START),
+        (1, AnimationGroup::FIGHT_JUMP_START),
+    ] {
+        let (_, mut world, data, scene) = player_walking_fixture_with_animation(
+            |scripts| {
+                scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] =
+                    holding;
+            },
+            add_standing_jump_groups,
+        );
+        let player = world.selected_player().unwrap();
+        let map = world.id(0).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let held = cyrus_script::player::input::PlayerInput {
+            jump: true,
+            ..Default::default()
+        };
+        world
+            .advance_player_controller(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                cyrus_script::clock::ClockStep {
+                    frame_scale: 256,
+                    nominal_ticks: 1,
+                    fine_ticks: 8,
+                },
+                ScriptInputs {
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: false,
+                        steer: None,
+                        claim: None,
+                        probes: None,
+                    }),
+                    fine_ticks: Some(8),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            world
+                .locomotion_status()
+                .unwrap()
+                .pending_animation
+                .or(world.locomotion_status().unwrap().animation),
+            Some(expected),
+            "holding {holding}"
+        );
+    }
+}
+
+fn add_standing_jump_groups(data: &mut cyrus_assets::animation::Animations) {
+    let actor = data.metadata["actors"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|actor| actor["script_name"] == "CYRUS")
+        .unwrap();
+    for group in [AnimationGroup::JUMP_START, AnimationGroup::FIGHT_JUMP_START] {
+        actor["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "group_index":group.index(),"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]
+            }));
+    }
+}
