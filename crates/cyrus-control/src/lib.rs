@@ -107,6 +107,33 @@ pub enum SlotOperation {
     },
 }
 
+/// Semantic receiver for one observed nonplayer decision dispatch. Occurrences
+/// start at one per receiver and include entries rejected by later state gates.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayDecisionEntry {
+    /// Original retained runtime identifier, resolved by world and name. Never a native registry slot.
+    pub index: usize,
+    pub name: String,
+    pub occurrence: u32,
+}
+
+/// One recorded body's calculation and paired raw-cache/baseline refreshes.
+/// Effective measurement ticks remain in ReplayFrame.elapsed_bios_ticks. All
+/// samples describe one timer; endpoint samples cannot replace decision samples.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ReplayClockTimeline {
+    pub generation: u64,
+    pub expected_update: u64,
+    pub expected_bios_sample: u32,
+    pub stored_sample: u32,
+    pub world: u32,
+    pub decisions: Vec<ReplayDecisionEntry>,
+    pub before_decisions: Vec<u32>,
+    pub after_decisions: Vec<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
@@ -290,6 +317,10 @@ pub enum Command {
         /// measurement ticks do not determine source-decoder progression.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         elapsed_host_nanos: Option<u64>,
+        /// Observed refresh timeline for an origin-bound ready held replay.
+        /// Complete dispatch identity/order is checked at actual decision entry.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clock_timeline: Option<ReplayClockTimeline>,
     },
     /// Press at the next ordinary boundary, retain every boundary, and release at
     /// the first actually consumed endpoint from the counterpart's receipt set.
@@ -562,7 +593,7 @@ pub mod server;
 
 #[cfg(test)]
 mod frame_boundary_tests {
-    use super::{Command, FrameBoundary};
+    use super::{Command, FrameBoundary, ReplayClockTimeline};
     #[test]
     fn player_trace_request_round_trips_placement_and_update_bound() {
         let value = serde_json::json!({"type":"trace_player","x":-10,"y":20,"z":30,"heading":40,"updates":21});
@@ -610,6 +641,49 @@ mod frame_boundary_tests {
                 ..
             }
         ));
+    }
+    #[test]
+    fn recorded_timeline_requires_complete_unsigned_measurement_and_receiver_evidence() {
+        let timeline = serde_json::json!({"generation":7,"expected_update":9,"expected_bios_sample":100,
+            "stored_sample":102,"world":30,"decisions":[{"index":4,"name":"guard","occurrence":1}],
+            "before_decisions":[104,104],"after_decisions":[107]});
+        let frame = serde_json::json!({"type":"replay_frame","frame_scale":118,
+            "elapsed_bios_ticks":2,"clock_timeline":timeline});
+        let command: Command = serde_json::from_value(frame).unwrap();
+        assert_eq!(
+            serde_json::to_value(command).unwrap()["clock_timeline"],
+            timeline
+        );
+        for field in [
+            "generation",
+            "expected_update",
+            "expected_bios_sample",
+            "stored_sample",
+            "world",
+            "decisions",
+            "before_decisions",
+            "after_decisions",
+        ] {
+            let mut missing = timeline.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<ReplayClockTimeline>(missing).is_err());
+        }
+        for field in ["index", "name", "occurrence"] {
+            let mut missing = timeline.clone();
+            missing["decisions"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(serde_json::from_value::<ReplayClockTimeline>(missing).is_err());
+        }
+        for sample in [serde_json::json!(-1), serde_json::json!(4294967296u64)] {
+            let mut invalid = timeline.clone();
+            invalid["before_decisions"] = serde_json::json!([sample]);
+            assert!(serde_json::from_value::<ReplayClockTimeline>(invalid).is_err());
+        }
+        let mut unknown = timeline;
+        unknown["combat_override"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<ReplayClockTimeline>(unknown).is_err());
     }
     #[test]
     fn replay_origin_requires_complete_unsigned_identity_and_sample_fields() {

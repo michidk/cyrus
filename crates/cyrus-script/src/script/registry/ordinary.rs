@@ -871,13 +871,15 @@ pub struct ReplayHold(pub bool);
 
 /// An exact counterpart Q8 clock scale bound to the next ordinary invocation.
 /// Retained across preparation retries; a completed update invalidates its binding.
-#[derive(Resource, Clone, Copy, Debug)]
+#[derive(Resource, Clone, Debug)]
 pub struct ReplayFrameScale {
     pub generation: u64,
     pub previous_update: u64,
     pub frame_scale: u32,
     /// Counterpart BIOS-sample delta, independent of the Q8 movement scale.
     pub elapsed_bios_ticks: Option<u32>,
+    /// Optional independently observed calculation/decision refresh timeline.
+    pub clock_timeline: Option<super::super::replay_clock::RecordedClockTimeline>,
 }
 
 pub(crate) fn sample_clock(
@@ -933,7 +935,12 @@ pub(crate) fn sample_clock(
         // A replay's BIOS tick follows simulated time: the host's absolute tick carries the load
         // time, which changes where tick boundaries fall against the updates.
         let measured_delta = recorded.as_ref().and_then(|frame| frame.elapsed_bios_ticks);
-        let tick = if let Some(elapsed) = measured_delta {
+        let tick = if let Some(timeline) = recorded
+            .as_ref()
+            .and_then(|frame| frame.clock_timeline.as_ref())
+        {
+            timeline.stored_sample
+        } else if let Some(elapsed) = measured_delta {
             clock.bios_sample().wrapping_add(elapsed)
         } else if hold.is_some() {
             clock.simulated_bios_tick()
@@ -960,7 +967,19 @@ pub(crate) fn sample_clock(
                             && recorded.previous_update == world.ordinary_updates(),
                         "recorded frame scale does not bind this replay world/update"
                     );
-                    clock.advance_recorded(tick, recorded.frame_scale)?;
+                    if recorded.clock_timeline.is_some() {
+                        clock.advance_recorded_measurement(
+                            tick,
+                            measured_delta.ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "recorded timeline requires effective BIOS interval"
+                                )
+                            })?,
+                            recorded.frame_scale,
+                        )?;
+                    } else {
+                        clock.advance_recorded(tick, recorded.frame_scale)?;
+                    }
                     Ok(())
                 })();
                 if let Err(error) = result {
@@ -1105,7 +1124,8 @@ pub struct OrdinaryContext<'w, 's> {
     fidelity: Option<Res<'w, cyrus_game::fidelity::Fidelity>>,
     explicit: Option<Res<'w, crate::player::runtime::PlayerRuntime>>,
     actors: ResMut<'w, ScriptActors>,
-    clock: Option<Res<'w, SimulationClock>>,
+    clock: Option<ResMut<'w, SimulationClock>>,
+    recorded: Option<Res<'w, ReplayFrameScale>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
     camera_drive: Option<Res<'w, super::CameraDrive>>,
     camera_frame: Option<ResMut<'w, super::CameraFrameState>>,
@@ -1659,6 +1679,7 @@ pub fn run_ordinary(
         explicit,
         mut actors,
         clock,
+        recorded,
         mut random,
         camera_drive,
         camera_frame,
@@ -1702,7 +1723,7 @@ pub fn run_ordinary(
         );
         return;
     }
-    let (Some(view), Some(request), Some(clock)) = (view, request, clock) else {
+    let (Some(view), Some(request), Some(mut clock)) = (view, request, clock) else {
         return;
     };
     if view.source != request.0 {
@@ -1953,6 +1974,23 @@ pub fn run_ordinary(
         }
         _ => None,
     };
+    let raw_sample = clock.bios_sample();
+    let step_fps = clock.fps();
+    let decision_clock = match recorded
+        .as_ref()
+        .and_then(|frame| frame.clock_timeline.as_ref())
+    {
+        Some(timeline) => {
+            match super::super::replay_clock::RecordedDecisionClock::new(&mut clock, timeline) {
+                Ok(session) => Some(session),
+                Err(error) => {
+                    actors.report_runtime_error(format!("recorded decision clock: {error:#}"));
+                    return;
+                }
+            }
+        }
+        None => None,
+    };
     let result = world.update_ordinary(
         data,
         [view.position[0] >> 8, view.position[2] >> 8],
@@ -1991,11 +2029,14 @@ pub fn run_ordinary(
                 player_collision_skipped: cheats
                     .as_ref()
                     .and_then(|cheats| cheats.player_collision_skipped().ok()),
-                combat_clock_sample: Some(clock.bios_sample()),
+                combat_clock_sample: Some(raw_sample),
+                decision_clock: decision_clock
+                    .as_ref()
+                    .map(|clock| clock as &dyn super::super::replay_clock::DecisionClock),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),
                 fine_ticks: Some(timing.fine_ticks),
-                step_fps: Some(clock.fps()),
+                step_fps: Some(step_fps),
                 player_query,
                 player_controller,
                 ambient_sound,
@@ -2012,6 +2053,10 @@ pub fn run_ordinary(
         &mut send_sound,
         100_000,
     );
+    let result = result.and_then(|()| match decision_clock {
+        Some(clock) => clock.finish().map(|_| ()),
+        None => Ok(()),
+    });
     if let Err(error) = result {
         actors.report_runtime_error(format!("automatic ordinary update: {error:#}"));
         return;

@@ -1,5 +1,6 @@
 //! Asynchronous capture, replay and input acquisition commands.
 use super::*;
+mod replay_clock;
 
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct Acquisition<'w> {
@@ -335,6 +336,7 @@ impl Acquisition<'_> {
                 frame_scale,
                 elapsed_bios_ticks,
                 elapsed_host_nanos,
+                clock_timeline,
             } => {
                 if elapsed_bios_ticks.is_none()
                     && script_actors
@@ -346,12 +348,27 @@ impl Acquisition<'_> {
                         "an aligned replay frame requires observed elapsed_bios_ticks".into(),
                     ));
                 }
+                let timeline = match clock_timeline {
+                    Some(timeline) => match replay_clock::prepare(
+                        &timeline,
+                        self.replay_hold.as_deref().is_some_and(|hold| hold.0),
+                        input_scheduler,
+                        scene,
+                        gameplay,
+                        elapsed_bios_ticks,
+                    ) {
+                        Ok(timeline) => Some(timeline),
+                        Err(error) => return Outcome::Reply(Err(error)),
+                    },
+                    None => None,
+                };
                 let prepared = recorded_frame(
                     replay_step.is_some(),
                     script_actors.as_deref(),
                     clock.as_deref(),
                     frame_scale,
                     elapsed_bios_ticks,
+                    timeline,
                 );
                 match prepared {
                     Ok(recorded) => match input_scheduler.arm(
@@ -454,6 +471,7 @@ fn recorded_frame(
     clock: Option<&cyrus_script::clock::SimulationClock>,
     frame_scale: u32,
     elapsed_bios_ticks: Option<u32>,
+    clock_timeline: Option<cyrus_script::script::replay_clock::RecordedClockTimeline>,
 ) -> Result<cyrus_script::script::ReplayFrameScale, String> {
     if !replay_mode {
         return Err("recorded frame requires --replay-step-micros".into());
@@ -466,13 +484,21 @@ fn recorded_frame(
         || candidate.simulated_bios_tick(),
         |elapsed| candidate.bios_sample().wrapping_add(elapsed),
     );
-    candidate
-        .advance_recorded(tick, frame_scale)
-        .map_err(|error| error.to_string())?;
+    if let Some(timeline) = &clock_timeline {
+        candidate.advance_recorded_measurement(
+            timeline.stored_sample,
+            elapsed_bios_ticks.ok_or("recorded timeline requires elapsed_bios_ticks")?,
+            frame_scale,
+        )
+    } else {
+        candidate.advance_recorded(tick, frame_scale)
+    }
+    .map_err(|error| error.to_string())?;
     Ok(cyrus_script::script::ReplayFrameScale {
         generation: world.generation(),
         previous_update: world.ordinary_updates(),
         frame_scale,
         elapsed_bios_ticks,
+        clock_timeline,
     })
 }

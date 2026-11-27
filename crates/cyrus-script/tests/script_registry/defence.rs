@@ -963,3 +963,96 @@ fn ordinary_combat_entry_retains_the_consumed_sample_even_before_selection() {
     assert!(phase["selection"].is_null());
     assert_eq!(world.inspect(0, 1), inspected);
 }
+
+#[test]
+fn recorded_entry_sample_is_copied_before_receiver_gates_and_survives_later_refresh() {
+    use cyrus_script::clock::SimulationClock;
+    use cyrus_script::script::replay_clock::{RecordedClockTimeline, RecordedDecisionClock};
+    let mut world = counter_fixture_state(false, true, |_| {});
+    let id = world.id(0).unwrap();
+    let player = world.id(1).unwrap();
+    let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+        normal_frame_rate: 12,
+        min_frame_rate: 1,
+        max_frame_rate: 300,
+        use_smooth_fps: false,
+        use_smooth_divisor: false,
+    })
+    .unwrap();
+    clock.rebase(1000);
+    let plan = RecordedClockTimeline {
+        stored_sample: 1000,
+        decisions: vec![id],
+        before_decisions: vec![1043],
+        after_decisions: vec![1046],
+    };
+    let session = RecordedDecisionClock::new(&mut clock, &plan).unwrap();
+    let _ = world.run_ordinary_combat_decision(
+        id,
+        player,
+        cyrus_script::script::ScriptInputs {
+            combat_clock_sample: Some(1000),
+            decision_clock: Some(&session),
+            ..Default::default()
+        },
+        &mut cyrus_game::random::EngineRandom::from_state(42),
+        &mut |_, _| Ok(()),
+    );
+    assert_eq!(
+        world.inspect(0, 1)["actors"][0]["combat_pacing"]["cached_bios_sample"],
+        1043
+    );
+    assert_eq!(session.finish().unwrap(), 1046);
+    assert_eq!(
+        world.inspect(0, 1)["actors"][0]["combat_pacing"]["cached_bios_sample"],
+        1043
+    );
+}
+
+#[test]
+fn recorded_dispatch_includes_dead_receiver_before_later_combat_gates() {
+    use cyrus_script::clock::SimulationClock;
+    use cyrus_script::script::replay_clock::{RecordedClockTimeline, RecordedDecisionClock};
+    let mut world = counter_fixture_state(false, true, |saved| {
+        saved["actors"][0]["control"]["ai_type"] =
+            serde_json::to_value(cyrus_script::script::AiType::DEAD).unwrap();
+    });
+    let id = world.id(0).unwrap();
+    let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+        normal_frame_rate: 12,
+        min_frame_rate: 1,
+        max_frame_rate: 300,
+        use_smooth_fps: false,
+        use_smooth_divisor: false,
+    })
+    .unwrap();
+    clock.rebase(1000);
+    let plan = RecordedClockTimeline {
+        stored_sample: 1000,
+        decisions: vec![id],
+        before_decisions: vec![1043],
+        after_decisions: vec![1046],
+    };
+    let session = RecordedDecisionClock::new(&mut clock, &plan).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    world
+        .maintain_map_combat(
+            id,
+            0,
+            false,
+            cyrus_script::script::ScriptInputs {
+                combat_clock_sample: Some(1000),
+                decision_clock: Some(&session),
+                ..Default::default()
+            },
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(session.finish().unwrap(), 1046);
+    assert_eq!(
+        world.inspect(0, 1)["actors"][0]["combat_pacing"]["cached_bios_sample"],
+        1043
+    );
+    assert_eq!(random.state(), 42);
+}

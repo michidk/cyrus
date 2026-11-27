@@ -125,3 +125,16 @@ require explicit `elapsed_bios_ticks`; their unsigned addition wraps modulo
 rejected for a generation with an explicit origin. Normal replay and ordinary
 gameplay retain their existing timing policy. The caller must provide the
 measured original origin and intervals; the host does not infer either.
+
+An origin-bound ready held replay can supply `replay_frame.clock_timeline`.
+It carries generation, expected update and previous raw sample for compare-and-set
+admission, the independently observed calculation `stored_sample`, world identity,
+and the complete ordered `decisions` list of original retained runtime identifier, name and one-based
+occurrence. `elapsed_bios_ticks` remains required and independent. The
+`before_decisions` sample list refreshes the shared cache/baseline at the first
+actual nonplayer decision entry. Each decision copies that sample before later
+receiver-state gates. `after_decisions` refreshes apply after the complete native
+traversal and before acknowledgement. Per-entry observations and the final raw
+sample must independently match the recording; an endpoint cannot stand in for
+an earlier decision. Missing, extra, reordered or stale dispatch rejects and keeps
+actual partial execution. These controls do not change ordinary gameplay.

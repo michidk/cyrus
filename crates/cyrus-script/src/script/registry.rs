@@ -304,6 +304,8 @@ pub struct ScriptInputs<'a> {
     pub animations: Option<AnimationData<'a>>,
     /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
     pub combat_clock_sample: Option<u32>,
+    /// Optional recorded decision-entry service; ordinary gameplay uses the raw sample.
+    pub decision_clock: Option<&'a dyn super::replay_clock::DecisionClock>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     /// Whole finer-counter increments and the measured FPS of this update's clock step.
@@ -1293,6 +1295,7 @@ impl ScriptWorld {
         if shell_execution {
             return Ok(());
         }
+        let inputs = self.recorded_combat_inputs(id, inputs, random.as_deref())?;
         let actor = &self.actors[index];
         let control = actor
             .control

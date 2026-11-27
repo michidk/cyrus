@@ -358,3 +358,15 @@ input, a scheduled frame, an ordinary body, or prior setup in that generation.
 Aligned recorded frames require observed BIOS intervals, including zero; they
 cannot silently switch back to synthetic elapsed-time sampling. See the
 [control contract](../cyrus-control/README.md) for fields and rejection rules.
+
+Recorded frames can additionally supply the control protocol's `clock_timeline`
+with an independently measured calculation sample and ordered non-advancing
+cache/baseline refreshes. Admission requires an origin-bound, ready held world
+and current generation/update/sample. Semantic names and occurrence counts bind
+the expected original retained runtime identifiers to the current registry. The host checks dispatch
+at actual nonplayer decision entry, including entries rejected by later combat
+gates. Its final refresh runs after native ordinary traversal before the stopped
+acknowledgement. Actual decision observations and the final sample must establish
+equivalence to the recording separately. Ordinary gameplay retains its existing
+clock path; the replay timeline does not replace effective intervals with sample
+gaps or alter RNG, combat state or inputs.
