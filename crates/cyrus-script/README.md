@@ -308,3 +308,5 @@ runs. Production dependencies do not enable it. Hosts must use ordinary stages,
 property dispatch and validated snapshot admission; the fixture traits are not a
 production host interface. Attribute seeds use the existing `set_actor_attribute`
 operation instead of a test hook.
+
+The armed player controller samples opponent proximity before keyed combat handling. An admitted chance probe temporarily targets self, evaluates the nearest eligible attacker and clears the target; it does not select an animation or combat action. The shared random stream and temporary target lifetime follow preservation's [armed proximity sampling](https://michidk.github.io/redguard-preservation/engine/player.html#armed-proximity-sampling).

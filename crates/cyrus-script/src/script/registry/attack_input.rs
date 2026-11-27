@@ -239,7 +239,7 @@ impl ScriptWorld {
 
     /// Actors, in ordinary list order, whose combat target is `id`, whose attacker-selection
     /// state is one and that are not dead.
-    fn player_attackers(&self, id: ScriptActorId) -> Result<Vec<ScriptActorId>> {
+    pub(super) fn player_attackers(&self, id: ScriptActorId) -> Result<Vec<ScriptActorId>> {
         let traversal = self
             .actor_lists
             .as_ref()

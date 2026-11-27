@@ -2465,3 +2465,105 @@ fn held_walk_turn_preserves_ledge_heading_and_resumes_outside_ledge_states() {
 fn held_walk_forward_preserves_low_climb_without_stopping_controller() {
     held_walk_turn_in_states(&[LivingState::LOW_CLIMB], 0);
 }
+
+#[test]
+fn armed_no_input_controller_samples_combat_proximity_once() {
+    use cyrus_script::script::{OrdinaryGroundQuery, PlayerControllerInput, ScriptInputs};
+    for (armed, seed, expected) in [
+        (false, 744964398, 744964398),
+        (true, 744964398, 1969681615),
+        (true, 0, 12345),
+    ] {
+        let (scripts, mut world, mut data, mut scene) = player_walking_fixture_with(|scripts| {
+            scripts.actors.get_mut("CYRUS").unwrap().attributes[Attribute::HoldingWeapon] =
+                u8::from(armed);
+        });
+        world = proximity_world_with_target(world, &scripts, &mut data);
+        scene.settings.tap_time = Some(8);
+        scene.settings.sheath_sword_delay = Some(12);
+        scene.settings.defend_interval = Some(8);
+        let player = world.selected_player().unwrap();
+        let map = world.id(0).unwrap();
+        let actors = [player, map];
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &actors)
+            .unwrap();
+        world.ordinary_actors([10, 30]).unwrap();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let before = world.spatial(player).unwrap().local;
+        let held = cyrus_script::player::input::PlayerInput::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(seed);
+        world
+            .advance_player_controller(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                cyrus_script::clock::ClockStep {
+                    frame_scale: 202,
+                    nominal_ticks: 0,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: true,
+                        steer: None,
+                        claim: None,
+                        probes: None,
+                    }),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(random.state(), expected);
+        let control = world.actors()[player.index].control_state().unwrap();
+        assert_eq!(
+            control.combat.as_ref().unwrap().target,
+            if armed && seed == 0 { None } else { Some(map) }
+        );
+        let after = world.spatial(player).unwrap().local;
+        assert_eq!(after.position, before.position);
+        assert_eq!(after.angles, before.angles);
+        assert_eq!(after.matrix, before.matrix);
+    }
+}
+
+fn proximity_world_with_target(
+    mut world: ScriptWorld,
+    scripts: &Scripts,
+    data: &mut cyrus_assets::animation::Animations,
+) -> ScriptWorld {
+    use cyrus_script::script::{WorldRestoreContext, WorldSnapshotSources};
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let index = world.selected_player().unwrap().index;
+    let mut saved = movement_snapshot(&world, scripts, data);
+    saved["actors"][index]["control"]["combat"]["target"] =
+        serde_json::json!([world.generation(), 0]);
+    ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &WorldSnapshotSources {
+            identity_memo: None,
+            effects: None,
+            player: None,
+            scripts,
+            animations: data,
+            collision: &Default::default(),
+        },
+        WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals: std::mem::take(world.globals_mut()),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap()
+}
