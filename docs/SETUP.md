@@ -343,6 +343,26 @@ such actions into an explicit input tape first. Empty markers impose no expected
 outcome. Passing a synthetic driver contract does not establish live gameplay
 parity.
 
+For measured native startup acquisition, launch with `--headless
+--replay-step-micros MICROSECONDS --replay-hold-entry`. This opt-in holds ordinary
+work before the first body of each new world, including the Loading-to-InGame
+transition. Loading and menu presentation can finish while ordinary work stays
+held. The default replay mode still allows its two bootstrap updates. Restored
+worlds retain their immediate hold in both modes. Advance each body explicitly
+with `replay_frame`; supply measured `frame_scale`, `elapsed_bios_ticks` and,
+when available, `elapsed_host_nanos` rather than allowing readiness polling to
+choose the initial timing. A pre-body original start counter is not a count of
+completed native bodies.
+
+`NativeFrameSession(..., expected_initial_update=0)` rejects a native session
+that has already consumed bootstrap bodies instead of hiding them behind relative
+frame zero. Its `acquisition_evidence()` retains absolute update counts, world,
+shared RNG, clock and startup observations at entry and after each explicit body.
+`host_nanos` supplies one unsigned nanosecond interval per `frame_scales` entry;
+a measured zero is forwarded unchanged. Omitted host intervals retain the
+launcher's fixed step and do not establish original presentation-time equivalence.
+Shared RNG is observed and compared, never assigned to manufacture admission.
+
 Before replaying either input tape, the runner opens each backend serially for
 an observation-only entry preflight. Both sessions must start stopped at frame
 zero and expose world, player, actors, flags, prompts, timing and continuations.

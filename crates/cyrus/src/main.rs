@@ -37,6 +37,9 @@ struct Args {
     /// Diagnostic replay input: advance the host clock by this many microseconds per app update.
     #[arg(long, requires = "headless", value_parser = clap::value_parser!(u64).range(1..))]
     replay_step_micros: Option<u64>,
+    /// Hold ordinary work before a new world's first body; advance with recorded replay frames.
+    #[arg(long, requires = "replay_step_micros")]
+    replay_hold_entry: bool,
     /// Audit every installed WORLD.INI entry without a window; reports go under magic/artifacts/world-audit.
     #[arg(long)]
     audit_worlds: bool,
@@ -252,6 +255,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             std::time::Duration::from_micros(micros),
         ));
         app.init_resource::<cyrus_script::script::ReplayHold>();
+        if args.replay_hold_entry {
+            app.insert_resource(control::ReplayEntryHold);
+        }
         app.insert_resource(control::ReplayStep(std::time::Duration::from_micros(
             micros,
         )));
@@ -526,6 +532,23 @@ mod install_tests {
         let args =
             Args::try_parse_from(["cyrus", "--headless", "--replay-step-micros", "16667"]).unwrap();
         assert_eq!(args.replay_step_micros, Some(16667));
+    }
+
+    #[test]
+    fn exact_entry_hold_requires_replay_mode_and_is_opt_in() {
+        assert!(Args::try_parse_from(["cyrus", "--headless", "--replay-hold-entry"]).is_err());
+        let args = Args::try_parse_from([
+            "cyrus",
+            "--headless",
+            "--replay-step-micros",
+            "40000",
+            "--replay-hold-entry",
+        ])
+        .unwrap();
+        assert!(args.replay_hold_entry);
+        let defaults =
+            Args::try_parse_from(["cyrus", "--headless", "--replay-step-micros", "40000"]).unwrap();
+        assert!(!defaults.replay_hold_entry);
     }
 
     #[test]
