@@ -33,12 +33,17 @@ pub struct ControlPlugin;
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct ReplayStep(pub std::time::Duration);
 
+/// Opt-in acquisition mode: every ordinary body, including fresh entry, requires a schedule.
+#[derive(Resource)]
+pub struct ReplayEntryHold;
+
 /// A replay world advances only while a scheduled input boundary owns the frame loop.
 ///
 /// Without this the headless frame loop keeps feeding fixed steps between control requests, so
 /// the number of ordinary updates, and with it every random draw and AI decision, depended on
 /// how long the driver took to answer. Loading, menus, a world's first two updates and an open
-/// examine view run freely so readiness checks can complete. Restored continuations
+/// examine view run freely so readiness checks can complete. ReplayEntryHold opts out
+/// of the first-two-update allowance for measured acquisition. Restored continuations
 /// are held immediately even though their observation counter restarts at zero: the view closes on real-time ticks,
 /// which a frozen step never delivers, and it pauses ordinary updates itself. Faithful gameplay is unchanged: the gate exists
 /// only when a replay step is configured.
@@ -49,8 +54,9 @@ pub(crate) fn replay_gate_open(
     world_updates: Option<u64>,
     dialogue_pending: bool,
     restored: bool,
+    hold_entry: bool,
 ) -> bool {
-    let started = restored || world_updates.is_some_and(|updates| updates >= 2);
+    let started = restored || world_updates.is_some_and(|updates| hold_entry || updates >= 2);
     // A speech line still exporting or loading holds a started world even inside a schedule, so
     // it becomes ready at the same update in every run. An open examine view still wins: it
     // closes on real-time ticks.
@@ -68,6 +74,7 @@ struct ReplayGateInputs<'w> {
     actors: Option<Res<'w, cyrus_script::script::ScriptActors>>,
     examine: Option<Res<'w, cyrus_script::item_viewer::ExamineScreen>>,
     dialogue: Option<Res<'w, cyrus_audio::sound::ReplayDialoguePending>>,
+    entry_hold: Option<Res<'w, ReplayEntryHold>>,
 }
 
 fn replay_gate(
@@ -86,6 +93,7 @@ fn replay_gate(
         .and_then(|actors| actors.current.as_ref())
         .map(|world| world.ordinary_updates());
     let modal = inputs.examine.is_some_and(|screen| screen.suspended());
+    let controlled_entry = inputs.entry_hold.is_some();
     let open = replay_gate_open(
         scheduler.pending(),
         modal,
@@ -96,6 +104,7 @@ fn replay_gate(
             .actors
             .as_deref()
             .is_some_and(|actors| actors.current_is_restored()),
+        controlled_entry,
     );
     *strategy = bevy::time::TimeUpdateStrategy::ManualDuration(if open {
         scheduler.host_step().unwrap_or(step.0)
@@ -103,7 +112,9 @@ fn replay_gate(
         std::time::Duration::ZERO
     });
     // A zero step alone still ran zero-length ordinary updates, so hold them too.
-    hold.0 = !open;
+    // First precedes StateTransition: a loading frame may enter InGame later in this
+    // same schedule. Keep ordinary work held even while loading/menu time is running.
+    hold.0 = !open || (controlled_entry && !scheduler.pending() && !modal);
 }
 
 /// Bind address; set before the plugin builds. Defaults to `cyrus_control::DEFAULT_ADDR`.

@@ -343,12 +343,56 @@ such actions into an explicit input tape first. Empty markers impose no expected
 outcome. Passing a synthetic driver contract does not establish live gameplay
 parity.
 
+For measured native startup acquisition, launch with `--headless
+--replay-step-micros MICROSECONDS --replay-hold-entry`. This opt-in holds ordinary
+work before the first body of each new world, including the Loading-to-InGame
+transition. Loading and menu presentation can finish while ordinary work stays
+held. The default replay mode still allows its two bootstrap updates. Restored
+worlds retain their immediate hold in both modes. Advance each body explicitly
+with `replay_frame`; supply measured `frame_scale`, `elapsed_bios_ticks` and,
+when available, `elapsed_host_nanos` rather than allowing readiness polling to
+choose the initial timing. A pre-body original start counter is not a count of
+completed native bodies.
+
+`NativeFrameSession(..., expected_initial_update=0)` rejects a native session
+that has already consumed bootstrap bodies instead of hiding them behind relative
+frame zero. Its `acquisition_evidence()` retains absolute update counts, world,
+shared RNG, clock and startup observations at entry and after each explicit body.
+`host_nanos` supplies one unsigned nanosecond interval per `frame_scales` entry;
+a measured zero is forwarded unchanged. Omitted host intervals retain the
+launcher's fixed step and do not establish original presentation-time equivalence.
+Shared RNG is observed and compared, never assigned to manufacture admission.
+
 Before replaying either input tape, the runner opens each backend serially for
 an observation-only entry preflight. Both sessions must start stopped at frame
 zero and expose world, player, actors, flags, prompts, timing and continuations.
 The report retains the initial snapshots in `entry`, including malformed
 observations, and their semantic comparison in `start_deltas`. Missing or unequal
 measurements block the pair before any replay inputs or updates.
+
+When either snapshot explicitly projects `globals`, `inventory` or shared
+`random_state`, those fields also participate in entry, reopened-entry and
+checkpoint comparisons. A projection missing on the other side is unavailable;
+it is never silently dropped. Backends without these projections retain their
+limited diagnostic comparison and cannot establish equivalence of unobserved
+shared state.
+
+Sessions can expose an observation-only `acquisition_evidence()` method returning
+an object with their measured acquisition history, such as pre-load world/update
+counts, random state, save identity and restored boundary. The driver retains a
+deep copy under `acquisition.entry` and `acquisition.replay_entry`, keyed by side,
+including when entry validation fails. Unsupported evidence shapes or callback
+errors block admission with side/phase context. This hook must read retained
+observations without advancing the simulation. Different histories are retained
+for diagnosis; the driver does not infer an engine defect, require identical
+histories or replace semantic admission with history equality.
+
+`admission_rejections` retains the failed fields with phase and side, and the
+reason names the first failed field and its expected/measured values. For entry
+preflight those values are the original/native measurements; for a reopened
+backend they are its admitted/reopened measurements. Acquisition evidence and
+all entry snapshots remain in the same report so an unequal shared state can be
+traced back to its acquisition without applying replay inputs or changing RNG.
 
 Each backend must reproducibly stage its initial state on every open. After
 preflight, the runner reopens the original for its full replay, then the native.
@@ -1349,6 +1393,37 @@ also does not prove those outcomes.
 
 The result records the input key and release boundary, and control or opponent
 reveal/combat admission loss during a tap rejects it and releases the key.
+
+For early retail acquisition, `original-frame-session.py` exposes
+`acquire_entry(boundary, counter, target_start, emit=...)`. Attach while the
+loader counter is still zero, before polling for a settled world. It retains
+repeated loader-zero writes, then requires consecutive ordinary-start counters
+and leaves the original stopped at the requested start. The caller supplies
+verified executable bindings and retains raw RNG/timing observations with
+`emit`. Ordinary-start counters are not completed-update counts. Counter
+alignment alone does not admit equal acquisition history or timing; compare
+those observations before selecting the retail save slot.
+
+`RandomWriteHistory` in the same adapter verifies every observed write against
+the published shared-generator transition. Initialize it from the stopped
+state and call `observe(state, phase, context)` from a bound write observer.
+The emitted records contain a local draw ordinal, prior/new state, named
+acquisition phase and copied measured timer context. Ordinals count observed
+writes since attachment, not lifetime draws. Missing writes, duplicate writes
+and resets reject the history. The helper never seeds the generator or derives
+a draw count from unequal endpoints. Observe loading and book/reload phases as
+well as ordinary updates; an ordinary counter alone does not bound their draws.
+
+For a fixed-count retail shortcut acquisition, use `acquire_shortcut_entry`
+with the requested completed-update count, make/break callback and stopped book
+acknowledgement callback. The original samples shortcuts near the end of an
+update and consumes the request near the next update's start, as documented in
+preservation's `engine/menu.md`. The helper requests the shortcut before the
+last desired body, then requires the book counter to be exactly one greater.
+Requesting at the following ordinary start permits an extra body. Late book
+entry rejects, and every exit releases the shortcut. Callers still validate
+the installed page and shared-state/timing history; this counter check alone
+does not admit a matched entry.
 
 For instruction-bound defence attribution, `Watchpoint.observe_write` can reserve
 spare slots for a local observer while `FrameSession` keeps consecutive ordinary

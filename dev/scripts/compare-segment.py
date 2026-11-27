@@ -21,6 +21,7 @@ import subprocess
 from pathlib import Path
 
 OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'continuations')
+PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state')
 
 
 class NativeArtifact:
@@ -94,9 +95,13 @@ class NativeFrameSession:
     replies are retained in input_observations. Optional bios_ticks carries
     measured per-update BIOS intervals; omitting it uses diagnostic simulated BIOS
     timing and cannot establish complete original/native clock equivalence.
+    expected_initial_update rejects uncontrolled bootstrap before relative-frame
+    rebasing. host_nanos forwards measured presentation intervals, including zero.
+    acquisition_evidence retains absolute update/RNG/clock boundaries.
     """
 
-    def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None):
+    def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None,
+                 expected_initial_update=None, host_nanos=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
         self.frame_scales = None if frame_scales is None else tuple(frame_scales)
         if self.frame_scales is not None and any(type(scale) is not int or not 0 <= scale <= 2**32 - 1 for scale in self.frame_scales):
@@ -106,8 +111,21 @@ class NativeFrameSession:
                 self.frame_scales is None or len(self.bios_ticks) != len(self.frame_scales)
                 or any(type(tick) is not int or not 0 <= tick <= 2**32 - 1 for tick in self.bios_ticks)):
             raise ValueError('recorded BIOS intervals require one unsigned interval per clock scale')
+        if expected_initial_update is not None and (
+                type(expected_initial_update) is not int or expected_initial_update < 0):
+            raise ValueError('expected initial native update must be a nonnegative integer')
+        self.expected_initial_update = expected_initial_update
+        self.host_nanos = None if host_nanos is None else tuple(host_nanos)
+        if self.host_nanos is not None and (
+                self.frame_scales is None or len(self.host_nanos) != len(self.frame_scales)
+                or any(type(nanos) is not int or not 0 <= nanos <= 2**64 - 1 for nanos in self.host_nanos)):
+            raise ValueError('recorded host time requires one unsigned nanosecond interval per clock scale')
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
+        if expected_initial_update is not None and self.origin != expected_initial_update:
+            raise ValueError(f'native acquisition expected initial update {expected_initial_update}, '
+                             f'observed {self.origin}; bootstrap timing was not controlled')
+        self.acquisition_observations = [self._acquisition_observation()]
         self.clock_observations = []
         self.input_observations = []
         if self.frame_scales is not None:
@@ -138,11 +156,24 @@ class NativeFrameSession:
         state, scripts = self.current
         return dict(self.project(state, scripts), frame=state['scripts']['ordinary_updates'] - self.origin)
 
+    def _acquisition_observation(self):
+        state = self.current[0]
+        return copy.deepcopy(dict(ordinary_updates=state['scripts']['ordinary_updates'],
+                                  world=state['scripts'].get('world'),
+                                  random_state=state.get('random_state'),
+                                  clock=state.get('clock'), startup=state.get('startup')))
+
+    def acquisition_evidence(self):
+        """Retain absolute native boundaries; relative frame zero does not erase bootstrap work."""
+        return copy.deepcopy(dict(expected_initial_update=self.expected_initial_update,
+                                  initial_update=self.origin, observations=self.acquisition_observations))
+
     def execution_evidence(self):
         """Copy requested tapes and measured boundaries, including an interrupted run."""
         return copy.deepcopy(dict(
             frame_scales=None if self.frame_scales is None else list(self.frame_scales),
             bios_ticks=None if self.bios_ticks is None else list(self.bios_ticks),
+            host_nanos=None if self.host_nanos is None else list(self.host_nanos),
             clocks=self.clock_observations, inputs=self.input_observations))
 
     def input(self, key, action):
@@ -174,8 +205,11 @@ class NativeFrameSession:
                        {'type': 'schedule_input', 'events': [{'after_updates': 0}]})
             if self.bios_ticks is not None:
                 command['elapsed_bios_ticks'] = self.bios_ticks[current]
+            if self.host_nanos is not None:
+                command['elapsed_host_nanos'] = self.host_nanos[current]
             self.control.request(command)
             self.current = self._read()
+            self.acquisition_observations.append(self._acquisition_observation())
             observed = self.snapshot()['frame']
             if observed != current + 1:
                 raise RuntimeError(f'native frame gap: expected {current + 1}, observed {observed}')
@@ -296,6 +330,16 @@ def record(session, events, checkpoints, initial, input_attempts):
 def entry_snapshot(session, report, phase, side):
     """Retain the observation before validation, including malformed entries."""
     try:
+        acquisition = getattr(session, 'acquisition_evidence', None)
+        if callable(acquisition):
+            evidence = report.setdefault('acquisition', {}).setdefault(phase, {})
+            try:
+                evidence[side] = copy.deepcopy(acquisition())
+            except (ValueError, RuntimeError, TimeoutError, OSError) as error:
+                evidence[side] = dict(error=str(error))
+                raise ValueError(f'acquisition evidence: {error}') from error
+            if not isinstance(evidence[side], dict):
+                raise ValueError('acquisition evidence must be an object')
         observed = copy.deepcopy(session.snapshot())
         report.setdefault(phase, {})[side] = observed
         return validate_snapshot(observed, 0)
@@ -304,8 +348,22 @@ def entry_snapshot(session, report, phase, side):
 
 
 def semantic_delta(expected, measured):
-    return delta({key: expected[key] for key in OBSERVABLES},
-                 {key: measured[key] for key in OBSERVABLES})
+    keys = (*OBSERVABLES, *PROJECTED_OBSERVABLES)
+    return delta({key: expected[key] for key in keys if key in expected},
+                 {key: measured[key] for key in keys if key in measured})
+
+
+def reject_admission(report, phase, side, fields, reason):
+    """Retain every failed field alongside the acquisition evidence for this phase.
+
+    Delta rows use original/native for the two sides at preflight, and for
+    admitted/measured values when a single backend is reopened.
+    """
+    failed = [row for row in fields if row['status'] != 'match']
+    report.setdefault('admission_rejections', []).append(dict(phase=phase, side=side, fields=failed))
+    first = failed[0]
+    report['reason'] = (f"{reason}: {first['field']} {first['status']} "
+                        f"(expected {first['original']!r}, measured {first['native']!r})")
 
 
 def admit_replay_entry(session, report, side):
@@ -313,7 +371,9 @@ def admit_replay_entry(session, report, side):
     fields = semantic_delta(report['entry'][side], measured)
     report.setdefault('replay_entry_deltas', {})[side] = fields
     if any(row['status'] != 'match' for row in fields):
-        raise ValueError(f'{side} replay entry differs from admitted entry')
+        reject_admission(report, 'replay_entry', side, fields,
+                         f'{side} replay entry differs from admitted entry')
+        raise ValueError(report['reason'])
     return measured
 
 
@@ -361,7 +421,8 @@ def run_pair(segment, original, native, output, native_artifact=None):
         fields = semantic_delta(report['entry']['original'], report['entry']['native'])
         report['start_deltas'] = fields
         if any(row['status'] != 'match' for row in fields):
-            report['reason'] = 'start states differ or are incomplete'
+            reject_admission(report, 'entry', 'original/native', fields,
+                             'start states differ or are incomplete')
             return report
         report['original'] = []
         with original(segment, output / 'original') as session:
