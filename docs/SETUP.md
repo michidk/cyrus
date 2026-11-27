@@ -1374,6 +1374,16 @@ also does not prove those outcomes.
 The result records the input key and release boundary, and control or opponent
 reveal/combat admission loss during a tap rejects it and releases the key.
 
+For early retail acquisition, `original-frame-session.py` exposes
+`acquire_entry(boundary, counter, target_start, emit=...)`. Attach while the
+loader counter is still zero, before polling for a settled world. It retains
+repeated loader-zero writes, then requires consecutive ordinary-start counters
+and leaves the original stopped at the requested start. The caller supplies
+verified executable bindings and retains raw RNG/timing observations with
+`emit`. Ordinary-start counters are not completed-update counts. Counter
+alignment alone does not admit equal acquisition history or timing; compare
+those observations before selecting the retail save slot.
+
 For instruction-bound defence attribution, `Watchpoint.observe_write` can reserve
 spare slots for a local observer while `FrameSession` keeps consecutive ordinary
 boundaries. Observation stops invoke callbacks while paused; they do not become

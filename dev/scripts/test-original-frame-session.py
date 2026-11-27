@@ -38,6 +38,33 @@ class Boundary:
         return self.raw_snapshot()
 
 
+class AcquisitionTests(unittest.TestCase):
+    def acquire(self, frames, target=3):
+        boundary = Boundary()
+        rows = iter(dict(frame=f, random_state=i) for i, f in enumerate(frames))
+        boundary.raw = next(rows)
+        boundary.next_boundary = lambda timeout: setattr(boundary, 'raw', next(rows))
+        history = []
+        result = adapter.acquire_entry(boundary, lambda raw: raw['frame'], target,
+                                       emit=history.append, max_observations=10)
+        return result, history
+
+    def test_loader_zero_writes_are_retained_before_consecutive_ordinary_starts(self):
+        result, history = self.acquire([0, 0, 0, 1, 2, 3])
+        self.assertEqual(result['frame'], 3)
+        self.assertEqual([r['frame'] for r in history], [0, 0, 0, 1, 2, 3])
+        self.assertEqual([r['random_state'] for r in history], list(range(6)))
+
+    def test_late_attach_gaps_duplicates_and_resets_fail(self):
+        for frames in ([1], [0, 2], [0, 1, 1], [0, 1, 0], [0, 1, 3]):
+            with self.subTest(frames=frames), self.assertRaises(ValueError):
+                self.acquire(frames)
+
+    def test_zero_is_loader_only_and_not_an_admissible_target(self):
+        with self.assertRaises(ValueError):
+            self.acquire([0], target=0)
+
+
 class FrameTests(unittest.TestCase):
     def session(self, boundary, emit=lambda raw: None):
         return adapter.FrameSession(boundary, lambda raw: raw['frame'],

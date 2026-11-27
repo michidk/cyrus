@@ -6,6 +6,39 @@ No polling, interpolation or OS-key acknowledgement establishes acceptance here.
 """
 
 
+def acquire_entry(boundary, counter, target_start, *, emit=lambda raw: None,
+                  timeout=10, max_observations=64):
+    """Stop at an exact ordinary-update start without a settling/polling run.
+
+    Attach before the loader releases the zero counter. Repeated loader zero
+    writes are retained; after the first ordinary start every counter must be
+    consecutive. The caller supplies the verified boundary binding and target
+    phase. A start counter is not a completed-update count. Emitted raw records
+    preserve RNG and timing history without modifying either.
+    """
+    if type(target_start) is not int or target_start < 1:
+        raise ValueError('entry acquisition requires a positive ordinary-start target')
+    if type(max_observations) is not int or max_observations < 1:
+        raise ValueError('entry acquisition requires a positive observation budget')
+    raw = boundary.raw_snapshot()
+    previous = counter(raw)
+    emit(raw)
+    if type(previous) is not int or previous != 0:
+        raise ValueError(f'entry acquisition attached late: expected loader zero, observed {previous}')
+    for _ in range(max_observations):
+        boundary.next_boundary(timeout)
+        raw = boundary.raw_snapshot()
+        observed = counter(raw)
+        emit(raw)
+        if type(observed) is not int or not (
+                observed == previous + 1 or previous == observed == 0):
+            raise ValueError(f'entry acquisition frame gap: expected {previous + 1}, observed {observed}')
+        if observed == target_start:
+            return raw
+        previous = observed
+    raise TimeoutError(f'entry start {target_start} not reached within {max_observations} observations')
+
+
 class FrameSession:
     """Keep the game stopped between inputs and read every intervening boundary.
 
