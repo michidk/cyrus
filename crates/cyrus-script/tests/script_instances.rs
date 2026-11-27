@@ -185,6 +185,9 @@ fn assert_held_entry(app: &mut bevy::prelude::App, index: usize) {
     use cyrus_script::script::ScriptActors;
     // Entry preparation must complete while update-zero replay acquisition is held.
     // ImportOriginal needs this checkpoint before capturing its candidate baseline.
+    // Audio hosts can decline ordinary work before run_ordinary when no clock is sampled.
+    // Entry readiness must not depend on that executor admitting a body.
+    app.insert_resource(cyrus_script::script::OrdinarySoundExecutor(|_, _| {}));
     app.insert_resource(cyrus_script::script::ReplayHold(true));
     app.insert_resource(cyrus_script::script::ScriptHud::default());
     for _ in 0..8 {

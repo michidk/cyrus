@@ -237,6 +237,12 @@ generation. Replay hosts use it instead of treating the reset observation counte
 as a request to run fresh-world startup updates. Script status exposes this as
 `restored`; changing worlds clears it.
 
+A fresh replay hold permits entry-only model/environment initialization and immutable
+prelight checkpoint preparation before host ordinary-service admission. Body execution,
+automatic traversal and clock/RNG advancement remain held. This lets original-slot
+loading capture its destination baseline without releasing update-zero acquisition;
+restored and revisited continuations retain their own admission paths.
+
 Original native task construction restores PushAnimation/PushControlAnimation
 slot phases against an explicitly bound saved receiver animation. It does not
 request an animation or replay cues during import. RTX construction requires a

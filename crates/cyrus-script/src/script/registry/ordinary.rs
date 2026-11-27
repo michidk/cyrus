@@ -1409,7 +1409,32 @@ impl OrdinaryContext<'_, '_> {
 }
 
 pub(crate) fn prepare_models(world: &mut World) {
+    // Host sound maintenance needs a sampled body and may decline held updates.
+    // Entry-only preparation must precede that host gate for baseline capture.
+    if let Err(error) = world.run_system_cached(prepare_held_models) {
+        world
+            .resource_mut::<ScriptActors>()
+            .report_runtime_error(format!("held world entry scheduler: {error}"));
+        return;
+    }
     execute_phase(world, OrdinaryPhase::ModelPresentation);
+}
+
+fn prepare_held_models(
+    mut context: OrdinaryContext,
+    mut sounds: Option<ResMut<Messages<SoundCue>>>,
+) {
+    if let Err(error) = context.prepare_held_entry(&mut |cue| {
+        sounds
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("held entry sound consumer unavailable"))?
+            .write(cue);
+        Ok(())
+    }) {
+        context
+            .actors
+            .report_runtime_error(format!("held world entry preparation: {error:#}"));
+    }
 }
 
 pub(crate) fn step(world: &mut World) {
@@ -1610,7 +1635,7 @@ fn initialize_entry(
 /// Run the game-owned ordinary stages with synchronous audio feedback. Missing
 /// reset state remains unsupported; a host must not substitute a guessed flag.
 pub fn run_ordinary(
-    mut context: OrdinaryContext,
+    context: OrdinaryContext,
     phase: OrdinaryPhase,
     ambient_sound: Option<&dyn cyrus_world::sound::AmbientSoundDriver>,
     sound_reset: Option<bool>,
@@ -1618,14 +1643,6 @@ pub fn run_ordinary(
     combat_taunts: Option<&dyn super::super::CombatTauntSource>,
     emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) {
-    if phase == OrdinaryPhase::ModelPresentation
-        && let Err(error) = context.prepare_held_entry(emit)
-    {
-        context
-            .actors
-            .report_runtime_error(format!("held world entry preparation: {error:#}"));
-        return;
-    }
     let OrdinaryContext {
         prepared,
         hud,
