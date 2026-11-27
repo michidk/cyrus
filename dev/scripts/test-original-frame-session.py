@@ -38,6 +38,68 @@ class Boundary:
         return self.raw_snapshot()
 
 
+class RandomWriteTests(unittest.TestCase):
+    def test_retains_each_verified_write_with_its_phase_and_timing(self):
+        rows = []
+        history = adapter.RandomWriteHistory(1, rows.append)
+        timing = dict(scale=256, sample=7)
+        history.observe(1103527590, 'loading', timing)
+        timing['scale'] = 512
+        history.observe(2524885223, 'ordinary-start:1', dict(scale=0))
+        self.assertEqual([r['draw'] for r in rows], [1, 2])
+        self.assertEqual(rows[0]['context']['scale'], 256)
+        self.assertEqual(rows[1]['previous'], rows[0]['state'])
+        self.assertEqual(rows[0]['phase'], 'loading')
+
+    def test_missing_duplicate_reset_and_invalid_states_reject_without_advancing(self):
+        for value in (2524885223, 1, -1, 2**32, True):
+            rows = []
+            history = adapter.RandomWriteHistory(1, rows.append)
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                history.observe(value, 'startup', {})
+            self.assertEqual(rows, [])
+            self.assertEqual(history.state, 1)
+
+    def test_wrapping_transition_and_emitter_failure_are_not_accepted_as_receipts(self):
+        history = adapter.RandomWriteHistory(2**32 - 1)
+        history.observe((history.state * 1103515245 + 12345) % 2**32, 'load', {})
+        def fail(row):
+            raise OSError('receipt unavailable')
+        history = adapter.RandomWriteHistory(1, fail)
+        with self.assertRaises(OSError):
+            history.observe(1103527590, 'load', {})
+        self.assertEqual(history.state, 1)
+
+
+class ShortcutAcquisitionTests(unittest.TestCase):
+    def test_shortcut_is_requested_before_last_body_and_released_after_book_ack(self):
+        boundary = Boundary()
+        boundary.raw['frame'] = 0
+        calls = []
+        def key(action):
+            calls.append((action, boundary.raw['frame']))
+        def book():
+            boundary.raw['frame'] += 1
+            return boundary.raw_snapshot()
+        result = adapter.acquire_shortcut_entry(boundary, lambda r: r['frame'], 2, key, book)
+        self.assertEqual(calls, [('press', 2), ('release', 3)])
+        self.assertEqual(result['frame'], 3)
+
+    def test_late_book_extra_body_and_failed_ack_release_and_reject(self):
+        for result in (dict(frame=2), dict(frame=4), RuntimeError('no book')):
+            boundary = Boundary()
+            boundary.raw['frame'] = 0
+            calls = []
+            def book():
+                if isinstance(result, Exception):
+                    raise result
+                return result
+            with self.subTest(result=result), self.assertRaises((ValueError, RuntimeError)):
+                adapter.acquire_shortcut_entry(boundary, lambda r: r['frame'], 2,
+                                               calls.append, book)
+            self.assertEqual(calls, ['press', 'release'])
+
+
 class AcquisitionTests(unittest.TestCase):
     def acquire(self, frames, target=3):
         boundary = Boundary()

@@ -1384,6 +1384,27 @@ verified executable bindings and retains raw RNG/timing observations with
 alignment alone does not admit equal acquisition history or timing; compare
 those observations before selecting the retail save slot.
 
+`RandomWriteHistory` in the same adapter verifies every observed write against
+the published shared-generator transition. Initialize it from the stopped
+state and call `observe(state, phase, context)` from a bound write observer.
+The emitted records contain a local draw ordinal, prior/new state, named
+acquisition phase and copied measured timer context. Ordinals count observed
+writes since attachment, not lifetime draws. Missing writes, duplicate writes
+and resets reject the history. The helper never seeds the generator or derives
+a draw count from unequal endpoints. Observe loading and book/reload phases as
+well as ordinary updates; an ordinary counter alone does not bound their draws.
+
+For a fixed-count retail shortcut acquisition, use `acquire_shortcut_entry`
+with the requested completed-update count, make/break callback and stopped book
+acknowledgement callback. The original samples shortcuts near the end of an
+update and consumes the request near the next update's start, as documented in
+preservation's `engine/menu.md`. The helper requests the shortcut before the
+last desired body, then requires the book counter to be exactly one greater.
+Requesting at the following ordinary start permits an extra body. Late book
+entry rejects, and every exit releases the shortcut. Callers still validate
+the installed page and shared-state/timing history; this counter check alone
+does not admit a matched entry.
+
 For instruction-bound defence attribution, `Watchpoint.observe_write` can reserve
 spare slots for a local observer while `FrameSession` keeps consecutive ordinary
 boundaries. Observation stops invoke callbacks while paused; they do not become

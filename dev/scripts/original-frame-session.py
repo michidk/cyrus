@@ -6,6 +6,38 @@ No polling, interpolation or OS-key acknowledgement establishes acceptance here.
 """
 
 
+from copy import deepcopy
+
+
+class RandomWriteHistory:
+    """Retain consecutive observed engine RNG writes, never endpoint estimates.
+
+    The wrapping transition is published in preservation's engine/SOUP.md.
+    Bind the real state write while stopped; call once per write with the
+    original acquisition phase and measured timer context. Initial state is an
+    observation, not a seed instruction. Missing writes, resets and duplicates
+    reject the tape. This observer never writes engine state.
+    """
+
+    def __init__(self, initial_state, emit=lambda row: None):
+        if type(initial_state) is not int or not 0 <= initial_state < 2**32:
+            raise ValueError('original RNG history requires an observed u32 state')
+        self.state, self.draw, self.emit = initial_state, 0, emit
+
+    def observe(self, state, phase, context):
+        if not isinstance(phase, str) or not phase or not isinstance(context, dict):
+            raise ValueError('original RNG write requires a named phase and measured context')
+        expected = (self.state * 1103515245 + 12345) % 2**32
+        if type(state) is not int or state != expected:
+            raise ValueError(f'original RNG history gap during {phase}: '
+                             f'expected {expected}, observed {state}')
+        row = dict(draw=self.draw + 1, previous=self.state, state=state,
+                   phase=phase, context=deepcopy(context))
+        self.emit(row)
+        self.state, self.draw = state, self.draw + 1
+        return row
+
+
 def acquire_entry(boundary, counter, target_start, *, emit=lambda raw: None,
                   timeout=10, max_observations=64):
     """Stop at an exact ordinary-update start without a settling/polling run.
@@ -37,6 +69,30 @@ def acquire_entry(boundary, counter, target_start, *, emit=lambda raw: None,
             return raw
         previous = observed
     raise TimeoutError(f'entry start {target_start} not reached within {max_observations} observations')
+
+
+def acquire_shortcut_entry(boundary, counter, completed_updates, key, wait_book,
+                           **acquisition):
+    """Latch a retail shortcut during the last requested ordinary body.
+
+    Preservation's engine/menu.md specifies end-of-update shortcut sampling
+    and consumption near the next update's start. Requesting it after all
+    requested bodies have completed admits an unwanted extra body. key(action)
+    sends the supported make/break; wait_book() returns the stopped, acknowledged
+    installed book page using caller-owned bindings. Its counter must prove
+    exactly the requested bodies completed. Input is released on every exit.
+    """
+    acquire_entry(boundary, counter, completed_updates, **acquisition)
+    try:
+        key('press')
+        raw = wait_book()
+        observed = counter(raw)
+        if type(observed) is not int or observed != completed_updates + 1:
+            raise ValueError(f'retail shortcut acquisition expected start {completed_updates + 1}, '
+                             f'observed {observed}; ordinary-body history differs')
+        return raw
+    finally:
+        key('release')
 
 
 class FrameSession:
