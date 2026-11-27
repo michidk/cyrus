@@ -46,17 +46,28 @@ class SlotSelectionTest(unittest.TestCase):
 
 class LoadLifecycleTest(unittest.TestCase):
     class Control:
-        def __init__(self, updates=1):
+        def __init__(self, updates=2):
             self.calls = []
             self.updates = updates
             self.loaded = False
+            self.book = False
+            self.restored = False
+            self.warmup = 0
 
         def ready(self, **kwargs):
             self.calls.append(("ready", kwargs))
-            return {"scripts": {"ordinary_updates": self.updates, "restored": False}}
+            return self.entry()
+
+        def entry(self):
+            return {"state": "InGame", "scene_ready": True,
+                    "scripts": {"ordinary_updates": self.updates, "restored": self.restored,
+                                "world": 0, "content_id": "installed-start"},
+                    "clock": {"continuation": {"warmup": self.warmup}}, "random_state": 21}
 
         def request(self, command):
             self.calls.append(command)
+            if command.get("key") == "F3":
+                self.book = True
             if command.get("key") == "Enter":
                 self.loaded = True
             if command["type"] == "state":
@@ -64,6 +75,8 @@ class LoadLifecycleTest(unittest.TestCase):
                     return {"state": "InGame", "scene_ready": True,
                             "scripts": {"restored": True, "world": 30,
                                         "ordinary_updates": 0, "failed": 0}}
+                if not self.book:
+                    return self.entry()
                 return {"menu": {"ready": True, "page": 2, "selected": 0,
                                  "slots": [{"slot": 0, "source": {
                                      "type": "original", "world_id": 30}}],
@@ -83,7 +96,8 @@ class LoadLifecycleTest(unittest.TestCase):
             with patch.object(module.driver, "capture_session") as capture:
                 result = module.load_slot(control, args)
             self.assertEqual(control.calls[0], ("ready", {"timeout": 1, "advance": True}))
-            self.assertEqual(control.calls[1], {"type": "input", "key": "F3", "action": "tap"})
+            self.assertIn(("ready", {"timeout": 1, "min_updates": 2, "advance": True}), control.calls)
+            self.assertIn({"type": "input", "key": "F3", "action": "tap"}, control.calls)
             self.assertTrue(result["scripts"]["restored"])
             self.assertEqual(result["scripts"]["ordinary_updates"], 0)
             capture.assert_called_once_with(control, args.output / "admitted.session")
@@ -104,16 +118,18 @@ class LoadLifecycleTest(unittest.TestCase):
                 self.attempts += 1
                 if self.attempts == 1:
                     return dict(ok=False, error='ordinary input boundary unavailable')
-                self.updates = 1
+                self.updates += 1
                 return dict(ok=True, result={})
 
             def request(self, command):
                 if command.get('key') == 'F3':
                     self.book = True
-                    assert self.updates > 0
+                    assert self.updates >= 2
                 if command['type'] == 'state' and not self.book:
-                    return dict(state='InGame', scene_ready=True, examine=dict(open=False),
-                                scripts=dict(world=0, ordinary_updates=self.updates, failed=0))
+                    result = self.entry()
+                    result['examine'] = dict(open=False)
+                    result['scripts']['failed'] = 0
+                    return result
                 return super().request(command)
 
         control = HeldControl()
@@ -122,8 +138,57 @@ class LoadLifecycleTest(unittest.TestCase):
             with patch.object(module.driver, 'capture_session'), \
                     patch.object(module.driver.time, 'sleep'):
                 result = module.load_slot(control, args)
-        self.assertEqual(control.attempts, 2)
+        self.assertEqual(control.attempts, 3)
         self.assertTrue(result['scripts']['restored'])
+
+    def test_one_update_is_not_the_replay_held_entry(self):
+        control = self.Control(updates=1)
+        with tempfile.TemporaryDirectory() as directory, patch.object(module.driver, "capture_session"):
+            args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
+            with self.assertRaisesRegex(AssertionError, "held gameplay"):
+                module.load_slot(control, args)
+        self.assertFalse(control.book)
+
+    def test_observation_drift_rejects_before_opening_book(self):
+        for field in ("updates", "random", "clock"):
+            control = self.Control()
+            request = control.request
+            def drift(command):
+                value = request(command)
+                if command["type"] == "state" and not control.book:
+                    if field == "updates": value["scripts"]["ordinary_updates"] += 1
+                    if field == "random": value["random_state"] += 1
+                    if field == "clock": value["clock"]["continuation"]["warmup"] += 1
+                return value
+            control.request = drift
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory, patch.object(module.driver, "capture_session"):
+                args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
+                with self.assertRaisesRegex(AssertionError, "entry.*changed"):
+                    module.load_slot(control, args)
+                self.assertFalse(control.book)
+
+    def test_missing_continuation_rejects_before_opening_book(self):
+        for field in ("clock", "random_state"):
+            control = self.Control()
+            ready = control.ready
+            def incomplete(**kwargs):
+                result = ready(**kwargs)
+                del result[field]
+                return result
+            control.ready = incomplete
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
+                with self.assertRaisesRegex(AssertionError, "continuation unavailable"):
+                    module.load_slot(control, args)
+                self.assertFalse(control.book)
+
+    def test_restored_zero_update_entry_remains_eligible(self):
+        control = self.Control(updates=0)
+        control.restored = True
+        with tempfile.TemporaryDirectory() as directory, patch.object(module.driver, "capture_session"):
+            args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
+            module.load_slot(control, args)
+        self.assertTrue(control.book)
 
     def test_first_update_failure_retains_both_public_boundaries(self):
         admitted = {"scripts": {"ordinary_updates": 0}, "clock": {"continuation": {"frames": 3}}}

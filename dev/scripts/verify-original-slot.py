@@ -51,15 +51,34 @@ def inspect_scripts(control):
 def load_slot(control, args):
     """Enter the book only after the selected player's ordinary entry completed.
 
-    Scene/presentation readiness alone does not establish the unsaved controller
-    owner retained by original-slot load. Keep this wait in the shared driver so
-    admission probes cannot pause entry preparation by opening the book early.
-    Replay-held launches must advance entry through acknowledged boundaries;
-    Control.ready tolerates transient boundary unavailability during preparation.
+    Scene/presentation readiness alone does not establish a held unsaved controller
+    continuation. A new replay world completes two updates before holding; a
+    restored world is held immediately. Verify observation stability before F3.
+    Keep this wait in the shared driver so probes cannot pause entry preparation
+    by opening the book early. Acknowledged schedules retry transient preparation
+    boundaries while waiting for the replay hold.
     """
     entry = control.ready(timeout=args.timeout, advance=True)
     assert entry["scripts"].get("ordinary_updates", 0) > 0 or entry["scripts"].get("restored"), \
         "original-slot driver requires an established gameplay continuation"
+    if not entry["scripts"].get("restored"):
+        # The replay gate admits the first two updates before holding a new world.
+        # A first-update reply can precede the second update in the same schedule.
+        entry = control.ready(timeout=args.timeout, min_updates=2, advance=True)
+    assert entry["scripts"].get("ordinary_updates", 0) >= 2 or entry["scripts"].get("restored"), \
+        "original-slot driver requires a held gameplay continuation"
+    def baseline(state):
+        scripts = state.get("scripts") or {}
+        clock = (state.get("clock") or {}).get("continuation")
+        assert isinstance(clock, dict) and type(state.get("random_state")) is int, \
+            "original-slot entry clock or random continuation unavailable"
+        return (state.get("state"), state.get("scene_ready"), scripts.get("world"),
+                scripts.get("content_id"), scripts.get("ordinary_updates"), clock,
+                state["random_state"])
+    admitted_entry = baseline(entry)
+    for _ in range(2):
+        assert baseline(control.request({"type": "state"})) == admitted_entry, \
+            "original-slot entry changed before opening the book"
     control.request({"type": "input", "key": "F3", "action": "tap"})
     state = wait_state(control, lambda s: (s.get("menu") or {}).get("ready")
                        and s["menu"]["page"] == 2 and s["menu"]["slots"], args.timeout)
