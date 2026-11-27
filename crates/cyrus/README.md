@@ -34,6 +34,17 @@ original slot through the book and captures complete admission state without
 advancing the world. It then admits one explicit measured update and retains
 both session documents.
 
+For acquisition before any new-world ordinary body, combine
+`--headless --replay-step-micros MICROSECONDS --replay-hold-entry` and use explicit
+`replay_frame` commands from update zero. The opt-in also holds ordinary work
+across the loading-to-game state transition; it does not freeze loading/menu
+presentation. Normal replay bootstrap and ordinary gameplay remain unchanged.
+The paired `NativeFrameSession` can require `expected_initial_update=0`, forward
+recorded BIOS and host-time intervals, and retain absolute acquisition/RNG/clock
+observations. The original-slot driver's default readiness path intentionally
+runs ordinary preparation; exact acquisition must complete its measured bodies
+before invoking that driver.
+
 ## Usage
 
 ```sh
@@ -52,6 +63,7 @@ lists the folders). Launch options share their names with the browser's URL para
 | --- | --- |
 | `--install PATH` | Original install directory |
 | `--scene STEM\|ID` | Load a map stem or WORLD.INI ID directly |
+| `--replay-hold-entry` | In headless replay mode, require an explicit schedule for every new-world ordinary body |
 | `--view=x,y,z,qx,qy,qz,qw` | One-shot inspection camera pose for the first world (unit quaternion) |
 | `--skip-startup` | Skip the splash and open the book menu |
 | `--new-game`, `--movie INDEX` | Start New Game, or play a Movies-page cinematic (zero-based MENU.INI index), from the open book |

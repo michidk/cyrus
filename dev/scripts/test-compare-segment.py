@@ -582,6 +582,54 @@ class NativeControl:
 
 
 class NativeFrames(unittest.TestCase):
+    def test_acquisition_rejects_uncontrolled_bootstrap_instead_of_rebasing_it_to_zero(self):
+        control = NativeControl()
+        for invalid in (True, -1, 0.5):
+            with self.assertRaisesRegex(ValueError, 'nonnegative integer'):
+                pair.NativeFrameSession(None, None, expected_initial_update=invalid)
+        with self.assertRaisesRegex(ValueError, 'expected initial update 0, observed 50'):
+            pair.NativeFrameSession(control, lambda *_: {}, expected_initial_update=0)
+        self.assertEqual(control.scales, [])
+        self.assertEqual(control.update, 50)
+        session = pair.NativeFrameSession(control, lambda *_: {}, expected_initial_update=50)
+        self.assertEqual(session.acquisition_evidence()['initial_update'], 50)
+        self.assertEqual(session.snapshot()['frame'], 0)
+
+    def test_acquisition_retains_absolute_rng_clock_boundaries_and_forwards_host_time(self):
+        control = NativeControl()
+        control.update = 0
+        commands, request = [], control.request
+        def measured(command):
+            commands.append(copy.deepcopy(command))
+            value = request(command)
+            if command['type'] == 'state':
+                value.update(random_state=100 + control.update, startup={'phase': 'loaded'})
+                value['scripts']['world'] = 0
+            return value
+        control.request = measured
+        session = pair.NativeFrameSession(control, lambda *_: {}, expected_initial_update=0,
+                                         frame_scales=[122, 99], bios_ticks=[0, 1], host_nanos=[0, 123])
+        before = session.acquisition_evidence()
+        session.snapshot()
+        self.assertEqual(session.acquisition_evidence(), before)
+        session.advance_to(2)
+        evidence = session.acquisition_evidence()
+        self.assertEqual([row['ordinary_updates'] for row in evidence['observations']], [0, 1, 2])
+        self.assertEqual([row['random_state'] for row in evidence['observations']], [100, 101, 102])
+        self.assertEqual([row['world'] for row in evidence['observations']], [0, 0, 0])
+        self.assertTrue(all(isinstance(row['clock'], dict) for row in evidence['observations']))
+        self.assertEqual([row for row in commands if row['type'] == 'replay_frame'], [
+            {'type': 'replay_frame', 'frame_scale': 122, 'elapsed_bios_ticks': 0, 'elapsed_host_nanos': 0},
+            {'type': 'replay_frame', 'frame_scale': 99, 'elapsed_bios_ticks': 1, 'elapsed_host_nanos': 123}])
+        evidence['observations'].clear()
+        self.assertEqual(len(session.acquisition_evidence()['observations']), 3)
+        self.assertEqual(session.execution_evidence()['host_nanos'], [0, 123])
+
+    def test_invalid_host_time_tape_is_rejected_before_control_access(self):
+        for tape in ([True], [-1], [2**64], [], [1, 2]):
+            with self.subTest(tape=tape), self.assertRaisesRegex(ValueError, 'nanosecond interval'):
+                pair.NativeFrameSession(None, None, frame_scales=[122], host_nanos=tape)
+
     def test_recorded_clock_rejects_acknowledged_scale_that_was_not_consumed(self):
         control = NativeControl()
         request = control.request

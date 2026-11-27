@@ -95,9 +95,13 @@ class NativeFrameSession:
     replies are retained in input_observations. Optional bios_ticks carries
     measured per-update BIOS intervals; omitting it uses diagnostic simulated BIOS
     timing and cannot establish complete original/native clock equivalence.
+    expected_initial_update rejects uncontrolled bootstrap before relative-frame
+    rebasing. host_nanos forwards measured presentation intervals, including zero.
+    acquisition_evidence retains absolute update/RNG/clock boundaries.
     """
 
-    def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None):
+    def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None,
+                 expected_initial_update=None, host_nanos=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
         self.frame_scales = None if frame_scales is None else tuple(frame_scales)
         if self.frame_scales is not None and any(type(scale) is not int or not 0 <= scale <= 2**32 - 1 for scale in self.frame_scales):
@@ -107,8 +111,21 @@ class NativeFrameSession:
                 self.frame_scales is None or len(self.bios_ticks) != len(self.frame_scales)
                 or any(type(tick) is not int or not 0 <= tick <= 2**32 - 1 for tick in self.bios_ticks)):
             raise ValueError('recorded BIOS intervals require one unsigned interval per clock scale')
+        if expected_initial_update is not None and (
+                type(expected_initial_update) is not int or expected_initial_update < 0):
+            raise ValueError('expected initial native update must be a nonnegative integer')
+        self.expected_initial_update = expected_initial_update
+        self.host_nanos = None if host_nanos is None else tuple(host_nanos)
+        if self.host_nanos is not None and (
+                self.frame_scales is None or len(self.host_nanos) != len(self.frame_scales)
+                or any(type(nanos) is not int or not 0 <= nanos <= 2**64 - 1 for nanos in self.host_nanos)):
+            raise ValueError('recorded host time requires one unsigned nanosecond interval per clock scale')
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
+        if expected_initial_update is not None and self.origin != expected_initial_update:
+            raise ValueError(f'native acquisition expected initial update {expected_initial_update}, '
+                             f'observed {self.origin}; bootstrap timing was not controlled')
+        self.acquisition_observations = [self._acquisition_observation()]
         self.clock_observations = []
         self.input_observations = []
         if self.frame_scales is not None:
@@ -139,11 +156,28 @@ class NativeFrameSession:
         state, scripts = self.current
         return dict(self.project(state, scripts), frame=state['scripts']['ordinary_updates'] - self.origin)
 
+    def _acquisition_observation(self):
+        state = self.current[0]
+        return copy.deepcopy({
+            'ordinary_updates': state['scripts']['ordinary_updates'],
+            'world': state['scripts'].get('world'),
+            'random_state': state.get('random_state'),
+            'clock': state.get('clock'), 'startup': state.get('startup'),
+        })
+
+    def acquisition_evidence(self):
+        """Retain absolute native boundaries; relative frame zero does not erase bootstrap work."""
+        return copy.deepcopy({
+            'expected_initial_update': self.expected_initial_update,
+            'initial_update': self.origin, 'observations': self.acquisition_observations,
+        })
+
     def execution_evidence(self):
         """Copy requested tapes and measured boundaries, including an interrupted run."""
         return copy.deepcopy(dict(
             frame_scales=None if self.frame_scales is None else list(self.frame_scales),
             bios_ticks=None if self.bios_ticks is None else list(self.bios_ticks),
+            host_nanos=None if self.host_nanos is None else list(self.host_nanos),
             clocks=self.clock_observations, inputs=self.input_observations))
 
     def input(self, key, action):
@@ -175,8 +209,11 @@ class NativeFrameSession:
                        {'type': 'schedule_input', 'events': [{'after_updates': 0}]})
             if self.bios_ticks is not None:
                 command['elapsed_bios_ticks'] = self.bios_ticks[current]
+            if self.host_nanos is not None:
+                command['elapsed_host_nanos'] = self.host_nanos[current]
             self.control.request(command)
             self.current = self._read()
+            self.acquisition_observations.append(self._acquisition_observation())
             observed = self.snapshot()['frame']
             if observed != current + 1:
                 raise RuntimeError(f'native frame gap: expected {current + 1}, observed {observed}')
