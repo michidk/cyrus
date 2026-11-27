@@ -294,7 +294,11 @@ Git tree with the expected tree. Missing logs or a different tree reject the
 acquisition. The receipt then includes `checkout_job`, `checkout_commit` and
 `checkout_tree`. A PR head and its workflow's merge checkout can have different
 trees; use the actual checkout tree, never assume the head tree is equivalent.
-This mode needs the native job log to be available even if other jobs continue.
+This mode requires the standard Linux job to complete successfully. While that
+job is unfinished, the fetcher exits with retryable status 75 without requesting
+its unavailable checkout log or replacing an existing executable. Retry the same
+command after job completion. Other platform jobs may still be running. A
+completed job with missing logs remains an acquisition failure.
 
 Pass that receipt into the paired runner:
 

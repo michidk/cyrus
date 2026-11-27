@@ -99,6 +99,15 @@ class ExactRun(unittest.TestCase):
             self.assertEqual(self.destination.read_bytes(), b"previous")
             self.artifact = original
 
+    def test_pending_source_keeps_existing_executable_without_transfer(self):
+        with mock.patch.object(MODULE.subprocess, "check_output", side_effect=self.query), \
+                mock.patch.object(MODULE, "checkout_source", side_effect=MODULE.ArtifactPending("pending")), \
+                mock.patch.object(MODULE.subprocess, "run") as transfer:
+            with self.assertRaises(MODULE.ArtifactPending):
+                MODULE.download(COMMIT, self.destination, run_id=7, source_tree="c" * 40)
+            transfer.assert_not_called()
+        self.assertEqual(self.destination.read_bytes(), b"previous")
+
     def test_explicit_run_cannot_be_combined_with_ancestor_fallback(self):
         with self.assertRaisesRegex(ValueError, "fallback"):
             MODULE.download(COMMIT, self.destination, fallback_main=True, run_id=7)
@@ -109,12 +118,31 @@ class CheckoutBinding(unittest.TestCase):
     def query(self, command, **kwargs):
         endpoint = command[2]
         if endpoint.endswith('/jobs?per_page=100'):
-            return json.dumps({'jobs': [dict(id=12, name='Native (x86_64-unknown-linux-gnu)')]})
+            return json.dumps({'jobs': [dict(id=12, name='Native (x86_64-unknown-linux-gnu)', status='completed', conclusion='success')]})
         if endpoint.endswith('/logs'):
             return ('2026-11-26T12:00:00Z [command]/usr/bin/git log -1 --format=%H\n'
                     + '2026-11-26T12:00:01Z ' + 'b' * 40 + '\n')
         return json.dumps(dict(sha='b' * 40, tree=dict(sha=self.tree),
                                parents=[dict(sha='e' * 40), dict(sha=COMMIT)]))
+
+    def test_unfinished_job_is_pending_without_requesting_logs(self):
+        for status in ('queued', 'in_progress', 'waiting'):
+            with self.subTest(status=status):
+                response = json.dumps({'jobs': [dict(
+                    id=12, name='Native (x86_64-unknown-linux-gnu)', status=status)]})
+                with mock.patch.object(MODULE.subprocess, 'check_output', return_value=response) as query:
+                    with self.assertRaisesRegex(MODULE.ArtifactPending, 'run 7 job 12.*retry'):
+                        MODULE.checkout_source(7, COMMIT, 'c' * 40)
+                    self.assertEqual(query.call_count, 1)
+
+    def test_failed_completed_job_cannot_supply_verified_source(self):
+        response = json.dumps({'jobs': [dict(
+            id=12, name='Native (x86_64-unknown-linux-gnu)',
+            status='completed', conclusion='failure')]})
+        with mock.patch.object(MODULE.subprocess, 'check_output', return_value=response) as query:
+            with self.assertRaisesRegex(ValueError, 'did not succeed'):
+                MODULE.checkout_source(7, COMMIT, 'c' * 40)
+            self.assertEqual(query.call_count, 1)
 
     def test_binds_actual_merge_checkout_instead_of_workflow_head(self):
         self.tree = 'c' * 40
@@ -145,6 +173,16 @@ class CheckoutBinding(unittest.TestCase):
                 with mock.patch.object(MODULE.subprocess, 'check_output', side_effect=query):
                     with self.assertRaisesRegex(ValueError, 'checkout'):
                         MODULE.checkout_source(7, COMMIT, self.tree)
+
+    def test_completed_job_log_failure_is_not_pending(self):
+        self.tree = 'c' * 40
+        def query(command, **kwargs):
+            if command[2].endswith('/logs'):
+                raise subprocess.CalledProcessError(1, command, stderr='HTTP 404')
+            return self.query(command, **kwargs)
+        with mock.patch.object(MODULE.subprocess, 'check_output', side_effect=query):
+            with self.assertRaises(subprocess.CalledProcessError):
+                MODULE.checkout_source(7, COMMIT, self.tree)
 
     def test_missing_checkout_evidence_is_not_inferred_from_head(self):
         with mock.patch.object(MODULE.subprocess, 'check_output', return_value='{"jobs": []}'):

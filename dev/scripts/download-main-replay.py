@@ -15,6 +15,10 @@ REPOSITORY = "michidk/cyrus"
 ARTIFACT = "native-x86_64-unknown-linux-gnu"
 
 
+class ArtifactPending(ValueError):
+    """The producing job has not finished publishing checkout evidence."""
+
+
 def extract_binary(package, staged, context):
     with tarfile.open(package) as archive:
         binaries = [member for member in archive.getmembers()
@@ -37,6 +41,11 @@ def checkout_source(run_id, commit, expected_tree):
     if len(native) != 1:
         raise ValueError(f'run {run_id}: requires one standard Linux native job')
     job = native[0]['id']
+    if native[0].get('status') != 'completed':
+        raise ArtifactPending(
+            f'run {run_id} job {job}: checkout evidence pending; retry after job completion')
+    if native[0].get('conclusion') != 'success':
+        raise ValueError(f'run {run_id} job {job}: native artifact job did not succeed')
     log = subprocess.check_output(
         ['gh', 'api', f'{prefix}/actions/jobs/{job}/logs', '--allow-escape-sequences'], text=True)
     checkouts = re.findall(
@@ -168,6 +177,8 @@ if __name__ == "__main__":
         receipt = download(args.commit, args.destination, args.fallback_main, args.run, args.source_tree)
         if args.receipt:
             args.receipt.write_text(json.dumps(receipt) + "\n")
+    except ArtifactPending as error:
+        parser.exit(75, f"replay artifact pending: {error}\n")
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
         label = "replay" if args.run is not None else "main replay"
         parser.exit(1, f"{label} artifact unavailable: {error}\n")
