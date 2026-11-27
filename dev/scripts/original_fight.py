@@ -243,6 +243,22 @@ def ready_to_tap(sample, gate):
     return opponent_busy(sample) if gate == "busy" else True
 
 
+def fresh_attack_ready(state):
+    """Require the observed empty move selection before a new action-key attack.
+
+    Armed idle alone is insufficient: defence cleanup can leave an action and
+    pending move selected. This is the fresh-move admission contract, not the
+    different latch rules for continuing an existing combo.
+    Source: preservation engine/player.md, Armed attack input.
+    """
+    combat = state.get('player_combat')
+    if not isinstance(combat, dict) or any(type(combat.get(name)) is not int
+                                           for name in ('action', 'motion')):
+        raise ValueError('fresh attack requires bound player action and pending move')
+    return (state['pg'] == ARMED_IDLE_GROUP and combat['action'] in (-1, 0, 1)
+            and combat['motion'] == -1)
+
+
 def classify_tap(before, samples):
     """Outcome of one tap from the samples that followed it: the opponent's health drop is a hit
     (with its damage), his reaction group 117 without a drop is a hit absorbed elsewhere, and any
@@ -581,6 +597,8 @@ def record_combat_tap(session, key, held_updates, released_updates, *, capture_r
         raise ValueError("player control must be restored before measuring a tap")
     if before["pg"] != ARMED_IDLE_GROUP:
         raise ValueError("player must be in armed idle before measuring a tap")
+    if key == 'ControlLeft' and not fresh_attack_ready(before):
+        raise ValueError("fresh attack requires an admitted player action and empty pending move")
     samples = [before]
     trajectory = [combat_range_sample(before)] if capture_range else None
     query_ranges = ([combat_query_range_sample(before, query_motion)]

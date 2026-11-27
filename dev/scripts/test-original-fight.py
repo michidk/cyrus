@@ -321,7 +321,8 @@ class ExactCombatTape(unittest.TestCase):
             self.frame, self.keys, self.gap = 0, set(), gap
         def snapshot(self):
             return sample() | {"frame": self.frame, "ppos": [0, 0, 0], "rpos": [0, 0, 100],
-                               "world": 30, "rhidden": False, "rcombat": True, "rlisted": True, "lockout": 0}
+                               "world": 30, "rhidden": False, "rcombat": True, "rlisted": True, "lockout": 0,
+                               "player_combat": dict(action=-1, motion=-1, attack_state=0)}
         def advance_to(self, frame):
             self.frame = frame + int(self.gap)
         def input(self, key, action):
@@ -334,6 +335,27 @@ class ExactCombatTape(unittest.TestCase):
         self.assertEqual([s["frame"] for s in result["samples"]], [0, 1, 2, 3, 4])
         self.assertEqual(session.keys, set())
         self.assertEqual(result["outcome"], "miss")
+
+    def test_armed_idle_with_retained_move_rejects_before_sending_action(self):
+        for combat in (dict(action=0, motion=0, attack_state=0),
+                       dict(action=9, motion=0, attack_state=2),
+                       dict(action=9, motion=-1, attack_state=0)):
+            session = self.Session()
+            snapshot = session.snapshot
+            session.snapshot = lambda: snapshot() | {"player_combat": combat}
+            with self.assertRaisesRegex(ValueError, "admitted player action"):
+                fight.record_combat_tap(session, "ControlLeft", 1, 3)
+            self.assertEqual(session.frame, 0)
+            self.assertEqual(session.keys, set())
+
+    def test_fresh_attack_requires_observed_selection(self):
+        for combat in (None, {}, dict(action=-1),
+                       dict(action=False, motion=-1)):
+            with self.assertRaisesRegex(ValueError, "bound player action"):
+                fight.fresh_attack_ready(sample() | {"player_combat": combat})
+        for action in (-1, 0, 1):
+            self.assertTrue(fight.fresh_attack_ready(self.Session().snapshot() | {
+                'player_combat': dict(action=action, motion=-1, attack_state=1)}))
 
     def test_frame_gap_rejects_measurement_and_releases_key(self):
         session = self.Session(gap=True)

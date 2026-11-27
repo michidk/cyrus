@@ -1379,7 +1379,11 @@ prove entry. Attack measurements also require restored player control and armed
 idle; combat entry alone does not finish the separate entrance sequence. `record_combat_tap` accepts a stopped-frame session, records every
 held and released update with positions and health, and releases input even
 when a frame gap or world change rejects the measurement. Health loss is the
-observation-window total, not a count of individual strikes.
+observation-window total, not a count of individual strikes. A fresh `ControlLeft`
+measurement also requires an observed admitted action (`-1`, `0` or `1`) and pending move
+`-1` (`fresh_attack_ready`); defence cleanup can show armed idle while a retained
+move still prevents a fresh attack. Existing-combo input follows separate latch
+rules and must not be classified as a fresh tap.
 
 Pass `capture_range=True` to retain per-update body-origin L1/3D range, height,
 heading error and separate signed XYZ displacements for both actors. The first
