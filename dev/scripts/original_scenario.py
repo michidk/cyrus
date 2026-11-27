@@ -37,7 +37,8 @@ def install_original_reader(name, *, command=sh, magic=None):
     """Install the reader and its shared memory helper into an existing runtime."""
     magic = MAGIC if magic is None else Path(magic)
     sources = (magic / "tools/original-state.py",
-               ROOT / "dev/scripts/original-memory-region.py")
+               ROOT / "dev/scripts/original-memory-region.py",
+               ROOT / "dev/scripts/original_script_locals.py")
     for source in sources:
         if not source.is_file():
             raise FileNotFoundError(f"{source}: restore the local original-game tooling bundle")

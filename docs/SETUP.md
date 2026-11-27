@@ -1270,6 +1270,14 @@ and rejects absent, ambiguous
 or truncated-region candidates. Keep signatures and executable bindings in the
 local reader. Run its controls with `python3 dev/scripts/test-original-memory-region.py`.
 
+For script-local observations, `dev/scripts/original_script_locals.py` reads
+an instance from the live variable pool using its bound byte offset and the
+installed script's authored variable count. Supply that count from installed
+metadata, not from restored native values or the contents of the live allocation.
+Missing metadata or incomplete reads reject observation; only an authored zero
+count establishes empty locals. The original reader installer includes this helper.
+Run its controls with `python3 dev/scripts/test-original-script-locals.py`.
+
 The fight console driver resolves F12 through the live X display and sends its
 physical keycode. A named xdotool F12 can synthesize Alt on the rig keymap and
 select the nonmodal overlay. The toggle is released on mode acknowledgement,
