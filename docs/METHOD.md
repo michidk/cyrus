@@ -241,3 +241,11 @@ changes and the required playtests for runtime behavior.
 
 Original executable code, assets or audio in any form; distributing anything
 from the install; multiplayer; content the original game did not have.
+
+The original combat-driver bundle includes `original_sky_state.read_sky_state`
+for stopped sky continuation observations. Supply locally established bindings
+for activation, direction, signed speed, scroll offsets, BIOS baseline and the
+opaque texture lifetime token. Observe direction writes across a load to
+distinguish retained state from an intervening reroll; equal endpoint angles
+alone do not establish retention. Asset identity comes from installed settings,
+not from comparing process handles across runs.
