@@ -136,7 +136,7 @@ class NativeFrameSession:
     """
 
     def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None,
-                 expected_initial_update=None, host_nanos=None, cached_bios_samples=None):
+                 expected_initial_update=None, host_nanos=None, cached_bios_samples=None, combat_pacing=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
         self.frame_scales = None if frame_scales is None else tuple(frame_scales)
         if self.frame_scales is not None and any(type(scale) is not int or not 0 <= scale <= 2**32 - 1 for scale in self.frame_scales):
@@ -162,6 +162,24 @@ class NativeFrameSession:
                 or any(type(sample) is not int or not 0 <= sample < 2**32
                        for sample in self.cached_bios_samples)):
             raise ValueError('cached BIOS phase requires an unsigned entry sample and one per body')
+        self.combat_pacing = None if combat_pacing is None else copy.deepcopy(combat_pacing)
+        if self.combat_pacing is not None:
+            if self.cached_bios_samples is None or not isinstance(self.combat_pacing, list) or len(self.combat_pacing) != len(self.cached_bios_samples):
+                raise ValueError('combat pacing requires one boundary list per absolute BIOS sample')
+            for boundary in self.combat_pacing:
+                if not isinstance(boundary, list):
+                    raise ValueError('combat pacing boundary must be a list')
+                names = set()
+                for expected in boundary:
+                    if not isinstance(expected, dict) or set(expected) != {'actor', 'allocation_index', 'selection'}:
+                        raise ValueError('combat pacing expectation requires actor, allocation_index and selection')
+                    name = expected['actor']
+                    if not isinstance(name, str) or not name or name in names:
+                        raise ValueError('combat pacing actor must be unique and named')
+                    names.add(name)
+                    if type(expected['allocation_index']) is not int or not -2**31 <= expected['allocation_index'] < 2**31 or type(expected['selection']) is not bool:
+                        raise ValueError('combat pacing requires signed allocation index and boolean selection phase')
+        self.combat_observations = []
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
         if expected_initial_update is not None and self.origin != expected_initial_update:
@@ -193,12 +211,60 @@ class NativeFrameSession:
     def _check_bios_phase(self, frame):
         if self.cached_bios_samples is None:
             return
+        if not 0 <= frame < len(self.cached_bios_samples):
+            raise RuntimeError(f'native cached BIOS phase has no boundary for frame {frame}')
         actual = self.current[0].get('clock', {}).get('bios_sample')
         expected = self.cached_bios_samples[frame]
         if type(actual) is not int or not 0 <= actual < 2**32:
             raise RuntimeError(f'native cached BIOS sample unavailable at frame {frame}')
         if actual != expected:
             raise RuntimeError(f'native cached BIOS phase at frame {frame}: observed {actual}, expected {expected}')
+        self._check_combat_phase(frame, actual)
+
+    def _check_combat_phase(self, frame, sample):
+        if self.combat_pacing is None:
+            return
+        state, scripts = self.current
+        for expected in self.combat_pacing[frame]:
+            name = expected['actor']
+            actors = [actor for actor in scripts['actors'] if actor.get('name') == name]
+            if len(actors) != 1:
+                raise RuntimeError(f'native combat pacing frame {frame} actor {name}: absent or ambiguous')
+            observation = actors[0].get('combat_pacing')
+            context = f'native combat pacing frame {frame} actor {name}'
+            row = dict(frame=frame, actor=name, observation=copy.deepcopy(observation))
+            if row not in self.combat_observations:
+                self.combat_observations.append(row)
+            if not isinstance(observation, dict):
+                raise RuntimeError(f'{context}: observation missing')
+            required = dict(ordinary_update=state['scripts']['ordinary_updates'],
+                            cached_bios_sample=sample, allocation_index=expected['allocation_index'])
+            for field, value in required.items():
+                if type(observation.get(field)) is not int or observation[field] != value:
+                    raise RuntimeError(f'{context}: stale or misaligned {field}')
+            selection = observation.get('selection')
+            if 'selection' not in observation or (selection is not None and not isinstance(selection, dict)) or (selection is not None) != expected['selection']:
+                raise RuntimeError(f'{context}: selection phase differs or missing')
+            # Signed wrapping sum and checked remainder follow preservation a95064e.
+            total = (sample + expected['allocation_index'] + 2**31) % 2**32 - 2**31
+            if type(observation.get('pacing_sum')) is not int or observation['pacing_sum'] != total:
+                raise RuntimeError(f'{context}: signed pacing sum differs')
+            divisors = [('defence_counter', observation.get('defence_counter'), 'counter_remainder')]
+            if selection is not None:
+                if type(selection.get('pacing_sum')) is not int or selection['pacing_sum'] != total:
+                    raise RuntimeError(f'{context}: selection pacing sum differs')
+                divisors.append(('defence_pacing', selection.get('defence_pacing'), 'pacing_remainder'))
+            for field, divisor, remainder_field in divisors:
+                if type(divisor) is not int or not -2**31 <= divisor < 2**31:
+                    raise RuntimeError(f'{context}: {field} unavailable')
+                remainder = None
+                if divisor != 0 and not (total == -2**31 and divisor == -1):
+                    remainder = abs(total) % abs(divisor)
+                    if total < 0:
+                        remainder = -remainder
+                actual = observation.get(remainder_field)
+                if remainder_field not in observation or (remainder is None and actual is not None) or (remainder is not None and (type(actual) is not int or actual != remainder)):
+                    raise RuntimeError(f'{context}: checked {remainder_field} differs')
 
     def _clock_observation(self, elapsed_scale):
         continuation = self.current[0].get('clock', {}).get('continuation')
@@ -239,6 +305,8 @@ class NativeFrameSession:
             bios_ticks=None if self.bios_ticks is None else list(self.bios_ticks),
             cached_bios_samples=None if self.cached_bios_samples is None else list(self.cached_bios_samples),
             host_nanos=None if self.host_nanos is None else list(self.host_nanos),
+            combat_pacing=copy.deepcopy(self.combat_pacing),
+            combat_observations=copy.deepcopy(self.combat_observations),
             clocks=self.clock_observations, inputs=self.input_observations))
 
     def input(self, key, action):

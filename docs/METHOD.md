@@ -75,6 +75,17 @@ requires `state.clock.bios_sample` at that exact phase; absent or differing
 samples reject before projecting outcomes or sending the next input. Effective
 BIOS deltas never substitute for these observations. The native observer and
 absolute-origin control must be available before this gate can pass.
+`combat_pacing` optionally supplies one list per entry/body boundary alongside
+that absolute sample tape. Each expectation names a unique inspected actor,
+its signed `allocation_index`, and whether `selection` was reached. The driver
+requires that actor's `combat_pacing.ordinary_update` to identify the current
+body and its `cached_bios_sample` to equal the measured sample. It checks the
+signed wrapping `pacing_sum`, selection sum and checked counter/pacing remainders, preserving null
+for invalid division. Null selection establishes combat entry only; it cannot
+satisfy a selection expectation. Rejected observations remain in execution
+evidence and block subsequent input. This observation contract does not supply
+an absolute-origin command. Adapters must use a separately supported native
+control before claiming aligned replay; they must never infer or patch it.
 
 Verified paired execution leases the executable inode across entry, separate
 first-body and combat runs. The lease survives removal of the installed path,

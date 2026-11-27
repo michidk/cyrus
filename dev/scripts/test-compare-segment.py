@@ -778,6 +778,88 @@ class NativeControl:
 
 
 class NativeFrames(unittest.TestCase):
+    def pacing_session(self, change=None, sample=100, allocation=3, counter=13, selection=True):
+        control = NativeControl()
+        control.update = 0
+        request = control.request
+        def observed(command):
+            result = request(command)
+            if command['type'] == 'state':
+                result['clock']['bios_sample'] = sample
+            if command['type'] == 'scripts':
+                total = (sample + allocation + 2**31) % 2**32 - 2**31
+                remainder = None if counter == 0 or (total == -2**31 and counter == -1) else (abs(total) % abs(counter)) * (-1 if total < 0 else 1)
+                phase = dict(ordinary_update=control.update, cached_bios_sample=sample,
+                             allocation_index=allocation, pacing_sum=total,
+                             defence_counter=counter, counter_remainder=remainder,
+                             pacing_remainder=remainder,
+                             selection=dict(pacing_sum=total, defence_pacing=counter) if selection else None)
+                result = dict(actors=[dict(name='opponent', combat_pacing=phase)], total=1)
+                if change:
+                    change(result, control)
+                result['total'] = len(result['actors'])
+            return result
+        control.request = observed
+        session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[202],
+                    bios_ticks=[0], cached_bios_samples=[sample, sample],
+                    combat_pacing=[[], [dict(actor='opponent', allocation_index=allocation, selection=selection)]])
+        return session, control
+
+    def test_combat_phase_accepts_actual_current_selection_and_retains_evidence(self):
+        session, control = self.pacing_session()
+        session.advance_to(1)
+        session.input('ArrowDown', 'press')
+        evidence = session.execution_evidence()
+        self.assertEqual(evidence['combat_observations'][0]['observation']['ordinary_update'], 1)
+        self.assertEqual(len(evidence['combat_observations']), 1)
+        self.assertEqual(control.keys, [(1, 'ArrowDown', 'press')])
+        for sample, allocation, counter in [(2**31 - 1, 1, 29), (2**31, 0, -1), (100, 0, 0)]:
+            with self.subTest(sample=sample, counter=counter):
+                session, _ = self.pacing_session(sample=sample, allocation=allocation, counter=counter)
+                session.advance_to(1)
+        session, _ = self.pacing_session(selection=False)
+        session.advance_to(1)  # Current combat entry is distinct from selection.
+
+    def test_combat_phase_rejects_stale_missing_and_misaligned_before_input(self):
+        changes = [
+            lambda rows, _: rows['actors'][0].pop('combat_pacing'),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(ordinary_update=0),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(cached_bios_sample=101),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(allocation_index=4),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(pacing_sum=104),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(counter_remainder=None),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(pacing_remainder=None),
+            lambda rows, _: rows['actors'][0]['combat_pacing']['selection'].update(pacing_sum=104),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].update(selection=None),
+            lambda rows, _: rows['actors'][0]['combat_pacing'].pop('selection'),
+            lambda rows, _: rows['actors'].append(copy.deepcopy(rows['actors'][0])),
+        ]
+        for change in changes:
+            with self.subTest(change=change):
+                session, control = self.pacing_session(change)
+                with self.assertRaises(RuntimeError):
+                    session.advance_to(1)
+                with self.assertRaises(RuntimeError):
+                    session.input('ArrowDown', 'press')
+                self.assertEqual(control.keys, [])
+
+    def test_combat_phase_rejects_skipped_boundary_without_indexing_past_tape(self):
+        session, control = self.pacing_session()
+        control.stride = 2
+        with self.assertRaisesRegex(RuntimeError, 'no boundary for frame 2'):
+            session.advance_to(1)
+        self.assertEqual(control.keys, [])
+
+    def test_combat_fixture_rejects_incomplete_or_ambiguous_contract(self):
+        bad = [[], [[], {}], [[], [dict(actor='opponent')]],
+               [[], [dict(actor='opponent', allocation_index=True, selection=True)]],
+               [[], [dict(actor='opponent', allocation_index=1, selection=None)]],
+               [[], [dict(actor='opponent', allocation_index=1, selection=True)] * 2]]
+        for fixture in bad:
+            with self.subTest(fixture=fixture), self.assertRaises(ValueError):
+                pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[202],
+                                        cached_bios_samples=[100, 100], combat_pacing=fixture)
+
     def test_absolute_bios_phase_rejects_equal_delta_before_projection(self):
         control = NativeControl()
         original = control.request
