@@ -13,7 +13,7 @@ pub(super) struct Scene<'w> {
     pub(super) prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     pub(super) ready_scene: Option<Res<'w, cyrus_render::ReadyScene>>,
     pub(super) marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
-    pub(super) clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
+    pub(super) clock: Option<ResMut<'w, cyrus_script::clock::SimulationClock>>,
 }
 
 impl Scene<'_> {

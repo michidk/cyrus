@@ -265,6 +265,17 @@ pub enum Command {
         /// Zero selects the first half, one the second; other values reject.
         active_half: u8,
     },
+    /// Set the measured absolute BIOS origin once for a ready held replay world,
+    /// before its first ordinary update or accepted control input/schedule.
+    /// Only the raw baseline changes; timing continuation and gameplay state are retained.
+    /// Identity and expected sample are compared before mutation. Reply includes the
+    /// generation, ordinary_update, previous_bios_sample, bios_sample and continuation.
+    SetReplayClockOrigin {
+        generation: u64,
+        expected_update: u64,
+        expected_bios_sample: u32,
+        bios_sample: u32,
+    },
     /// Advance one ReplayHold invocation by an observed Q8 nominal-tick scale.
     /// Requires a staged replay world and its matching initial clock continuation.
     ReplayFrame {
@@ -599,5 +610,27 @@ mod frame_boundary_tests {
                 ..
             }
         ));
+    }
+    #[test]
+    fn replay_origin_requires_complete_unsigned_identity_and_sample_fields() {
+        let value = serde_json::json!({"type":"set_replay_clock_origin", "generation":7,
+            "expected_update":0, "expected_bios_sample":4294967295u32, "bios_sample":3});
+        let command: Command = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(command).unwrap(), value);
+        for field in [
+            "generation",
+            "expected_update",
+            "expected_bios_sample",
+            "bios_sample",
+        ] {
+            let mut missing = value.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Command>(missing).is_err());
+        }
+        for sample in [serde_json::json!(-1), serde_json::json!(4294967296u64)] {
+            let mut invalid = value.clone();
+            invalid["bios_sample"] = sample;
+            assert!(serde_json::from_value::<Command>(invalid).is_err());
+        }
     }
 }
