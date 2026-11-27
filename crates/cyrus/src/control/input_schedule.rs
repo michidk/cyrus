@@ -329,15 +329,20 @@ fn boundary_scale(clock: &cyrus_script::clock::SimulationClock) -> Option<u64> {
 }
 
 fn observe(
-    mut context: cyrus_script::script::OrdinaryContext,
-    clock: Option<Res<cyrus_script::clock::SimulationClock>>,
+    mut parameters: ParamSet<(
+        cyrus_script::script::OrdinaryContext,
+        Option<Res<cyrus_script::clock::SimulationClock>>,
+    )>,
 ) -> Option<Boundary> {
+    let (elapsed_scale, normal_frame_rate) = {
+        let clock = parameters.p1();
+        let clock = clock.as_deref()?;
+        (boundary_scale(clock)?, clock.settings().normal_frame_rate)
+    };
+    let mut context = parameters.p0();
     if !context.models_prepared() {
         return None;
     }
-    let clock = clock.as_deref()?;
-    let elapsed_scale = boundary_scale(clock)?;
-    let normal_frame_rate = clock.settings().normal_frame_rate;
     let seconds = elapsed_scale as f64 / 256. / f64::from(normal_frame_rate);
     context.with_world_services(|world, _| {
         let player = world.selected_player()?.index;
@@ -380,6 +385,42 @@ mod tests {
             {"after_updates":2,"key":"ArrowUp","action":"release"}
         ]))
         .unwrap()
+    }
+
+    #[test]
+    fn boundary_observer_initializes_with_the_shared_simulation_clock() {
+        let mut app = App::new();
+        app.init_resource::<Assets<cyrus_assets::animation::Animations>>()
+            .init_resource::<cyrus_script::script::ScriptActors>()
+            .init_resource::<cyrus_game::random::EngineRandom>()
+            .insert_resource(
+                cyrus_script::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+                    normal_frame_rate: 12,
+                    min_frame_rate: 6,
+                    max_frame_rate: 300,
+                    use_smooth_fps: true,
+                    use_smooth_divisor: true,
+                })
+                .unwrap(),
+            );
+        let before = app
+            .world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .bios_sample();
+        // A world awaiting model preparation has no admitted boundary. Observing
+        // it must still initialize the real system without conflicting borrows.
+        assert!(
+            app.world_mut()
+                .run_system_cached(observe)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_script::clock::SimulationClock>()
+                .bios_sample(),
+            before
+        );
     }
 
     #[test]
