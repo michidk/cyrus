@@ -324,3 +324,14 @@ Invalid signed divisions are null, distinct from a zero remainder. These read-on
 observations are excluded from saves and are not reconstructed from effective
 BIOS intervals or the clock after the body. The absolute pacing rule is documented
 in [preservation](https://github.com/michidk/redguard-preservation/commit/a95064e504b1b0eddad849bdc90785bf24c88e47).
+
+Recorded BIOS measurement can supply its stored first sample and effective
+elapsed ticks independently through `SimulationClock::advance_recorded_measurement`.
+They describe one timer. The second measurement read and intervening baseline
+refreshes mean effective elapsed ticks need not equal successive stored-sample
+gaps. `rebase` admits a paired cache/baseline refresh without changing timing
+continuation or advancing a frame. The existing `advance` and `advance_recorded`
+paths retain their sample-difference policy. Replay hosts must establish refresh
+ordering and each consumer's cached sample separately; a completed-body sample
+cannot establish an earlier combat decision's input. Preservation documents the
+[measurement and refresh lifetime](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#fps-derived-frame-scale).

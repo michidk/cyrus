@@ -470,3 +470,62 @@ fn measured_nominal_carry_precedes_gameplay_overrides() {
     assert_eq!(clock.step().nominal_ticks, 0);
     assert_eq!(clock.measured_nominal_ticks(), Some(2));
 }
+
+#[test]
+fn recorded_measurement_keeps_refreshes_out_of_effective_elapsed_ticks() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    for _ in 0..12 {
+        clock.advance(0);
+    }
+    clock.rebase(1000);
+    clock.advance_recorded_measurement(1000, 0, 118).unwrap();
+    let measured = serde_json::to_value(clock.snapshot()).unwrap();
+    clock.rebase(1043);
+    assert_eq!(clock.bios_sample(), 1043);
+    assert_eq!(serde_json::to_value(clock.snapshot()).unwrap(), measured);
+    // The first read stores 1045, the second reads 1046 against baseline 1043.
+    clock.advance_recorded_measurement(1045, 3, 118).unwrap();
+    let state = serde_json::to_value(clock.snapshot()).unwrap();
+    assert_eq!(clock.bios_sample(), 1045);
+    assert_eq!(state["remainder"], 3);
+    assert_eq!(state["frames"], 14);
+    assert_eq!(state["measurement_intervals"], 0);
+    assert_eq!(clock.step().frame_scale, 118);
+    assert_eq!(clock.step().nominal_ticks, 0);
+    assert_eq!(clock.step().fine_ticks, 4);
+    // The next baseline is the stored first sample, not the second read.
+    clock.advance_recorded_measurement(1047, 2, 118).unwrap();
+    let state = serde_json::to_value(clock.snapshot()).unwrap();
+    assert_eq!(clock.bios_sample(), 1047);
+    assert_eq!(state["remainder"], 5);
+    assert_eq!(state["frames"], 15);
+    let unchanged = serde_json::to_value(clock.snapshot()).unwrap();
+    assert!(clock.advance_recorded_measurement(2000, 500, 3073).is_err());
+    assert_eq!(clock.bios_sample(), 1047);
+    assert_eq!(serde_json::to_value(clock.snapshot()).unwrap(), unchanged);
+}
+
+#[test]
+fn recorded_measurement_retains_unsigned_sample_wrap_and_signed_elapsed() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    clock.rebase(u32::MAX - 2);
+    clock
+        .advance_recorded_measurement(u32::MAX - 1, 3, 118)
+        .unwrap();
+    assert_eq!(clock.bios_sample(), u32::MAX - 1);
+    clock.rebase(u32::MAX);
+    clock.advance_recorded_measurement(1, 2, 118).unwrap();
+    assert_eq!(clock.bios_sample(), 1);
+    assert_eq!(
+        serde_json::to_value(clock.snapshot()).unwrap()["remainder"],
+        5
+    );
+    clock
+        .advance_recorded_measurement(2, (-8i32) as u32, 118)
+        .unwrap();
+    assert_eq!(clock.bios_sample(), 2);
+    assert_eq!(
+        serde_json::to_value(clock.snapshot()).unwrap()["remainder"],
+        0
+    );
+}

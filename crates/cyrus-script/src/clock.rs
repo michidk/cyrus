@@ -300,6 +300,8 @@ impl SimulationClock {
 
     /// Excludes a suspension during which this clock received no invocations.
     /// Frame counts, fractional accumulators and the tick remainder are retained.
+    /// Also admits an observed paired raw-cache/baseline refresh between measurements;
+    /// it changes no exposed step, FPS measurement or warmup state.
     pub fn rebase(&mut self, bios_tick: u32) {
         self.baseline = bios_tick;
     }
@@ -348,10 +350,14 @@ impl SimulationClock {
     /// contributes a signed delta; a negative accumulated remainder clamps to zero.
     /// This method neither establishes update eligibility nor schedules actors.
     pub fn advance(&mut self, bios_tick: u32) -> ClockStep {
+        self.advance_measurement(bios_tick, bios_tick.wrapping_sub(self.baseline))
+    }
+
+    fn advance_measurement(&mut self, bios_tick: u32, elapsed_bios_ticks: u32) -> ClockStep {
         self.frames = self.frames.wrapping_add(1);
         self.remainder = self
             .remainder
-            .wrapping_add(bios_tick.wrapping_sub(self.baseline) as i32)
+            .wrapping_add(elapsed_bios_ticks as i32)
             .max(0);
         self.baseline = bios_tick;
         let windows = self.remainder as u32 / 18;
@@ -361,6 +367,10 @@ impl SimulationClock {
             self.frames = 0;
             self.remainder %= 18;
         }
+        self.publish_measured_step()
+    }
+
+    fn publish_measured_step(&mut self) -> ClockStep {
         let difference = self.measured.abs_diff(self.smoothed);
         let adjustment = if difference >= 5 {
             difference / 2 + 1
@@ -470,6 +480,29 @@ impl SimulationClock {
         bios_tick: u32,
         frame_scale: u32,
     ) -> anyhow::Result<ClockStep> {
+        self.advance_recorded_measurement(
+            bios_tick,
+            bios_tick.wrapping_sub(self.baseline),
+            frame_scale,
+        )
+    }
+
+    /// Consume an independently observed stored BIOS sample and measurement delta.
+    ///
+    /// Both come from the same BIOS timer. The effective delta includes the second
+    /// measurement read and excludes intervening baseline refreshes, following
+    /// preservation's `docs/engine/player.md#fps-derived-frame-scale`. It is not
+    /// generally the difference between published stored samples. Its unsigned
+    /// representation is interpreted as a wrapping signed delta by measurement.
+    /// The stored first sample becomes the next baseline. Refresh ordering and
+    /// samples consumed by actors must be established separately by the caller.
+    /// Invalid movement scale rejects before changing any clock state.
+    pub fn advance_recorded_measurement(
+        &mut self,
+        bios_tick: u32,
+        elapsed_bios_ticks: u32,
+        frame_scale: u32,
+    ) -> anyhow::Result<ClockStep> {
         anyhow::ensure!(
             frame_scale <= self.settings.normal_frame_rate * 256 / self.settings.min_frame_rate,
             "recorded frame scale {frame_scale} exceeds installed minimum-FPS bound"
@@ -477,7 +510,7 @@ impl SimulationClock {
         let nominal = self.nominal_fraction + frame_scale;
         let fine = self.fine_fraction + frame_scale;
         let elapsed = self.elapsed_scale;
-        self.advance(bios_tick);
+        self.advance_measurement(bios_tick, elapsed_bios_ticks);
         self.nominal_fraction = nominal & 255;
         self.fine_fraction = fine & 31;
         self.elapsed_fraction = 0;
