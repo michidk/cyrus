@@ -1038,11 +1038,8 @@ mod tests {
     fn original_loading_screen_decodes_saved_framebuffer_without_bitmap_path() {
         let mut saved = synthetic_original_entry(30);
         saved.game.metadata.bitmap_filename = "not-a-host-path.bmp".into();
-        for (target, value) in saved.game.sections[0]
-            .data
-            .chunks_exact_mut(2)
-            .zip([0xf800_u16, 0x07e0, 0x001f, 0x8410])
-        {
+        let (pixels, _) = saved.game.sections[0].data.as_chunks_mut::<2>();
+        for (target, value) in pixels.iter_mut().zip([0xf800_u16, 0x07e0, 0x001f, 0x8410]) {
             target.copy_from_slice(&value.to_le_bytes());
         }
         let request = original_slots::loading_request(&saved.game).unwrap();
