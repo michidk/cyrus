@@ -26,18 +26,31 @@ impl EngineRandom {
     }
 
     /// Consume one draw in the inclusive range 0 through 32767.
+    #[track_caller]
     pub fn draw(&mut self) -> i32 {
+        let previous = self.state;
         self.state = self.state.wrapping_mul(1103515245).wrapping_add(12345);
+        let caller = std::panic::Location::caller();
+        bevy::log::trace!(
+            target: "cyrus_game::random",
+            previous,
+            next = self.state,
+            file = caller.file(),
+            line = caller.line(),
+            "engine random draw"
+        );
         ((self.state >> 16) & 32767) as i32
     }
 
     /// Consume one draw and apply a full-width bit mask, including zero or negative masks.
+    #[track_caller]
     pub fn quick_rnd(&mut self, mask: i32) -> i32 {
         self.draw() & mask
     }
 
     /// Mask then reduce a draw to an exclusive positive bound; this is not unbiased sampling.
     /// Invalid bounds fail before consuming state instead of entering the original's loop.
+    #[track_caller]
     pub fn rnd(&mut self, bound: i32) -> Result<i32> {
         anyhow::ensure!(bound > 0, "Rnd requires a positive bound, got {bound}");
         let bound = bound as u32;
@@ -49,6 +62,69 @@ impl EngineRandom {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draw_trace_identifies_consumers_through_bounded_and_masked_calls() {
+        use bevy::log::tracing::{Event, Subscriber, field::Visit, subscriber::with_default};
+        use bevy::log::tracing_subscriber::{Layer, Registry, layer::SubscriberExt};
+        use std::collections::BTreeMap;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Default)]
+        struct Fields(BTreeMap<String, String>);
+        impl Visit for Fields {
+            fn record_debug(
+                &mut self,
+                field: &bevy::log::tracing::field::Field,
+                value: &dyn std::fmt::Debug,
+            ) {
+                self.0.insert(field.name().into(), format!("{value:?}"));
+            }
+        }
+        struct Draws(Arc<Mutex<Vec<Fields>>>);
+        impl<S: Subscriber> Layer<S> for Draws {
+            fn on_event(
+                &self,
+                event: &Event<'_>,
+                _: bevy::log::tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                if event.metadata().target() == "cyrus_game::random" {
+                    let mut fields = Fields::default();
+                    event.record(&mut fields);
+                    self.0.lock().unwrap().push(fields);
+                }
+            }
+        }
+        let draws = Arc::new(Mutex::new(Vec::new()));
+        let locations = with_default(Registry::default().with(Draws(draws.clone())), || {
+            let mut random = EngineRandom::default();
+            let direct = line!() + 1;
+            random.draw();
+            let bounded = line!() + 1;
+            random.rnd(3).unwrap();
+            let masked = line!() + 1;
+            random.quick_rnd(7);
+            assert!(random.rnd(0).is_err());
+            assert_eq!(random.state(), 662824084);
+            [direct, bounded, masked]
+        });
+        let draws = draws.lock().unwrap();
+        assert_eq!(
+            draws.len(),
+            3,
+            "invalid bounds must not draw or emit a draw"
+        );
+        for ((draw, line), (previous, next)) in draws.iter().zip(locations).zip([
+            (1u32, 1103527590u32),
+            (1103527590, 2524885223),
+            (2524885223, 662824084),
+        ]) {
+            assert_eq!(draw.0["file"], format!("{:?}", file!()));
+            assert_eq!(draw.0["line"], line.to_string());
+            assert_eq!(draw.0["previous"], previous.to_string());
+            assert_eq!(draw.0["next"], next.to_string());
+        }
+    }
 
     #[test]
     fn sequential_calls_match_original_results_and_state() {

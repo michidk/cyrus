@@ -25,6 +25,10 @@ the session random stream, `AppState`, movie unlocks and ropes. It builds on
 - Preferences are stored in the original menu's action units, and are applied
   at runtime only after they were persisted successfully.
 - File access belongs to the hosts; this crate holds state and rules only.
+- Native runs with `--log=cyrus_game::random=trace` report each shared random
+  draw's previous and resulting state and its calling source location. Masked
+  and bounded draws retain the consumer's location, so loading and replay
+  investigations can distinguish consumers without changing the stream.
 
 ## Testing
 
