@@ -40,6 +40,7 @@ impl Inspection<'_> {
             current,
             startup,
             menu,
+            entry,
             prepared,
             ready_scene,
             clock,
@@ -79,7 +80,7 @@ impl Inspection<'_> {
         let preload = preloaded.as_ref().map(|p| {
                             json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": cyrus_config::config_dir().join("preload-report.json").display().to_string()})
                         });
-        let entry = menu.as_ref().and_then(|menu| menu.entry).filter(|entry| {
+        let entry = entry.as_deref().copied().filter(|entry| {
             scene_ready
                 && *state.get() == cyrus_game::AppState::InGame
                 && current.world == Some(entry.world)

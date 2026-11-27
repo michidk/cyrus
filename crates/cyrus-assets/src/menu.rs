@@ -195,15 +195,15 @@ impl MenuAction {
     }
 }
 
-/// Menu cache revision including the startup book palette upload precision.
-pub const MENU_VERSION: u32 = 18;
+/// Menu cache revision with the retail New Game destination, independent of debug startup.
+pub const MENU_VERSION: u32 = 19;
 
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {
     pub version: u32,
     /// Installed shared game-clock settings, available before entering a world.
     pub clock: crate::script::ClockSettings,
-    /// Installed WORLD.INI destination and marker, read through preservation.
+    /// Retail New Game destination and its installed transition artwork.
     pub new_game: NewGameEntry,
     pub pages: BTreeMap<MenuPageId, MenuPage>,
     /// Cover, page one, table, page two, page three, in that order.

@@ -58,8 +58,8 @@ impl NewGameRoute {
     }
 }
 
-/// Installed destination retained when the observed New Game handoff requests it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+/// Observed New Game handoff retained across book cleanup, until another world load starts.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct NewGameEntry {
     pub route: NewGameRoute,
     pub world: u32,
@@ -158,8 +158,6 @@ pub struct MenuState {
     pub movie: Option<MovieStatus>,
     #[serde(skip)]
     pub(super) enter_world: Option<NewGameRoute>,
-    /// Last New Game handoff; cleared when another world-loading path starts.
-    pub entry: Option<NewGameEntry>,
     /// A script movie ended: the paused world resumes without the book.
     #[serde(skip)]
     pub(super) resume_game: bool,
@@ -1195,7 +1193,7 @@ fn restore_cameras(
     }
 }
 
-/// Enter the installed starting world after a completed New Game introduction.
+/// Enter the retail starting world after a completed New Game introduction.
 fn begin_world_entry(
     commands: &mut Commands,
     images: &mut Assets<Image>,
@@ -1227,7 +1225,7 @@ fn begin_world_entry(
     };
     commands.queue(move |world: &mut World| {
         if !world.contains_resource::<cyrus_world::lifecycle::SceneLoadError>() {
-            world.resource_mut::<MenuState>().entry = Some(entry);
+            world.insert_resource(entry);
         }
     });
 }
@@ -1241,11 +1239,7 @@ pub(super) fn begin_world_loading(
     pictures: &[cyrus_assets::menu::MenuPicture],
     random: &mut cyrus_game::random::EngineRandom,
 ) {
-    commands.queue(|world: &mut World| {
-        if let Some(mut menu) = world.get_resource_mut::<MenuState>() {
-            menu.entry = None;
-        }
-    });
+    commands.remove_resource::<NewGameEntry>();
     let variation = if pictures.len() == 1 {
         0
     } else {
@@ -1337,7 +1331,9 @@ mod tests {
                 &mut random,
             );
             queue.apply(&mut world);
-            let entry = world.resource::<MenuState>().entry.unwrap();
+            // Book cleanup retires MenuState when the Introduction hands off to Loading.
+            world.remove_resource::<MenuState>();
+            let entry = *world.resource::<NewGameEntry>();
             assert_eq!(
                 entry,
                 NewGameEntry {
@@ -1370,7 +1366,7 @@ mod tests {
             );
             queue.apply(&mut world);
             assert!(
-                world.resource::<MenuState>().entry.is_none(),
+                !world.contains_resource::<NewGameEntry>(),
                 "same-world reload must expire provenance"
             );
         }

@@ -293,13 +293,11 @@ fn public_player_trace_rejects_world_retirement_and_conflicting_placement() {
 fn entry_app() -> (App, tempfile::TempDir) {
     let mut app = script_app();
     app.insert_state(cyrus_game::AppState::InGame);
-    let mut menu = cyrus_startup::MenuState::default();
-    menu.entry = Some(cyrus_startup::NewGameEntry {
+    app.insert_resource(cyrus_startup::NewGameEntry {
         route: cyrus_startup::NewGameRoute::RetailIntroduction,
         world: 17,
         marker: 3,
     });
-    app.insert_resource(menu);
     app.insert_resource(cyrus_script::script::ScriptStatus::Loaded {
         world: 17,
         content_id: String::new(),
@@ -344,8 +342,9 @@ fn read_entry(app: &mut App) -> serde_json::Value {
 }
 
 #[test]
-fn public_entry_provenance_requires_ready_matching_world_and_marker() {
+fn public_entry_provenance_survives_book_cleanup_and_requires_ready_matching_world_and_marker() {
     let (mut app, _directory) = entry_app();
+    assert!(!app.world().contains_resource::<cyrus_startup::MenuState>());
     assert_eq!(
         read_entry(&mut app),
         json!({"route":"retail_introduction", "world":17,
@@ -389,10 +388,7 @@ fn public_entry_provenance_requires_ready_matching_world_and_marker() {
         .resource_mut::<cyrus_script::player::placement::MarkerEntry>()
         .marker = 3;
     app.world_mut()
-        .resource_mut::<cyrus_startup::MenuState>()
-        .entry
-        .as_mut()
-        .unwrap()
+        .resource_mut::<cyrus_startup::NewGameEntry>()
         .world = 18;
     assert!(read_entry(&mut app).is_null());
 }
@@ -403,10 +399,8 @@ fn direct_same_world_entry_cannot_inherit_retail_provenance() {
     assert!(!read_entry(&mut app).is_null());
     run_commands(&mut app, vec![Command::LoadScene { name: "17".into() }]);
     assert!(
-        app.world()
-            .resource::<cyrus_startup::MenuState>()
-            .entry
-            .is_none()
+        !app.world()
+            .contains_resource::<cyrus_startup::NewGameEntry>()
     );
     assert!(
         read_entry(&mut app).is_null(),

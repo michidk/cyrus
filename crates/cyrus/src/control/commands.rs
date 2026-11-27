@@ -120,7 +120,7 @@ impl Controls<'_, '_> {
             }
             CommandGroup::Session => self.session.handle(command, reply, commands),
             CommandGroup::Audio => self.audio.handle(command, reply, commands),
-            CommandGroup::Scene => self.scene.handle(command),
+            CommandGroup::Scene => self.scene.handle(command, commands),
             CommandGroup::Rendering => self.rendering.handle(command, commands, &self.scene),
             CommandGroup::Gameplay => self.gameplay.handle(
                 command,

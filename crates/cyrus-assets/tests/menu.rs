@@ -46,6 +46,7 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let ini = ini.replace("QUIT", "EXIT NOW");
     std::fs::write(temp.join("MENU.INI"), &ini).unwrap();
     let worlds = std::fs::read_to_string(install.root.join("WORLD.INI")).unwrap();
+    // Retail New Game ignores the configured debug/startup destination (engine/menu.md).
     std::fs::write(
         temp.join("WORLD.INI"),
         worlds
@@ -53,6 +54,11 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
             .replace("start_marker=0", "start_marker=3"),
     )
     .unwrap();
+    let configured = rgpre::import::world_ini::NewGameEntry::parse(
+        &std::fs::read_to_string(temp.join("WORLD.INI")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!((configured.world, configured.marker), (1, 3));
     let cache = temp.join("cache");
     let system = std::fs::read_to_string(temp.join("SYSTEM.INI")).unwrap();
     std::fs::write(
@@ -174,8 +180,8 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
             assert_eq!(exported["position"], serde_json::json!(installed.position));
         }
     }
-    assert_eq!(menu["new_game"]["world"], 1);
-    assert_eq!(menu["new_game"]["marker"], 3);
+    assert_eq!(menu["new_game"]["world"], 0);
+    assert_eq!(menu["new_game"]["marker"], 0);
     assert_eq!(menu["new_game"]["loading"].as_array().unwrap().len(), 6);
     assert_eq!(menu["new_game"]["loading"][0]["width"], 640);
     assert_eq!(menu["new_game"]["loading"][0]["height"], 480);
@@ -277,14 +283,14 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     assert!(cache.join("menu/book.menu").is_file());
     std::fs::write(
         temp.join("WORLD.INI"),
-        worlds.replace("start_world=0", "start_world=999999"),
+        worlds.replace("world_map[0]", "world_map[999999]"),
     )
     .unwrap();
     assert!(
         export_menu(&edited, &cache)
             .unwrap_err()
             .to_string()
-            .contains("start_world")
+            .contains("New Game world 0")
     );
     std::fs::write(temp.join("WORLD.INI"), &worlds).unwrap();
     std::fs::write(

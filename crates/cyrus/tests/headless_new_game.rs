@@ -118,11 +118,23 @@ fn run_new_game(skip_movies: bool) {
     };
     assert!(skip_movies || intro_frame > 1, "intro did not advance");
     eprintln!("skip_movies={skip_movies}, observed intro frame {intro_frame}");
-    // The installed New Game menu definition chooses the world, rather than a test-owned scene table.
+    // Retail New Game uses world zero/marker zero (preservation engine/menu.md),
+    // independently of WORLD.INI start_world/start_marker.
     let menu: cyrus_assets::menu::MenuAsset =
         serde_json::from_slice(&std::fs::read(config.join("cache/menu/book.menu")).unwrap())
             .unwrap();
-    assert_eq!(initial["scripts"]["world"], menu.new_game.world);
+    assert_eq!((menu.new_game.world, menu.new_game.marker), (0, 0));
+    assert_eq!(initial["scripts"]["world"], 0);
+    assert_eq!(initial["entry"]["world"], 0);
+    assert_eq!(initial["entry"]["marker"], 0);
+    assert_eq!(
+        initial["entry"]["route"],
+        if skip_movies {
+            "skipped_introduction"
+        } else {
+            "retail_introduction"
+        }
+    );
     assert!(initial["player"].is_object(), "{initial}");
     let inspected = request(&mut stream, json!({"type":"scripts","offset":0,"limit":1}));
     assert_eq!(inspected["world"], initial["scripts"]["world"]);
