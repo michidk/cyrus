@@ -249,3 +249,9 @@ opaque texture lifetime token. Observe direction writes across a load to
 distinguish retained state from an intervening reroll; equal endpoint angles
 alone do not establish retention. Asset identity comes from installed settings,
 not from comparing process handles across runs.
+
+`original_loading_state.read_loading_state` observes the loading-artwork policy
+and retained frame index through the same stopped driver bundle. The index can
+remain unchanged when artwork is disabled; it is not evidence of a new image
+selection. Attribute selection only with the observed route and policy/index/RNG
+write order.

@@ -57,7 +57,8 @@ def install_original_combat_driver(name, *, command=sh):
     destination = '/tmp/cyrus-combat'
     names = ('original_fight.py', 'harness.py', 'diag_output.py',
              'original_console.py', 'original-frame-session.py', 'original_acquisition.py',
-             'original-update-watchpoint.py', 'original_native_call.py', 'original_sky_state.py')
+             'original-update-watchpoint.py', 'original_native_call.py', 'original_sky_state.py',
+             'original_loading_state.py')
     sources = [ROOT / 'dev/scripts' / filename for filename in names]
     for source in sources:
         if not source.is_file():
