@@ -132,6 +132,10 @@ orientation is observed directly, without rebuilding a matrix from angles.
 `original_native_call.py` resolves a stopped encoded native call through the
 observed runtime handler table and installed function names. It checks the
 handler against the call record and retains receiver/source equality separately.
+For hook dispatch without a bytecode record, its handler-table reader requires
+the observed table count to equal the installed definition and rejects unknown
+or shared handlers. A selected handler identifies the impending invocation, not
+a completed call.
 A retained source can belong to the preceding dispatch. Observe the handler
 write and subsequent source assignment around the event before attributing an
 RNG write to the current native receiver; a matching snapshot alone does not
