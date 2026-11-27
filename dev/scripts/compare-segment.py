@@ -530,6 +530,26 @@ def validate_snapshot(state, frame):
     return state
 
 
+def require_released_inputs(receipts):
+    """Require acknowledged releases for every held input before outcome acceptance."""
+    held, previous = set(), -1
+    for receipt in receipts:
+        frame = receipt.get('frame')
+        if (type(frame) is not int or frame < previous
+                or type(receipt.get('acknowledged_frame')) is not int
+                or receipt['acknowledged_frame'] != frame or receipt.get('status') != 'accepted'
+                or not isinstance(receipt.get('key'), str) or not receipt['key']
+                or receipt.get('action') not in ('press', 'release')):
+            raise ValueError('terminal input contract requires ordered acknowledged press/release receipts')
+        previous = frame
+        if receipt['action'] == 'press':
+            held.add(receipt['key'])
+        else:
+            held.discard(receipt['key'])
+    if held:
+        raise ValueError(f'terminal input releases missing: {", ".join(sorted(held))}')
+
+
 def record(session, events, checkpoints, initial, input_attempts):
     """Yield each measured checkpoint before sending inputs at that boundary.
 

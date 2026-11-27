@@ -170,6 +170,10 @@ the driver acknowledges those terminal inputs without consuming another body.
 Without `updates`, the legacy duration is the largest input offset plus one.
 Offsets beyond an explicit duration are rejected. Use this form to retain final
 key releases at a recording's last observed boundary.
+Outcome adapters call `require_released_inputs` after consuming the recording,
+including its terminal boundary. It requires ordered, accepted same-frame input
+receipts and an acknowledged release for every held key; a matching health
+endpoint cannot replace missing release evidence.
 
 Native paired frame sessions retain each observed consumed Q8 scale and full
 public clock continuation. They reject a replay acknowledgement whose consumed

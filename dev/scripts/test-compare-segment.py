@@ -777,6 +777,19 @@ class NativeControl:
         raise AssertionError(command)
 
 
+class TerminalInputReceipts(unittest.TestCase):
+    def test_acknowledged_terminal_release_is_required(self):
+        press = dict(frame=0, key='AltLeft', action='press', acknowledged_frame=0, status='accepted')
+        release = dict(frame=20, key='AltLeft', action='release', acknowledged_frame=20, status='accepted')
+        pair.require_released_inputs([press, release])
+        for receipts in ([press], [press, dict(release, status='rejected')],
+                         [press, dict(release, acknowledged_frame=19)],
+                         [press, dict(release, action='tap')],
+                         [release, press]):
+            with self.subTest(receipts=receipts), self.assertRaises(ValueError):
+                pair.require_released_inputs(receipts)
+
+
 class NativeClockTimelines(unittest.TestCase):
     def timeline(self):
         return dict(stored_sample=101, world=30,
