@@ -21,6 +21,7 @@ import subprocess
 from pathlib import Path
 
 OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'continuations')
+PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state')
 
 
 class NativeArtifact:
@@ -296,6 +297,16 @@ def record(session, events, checkpoints, initial, input_attempts):
 def entry_snapshot(session, report, phase, side):
     """Retain the observation before validation, including malformed entries."""
     try:
+        acquisition = getattr(session, 'acquisition_evidence', None)
+        if callable(acquisition):
+            evidence = report.setdefault('acquisition', {}).setdefault(phase, {})
+            try:
+                evidence[side] = copy.deepcopy(acquisition())
+            except (ValueError, RuntimeError, TimeoutError, OSError) as error:
+                evidence[side] = dict(error=str(error))
+                raise ValueError(f'acquisition evidence: {error}') from error
+            if not isinstance(evidence[side], dict):
+                raise ValueError('acquisition evidence must be an object')
         observed = copy.deepcopy(session.snapshot())
         report.setdefault(phase, {})[side] = observed
         return validate_snapshot(observed, 0)
@@ -304,8 +315,22 @@ def entry_snapshot(session, report, phase, side):
 
 
 def semantic_delta(expected, measured):
-    return delta({key: expected[key] for key in OBSERVABLES},
-                 {key: measured[key] for key in OBSERVABLES})
+    keys = (*OBSERVABLES, *PROJECTED_OBSERVABLES)
+    return delta({key: expected[key] for key in keys if key in expected},
+                 {key: measured[key] for key in keys if key in measured})
+
+
+def reject_admission(report, phase, side, fields, reason):
+    """Retain every failed field alongside the acquisition evidence for this phase.
+
+    Delta rows use original/native for the two sides at preflight, and for
+    admitted/measured values when a single backend is reopened.
+    """
+    failed = [row for row in fields if row['status'] != 'match']
+    report.setdefault('admission_rejections', []).append(dict(phase=phase, side=side, fields=failed))
+    first = failed[0]
+    report['reason'] = (f"{reason}: {first['field']} {first['status']} "
+                        f"(expected {first['original']!r}, measured {first['native']!r})")
 
 
 def admit_replay_entry(session, report, side):
@@ -313,7 +338,9 @@ def admit_replay_entry(session, report, side):
     fields = semantic_delta(report['entry'][side], measured)
     report.setdefault('replay_entry_deltas', {})[side] = fields
     if any(row['status'] != 'match' for row in fields):
-        raise ValueError(f'{side} replay entry differs from admitted entry')
+        reject_admission(report, 'replay_entry', side, fields,
+                         f'{side} replay entry differs from admitted entry')
+        raise ValueError(report['reason'])
     return measured
 
 
@@ -361,7 +388,8 @@ def run_pair(segment, original, native, output, native_artifact=None):
         fields = semantic_delta(report['entry']['original'], report['entry']['native'])
         report['start_deltas'] = fields
         if any(row['status'] != 'match' for row in fields):
-            report['reason'] = 'start states differ or are incomplete'
+            reject_admission(report, 'entry', 'original/native', fields,
+                             'start states differ or are incomplete')
             return report
         report['original'] = []
         with original(segment, output / 'original') as session:

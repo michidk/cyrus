@@ -350,6 +350,30 @@ The report retains the initial snapshots in `entry`, including malformed
 observations, and their semantic comparison in `start_deltas`. Missing or unequal
 measurements block the pair before any replay inputs or updates.
 
+When either snapshot explicitly projects `globals`, `inventory` or shared
+`random_state`, those fields also participate in entry, reopened-entry and
+checkpoint comparisons. A projection missing on the other side is unavailable;
+it is never silently dropped. Backends without these projections retain their
+limited diagnostic comparison and cannot establish equivalence of unobserved
+shared state.
+
+Sessions can expose an observation-only `acquisition_evidence()` method returning
+an object with their measured acquisition history, such as pre-load world/update
+counts, random state, save identity and restored boundary. The driver retains a
+deep copy under `acquisition.entry` and `acquisition.replay_entry`, keyed by side,
+including when entry validation fails. Unsupported evidence shapes or callback
+errors block admission with side/phase context. This hook must read retained
+observations without advancing the simulation. Different histories are retained
+for diagnosis; the driver does not infer an engine defect, require identical
+histories or replace semantic admission with history equality.
+
+`admission_rejections` retains the failed fields with phase and side, and the
+reason names the first failed field and its expected/measured values. For entry
+preflight those values are the original/native measurements; for a reopened
+backend they are its admitted/reopened measurements. Acquisition evidence and
+all entry snapshots remain in the same report so an unequal shared state can be
+traced back to its acquisition without applying replay inputs or changing RNG.
+
 Each backend must reproducibly stage its initial state on every open. After
 preflight, the runner reopens the original for its full replay, then the native.
 It retains each reopened baseline in `replay_entry` and checks it against that

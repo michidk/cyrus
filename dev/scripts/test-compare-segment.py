@@ -145,6 +145,102 @@ class PairTests(unittest.TestCase):
         evidence['clocks'].clear()
         self.assertEqual(report['entry_native_execution']['clocks'], [{'frame': 0}])
 
+    def test_projected_shared_state_cannot_be_silently_dropped_from_admission(self):
+        for field in ('random_state', 'globals', 'inventory'):
+            for missing in (False, True):
+                with self.subTest(field=field, missing=missing):
+                    original, native = state(), state()
+                    original[field] = 111 if field == 'random_state' else {'shared': 111}
+                    if not missing:
+                        native[field] = 222 if field == 'random_state' else {'shared': 222}
+                    report = self.run_pair({0: original}, {0: native})
+                    self.assertEqual(report['status'], 'blocked', report)
+                    self.assertFalse(any(row[0] in ('original', 'native') for row in self.calls))
+                    rejection = report['admission_rejections'][0]
+                    self.assertEqual(rejection['phase'], 'entry')
+                    self.assertTrue(rejection['fields'][0]['field'].startswith(field))
+                    self.assertIn(field, report['reason'])
+                    self.assertEqual(report['input_attempts'], dict(original=[], native=[]))
+
+    def test_shared_state_is_compared_after_admission_and_on_reopen(self):
+        for field in ('globals', 'inventory', 'random_state'):
+            for phase in ('reopen', 'checkpoint'):
+                with self.subTest(field=field, phase=phase):
+                    calls, opens = [], dict(original=0, native=0)
+                    initial = dict(state(), **{field: 111 if field == 'random_state' else {'shared': 111}})
+                    changed = dict(state(), **{field: 222 if field == 'random_state' else {'shared': 222}})
+                    @contextmanager
+                    def factory(name):
+                        opens[name] += 1
+                        first = changed if phase == 'reopen' and name == 'native' and opens[name] == 2 else initial
+                        last = changed if phase == 'checkpoint' and name == 'native' else initial
+                        yield Session({0: first, 3: last}, calls, name)
+                    with tempfile.TemporaryDirectory() as directory:
+                        report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                               lambda *_: factory('native'), Path(directory))
+                    self.assertEqual(report['status'], 'blocked' if phase == 'reopen' else 'different', report)
+                    fields = (report['admission_rejections'][-1]['fields'] if phase == 'reopen'
+                              else report['checkpoints'][-1]['fields'])
+                    self.assertTrue(any(row['field'].startswith(field) and row['status'] == 'different' for row in fields))
+
+    def test_acquisition_histories_are_retained_without_requiring_equal_histories(self):
+        history = {'original': {'preload': {'world': 1, 'updates': 9}},
+                   'native': {'preload': {'world': 1, 'updates': 2}}}
+        @contextmanager
+        def factory(side):
+            session = Session({0: state()}, [], side)
+            session.acquisition_evidence = lambda: history[side]
+            yield session
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                   lambda *_: factory('native'), Path(directory))
+        self.assertEqual(report['status'], 'match', report)
+        for phase in ('entry', 'replay_entry'):
+            self.assertEqual(report['acquisition'][phase], history)
+        history['original']['preload']['updates'] = 100
+        self.assertEqual(report['acquisition']['entry']['original']['preload']['updates'], 9)
+
+    def test_acquisition_evidence_survives_rejected_and_malformed_entry(self):
+        for malformed in (False, True):
+            @contextmanager
+            def factory(side):
+                value = dict(state(), random_state=111 if side == 'original' else 222)
+                session = Session({0: value}, [], side)
+                session.acquisition_evidence = lambda: {'preload_updates': 9 if side == 'original' else 2}
+                if malformed and side == 'native':
+                    session.snapshot = lambda: {'frame': 0}
+                yield session
+            with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as directory:
+                report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                       lambda *_: factory('native'), Path(directory))
+            self.assertEqual(report['status'], 'blocked', report)
+            self.assertEqual(report['acquisition']['entry'], {
+                'original': {'preload_updates': 9}, 'native': {'preload_updates': 2}})
+            if not malformed:
+                field = report['admission_rejections'][0]['fields'][0]
+                self.assertEqual((field['field'], field['original'], field['native']), ('random_state', 111, 222))
+
+    def test_invalid_acquisition_evidence_blocks_with_side_and_phase(self):
+        for invalid in (None, [], 'failed'):
+            @contextmanager
+            def factory(*_):
+                session = Session({0: state()}, [], 'original')
+                def acquisition():
+                    if invalid == 'failed':
+                        raise RuntimeError('acquisition transport closed')
+                    return invalid
+                session.acquisition_evidence = acquisition
+                yield session
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as directory:
+                report = pair.run_pair(SEGMENT, factory, factory, Path(directory))
+            self.assertEqual(report['status'], 'blocked', report)
+            self.assertIn('original entry', report['reason'])
+            self.assertIn('acquisition', report['reason'])
+            if invalid == 'failed':
+                self.assertEqual(report['acquisition']['entry']['original']['error'], 'acquisition transport closed')
+            else:
+                self.assertEqual(report['acquisition']['entry']['original'], invalid)
+
     def test_report_distinguishes_requested_tape_from_accepted_inputs(self):
         report = self.run_pair({0: state()}, {0: state()})
         self.assertEqual(report['status'], 'match')
