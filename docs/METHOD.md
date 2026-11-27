@@ -61,7 +61,14 @@ difference. Check startup, steady movement, and release separately.
 
 Measure simulated updates rather than treating host key-hold duration or video
 frames as an update count. Debugger pauses change timing; use native recordings
-for timing comparisons and debugger traces to establish call order and values.
+for timing comparisons and debugger traces to establish call order and values. Combat pacing
+also consumes an absolute cached BIOS sample. Equal effective measurement intervals
+and frame scales do not establish equal pacing phase.
+`original_combat_pacing.read_combat_pacing` retains that sample, the receiver
+allocation index, distance, action, RNG state and independent divisors from local
+stopped bindings. A tracee read establishes use; an endpoint alone does not.
+Compare the wrapping pacing sum and signed remainders before attributing an
+animation difference to selection logic.
 If a helper-only prediction disagrees with the recording, trace the remaining
 update before implementing or tuning constants to fit the endpoint.
 
