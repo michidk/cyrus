@@ -410,6 +410,52 @@ impl ScriptWorld {
         })
     }
 
+    /// Sample the armed controller's opponent proximity before keyed combat dispatch.
+    /// The chance probe temporarily targets the player itself, chooses the nearest
+    /// eligible attacker, evaluates horizontal distance, then clears the target.
+    /// Its distance result does not select an action or change animation.
+    fn sample_player_combat_proximity(
+        &mut self,
+        id: super::ScriptActorId,
+        random: &mut cyrus_game::random::EngineRandom,
+    ) -> Result<()> {
+        if random.draw().wrapping_mul(100) / 32767 >= 2 {
+            return Ok(());
+        }
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .and_then(|control| control.combat.as_mut())
+            .context("player proximity combat record unavailable")?
+            .target = Some(id);
+        let result = (|| -> Result<()> {
+            let origin = self.query_position(id)?;
+            let mut nearest = None;
+            let mut bound = 65535;
+            for candidate in self.player_attackers(id)? {
+                let position = self.query_position(candidate)?;
+                let delta = std::array::from_fn(|axis| position[axis].wrapping_sub(origin[axis]));
+                let distance = cyrus_collision::distance::rounded_distance(delta)?;
+                if distance < bound {
+                    bound = distance;
+                    nearest = Some(delta);
+                }
+            }
+            if let Some([x, _, z]) = nearest {
+                // The original evaluates this distance but does not act on its result.
+                let _ = cyrus_collision::distance::rounded_distance([x, 0, z])?;
+            }
+            Ok(())
+        })();
+        self.actors[id.index]
+            .control
+            .as_mut()
+            .and_then(|control| control.combat.as_mut())
+            .expect("validated player proximity combat record")
+            .target = None;
+        result
+    }
+
     /// The armed look-key handling and attack keys, which run while the jump key is up.
     #[allow(clippy::too_many_arguments)] // The controller's per-iteration services.
     fn run_armed_combat_keys(
@@ -422,6 +468,7 @@ impl ScriptWorld {
         random: &mut cyrus_game::random::EngineRandom,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        self.sample_player_combat_proximity(id, random)?;
         if input.held.jump || self.globals.activation_consumes_action(input.held.action) {
             return Ok(());
         }

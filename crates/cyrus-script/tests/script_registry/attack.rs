@@ -537,7 +537,6 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
         for remembered in [true, false] {
             playback.0.borrow().0.borrow_mut().0 = remembered.then_some(3);
             world.begin_player_movement_update(player, 0).unwrap();
-            let before = random.state();
             world
                 .advance_player_controller(
                     player,
@@ -576,12 +575,15 @@ fn armed_attack_retained_taunt_sample_suppresses_only_until_cache_cleared() {
             world.finish_player_movement_update(player).unwrap();
             if remembered {
                 assert_eq!(playback.0.borrow().0.borrow().1, ["sample"]);
-                assert_eq!(random.state(), before);
+                // The armed proximity probe draws; the remembered taunt does not.
+                assert_eq!(random.state(), 1103527590);
             } else {
                 assert_eq!(
                     playback.0.borrow().0.borrow().1,
                     ["sample", "sample", "prepare", "release", "load", "present"]
                 );
+                // The next proximity probe and fresh taunt selection each draw once.
+                assert_eq!(random.state(), 662824084);
             }
         }
     }
