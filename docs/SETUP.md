@@ -1425,6 +1425,46 @@ entry rejects, and every exit releases the shortcut. Callers still validate
 the installed page and shared-state/timing history; this counter check alone
 does not admit a matched entry.
 
+`original_acquisition.OriginalAcquisition(tape, original_executable, stable_save,
+verified_native_artifact)` binds the original acquisition tape to the existing
+source-verified artifact launcher. The JSON tape has `version: 1`, `original`
+with executable/save SHA256 values, `entry` with the observed retail Introduction
+route, scene, world and marker, and an observed `initial_random_state` before
+loading. `loading`, each `updates` row and `reload` carry `writes` from
+`RandomWriteHistory` and the observed endpoint `random_state`. Each write's
+counter must match its loading/body/reload phase. `loading_artwork` retains the
+installed frame count, observed selected frame and the loading draw ordinal,
+or a null draw for a single-frame archive.
+
+Each pre-load body also requires its consumed `frame_scale` and
+`bios_observation`: the absolute `update`, matching `consumed_frame_scale`,
+observed `bios_ticks`, publication sample and the recorder's `bios_measurement`
+witness. The shared `next_bios_input` validator rejects missing measurements,
+reduced/clamped remainder additions and unequal dual timer reads. RNG-write
+movement scales must agree with the same body's measured scale. `book` records
+completed bodies, the acknowledged following-start counter and unchanged RNG;
+`reload` records the restored world and RNG. Missing history never becomes a
+zero interval or an estimated draw.
+
+`replay_inputs()` returns copied `frame_scales`, effective `bios_ticks`, expected
+natural `random_states` at loading/body endpoints, entry provenance and loading
+artwork evidence, bound to the verified native receipt. The native adapter must
+observe those states while consuming the tape; this API supplies no RNG mutation.
+Before combat, `admit_native(native_session)` uses the existing launcher's
+`check_session` and the native acquisition/execution evidence hooks. It requires
+absolute update zero, an explicitly observed matching `entry` projection,
+all loading/body RNG endpoints, matching requested BIOS/scales and consistent
+measured consumed-clock boundaries. The native `entry` projection uses the same
+route, scene, world and marker keys; missing provenance rejects instead of being
+copied from the original expectation. A failed re-admission clears prior success.
+The accepted proof is retained for serial original/native runs.
+`AcquiredFrameSession` requires this admitted history and checks restored world/RNG
+before exposing original input, advance or world-transition controls. Its `acquisition_evidence()` integrates
+with the paired driver's existing evidence hook. Executable, unchanged save,
+tape bytes and native identity are rechecked before controls. This is an
+acquisition prerequisite; full semantic admission and outcome checks still apply.
+Raw tapes and executable bindings remain under ignored local research storage.
+
 For instruction-bound defence attribution, `Watchpoint.observe_write` can reserve
 spare slots for a local observer while `FrameSession` keeps consecutive ordinary
 boundaries. Observation stops invoke callbacks while paused; they do not become

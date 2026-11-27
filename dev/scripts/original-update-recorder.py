@@ -13,6 +13,8 @@ import importlib.util
 import json
 import sys
 
+from original_acquisition import next_bios_input
+
 
 FIELDS = ('position_q8', 'animation', 'fall', 'support_owner', 'link', 'previous_local_q8')
 
@@ -48,35 +50,6 @@ def validate_snapshot(row, clock_only=False):
     for name in ('support_owner', 'link'):
         if player[name] is not None and type(player[name]) is not int:
             raise ValueError(f'invalid {name}')
-
-
-def next_bios_input(row):
-    """Return observed BIOS input for this publication's forthcoming movement.
-
-    The local observer captures the old baseline and remainder at the engine's
-    sample write, then the first remainder addition before window reduction.
-    Blocking restores have already replaced the baseline. The engine reads the
-    timer again for that addition, so subtracting the earlier sample can miss
-    ticks, especially while stopped under a debugger. No guest data is changed.
-    """
-    measurement = row.get('bios_measurement')
-    if not isinstance(measurement, dict):
-        raise ValueError('forthcoming BIOS input requires a measurement observation')
-    names = ('sample', 'baseline', 'remainder_before', 'remainder_after')
-    if (measurement.get('phase') != 'before_publication'
-            or any(type(measurement.get(name)) is not int
-                   or not 0 <= measurement[name] < 2**32 for name in names)
-            or measurement['remainder_before'] >= 18
-            or measurement['sample'] != row.get('bios_ticks')
-            or measurement['sample'] != row.get('clock_publication', {}).get('bios_sample')):
-        raise ValueError('BIOS measurement does not bind this publication phase')
-    elapsed = measurement['remainder_after'] - measurement['remainder_before']
-    sampled_elapsed = (measurement['sample'] - measurement['baseline']) % 2**32
-    if elapsed < sampled_elapsed or elapsed >= 2**31:
-        raise ValueError('BIOS measurement addition is missing, reduced or clamped')
-    if elapsed != sampled_elapsed:
-        raise ValueError('timer advanced between BIOS reads; single-sample replay is unsupported')
-    return elapsed
 
 
 def replay_clock_inputs(rows):
