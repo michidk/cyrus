@@ -107,10 +107,12 @@ fn begin_requested_world(
     mut artwork: ArtworkAssets,
     mut startup: ResMut<StartupPresentation>,
     mut next: ResMut<NextState<AppState>>,
-    timing: (Res<State<AppState>>, Res<Time>),
+    (state, mut random): (
+        Res<State<AppState>>,
+        ResMut<cyrus_game::random::EngineRandom>,
+    ),
 ) {
     let (assets, menus, mut images) = assets;
-    let (state, time) = timing;
     let WorldRequests {
         inspection,
         reload,
@@ -228,7 +230,7 @@ fn begin_requested_world(
         book,
         world,
         pictures,
-        time.elapsed_secs_f64(),
+        &mut random,
     );
 }
 
@@ -680,37 +682,43 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn debug_world_entry_uses_loading_artwork_and_recreates_the_player() {
-        world_entry_recreates_player(false, 0, None, false);
+        world_entry_recreates_player(false, 0, None, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_from_paused_book_recreates_the_retained_player() {
-        world_entry_recreates_player(true, 0, None, false);
+        world_entry_recreates_player(true, 0, None, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn destination_world_entry_presents_its_configured_artwork() {
-        world_entry_recreates_player(false, 2, None, false);
+        world_entry_recreates_player(false, 2, None, false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_loading_artwork() {
-        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork), false);
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Artwork), false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn world_entry_retries_repaired_book_asset() {
-        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu), false);
+        world_entry_recreates_player(false, 2, Some(MissingAsset::Menu), false, false);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn script_world_request_presents_artwork_and_preserves_entry() {
-        world_entry_recreates_player(false, 5, None, true);
+        world_entry_recreates_player(false, 5, None, true, false);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn single_frame_world_entry_preserves_engine_random() {
+        world_entry_recreates_player(false, 0, None, false, true);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -719,6 +727,7 @@ mod tests {
         destination: u32,
         repair: Option<MissingAsset>,
         scripted: bool,
+        single_frame: bool,
     ) {
         use cyrus_script::player::{Player, PlayerPlugin};
         let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
@@ -726,18 +735,22 @@ mod tests {
             return;
         };
         let cache = std::env::temp_dir().join(format!(
-            "cyrus-debug-loading-{}-{from_book}-{destination}-{repair:?}",
+            "cyrus-debug-loading-{}-{from_book}-{destination}-{repair:?}-{single_frame}",
             std::process::id()
         ));
         cyrus_assets::startup::export_menu(&install, &cache).unwrap();
-        let book: MenuAsset =
+        let mut book: MenuAsset =
             serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
         cyrus_assets::loading_artwork::export(&install, &destination.to_string(), &cache).unwrap();
-        let destination_artwork: LoadingArtwork = serde_json::from_slice(
+        let mut destination_artwork: LoadingArtwork = serde_json::from_slice(
             &std::fs::read(cache.join(format!("loading/{destination}.loading"))).unwrap(),
         )
         .unwrap();
         std::fs::remove_dir_all(cache).unwrap();
+        if single_frame {
+            book.new_game.loading.truncate(1);
+            destination_artwork.pictures.truncate(1);
+        }
         let artwork = destination_artwork
             .pictures
             .iter()
@@ -787,6 +800,7 @@ mod tests {
         .init_asset::<LoadingArtwork>()
         .init_asset::<Image>()
         .init_resource::<cyrus_game::fidelity::Fidelity>()
+        .init_resource::<cyrus_game::random::EngineRandom>()
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<cyrus_script::player::input::PlayerBindings>()
@@ -859,7 +873,23 @@ mod tests {
             app.world().resource::<StartGame>().background.len(),
             640 * 480 * 4
         );
-        assert!(artwork.contains(&app.world().resource::<StartGame>().background));
+        let mut expected_random = cyrus_game::random::EngineRandom::default();
+        let frame = if artwork.len() == 1 {
+            0
+        } else {
+            expected_random.rnd(artwork.len() as i32).unwrap() as usize
+        };
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::random::EngineRandom>()
+                .state(),
+            expected_random.state(),
+            "loading artwork consumes one shared draw for multiple frames and none for a single frame"
+        );
+        assert_eq!(
+            app.world().resource::<StartGame>().background,
+            artwork[frame]
+        );
         assert_eq!(
             app.world().resource::<StartGame>().artwork_world(),
             Some(destination)

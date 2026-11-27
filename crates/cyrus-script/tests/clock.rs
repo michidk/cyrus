@@ -445,3 +445,28 @@ fn recorded_movement_does_not_determine_the_bios_measurement_phase() {
         307
     );
 }
+
+#[test]
+fn measured_nominal_carry_precedes_gameplay_overrides() {
+    let settings = cyrus_assets::script::ClockSettings {
+        normal_frame_rate: 12,
+        min_frame_rate: 6,
+        max_frame_rate: 60,
+        use_smooth_fps: false,
+        use_smooth_divisor: false,
+    };
+    let mut clock = cyrus_script::clock::SimulationClock::new(settings).unwrap();
+    assert_eq!(clock.measured_nominal_ticks(), None);
+    // One measured frame per BIOS second clamps to six FPS: two nominal ticks.
+    assert_eq!(clock.advance(18).nominal_ticks, 1);
+    assert_eq!(clock.measured_nominal_ticks(), Some(2));
+    clock.restart_warmup();
+    assert_eq!(clock.measured_nominal_ticks(), Some(2));
+    // Replay and elapsed overrides affect gameplay, not the measured fade carry.
+    clock.advance_recorded(36, 0).unwrap();
+    assert_eq!(clock.step().nominal_ticks, 0);
+    assert_eq!(clock.measured_nominal_ticks(), Some(2));
+    clock.advance_elapsed(54, std::time::Duration::ZERO);
+    assert_eq!(clock.step().nominal_ticks, 0);
+    assert_eq!(clock.measured_nominal_ticks(), Some(2));
+}
