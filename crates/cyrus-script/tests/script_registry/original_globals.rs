@@ -168,3 +168,87 @@ fn original_globals_candidate_rejects_unclassified_contact_owner_atomically() ->
     assert_eq!(serde_json::to_value(world.globals())?, before);
     Ok(())
 }
+
+/// Establish the unsaved source through the same public interpreter entry as gameplay.
+fn original_load_with_native_source() -> anyhow::Result<(Scripts, ScriptWorld)> {
+    let (scripts, mut world, _, _) = player_walking_fixture();
+    world.advance(
+        world.id(0)?,
+        ScriptStage::OrdinaryMain,
+        cyrus_script::script::ScriptInputs {
+            nominal_ticks: Some(0),
+            frame_scale: Some(0),
+            ..Default::default()
+        },
+        None,
+        None,
+        20,
+    )?;
+    Ok((scripts, world))
+}
+
+#[test]
+fn original_globals_rebind_established_native_source_without_changing_prior() -> anyhow::Result<()>
+{
+    let (scripts, world) = original_load_with_native_source()?;
+    let (saved, session) = saved_globals()?;
+    let source = world.id(0)?;
+    let destination = ScriptActorId {
+        generation: source.generation + 1,
+        index: 1,
+    };
+    let before = serde_json::to_value(world.globals())?;
+    assert_eq!(
+        before["native_source"]["Actor"]["generation"],
+        source.generation
+    );
+    assert_eq!(before["native_source"]["Actor"]["index"], source.index);
+    let replacement = GameplayGlobals::from_original_load(
+        world.globals(),
+        &saved,
+        &session,
+        &scripts.dialogue,
+        &[(source, destination)],
+        &BTreeMap::new(),
+    )?;
+    let after = serde_json::to_value(&replacement)?;
+    assert_eq!(
+        after["native_source"]["Actor"]["generation"],
+        destination.generation
+    );
+    assert_eq!(after["native_source"]["Actor"]["index"], destination.index);
+    assert_eq!(serde_json::to_value(world.globals())?, before);
+    Ok(())
+}
+
+#[test]
+fn original_globals_reject_same_index_from_another_generation_atomically() -> anyhow::Result<()> {
+    let (scripts, world) = original_load_with_native_source()?;
+    let (saved, session) = saved_globals()?;
+    let source = world.id(0)?;
+    let wrong_owner = ScriptActorId {
+        generation: source.generation + 1,
+        index: source.index,
+    };
+    let before = serde_json::to_value(world.globals())?;
+    for bindings in [vec![], vec![(wrong_owner, wrong_owner)]] {
+        let error = GameplayGlobals::from_original_load(
+            world.globals(),
+            &saved,
+            &session,
+            &scripts.dialogue,
+            &bindings,
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(&format!(
+                "retained native source actor {}/{} replacement absent",
+                source.generation, source.index,
+            )),
+            "{error:#}"
+        );
+        assert_eq!(serde_json::to_value(world.globals())?, before);
+    }
+    Ok(())
+}
