@@ -74,6 +74,13 @@ signed residuals. It refuses extrapolation and never interpolates animation or
 controller state. Matching positions alone do not establish matching support
 state or completed-update boundaries.
 
+Input-only paired segments may specify `updates` beside an `input` batch to
+consume exactly that many ordinary bodies. Input offsets may equal this duration:
+the driver acknowledges those terminal inputs without consuming another body.
+Without `updates`, the legacy duration is the largest input offset plus one.
+Offsets beyond an explicit duration are rejected. Use this form to retain final
+key releases at a recording's last observed boundary.
+
 Native paired frame sessions retain each observed consumed Q8 scale and full
 public clock continuation. They reject a replay acknowledgement whose consumed
 scale differs and reject clock changes during observation-only reads. Supply

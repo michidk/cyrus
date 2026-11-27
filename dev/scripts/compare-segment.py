@@ -234,7 +234,7 @@ def input_tape(segment):
     """Compile input-only replay steps; never silently discard steering or dialogue decisions."""
     events, checkpoints, assertions, cursor = [], [0], [], 0
     for index, step in enumerate(segment['steps']):
-        if set(step) == {'input'}:
+        if set(step) in ({'input'}, {'input', 'updates'}):
             batch = step['input']
             if not batch:
                 raise ValueError(f'step {index}: empty input batch')
@@ -246,8 +246,11 @@ def input_tape(segment):
                     if not isinstance(event.get('key'), str) or event.get('action') not in ('press', 'release'):
                         raise ValueError(f'step {index}: input needs key and press/release action')
                     events.append(dict(frame=cursor + offset, key=event['key'], action=event['action']))
-            # The runner consumes the final boundary's update as well.
-            cursor += max(event['after_updates'] for event in batch) + 1
+            final_offset = max(event['after_updates'] for event in batch)
+            duration = step.get('updates', final_offset + 1)
+            if type(duration) is not int or duration < 0 or final_offset > duration:
+                raise ValueError(f'step {index}: invalid updates duration or input beyond final boundary')
+            cursor += duration
             checkpoints.append(cursor)
         elif set(step) == {'checkpoint'}:
             expected = step['checkpoint']

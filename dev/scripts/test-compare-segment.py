@@ -413,6 +413,37 @@ class PairTests(unittest.TestCase):
         self.assertEqual(report['status'], 'blocked')
         self.assertIn('input frame missed', report['reason'])
 
+    def test_exact_duration_releases_at_final_boundary_without_an_extra_body(self):
+        segment = {'steps': [dict(updates=2, input=[
+            dict(after_updates=0, key='ControlLeft', action='press'),
+            dict(after_updates=2, key='ControlLeft', action='release')]),
+            {'checkpoint': dict(opponent='FAVIS', target_health=90)}]}
+        calls = []
+        @contextmanager
+        def factory(segment, output):
+            initial = state()
+            final = copy.deepcopy(initial)
+            final['actors']['FAVIS']['health'] = 90
+            yield Session({0: initial, 2: final}, calls, 'recorded')
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(segment, factory, factory, Path(directory))
+        self.assertEqual(report['status'], 'match', report)
+        self.assertEqual([x['frame'] for x in report['original']], [0, 2])
+        self.assertEqual([x['frame'] for x in report['input_attempts']['original']], [0, 2])
+        self.assertEqual(report['input_attempts']['original'][-1]['action'], 'release')
+        self.assertTrue(all(row['status'] == 'match'
+                            for outcome in report['outcomes'] for row in outcome['fields']))
+
+    def test_explicit_duration_rejects_unobserved_offsets_and_invalid_counts(self):
+        for updates in (-1, True, 1.5, 1):
+            with self.subTest(updates=updates), self.assertRaisesRegex(ValueError, 'updates'):
+                pair.input_tape({'steps': [dict(updates=updates, input=[
+                    dict(after_updates=2, key='ControlLeft', action='release')])]})
+        events, checkpoints, _ = pair.input_tape({'steps': [dict(updates=0, input=[
+            dict(after_updates=0, key='ControlLeft', action='release')])]})
+        self.assertEqual(checkpoints, [0])
+        self.assertEqual(events[0]['frame'], 0)
+
     def test_unexpanded_steering_is_rejected_instead_of_comparing_different_inputs(self):
         with self.assertRaisesRegex(ValueError, 'expanded input'):
             pair.input_tape({'steps': [{'steer': {'position_q8': [1, 2, 3]}}]})
