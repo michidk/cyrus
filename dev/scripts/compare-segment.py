@@ -240,7 +240,8 @@ class NativeFrameSession:
         scripts = self.control.request({'type': 'scripts', 'limit': self.actor_limit})
         after = self.control.request({'type': 'state'})
         evidence = dict(before=copy.deepcopy(state), scripts=copy.deepcopy(scripts), after=copy.deepcopy(after))
-        if any(read.get('scripts', {}).get('failed') for read in (state, after)):
+        if any(read.get('scripts', {}).get('failed') or read.get('scripts', {}).get('state') == 'Failed'
+               for read in (state, after)):
             raise NativePhaseError(f'native script failures: {after.get("scripts")}', evidence)
         if any(type(read.get('scripts', {}).get('ordinary_updates')) is not int for read in (state, after)):
             raise NativePhaseError('native ordinary update unavailable during stopped observation', evidence)

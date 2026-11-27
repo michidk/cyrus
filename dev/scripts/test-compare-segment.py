@@ -1316,7 +1316,7 @@ class NativeFrames(unittest.TestCase):
         def stopped(command):
             result = request(command)
             if command['type'] == 'state':
-                result['scripts'] = dict(failed=1, error='recorded decision order mismatch')
+                result['scripts'] = dict(state='Failed', error='recorded decision order mismatch')
             return result
         control.request = stopped
         with self.assertRaisesRegex(pair.NativePhaseError, 'script failures') as caught:
