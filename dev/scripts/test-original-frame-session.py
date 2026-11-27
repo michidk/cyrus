@@ -51,6 +51,40 @@ class RandomWriteTests(unittest.TestCase):
         self.assertEqual(rows[1]['previous'], rows[0]['state'])
         self.assertEqual(rows[0]['phase'], 'loading')
 
+    def test_rng_boundaries_reject_unobserved_writes_and_preserve_semantic_phase(self):
+        history = adapter.RandomWriteHistory(1)
+        context = dict(world=0, completed_updates=2)
+        book = history.boundary('book', 1, context)
+        context['world'] = 30
+        history.observe(1103527590, 'reload', context)
+        restored = history.boundary('restored', 1103527590, context)
+        self.assertEqual(book, dict(name='book', state=1, draw=0,
+                                   context=dict(world=0, completed_updates=2)))
+        self.assertEqual(restored['draw'], 1)
+        self.assertEqual(history.require_boundary('restored', 1103527590), restored)
+        restored['context']['world'] = 99
+        self.assertEqual(history.require_boundary('restored', 1103527590)['context']['world'], 30)
+        with self.assertRaisesRegex(ValueError, 'unobserved RNG write'):
+            history.boundary('first-source', 2524885223, context)
+        history.observe(2524885223, 'ordinary', context)
+        history.boundary('first-completed-body', 2524885223, context)
+        with self.assertRaisesRegex(ValueError, 'restored.*first-completed-body'):
+            history.require_boundary('restored', 2524885223)
+        with self.assertRaisesRegex(ValueError, 'not observed'):
+            history.require_boundary('missing', 1)
+
+    def test_rng_boundary_names_states_and_context_are_required(self):
+        history = adapter.RandomWriteHistory(1)
+        for name, state, context in [('', 1, {}), ('load', True, {}),
+                                     ('load', -1, {}), ('load', 1, None)]:
+            with self.subTest(name=name, state=state, context=context), self.assertRaises(ValueError):
+                history.boundary(name, state, context)
+        history.boundary('load', 1, {})
+        with self.assertRaisesRegex(ValueError, 'already observed'):
+            history.boundary('load', 1, {})
+        with self.assertRaises(ValueError):
+            history.require_boundary('load', True)
+
     def test_missing_duplicate_reset_and_invalid_states_reject_without_advancing(self):
         for value in (2524885223, 1, -1, 2**32, True):
             rows = []

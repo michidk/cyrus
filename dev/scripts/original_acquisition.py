@@ -21,6 +21,7 @@ class RandomWriteHistory:
         if type(initial_state) is not int or not 0 <= initial_state < 2**32:
             raise ValueError('original RNG history requires an observed u32 state')
         self.state, self.draw, self.emit = initial_state, 0, emit
+        self.boundaries = {}
 
     def observe(self, state, phase, context):
         if not isinstance(phase, str) or not phase or not isinstance(context, dict):
@@ -34,6 +35,42 @@ class RandomWriteHistory:
         self.emit(row)
         self.state, self.draw = state, self.draw + 1
         return row
+
+    def boundary(self, name, state, context):
+        """Bind a stopped semantic boundary to the continuously observed writes.
+
+        A matching endpoint alone does not prove a call count. The count here
+        comes only from observe(); a missed final write rejects this boundary.
+        Names identify lifecycle phases independently of mutable frame counters.
+        """
+        if (not isinstance(name, str) or not name or not isinstance(context, dict)
+                or type(state) is not int or not 0 <= state < 2**32):
+            raise ValueError('RNG boundary requires a name, observed u32 state and context')
+        if name in self.boundaries:
+            raise ValueError(f'RNG boundary {name} already observed')
+        if state != self.state:
+            raise ValueError(f'RNG boundary {name}: unobserved RNG write; '
+                             f'expected {self.state}, observed {state}')
+        row = dict(name=name, state=state, draw=self.draw, context=deepcopy(context))
+        self.boundaries[name] = row
+        return deepcopy(row)
+
+    def require_boundary(self, name, state):
+        """Compare an independently measured endpoint at the same named boundary.
+
+        Other observed phases can explain a mismatch, never authorize it. This
+        does not infer the other engine's draw count from its endpoint.
+        """
+        if name not in self.boundaries:
+            raise ValueError(f'RNG boundary {name} was not observed')
+        expected = self.boundaries[name]
+        if type(state) is not int or state != expected['state']:
+            matches = [key for key, row in self.boundaries.items()
+                       if type(state) is int and row['state'] == state]
+            detail = f'; matches observed phase(s) {matches}' if matches else ''
+            raise ValueError(f'RNG boundary {name}: expected {expected["state"]} '
+                             f'after {expected["draw"]} observed writes, observed {state}{detail}')
+        return deepcopy(expected)
 
 
 def next_bios_input(row):

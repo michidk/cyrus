@@ -137,6 +137,15 @@ comparator hits, so a store consumes two hits. Disarm both comparators when the
 observed lifetime ends. Reads performed by the external observer are separate
 from guest execution and do not establish guest access.
 
+`original_acquisition.py` binds named stopped RNG boundaries to its continuous
+write history. `RandomWriteHistory.boundary` checks the measured state against
+the last observed write and retains its observed draw count and timer context.
+A missing final write rejects the boundary. `require_boundary` compares an
+independently measured endpoint at that same lifecycle phase; matching a later
+observed phase remains a rejection and does not infer the other engine's call
+count. Counter equality alone cannot identify a restoration phase, since saved
+counters can replace the pre-load values.
+
 For original per-update recordings, run
 `python3 dev/scripts/original-update-recorder.py --backend <local-backend.py> --elapsed <clock-units>`.
 The Linux x86-64 backend `dev/scripts/original-update-watchpoint.py` uses
