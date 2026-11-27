@@ -17,19 +17,27 @@ fn installed_held_entry_prepares_capture_checkpoint_without_an_ordinary_body() {
 }
 
 fn island_host(held_entry: bool) {
+    let Some((mut app, index)) = island_fixture(held_entry) else {
+        return;
+    };
+    if held_entry {
+        assert_held_entry(&mut app, index);
+    } else {
+        assert_ordinary_flags(&mut app, index);
+    }
+}
+
+fn island_fixture(held_entry: bool) -> Option<(bevy::prelude::App, usize)> {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
     use cyrus_assets::animation::Animations;
     use cyrus_assets::script::Scripts;
     use cyrus_game::AppState;
-    use cyrus_script::script::{ScriptActors, ScriptPlugin, ScriptView};
-    use cyrus_world::{
-        animation::{AnimationRequest, AnimationTick},
-        lifecycle::PreparedWorld,
-    };
+    use cyrus_script::script::ScriptPlugin;
+    use cyrus_world::animation::AnimationTick;
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
     if !root.join("RGFX.EXE").exists() {
         eprintln!("skipped: no install (SOUP automatic island flags)");
-        return;
+        return None;
     }
     let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
     let files = cyrus_assets::native::Files::open(&install).unwrap();
@@ -72,20 +80,42 @@ fn island_host(held_entry: bool) {
         .resource_mut::<Assets<Scripts>>()
         .add(scripts);
     if held_entry {
-        let marker: [i32; 3] =
-            serde_json::from_value(data.metadata["markers"][0]["map_position"].clone()).unwrap();
-        let _player = app
-            .world_mut()
-            .spawn((
-                cyrus_script::player::Player,
-                cyrus_script::player::placement::PlayerPose {
-                    position: marker.map(|value| i64::from(value) * 256),
-                    heading: 0,
-                },
-            ))
-            .id();
-        app.init_resource::<cyrus_script::player::placement::MarkerEntry>();
+        add_entry_player(&mut app, &data);
     }
+    install_island_assets(&mut app, data, scene, world_id, scripts, &prepared, view);
+    Some((app, index))
+}
+
+fn add_entry_player(app: &mut bevy::prelude::App, data: &cyrus_assets::animation::Animations) {
+    let marker: [i32; 3] =
+        serde_json::from_value(data.metadata["markers"][0]["map_position"].clone()).unwrap();
+    let _player = app
+        .world_mut()
+        .spawn((
+            cyrus_script::player::Player,
+            cyrus_script::player::placement::PlayerPose {
+                position: marker.map(|value| i64::from(value) * 256),
+                heading: 0,
+            },
+        ))
+        .id();
+    app.init_resource::<cyrus_script::player::placement::MarkerEntry>();
+}
+
+fn install_island_assets(
+    app: &mut bevy::prelude::App,
+    data: cyrus_assets::animation::Animations,
+    scene: cyrus_script::player::data::PlayerScene,
+    world_id: u32,
+    scripts: bevy::prelude::Handle<cyrus_assets::script::Scripts>,
+    prepared: &std::collections::BTreeMap<String, Vec<u8>>,
+    view: [i32; 2],
+) {
+    use bevy::prelude::*;
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::AppState;
+    use cyrus_script::script::ScriptView;
+    use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld};
     let animations = app
         .world_mut()
         .resource_mut::<Assets<Animations>>()
@@ -108,21 +138,7 @@ fn island_host(held_entry: bool) {
         .insert(scene_handle.id(), scene)
         .unwrap();
     app.insert_resource(cyrus_script::player::data::PlayerSceneRequest(scene_handle));
-    app.init_asset::<cyrus_assets::environment::Environment>();
-    let environment = app
-        .world()
-        .resource::<bevy::prelude::AssetServer>()
-        .load::<cyrus_assets::environment::Environment>(
-        app.world()
-            .resource::<PreparedWorld>()
-            .environment_path
-            .clone(),
-    );
-    let environment_data = serde_json::from_slice(&prepared["ISLAND.environment"]).unwrap();
-    app.world_mut()
-        .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
-        .insert(environment.id(), environment_data)
-        .unwrap();
+    install_island_environment(app, &prepared["ISLAND.environment"]);
     app.insert_resource(AnimationRequest(animations.clone()));
     app.insert_resource(ScriptView {
         source: animations,
@@ -134,54 +150,104 @@ fn island_host(held_entry: bool) {
     app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
         std::time::Duration::from_millis(55),
     ));
-    if held_entry {
-        // Entry preparation must complete while update-zero replay acquisition is held.
-        // ImportOriginal needs this checkpoint before capturing its candidate baseline.
-        app.insert_resource(cyrus_script::script::ReplayHold(true));
-        for _ in 0..8 {
-            app.update();
-        }
-        let actors = app.world().resource::<ScriptActors>();
-        let held = actors.current.as_ref().unwrap();
-        assert_eq!(held.ordinary_updates(), 0);
-        assert!(held.actor_prelight(held.id(index).unwrap()).is_ok());
-        let held_clock = app
-            .world()
-            .resource::<cyrus_script::clock::SimulationClock>()
-            .snapshot();
-        let held_random = app
-            .world()
-            .resource::<cyrus_game::random::EngineRandom>()
-            .state();
-        for _ in 0..3 {
-            app.update();
-        }
-        assert_eq!(
-            app.world()
-                .resource::<ScriptActors>()
-                .current
-                .as_ref()
-                .unwrap()
-                .ordinary_updates(),
-            0
-        );
-        assert_eq!(
-            serde_json::to_value(
-                app.world()
-                    .resource::<cyrus_script::clock::SimulationClock>()
-                    .snapshot()
-            )
-            .unwrap(),
-            serde_json::to_value(held_clock).unwrap()
-        );
-        assert_eq!(
-            app.world()
-                .resource::<cyrus_game::random::EngineRandom>()
-                .state(),
-            held_random
-        );
-        return;
+}
+
+#[derive(bevy::prelude::Resource)]
+struct IslandEnvironment {
+    // The asset server releases unreferenced handles between fixture updates.
+    _handle: bevy::prelude::Handle<cyrus_assets::environment::Environment>,
+}
+
+fn install_island_environment(app: &mut bevy::prelude::App, bytes: &[u8]) {
+    use bevy::{asset::AssetApp, prelude::*};
+    use cyrus_world::lifecycle::PreparedWorld;
+    app.init_asset::<cyrus_assets::environment::Environment>();
+    let environment = app
+        .world()
+        .resource::<bevy::prelude::AssetServer>()
+        .load::<cyrus_assets::environment::Environment>(
+        app.world()
+            .resource::<PreparedWorld>()
+            .environment_path
+            .clone(),
+    );
+    let environment_data = serde_json::from_slice(bytes).unwrap();
+    app.world_mut()
+        .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
+        .insert(environment.id(), environment_data)
+        .unwrap();
+    app.insert_resource(IslandEnvironment {
+        _handle: environment,
+    });
+}
+
+fn assert_held_entry(app: &mut bevy::prelude::App, index: usize) {
+    use cyrus_script::script::ScriptActors;
+    // Entry preparation must complete while update-zero replay acquisition is held.
+    // ImportOriginal needs this checkpoint before capturing its candidate baseline.
+    app.insert_resource(cyrus_script::script::ReplayHold(true));
+    app.insert_resource(cyrus_script::script::ScriptHud::default());
+    for _ in 0..8 {
+        app.update();
     }
+    let actors = app.world().resource::<ScriptActors>();
+    let held = actors.current.as_ref().unwrap();
+    assert_eq!(held.ordinary_updates(), 0);
+    assert!(held.actor_prelight(held.id(index).unwrap()).is_err());
+    // This isolated host has no HUD assets; a real host configures its HUD first.
+    app.world_mut()
+        .remove_resource::<cyrus_script::script::ScriptHud>();
+    for _ in 0..8 {
+        app.update();
+    }
+    let actors = app.world().resource::<ScriptActors>();
+    let held = actors.current.as_ref().unwrap();
+    assert_eq!(held.ordinary_updates(), 0);
+    assert!(held.actor_prelight(held.id(index).unwrap()).is_ok());
+    assert_held_observations_stable(app);
+}
+
+fn assert_held_observations_stable(app: &mut bevy::prelude::App) {
+    use cyrus_script::script::ScriptActors;
+    let held_clock = app
+        .world()
+        .resource::<cyrus_script::clock::SimulationClock>()
+        .snapshot();
+    let held_random = app
+        .world()
+        .resource::<cyrus_game::random::EngineRandom>()
+        .state();
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .ordinary_updates(),
+        0
+    );
+    assert_eq!(
+        serde_json::to_value(
+            app.world()
+                .resource::<cyrus_script::clock::SimulationClock>()
+                .snapshot()
+        )
+        .unwrap(),
+        serde_json::to_value(held_clock).unwrap()
+    );
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_game::random::EngineRandom>()
+            .state(),
+        held_random
+    );
+}
+
+fn assert_ordinary_flags(app: &mut bevy::prelude::App, index: usize) {
+    use cyrus_script::script::ScriptActors;
     let mut frames = Vec::new();
     for _ in 0..24 {
         app.update();
