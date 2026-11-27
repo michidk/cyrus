@@ -131,8 +131,11 @@ baseline and remainder; unchanged-count refreshes and unequal timer reads reject
 `NativeFrameSession(clock_timelines=...)` accepts one measured timeline per
 body using the #366 supported `ReplayFrame.clock_timeline` contract. Fixtures
 contain `stored_sample`, `world`, ordered `decisions` with `index`, `name` and
-`occurrence`, and `before_decisions`/`after_decisions` sample lists. Native
-indices must come from admitted current-generation receiver identities.
+`occurrence`, and `before_decisions`/`after_decisions` sample lists. `decision.index` is the original retained `runtime_identifier`, not a native
+registry slot. Native admission uniquely resolves `world + runtime_identifier +
+name` to a current-generation actor ID and rejects absent or ambiguous matches.
+The driver forwards that original identity unchanged; it must not substitute a
+native registry index.
 The driver adds the actual script generation, absolute expected update and
 observed pre-body BIOS sample as the command's compare-and-set fields. Effective
 `elapsed_bios_ticks` stays mandatory and separate. It retains the submitted
