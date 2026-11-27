@@ -13,7 +13,7 @@ import importlib.util
 import json
 import sys
 
-from original_acquisition import next_bios_input
+from original_acquisition import next_bios_input, continuous_bios_inputs, debugger_execution_timing
 
 
 FIELDS = ('position_q8', 'animation', 'fall', 'support_owner', 'link', 'previous_local_q8')
@@ -52,9 +52,11 @@ def validate_snapshot(row, clock_only=False):
             raise ValueError(f'invalid {name}')
 
 
-def replay_clock_inputs(rows):
+def replay_clock_inputs(rows, *, entry_bios_sample=None):
     """Use each publication's calculation for its next movement, excluding the tail.
 
+    Supplying entry_bios_sample additionally requires a continuous absolute
+    sample tape; intervening baseline refreshes reject that origin-only subset.
     This creates clock inputs only; semantic entry/player equivalence must be
     established independently. Boundary-to-boundary sample differences belong
     to the later calculation and may also include time excluded by restores.
@@ -67,8 +69,11 @@ def replay_clock_inputs(rows):
         if (after['update'] != before['update'] + 1
                 or after['clock_scale'] - before['clock_scale'] != before['next_step']):
             raise ValueError('replay clock inputs require contiguous consumed publication steps')
-    return dict(frame_scales=[row['next_step'] for row in rows[:-1]],
-                bios_ticks=[next_bios_input(row) for row in rows[:-1]])
+    inputs = dict(frame_scales=[row['next_step'] for row in rows[:-1]],
+                  bios_ticks=[next_bios_input(row) for row in rows[:-1]])
+    if entry_bios_sample is not None:
+        inputs.update(continuous_bios_inputs(entry_bios_sample, rows[:-1]))
+    return inputs
 
 
 def record(session, elapsed, emit, timeout=10, *, require_bios=False, clock_only=False):
@@ -111,6 +116,8 @@ def record(session, elapsed, emit, timeout=10, *, require_bios=False, clock_only
             elapsed_bios_ticks=None if previous is None else bios - previous['bios_ticks'])
         if 'bios_measurement' in row:
             timing['next_elapsed_bios_ticks'] = next_bios_input(row)
+        if 'execution_events' in row:
+            timing['debugger_timing'] = debugger_execution_timing(row['execution_events'])
         scope = dict(acquisition_scope='clock_only') if clock_only else {}
         emit(dict(**scope, sequence=sequence, elapsed_scale=row['clock_scale'] - origin,
                   consumed_clock_step=consumed, **timing, **row))

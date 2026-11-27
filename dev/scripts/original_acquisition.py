@@ -102,6 +102,90 @@ def next_bios_input(row):
     return elapsed
 
 
+def validate_bios_origin_tape(samples, bios_ticks):
+    """Reject an origin-only setup when measured absolute samples need later rebasing.
+
+    Effective intervals remain replay inputs. Absolute sample gaps cannot replace
+    them: a discontinuity needs a separate supported clock control or recording.
+    """
+    if not isinstance(samples, (list, tuple)) or not isinstance(bios_ticks, (list, tuple)) or len(samples) != len(bios_ticks) + 1:
+        raise ValueError('BIOS origin tape requires entry plus one absolute sample per interval')
+    if any(type(value) is not int or not 0 <= value < 2**32 for value in (*samples, *bios_ticks)):
+        raise ValueError('BIOS origin tape requires unsigned samples and effective intervals')
+    for frame, interval in enumerate(bios_ticks, 1):
+        predicted = (samples[frame - 1] + interval) % 2**32
+        if samples[frame] != predicted:
+            raise ValueError(f'BIOS origin-only replay discontinuity at body {frame}: '
+                             f'observed sample {samples[frame]}, prior plus effective interval {predicted}; '
+                             'absolute sample gaps must not replace effective BIOS inputs')
+    return samples[0]
+
+
+def validate_recording_inputs(events, terminal_update):
+    """Require the complete acknowledged input tape, including terminal releases."""
+    if type(terminal_update) is not int or terminal_update < 0 or not isinstance(events, list):
+        raise ValueError('recording inputs require a nonnegative terminal update and event list')
+    previous, held = 0, set()
+    for event in events:
+        if not isinstance(event, dict):
+            raise ValueError('recording input must be an event object')
+        frame, key, action = event.get('frame'), event.get('key'), event.get('action')
+        if type(frame) is not int or not previous <= frame <= terminal_update:
+            raise ValueError('recording horizon omits or reorders an input acknowledgement')
+        if not isinstance(key, str) or not key or action not in ('press', 'release'):
+            raise ValueError('recording input requires a named key and press/release action')
+        if action == 'press':
+            held.add(key)
+        else:
+            held.discard(key)
+        previous = frame
+    if held:
+        raise ValueError(f'recording inputs lack terminal releases: {sorted(held)}')
+
+
+def debugger_execution_timing(events):
+    """Validate buffered resume/stop pairs; report host durations, never game ticks.
+
+    A batch begins with an already-stopped tracee. Initial stopped time is not
+    inferred; only pauses bounded by two events within the batch are summed.
+    Stops are timestamped when wait returns, so resume-to-stop spans include
+    stop-detection latency rather than measuring tracee execution alone.
+    """
+    if not isinstance(events, list):
+        raise ValueError('debugger execution events must be a list')
+    expected, previous, running, stopped = 'resume', None, 0, 0
+    for event in events:
+        if not isinstance(event, dict) or event.get('kind') != expected:
+            raise ValueError('debugger execution events must alternate resume and stop')
+        stamp = event.get('monotonic_ns')
+        if type(stamp) is not int or stamp < 0 or (previous is not None and stamp < previous):
+            raise ValueError('debugger execution timestamps must be monotonic unsigned nanoseconds')
+        if previous is not None:
+            if expected == 'stop':
+                running += stamp - previous
+            else:
+                stopped += stamp - previous
+        previous = stamp
+        expected = 'stop' if expected == 'resume' else 'resume'
+    if expected != 'resume':
+        raise ValueError('debugger recording ended while tracee was running')
+    return dict(resume_to_observed_stop_ns=running, internal_observed_stop_ns=stopped)
+
+
+def continuous_bios_inputs(entry_sample, measurements):
+    """Build origin-alignable inputs only from both independently observed reads.
+
+    Measurement baselines may be restored between calculations. Such a tape is
+    still diagnostic evidence, but cannot pass a continuous-origin contract.
+    """
+    if not measurements:
+        raise ValueError('continuous BIOS tape requires observed measurements')
+    intervals = [next_bios_input(row) for row in measurements]
+    samples = [entry_sample] + [row['bios_ticks'] for row in measurements]
+    validate_bios_origin_tape(samples, intervals)
+    return dict(bios_ticks=intervals, cached_bios_samples=samples)
+
+
 def file_digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()

@@ -64,7 +64,8 @@ class MemoryObservation:
 
 
 class Watchpoint:
-    def __init__(self, config, reader):
+    def __init__(self, config, reader, *, execution_sink=None):
+        self.execution_sink = execution_sink
         self.config = config
         self.reader = reader
         self.pid = reader.find_pid()
@@ -77,6 +78,16 @@ class Watchpoint:
         self.saved_registers = None
         self.active_boundary = None
         self.observations = {}
+
+    def _execution_event(self, kind, **fields):
+        """Report host stop/resume timing without rebasing any guest clock.
+
+        Sinks should buffer these events; doing expensive work while stopped
+        changes host pause time and is not evidence of natural game cadence.
+        """
+        sink = getattr(self, 'execution_sink', None)
+        if sink is not None:
+            sink(dict(kind=kind, monotonic_ns=time.monotonic_ns(), **fields))
 
     def ptrace(self, operation, offset=0, value=0):
         ctypes.set_errno(0)
@@ -96,6 +107,7 @@ class Watchpoint:
                 if not os.WIFSTOPPED(status):
                     raise RuntimeError('original emulator exited during recording')
                 self.stopped = True
+                self._execution_event('stop', signal=os.WSTOPSIG(status))
                 return os.WSTOPSIG(status)
             time.sleep(.001)
         raise TimeoutError('original ordinary-update boundary stalled')
@@ -211,6 +223,7 @@ class Watchpoint:
                 raise TimeoutError('original ordinary-update boundary stalled')
             self.ptrace(7)
             self.stopped = False
+            self._execution_event('resume')
             if self.wait(remaining) != signal.SIGTRAP:
                 raise RuntimeError('unexpected signal while waiting for ordinary boundary')
             stops = self.ptrace(3, 848 + 6 * 8) & 15

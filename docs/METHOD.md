@@ -77,9 +77,13 @@ BIOS deltas never substitute for these observations. The native observer and
 absolute-origin control must be available before this gate can pass.
 `combat_pacing` optionally supplies one list per entry/body boundary alongside
 that absolute sample tape. Each expectation names a unique inspected actor,
-its signed `allocation_index`, and whether `selection` was reached. The driver
+its signed `allocation_index`, independently observed `cached_bios_sample`,
+and whether `selection` was reached. The driver
 requires that actor's `combat_pacing.ordinary_update` to identify the current
-body and its `cached_bios_sample` to equal the measured sample. It checks the
+body and its `cached_bios_sample` to equal that decision's measured input.
+A later body-boundary clock sample is checked separately: intervening refreshes
+can change it without a new FPS measurement (preservation player timing,
+commit `2d80d944d430c61cd5d8e3232104333d65185247`). It checks the
 signed wrapping `pacing_sum`, selection sum and checked counter/pacing remainders, preserving null
 for invalid division. Null selection establishes combat entry only; it cannot
 satisfy a selection expectation. Rejected observations remain in execution
@@ -98,6 +102,17 @@ Verified paired execution leases the executable inode across entry, separate
 first-body and combat runs. The lease survives removal of the installed path,
 uses the verified bytes for each Linux launch, and releases its handle at the
 end. Each game run still owns its own lock and process lifetime.
+Original watchpoint backends can buffer `execution_sink` resume/observed-stop
+events with monotonic host timestamps. `debugger_execution_timing` validates
+alternating pairs; these durations include stop-detection latency and never
+supply game ticks or natural cadence. Keep sample/baseline writes, the actual
+remainder addition, input acknowledgements and terminal releases together.
+`replay_clock_inputs(..., entry_bios_sample=...)` requires continuous independent
+measurement witnesses before exporting an origin-alignable absolute tape.
+Without that argument its clock inputs remain diagnostic and do not establish
+absolute phase. `validate_recording_inputs` rejects a horizon that truncates
+an acknowledgement or leaves a held input without a terminal release.
+
 If a helper-only prediction disagrees with the recording, trace the remaining
 update before implementing or tuning constants to fit the endpoint.
 

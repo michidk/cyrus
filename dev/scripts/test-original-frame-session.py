@@ -426,6 +426,21 @@ class WriteObservationTests(unittest.TestCase):
         session.wait = wait
         return session
 
+    def test_resume_and_actual_wait_stop_events_retain_host_timing_without_clock_writes(self):
+        import signal
+        session = self.backend([1])
+        events = []
+        session.execution_sink = events.append
+        session.pid = 123
+        session.wait = lambda timeout: watchpoint.Watchpoint.wait(session, timeout)
+        with patch.object(watchpoint.os, 'waitpid', return_value=(123, (signal.SIGTRAP << 8) | 127)), patch.object(watchpoint.time, 'monotonic_ns', side_effect=[100, 200]):
+            session.registers[848 + 6 * 8] = 1
+            session.next_boundary(2)
+        self.assertEqual(events, [dict(kind='resume', monotonic_ns=100),
+                                  dict(kind='stop', monotonic_ns=200, signal=signal.SIGTRAP)])
+        self.assertTrue(session.stopped)
+        self.assertEqual([op for op, _, _ in session.calls], [7, 3, 6])
+
     def test_paired_access_watch_distinguishes_reads_from_writes_including_same_value_store(self):
         session = self.backend([2, 6, 1])
         seen = []

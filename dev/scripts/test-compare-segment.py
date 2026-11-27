@@ -824,7 +824,7 @@ class NativeFrames(unittest.TestCase):
         control.request = observed
         session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[202],
                     bios_ticks=[0], cached_bios_samples=[sample, sample],
-                    combat_pacing=[[], [dict(actor='opponent', allocation_index=allocation, selection=selection)]])
+                    combat_pacing=[[], [dict(actor='opponent', allocation_index=allocation, cached_bios_sample=sample, selection=selection)]])
         return session, control
 
     def test_combat_phase_accepts_actual_current_selection_and_retains_evidence(self):
@@ -841,6 +841,18 @@ class NativeFrames(unittest.TestCase):
                 session.advance_to(1)
         session, _ = self.pacing_session(selection=False)
         session.advance_to(1)  # Current combat entry is distinct from selection.
+
+    def test_combat_decision_cache_is_distinct_from_later_boundary_sample(self):
+        def earlier_decision(rows, _):
+            phase = rows['actors'][0]['combat_pacing']
+            phase.update(cached_bios_sample=99, pacing_sum=102,
+                         counter_remainder=11, pacing_remainder=11)
+            phase['selection']['pacing_sum'] = 102
+        session, _ = self.pacing_session(earlier_decision)
+        session.combat_pacing[1][0]['cached_bios_sample'] = 99
+        session.advance_to(1)
+        self.assertEqual(session.execution_evidence()['combat_observations'][0]['observation']['cached_bios_sample'], 99)
+        self.assertEqual(session.execution_evidence()['clocks'][-1]['cached_bios_sample'], 100)
 
     def test_combat_phase_rejects_stale_missing_and_misaligned_before_input(self):
         changes = [
@@ -874,9 +886,11 @@ class NativeFrames(unittest.TestCase):
 
     def test_combat_fixture_rejects_incomplete_or_ambiguous_contract(self):
         bad = [[], [[], {}], [[], [dict(actor='opponent')]],
-               [[], [dict(actor='opponent', allocation_index=True, selection=True)]],
-               [[], [dict(actor='opponent', allocation_index=1, selection=None)]],
-               [[], [dict(actor='opponent', allocation_index=1, selection=True)] * 2]]
+               [[], [dict(actor='opponent', allocation_index=1, selection=True)]],
+               [[], [dict(actor='opponent', allocation_index=1, cached_bios_sample=True, selection=True)]],
+               [[], [dict(actor='opponent', allocation_index=True, cached_bios_sample=100, selection=True)]],
+               [[], [dict(actor='opponent', allocation_index=1, cached_bios_sample=100, selection=None)]],
+               [[], [dict(actor='opponent', allocation_index=1, cached_bios_sample=100, selection=True)] * 2]]
         for fixture in bad:
             with self.subTest(fixture=fixture), self.assertRaises(ValueError):
                 pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[202],

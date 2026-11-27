@@ -16,7 +16,7 @@ import hashlib
 import re
 from harness import exclusive_lock
 from paired_outcomes import validate_checkpoint, evaluate_checkpoint
-from original_acquisition import RandomWriteHistory
+from original_acquisition import RandomWriteHistory, validate_bios_origin_tape
 import importlib.util
 import json
 import subprocess
@@ -24,25 +24,6 @@ from pathlib import Path
 
 OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'continuations')
 PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state', 'native_source')
-
-
-def validate_bios_origin_tape(samples, bios_ticks):
-    """Reject an origin-only setup when measured absolute samples need later rebasing.
-
-    Effective intervals remain replay inputs. Absolute sample gaps cannot replace
-    them: a discontinuity needs a separate supported clock control or recording.
-    """
-    if not isinstance(samples, (list, tuple)) or not isinstance(bios_ticks, (list, tuple)) or len(samples) != len(bios_ticks) + 1:
-        raise ValueError('BIOS origin tape requires entry plus one absolute sample per interval')
-    if any(type(value) is not int or not 0 <= value < 2**32 for value in (*samples, *bios_ticks)):
-        raise ValueError('BIOS origin tape requires unsigned samples and effective intervals')
-    for frame, interval in enumerate(bios_ticks, 1):
-        predicted = (samples[frame - 1] + interval) % 2**32
-        if samples[frame] != predicted:
-            raise ValueError(f'BIOS origin-only replay discontinuity at body {frame}: '
-                             f'observed sample {samples[frame]}, prior plus effective interval {predicted}; '
-                             'absolute sample gaps must not replace effective BIOS inputs')
-    return samples[0]
 
 
 class NativePhaseError(RuntimeError):
@@ -198,12 +179,14 @@ class NativeFrameSession:
                     raise ValueError('combat pacing boundary must be a list')
                 names = set()
                 for expected in boundary:
-                    if not isinstance(expected, dict) or set(expected) != {'actor', 'allocation_index', 'selection'}:
-                        raise ValueError('combat pacing expectation requires actor, allocation_index and selection')
+                    if not isinstance(expected, dict) or set(expected) != {'actor', 'allocation_index', 'selection', 'cached_bios_sample'}:
+                        raise ValueError('combat pacing expectation requires actor, allocation_index, cached_bios_sample and selection')
                     name = expected['actor']
                     if not isinstance(name, str) or not name or name in names:
                         raise ValueError('combat pacing actor must be unique and named')
                     names.add(name)
+                    if type(expected['cached_bios_sample']) is not int or not 0 <= expected['cached_bios_sample'] < 2**32:
+                        raise ValueError('combat pacing requires an independently observed unsigned cached sample')
                     if type(expected['allocation_index']) is not int or not -2**31 <= expected['allocation_index'] < 2**31 or type(expected['selection']) is not bool:
                         raise ValueError('combat pacing requires signed allocation index and boolean selection phase')
         self.combat_observations = []
@@ -255,11 +238,11 @@ class NativeFrameSession:
         if actual != expected:
             raise self._phase_error(f'native cached BIOS phase at frame {frame}: observed {actual}, expected {expected}', frame, expected)
         try:
-            self._check_combat_phase(frame, actual)
+            self._check_combat_phase(frame)
         except RuntimeError as error:
             raise self._phase_error(str(error), frame, expected) from error
 
-    def _check_combat_phase(self, frame, sample):
+    def _check_combat_phase(self, frame):
         if self.combat_pacing is None:
             return
         state, scripts = self.current
@@ -275,6 +258,7 @@ class NativeFrameSession:
                 self.combat_observations.append(row)
             if not isinstance(observation, dict):
                 raise RuntimeError(f'{context}: observation missing')
+            sample = expected['cached_bios_sample']
             required = dict(ordinary_update=state['scripts']['ordinary_updates'],
                             cached_bios_sample=sample, allocation_index=expected['allocation_index'])
             for field, value in required.items():

@@ -13,6 +13,8 @@ def load(name):
     return module
 
 
+from original_acquisition import validate_recording_inputs
+
 watch = load('original-update-watchpoint')
 recorder = load('original-update-recorder')
 CONFIG = dict(clock_phase='published_pending_update', clock='total', step='movement',
@@ -38,6 +40,55 @@ class Session:
 
 
 class ClockPhase(unittest.TestCase):
+    def test_recording_horizon_cannot_truncate_acknowledged_input_or_terminal_release(self):
+        events = [dict(frame=8, key='ArrowDown', action='press'),
+                  dict(frame=16, key='ArrowDown', action='release')]
+        validate_recording_inputs(events, 16)
+        for partial, horizon in [(events, 8), (events[:1], 8), (events[::-1], 16)]:
+            with self.subTest(events=partial, horizon=horizon), self.assertRaises(ValueError):
+                validate_recording_inputs(partial, horizon)
+
+    def test_debugger_timing_does_not_convert_host_pause_into_bios_inputs(self):
+        events = [dict(kind=kind, monotonic_ns=stamp) for kind, stamp in
+                  [('resume', 100), ('stop', 130), ('resume', 200), ('stop', 240)]]
+        self.assertEqual(recorder.debugger_execution_timing(events),
+                         dict(resume_to_observed_stop_ns=70, internal_observed_stop_ns=70))
+        for bad in [events[:-1], events[1:], [events[0], events[0]],
+                    [events[0], dict(kind='stop', monotonic_ns=99)],
+                    [dict(kind='resume', monotonic_ns=True)], None]:
+            with self.subTest(events=bad), self.assertRaises(ValueError):
+                recorder.debugger_execution_timing(bad)
+
+    def continuous_rows(self):
+        rows = [row(20, 1200, 200, 100), row(21, 1402, 202, 102), row(22, 1606, 204, 103)]
+        for item, baseline, before, after in zip(rows, [100, 100, 102], [3, 3, 5], [3, 5, 6]):
+            item['bios_measurement'] = dict(phase='before_publication', sample=item['bios_ticks'],
+                                          baseline=baseline, remainder_before=before, remainder_after=after)
+        return rows
+
+    def test_continuous_recording_retains_absolute_cache_and_independent_intervals(self):
+        tape = recorder.replay_clock_inputs(self.continuous_rows(), entry_bios_sample=100)
+        self.assertEqual(tape, dict(frame_scales=[200, 202], bios_ticks=[0, 2],
+                                    cached_bios_samples=[100, 100, 102]))
+
+    def test_restore_discontinuity_cannot_be_published_as_continuous_origin_tape(self):
+        rows = self.continuous_rows()
+        rows[1]['bios_ticks'] = rows[1]['clock_publication']['bios_sample'] = 145
+        rows[1]['bios_measurement'].update(sample=145, baseline=143)
+        self.assertEqual(recorder.replay_clock_inputs(rows)['bios_ticks'], [0, 2])
+        with self.assertRaisesRegex(ValueError, 'discontinuity at body 2'):
+            recorder.replay_clock_inputs(rows, entry_bios_sample=100)
+        self.assertEqual(rows[1]['bios_measurement']['baseline'], 143)
+
+    def test_continuous_recording_rejects_two_unequal_timer_reads_and_missing_witness(self):
+        rows = self.continuous_rows()
+        rows[1]['bios_measurement']['remainder_after'] = 6
+        with self.assertRaisesRegex(ValueError, 'timer advanced between BIOS reads'):
+            recorder.replay_clock_inputs(rows, entry_bios_sample=100)
+        del rows[1]['bios_measurement']
+        with self.assertRaisesRegex(ValueError, 'measurement observation'):
+            recorder.replay_clock_inputs(rows, entry_bios_sample=100)
+
     def test_publication_excludes_pending_increment_before_comparing_completed_updates(self):
         rows = [row(20, 1200, 200, 100), row(21, 1402, 202, 102), row(22, 1606, 204, 105)]
         output = []
