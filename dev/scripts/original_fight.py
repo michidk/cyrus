@@ -167,6 +167,45 @@ def combat_query_range_sample(state, query_motion):
                 player_query=state['player_query'], opponent_query=state['opponent_query'])
 
 
+def combat_elevation_sample(state, first_motion):
+    """Evaluate the installed elevation against observed local bounds geometry.
+
+    This is an input-state projection of preservation's Defence elevation and
+    arc admission, not proof that contact reached the elevation call. Attached
+    query positions and body-origin height differences do not replace bounds.
+    All intermediate arithmetic wraps as signed runtime words; halves truncate
+    toward zero, including negative odd coordinates.
+    """
+    wrap = lambda value: (value + (1 << 31)) % (1 << 32) - (1 << 31)
+    half = lambda value: (1 if value >= 0 else -1) * (abs(value) // 2)
+    elevation = first_motion.get('elevation')
+    if type(elevation) is not int or not -(1 << 31) <= elevation < (1 << 31):
+        raise ValueError('elevation requires an installed signed first-motion value')
+    points, extents = [], []
+    for owner, prefix in (('player', 'p'), ('opponent', 'r')):
+        bounds = state.get(f'{owner}_bounds')
+        if not isinstance(bounds, dict):
+            raise ValueError(f'{owner} observed bounds unavailable')
+        try:
+            positive = position_q8(bounds.get('positive_extent'))
+            negative = position_q8(bounds.get('negative_extent'))
+            local = position_q8(state.get(f'{prefix}pos'))
+        except ValueError as error:
+            raise ValueError(f'{owner} combat elevation geometry: {error}') from error
+        points.append([half(wrap(wrap(p - wrap(n << 8)) + wrap(q << 8)))
+                       for p, n, q in zip(local, negative, positive)])
+        extents.append((positive, negative))
+    delta = wrap(points[1][1] - points[0][1])
+    width = wrap(wrap(extents[0][0][0] << 8) + wrap(extents[0][1][0] << 8))
+    middle, outer = half(width), wrap(width + half(width))
+    required = (1 if wrap(-middle) > delta and wrap(-outer) < delta else
+                2 if delta > middle and outer > delta else 0)
+    return dict(frame=state.get('frame'), player_bounds_query_q8=points[0],
+                opponent_bounds_query_q8=points[1], height_delta_q8=delta,
+                width_q8=width, required_elevation=required,
+                installed_elevation=elevation, elevation_pass=elevation == required)
+
+
 def view(state):
     """The fields the policy needs from one reader sample, or None without a selected player.
     Independent observed_actors retain a bound actor outside the view-centered update
@@ -193,6 +232,8 @@ def view(state):
         "lockout": state["counters"].get("player_lockout"),
         "rlisted": listed,
         "player_combat": player.get("combat_state"),
+        "player_bounds": player.get("combat_bounds"),
+        "opponent_bounds": opponent.get("combat_bounds") if opponent else None,
         "player_query": QueryPosition.read(player).export() if "query_spatial" in player else None,
         "opponent_query": (QueryPosition.read(opponent).export()
                            if opponent and "query_spatial" in opponent else None),

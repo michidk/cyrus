@@ -17,6 +17,54 @@ def sample(pg=8, rg=8, rh=250, drawn=1, ph=100):
 
 
 class DriverLogic(unittest.TestCase):
+    def test_view_binds_each_actors_observed_bounds_without_substitution(self):
+        bounds = dict(positive_extent=[4, 7, 1], negative_extent=[4, 9, 3])
+        player = actor(1, 115, 100, selected=True) | {'combat_bounds': bounds}
+        opponent = actor(55, 8, 250) | {'combat_bounds': bounds}
+        raw = dict(actors=[actor(1, 8, 100), player, opponent],
+                   counters=dict(mainloop_frame=10, fps=12))
+        state = fight.view(raw)
+        self.assertEqual(state['player_bounds'], bounds)
+        self.assertEqual(state['opponent_bounds'], bounds)
+        self.assertTrue(fight.combat_elevation_sample(state, dict(elevation=0))['elevation_pass'])
+        del opponent['combat_bounds']
+        with self.assertRaisesRegex(ValueError, 'opponent observed bounds unavailable'):
+            fight.combat_elevation_sample(fight.view(raw), dict(elevation=0))
+
+    def test_elevation_uses_observed_bounds_not_origin_or_query_height(self):
+        bounds = dict(positive_extent=[4, 7, 1], negative_extent=[4, 9, 3])
+        state = dict(frame=1, ppos=[0, -4096, 0], rpos=[0, 0, 0],
+                     player_bounds=bounds, opponent_bounds=bounds,
+                     player_query=dict(position_q8=[0, 0, 0]))
+        result = fight.combat_elevation_sample(state, dict(elevation=0))
+        self.assertEqual(result['height_delta_q8'], 2048)
+        self.assertEqual(result['required_elevation'], 2)
+        self.assertFalse(result['elevation_pass'])
+        self.assertNotIn('contact', result)
+        state['ppos'][1] = -1024
+        self.assertTrue(fight.combat_elevation_sample(state, dict(elevation=0))['elevation_pass'])
+        state['opponent_bounds'] = dict(positive_extent=[4, 23, 1], negative_extent=[4, 9, 3])
+        self.assertEqual(fight.combat_elevation_sample(state, dict(elevation=0))['required_elevation'], 2)
+
+    def test_elevation_band_edges_and_negative_odd_centers(self):
+        bounds = dict(positive_extent=[1, 0, 0], negative_extent=[1, 0, 0])
+        state = dict(ppos=[0, -1, 0], rpos=[0, 0, 0],
+                     player_bounds=bounds, opponent_bounds=bounds)
+        self.assertEqual(fight.combat_elevation_sample(state, dict(elevation=0))['height_delta_q8'], 0)
+        for delta, required in [(-769, 0), (-768, 0), (-767, 1), (-257, 1),
+                                (-256, 0), (256, 0), (257, 2), (767, 2), (768, 0)]:
+            state['rpos'][1] = delta * 2
+            self.assertEqual(fight.combat_elevation_sample(state, dict(elevation=required))['required_elevation'], required)
+        state['ppos'][1] = 2147483647
+        state['rpos'][1] = -2147483648
+        self.assertEqual(fight.combat_elevation_sample(state, dict(elevation=0))['height_delta_q8'], -2147483647)
+
+    def test_elevation_rejects_missing_or_invalid_bounds_and_motion(self):
+        for state, motion in [({}, dict(elevation=0)), ({}, {}),
+                              (dict(player_bounds=dict(positive_extent=[True, 0, 0], negative_extent=[0, 0, 0])), dict(elevation=0))]:
+            with self.assertRaises(ValueError):
+                fight.combat_elevation_sample(state, motion)
+
     def test_reverse_transition_is_observed_without_claiming_contact_or_hit(self):
         rows = [sample() | {'frame': 10, 'player_combat': {'reverse': 0}},
                 sample() | {'frame': 11, 'player_combat': {'reverse': 1},

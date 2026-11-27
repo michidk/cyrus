@@ -1486,6 +1486,14 @@ share the caller's deadline and a bounded per-update stop budget. Unknown stops
 and callback errors reject the run, leaving the process stopped for key release.
 Guest bindings and call-frame/actor identity validation stay in local tooling.
 
+`combat_elevation_sample` evaluates the installed first-motion elevation against
+both actors' observed local bounds records. It retains the bounds-query points,
+vertical difference and required band, using signed wrapping arithmetic and
+halves truncated toward zero. Missing extents reject the observation; attached
+query positions and origin-height differences cannot substitute for these bounds.
+This reports the elevation inputs at a stopped state, independently of whether
+contact execution reached that gate. Passing it does not establish a hit.
+
 `attack_admission_sample` reports the ordered action, forward-playback, intent
 and collision-window state gates. It uses the observed signed command cursor and
 the installed current motion's collision timing, including the extended window;
