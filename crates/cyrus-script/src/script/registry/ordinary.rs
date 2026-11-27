@@ -1127,6 +1127,7 @@ impl OrdinaryContext<'_, '_> {
     ) -> anyhow::Result<()> {
         if !self.prepared.hold.as_deref().is_some_and(|hold| hold.0)
             || !self.is_running()
+            || self.hud.as_ref().is_some_and(|hud| !hud.ready())
             || self.actors.current_is_restored()
             || self.has_pending_revisit()
         {
