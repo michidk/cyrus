@@ -777,6 +777,57 @@ class NativeControl:
         raise AssertionError(command)
 
 
+class NativeClockTimelines(unittest.TestCase):
+    def timeline(self):
+        return dict(stored_sample=101, world=30,
+                    decisions=[dict(index=43, name='GUARDNS3', occurrence=1)],
+                    before_decisions=[145], after_decisions=[147])
+
+    def session(self, *, timeline=None, generation=7, final_sample=147):
+        control = NativeControl(); original = control.request; sample = [100]; commands = []
+        def request(command):
+            if command['type'] == 'replay_frame':
+                commands.append(copy.deepcopy(command)); sample[0] = final_sample
+            result = original(command)
+            if command['type'] == 'state': result['clock']['bios_sample'] = sample[0]
+            if command['type'] == 'scripts': result['generation'] = generation
+            return result
+        control.request = request
+        session = pair.NativeFrameSession(control, lambda *_: {}, frame_scales=[202], bios_ticks=[1],
+                    cached_bios_samples=[100, 147], clock_timelines=[timeline or self.timeline()])
+        return session, control, commands
+
+    def test_supported_timeline_keeps_effective_input_and_cas_separate(self):
+        session, control, commands = self.session()
+        session.advance_to(1)
+        expected = dict(self.timeline(), generation=7, expected_update=50, expected_bios_sample=100)
+        self.assertEqual(commands[0]['clock_timeline'], expected)
+        self.assertEqual(commands[0]['elapsed_bios_ticks'], 1)
+        self.assertEqual(session.execution_evidence()['timeline_observations'][0]['acknowledgement'], {})
+        self.assertEqual(control.bios_ticks, [1])
+
+    def test_malformed_missing_or_misaligned_fixture_rejects_before_execution(self):
+        bad = [dict(self.timeline(), stored_sample=True), dict(self.timeline(), decisions=[]),
+               dict(self.timeline(), before_decisions=[-1]), dict(self.timeline(), after_decisions=[149]),
+               dict(self.timeline(), decisions=[dict(index=43, name='GUARDNS3', occurrence=2)])]
+        for timeline in bad:
+            with self.subTest(timeline=timeline), self.assertRaises(ValueError): self.session(timeline=timeline)
+        with self.assertRaisesRegex(ValueError, 'actual native script generation'):
+            self.session(generation=None)
+        with self.assertRaisesRegex(ValueError, 'effective interval'):
+            pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[202],
+                 cached_bios_samples=[100, 147], clock_timelines=[self.timeline()])
+
+    def test_stale_generation_and_wrong_actual_endpoint_retain_rejected_evidence(self):
+        session, control, commands = self.session(final_sample=149)
+        with self.assertRaisesRegex(RuntimeError, 'cached BIOS phase'): session.advance_to(1)
+        self.assertEqual(len(session.execution_evidence()['timeline_observations']), 1)
+        session, control, commands = self.session()
+        session.current[1]['generation'] = 8
+        with self.assertRaisesRegex(RuntimeError, 'generation changed'): session.advance_to(1)
+        self.assertEqual(commands, [])
+
+
 class BiosOriginFixtures(unittest.TestCase):
     def test_continuous_origin_wrap_and_zero_intervals(self):
         self.assertEqual(pair.validate_bios_origin_tape([100, 100, 102], [0, 2]), 100)

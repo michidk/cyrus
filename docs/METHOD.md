@@ -113,6 +113,33 @@ Without that argument its clock inputs remain diagnostic and do not establish
 absolute phase. `validate_recording_inputs` rejects a horizon that truncates
 an acknowledgement or leaves a held input without a terminal release.
 
+`CombatTimingEvents` orders independently stopped combat-clock observations by
+sequence and contiguous body number. A decision-cache read or write requires
+its own tracee-access witness and sample; an entry assignment must agree with
+the observed raw-clock source. Actor pacing reads additionally identify the
+receiver and actual field read. Baseline refreshes, input acknowledgements and
+body boundaries remain separate events. A later boundary sample cannot supply
+a missing decision read. Executable/receiver bindings remain local evidence,
+and a global cache assignment alone does not establish which actor consumed it.
+`DecisionCacheHistory` binds subsequent reads to the independently resolved
+entry receiver and per-body invocation occurrence; missing entries, stale bodies,
+wrong receivers and changed decision samples reject. `combat_read_sample`
+projects only the identified actor-field read. `measurement_from_baseline`
+checks the calculation's baseline-store witness against the retained pre-body
+baseline and remainder; unchanged-count refreshes and unequal timer reads reject.
+
+`NativeFrameSession(clock_timelines=...)` accepts one measured timeline per
+body using the #366 supported `ReplayFrame.clock_timeline` contract. Fixtures
+contain `stored_sample`, `world`, ordered `decisions` with `index`, `name` and
+`occurrence`, and `before_decisions`/`after_decisions` sample lists. Native
+indices must come from admitted current-generation receiver identities.
+The driver adds the actual script generation, absolute expected update and
+observed pre-body BIOS sample as the command's compare-and-set fields. Effective
+`elapsed_bios_ticks` stays mandatory and separate. It retains the submitted
+command/reply, checks generation stability, and validates the actual stopped
+endpoint against the independently observed boundary tape. Fixture execution
+alone does not establish per-decision or original/native outcome acceptance.
+
 If a helper-only prediction disagrees with the recording, trace the remaining
 update before implementing or tuning constants to fit the endpoint.
 

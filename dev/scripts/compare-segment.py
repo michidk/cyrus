@@ -144,7 +144,7 @@ class NativeFrameSession:
     """
 
     def __init__(self, control, project, actor_limit=4096, frame_scales=None, bios_ticks=None,
-                 expected_initial_update=None, host_nanos=None, cached_bios_samples=None, combat_pacing=None):
+                 expected_initial_update=None, host_nanos=None, cached_bios_samples=None, combat_pacing=None, clock_timelines=None):
         self.control, self.project, self.actor_limit = control, project, actor_limit
         self.frame_scales = None if frame_scales is None else tuple(frame_scales)
         if self.frame_scales is not None and any(type(scale) is not int or not 0 <= scale <= 2**32 - 1 for scale in self.frame_scales):
@@ -189,9 +189,42 @@ class NativeFrameSession:
                         raise ValueError('combat pacing requires an independently observed unsigned cached sample')
                     if type(expected['allocation_index']) is not int or not -2**31 <= expected['allocation_index'] < 2**31 or type(expected['selection']) is not bool:
                         raise ValueError('combat pacing requires signed allocation index and boolean selection phase')
+        self.clock_timelines = copy.deepcopy(clock_timelines)
+        if self.clock_timelines is not None:
+            if (not isinstance(self.clock_timelines, list) or self.bios_ticks is None
+                    or self.cached_bios_samples is None or len(self.clock_timelines) != len(self.bios_ticks)):
+                raise ValueError('clock timelines require one measured timeline per effective interval and absolute boundary')
+            for timeline_index, timeline in enumerate(self.clock_timelines):
+                if not isinstance(timeline, dict) or set(timeline) != {'stored_sample', 'world', 'decisions', 'before_decisions', 'after_decisions'}:
+                    raise ValueError('clock timeline requires stored_sample, world, decisions and ordered refresh lists')
+                if type(timeline['world']) is not int or timeline['world'] < 0:
+                    raise ValueError('clock timeline requires a nonnegative world')
+                for samples in ([timeline['stored_sample']], timeline['before_decisions'], timeline['after_decisions']):
+                    if not isinstance(samples, list) or any(type(v) is not int or not 0 <= v < 2**32 for v in samples):
+                        raise ValueError('clock timeline requires unsigned measured samples')
+                if not isinstance(timeline['decisions'], list) or not timeline['decisions']:
+                    raise ValueError('clock timeline requires independently observed ordered decisions')
+                final_sample = (timeline['after_decisions'] or timeline['before_decisions'] or [timeline['stored_sample']])[-1]
+                if final_sample != self.cached_bios_samples[timeline_index + 1]:
+                    raise ValueError('clock timeline final refresh differs from measured body boundary')
+                occurrences = {}
+                for decision in timeline['decisions']:
+                    if (not isinstance(decision, dict) or set(decision) != {'index', 'name', 'occurrence'}
+                            or type(decision['index']) is not int or decision['index'] < 0
+                            or not isinstance(decision['name'], str) or not decision['name']
+                            or type(decision['occurrence']) is not int):
+                        raise ValueError('clock timeline decision identity is incomplete')
+                    identity = (decision['index'], decision['name'])
+                    occurrences[identity] = occurrences.get(identity, 0) + 1
+                    if decision['occurrence'] != occurrences[identity]:
+                        raise ValueError('clock timeline decision occurrence is missing or reordered')
+        self.timeline_observations = []
         self.combat_observations = []
         self.current = self._read()
         self.origin = self.current[0]['scripts']['ordinary_updates']
+        self.timeline_generation = self.current[1].get('generation')
+        if self.clock_timelines is not None and (type(self.timeline_generation) is not int or self.timeline_generation < 0):
+            raise ValueError('clock timeline requires actual native script generation')
         if expected_initial_update is not None and self.origin != expected_initial_update:
             raise ValueError(f'native acquisition expected initial update {expected_initial_update}, '
                              f'observed {self.origin}; bootstrap timing was not controlled')
@@ -327,6 +360,8 @@ class NativeFrameSession:
             bios_ticks=None if self.bios_ticks is None else list(self.bios_ticks),
             cached_bios_samples=None if self.cached_bios_samples is None else list(self.cached_bios_samples),
             host_nanos=None if self.host_nanos is None else list(self.host_nanos),
+            clock_timelines=copy.deepcopy(self.clock_timelines),
+            timeline_observations=self.timeline_observations,
             combat_pacing=copy.deepcopy(self.combat_pacing),
             combat_observations=copy.deepcopy(self.combat_observations),
             clocks=self.clock_observations, inputs=self.input_observations))
@@ -362,8 +397,22 @@ class NativeFrameSession:
                 command['elapsed_bios_ticks'] = self.bios_ticks[current]
             if self.host_nanos is not None:
                 command['elapsed_host_nanos'] = self.host_nanos[current]
-            self.control.request(command)
+            if self.clock_timelines is not None:
+                self._check_bios_phase(current)
+                if self.current[1].get('generation') != self.timeline_generation:
+                    raise RuntimeError('native clock timeline generation changed')
+                command['clock_timeline'] = dict(copy.deepcopy(self.clock_timelines[current]),
+                    generation=self.timeline_generation,
+                    expected_update=self.current[0]['scripts']['ordinary_updates'],
+                    expected_bios_sample=self.current[0]['clock']['bios_sample'])
+                evidence = dict(frame=current, command=copy.deepcopy(command))
+                self.timeline_observations.append(evidence)
+                evidence['acknowledgement'] = copy.deepcopy(self.control.request(command))
+            else:
+                self.control.request(command)
             self.current = self._read()
+            if self.clock_timelines is not None and self.current[1].get('generation') != self.timeline_generation:
+                raise RuntimeError('native clock timeline generation changed during frame')
             self.acquisition_observations.append(self._acquisition_observation())
             observed = self.snapshot()['frame']
             if observed != current + 1:
