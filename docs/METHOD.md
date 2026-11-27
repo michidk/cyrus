@@ -83,8 +83,15 @@ body and its `cached_bios_sample` to equal the measured sample. It checks the
 signed wrapping `pacing_sum`, selection sum and checked counter/pacing remainders, preserving null
 for invalid division. Null selection establishes combat entry only; it cannot
 satisfy a selection expectation. Rejected observations remain in execution
-evidence and block subsequent input. This observation contract does not supply
-an absolute-origin command. Adapters must use a separately supported native
+evidence and block subsequent input. `NativePhaseError.evidence` retains the stopped
+clock, expected sample, absolute ordinary update and actual actor pacing records
+even if the session constructor rejects. Paired reports serialize this as
+`phase_rejection`, so a rejected origin does not erase its observation.
+This observation contract does not supply an absolute-origin command. `validate_bios_origin_tape` checks that entry plus
+effective intervals reproduces every observed absolute sample, including unsigned
+wrap. An origin-only setup cannot replay a tape with later sample discontinuities;
+retain the original intervals and require a supported separate control or a new
+recording. Adapters must use a separately supported native
 control before claiming aligned replay; they must never infer or patch it.
 
 Verified paired execution leases the executable inode across entry, separate

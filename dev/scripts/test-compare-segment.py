@@ -777,6 +777,28 @@ class NativeControl:
         raise AssertionError(command)
 
 
+class BiosOriginFixtures(unittest.TestCase):
+    def test_continuous_origin_wrap_and_zero_intervals(self):
+        self.assertEqual(pair.validate_bios_origin_tape([100, 100, 102], [0, 2]), 100)
+        self.assertEqual(pair.validate_bios_origin_tape([2**32 - 1, 0, 1], [1, 1]), 2**32 - 1)
+        self.assertEqual(pair.validate_bios_origin_tape([100], []), 100)
+
+    def test_absolute_gap_cannot_be_hidden_by_equal_effective_intervals(self):
+        samples, intervals = [100, 100, 145], [0, 2]
+        with self.assertRaisesRegex(ValueError, 'body 2.*sample 145.*interval 102'):
+            pair.validate_bios_origin_tape(samples, intervals)
+        self.assertEqual(samples, [100, 100, 145])
+        self.assertEqual(intervals, [0, 2])
+        self.assertNotEqual((145 + 3) % 29, (102 + 3) % 29)
+
+    def test_missing_and_invalid_origin_fixture_rejects(self):
+        for samples, intervals in [([], []), ([100], [1]), ([True], []),
+                                   ([-1], []), ([2**32], []), ([100, 101], [True]),
+                                   (None, []), ([100], None)]:
+            with self.subTest(samples=samples, intervals=intervals), self.assertRaises(ValueError):
+                pair.validate_bios_origin_tape(samples, intervals)
+
+
 class NativeFrames(unittest.TestCase):
     def pacing_session(self, change=None, sample=100, allocation=3, counter=13, selection=True):
         control = NativeControl()
@@ -859,6 +881,59 @@ class NativeFrames(unittest.TestCase):
             with self.subTest(fixture=fixture), self.assertRaises(ValueError):
                 pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[202],
                                         cached_bios_samples=[100, 100], combat_pacing=fixture)
+
+    def test_constructor_phase_rejection_retains_actual_sample_without_projection(self):
+        control = NativeControl()
+        request = control.request
+        def observed(command):
+            value = request(command)
+            if command['type'] == 'state':
+                value['clock']['bios_sample'] = 100
+            return value
+        control.request = observed
+        projected = []
+        with self.assertRaises(pair.NativePhaseError) as raised:
+            pair.NativeFrameSession(control, lambda *_: projected.append(True),
+                                    frame_scales=[202], cached_bios_samples=[101, 101])
+        evidence = raised.exception.evidence
+        self.assertEqual(evidence['clock']['bios_sample'], 100)
+        self.assertEqual(evidence['expected_bios_sample'], 101)
+        self.assertEqual(evidence['ordinary_update'], 50)
+        self.assertEqual(projected, [])
+        self.assertEqual(control.scales, [])
+        self.assertEqual(control.keys, [])
+        control.update = 99
+        self.assertEqual(evidence['ordinary_update'], 50)
+
+    def test_rejected_actor_phase_preserves_actual_stale_decision(self):
+        def stale(rows, _):
+            rows['actors'][0]['combat_pacing']['ordinary_update'] = 0
+        session, control = self.pacing_session(stale)
+        with self.assertRaises(pair.NativePhaseError) as raised:
+            session.advance_to(1)
+        evidence = raised.exception.evidence
+        self.assertEqual(evidence['ordinary_update'], 1)
+        self.assertEqual(evidence['combat_pacing'][0]['observation']['ordinary_update'], 0)
+        self.assertEqual(evidence['clock']['bios_sample'], 100)
+        self.assertEqual(control.keys, [])
+        session.current[1]['actors'][0]['combat_pacing']['ordinary_update'] = 99
+        self.assertEqual(evidence['combat_pacing'][0]['observation']['ordinary_update'], 0)
+
+    def test_pair_serializes_phase_failure_when_backend_construction_rejects(self):
+        @contextmanager
+        def original(*_):
+            yield Session({0: state()}, [], 'original')
+        @contextmanager
+        def native(*_):
+            yield pair.NativeFrameSession(NativeControl(), lambda *_: {}, frame_scales=[202],
+                                          cached_bios_samples=[100, 100])
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, original, native, Path(directory))
+        saved = json.loads(json.dumps(report))
+        self.assertEqual(saved['status'], 'blocked')
+        self.assertEqual(saved['phase_rejection']['expected_bios_sample'], 100)
+        self.assertNotIn('bios_sample', saved['phase_rejection']['clock'])
+        self.assertEqual(saved['input_attempts']['native'], [])
 
     def test_absolute_bios_phase_rejects_equal_delta_before_projection(self):
         control = NativeControl()

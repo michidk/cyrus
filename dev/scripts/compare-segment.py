@@ -26,6 +26,33 @@ OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'conti
 PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state', 'native_source')
 
 
+def validate_bios_origin_tape(samples, bios_ticks):
+    """Reject an origin-only setup when measured absolute samples need later rebasing.
+
+    Effective intervals remain replay inputs. Absolute sample gaps cannot replace
+    them: a discontinuity needs a separate supported clock control or recording.
+    """
+    if not isinstance(samples, (list, tuple)) or not isinstance(bios_ticks, (list, tuple)) or len(samples) != len(bios_ticks) + 1:
+        raise ValueError('BIOS origin tape requires entry plus one absolute sample per interval')
+    if any(type(value) is not int or not 0 <= value < 2**32 for value in (*samples, *bios_ticks)):
+        raise ValueError('BIOS origin tape requires unsigned samples and effective intervals')
+    for frame, interval in enumerate(bios_ticks, 1):
+        predicted = (samples[frame - 1] + interval) % 2**32
+        if samples[frame] != predicted:
+            raise ValueError(f'BIOS origin-only replay discontinuity at body {frame}: '
+                             f'observed sample {samples[frame]}, prior plus effective interval {predicted}; '
+                             'absolute sample gaps must not replace effective BIOS inputs')
+    return samples[0]
+
+
+class NativePhaseError(RuntimeError):
+    """A rejected stopped boundary with evidence available even during construction."""
+
+    def __init__(self, message, evidence):
+        super().__init__(message)
+        self.evidence = copy.deepcopy(evidence)
+
+
 class NativeArtifact:
     """Launch only the executable identified by a source-bound acquisition receipt.
 
@@ -208,18 +235,29 @@ class NativeFrameSession:
             raise RuntimeError('native comparison actor read was truncated')
         return after, scripts
 
+    def _phase_error(self, message, frame, expected):
+        state, scripts = self.current
+        return NativePhaseError(message, dict(
+            frame=frame, ordinary_update=state['scripts']['ordinary_updates'],
+            expected_bios_sample=expected, clock=copy.deepcopy(state.get('clock')),
+            combat_pacing=[dict(actor=actor.get('name'), observation=copy.deepcopy(actor['combat_pacing']))
+                           for actor in scripts['actors'] if actor.get('combat_pacing') is not None]))
+
     def _check_bios_phase(self, frame):
         if self.cached_bios_samples is None:
             return
         if not 0 <= frame < len(self.cached_bios_samples):
-            raise RuntimeError(f'native cached BIOS phase has no boundary for frame {frame}')
+            raise self._phase_error(f'native cached BIOS phase has no boundary for frame {frame}', frame, None)
         actual = self.current[0].get('clock', {}).get('bios_sample')
         expected = self.cached_bios_samples[frame]
         if type(actual) is not int or not 0 <= actual < 2**32:
-            raise RuntimeError(f'native cached BIOS sample unavailable at frame {frame}')
+            raise self._phase_error(f'native cached BIOS sample unavailable at frame {frame}', frame, expected)
         if actual != expected:
-            raise RuntimeError(f'native cached BIOS phase at frame {frame}: observed {actual}, expected {expected}')
-        self._check_combat_phase(frame, actual)
+            raise self._phase_error(f'native cached BIOS phase at frame {frame}: observed {actual}, expected {expected}', frame, expected)
+        try:
+            self._check_combat_phase(frame, actual)
+        except RuntimeError as error:
+            raise self._phase_error(str(error), frame, expected) from error
 
     def _check_combat_phase(self, frame, sample):
         if self.combat_pacing is None:
@@ -664,6 +702,8 @@ def run_pair(segment, original, native, output, native_artifact=None, restoratio
         report['status'] = 'match'
     except (ValueError, RuntimeError, TimeoutError, OSError) as error:
         report['reason'] = str(error)
+        if isinstance(error, NativePhaseError):
+            report['phase_rejection'] = copy.deepcopy(error.evidence)
     finally:
         resources.close()
     return report
