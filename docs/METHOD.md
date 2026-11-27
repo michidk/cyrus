@@ -103,6 +103,22 @@ observe allocation/removal separately. A matching actor slot in another world
 does not establish owner identity, and absent owners are never dereferenced by
 this correlation helper.
 
+Paired projections expose `native_source` separately from the registry actor
+census. `original-frame-session.py` provides `project_native_source` for decoded
+`attributes`, `position_q8`, `orientation` and `script_context`. Use installed
+attribute names and normalized script cursors/local offsets, with script and
+string context identified semantically. This projection preserves the supplied
+observations; its field names do not establish complete observation coverage.
+Unobserved values stay null and reject comparison, even when both sides omit the
+same measurement. The shared separate temporary uses `kind: separate_temporary`
+and `lifetime: process_global`, without a registry owner identity. An ordinary
+`registry_actor` source requires its independently bound semantic `owner`.
+A matching numeric actor slot cannot substitute for either binding. Shell source
+lifetime remains unsupported by this helper. Missing source projection on one
+side rejects admission and replay reopening; both adapters must supply it before
+claiming full source-state admission. Registry census agreement alone is partial
+coverage. No source state is inferred from a departed semantic owner.
+
 The original watchpoint backend can pair an access comparator with a write-only
 comparator on the same bytes to distinguish reads from stores, including stores
 that leave the value unchanged. Read-modify-write instructions classify as

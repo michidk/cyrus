@@ -232,6 +232,37 @@ class ActorObserver:
         return observed
 
 
+def project_native_source(kind, observed_state, *, owner=None):
+    """Project an observed source independently of the loaded owner census.
+
+    The executable binding supplies decoded attributes, Q8 position, orientation
+    and script context with normalized cursors/local offsets, never allocation
+    tokens or record bytes. Unobserved fields stay None and reject paired
+    comparison. This does not resolve, read or infer any departed allocation.
+
+    Preservation's separate-object script-state contract establishes the shared
+    temporary's process-global lifetime. Shell lifetime is not inferred here.
+    Registry actors still require an independently bound semantic owner identity.
+    """
+    if kind not in ('separate_temporary', 'registry_actor'):
+        raise ValueError('native source storage is unsupported or unobserved')
+    if not isinstance(observed_state, dict):
+        raise ValueError('native source requires decoded observed state')
+    for field in ('attributes', 'position_q8', 'orientation', 'script_context'):
+        if field not in observed_state:
+            raise ValueError(f'native source missing observation: {field}')
+    result = dict(kind=kind, state=copy.deepcopy(observed_state))
+    if kind == 'separate_temporary':
+        if owner is not None:
+            raise ValueError('shared temporary source is not a registry owner')
+        result['lifetime'] = 'process_global'
+    else:
+        if not isinstance(owner, dict) or not owner:
+            raise ValueError('registry source requires a bound semantic owner identity')
+        result['owner'] = copy.deepcopy(owner)
+    return result
+
+
 class OwnerReferenceObserver:
     """Correlate a retained reference with an observed owner census across loads.
 

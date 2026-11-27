@@ -476,6 +476,42 @@ class WriteObservationTests(unittest.TestCase):
         self.assertTrue(session.stopped)
 
 
+class NativeSourceProjectionTests(unittest.TestCase):
+    def fields(self):
+        return dict(attributes={'Health': 0}, position_q8=[1, 2, 3],
+                    orientation={'matrix': [1, 0, 0]},
+                    script_context=dict(name='ambient', main=0, local_offset=4))
+
+    def test_temporary_source_is_independent_of_registry_identity_and_copied(self):
+        fields = self.fields()
+        projected = adapter.project_native_source('separate_temporary', fields)
+        self.assertEqual(projected, dict(kind='separate_temporary', lifetime='process_global', state=fields))
+        fields['attributes']['Health'] = 1
+        self.assertEqual(projected['state']['attributes']['Health'], 0)
+        self.assertNotIn('owner', projected)
+        with self.assertRaises(ValueError):
+            adapter.project_native_source('separate_temporary', self.fields(), owner={'world': 0, 'name': 'ambient'})
+
+    def test_registry_source_requires_identity_and_never_becomes_a_temporary(self):
+        with self.assertRaises(ValueError):
+            adapter.project_native_source('registry_actor', self.fields())
+        identity = {'world': 30, 'name': 'guard', 'instance': 1}
+        observed = adapter.project_native_source('registry_actor', self.fields(), owner=identity)
+        self.assertEqual(observed['owner'], identity)
+        self.assertNotIn('lifetime', observed)
+        self.assertEqual(observed['kind'], 'registry_actor')
+
+    def test_missing_observation_is_explicit_and_unknown_storage_is_rejected(self):
+        for kind in ('shell_temporary', 'unknown', None):
+            with self.assertRaises(ValueError):
+                adapter.project_native_source(kind, self.fields())
+        fields = self.fields(); del fields['orientation']
+        with self.assertRaisesRegex(ValueError, 'orientation'):
+            adapter.project_native_source('separate_temporary', fields)
+        fields['orientation'] = None
+        self.assertIsNone(adapter.project_native_source('separate_temporary', fields)['state']['orientation'])
+
+
 class OwnerReferenceTests(unittest.TestCase):
     def owner(self, token, name='WATER', kind='map-script', slot=24):
         return dict(token=token, identity=dict(kind=kind, name=name, slot=slot))

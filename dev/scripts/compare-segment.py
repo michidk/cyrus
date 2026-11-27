@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 
 OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'continuations')
-PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state')
+PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state', 'native_source')
 
 
 class NativeArtifact:

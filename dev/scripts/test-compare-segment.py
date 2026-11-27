@@ -92,6 +92,63 @@ class PairTests(unittest.TestCase):
         fields = {row['field']: row for row in report['start_deltas']}
         self.assertEqual(fields['player.position_q8[0]']['delta'], 7)
 
+    def test_temporary_source_difference_blocks_even_with_identical_registry_actors(self):
+        source = dict(kind='separate_temporary', lifetime='process_global',
+                      state=dict(attributes={'Health': 0}, position_q8=[1, 2, 3],
+                                 orientation=[1, 0, 0],
+                                 script_context=dict(name='ambient', main=0, local_offset=4)))
+        for field, value in [('attributes', {'Health': 1}), ('position_q8', [1, 2, 4]),
+                             ('orientation', [0, 1, 0]),
+                             ('script_context', dict(name='ambient', main=1, local_offset=4))]:
+            with self.subTest(field=field):
+                original = state(); original['native_source'] = copy.deepcopy(source)
+                native = copy.deepcopy(original); native['native_source']['state'][field] = value
+                report = self.run_pair({0: original}, {0: native})
+                self.assertEqual(report['status'], 'blocked', report)
+                self.assertTrue(any(row['field'].startswith('native_source.state.' + field)
+                                    for row in report['admission_rejections'][0]['fields']))
+                self.assertFalse(any(row[0] in ('original', 'native') for row in self.calls))
+
+    def test_missing_or_unobserved_source_cannot_pass_a_projected_source(self):
+        original = state()
+        original['native_source'] = dict(kind='separate_temporary', state={'attributes': {'Health': 0}})
+        for native in (state(), dict(copy.deepcopy(original), native_source=None),
+                       dict(copy.deepcopy(original), native_source=dict(kind='registry_actor', state={})),
+                       dict(copy.deepcopy(original), native_source=dict(kind='separate_temporary',
+                                                                        state={'attributes': None}))):
+            with self.subTest(native=native):
+                report = self.run_pair({0: original}, {0: native})
+                self.assertEqual(report['status'], 'blocked', report)
+                self.assertTrue(any(row['field'].startswith('native_source')
+                                    for row in report['admission_rejections'][0]['fields']))
+
+    def test_equal_observed_source_passes_but_equal_unknown_source_does_not(self):
+        observed = state()
+        observed['native_source'] = dict(kind='separate_temporary', lifetime='process_global',
+                                         state={'attributes': {'Health': 0}})
+        self.assertEqual(self.run_pair({0: observed}, {0: observed})['status'], 'match')
+        unknown = copy.deepcopy(observed); unknown['native_source']['state']['orientation'] = None
+        report = self.run_pair({0: unknown}, {0: unknown})
+        self.assertEqual(report['status'], 'blocked')
+        self.assertIn('native_source.state.orientation', report['reason'])
+
+    def test_reopened_temporary_source_drift_rejects_before_inputs(self):
+        calls, opens = [], dict(original=0, native=0)
+        @contextmanager
+        def factory(name):
+            opens[name] += 1
+            observed = state()
+            health = int(name == 'native' and opens[name] == 2)
+            observed['native_source'] = dict(kind='separate_temporary',
+                                             state={'attributes': {'Health': health}})
+            yield Session({0: observed}, calls, name)
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, lambda *_: factory('original'),
+                                   lambda *_: factory('native'), Path(directory))
+        self.assertEqual(report['status'], 'blocked')
+        self.assertIn('native_source.state.attributes.Health', report['reason'])
+        self.assertFalse(any(row[0] == 'native' for row in calls))
+
     def test_reopened_entry_drift_blocks_before_that_sides_inputs(self):
         for changed in ('original', 'native'):
             with self.subTest(changed=changed):
