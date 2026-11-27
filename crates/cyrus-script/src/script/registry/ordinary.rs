@@ -1019,6 +1019,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     scene_request: Option<Res<'w, crate::player::data::PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<crate::player::data::PlayerScene>>>,
     sample: Option<ResMut<'w, WorldClockSample>>,
+    hold: Option<Res<'w, ReplayHold>>,
     cheats: Option<Res<'w, cyrus_game::cheats::Cheats>>,
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, crate::logbook::LogbookScreen>>,
@@ -1118,6 +1119,70 @@ pub struct OrdinaryContext<'w, 's> {
 }
 
 impl OrdinaryContext<'_, '_> {
+    // A held fresh world still needs its entry-only checkpoint for session capture.
+    // No sampled body, clock advancement or automatic model traversal is admitted here.
+    fn prepare_held_entry(
+        &mut self,
+        emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        if !self.prepared.hold.as_deref().is_some_and(|hold| hold.0)
+            || !self.is_running()
+            || self.hud.as_ref().is_some_and(|hud| !hud.ready())
+            || self.actors.current_is_restored()
+            || self.has_pending_revisit()
+        {
+            return Ok(());
+        }
+        let (Some(request), Some(view)) =
+            (self.prepared.request.as_ref(), self.prepared.view.as_ref())
+        else {
+            return Ok(());
+        };
+        if view.source != request.0 {
+            return Ok(());
+        }
+        let Some(data) = self.prepared.assets.get(&request.0) else {
+            return Ok(());
+        };
+        let world = self.actors.current.as_mut().expect("running world");
+        if world.ordinary_updates() != 0
+            || world.actor_prelighting.is_some()
+            || !world.model_resources_prepared()
+            || world.model_admission.is_none()
+            || (world.selected_player_index().is_some() && self.players.single().is_err())
+        {
+            return Ok(());
+        }
+        if !self.prepared.prepare_environment_effects(world)? {
+            return Ok(());
+        }
+        initialize_entry(
+            world,
+            data,
+            0,
+            self.players.single().ok(),
+            self.prepared
+                .scene_request
+                .as_ref()
+                .zip(self.prepared.scenes.as_ref())
+                .and_then(|(request, scenes)| scenes.get(&request.0)),
+            self.entry.as_deref().copied(),
+            &mut |actor, sound| {
+                send_actor_sound(
+                    actor,
+                    sound,
+                    &request.0,
+                    &self.bindings,
+                    self.deferred_sounds
+                        .as_deref_mut()
+                        .unwrap_or(&mut self.deferred_fallback),
+                    emit,
+                )
+            },
+        )?;
+        world.prepare_actor_prelighting()
+    }
+
     /// Whether this entry requires retained-world restoration before traversal.
     pub fn has_pending_revisit(&self) -> bool {
         self.actors.has_pending_revisit()
@@ -1344,7 +1409,32 @@ impl OrdinaryContext<'_, '_> {
 }
 
 pub(crate) fn prepare_models(world: &mut World) {
+    // Host sound maintenance needs a sampled body and may decline held updates.
+    // Entry-only preparation must precede that host gate for baseline capture.
+    if let Err(error) = world.run_system_cached(prepare_held_models) {
+        world
+            .resource_mut::<ScriptActors>()
+            .report_runtime_error(format!("held world entry scheduler: {error}"));
+        return;
+    }
     execute_phase(world, OrdinaryPhase::ModelPresentation);
+}
+
+fn prepare_held_models(
+    mut context: OrdinaryContext,
+    mut sounds: Option<ResMut<Messages<SoundCue>>>,
+) {
+    if let Err(error) = context.prepare_held_entry(&mut |cue| {
+        sounds
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("held entry sound consumer unavailable"))?
+            .write(cue);
+        Ok(())
+    }) {
+        context
+            .actors
+            .report_runtime_error(format!("held world entry preparation: {error:#}"));
+    }
 }
 
 pub(crate) fn step(world: &mut World) {
