@@ -146,6 +146,20 @@ observed phase remains a rejection and does not infer the other engine's call
 count. Counter equality alone cannot identify a restoration phase, since saved
 counters can replace the pre-load values.
 
+`compare-segment.py --restoration-history <local-witness.json>` requires an
+ordered `initial_state`/`events` witness. Each `write` event supplies its observed
+`draw`, `previous`, `state`, `phase` and `context`; each `boundary` supplies its
+`name`, `draw`, `state` and `context`. Required boundaries are
+`restored-publication` and `first-completed-body`, in that order. Construct this
+witness from the same source/save-bound acquisition used by the adapters.
+The driver rejects missing writes and checks held frame zero before admission.
+After semantic entry admission, it opens separate no-input runs, rechecks the
+entry and advances exactly one acknowledged body before checking the later RNG
+boundary. Adapters must supply the observed first-body timing inputs. Only then
+can the untouched combat tapes run from their admitted entries. Both phase
+observations and available execution receipts survive rejection in the report;
+RNG-phase success alone does not establish complete semantic or clock parity.
+
 For original per-update recordings, run
 `python3 dev/scripts/original-update-recorder.py --backend <local-backend.py> --elapsed <clock-units>`.
 The Linux x86-64 backend `dev/scripts/original-update-watchpoint.py` uses

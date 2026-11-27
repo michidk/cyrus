@@ -15,6 +15,7 @@ import hashlib
 import re
 from harness import exclusive_lock
 from paired_outcomes import validate_checkpoint, evaluate_checkpoint
+from original_acquisition import RandomWriteHistory
 import importlib.util
 import json
 import subprocess
@@ -406,10 +407,59 @@ def check_outcomes(report, assertions, side, measured):
     return True
 
 
-def run_pair(segment, original, native, output, native_artifact=None):
+
+class RestorationPhases:
+    """Require observed restoration and first-body RNG phases before combat input.
+
+    The local witness is an ordered write/boundary stream from the same admitted
+    original acquisition. Never derive expected states or draw counts from native
+    endpoints. A separate no-input first-body run leaves the combat tape intact.
+    """
+
+    def __init__(self, witness):
+        try:
+            self.history = RandomWriteHistory(witness['initial_state'])
+            for event in witness['events']:
+                if event['type'] == 'write':
+                    row = self.history.observe(event['state'], event['phase'], event['context'])
+                    if any(type(event[key]) is not int or event[key] != row[key]
+                           for key in ('draw', 'previous')):
+                        raise ValueError('RNG write count or predecessor differs from observed history')
+                elif event['type'] == 'boundary':
+                    row = self.history.boundary(event['name'], event['state'], event['context'])
+                    if type(event['draw']) is not int or event['draw'] != row['draw']:
+                        raise ValueError('RNG boundary count differs from observed history')
+                else:
+                    raise ValueError('RNG history contains an unsupported event')
+            names = list(self.history.boundaries)
+            if ('restored-publication' not in names or 'first-completed-body' not in names
+                    or names.index('restored-publication') >= names.index('first-completed-body')):
+                raise ValueError('RNG history requires ordered restoration and first-body boundaries')
+        except (KeyError, TypeError, AttributeError) as error:
+            raise ValueError(f'RNG restoration history is incomplete: {error}') from error
+
+    def check(self, session, report, side, phase):
+        measured = copy.deepcopy(session.snapshot())
+        row = dict(measured=measured, status='rejected')
+        report.setdefault('restoration_phases', {}).setdefault(side, {})[phase] = row
+        try:
+            frame = 0 if phase == 'restored-publication' else 1
+            if type(measured.get('frame')) is not int or measured['frame'] != frame:
+                raise ValueError(f'expected acknowledged frame {frame}, observed {measured.get("frame")}')
+            row['expected'] = self.history.require_boundary(phase, measured.get('random_state'))
+            row['status'] = 'match'
+        except ValueError as error:
+            row['reason'] = str(error)
+            raise ValueError(f'{side} {phase}: {error}') from error
+
+
+def run_pair(segment, original, native, output, native_artifact=None, restoration_history=None):
     report = dict(version=1, status='blocked', events=[], checkpoints=[], outcomes=[],
                   input_attempts=dict(original=[], native=[]))
     try:
+        phases = None if restoration_history is None else RestorationPhases(restoration_history)
+        if phases is not None:
+            report['restoration_history'] = copy.deepcopy(restoration_history)
         if native_artifact is not None:
             report['native_artifact'] = native_artifact.validate()
         events, checkpoints, assertions = input_tape(segment)
@@ -425,6 +475,8 @@ def run_pair(segment, original, native, output, native_artifact=None):
                     if side == 'native' and native_artifact is not None:
                         native_artifact.check_session(session)
                     entry_snapshot(session, report, 'entry', side)
+                    if phases is not None:
+                        phases.check(session, report, side, 'restored-publication')
                 finally:
                     evidence = getattr(session, 'execution_evidence', None)
                     if side == 'native' and callable(evidence):
@@ -435,6 +487,22 @@ def run_pair(segment, original, native, output, native_artifact=None):
             reject_admission(report, 'entry', 'original/native', fields,
                              'start states differ or are incomplete')
             return report
+        if phases is not None:
+            for side, factory in (('original', original), ('native', native)):
+                directory = output / 'first-body' / side
+                directory.mkdir(parents=True, exist_ok=True)
+                with factory(segment, directory, **(options if side == 'native' else {})) as session:
+                    try:
+                        if side == 'native' and native_artifact is not None:
+                            native_artifact.check_session(session)
+                        admit_replay_entry(session, report, side)
+                        phases.check(session, report, side, 'restored-publication')
+                        session.advance_to(1)
+                        phases.check(session, report, side, 'first-completed-body')
+                    finally:
+                        evidence = getattr(session, 'execution_evidence', None)
+                        if callable(evidence):
+                            report.setdefault('restoration_execution', {})[side] = copy.deepcopy(evidence())
         report['original'] = []
         with original(segment, output / 'original') as session:
             initial = admit_replay_entry(session, report, 'original')
@@ -488,6 +556,8 @@ def main():
     parser.add_argument('--native-receipt', type=Path)
     parser.add_argument('--native-head', help='expected full workflow head SHA')
     parser.add_argument('--native-source-tree', help='expected actual checkout tree SHA')
+    parser.add_argument('--restoration-history', type=Path,
+                        help='observed original RNG write/boundary stream for no-input phase gates')
     parser.add_argument('--out', required=True, help='host directory under magic/')
     args = parser.parse_args()
     binding = [args.native_executable, args.native_receipt, args.native_head, args.native_source_tree]
@@ -505,7 +575,9 @@ def main():
         subprocess.run([str(Path(__file__).with_name("ensure-retro-runtime.sh"))],
                        check=True, stdout=subprocess.DEVNULL)
         report = run_pair(json.loads(Path(args.segment).read_text()), backend(args.original_backend),
-                          backend(args.native_backend), output, native_artifact=artifact)
+                          backend(args.native_backend), output, native_artifact=artifact,
+                          restoration_history=(json.loads(args.restoration_history.read_text())
+                                               if args.restoration_history else None))
         report['segment'] = str(args.segment)
         (output / 'comparison.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(dict(status=report['status'], report=str(output / 'comparison.json'))))

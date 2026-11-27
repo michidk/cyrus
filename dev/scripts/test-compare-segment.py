@@ -44,6 +44,80 @@ def state(x=0, talking=0):
                 continuations={'FAVIS': {'cursor': 0, 'tasks': []}})
 
 
+class RestorationPhaseTests(unittest.TestCase):
+    def witness(self):
+        return dict(initial_state=1, events=[
+            dict(type='write', draw=1, previous=1, state=1103527590,
+                 phase='reload', context=dict(world=20)),
+            dict(type='boundary', name='restored-publication', state=1103527590,
+                 draw=1, context=dict(world=20)),
+            dict(type='write', draw=2, previous=1103527590, state=2524885223,
+                 phase='ordinary', context=dict(world=20)),
+            dict(type='boundary', name='first-completed-body', state=2524885223,
+                 draw=2, context=dict(world=20))])
+
+    def run_phases(self, native_entry=1103527590, native_body=2524885223, witness=None):
+        calls = []
+        @contextmanager
+        def factory(name, rng):
+            class Measured(Session):
+                def advance_to(self, frame):
+                    calls.append(('advance', name, frame))
+                    super().advance_to(frame)
+            yield Measured({0: dict(state(), random_state=rng),
+                            1: dict(state(), random_state=(native_body if name == 'native' else 2524885223)),
+                            3: dict(state(), random_state=2524885223)}, calls, name)
+        with tempfile.TemporaryDirectory() as directory:
+            report = pair.run_pair(SEGMENT, lambda *_: factory('original', 1103527590),
+                lambda *_: factory('native', native_entry), Path(directory),
+                restoration_history=self.witness() if witness is None else witness)
+        return report, calls
+
+    def test_restored_and_first_acknowledged_body_are_separate_gates(self):
+        report, calls = self.run_phases()
+        self.assertEqual(report['status'], 'match', report)
+        phases = report['restoration_phases']
+        for side in ('original', 'native'):
+            self.assertEqual(phases[side]['restored-publication']['measured']['frame'], 0)
+            self.assertEqual(phases[side]['first-completed-body']['measured']['frame'], 1)
+        first_input = next(i for i, row in enumerate(calls) if row[0] in ('original', 'native'))
+        self.assertTrue(all(calls.index(('advance', side, 1)) < first_input
+                            for side in ('original', 'native')))
+
+    def test_premature_body_endpoint_rejects_before_any_advance_or_input(self):
+        report, calls = self.run_phases(native_entry=2524885223)
+        self.assertEqual(report['status'], 'blocked', report)
+        self.assertIn('native restored-publication', report['reason'])
+        self.assertIn('first-completed-body', report['reason'])
+        self.assertEqual(calls, [])
+        self.assertEqual(report['restoration_phases']['native']['restored-publication']
+                         ['measured']['random_state'], 2524885223)
+
+    def test_wrong_first_body_rejects_without_combat_input(self):
+        report, calls = self.run_phases(native_body=1103527590)
+        self.assertEqual(report['status'], 'blocked', report)
+        self.assertIn('native first-completed-body', report['reason'])
+        self.assertFalse(any(row[0] in ('original', 'native') for row in calls))
+
+    def test_missing_final_write_or_boundary_cannot_be_an_expected_endpoint(self):
+        for index in (-2, -1):
+            witness = self.witness(); del witness['events'][index]
+            report, calls = self.run_phases(witness=witness)
+            self.assertEqual(report['status'], 'blocked', report)
+            self.assertEqual(calls, [])
+            self.assertIn('RNG', report['reason'])
+
+    def test_invalid_count_order_and_missing_initial_state_reject_before_open(self):
+        for change in ('count', 'order', 'initial'):
+            witness = self.witness()
+            if change == 'count': witness['events'][0]['draw'] = 2
+            if change == 'order': witness['events'].reverse()
+            if change == 'initial': del witness['initial_state']
+            report, calls = self.run_phases(witness=witness)
+            self.assertEqual(report['status'], 'blocked', report)
+            self.assertEqual(calls, [])
+
+
 class PairTests(unittest.TestCase):
     def run_pair(self, original, native, overshoot=False):
         self.calls = []
