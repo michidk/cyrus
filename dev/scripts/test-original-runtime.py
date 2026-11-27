@@ -103,11 +103,12 @@ class OriginalRuntime(unittest.TestCase):
             installed = scenario.install_original_combat_driver('owned', command=command)
             self.assertEqual(installed, '/tmp/cyrus-combat')
             result = subprocess.run(['python3', '-c',
-                'import original_fight, original_acquisition, original_sky_state, original_loading_state; '
+                'import original_fight, original_acquisition, original_sky_state, original_loading_state, original_support_state; '
                 'assert callable(original_fight.record_combat_tap); '
                 'assert callable(original_acquisition.OriginalAcquisition); '
                 'assert callable(original_sky_state.read_sky_state); '
-                'assert callable(original_loading_state.read_loading_state)'],
+                'assert callable(original_loading_state.read_loading_state); '
+                'assert callable(original_support_state.read_support_state)'],
                 cwd=directory, env=dict(os.environ, PYTHONPATH=str(destination)),
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)

@@ -141,6 +141,13 @@ write and subsequent source assignment around the event before attributing an
 RNG write to the current native receiver; a matching snapshot alone does not
 establish that a call is still active. Executable bindings remain local.
 
+`original_support_state.py` decodes a completed support result, keeping source
+validity separate from retained normal, texture and metadata after a miss.
+Callers must establish query ownership and completion before treating it as the
+player's support result; an actor surface byte alone is insufficient. A partial
+record, unsupported source kind or contradictory miss/height/classification
+rejects. Executable field bindings remain local.
+
 The original watchpoint backend can pair an access comparator with a write-only
 comparator on the same bytes to distinguish reads from stores, including stores
 that leave the value unchanged. Read-modify-write instructions classify as
