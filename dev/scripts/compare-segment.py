@@ -239,6 +239,11 @@ class NativeFrameSession:
         state = self.control.request({'type': 'state'})
         scripts = self.control.request({'type': 'scripts', 'limit': self.actor_limit})
         after = self.control.request({'type': 'state'})
+        evidence = dict(before=copy.deepcopy(state), scripts=copy.deepcopy(scripts), after=copy.deepcopy(after))
+        if any(read.get('scripts', {}).get('failed') for read in (state, after)):
+            raise NativePhaseError(f'native script failures: {after.get("scripts")}', evidence)
+        if any(type(read.get('scripts', {}).get('ordinary_updates')) is not int for read in (state, after)):
+            raise NativePhaseError('native ordinary update unavailable during stopped observation', evidence)
         if state['scripts']['ordinary_updates'] != after['scripts']['ordinary_updates']:
             raise RuntimeError('native simulation advanced outside an explicit frame step')
         if state.get('clock') != after.get('clock'):

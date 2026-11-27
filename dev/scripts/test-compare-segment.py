@@ -1296,6 +1296,22 @@ class NativeFrames(unittest.TestCase):
             with self.subTest(message=message), self.assertRaisesRegex(RuntimeError, message):
                 session.advance_to(1)
 
+    def test_stopped_registry_without_update_retains_native_failure(self):
+        control = NativeControl()
+        session = pair.NativeFrameSession(control, lambda *_: {})
+        request = control.request
+        def stopped(command):
+            result = request(command)
+            if command['type'] == 'state':
+                result['scripts'] = dict(failed=1, error='recorded decision order mismatch')
+            return result
+        control.request = stopped
+        with self.assertRaisesRegex(pair.NativePhaseError, 'script failures') as caught:
+            session.advance_to(1)
+        self.assertEqual(caught.exception.evidence['after']['scripts']['error'],
+                         'recorded decision order mismatch')
+        self.assertEqual(caught.exception.evidence['scripts']['total'], 0)
+
     def test_truncated_actor_batch_is_rejected(self):
         control = NativeControl()
         request = control.request
