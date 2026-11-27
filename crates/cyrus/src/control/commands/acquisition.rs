@@ -287,16 +287,7 @@ impl Acquisition<'_> {
             {
                 return Err("replay clock origin requires update0 before input, schedule, frame or prior setup".into());
             }
-            let ready = *scene.state.get() == cyrus_game::AppState::InGame
-                && scene.current.world == Some(world.world)
-                && scene.prepared.as_deref().is_some_and(|prepared| {
-                    prepared.world == Some(world.world)
-                        && scene
-                            .ready_scene
-                            .as_deref()
-                            .is_some_and(|ready| ready.0 == prepared.animations)
-                });
-            if !ready {
+            if !scene.is_ready_world(world.world) {
                 return Err(format!(
                     "world {} replay clock origin requires completed scene readiness",
                     world.world

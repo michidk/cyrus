@@ -379,6 +379,7 @@ fn replay_origin_rejects_nonreplay_unheld_unready_and_accepted_input() {
 #[test]
 fn replay_origin_rejects_a_world_after_its_first_body() {
     let mut app = trace_app();
+    app.insert_resource(State::new(cyrus_game::AppState::InGame));
     app.insert_resource(super::ReplayStep(std::time::Duration::from_millis(40)));
     app.insert_resource(cyrus_script::script::ReplayHold(true));
     app.insert_resource(super::ReplayEntryHold);
