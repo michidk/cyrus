@@ -340,3 +340,21 @@ This acquisition path requires actual callback/admission ordering; elapsed frame
 host time alone does not establish digital mixer phase.
 
 Control `state.entry` publishes observed New Game route provenance only with a ready presentation and matching fresh live script world and marker. It resolves the installed WORLD.INI map label independently of numeric request aliases and excludes restored registries. Direct scene controls clear it. The paired native adapter retains the initial entry independently of original expected values and includes later entry observations with its absolute RNG/clock history; missing provenance remains unavailable.
+
+Control `state.clock.bios_sample` reports the actual unsigned raw BIOS sample
+cached by the native simulation clock. At a held completed-body boundary it is
+the sample supplied to ordinary combat, distinct from elapsed BIOS intervals,
+Q8 movement scale and the saveable clock continuation. Inspection does not
+advance or rebase it. Matching effective intervals alone does not establish
+matching absolute combat phase. Native actor inspection additionally retains
+`combat_pacing` at ordinary combat entry and before defence selection.
+
+The replay-only `set_replay_clock_origin` command binds a measured original BIOS
+origin to the current ready, held update0 generation before control input. It
+compares the expected generation, update and sample before rebasing only the raw
+clock baseline. The acknowledgement and later state reads report the actual
+sample and retained timing continuation. Setup is unavailable after accepted
+input, a scheduled frame, an ordinary body, or prior setup in that generation.
+Aligned recorded frames require observed BIOS intervals, including zero; they
+cannot silently switch back to synthetic elapsed-time sampling. See the
+[control contract](../cyrus-control/README.md) for fields and rejection rules.

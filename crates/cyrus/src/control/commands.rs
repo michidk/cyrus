@@ -132,7 +132,7 @@ impl Controls<'_, '_> {
             ),
             CommandGroup::Acquisition => {
                 self.acquisition
-                    .handle(command, reply, commands, &self.scene, &self.gameplay)
+                    .handle(command, reply, commands, &mut self.scene, &self.gameplay)
             }
         }
     }
@@ -200,6 +200,7 @@ impl From<&Command> for CommandGroup {
             | Command::TracePlayer { .. }
             | Command::ScheduleInput { .. }
             | Command::ReplayFrame { .. }
+            | Command::SetReplayClockOrigin { .. }
             | Command::AcquireInput { .. }
             | Command::Input { .. } => Self::Acquisition,
         }

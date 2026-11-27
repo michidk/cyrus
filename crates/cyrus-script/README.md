@@ -312,3 +312,15 @@ production host interface. Attribute seeds use the existing `set_actor_attribute
 operation instead of a test hook.
 
 The armed player controller samples opponent proximity before keyed combat handling. An admitted chance probe temporarily targets self, evaluates the nearest eligible attacker and clears the target; it does not select an animation or combat action. The shared random stream and temporary target lifetime follow preservation's [armed proximity sampling](https://michidk.github.io/redguard-preservation/engine/player.html#armed-proximity-sampling).
+
+Native actor inspection includes `combat_pacing` for the last ordinary nonplayer
+combat entry, updated again when it reaches defence selection. It retains the actual cached raw BIOS sample,
+allocation index, signed wrapping sum and remainders, RNG state at the observed entry,
+and the selection's action/distance/gate inputs. Update and world-loop counters
+identify when the sample was consumed; a body that returns before selection has null selection inputs, while a body
+that never enters combat retains the older observation. The independently observed target action is separate from the selector's lazily
+queried target inputs, which retain their inert values when unused.
+Invalid signed divisions are null, distinct from a zero remainder. These read-only
+observations are excluded from saves and are not reconstructed from effective
+BIOS intervals or the clock after the body. The absolute pacing rule is documented
+in [preservation](https://github.com/michidk/redguard-preservation/commit/a95064e504b1b0eddad849bdc90785bf24c88e47).

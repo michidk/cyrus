@@ -863,3 +863,103 @@ fn ordinary_defence_selected_starter_reuses_live_executor_without_target_queries
     assert_eq!(random.state(), 42);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
+
+#[test]
+fn ordinary_defence_inspection_retains_actual_signed_clock_phase_without_changing_state() {
+    let mut world = counter_fixture_state(false, true, |saved| {
+        let combat = &mut saved["actors"][0]["control"]["combat"];
+        combat["action"] = 7.into();
+        combat["allocation_index"] = 1.into();
+        combat["decision"]["move_selector"] = 2.into();
+        combat["decision"]["defence_counter"] = 2.into();
+        combat["decision"]["defence_pacing"] = 2.into();
+        combat["target"] = serde_json::Value::Null;
+    });
+    let before = world.inspect(0, 1)["actors"][0]["control"].clone();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    run_ordinary_defence(&mut world, -4, &mut random).unwrap();
+    let inspected = world.inspect(0, 1);
+    let phase = &inspected["actors"][0]["combat_pacing"];
+    assert_eq!(phase["cached_bios_sample"], u32::MAX - 3);
+    assert_eq!(phase["allocation_index"], 1);
+    assert_eq!(phase["selection"]["pacing_sum"], -3);
+    assert_eq!(phase["counter_remainder"], -1);
+    assert_eq!(phase["pacing_remainder"], -1);
+    assert_eq!(phase["selection"]["own_selected"], 7);
+    assert_eq!(phase["random_before"], 42);
+    assert_eq!(random.state(), 42);
+    assert_eq!(world.inspect(0, 1)["actors"][0]["control"], before);
+    assert_eq!(world.inspect(0, 1), inspected);
+}
+
+#[test]
+fn ordinary_defence_observation_distinguishes_absolute_phase_and_invalid_remainder() {
+    for (sample, allocation, counter, expected_sum, expected_remainder) in [
+        (1110847, 12, 29, 1110859, Some(14)),
+        (393315, 12, 29, 393327, Some(0)),
+        (i32::MAX, 1, 29, i32::MIN, Some(-8)),
+        (i32::MIN, 0, -1, i32::MIN, None),
+    ] {
+        let mut world = counter_fixture_state(false, true, |saved| {
+            let combat = &mut saved["actors"][0]["control"]["combat"];
+            combat["action"] = 7.into();
+            combat["allocation_index"] = allocation.into();
+            combat["decision"]["move_selector"] = 2.into();
+            combat["decision"]["defence_counter"] = counter.into();
+            combat["decision"]["defence_pacing"] = 0.into();
+            combat["target"] = serde_json::Value::Null;
+        });
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        let result = run_ordinary_defence(&mut world, sample, &mut random);
+        assert_eq!(result.is_ok(), expected_remainder.is_some());
+        let inspected = world.inspect(0, 1);
+        let phase = &inspected["actors"][0]["combat_pacing"];
+        assert_eq!(phase["cached_bios_sample"], sample as u32);
+        assert_eq!(phase["selection"]["pacing_sum"], expected_sum);
+        assert_eq!(
+            phase["counter_remainder"],
+            serde_json::json!(expected_remainder)
+        );
+        assert!(phase["pacing_remainder"].is_null());
+        assert_eq!(random.state(), 42);
+    }
+}
+
+#[test]
+fn ordinary_combat_entry_retains_the_consumed_sample_even_before_selection() {
+    use cyrus_script::script::ScriptInputs;
+    let mut world = counter_fixture_state(false, true, |saved| {
+        saved["actors"][0]["control"]["combat"]["allocation_index"] = 12.into();
+    });
+    let id = world.id(0).unwrap();
+    let player = world.id(1).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let result = world.run_ordinary_combat_decision(
+        id,
+        player,
+        ScriptInputs::default(),
+        &mut random,
+        &mut |_, _| Ok(()),
+    );
+    assert!(format!("{:#}", result.unwrap_err()).contains("BIOS-clock sample unavailable"));
+    assert!(world.inspect(0, 1)["actors"][0]["combat_pacing"].is_null());
+    // The diagnostic survives missing downstream services without requiring or
+    // manufacturing those services merely to publish a sample.
+    let _ = world.run_ordinary_combat_decision(
+        id,
+        player,
+        ScriptInputs {
+            combat_clock_sample: Some(1110847),
+            ..Default::default()
+        },
+        &mut random,
+        &mut |_, _| Ok(()),
+    );
+    let inspected = world.inspect(0, 1);
+    let phase = &inspected["actors"][0]["combat_pacing"];
+    assert_eq!(phase["cached_bios_sample"], 1110847);
+    assert_eq!(phase["allocation_index"], 12);
+    assert_eq!(phase["pacing_sum"], 1110859);
+    assert!(phase["selection"].is_null());
+    assert_eq!(world.inspect(0, 1), inspected);
+}

@@ -407,3 +407,37 @@ fn direct_same_world_entry_cannot_inherit_retail_provenance() {
         "direct same-world entry must not inherit retail provenance"
     );
 }
+
+#[test]
+fn state_retains_actual_unsigned_bios_sample_without_advancing_clock() {
+    use cyrus_script::clock::SimulationClock;
+    let mut app = app();
+    let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+        normal_frame_rate: 12,
+        min_frame_rate: 6,
+        max_frame_rate: 300,
+        use_smooth_fps: false,
+        use_smooth_divisor: false,
+    })
+    .unwrap();
+    clock.advance(1110847);
+    let before = serde_json::to_value(clock.snapshot()).unwrap();
+    app.insert_resource(clock);
+    let (tx, rx) = channel();
+    app.insert_resource(Inbox(Mutex::new(rx)));
+    for id in [1, 2] {
+        let (reply, result) = channel();
+        tx.send(Pending {
+            request: Request {
+                id,
+                cmd: Command::State,
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        let state = result.try_recv().unwrap().result.unwrap();
+        assert_eq!(state["clock"]["bios_sample"], 1110847);
+        assert_eq!(state["clock"]["continuation"], before);
+    }
+}

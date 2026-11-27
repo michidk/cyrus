@@ -109,3 +109,19 @@ of BIOS/game time; they do not set source cursors, statuses or task state. Inval
 geometry, non-silent hosts and reconfiguration during playback reject the request.
 The acquisition must preserve callback order relative to source admission and
 ordinary updates; this interface does not infer interior events from frame time.
+
+`set_replay_clock_origin` establishes an observed absolute BIOS baseline once per
+world generation before replay input. Supply `generation`, `expected_update: 0`,
+`expected_bios_sample` from current state, and the measured unsigned `bios_sample`.
+The native host requires replay mode, a ready InGame world held at update0, no
+accepted input/schedule/frame or previous setup for that generation, and matching
+identity/sample. Rejection preserves the clock and does not consume setup.
+The reply contains `generation`, `ordinary_update`, `previous_bios_sample`, the
+actual current `bios_sample`, and unchanged clock `continuation`. Only the raw
+baseline changes; RNG, combat and timing accumulators are retained. Repeated
+state reads observe that same baseline. Subsequent aligned `replay_frame` calls
+require explicit `elapsed_bios_ticks`; their unsigned addition wraps modulo
+2^32. Synthetic omitted intervals cannot establish absolute phase and are
+rejected for a generation with an explicit origin. Normal replay and ordinary
+gameplay retain their existing timing policy. The caller must provide the
+measured original origin and intervals; the host does not infer either.

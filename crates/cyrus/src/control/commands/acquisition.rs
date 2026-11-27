@@ -7,6 +7,7 @@ pub(super) struct Acquisition<'w> {
     pub(super) taps: ResMut<'w, TapRelease>,
     pub(super) frames: Res<'w, bevy::diagnostic::FrameCount>,
     pub(super) replay_step: Option<Res<'w, ReplayStep>>,
+    pub(super) replay_hold: Option<Res<'w, cyrus_script::script::ReplayHold>>,
     pub(super) rendered_actor_pending: Option<Res<'w, rendered_actor::PendingRenderedActor>>,
     pub(super) effect_geometry_pending: Option<Res<'w, effect_geometry::PendingEffectGeometry>>,
     pub(super) input_scheduler: ResMut<'w, input_schedule::InputScheduler>,
@@ -20,7 +21,7 @@ impl Acquisition<'_> {
         command: Command,
         request: Reply,
         commands: &mut Commands,
-        scene: &Scene,
+        scene: &mut Scene,
         gameplay: &Gameplay,
     ) -> Outcome {
         match command {
@@ -43,13 +44,16 @@ impl Acquisition<'_> {
             command @ Command::ScheduleInput { .. } => {
                 self.schedule_input(command, request, commands, gameplay)
             }
+            command @ Command::SetReplayClockOrigin { .. } => {
+                self.set_replay_clock_origin(command, scene, gameplay)
+            }
             command @ Command::ReplayFrame { .. } => {
                 self.replay_frame(command, request, commands, scene, gameplay)
             }
             command @ Command::AcquireInput { .. } => {
                 self.acquire_input(command, request, commands, gameplay)
             }
-            command @ Command::Input { .. } => self.input(command),
+            command @ Command::Input { .. } => self.input(command, gameplay),
             _ => unreachable!("command routed to the wrong acquisition handler"),
         }
     }
@@ -244,6 +248,71 @@ impl Acquisition<'_> {
         })
     }
 
+    fn set_replay_clock_origin(
+        &mut self,
+        command: Command,
+        scene: &mut Scene,
+        gameplay: &Gameplay,
+    ) -> Outcome {
+        let Command::SetReplayClockOrigin {
+            generation,
+            expected_update,
+            expected_bios_sample,
+            bios_sample,
+        } = command
+        else {
+            unreachable!("origin command routing");
+        };
+        Outcome::Reply((|| {
+            if self.replay_step.is_none() || !self.replay_hold.as_deref().is_some_and(|hold| hold.0)
+            {
+                return Err("replay clock origin requires a held replay world".into());
+            }
+            let world = gameplay
+                .script_actors
+                .as_deref()
+                .and_then(|actors| actors.current.as_ref())
+                .ok_or("replay clock origin requires a current world")?;
+            if world.generation() != generation || world.ordinary_updates() != expected_update {
+                return Err(format!(
+                    "replay clock origin stale world/update: expected {generation}/{expected_update}, current {}/{}",
+                    world.generation(),
+                    world.ordinary_updates()
+                ));
+            }
+            if expected_update != 0
+                || !self.input_scheduler.origin_available(generation)
+                || self.keys.get_pressed().next().is_some()
+                || !self.taps.0.is_empty()
+            {
+                return Err("replay clock origin requires update0 before input, schedule, frame or prior setup".into());
+            }
+            if !scene.is_ready_world(world.world) {
+                return Err(format!(
+                    "world {} replay clock origin requires completed scene readiness",
+                    world.world
+                ));
+            }
+            let clock = scene
+                .clock
+                .as_deref_mut()
+                .ok_or("replay clock origin requires a clock")?;
+            if clock.bios_sample() != expected_bios_sample {
+                return Err(format!(
+                    "replay clock origin stale BIOS sample: expected {expected_bios_sample}, current {}",
+                    clock.bios_sample()
+                ));
+            }
+            clock.rebase(bios_sample);
+            self.input_scheduler.note_origin_setup(generation);
+            Ok(
+                json!({"generation": generation, "ordinary_update": expected_update,
+                "previous_bios_sample": expected_bios_sample, "bios_sample": clock.bios_sample(),
+                "continuation": clock.snapshot()}),
+            )
+        })())
+    }
+
     fn replay_frame(
         &mut self,
         command: Command,
@@ -267,6 +336,16 @@ impl Acquisition<'_> {
                 elapsed_bios_ticks,
                 elapsed_host_nanos,
             } => {
+                if elapsed_bios_ticks.is_none()
+                    && script_actors
+                        .as_deref()
+                        .and_then(|actors| actors.current.as_ref())
+                        .is_some_and(|world| input_scheduler.has_origin(world.generation()))
+                {
+                    return Outcome::Reply(Err(
+                        "an aligned replay frame requires observed elapsed_bios_ticks".into(),
+                    ));
+                }
                 let prepared = recorded_frame(
                     replay_step.is_some(),
                     script_actors.as_deref(),
@@ -332,7 +411,7 @@ impl Acquisition<'_> {
         })
     }
 
-    fn input(&mut self, command: Command) -> Outcome {
+    fn input(&mut self, command: Command, gameplay: &Gameplay) -> Outcome {
         let Self {
             keys,
             taps,
@@ -345,6 +424,13 @@ impl Acquisition<'_> {
             }
             Command::Input { key, action } => match parse_key(&key) {
                 Some(code) => {
+                    input_scheduler.note_control_input(
+                        gameplay
+                            .script_actors
+                            .as_deref()
+                            .and_then(|actors| actors.current.as_ref())
+                            .map(|world| world.generation()),
+                    );
                     match action {
                         InputAction::Press => keys.press(code),
                         InputAction::Release => keys.release(code),

@@ -13,10 +13,23 @@ pub(super) struct Scene<'w> {
     pub(super) prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     pub(super) ready_scene: Option<Res<'w, cyrus_render::ReadyScene>>,
     pub(super) marker: Option<ResMut<'w, cyrus_script::player::placement::MarkerEntry>>,
-    pub(super) clock: Option<Res<'w, cyrus_script::clock::SimulationClock>>,
+    pub(super) clock: Option<ResMut<'w, cyrus_script::clock::SimulationClock>>,
 }
 
 impl Scene<'_> {
+    /// Readiness is bound to the current world and its prepared animation asset.
+    pub(super) fn is_ready_world(&self, world: u32) -> bool {
+        *self.state.get() == cyrus_game::AppState::InGame
+            && self.current.world == Some(world)
+            && self.prepared.as_deref().is_some_and(|prepared| {
+                prepared.world == Some(world)
+                    && self
+                        .ready_scene
+                        .as_deref()
+                        .is_some_and(|ready| ready.0 == prepared.animations)
+            })
+    }
+
     pub(super) fn handle(&mut self, command: Command, commands: &mut Commands) -> Outcome {
         let Self {
             scene_request,

@@ -7,6 +7,8 @@ use std::sync::mpsc::Sender;
 #[derive(Resource, Default)]
 pub(super) struct InputScheduler {
     active: Option<Attempt>,
+    origin_locked_generation: Option<u64>,
+    origin_set_generation: Option<u64>,
 }
 
 struct Attempt {
@@ -96,6 +98,7 @@ impl InputScheduler {
         if !held.is_empty() {
             return Err("input schedule must release every pressed key".into());
         }
+        self.origin_locked_generation = Some(generation);
         self.active = Some(Attempt {
             id,
             reply,
@@ -163,6 +166,26 @@ impl InputScheduler {
             });
         }
         Ok(())
+    }
+
+    pub(super) fn note_control_input(&mut self, generation: Option<u64>) {
+        if let Some(generation) = generation {
+            self.origin_locked_generation = Some(generation);
+        }
+    }
+
+    pub(super) fn origin_available(&self, generation: u64) -> bool {
+        self.active.is_none()
+            && self.origin_locked_generation != Some(generation)
+            && self.origin_set_generation != Some(generation)
+    }
+
+    pub(super) fn has_origin(&self, generation: u64) -> bool {
+        self.origin_set_generation == Some(generation)
+    }
+
+    pub(super) fn note_origin_setup(&mut self, generation: u64) {
+        self.origin_set_generation = Some(generation);
     }
 
     pub(super) fn pending(&self) -> bool {

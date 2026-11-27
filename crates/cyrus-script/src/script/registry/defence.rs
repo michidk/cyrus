@@ -7,7 +7,67 @@ use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 use cyrus_soup::{AnimationGroup, Attribute};
 
+/// Last ordinary combat entry or defence selection's actual inputs. Inspection never recomputes them
+/// from the next clock sample or elapsed intervals. Transient and excluded from saves.
+#[derive(Debug, serde::Serialize)]
+pub(super) struct DefencePacingObservation {
+    ordinary_update: u64,
+    world_loop_frame: u32,
+    cached_bios_sample: u32,
+    allocation_index: i32,
+    random_before: u32,
+    pacing_sum: i32,
+    receiver_action: i32,
+    target: Option<ScriptActorId>,
+    observed_target_action: Option<i32>,
+    defence_counter: i32,
+    /// None means the signed division would fault, not a zero remainder.
+    counter_remainder: Option<i32>,
+    pacing_remainder: Option<i32>,
+    selection: Option<crate::script::decision::DefenceSelectionInput>,
+}
+
 impl ScriptWorld {
+    pub(super) fn observe_combat_pacing(
+        &mut self,
+        index: usize,
+        cached_bios_sample: u32,
+        random_before: u32,
+        selection: Option<crate::script::decision::DefenceSelectionInput>,
+    ) {
+        let Some(combat) = self.actors[index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+        else {
+            return;
+        };
+        let sum = (cached_bios_sample as i32).wrapping_add(combat.allocation_index);
+        self.defence_pacing.insert(
+            index,
+            DefencePacingObservation {
+                ordinary_update: self.ordinary_updates,
+                world_loop_frame: self.globals.world_loop_frame,
+                cached_bios_sample,
+                allocation_index: combat.allocation_index,
+                random_before,
+                pacing_sum: sum,
+                receiver_action: combat.action,
+                target: combat.target,
+                observed_target_action: combat
+                    .target
+                    .and_then(|target| self.resolve(target).ok())
+                    .and_then(|target| self.actors[target].control.as_ref())
+                    .and_then(|control| control.combat.as_ref())
+                    .map(|target| target.action),
+                defence_counter: combat.decision.defence_counter,
+                counter_remainder: sum.checked_rem(combat.decision.defence_counter),
+                pacing_remainder: sum.checked_rem(combat.decision.defence_pacing),
+                selection,
+            },
+        );
+    }
+
     /// Read the current motion's zero-based counter-attack reference.
     /// Missing combat or action -1/nine returns zero without resolving move metadata.
     /// Active actions use the retained defence attack slot and current motion, not
@@ -248,6 +308,15 @@ impl ScriptWorld {
                     }
                 }
             }
+            // Retain the inputs actually passed to this call, before a synchronous starter
+            // can replace the action. Raw cached BIOS, allocation and signed wrapping sum
+            // follow preservation's absolute combat pacing rule (a95064e).
+            self.observe_combat_pacing(
+                index,
+                sample.tick_counter as u32,
+                random.state(),
+                Some(selection),
+            );
             self.run_combat_defence_selection(
                 index,
                 id,
