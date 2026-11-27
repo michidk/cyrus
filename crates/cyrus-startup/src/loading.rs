@@ -157,7 +157,7 @@ fn begin_requested_world(
     let (world, pictures) = if let Some(saved) = saved.as_ref() {
         (saved.world, std::slice::from_ref(&saved.screen))
     } else if *request == book.new_game.world.to_string() {
-        (book.new_game.world, &book.new_game.loading)
+        (book.new_game.world, book.new_game.loading.as_slice())
     } else {
         if artwork
             .pending
@@ -222,7 +222,7 @@ fn begin_requested_world(
             }
             return;
         };
-        (artwork.world, &artwork.pictures)
+        (artwork.world, artwork.pictures.as_slice())
     };
     commands.insert_resource(cyrus_world::lifecycle::SceneRequest(request.clone()));
     commands.insert_resource(cyrus_world::lifecycle::ReloadScene);
