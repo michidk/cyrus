@@ -151,6 +151,52 @@ class DriverLogic(unittest.TestCase):
         raw["actors"].append(opponent)
         self.assertTrue(fight.view(raw)["rlisted"])
 
+    def test_view_retains_current_move_selector_independently_of_pending_move(self):
+        player = actor(1, 102, 100, selected=True) | {
+            'combat_state': {'motion': 2}, 'retained_combat': {'decision': {'move_selector': 1}}}
+        opponent = actor(55, 99, 250) | {
+            'combat_state': {'motion': -1}, 'retained_combat': {'decision': {'move_selector': 0}}}
+        raw = {'actors': [player, opponent], 'counters': {'mainloop_frame': 1, 'fps': 12}}
+        observed = fight.view(raw)
+        self.assertEqual(observed['player_move_selector'], 1)
+        self.assertEqual(observed['opponent_move_selector'], 0)
+        del player['retained_combat']
+        self.assertIsNone(fight.view(raw)['player_move_selector'])
+
+    def test_attack_admission_uses_command_cursor_and_stops_at_first_denied_gate(self):
+        state = dict(player_combat=dict(action=0, reverse=0, flags=1),
+                     player_command_cursor=6, real_frame=7)
+        motion = dict(first_collide_frame=7, collide_duration=2)
+        self.assertEqual(fight.attack_admission_sample(state, motion)['collision_window'], 'rejected_by_state')
+        state['player_command_cursor'] = 7
+        self.assertTrue(all(v == 'passed_by_state' for v in fight.attack_admission_sample(state, motion).values()))
+        state['player_combat']['flags'] = 4
+        gates = fight.attack_admission_sample(state, motion)
+        self.assertEqual(gates['attack_intent'], 'rejected_by_state')
+        self.assertEqual(gates['collision_window'], 'not_reached')
+        state['player_combat'].update(reverse=1, flags=60)
+        gates = fight.attack_admission_sample(state, motion)
+        self.assertEqual(gates['forward_playback'], 'rejected_by_state')
+        self.assertEqual(gates['attack_intent'], 'not_reached')
+
+    def test_attack_windows_retain_extended_wrapping_and_missing_state_rules(self):
+        state = dict(player_combat=dict(action=0, reverse=0, flags=1), player_command_cursor=10)
+        motion = dict(first_collide_frame=7, collide_duration=2)
+        self.assertEqual(fight.attack_admission_sample(state, motion)['collision_window'], 'passed_by_state')
+        state['player_combat']['flags'] |= 32
+        self.assertEqual(fight.attack_admission_sample(state, motion)['collision_window'], 'rejected_by_state')
+        state['player_command_cursor'] = 2147483647
+        motion.update(first_collide_frame=2147483647, collide_duration=1)
+        self.assertEqual(fight.attack_admission_sample(state, motion)['collision_window'], 'rejected_by_state')
+        state['player_combat']['flags'] = 1
+        state['player_command_cursor'] = 0
+        self.assertEqual(fight.attack_admission_sample(state, motion)['collision_window'], 'passed_by_state')
+        del state['player_combat']['reverse']
+        self.assertEqual(fight.attack_admission_sample(state, motion)['forward_playback'], 'unobserved')
+        state['player_combat'].update(reverse=0, flags=1)
+        motion.update(first_collide_frame=7, collide_duration=0)
+        self.assertEqual(fight.attack_admission_sample(state, motion)['collision_window'], 'rejected_by_state')
+
     def test_view_retains_contact_and_defence_observations_without_inferring_from_groups(self):
         player = actor(1, 102, 100, selected=True) | {
             "command_frame": 7, "combat_state": {"flags": 33, "reverse": 0}}

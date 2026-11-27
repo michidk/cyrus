@@ -198,6 +198,9 @@ def view(state):
                            if opponent and "query_spatial" in opponent else None),
         "opponent_combat": opponent.get("combat_state") if opponent else None,
         "player_command_cursor": player.get("command_frame"),
+        "player_move_selector": ((player.get("retained_combat") or {}).get("decision") or {}).get("move_selector"),
+        "opponent_move_selector": (((opponent.get("retained_combat") or {}).get("decision") or {}).get("move_selector")
+                                   if opponent else None),
         "opponent_command_cursor": opponent.get("command_frame") if opponent else None,
         "rhidden": opponent.get("hidden") if opponent else None,
         # A combat structure is allocated before admission. Combat entry writes
@@ -384,6 +387,50 @@ class GateEvidence(Enum):
     REJECTED = 'rejected_by_state'
     UNOBSERVED = 'unobserved'
     NOT_REACHED = 'not_reached'
+
+
+def attack_admission_sample(state, current_motion):
+    """Project the first denied attack-processing gate from bound original state.
+
+    Uses the signed command cursor, not the displayed frame. The installed
+    current motion supplies collision timing. Passing these gates establishes
+    only processing admission; candidate contact, defence and health are separate.
+    Rules: preservation engine/SOUP.md, Attack-processing admission.
+    """
+    combat = state.get('player_combat') or {}
+    signed = lambda value: type(value) is int and -(1 << 31) <= value < (1 << 31)
+    wrap = lambda value: (value + (1 << 31)) % (1 << 32) - (1 << 31)
+    def action():
+        value = combat.get('action')
+        return value not in (-1, 9) if signed(value) else None
+    def playback():
+        value = combat.get('reverse')
+        return value == 0 if type(value) is int and 0 <= value <= 255 else None
+    def intent():
+        value = combat.get('flags')
+        return bool(value & 1) if type(value) is int and 0 <= value <= 255 else None
+    def window():
+        cursor, start = state.get('player_command_cursor'), current_motion.get('first_collide_frame')
+        if not signed(cursor) or not signed(start):
+            return None
+        duration = current_motion.get('collide_duration')
+        if not signed(duration):
+            return None
+        end = wrap(start + duration)
+        if start <= cursor < end:
+            return True
+        return duration != 0 and cursor >= end and not combat['flags'] & 0x20
+    gates, reached = {}, True
+    for name, query in [('active_attacker', action), ('forward_playback', playback),
+                        ('attack_intent', intent), ('collision_window', window)]:
+        status = GateEvidence.NOT_REACHED
+        if reached:
+            value = query()
+            status = (GateEvidence.UNOBSERVED if value is None else
+                      GateEvidence.PASSED if value else GateEvidence.REJECTED)
+            reached = value is True
+        gates[name] = status.value
+    return gates
 
 
 def defence_admission_sample(state, current_motion):

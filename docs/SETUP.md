@@ -1482,6 +1482,15 @@ share the caller's deadline and a bounded per-update stop budget. Unknown stops
 and callback errors reject the run, leaving the process stopped for key release.
 Guest bindings and call-frame/actor identity validation stay in local tooling.
 
+`attack_admission_sample` reports the ordered action, forward-playback, intent
+and collision-window state gates. It uses the observed signed command cursor and
+the installed current motion's collision timing, including the extended window;
+the displayed animation frame does not substitute for that cursor. The fight
+view retains each actor's current move-table selector separately from pending
+move indices, so a queued combo does not select the wrong motion's metadata.
+Missing bindings stop the projection as unobserved. Passing processing admission
+alone establishes neither contact nor health loss.
+
 `defence_admission_sample` reports active action, matching pending defence,
 current-motion command window and counter intent in service order. A missing
 binding remains unobserved; later gates are not reached. Passing those state
