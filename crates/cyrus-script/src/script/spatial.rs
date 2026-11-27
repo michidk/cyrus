@@ -55,6 +55,10 @@ pub struct ActorSpatial {
     pub water_rollback_position: Option<[i32; 3]>,
     /// Previous local angles after snapshot; propagated deltas after family refresh.
     pub angle_history: [i32; 3],
+    /// Local angles already applied to the stored matrix, independent of attached caches.
+    /// None preserves the baseline of native snapshots written before this owner existed.
+    #[serde(skip_serializing)]
+    matrix_angles: Option<[i32; 3]>,
     /// Angles the actor was created with; `ResetRotation` restores axes from them.
     pub initial_angles: [i32; 3],
     pub parent: Option<usize>,
@@ -210,6 +214,7 @@ impl SpatialWorld {
                 previous_local_position: local.position,
                 water_rollback_position: None,
                 angle_history: original.angles,
+                matrix_angles: None,
                 initial_angles: original.angles,
                 parent,
                 linked_position: None,
@@ -323,6 +328,7 @@ impl SpatialWorld {
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: angles.map(i32::from),
+            matrix_angles: None,
             initial_angles: angles.map(i32::from),
             parent: None,
             linked_position: None,
@@ -389,6 +395,7 @@ impl SpatialWorld {
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: angles.map(i32::from),
+            matrix_angles: None,
             initial_angles: angles.map(i32::from),
             parent: None,
             linked_position: None,
@@ -661,6 +668,7 @@ impl ActorSpatial {
         self.local.position = effective.position;
         self.local.angles = effective.angles;
         self.local.matrix = effective.matrix;
+        self.matrix_angles = Some(effective.angles);
         Ok(true)
     }
 
@@ -750,15 +758,20 @@ impl ActorSpatial {
     /// deltas. Include the transition out of bank so its last matrix cannot retain tilt.
     /// Preservation's player orientation rules give banked players a separate rebuild path.
     pub(crate) fn refresh_player_transform(&mut self) -> Result<()> {
-        let previous_roll = self
-            .effective
-            .map_or(self.angle_history[2], |pose| pose.angles[2]);
+        let previous_roll = self.matrix_angles.map_or_else(
+            || {
+                self.effective
+                    .map_or(self.angle_history[2], |pose| pose.angles[2])
+            },
+            |angles| angles[2],
+        );
         if self.local.angles[2] & 2047 != 0 || previous_roll & 2047 != 0 {
             ensure!(
                 self.parent.is_none(),
                 "player matrix refresh requires an unattached actor"
             );
             self.local.matrix = Matrix::orientation(self.local.wrapped_angles());
+            self.matrix_angles = Some(self.local.angles);
             self.effective = Some(self.local);
             Ok(())
         } else {
@@ -769,14 +782,18 @@ impl ActorSpatial {
     /// Refresh an ordinary unattached matrix from its last published orientation.
     /// Repeated refreshes in one update consume only new angle changes; the ordinary
     /// update's angle snapshot remains available for axis locks and family deltas.
+    /// Original imports seed the matrix baseline from local previous angles, per
+    /// preservation player.md, "Incremental orientation refresh". Attached angles
+    /// are a separate retained cache and cannot establish this baseline.
     pub fn refresh_transform(&mut self) -> Result<()> {
         ensure!(
             self.parent.is_none(),
             "attached matrices require a family refresh"
         );
-        let matrix_angles = self
-            .effective
-            .map_or(self.angle_history, |pose| pose.angles);
+        let matrix_angles = self.matrix_angles.unwrap_or_else(|| {
+            self.effective
+                .map_or(self.angle_history, |pose| pose.angles)
+        });
         match self.rotation_mode {
             0 if self.local.angles == matrix_angles => {}
             0 => self
@@ -791,6 +808,7 @@ impl ActorSpatial {
             }
             mode => anyhow::bail!("actor rotation mode {mode} unsupported"),
         }
+        self.matrix_angles = Some(self.local.angles);
         self.effective = Some(self.local);
         Ok(())
     }
@@ -891,6 +909,7 @@ impl ActorSpatial {
         } else {
             Matrix::orientation(self.local.wrapped_angles())
         };
+        self.matrix_angles = Some(self.local.angles);
         if let Some(effective) = &mut self.effective {
             if self.parent.is_none() {
                 *effective = self.local;
@@ -1142,6 +1161,8 @@ struct SavedSpatialActor {
     previous_local_position: [i32; 3],
     water_rollback_position: Option<[i32; 3]>,
     angle_history: [i32; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    matrix_angles: Option<[i32; 3]>,
     initial_angles: [i32; 3],
     parent: Option<usize>,
     linked_position: Option<[i32; 3]>,
@@ -1165,6 +1186,7 @@ impl From<&ActorSpatial> for SavedSpatialActor {
             previous_local_position: actor.previous_local_position,
             water_rollback_position: actor.water_rollback_position,
             angle_history: actor.angle_history,
+            matrix_angles: actor.matrix_angles,
             initial_angles: actor.initial_angles,
             parent: actor.parent,
             linked_position: actor.linked_position,
@@ -1264,6 +1286,7 @@ impl SpatialWorld {
                 previous_local_position: saved.previous_local_position,
                 water_rollback_position: saved.water_rollback_position,
                 angle_history: saved.angle_history,
+                matrix_angles: saved.matrix_angles,
                 initial_angles: saved.initial_angles,
                 parent: saved.parent,
                 linked_position: saved.linked_position,
@@ -1417,6 +1440,7 @@ impl ActorSpatial {
             previous_local_position: state.previous_position_q8,
             water_rollback_position: Some(state.water_rollback_position_q8),
             angle_history: state.previous_angles,
+            matrix_angles: Some(state.previous_angles),
             initial_angles: state.initial_angles,
             parent: None,
             linked_position: None,
@@ -1465,6 +1489,7 @@ mod tests {
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: [0; 3],
+            matrix_angles: None,
             initial_angles: [0; 3],
             parent: None,
             linked_position: None,

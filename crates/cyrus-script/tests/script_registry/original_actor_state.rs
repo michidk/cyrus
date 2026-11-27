@@ -181,3 +181,85 @@ fn imported_start_position_survives_native_snapshot_restoration() -> anyhow::Res
     );
     Ok(())
 }
+
+#[test]
+fn imported_local_matrix_refresh_is_independent_of_attached_angles() -> anyhow::Result<()> {
+    use cyrus_script::script::{WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.object_type = PlacementType::MODEL;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity()?;
+    let (mut world, data, _) = static_model_fixture(scripts.clone());
+    let id = world.id(0)?;
+    let mut object = synthetic_original_player([100, 200, 300]);
+    let identifier = world.actors()[id.index].runtime_identifier.unwrap();
+    object.object_id = i32::from(identifier as u16);
+    object.body[20..22].copy_from_slice(&identifier.to_le_bytes());
+    object.attributes = Some(*world.actors()[id.index].attributes().bytes());
+    for offset in [8, 12] {
+        object.body[offset..offset + 4].copy_from_slice(&(-1i32).to_le_bytes());
+    }
+    // Local and previous yaw name the stored matrix. The independent attached
+    // angle fields retain their allocation zeros.
+    for offset in [0x124, 0x154] {
+        object.body[offset..offset + 4].copy_from_slice(&512i32.to_le_bytes());
+    }
+    let matrix = cyrus_world::transform::Matrix::orientation([0, 512, 0]);
+    for (index, component) in matrix.0.into_iter().flatten().enumerate() {
+        object.body[0x51 + index * 4..0x55 + index * 4]
+            .copy_from_slice(&component.to_bits().to_le_bytes());
+    }
+    world.restore_original_actor_states(&[(id, &object)])?;
+    assert_eq!(world.spatial(id)?.effective.unwrap().angles, [0; 3]);
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        identity_memo: None,
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    // Both direct import and a native save made before the first refresh must
+    // retain the local matrix baseline independently of the attached cache.
+    let mut resumed = ScriptWorld::from_snapshot(
+        world.snapshot(&sources)?,
+        &sources,
+        WorldRestoreContext {
+            generation: 101,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )?;
+    for world in [&mut world, &mut resumed] {
+        let id = world.id(0)?;
+        world.snapshot_spatial(id)?;
+        world.refresh_transform(id)?;
+        assert_eq!(world.spatial(id)?.local.matrix, matrix);
+        world.refresh_transform(id)?;
+        assert_eq!(world.spatial(id)?.local.matrix, matrix);
+        let mut turning = serde_json::to_value(world.snapshot(&sources)?)?;
+        turning["spatial"]["actors"][0]["local"]["angles"][1] = 768.into();
+        let mut turned = ScriptWorld::from_snapshot(
+            serde_json::from_value(turning)?,
+            &sources,
+            WorldRestoreContext {
+                generation: 102,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )?;
+        let id = turned.id(0)?;
+        turned.refresh_transform(id)?;
+        assert_eq!(
+            turned.spatial(id)?.local.matrix.transform([0, 0, 256])?,
+            [-181, 0, -181]
+        );
+        let matrix = turned.spatial(id)?.local.matrix;
+        turned.refresh_transform(id)?;
+        assert_eq!(turned.spatial(id)?.local.matrix, matrix);
+    }
+    Ok(())
+}

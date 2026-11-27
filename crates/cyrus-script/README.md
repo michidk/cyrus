@@ -78,6 +78,9 @@ and `run_ordinary`; a missing host service returns a contextual error.
   [player.md](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md)
   and [hud.md](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md).
   Cite the section in the doc comment of the code you change, not here.
+- Original actor import retains the local matrix refresh baseline separately from
+  attached-angle caches. An unchanged restored pose keeps its stored matrix; real
+  subsequent turns apply once, including after a native snapshot round trip.
 - The first automatic-update failure is retained and logged once with world and
   contextual script error; repeated reports preserve the first cause.
 - Logic stays independent of presentation: screens and actors expose state and
