@@ -124,6 +124,7 @@ impl ScriptWorld {
         }
         self.prepare_original_combat_allocations(sources.animations, &combat_order)?;
         self.restore_original_actor_states(&bindings)?;
+        self.restore_original_actor_lists(&bindings)?;
         self.restore_original_combat(&bindings)?;
         let animated = bindings
             .iter()

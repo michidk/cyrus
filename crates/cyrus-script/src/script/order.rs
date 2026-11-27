@@ -1,4 +1,4 @@
-//! Fresh-world ordinary actor membership and cached view-window traversal.
+//! Ordinary actor membership and cached view-window traversal.
 use super::{ScriptActor, ScriptActorId, ScriptActorSource};
 use anyhow::Result;
 use cyrus_soup::Attribute;
@@ -67,6 +67,39 @@ impl ActorLists {
             traversal_prepared: false,
             selected: Vec::new(),
         })
+    }
+
+    /// Full load prepends restored ordinary actors in SMOB record order.
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn from_original_cells(
+        actors: &[ScriptActor],
+        entries: &[(usize, [i32; 3])],
+    ) -> Result<Self> {
+        let mut lists = Self::new(actors)?;
+        let expected = lists
+            .membership
+            .keys()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        lists.cells.clear();
+        lists.membership.clear();
+        for &(index, position) in entries {
+            anyhow::ensure!(
+                expected.contains(&index),
+                "saved cell actor {index}: wrong membership class"
+            );
+            let cell = [position[0], position[2]].map(|value| ((value >> 8) & 65535) / 512);
+            anyhow::ensure!(
+                lists.membership.insert(index, cell).is_none(),
+                "duplicate saved cell actor {index}"
+            );
+            lists.cells.entry(cell).or_default().insert(0, index);
+        }
+        anyhow::ensure!(
+            lists.membership.keys().copied().eq(expected),
+            "saved cell actor census differs from installed owners"
+        );
+        Ok(lists)
     }
 
     pub(super) fn retained_selected(&self) -> Option<&[ScriptActorId]> {

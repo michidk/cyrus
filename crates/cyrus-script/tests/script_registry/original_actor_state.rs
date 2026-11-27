@@ -270,3 +270,86 @@ fn set_imported_quarter_turn(
     }
     matrix
 }
+
+#[test]
+fn original_actor_lists_reinsert_restored_cells_in_record_order() -> anyhow::Result<()> {
+    let mut scripts = cache();
+    // Authored placement order and cells deliberately disagree with the save.
+    scripts.instances[0].map_position = [60000, 0, 60000];
+    scripts.instances[1].map_position = [61000, 0, 61000];
+    scripts.content_id = scripts.content_identity()?;
+    let mut world = ScriptWorld::prepare(&scripts, 19)?;
+    world.prepare_spatial()?;
+    let ids = [world.id(0)?, world.id(1)?];
+    let objects = ids.map(|id| {
+        let mut object = synthetic_original_player([1024 << 8, 0, 1024 << 8]);
+        for offset in [8, 12] {
+            object.body[offset..offset + 4].copy_from_slice(&(-1i32).to_le_bytes());
+        }
+        let runtime = world.actors()[id.index].runtime_identifier.unwrap();
+        object.object_id = i32::from(runtime as u16);
+        object.body[20..22].copy_from_slice(&runtime.to_le_bytes());
+        object.attributes = Some(*world.actors()[id.index].attributes().bytes());
+        object
+    });
+    let bindings = [(ids[1], &objects[1]), (ids[0], &objects[0])];
+    world.restore_original_actor_states(&bindings)?;
+    // Populate an old cached selection before replacing the lists.
+    world.ordinary_actors([60000, 60000])?;
+    world.restore_original_actor_lists(&bindings)?;
+    assert_eq!(world.ordinary_actors([1024, 1024])?, &ids);
+    let before = world.ordinary_actors([1024, 1024])?.to_vec();
+    for invalid in [vec![bindings[0]], vec![bindings[0], bindings[0]]] {
+        assert!(world.restore_original_actor_lists(&invalid).is_err());
+        assert_eq!(world.ordinary_actors([1024, 1024])?, before);
+    }
+    let mut wrong = objects[0].clone();
+    wrong.body[20..22].copy_from_slice(&999u16.to_le_bytes());
+    let mut excluded = objects[0].clone();
+    excluded.body[0x237] = 1;
+    for bad in [&wrong, &excluded] {
+        assert!(
+            world
+                .restore_original_actor_lists(&[(ids[1], &objects[1]), (ids[0], bad)])
+                .is_err()
+        );
+        assert_eq!(world.ordinary_actors([1024, 1024])?, before);
+    }
+    // A different restored cell changes row-major traversal, not save identity.
+    let mut earlier = objects[1].clone();
+    earlier.body[0xd3..0xd7].copy_from_slice(&(512i32 << 8).to_le_bytes());
+    let reordered = [(ids[1], &earlier), (ids[0], &objects[0])];
+    world.restore_original_actor_states(&reordered)?;
+    world.restore_original_actor_lists(&reordered)?;
+    assert_eq!(world.ordinary_actors([1024, 1024])?, &[ids[1], ids[0]]);
+    let stale = cyrus_script::script::ScriptActorId {
+        generation: 18,
+        ..ids[0]
+    };
+    assert!(
+        world
+            .restore_original_actor_lists(&[(ids[1], &earlier), (stale, &objects[0])])
+            .is_err()
+    );
+    assert_eq!(world.ordinary_actors([1024, 1024])?, &[ids[1], ids[0]]);
+    // An owned position-link cache supplies the insertion point, independently
+    // of the local coordinates. Detached cached storage must not do so.
+    let mut linked = objects[0].clone();
+    linked.body[0x21..0x25].copy_from_slice(&1u32.to_le_bytes());
+    let mut link = [0u8; 60];
+    link[..4].copy_from_slice(&objects[1].object_id.to_le_bytes());
+    for (axis, value) in [1024i32 << 8, 0, 0].into_iter().enumerate() {
+        link[16 + axis * 4..20 + axis * 4].copy_from_slice(&value.to_le_bytes());
+    }
+    linked.opaque_60 = Some(link);
+    let bindings = [(ids[1], &earlier), (ids[0], &linked)];
+    world.restore_original_actor_states(&bindings)?;
+    world.restore_original_actor_lists(&bindings)?;
+    assert_eq!(world.ordinary_actors([1024, 1024])?, &ids);
+    linked.opaque_60.as_mut().unwrap()[..4].copy_from_slice(&(-1i32).to_le_bytes());
+    let detached = [(ids[1], &earlier), (ids[0], &linked)];
+    world.restore_original_actor_states(&detached)?;
+    world.restore_original_actor_lists(&detached)?;
+    assert_eq!(world.ordinary_actors([1024, 1024])?, &[ids[1], ids[0]]);
+    Ok(())
+}

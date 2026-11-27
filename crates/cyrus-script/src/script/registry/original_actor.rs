@@ -6,6 +6,72 @@ use rgpre::import::savegame::{
 };
 
 impl ScriptWorld {
+    /// Rebuild ordinary cells after actor restoration, in serialized SMOB order.
+    ///
+    /// Bindings must retain file order and include every ordinary cell owner.
+    /// Cells use restored effective Q8 positions; insertion prepends each owner.
+    /// Persistent and separate installed lists remain independent. Validation is
+    /// atomic and runs no callbacks. See preservation SAVEGAME.md, world spatial
+    /// and family tables, and commit e799ac8d1107f34217c984d3f7fc6b595a4cbbf4.
+    pub fn restore_original_actor_lists(
+        &mut self,
+        bindings: &[(ScriptActorId, &SaveObject)],
+    ) -> Result<()> {
+        let mut seen = BTreeSet::new();
+        let mut cells = Vec::new();
+        for &(id, object) in bindings {
+            let index = self.resolve(id)?;
+            let context = format!(
+                "world {} original actor {} saved owner {} spatial list",
+                self.world, index, object.object_id
+            );
+            anyhow::ensure!(seen.insert(index), "{context}: duplicate receiver");
+            let actor = &self.actors[index];
+            let expected = match &actor.source {
+                ScriptActorSource::Player => -2,
+                ScriptActorSource::AlternatePlayer => -3,
+                ScriptActorSource::Camera => 2,
+                ScriptActorSource::Map(placement)
+                    if !placement.object_type.has_separate_record() =>
+                {
+                    i32::from(
+                        actor
+                            .runtime_identifier
+                            .context("original spatial runtime identity absent")?
+                            as u16,
+                    )
+                }
+                _ => anyhow::bail!("{context}: unsupported allocation"),
+            };
+            anyhow::ensure!(
+                object.object_id == expected
+                    && actor.runtime_identifier.map(|value| value as u16)
+                        == Some(object.runtime_identifier()),
+                "{context}: saved identity differs from installed receiver"
+            );
+            if let ScriptActorSource::Map(placement) = &actor.source {
+                let saved = object.actor_state().with_context(|| context.clone())?;
+                anyhow::ensure!(
+                    (saved.controller.active == 0) == (placement.active == 0),
+                    "{context}: changed persistent membership unsupported"
+                );
+                if placement.active == 0 {
+                    let position = if actor.attributes()[Attribute::Slave] == 0 {
+                        saved.spatial.position_q8
+                    } else {
+                        saved.spatial.attached_position_q8
+                    };
+                    let position = self.spatial(id)?.linked_position().unwrap_or(position);
+                    cells.push((index, position));
+                }
+            }
+        }
+        let lists = super::super::order::ActorLists::from_original_cells(&self.actors, &cells)
+            .with_context(|| format!("world {} original spatial lists", self.world))?;
+        self.actor_lists = Some(lists);
+        Ok(())
+    }
+
     /// Restore retained actor spatial/controller fields as one component transaction.
     ///
     /// Saved identities must match independently initialized native allocations.

@@ -345,3 +345,11 @@ reordered entries reject without applying that endpoint. This restricted replay
 hook does not establish ordering of unobserved raw-clock consumers. The
 [decision-copy lifetime](https://github.com/michidk/redguard-preservation/commit/97145ce92bedb037eba892c85f45f7f24c582a04)
 is documented in preservation.
+
+Complete original-world composition rebuilds ordinary spatial cells from restored
+positions in SMOB record order. Each insertion prepends, so same-cell order is
+the reverse of file order. Authored cell coordinates and serialized list links
+do not replace this load operation. The component import validates the complete
+ordinary-owner census before replacing lists, clears cached traversal and retains
+independent persistent/separate lists. Changed persistent membership rejects
+explicitly. This follows preservation's [full object load](https://github.com/michidk/redguard-preservation/commit/e799ac8d1107f34217c984d3f7fc6b595a4cbbf4).
