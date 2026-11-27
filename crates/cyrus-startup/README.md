@@ -80,7 +80,9 @@ title artwork is an accepted difference, see
   preservation's `engine/movies.md`.
 - World-entry loading follows preservation's
   [startup rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#world-loading-screen);
-  a failed artwork or cache request leaves the current player intact and can be retried.
+  an archive with multiple frames consumes one bounded draw from the shared engine
+  random stream, while a single frame consumes none. A failed artwork or cache
+  request leaves the current player intact and can be retried.
 
 The title uses the installed low font and palette-derived tints from `labels.title`.
 It paints one mutable runtime image from the unlabelled background when the status
