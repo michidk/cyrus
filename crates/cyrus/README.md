@@ -26,9 +26,11 @@ use `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard` and report a skip when ab
 
 The public adapter regression uses an existing replay-controlled native process:
 `python3 dev/scripts/verify-original-slot.py --port 7117 --slot SLOT --world WORLD
---frame-scale MEASURED_Q8 --output magic/slot-acceptance`. It selects the original
-slot through the book, captures complete admission state without advancing the
-world, then admits one explicit measured update and retains both session documents.
+--frame-scale MEASURED_Q8 --output magic/slot-acceptance`. It advances a
+replay-held initial entry to an acknowledged ordinary boundary, then selects the
+original slot through the book and captures complete admission state without
+advancing the world. It then admits one explicit measured update and retains
+both session documents.
 
 ## Usage
 

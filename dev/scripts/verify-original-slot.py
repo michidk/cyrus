@@ -54,8 +54,10 @@ def load_slot(control, args):
     Scene/presentation readiness alone does not establish the unsaved controller
     owner retained by original-slot load. Keep this wait in the shared driver so
     admission probes cannot pause entry preparation by opening the book early.
+    Replay-held launches must advance entry through acknowledged boundaries;
+    Control.ready tolerates transient boundary unavailability during preparation.
     """
-    entry = control.ready(timeout=args.timeout)
+    entry = control.ready(timeout=args.timeout, advance=True)
     assert entry["scripts"].get("ordinary_updates", 0) > 0 or entry["scripts"].get("restored"), \
         "original-slot driver requires an established gameplay continuation"
     control.request({"type": "input", "key": "F3", "action": "tap"})

@@ -82,13 +82,48 @@ class LoadLifecycleTest(unittest.TestCase):
             args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
             with patch.object(module.driver, "capture_session") as capture:
                 result = module.load_slot(control, args)
-            self.assertEqual(control.calls[0], ("ready", {"timeout": 1}))
+            self.assertEqual(control.calls[0], ("ready", {"timeout": 1, "advance": True}))
             self.assertEqual(control.calls[1], {"type": "input", "key": "F3", "action": "tap"})
             self.assertTrue(result["scripts"]["restored"])
             self.assertEqual(result["scripts"]["ordinary_updates"], 0)
             capture.assert_called_once_with(control, args.output / "admitted.session")
             self.assertTrue((args.output / "admission.json").is_file())
 
+
+    def test_replay_held_entry_retries_transient_boundaries_before_opening_book(self):
+        class HeldControl(self.Control):
+            def __init__(self):
+                super().__init__(updates=0)
+                self.book = False
+                self.attempts = 0
+
+            ready = module.driver.Control.ready
+
+            def response(self, command):
+                self.calls.append(command)
+                self.attempts += 1
+                if self.attempts == 1:
+                    return dict(ok=False, error='ordinary input boundary unavailable')
+                self.updates = 1
+                return dict(ok=True, result={})
+
+            def request(self, command):
+                if command.get('key') == 'F3':
+                    self.book = True
+                    assert self.updates > 0
+                if command['type'] == 'state' and not self.book:
+                    return dict(state='InGame', scene_ready=True, examine=dict(open=False),
+                                scripts=dict(world=0, ordinary_updates=self.updates, failed=0))
+                return super().request(command)
+
+        control = HeldControl()
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(timeout=1, slot=0, world=30, output=Path(directory))
+            with patch.object(module.driver, 'capture_session'), \
+                    patch.object(module.driver.time, 'sleep'):
+                result = module.load_slot(control, args)
+        self.assertEqual(control.attempts, 2)
+        self.assertTrue(result['scripts']['restored'])
 
     def test_first_update_failure_retains_both_public_boundaries(self):
         admitted = {"scripts": {"ordinary_updates": 0}, "clock": {"continuation": {"frames": 3}}}
