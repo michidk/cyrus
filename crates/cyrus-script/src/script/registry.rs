@@ -1295,15 +1295,16 @@ impl ScriptWorld {
         if shell_execution {
             return Ok(());
         }
-        let inputs = self.recorded_combat_inputs(id, inputs, random.as_deref())?;
-        let actor = &self.actors[index];
-        let control = actor
+        let control = self.actors[index]
             .control
             .as_ref()
             .context("ordinary combat control unavailable")?;
         if control.combat.is_none() {
             return Ok(());
         }
+        let inputs = self.recorded_combat_inputs(id, inputs, random.as_deref())?;
+        let actor = &self.actors[index];
+        let control = actor.control.as_ref().expect("admitted combat control");
         let selected = self.selected_player_index() == Some(index);
         if selected
             && self
