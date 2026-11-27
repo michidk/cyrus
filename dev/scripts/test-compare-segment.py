@@ -586,7 +586,7 @@ class NativeFrames(unittest.TestCase):
         control = NativeControl()
         control.update = 0
         request = control.request
-        entry = dict(route='retail_introduction', scene='START', world=0, marker=0)
+        entry = {'route': 'retail_introduction', 'scene': 'START', 'world': 0, 'marker': 0}
         def observed(command):
             value = request(command)
             if command['type'] == 'state':
@@ -612,7 +612,7 @@ class NativeFrames(unittest.TestCase):
             value = request(command)
             if command['type'] == 'state':
                 reads += 1
-                value['entry'] = dict(marker=reads)
+                value['entry'] = {'marker': reads}
             return value
         control.request = torn
         with self.assertRaisesRegex(RuntimeError, 'entry provenance changed'):

@@ -3439,6 +3439,7 @@ dependencies = [
  "redguard-preservation",
  "serde",
  "serde_json",
+ "tempfile",
  "wasm-bindgen",
 ]
 

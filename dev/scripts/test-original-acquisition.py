@@ -136,16 +136,16 @@ class AcquisitionTests(unittest.TestCase):
             def request(self, command):
                 if command['type'] == 'state':
                     row = observations[self.update]
-                    return dict(scripts=dict(ordinary_updates=self.update, world=row['world'], failed=0),
-                                random_state=row['random_state'], clock=copy.deepcopy(row['clock']),
-                                entry=copy.deepcopy(self.entry))
+                    return {'scripts': {'ordinary_updates': self.update, 'world': row['world'], 'failed': 0},
+                            'random_state': row['random_state'], 'clock': copy.deepcopy(row['clock']),
+                            'entry': copy.deepcopy(self.entry)}
                 if command['type'] == 'scripts':
-                    return dict(actors=[], total=0)
+                    return {'actors': [], 'total': 0}
                 if command['type'] == 'replay_frame':
                     self.update += 1
                     return {}
                 raise AssertionError(command)
-        measured = dict(route='retail_introduction', scene='START', world=0, marker=0)
+        measured = {'route': 'retail_introduction', 'scene': 'START', 'world': 0, 'marker': 0}
         for entry in (measured, None, dict(measured, route='skipped_introduction'),
                       dict(measured, marker=1), dict(measured, world=30), dict(measured, scene='ISLAND')):
             with self.subTest(entry=entry):

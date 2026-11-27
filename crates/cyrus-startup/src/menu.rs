@@ -1313,12 +1313,11 @@ mod tests {
             eprintln!("skipped: no install (New Game entry provenance)");
             return;
         };
-        let cache =
-            std::env::temp_dir().join(format!("cyrus-entry-provenance-{}", std::process::id()));
-        cyrus_assets::startup::export_menu(&install, &cache).unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        cyrus_assets::startup::export_menu(&install, cache.path()).unwrap();
         let book: MenuAsset =
-            serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
-        std::fs::remove_dir_all(cache).unwrap();
+            serde_json::from_slice(&std::fs::read(cache.path().join("menu/book.menu")).unwrap())
+                .unwrap();
         for route in [
             NewGameRoute::RetailIntroduction,
             NewGameRoute::SkippedIntroduction,
