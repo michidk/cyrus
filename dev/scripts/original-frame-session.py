@@ -6,36 +6,7 @@ No polling, interpolation or OS-key acknowledgement establishes acceptance here.
 """
 
 
-from copy import deepcopy
-
-
-class RandomWriteHistory:
-    """Retain consecutive observed engine RNG writes, never endpoint estimates.
-
-    The wrapping transition is published in preservation's engine/SOUP.md.
-    Bind the real state write while stopped; call once per write with the
-    original acquisition phase and measured timer context. Initial state is an
-    observation, not a seed instruction. Missing writes, resets and duplicates
-    reject the tape. This observer never writes engine state.
-    """
-
-    def __init__(self, initial_state, emit=lambda row: None):
-        if type(initial_state) is not int or not 0 <= initial_state < 2**32:
-            raise ValueError('original RNG history requires an observed u32 state')
-        self.state, self.draw, self.emit = initial_state, 0, emit
-
-    def observe(self, state, phase, context):
-        if not isinstance(phase, str) or not phase or not isinstance(context, dict):
-            raise ValueError('original RNG write requires a named phase and measured context')
-        expected = (self.state * 1103515245 + 12345) % 2**32
-        if type(state) is not int or state != expected:
-            raise ValueError(f'original RNG history gap during {phase}: '
-                             f'expected {expected}, observed {state}')
-        row = dict(draw=self.draw + 1, previous=self.state, state=state,
-                   phase=phase, context=deepcopy(context))
-        self.emit(row)
-        self.state, self.draw = state, self.draw + 1
-        return row
+from original_acquisition import OriginalAcquisition, RandomWriteHistory
 
 
 def acquire_entry(boundary, counter, target_start, *, emit=lambda raw: None,
@@ -192,6 +163,37 @@ class FrameSession:
             raise ValueError('original frame changed during key acknowledgement')
         self.current = raw
         return before - self.origin
+
+
+class AcquiredFrameSession(FrameSession):
+    """Require original acquisition evidence before exposing combat controls.
+
+    project(raw) must expose world and random_state at the restored entry.
+    Full semantic admission remains the paired driver's responsibility.
+    """
+
+    def __init__(self, boundary, counter, project, acquisition, **options):
+        if not isinstance(acquisition, OriginalAcquisition):
+            raise ValueError('original combat entry requires bound acquisition history')
+        self.acquisition = acquisition
+        super().__init__(boundary, counter, project, **options)
+        acquisition.require_entry(self.snapshot())
+        acquisition.require_native_admission()
+
+    def acquisition_evidence(self):
+        return self.acquisition.evidence()
+
+    def input(self, key, action):
+        self.acquisition.require_native_admission()
+        return super().input(key, action)
+
+    def advance_to(self, frame):
+        self.acquisition.require_native_admission()
+        return super().advance_to(frame)
+
+    def wait_for_world(self, target_world, max_updates, checkpoints=()):
+        self.acquisition.require_native_admission()
+        return super().wait_for_world(target_world, max_updates, checkpoints)
 
 
 class ActorObserver:
