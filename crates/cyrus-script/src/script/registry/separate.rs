@@ -5,6 +5,41 @@ use cyrus_assets::surface::Surface;
 use cyrus_soup::Attribute;
 
 impl ScriptWorld {
+    /// Local parameters use the receiver's live pool; keep the retained source's
+    /// exposed view current when that receiver writes an overlapping range.
+    pub(super) fn refresh_retained_source_locals(&mut self, index: usize) {
+        let actor = &self.actors[index];
+        let Some((base, runtime)) = actor
+            .pool_offsets
+            .and_then(|p| p.locals)
+            .zip(actor.runtime.as_ref())
+        else {
+            return;
+        };
+        let Some(source) = self.globals.separate_native_source.as_mut() else {
+            return;
+        };
+        let Some(source_base) = source.pool_offsets.and_then(|p| p.locals) else {
+            return;
+        };
+        for (slot, value) in source.locals.iter_mut().enumerate() {
+            let Some(offset) = u32::try_from(slot)
+                .ok()
+                .and_then(|n| n.checked_mul(4))
+                .and_then(|n| source_base.checked_add(n))
+            else {
+                continue;
+            };
+            if let Some(receiver_slot) = offset
+                .checked_sub(base)
+                .map(|n| n / 4)
+                .and_then(|n| usize::try_from(n).ok())
+                && let Some(current) = runtime.variables().get(receiver_slot)
+            {
+                *value = *current;
+            }
+        }
+    }
     /// Resolve only an active conversion alias, never retained provenance after Load.
     pub(super) fn active_separate_native_source(&self) -> Option<usize> {
         let source = self.globals.separate_native_source.as_ref()?.semantic_actor;
@@ -50,6 +85,7 @@ impl ScriptWorld {
                 world: self.world,
                 name: actor.name().to_owned(),
                 attributes: actor.attributes.clone(),
+                pool_offsets: actor.pool_offsets,
                 locals: runtime.variables().to_vec(),
                 strings: runtime.shared_program().strings.clone(),
                 position: self
@@ -432,6 +468,15 @@ impl ScriptWorld {
         }
         let selected = self.separate_actors(view)?.to_vec();
         for id in selected {
+            // Every conversion starts from cleared temporary storage; only the
+            // separate record's position is restored, not an ordinary pose matrix.
+            let spatial = self
+                .spatial
+                .as_mut()
+                .expect("prepared separate spatial state");
+            let temporary = spatial.actor_mut(id.index)?;
+            temporary.local.angles = [0; 3];
+            temporary.local.matrix = cyrus_world::transform::Matrix([[0.0; 3]; 3]);
             let actor = &mut self.actors[id.index];
             if actor.runtime.is_none() || actor.failure().is_some() || actor.unavailable().is_some()
             {

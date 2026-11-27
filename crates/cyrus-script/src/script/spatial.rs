@@ -124,7 +124,14 @@ impl SpatialWorld {
                 } else {
                     placement.angles.map(|angle| wrap(angle) as i32)
                 };
-                Ok(Pose { position, angles, matrix: Matrix::orientation(angles.map(|angle| (angle & 2047) as u16)) })
+                // Separate expansion clears temporary orientation rather than running
+                // the ordinary actor's orientation initializer.
+                let matrix = if placement.object_type.has_separate_record() {
+                    Matrix([[0.0; 3]; 3])
+                } else {
+                    Matrix::orientation(angles.map(|angle| (angle & 2047) as u16))
+                };
+                Ok(Pose { position, angles, matrix })
             }).transpose()?;
             if pose.is_some() && actor.attributes()[Attribute::Master] != 0 {
                 if let Some(&previous) = masters.get(&actor.attributes()[Attribute::Master]) {

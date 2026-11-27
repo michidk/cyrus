@@ -649,6 +649,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
             "CYRUS".into(),
             Actor {
                 header_index: 0,
+                pool_offsets: None,
                 code_origin: 0,
                 instances: 1,
                 namespace: Some("player".into()),

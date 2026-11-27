@@ -241,6 +241,20 @@ pub fn prepare_source(
                     name.clone(),
                     Actor {
                         header_index: source.header_index,
+                        pool_offsets: Some(crate::script::ScriptPoolOffsets {
+                            locals: (source.num_variables > 0)
+                                .then(|| u32::try_from(source.variable_offset))
+                                .transpose()
+                                .with_context(|| format!(
+                                    "{context}: invalid variable pool offset"
+                                ))?,
+                            strings: (source.num_strings > 0)
+                                .then(|| u32::try_from(source.string_offsets_index))
+                                .transpose()
+                                .with_context(|| format!(
+                                    "{context}: invalid string pool offset"
+                                ))?,
+                        }),
                         code_origin: u32::try_from(source.script_data_offset)
                             .with_context(|| format!("{context}: invalid script origin"))?,
                         instances: source.instances,

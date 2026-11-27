@@ -451,6 +451,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
         "Unplaced".into(),
         Actor {
             header_index: 0,
+            pool_offsets: None,
             code_origin: 0,
             instances: 1,
             namespace: None,
@@ -735,6 +736,7 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
         "HOOK".into(),
         Actor {
             header_index: 0,
+            pool_offsets: None,
             code_origin: 0,
             instances: 1,
             namespace: None,
@@ -925,6 +927,7 @@ fn authored_location_offsets_participate_in_content_identity() {
     let mut scripts = cache();
     let mut actor = cyrus_assets::script::Actor {
         header_index: 0,
+        pool_offsets: None,
         code_origin: 0,
         instances: 1,
         namespace: None,
@@ -1025,6 +1028,7 @@ fn combat_taunt_records_participate_in_identity_and_require_the_complete_actor_l
         "TEST".into(),
         Actor {
             header_index: 0,
+            pool_offsets: None,
             code_origin: 0,
             instances: 1,
             namespace: None,
@@ -1381,4 +1385,34 @@ fn weapon_geometry_round_trips_and_invalidates_changed_lengths() {
             .to_string()
             .contains("identity mismatch")
     );
+}
+
+#[test]
+fn script_pool_instance_offsets_preserve_current_pool_addressing() -> anyhow::Result<()> {
+    use cyrus_assets::script::ScriptPoolOffsets;
+    let first = ScriptPoolOffsets {
+        locals: Some(4),
+        strings: Some(20),
+    };
+    let third = first.for_instance(2, 3)?;
+    assert_eq!(third.locals, Some(28));
+    assert_eq!(third.strings, Some(20));
+    assert!(first.for_instance(usize::MAX, 3).is_err());
+    assert!(
+        ScriptPoolOffsets {
+            locals: Some(3),
+            strings: None
+        }
+        .for_instance(0, 1)
+        .is_err()
+    );
+    assert!(
+        ScriptPoolOffsets {
+            locals: Some(u32::MAX - 3),
+            strings: None
+        }
+        .for_instance(1, 1)
+        .is_err()
+    );
+    Ok(())
 }

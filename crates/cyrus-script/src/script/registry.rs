@@ -545,6 +545,7 @@ pub struct ScriptActor {
     native_hook: Option<Call>,
     combat_taunts: Vec<CombatTaunt>,
     runtime: Option<Runtime>,
+    pool_offsets: Option<cyrus_assets::script::ScriptPoolOffsets>,
     /// Created-record cleanup completed; runtime may also be absent during an active call.
     created_retired: bool,
     unavailable: Option<String>,
@@ -620,6 +621,7 @@ impl ScriptActor {
                 .map(|template| template.combat_taunts.clone())
                 .unwrap_or_default(),
             runtime,
+            pool_offsets: None,
             created_retired: false,
             unavailable,
             attributes: Attributes::default(),
@@ -1476,7 +1478,8 @@ impl ScriptWorld {
         let mut allocations = BTreeMap::<String, usize>::new();
         let mut allocate = |source: ScriptActorSource,
                             runtime_identifier: Option<i16>,
-                            index: usize| {
+                            index: usize|
+         -> Result<ScriptActor> {
             let name = source.name();
             let context = format!(
                 "world {} instance {index} actor {name} script",
@@ -1542,7 +1545,22 @@ impl ScriptWorld {
                 }
                 _ => None,
             };
-            ScriptActor {
+            let pool_offsets = metadata
+                .and_then(|actor| actor.pool_offsets)
+                .map(|offsets| {
+                    let ordinal = allocations
+                        .get(name)
+                        .copied()
+                        .and_then(|n| n.checked_sub(1))
+                        .context("script pool instance allocation unavailable")?;
+                    offsets.for_instance(
+                        ordinal,
+                        metadata.map_or(0, |actor| actor.program.variables.len()),
+                    )
+                })
+                .transpose()
+                .with_context(|| format!("{context}: pool binding"))?;
+            Ok(ScriptActor {
                 light,
                 flat,
                 message_read: 0,
@@ -1562,6 +1580,7 @@ impl ScriptWorld {
                     .map(|actor| actor.combat_taunts.clone())
                     .unwrap_or_default(),
                 runtime,
+                pool_offsets,
                 created_retired: false,
                 unavailable,
                 location_offsets: metadata
@@ -1581,7 +1600,7 @@ impl ScriptWorld {
                     .flatten()
                     .map(|actor| actor.attributes.clone())
                     .unwrap_or_default(),
-            }
+            })
         };
         let mut counter = scripts.actor_pool_capacity.wrapping_add(3);
         let mut actors = Vec::new();
@@ -1599,7 +1618,7 @@ impl ScriptWorld {
                 ScriptActorSource::Map(placement.clone()),
                 identifier,
                 index,
-            ));
+            )?);
         }
         // Shell scripts exist before the standalone roles; the original prepends each record to its
         // list, so they run newest first (see `update_shells`).
@@ -1619,7 +1638,7 @@ impl ScriptWorld {
         ] {
             if scripts.actors.contains_key(name) {
                 let index = actors.len();
-                actors.push(allocate(source, Some(identifier), index));
+                actors.push(allocate(source, Some(identifier), index)?);
             }
         }
         let mut names = BTreeMap::new();
@@ -3320,6 +3339,7 @@ impl ScriptWorld {
         };
         host.registry.flags = flags;
         host.registry.actors[index].runtime = Some(runtime);
+        host.registry.refresh_retained_source_locals(index);
         if matches!(stage, ScriptStage::SeparateMain | ScriptStage::SeparateHook) {
             host.registry.retain_separate_native_source(index);
         }
@@ -6646,6 +6666,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         self.registry.routed_caller = outer_caller;
         self.index = caller;
         self.registry.actors[index].runtime = Some(runtime);
+        self.registry.refresh_retained_source_locals(index);
         result.map(Route::Complete)
     }
     fn task_call(&mut self, origin: CodeOrigin, instruction: u32) -> Result<Call> {
@@ -6754,6 +6775,7 @@ mod fighting_tests {
                 native_hook: None,
                 combat_taunts: vec![],
                 runtime: None,
+                pool_offsets: None,
                 created_retired: false,
                 unavailable: None,
                 attributes: Attributes::default(),
@@ -6929,6 +6951,7 @@ mod selector_tests {
             native_hook: None,
             combat_taunts: vec![],
             runtime: None,
+            pool_offsets: None,
             created_retired: false,
             unavailable: None,
             attributes: Attributes::default(),

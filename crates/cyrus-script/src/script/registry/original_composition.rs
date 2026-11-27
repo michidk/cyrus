@@ -153,6 +153,25 @@ impl ScriptWorld {
             sources.scripts,
             sources.animations,
         )?;
+        for &(id, object) in &bindings {
+            if let Some(pool) = self.actors[id.index].pool_offsets.as_mut() {
+                pool.locals = object.script_local_offset();
+            }
+        }
+        for allocation in
+            crate::script::original_save::OriginalCodeAllocation::bind(sources.scripts, &codes)?
+        {
+            let owner = codes
+                .iter()
+                .find(|owner| owner.owner_id == allocation.owner_id)
+                .context("original code pool owner absent")?;
+            if let Some(pool) = self.actors[allocation.placement_index]
+                .pool_offsets
+                .as_mut()
+            {
+                pool.locals = owner.script_local_offset();
+            }
+        }
         Ok(self)
     }
 }

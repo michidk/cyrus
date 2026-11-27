@@ -136,6 +136,7 @@ pub(super) fn cache() -> Scripts {
             "LOGIC".into(),
             Actor {
                 header_index: 0,
+                pool_offsets: None,
                 code_origin: 0,
                 instances: 2,
                 namespace: Some("logic".into()),

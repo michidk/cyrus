@@ -300,6 +300,7 @@ fn prepare_script(app: &mut App, requests: &[(Native, &[i32])]) {
     use cyrus_soup::program::*;
     let player = Actor {
         header_index: 0,
+        pool_offsets: None,
         code_origin: 100,
         instances: 1,
         namespace: Some("CYRUS".into()),

@@ -522,10 +522,52 @@ pub struct CombatTaunt {
     pub animation: i32,
 }
 
+/// Byte offsets selecting authored instances in the current process script pools.
+/// Replacing a world replaces the pools, not offsets retained by temporary actors.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ScriptPoolOffsets {
+    /// None when the installed script has no authored variables.
+    pub locals: Option<u32>,
+    /// None when the installed script has no string parameters.
+    pub strings: Option<u32>,
+}
+
+impl ScriptPoolOffsets {
+    /// Select an authored variable instance; strings share the definition's table.
+    pub fn for_instance(self, instance: usize, variables: usize) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        anyhow::ensure!(
+            self.locals.is_none_or(|offset| offset.is_multiple_of(4))
+                && self.strings.is_none_or(|offset| offset.is_multiple_of(4)),
+            "script instance pool offset is unaligned"
+        );
+        let locals = self
+            .locals
+            .map(|offset| {
+                let delta = instance
+                    .checked_mul(variables)
+                    .and_then(|v| v.checked_mul(4))
+                    .and_then(|v| u32::try_from(v).ok())
+                    .context("script variable instance offset overflow")?;
+                offset
+                    .checked_add(delta)
+                    .context("script variable pool offset overflow")
+            })
+            .transpose()?;
+        Ok(Self {
+            locals,
+            strings: self.strings,
+        })
+    }
+}
+
 /// Script metadata remains available even for actors without animation geometry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Actor {
     pub header_index: usize,
+    /// Installed pool addressing; synthetic and legacy caches may leave it unavailable.
+    #[serde(default)]
+    pub pool_offsets: Option<ScriptPoolOffsets>,
     /// Byte offset within RASC data, retained for foreign task operand identity.
     pub code_origin: u32,
     pub instances: u16,

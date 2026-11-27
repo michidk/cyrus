@@ -708,6 +708,7 @@ mod tests {
             native_hook: None,
             combat_taunts: vec![],
             runtime: None,
+            pool_offsets: None,
             created_retired: false,
             unavailable: None,
             attributes: cyrus_soup::Attributes::default(),

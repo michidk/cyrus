@@ -18,6 +18,7 @@ const TASKS: ScriptStage = ScriptStage::Tasks;
 fn actor(operations: Vec<Operation>, origin: u32) -> Actor {
     Actor {
         header_index: 0,
+        pool_offsets: None,
         code_origin: origin,
         instances: 1,
         namespace: None,
