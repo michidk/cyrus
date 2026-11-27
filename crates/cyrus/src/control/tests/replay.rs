@@ -460,3 +460,96 @@ fn replay_origin_ack_and_state_in_the_same_drain_publish_one_current_sample() {
     assert_eq!(state["clock"]["bios_sample"], ack["bios_sample"]);
     assert_eq!(state["clock"]["continuation"], ack["continuation"]);
 }
+
+fn timeline_frame(app: &App) -> serde_json::Value {
+    let generation = origin_command(app, 0, 0)["generation"].clone();
+    let actors = app.world().resource::<cyrus_script::script::ScriptActors>();
+    let identifier = actors.current.as_ref().unwrap().actors()[0]
+        .runtime_identifier
+        .unwrap();
+    json!({"type":"replay_frame","frame_scale":118,"elapsed_bios_ticks":2,
+        "clock_timeline":{"generation":generation,"expected_update":0,"expected_bios_sample":1000,
+            "stored_sample":1002,"world":17,"decisions":[{"index":identifier,"name":"ACTOR","occurrence":1}],
+            "before_decisions":[1043],"after_decisions":[1046]}})
+}
+
+#[test]
+fn replay_timeline_rejects_stale_identity_and_missing_evidence_before_launch() {
+    use cyrus_script::clock::SimulationClock;
+    for field in [
+        "generation",
+        "expected_update",
+        "expected_bios_sample",
+        "world",
+        "name",
+        "occurrence",
+        "index",
+        "elapsed",
+        "native_slot",
+    ] {
+        let mut app = origin_app();
+        let origin = origin_command(&app, 0, 1000);
+        assert!(origin_request(&mut app, origin).ok);
+        let mut cmd = timeline_frame(&app);
+        match field {
+            "name" => cmd["clock_timeline"]["decisions"][0]["name"] = json!("OTHER"),
+            "occurrence" => cmd["clock_timeline"]["decisions"][0]["occurrence"] = json!(2),
+            "index" => cmd["clock_timeline"]["decisions"][0]["index"] = json!(9999),
+            "native_slot" => cmd["clock_timeline"]["decisions"][0]["index"] = json!(0),
+            "elapsed" => {
+                cmd.as_object_mut().unwrap().remove("elapsed_bios_ticks");
+            }
+            field => cmd["clock_timeline"][field] = json!(9999),
+        }
+        let before =
+            serde_json::to_value(app.world().resource::<SimulationClock>().snapshot()).unwrap();
+        let reply = origin_request(&mut app, cmd);
+        assert!(!reply.ok, "{field}");
+        assert_eq!(
+            app.world().resource::<SimulationClock>().bios_sample(),
+            1000
+        );
+        assert_eq!(
+            serde_json::to_value(app.world().resource::<SimulationClock>().snapshot()).unwrap(),
+            before
+        );
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_script::script::ReplayFrameScale>()
+        );
+    }
+}
+
+#[test]
+fn replay_timeline_binds_semantic_receivers_only_after_origin_setup() {
+    let mut app = origin_app();
+    let cmd = timeline_frame(&app);
+    assert!(!origin_request(&mut app, cmd).ok);
+    let cmd = origin_command(&app, 0, 1000);
+    assert!(origin_request(&mut app, cmd).ok);
+    let (tx, rx) = channel();
+    app.insert_resource(Inbox(Mutex::new(rx)));
+    let (reply, _response) = channel();
+    tx.send(Pending {
+        request: serde_json::from_value(json!({"id":72,"cmd":timeline_frame(&app)})).unwrap(),
+        reply,
+    })
+    .unwrap();
+    app.update();
+    let recorded = app
+        .world()
+        .resource::<cyrus_script::script::ReplayFrameScale>();
+    let timeline = recorded.clock_timeline.as_ref().unwrap();
+    let actors = app.world().resource::<cyrus_script::script::ScriptActors>();
+    assert_eq!(
+        timeline.decisions,
+        vec![actors.current.as_ref().unwrap().id(0).unwrap()]
+    );
+    assert_eq!(timeline.stored_sample, 1002);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_script::clock::SimulationClock>()
+            .bios_sample(),
+        1000
+    );
+}

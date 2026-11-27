@@ -335,3 +335,13 @@ paths retain their sample-difference policy. Replay hosts must establish refresh
 ordering and each consumer's cached sample separately; a completed-body sample
 cannot establish an earlier combat decision's input. Preservation documents the
 [measurement and refresh lifetime](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#fps-derived-frame-scale).
+
+`script::replay_clock` lends one shared clock to a recorded nonplayer decision
+traversal. It applies ordered paired refreshes before the first actual decision,
+checks every generation-bound receiver in order, and retains each invocation's
+copied sample for its timed-taunt, spacing, counter-attack and defence consumers.
+The final refresh runs only after the complete expected traversal. Missing or
+reordered entries reject without applying that endpoint. This restricted replay
+hook does not establish ordering of unobserved raw-clock consumers. The
+[decision-copy lifetime](https://github.com/michidk/redguard-preservation/commit/97145ce92bedb037eba892c85f45f7f24c582a04)
+is documented in preservation.

@@ -4,6 +4,34 @@ use anyhow::{Context, Result};
 use cyrus_assets::script::TauntType;
 
 impl ScriptWorld {
+    pub(super) fn recorded_combat_inputs<'a>(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'a>,
+        random: Option<&cyrus_game::random::EngineRandom>,
+    ) -> Result<ScriptInputs<'a>> {
+        let Some(clock) = inputs
+            .decision_clock
+            .filter(|_| self.selected_player_index() != Some(id.index))
+        else {
+            return Ok(inputs);
+        };
+        let sample = clock.sample(id)?;
+        self.observe_combat_pacing(
+            self.resolve(id)?,
+            sample,
+            random
+                .context("recorded decision random owner unavailable")?
+                .state(),
+            None,
+        );
+        Ok(ScriptInputs {
+            combat_clock_sample: Some(sample),
+            decision_clock: None,
+            ..inputs
+        })
+    }
+
     /// Run one admitted nonplayer decision using the session random and sound owners.
     /// Cleanup may end the pass. Coordination's entry branch survives its state writes.
     /// Pacing uses the raw BIOS sample; waiting-taunt type uses world-loop parity.
@@ -18,9 +46,12 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let result = (|| -> Result<()> {
-            let clock = inputs
-                .combat_clock_sample
-                .context("combat BIOS-clock sample unavailable")? as i32;
+            let clock = match inputs.decision_clock {
+                Some(clock) => clock.sample(id)?,
+                None => inputs
+                    .combat_clock_sample
+                    .context("combat BIOS-clock sample unavailable")?,
+            } as i32;
             let index = self.resolve(id)?;
             self.observe_combat_pacing(index, clock as u32, random.state(), None);
             let query =

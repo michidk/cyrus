@@ -89,6 +89,7 @@ mod attributes;
 pub mod camera;
 mod combat;
 pub mod decision;
+pub mod replay_clock;
 pub use combat::{
     CombatControlState, CombatDecision, CombatFlags, CombatMessage, CombatMessageCode,
     CombatMessages, CombatTauntPlayback, CombatTauntSource, ExecutorState,

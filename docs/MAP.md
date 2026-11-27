@@ -439,6 +439,7 @@ module where it is defined and regenerate.
 - `src/script/registry/transition.rs` — Obstacle motion transitions follow preservation's ordinary forward wrapper.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
 - `src/script/registry/weapon.rs` — Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
+- `src/script/replay_clock.rs` — Recorded cache refreshes at independently observed nonplayer decision boundaries.
 - `src/script/sound.rs` — Immediate script sound commands follow preservation's channel ownership rules.
 - `src/script/sound_dispatch.rs` — Ordered animation sound admission while logical actors await presentation bindings.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
@@ -571,6 +572,7 @@ module where it is defined and regenerate.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/control/commands.rs` — Focused control handlers. The parent drain owns response order and barriers.
 - `src/control/commands/acquisition.rs` — Asynchronous capture, replay and input acquisition commands.
+- `src/control/commands/acquisition/replay_clock.rs` — Validate recorded clock evidence before arming a native replay frame.
 - `src/control/commands/audio.rs` — Sound admission and digital-output service commands.
 - `src/control/commands/gameplay.rs` — Logical actor inspection and explicit script-stage commands.
 - `src/control/commands/inspection.rs` — Read-only aggregate control-state publication.
