@@ -38,7 +38,8 @@ def install_original_reader(name, *, command=sh, magic=None):
     magic = MAGIC if magic is None else Path(magic)
     sources = (magic / "tools/original-state.py",
                ROOT / "dev/scripts/original-memory-region.py",
-               ROOT / "dev/scripts/original_script_locals.py")
+               ROOT / "dev/scripts/original_script_locals.py",
+               ROOT / "dev/scripts/original_source_state.py")
     for source in sources:
         if not source.is_file():
             raise FileNotFoundError(f"{source}: restore the local original-game tooling bundle")

@@ -119,6 +119,16 @@ side rejects admission and replay reopening; both adapters must supply it before
 claiming full source-state admission. Registry census agreement alone is partial
 coverage. No source state is inferred from a departed semantic owner.
 
+`original_source_state.py` reads all 256 source attributes, signed angle words,
+row-major IEEE matrix bits, stored model position and complete authored local
+and string counts through the stopped reader's bindings. Installed attribute
+names identify known slots; unnamed slots retain their indices as data. Read
+locals and relocated string pointers through the currently observed process
+pools and instance byte offsets. Reusing an earlier decoded context cannot
+establish the loaded context. Truncated reads, missing metadata, null string
+pointers and strings beyond the observation bound reject the capture. Stored
+orientation is observed directly, without rebuilding a matrix from angles.
+
 The original watchpoint backend can pair an access comparator with a write-only
 comparator on the same bytes to distinguish reads from stores, including stores
 that leave the value unchanged. Read-modify-write instructions classify as

@@ -36,7 +36,7 @@ class OriginalRuntime(unittest.TestCase):
             self.assertEqual(launch[0][-1], 'retained:image')
             self.assertEqual([call[0][-1] for call in calls[3:]],
                 ['owned:/tmp/original-state.py', 'owned:/tmp/original-memory-region.py',
-                 'owned:/tmp/original_script_locals.py'])
+                 'owned:/tmp/original_script_locals.py', 'owned:/tmp/original_source_state.py'])
             self.assertTrue(all(kwargs['check'] for _, kwargs in calls[1:]))
 
     def test_disc_preparation_replaces_only_empty_mountpoint_and_shares_canonical_bytes(self):
@@ -117,7 +117,7 @@ class OriginalRuntime(unittest.TestCase):
             calls = []
             scenario.install_original_reader('attached', magic=magic,
                 command=lambda *args, **kwargs: calls.append(args))
-            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(calls), 4)
             self.assertTrue(all(call[:2] == ('docker', 'cp') for call in calls))
 
 
