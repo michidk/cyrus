@@ -161,6 +161,43 @@ pub(super) enum NativeSource {
         generation: u64,
         index: usize,
     },
+    /// Shared separate-object scratch storage, independent of a registry allocation.
+    Separate,
+}
+
+/// Native-readable contents of the process-wide separate-object temporary actor.
+/// The semantic record keeps its interpreter; this owner retains the copied context
+/// after copy-back and across Load. See preservation's separate map object script state.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+pub(super) struct SeparateNativeSource {
+    /// Provenance and active-conversion alias only; never an import binding.
+    pub semantic_actor: ScriptActorId,
+    pub world: u32,
+    pub name: String,
+    pub attributes: Attributes,
+    pub locals: Vec<cyrus_soup::ScriptValue>,
+    pub strings: Vec<String>,
+    pub position: Option<[i32; 3]>,
+    pub local: Option<NativeSourcePose>,
+    pub model_position: Option<[u32; 3]>,
+}
+
+/// Bit-preserving matrix storage for the copied source pose.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+pub(super) struct NativeSourcePose {
+    pub position: [i32; 3],
+    pub angles: [i32; 3],
+    pub matrix: [[u32; 3]; 3],
+}
+
+impl NativeSourcePose {
+    pub fn pose(&self) -> super::spatial::Pose {
+        super::spatial::Pose {
+            position: self.position,
+            angles: self.angles,
+            matrix: cyrus_world::transform::Matrix(self.matrix.map(|row| row.map(f32::from_bits))),
+        }
+    }
 }
 
 /// Item viewer request left by `ShowItem` and `ShowItemNoRtx` for the main loop's viewer.
@@ -187,6 +224,7 @@ pub struct GameplayGlobals {
     /// Current native command context, shared by successive actor invocations.
     pub(super) native_command: super::NativeCommandState,
     pub(super) native_source: NativeSource,
+    pub(super) separate_native_source: Option<SeparateNativeSource>,
     pub(super) native_command_return: u8,
     /// The actor reference the function that just completed returned, taken by its value site.
     pub(super) actor_result: Option<cyrus_soup::ActorReference>,
@@ -1414,6 +1452,8 @@ mod idle_tests {
 pub(super) struct GameplayGlobalsSnapshot {
     #[serde(default)]
     native_source: NativeSource,
+    #[serde(default)]
+    separate_native_source: Option<SeparateNativeSource>,
     native_command: super::NativeCommandState,
     native_command_return: u8,
     walk_route: super::WalkRouteState,
@@ -1470,6 +1510,7 @@ impl GameplayGlobals {
     pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
         GameplayGlobalsSnapshot {
             native_source: self.native_source,
+            separate_native_source: self.separate_native_source.clone(),
             native_command: self.native_command,
             native_command_return: self.native_command_return,
             walk_route: self.walk_route,
@@ -1543,6 +1584,13 @@ impl GameplayGlobals {
             .transpose()?;
         let native_source = match saved.native_source {
             NativeSource::Unknown => NativeSource::Unknown,
+            NativeSource::Separate => {
+                anyhow::ensure!(
+                    saved.separate_native_source.is_some(),
+                    "session snapshot: retained separate native source contents absent"
+                );
+                NativeSource::Separate
+            }
             NativeSource::Actor { generation, index } => {
                 // World replacement retains the source, so it may name a replaced world's actor.
                 let actor = rebind(generation, index).unwrap_or(ScriptActorId {
@@ -1557,6 +1605,7 @@ impl GameplayGlobals {
         };
         Ok(Self {
             native_source,
+            separate_native_source: saved.separate_native_source,
             native_command: saved.native_command,
             native_command_return: saved.native_command_return,
             actor_result: None,

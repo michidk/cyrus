@@ -536,13 +536,7 @@ impl LineupHost for PlayerLineup<'_, '_, '_, '_, '_> {
         // The shared native-command source: the actor whose interpreter entry last ran, retained
         // while the receiver's own task stage polls. The original reads whatever the pointer holds,
         // so an unknown or departed source is an explicit error rather than a substitute actor.
-        let source = self.host.native_source_actor(native)?;
-        let local = self
-            .host
-            .registry
-            .spatial(source)
-            .with_context(|| format!("{native} source pose unavailable"))?
-            .local;
+        let local = self.host.native_source_local(native)?;
         Ok(Reference {
             position: local.position,
             heading: local.wrapped_angles()[1],

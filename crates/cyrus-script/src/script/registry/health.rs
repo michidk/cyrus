@@ -742,6 +742,18 @@ impl ScriptWorld {
     ) -> Result<()> {
         let death_cursor = self.death_observation_count();
         let source_position = match source {
+            Some(super::super::activation::NativeSource::Separate) => {
+                if let Some(index) = self.active_separate_native_source() {
+                    self.id(index)
+                        .ok()
+                        .and_then(|id| self.query_position(id).ok())
+                } else {
+                    self.globals
+                        .separate_native_source
+                        .as_ref()
+                        .and_then(|source| source.position)
+                }
+            }
             Some(super::super::activation::NativeSource::Actor { generation, index }) => self
                 .query_position(ScriptActorId { generation, index })
                 .ok(),
@@ -840,23 +852,35 @@ impl ScriptWorld {
                 {
                     return Ok(());
                 }
-                let source = match source {
+                let source_group = match source {
                     None => None,
                     Some(super::super::activation::NativeSource::Unknown) => {
                         anyhow::bail!("selected death native source unavailable")
                     }
+                    Some(super::super::activation::NativeSource::Separate) => {
+                        Some(if let Some(index) = self.active_separate_native_source() {
+                            self.actors[index].attributes[Attribute::ZapAnim]
+                        } else {
+                            self.globals
+                                .separate_native_source
+                                .as_ref()
+                                .context("selected death separate native source contents absent")?
+                                .attributes[Attribute::ZapAnim]
+                        })
+                    }
                     Some(super::super::activation::NativeSource::Actor { generation, index }) => {
-                        Some(ScriptActorId { generation, index })
+                        let source = ScriptActorId { generation, index };
+                        if source == id {
+                            None
+                        } else {
+                            Some(self.actors[self.resolve(source)?].attributes[Attribute::ZapAnim])
+                        }
                     }
                 };
-                if let Some(source) = source.filter(|source| *source != id) {
-                    let source_index = self.resolve(source)?;
-                    let group = self.actors[source_index].attributes[Attribute::ZapAnim];
-                    if group != 0 {
-                        self.globals
-                            .set_player_death_override_group(i32::from(group))?;
-                        return Ok(());
-                    }
+                if let Some(group) = source_group.filter(|group| *group != 0) {
+                    self.globals
+                        .set_player_death_override_group(i32::from(group))?;
+                    return Ok(());
                 }
                 if matches!(
                     self.actors[index]

@@ -453,3 +453,61 @@ fn open_shell_starts_the_named_script_regardless_of_case_and_rejects_unknown_nam
     assert_eq!(open("itemlist").unwrap(), 1);
     assert!(open("nothing").is_err());
 }
+
+#[test]
+fn separate_source_retains_attributes_after_copy_back_and_reuses_shared_storage()
+-> anyhow::Result<()> {
+    let mut scripts = random_scripts(
+        Native::SetMyAttr,
+        vec![
+            Value::Integer {
+                value: Attribute::ZapAnim.index() as i32,
+            },
+            Value::Integer { value: 42 },
+        ],
+        Object::Me,
+    );
+    scripts.definition.functions[1].param_count = 2;
+    for instance in &mut scripts.instances {
+        instance.object_type = PlacementType::SCRIPT_ONLY;
+        instance.map_position = [600, 20, 600];
+    }
+    scripts.content_id = scripts.content_identity()?;
+    let mut world = ScriptWorld::prepare(&scripts, 7)?;
+    let update = |world: &mut ScriptWorld, task_system| {
+        world.update_separate(
+            [600, 600],
+            cyrus_script::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                task_system: Some(task_system),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+    };
+    update(&mut world, true)?;
+    for actor in world.actors() {
+        assert_eq!(actor.attributes()[Attribute::ZapAnim], 0);
+        assert!(actor.control_state().is_none());
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+    }
+    let before = serde_json::to_value(world.globals())?;
+    assert_eq!(before["native_source"], "Separate");
+    assert_eq!(
+        before["separate_native_source"]["attributes"][Attribute::ZapAnim.index()],
+        42
+    );
+    // Conversion still replaces the shared contents when task-system advancement
+    // is disabled, without publishing another interpreter source.
+    update(&mut world, false)?;
+    let after = serde_json::to_value(world.globals())?;
+    assert_eq!(after["native_source"], "Separate");
+    assert_eq!(
+        after["separate_native_source"]["attributes"][Attribute::ZapAnim.index()],
+        0
+    );
+    Ok(())
+}
