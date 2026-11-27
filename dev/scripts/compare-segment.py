@@ -158,15 +158,19 @@ class NativeFrameSession:
 
     def _acquisition_observation(self):
         state = self.current[0]
-        return copy.deepcopy(dict(ordinary_updates=state['scripts']['ordinary_updates'],
-                                  world=state['scripts'].get('world'),
-                                  random_state=state.get('random_state'),
-                                  clock=state.get('clock'), startup=state.get('startup')))
+        return copy.deepcopy({
+            'ordinary_updates': state['scripts']['ordinary_updates'],
+            'world': state['scripts'].get('world'),
+            'random_state': state.get('random_state'),
+            'clock': state.get('clock'), 'startup': state.get('startup'),
+        })
 
     def acquisition_evidence(self):
         """Retain absolute native boundaries; relative frame zero does not erase bootstrap work."""
-        return copy.deepcopy(dict(expected_initial_update=self.expected_initial_update,
-                                  initial_update=self.origin, observations=self.acquisition_observations))
+        return copy.deepcopy({
+            'expected_initial_update': self.expected_initial_update,
+            'initial_update': self.origin, 'observations': self.acquisition_observations,
+        })
 
     def execution_evidence(self):
         """Copy requested tapes and measured boundaries, including an interrupted run."""
