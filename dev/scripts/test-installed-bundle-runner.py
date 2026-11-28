@@ -140,15 +140,38 @@ class Tests(unittest.TestCase):
         self.assertNotEqual(digest,m.projection(dict(files=[dict(test,sha256='different'),companion,runtime]),dict(test,sha256='different'))[1])
         with self.assertRaises(ValueError):m.projection(manifest,dict(test,target='foreign'))
 
-    def test_receipt_requires_exact_binding_zero_exit_no_skips_and_log_hash(self):
+    def test_receipt_requires_shared_admission_and_exact_binding(self):
         with tempfile.TemporaryDirectory() as d:
-            receipt=Path(d)/'test.json';log=receipt.with_suffix('.log');log.write_text('accepted')
+            receipt=Path(d)/'test.json'; log=receipt.with_suffix('.log')
+            good='test result: ok. 3 passed; 0 failed; 0 ignored;'
+            log.write_text(good)
+            loader=Path(d)/'loader.log'; loader.write_text('resolved libraries')
+            listed=Path(d)/'list.log'; listed.write_text('three tests')
+            entry=dict(role='test',sha256='test')
+            manifest=dict(identity=dict(commit='source',tree='tree'),files=[entry])
             binding=dict(manifest='original',projection='new-test',image='pinned',fixture='save')
-            self.assertFalse(m.accepted(receipt,binding))
-            m.durable(receipt,dict(binding=binding,exit=0,install_skips=0,log_sha256=m.sha(log)))
-            self.assertTrue(m.accepted(receipt,binding))
-            for key in binding:self.assertFalse(m.accepted(receipt,dict(binding,**{key:'different'})))
-            log.write_text('truncated');self.assertFalse(m.accepted(receipt,binding))
+            admission=dict(accepted=True,commit='source',tree='tree',sha256='test',
+                           original_manifest_sha256='original',image='pinned',
+                           loader=dict(exit=0,log=str(loader)),list=dict(exit=0,log=str(listed)),
+                           tests=dict(exit=0,log=str(log)))
+            record=dict(binding=binding,exit=0,install_skips=0,log_sha256=m.sha(log),admission=admission)
+            def accepts(): return m.accepted(receipt,binding,manifest,entry)
+            self.assertFalse(accepts())
+            m.durable(receipt,record);self.assertTrue(accepts())
+            for key in binding:
+                self.assertFalse(m.accepted(receipt,dict(binding,**{key:'different'}),manifest,entry))
+            for phase in ['loader','list','tests']:
+                bad=dict(record,admission=dict(admission,**{phase:dict(exit=1,log=str(log))}))
+                m.durable(receipt,bad);self.assertFalse(accepts())
+            m.durable(receipt,record)
+            loader.write_text('SKIP missing required fixture');self.assertFalse(accepts())
+            loader.write_text('resolved libraries')
+            log.write_text('SKIP required fixture\n'+good)
+            m.durable(receipt,dict(record,log_sha256=m.sha(log)));self.assertFalse(accepts())
+            log.write_text(good);m.durable(receipt,record)
+            self.assertFalse(m.accepted(receipt,binding,dict(manifest,identity=dict(commit='new',tree='new')),entry))
+            legacy=dict(record);legacy.pop('admission');m.durable(receipt,legacy)
+            self.assertFalse(accepts());self.assertTrue(receipt.exists())
             self.assertFalse(receipt.with_suffix('.json.partial').exists())
 
     def test_missing_failed_or_install_skipped_test_results_reject(self):

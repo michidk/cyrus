@@ -21,6 +21,7 @@ import tomllib
 import urllib.request
 import urllib.error
 import zipfile
+import test_bundle
 
 
 def sha(path):
@@ -237,20 +238,27 @@ def receipt_path(results, test_hash, binding):
     return results / (test_hash + '-' + hashlib.sha256(encoded(binding)).hexdigest()[:16] + '.json')
 
 
-def accepted(receipt, binding):
+def accepted(receipt, binding, manifest, entry):
     if not receipt.is_file(): return False
-    record = json.loads(receipt.read_text())
-    log_name = record.get('log_name', receipt.with_suffix('.log').name)
-    if Path(log_name).name != log_name: return False
-    log = receipt.parent / log_name
-    return (record.get('binding') == binding and record.get('exit') == 0
-            and record.get('install_skips') == 0 and log.is_file()
-            and record.get('log_sha256') == sha(log))
+    try:
+        record = json.loads(receipt.read_text())
+        log_name = record.get('log_name', receipt.with_suffix('.log').name)
+        if Path(log_name).name != log_name: return False
+        log = receipt.parent / log_name
+        if not (record.get('binding') == binding and record.get('exit') == 0
+                and record.get('install_skips') == 0 and log.is_file()
+                and record.get('log_sha256') == sha(log)):
+            return False
+        test_bundle.admit_installed_receipt(record['admission'], manifest, entry,
+                                           binding['manifest'], binding['image'])
+        return True
+    except (ValueError, KeyError, TypeError, OSError):
+        return False
 
 
 def check_output(result, output):
     if result != 0: raise ValueError(f'test command failed: exit {result}')
-    if re.search(r'(?im)^\s*(?:skipped\s*:|skip(?:\s|:))', output): raise ValueError('installed test skipped')
+    test_bundle.require_installed_output(output)
     summaries = re.findall(r'test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored', output)
     if not summaries or any(int(failed) for _, failed, _ in summaries):
         raise ValueError('missing successful test summary')
@@ -331,7 +339,7 @@ def main():
                 binding['media_plan'] = media
             receipt = receipt_path(results, test['sha256'], binding)
             legacy = results / (test['sha256'] + '.json')
-            if accepted(receipt, binding) or accepted(legacy, binding):
+            if accepted(receipt, binding, manifest, test) or accepted(legacy, binding, manifest, test):
                 print('retained', test['package'], test['target'], flush=True); continue
             print('preparing', test['package'], test['target'], flush=True)
             fresh = root / 'test-target'
@@ -366,7 +374,7 @@ def main():
                         loader_set = dict(image=image, manifest=manifest_hash, raw_sha256=entry['sha256'])
                         loader_key = hashlib.sha256(encoded(loader_set)).hexdigest()
                         loader_receipt = results / ('loader-' + loader_key + '.json')
-                        if loader_receipt.exists() and json.loads(loader_receipt.read_text()) == loader_set:
+                        if entry != test and loader_receipt.exists() and json.loads(loader_receipt.read_text()) == loader_set:
                             continue
                         executable = f'{target}/{entry["path"]}'
                         result = subprocess.run(base + ['--entrypoint', '/bin/bash', image, '-c',
@@ -374,16 +382,30 @@ def main():
                         if result.returncode or re.search(r'not found|version .* not found', result.stdout):
                             raise ValueError(f'loader rejection: {entry["path"]}: {result.stdout}')
                         durable(loader_receipt, loader_set)
+                        if entry == test:
+                            loader_log = results / (test['sha256'] + '-' + context.name + '.loader.log')
+                            with loader_log.open('w') as output:
+                                output.write(result.stdout); output.flush(); os.fsync(output.fileno())
                     executable = f'{target}/{test["path"]}'
                     listed = subprocess.run(base + ['--entrypoint', '/bin/bash', image, '-c', 'exec "$1" --list', 'list', executable],
                                             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                     if listed.returncode: raise ValueError('libtest enumeration failed: ' + listed.stdout)
+                    list_log = results / (test['sha256'] + '-' + context.name + '.list.log')
+                    with list_log.open('w') as output:
+                        output.write(listed.stdout); output.flush(); os.fsync(output.fileno())
                     log = results / (test['sha256'] + '-' + context.name + '.log')
                     with log.open('w') as output:
                         result = subprocess.run(base + [image, executable, '--nocapture'], stdout=output, stderr=subprocess.STDOUT)
                         output.flush(); os.fsync(output.fileno())
                     output = log.read_text(); passed = check_output(result.returncode, output)
-                    durable(receipt, dict(binding=binding, exit=0, install_skips=0, passed=passed, log_sha256=sha(log), log_name=log.name, runner_sha256=runner_hash,
+                    admission = dict(accepted=True, commit=manifest['identity']['commit'],
+                                     tree=manifest['identity']['tree'], original_manifest_sha256=manifest_hash,
+                                     sha256=test['sha256'], image=image,
+                                     loader=dict(exit=0, log=str(loader_log)),
+                                     list=dict(exit=listed.returncode, log=str(list_log)),
+                                     tests=dict(exit=result.returncode, log=str(log)))
+                    test_bundle.admit_installed_receipt(admission, manifest, test, manifest_hash, image)
+                    durable(receipt, dict(admission=admission, binding=binding, exit=0, install_skips=0, passed=passed, log_sha256=sha(log), log_name=log.name, runner_sha256=runner_hash,
                                           command=base + [image, executable, '--nocapture'],
                                           enumeration=listed.stdout,
                                           ignored=sum(int(n) for n in re.findall(r'test result: ok\. \d+ passed; \d+ failed; (\d+) ignored', output))))
@@ -391,7 +413,7 @@ def main():
             finally:
                 shutil.rmtree(fresh)
                 # Only companions/runtime remain cached across independent harnesses.
-                if accepted(receipt, binding):
+                if accepted(receipt, binding, manifest, test):
                     (cache / test['sha256']).unlink(missing_ok=True)
                     (cache / (test['sha256'] + '.json')).unlink(missing_ok=True)
 
