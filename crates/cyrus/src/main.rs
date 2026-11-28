@@ -275,7 +275,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         app.add_plugins((cyrus_debug::DebugMenuPlugin, cyrus_mods::ModsPlugin));
     }
     #[cfg(feature = "raytracing")]
-    {
+    if !args.headless {
         app.add_plugins(cyrus_render::fog::RayTracingPlugin);
         if let Some(value) = &args.launch.ray_tracing {
             app.world_mut()
