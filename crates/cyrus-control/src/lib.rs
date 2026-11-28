@@ -153,6 +153,12 @@ pub enum Command {
     },
     /// App state, scene name, player transform, fidelity settings, frame counter.
     State,
+    /// Read retained book SCR3/THMB bytes after matching-world typed image admission.
+    /// The explicit original SAVEGAME.SAV supplies metadata only. No storage is written
+    /// and this image group does not establish complete-slot export readiness.
+    ReadSavedImages {
+        savegame_path: String,
+    },
     /// Read a uniquely named scene mesh's material-bound CPU light image after Update.
     /// Returns an acquisition frame and raw image rows, not GPU or visual parity.
     BoundLightImage {

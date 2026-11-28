@@ -441,3 +441,41 @@ fn state_retains_actual_unsigned_bios_sample_without_advancing_clock() {
         assert_eq!(state["clock"]["continuation"], before);
     }
 }
+
+#[test]
+fn saved_image_command_rejects_unavailable_capture_with_metadata_context() {
+    let mut app = script_app();
+    app.insert_state(cyrus_game::AppState::Menu);
+    app.world_mut().resource_mut::<CurrentScene>().world = Some(17);
+    let animations = app
+        .world()
+        .resource::<cyrus_world::lifecycle::PreparedWorld>()
+        .animations
+        .clone();
+    app.insert_resource(cyrus_render::ReadyScene(animations));
+    app.init_resource::<crate::original_images::OriginalImages>();
+    let (tx, rx) = channel();
+    app.insert_resource(Inbox(Mutex::new(rx)));
+    let (reply, response) = channel();
+    tx.send(Pending {
+        request: Request {
+            id: 13,
+            cmd: Command::ReadSavedImages {
+                savegame_path: "/absent/SAVEGAME.SAV".into(),
+            },
+        },
+        reply,
+    })
+    .unwrap();
+    app.update();
+    let response = response.try_recv().unwrap();
+    assert!(!response.ok);
+    let error = response.error.unwrap();
+    assert!(
+        error.contains("/absent/SAVEGAME.SAV")
+            && error.contains("17")
+            && error.contains("SCR3/THMB")
+            && error.contains("captured images unavailable"),
+        "{error}"
+    );
+}
