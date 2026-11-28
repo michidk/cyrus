@@ -316,6 +316,13 @@ def runtime_image(root, image):
     return actual
 
 
+def libtest_arguments(test_threads):
+    """Bound harness concurrency without filtering any exported tests."""
+    if test_threads is not None and test_threads <= 0:
+        raise ValueError('test thread count must be positive')
+    return ['--nocapture'] + ([] if test_threads is None else [f'--test-threads={test_threads}'])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ['directory', 'install', 'save_directory']: parser.add_argument(name, type=Path)
@@ -323,10 +330,12 @@ def main():
     parser.add_argument('--runtime-plan-tool', type=Path, default=Path(__file__).with_name('test_bundle.py'))
     parser.add_argument('--package')
     parser.add_argument('--target', help='retry one exact exported harness; requires --package')
+    parser.add_argument('--test-threads', type=int, help='positive libtest worker count; defaults to libtest concurrency')
     parser.add_argument('--fixture-directory', action='append', default=[], metavar='PACKAGE:TARGET=PATH')
     parser.add_argument('--commit', required=True)
     parser.add_argument('--tree', required=True)
     args = parser.parse_args(); root = args.directory.resolve()
+    arguments = libtest_arguments(args.test_threads)
     runner_hash = sha(Path(__file__))
     expected = dict(json.loads((root / 'artifact-identity.json').read_text()), commit=args.commit, tree=args.tree)
     digest = json.loads((root / 'artifact-digest.json').read_text())
@@ -373,7 +382,7 @@ def main():
                 dict(group=fixture_hash(selected_saves), original_slot=default_fixture))).hexdigest()
             binding = dict(artifact=expected, manifest=manifest_hash, projection=projection_hash,
                            image=image, test=test, install=str(install), install_identity=install_identity, fixture=fixture,
-                           arguments=['--nocapture'], package_cwd=str(paths[test['package']]))
+                           arguments=arguments, package_cwd=str(paths[test['package']]))
             if test['package'] not in {'cyrus-script', 'cyrus-soup'}:
                 binding['media_plan'] = media
             receipt = receipt_path(results, test['sha256'], binding)
@@ -434,7 +443,7 @@ def main():
                         output.write(listed.stdout); output.flush(); os.fsync(output.fileno())
                     log = results / (test['sha256'] + '-' + context.name + '.log')
                     attempt = results / ('attempt-' + test['sha256'] + '-' + context.name + '.json')
-                    result = recorded_test(base + [image, executable, '--nocapture'], log, attempt, binding)
+                    result = recorded_test(base + [image, executable, *arguments], log, attempt, binding)
                     output = log.read_text(); passed = check_output(result.returncode, output)
                     admission = dict(accepted=True, commit=manifest['identity']['commit'],
                                      tree=manifest['identity']['tree'], original_manifest_sha256=manifest_hash,
@@ -444,7 +453,7 @@ def main():
                                      tests=dict(exit=result.returncode, log=str(log)))
                     test_bundle.admit_installed_receipt(admission, manifest, test, manifest_hash, image)
                     durable(receipt, dict(admission=admission, binding=binding, exit=0, install_skips=0, passed=passed, log_sha256=sha(log), log_name=log.name, runner_sha256=runner_hash,
-                                          command=base + [image, executable, '--nocapture'],
+                                          command=base + [image, executable, *arguments],
                                           enumeration=listed.stdout,
                                           ignored=sum(int(n) for n in re.findall(r'test result: ok\. \d+ passed; \d+ failed; (\d+) ignored', output))))
                 print('accepted', test['package'], test['target'], passed, flush=True)

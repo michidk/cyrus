@@ -62,6 +62,15 @@ class Tests(unittest.TestCase):
             with patch.object(m.subprocess,'run',return_value=missing):
                 with self.assertRaisesRegex(ValueError,'no retained runtime descriptor'):m.runtime_image(root,'task-runtime')
 
+    def test_libtest_worker_limit_preserves_full_suite_and_default_arguments(self):
+        self.assertEqual(m.libtest_arguments(None), ['--nocapture'])
+        for workers in [1, 4]:
+            self.assertEqual(m.libtest_arguments(workers),
+                             ['--nocapture', f'--test-threads={workers}'])
+        for workers in [0, -1]:
+            with self.assertRaisesRegex(ValueError, 'positive'):
+                m.libtest_arguments(workers)
+
     def test_single_target_retry_requires_package_and_exact_manifest_harness(self):
         manifest = dict(files=[dict(role='test', package='script', target='original_save'),
                                dict(role='test', package='other', target='original_save'),
@@ -195,7 +204,8 @@ class Tests(unittest.TestCase):
             listed=Path(d)/'list.log'; listed.write_text('three tests')
             entry=dict(role='test',sha256='test')
             manifest=dict(identity=dict(commit='source',tree='tree'),files=[entry])
-            binding=dict(manifest='original',projection='new-test',image='pinned',fixture='save')
+            binding=dict(manifest='original',projection='new-test',image='pinned',fixture='save',
+                         arguments=['--nocapture'])
             admission=dict(accepted=True,commit='source',tree='tree',sha256='test',
                            original_manifest_sha256='original',image='pinned',
                            loader=dict(exit=0,log=str(loader)),list=dict(exit=0,log=str(listed)),

@@ -3551,3 +3551,7 @@ is fsynced before that harness's generated target is removed. Failed or skipped
 installed tests produce no accepted receipt. Package filtering is partial
 acceptance; omit `--package` for the complete exported harness census. Doctests and
 isolated mod manifests still require their separate Cargo verification receipts.
+Pass `--test-threads 1` to run every test in each harness serially when concurrent
+asset-heavy tests exhaust their individual loading deadlines. The default retains
+libtest concurrency. The worker count must be positive and is part of the receipt
+binding, so changing it requires a new run. This option never filters tests.
