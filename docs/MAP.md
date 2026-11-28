@@ -603,6 +603,7 @@ module where it is defined and regenerate.
 - `src/original_slot/assembly.rs` — Saved-image assembly composed with mandatory complete-session inverse validation.
 - `src/original_slot/capture.rs` — World-bound native encoded-colour readback for original saved-image assembly.
 - `src/original_slot/request.rs` — Application decisions for a completely validated original-slot export.
+- `src/original_slot/worlds.rs` — Native current/retained-world authority for complete original-slot assembly.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.

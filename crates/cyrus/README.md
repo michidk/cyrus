@@ -450,3 +450,14 @@ acknowledgement. Actual decision observations and the final sample must establis
 equivalence to the recording separately. Ordinary gameplay retains its existing
 clock path; the replay timeline does not replace effective intervals with sample
 gaps or alter RNG, combat state or inputs.
+
+`original_slot::worlds::WorldFiles` binds complete-slot assembly to the native
+current/retained-world census and installed `WORLD.INI`. Native callers use
+`from_session`; off-live adapters can resolve an explicit complete census.
+`assemble` requires exactly the active world's `SAVEGAME.SAV` and the configured
+map-name TSG for every other retained world. Missing, extra, renamed, ambiguous
+or misidentified resources reject before `ExportRequest` inspects a destination.
+Colliding retained map filenames remain unsupported; world IDs are never rebound
+by map stem. This validation supplements saved images and the mandatory remaining
+record/journal inverse validator. It supplies no missing records and does not
+make complete native export available by itself.
