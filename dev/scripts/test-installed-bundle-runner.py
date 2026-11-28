@@ -16,6 +16,52 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 
 class Tests(unittest.TestCase):
+    def test_failed_and_interrupted_tests_retain_source_and_fixture_before_execution(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);log=root/'test.log';attempt=root/'attempt.json'
+            binding=dict(source='immutable',fixture='authentic',image='pinned')
+            def fail(command, **kwargs):
+                self.assertEqual(json.loads(attempt.read_text())['binding'],binding)
+                self.assertEqual(json.loads(attempt.read_text())['stage'],'running')
+                process=unittest.mock.MagicMock()
+                process.__enter__.return_value=process
+                process.stdout=iter(['actual ownership rejection\n'])
+                process.wait.return_value=101
+                return process
+            with patch.object(m.subprocess,'Popen',side_effect=fail):
+                self.assertEqual(m.recorded_test(['test'],log,attempt,binding).returncode,101)
+            record=json.loads(attempt.read_text())
+            self.assertEqual(record['exit'],101);self.assertEqual(record['log_sha256'],m.sha(log))
+            self.assertEqual(record['binding'],binding)
+            with patch.object(m.subprocess,'Popen',side_effect=OSError('execution lost')):
+                with self.assertRaises(OSError):m.recorded_test(['test'],log,attempt,binding)
+            self.assertEqual(json.loads(attempt.read_text())['stage'],'running')
+            self.assertEqual(json.loads(attempt.read_text())['binding'],binding)
+
+    def test_runtime_recovery_uses_digest_bound_archive_and_pinned_image(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); archive=root/'runtime-image.tar.gz';archive.write_bytes(b'archive')
+            descriptor=dict(image='sha256:pinned',bytes=7,sha256=m.sha(archive))
+            (root/'runtime-image.json').write_text(json.dumps(descriptor))
+            missing=unittest.mock.Mock(returncode=1,stdout='')
+            ready=unittest.mock.Mock(returncode=0,stdout='sha256:pinned\n')
+            with patch.object(m.subprocess,'run',side_effect=[missing,unittest.mock.Mock(returncode=0),ready]) as run:
+                self.assertEqual(m.runtime_image(root,'task-runtime'),'sha256:pinned')
+                self.assertNotIn('--retain',run.call_args_list[1].args[0])
+                self.assertIn('sha256:pinned',run.call_args_list[1].args[0])
+            with patch.object(m.subprocess,'run',return_value=ready) as run:
+                self.assertEqual(m.runtime_image(root,'task-runtime'),'sha256:pinned')
+                self.assertEqual(run.call_count,1)
+            with patch.object(m.subprocess,'run',return_value=unittest.mock.Mock(returncode=0,stdout='sha256:wrong')):
+                with self.assertRaisesRegex(ValueError,'pinned retained identity'):m.runtime_image(root,'task-runtime')
+            archive.write_bytes(b'changed')
+            with patch.object(m.subprocess,'run',return_value=missing) as run:
+                with self.assertRaisesRegex(ValueError,'digest or size'):m.runtime_image(root,'task-runtime')
+                self.assertEqual(run.call_count,1)
+            (root/'runtime-image.json').unlink()
+            with patch.object(m.subprocess,'run',return_value=missing):
+                with self.assertRaisesRegex(ValueError,'no retained runtime descriptor'):m.runtime_image(root,'task-runtime')
+
     def test_single_target_retry_requires_package_and_exact_manifest_harness(self):
         manifest = dict(files=[dict(role='test', package='script', target='original_save'),
                                dict(role='test', package='other', target='original_save'),
@@ -158,6 +204,10 @@ class Tests(unittest.TestCase):
             def accepts(): return m.accepted(receipt,binding,manifest,entry)
             self.assertFalse(accepts())
             m.durable(receipt,record);self.assertTrue(accepts())
+            foreign=Path(d)/'foreign.log';foreign.write_text(good)
+            redirected=dict(record,admission=dict(admission,tests=dict(exit=0,log=str(foreign))))
+            m.durable(receipt,redirected);self.assertFalse(accepts())
+            m.durable(receipt,record)
             for key in binding:
                 self.assertFalse(m.accepted(receipt,dict(binding,**{key:'different'}),manifest,entry))
             for phase in ['loader','list','tests']:

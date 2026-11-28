@@ -242,6 +242,7 @@ def accepted(receipt, binding, manifest, entry):
     if not receipt.is_file(): return False
     try:
         record = json.loads(receipt.read_text())
+        if not isinstance(record, dict): return False
         log_name = record.get('log_name', receipt.with_suffix('.log').name)
         if Path(log_name).name != log_name: return False
         log = receipt.parent / log_name
@@ -249,6 +250,7 @@ def accepted(receipt, binding, manifest, entry):
                 and record.get('install_skips') == 0 and log.is_file()
                 and record.get('log_sha256') == sha(log)):
             return False
+        if Path(record['admission']['tests']['log']).resolve() != log.resolve(): return False
         test_bundle.admit_installed_receipt(record['admission'], manifest, entry,
                                            binding['manifest'], binding['image'])
         return True
@@ -277,6 +279,43 @@ def selected_tests(manifest, package, target):
     return tests
 
 
+def recorded_test(command, log, attempt, binding):
+    """Retain source/input identity before execution, including interrupted failures."""
+    record = dict(binding=binding, command=command, log_name=log.name, stage='running')
+    durable(attempt, record)
+    with log.open('w') as output:
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as process:
+            for line in process.stdout:
+                output.write(line); output.flush(); os.fsync(output.fileno())
+            result = subprocess.CompletedProcess(command, process.wait())
+    durable(attempt, dict(record, stage='completed', exit=result.returncode, log_sha256=sha(log)))
+    return result
+
+
+def runtime_image(root, image):
+    """Recover a task's pinned runtime after daemon loss without rebuilding it."""
+    descriptor_path = root / 'runtime-image.json'
+    descriptor = json.loads(descriptor_path.read_text()) if descriptor_path.is_file() else None
+    inspect = ['docker', 'image', 'inspect', image, '--format', '{{.Id}}']
+    result = subprocess.run(inspect, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode:
+        if descriptor is None:
+            raise ValueError('runtime image missing and no retained runtime descriptor supplied')
+        archive = root / 'runtime-image.tar.gz'
+        if (not archive.is_file() or archive.stat().st_size != descriptor['bytes']
+                or sha(archive) != descriptor['sha256']):
+            raise ValueError('retained runtime archive digest or size differs')
+        subprocess.run([str(Path(__file__).with_name('ensure-runtime-image.sh')),
+                        descriptor['image'], str(archive)], check=True)
+        result = subprocess.run(inspect, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode:
+        raise ValueError('runtime image unavailable after retained archive recovery')
+    actual = result.stdout.strip()
+    if descriptor is not None and actual != descriptor['image']:
+        raise ValueError('runtime image differs from pinned retained identity')
+    return actual
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ['directory', 'install', 'save_directory']: parser.add_argument(name, type=Path)
@@ -291,7 +330,7 @@ def main():
     runner_hash = sha(Path(__file__))
     expected = dict(json.loads((root / 'artifact-identity.json').read_text()), commit=args.commit, tree=args.tree)
     digest = json.loads((root / 'artifact-digest.json').read_text())
-    image = subprocess.check_output(['docker', 'image', 'inspect', args.image, '--format', '{{.Id}}'], text=True).strip()
+    image = runtime_image(root, args.image)
     with zipfile.ZipFile(RemoteZip((root / 'download-url.txt').read_text().strip(), expected['size'],
                              lambda: refresh_artifact_url(expected['artifact'], root / 'download-url.txt'))) as archive:
         manifest, manifest_hash = admit_metadata(archive, expected, digest)
@@ -394,9 +433,8 @@ def main():
                     with list_log.open('w') as output:
                         output.write(listed.stdout); output.flush(); os.fsync(output.fileno())
                     log = results / (test['sha256'] + '-' + context.name + '.log')
-                    with log.open('w') as output:
-                        result = subprocess.run(base + [image, executable, '--nocapture'], stdout=output, stderr=subprocess.STDOUT)
-                        output.flush(); os.fsync(output.fileno())
+                    attempt = results / ('attempt-' + test['sha256'] + '-' + context.name + '.json')
+                    result = recorded_test(base + [image, executable, '--nocapture'], log, attempt, binding)
                     output = log.read_text(); passed = check_output(result.returncode, output)
                     admission = dict(accepted=True, commit=manifest['identity']['commit'],
                                      tree=manifest['identity']['tree'], original_manifest_sha256=manifest_hash,
