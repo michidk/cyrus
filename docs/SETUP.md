@@ -3555,6 +3555,10 @@ is fsynced before that harness's generated target is removed. Failed or skipped
 installed tests produce no accepted receipt. Package filtering is partial
 acceptance; omit `--package` for the complete exported harness census. Doctests and
 isolated mod manifests still require their separate Cargo verification receipts.
+When changing media layouts, the runner removes obsolete, untracked, empty
+`game.gog` and `game.ins` bind placeholders from its source checkout. It verifies
+all source blobs and rejects nonempty files or symlinks before removing either
+placeholder. Installed media and tracked source files are preserved.
 Pass `--test-threads 1` to run every test in each harness serially when concurrent
 asset-heavy tests exhaust their individual loading deadlines. The default retains
 libtest concurrency. The worker count must be positive and is part of the receipt

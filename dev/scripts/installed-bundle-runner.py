@@ -161,15 +161,22 @@ def verify_source(source, records, empty_files=()):
         if actual != object_id.decode(): raise ValueError(f'source blob differs: {name}')
     for name in empty_files:
         path = source / safe(name)
-        if path.exists() and (path.is_symlink() or not path.is_file() or path.stat().st_size):
+        if path.is_symlink() or path.exists() and (not path.is_file() or path.stat().st_size):
             raise ValueError('media mountpoint must be an empty placeholder')
     actual = {str(p.relative_to(source)) for p in source.rglob('*')
               if (p.is_file() or p.is_symlink()) and str(p.relative_to(source)) not in empty_files}
     if actual != expected: raise ValueError('source file census differs')
 
 
-def prepare_mountpoints(source):
-    """Create empty nested bind targets before the source parent becomes read-only."""
+def prepare_mountpoints(source, records=b'', empty_files=()):
+    """Validate source and reconcile empty media bind targets before mounting it."""
+    tracked = {record.split(b'\t', 1)[1].decode() for record in records.split(b'\0') if record}
+    media_files = {'game.gog', 'game.ins'}
+    generated = (media_files | set(empty_files)) - tracked
+    # Validate every source and placeholder before deleting an obsolete target.
+    verify_source(source, records, generated)
+    for name in media_files - tracked - set(empty_files):
+        (source / name).unlink(missing_ok=True)
     for mountpoint in ['redguard', 'target', 'magic', 'game-config']:
         (source / mountpoint).mkdir(exist_ok=True)
 
@@ -363,8 +370,7 @@ def main():
             if mount.get('read_only') is not True: raise ValueError('game media mount must be read-only')
             relative = str(PurePosixPath(mount['destination']).relative_to(workspace)); safe(relative)
             if Path(mount['source']).is_file(): empty_files.append(relative)
-        verify_source(source, records, empty_files)
-        prepare_mountpoints(source)
+        prepare_mountpoints(source, records, empty_files)
         for mount in media:
             destination = source / PurePosixPath(mount['destination']).relative_to(workspace)
             if Path(mount['source']).is_dir(): destination.mkdir(parents=True, exist_ok=True)

@@ -108,6 +108,50 @@ class Tests(unittest.TestCase):
             (source/'game-config'/'leaked-state').write_text('not immutable source')
             with self.assertRaisesRegex(ValueError,'census'):m.verify_source(source,b'')
 
+    def test_cd_media_plan_removes_empty_gog_placeholders_before_source_mount(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d)
+            for name in ['game.gog', 'game.ins']:
+                (source / name).touch()
+            m.prepare_mountpoints(source)
+            self.assertFalse((source / 'game.gog').exists())
+            self.assertFalse((source / 'game.ins').exists())
+            m.verify_source(source, b'')
+
+    def test_media_plan_preserves_current_and_tracked_placeholders(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d)
+            (source / 'game.gog').touch()
+            (source / 'game.ins').touch()
+            m.prepare_mountpoints(source, empty_files=['game.gog'])
+            self.assertTrue((source / 'game.gog').is_file())
+            self.assertFalse((source / 'game.ins').exists())
+            records = b'100644 blob ' + hashlib.sha1(b'blob 0\0').hexdigest().encode() + b'\tgame.gog\0'
+            m.prepare_mountpoints(source, records)
+            self.assertTrue((source / 'game.gog').is_file())
+            m.verify_source(source, records)
+
+    def test_media_plan_rejects_real_files_and_symlinks_before_removing_anything(self):
+        for kind in ['file', 'symlink', 'broken-symlink']:
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as d:
+                source = Path(d) / 'source'
+                source.mkdir()
+                (source / 'game.gog').touch()
+                media = Path(d) / 'media'
+                if kind != 'broken-symlink':
+                    media.write_bytes(b'owned media')
+                if kind != 'file':
+                    (source / 'game.ins').symlink_to(media)
+                else:
+                    (source / 'game.ins').write_bytes(media.read_bytes())
+                with self.assertRaisesRegex(ValueError, 'media mountpoint'):
+                    m.prepare_mountpoints(source)
+                self.assertTrue((source / 'game.gog').is_file())
+                if kind != 'broken-symlink':
+                    self.assertEqual((source / 'game.ins').read_bytes(), b'owned media')
+                else:
+                    self.assertTrue((source / 'game.ins').is_symlink())
+
     def test_daemon_visibility_rejects_locally_valid_but_unshared_source(self):
         with tempfile.TemporaryDirectory() as d:
             source=Path(d);(source/'Cargo.toml').write_text('exact source')
